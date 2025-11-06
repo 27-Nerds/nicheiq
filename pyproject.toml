@@ -1,0 +1,77 @@
+[project]
+name = "nicheiq"
+version = "0.1.0"
+description = "Autonomous market research agent that transforms unstructured social discussions into validated SaaS opportunities"
+readme = "README.md"
+requires-python = ">=3.10,<=3.13"
+license = { text = "MIT" }
+authors = [
+    { name = "NicheIQ Team" }
+]
+keywords = ["crewai", "market-research", "ai-agents", "saas", "niche-research"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+
+dependencies = [
+    "crewai>=1.3.0",
+    "crewai-tools>=1.2.1",
+    "langchain-openai>=0.3.0",
+    "pydantic>=2.12.0",
+    "pydantic-settings>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "praw>=7.8.0",
+    "twitter-api-client>=0.10.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "reportlab>=4.4.0",
+    "weasyprint>=66.0",
+    "loguru>=0.7.0",
+    "tenacity>=8.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "black>=24.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.8.0",
+    "ipython>=8.20.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 100
+target-version = ['py310', 'py311', 'py312', 'py313']
+include = '\.pyi?$'
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --cov=src/nicheiq --cov-report=term-missing"

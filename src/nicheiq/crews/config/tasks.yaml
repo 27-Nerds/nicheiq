@@ -1,0 +1,607 @@
+# PainPointCrew Tasks
+# Following best practices: 80% effort on task design, specific expected outputs, clear success criteria
+
+categorize_content:
+  description: >
+    Analyze all provided social media content (Reddit posts with comments, Twitter threads)
+    and create a systematic categorization.
+
+    **Content Summary:**
+    - Reddit posts: {reddit_posts_count} posts with {total_reddit_comments} comments
+    - Twitter threads: {twitter_threads_count} threads with {total_twitter_replies} replies
+    - Total content pieces: {total_content}
+
+    **Reddit Content:**
+    {reddit_summary}
+
+    **Twitter Content:**
+    {twitter_summary}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+
+    **What to do:**
+
+    1. Read through all Reddit posts (titles, body text, top comments) and Twitter threads
+    2. Identify recurring themes, topics, and problem areas being discussed
+    3. Group discussions into 5-10 distinct theme categories (e.g., "Workflow Inefficiency",
+       "Tool Integration Problems", "Cost/Pricing Concerns")
+    4. For each category, identify the user segments expressing these concerns (e.g.,
+       "Small business owners", "Enterprise IT managers", "Freelance developers")
+    5. Note the frequency and intensity of discussions in each category
+
+
+    **How to approach:**
+
+    - Look for repeated keywords, phrases, and concepts across multiple posts
+    - Pay attention to the language users employ—their exact words matter
+    - Consider both explicit statements ("I hate that...") and implicit problems
+       (workarounds, complaints, feature requests)
+    - Segment by user type when you see clear distinctions in needs or contexts
+
+
+    **Acceptance Criteria:**
+
+    - Minimum 5 distinct theme categories identified
+    - Each category has clear definition and at least 3 representative examples
+    - User segments are specific enough to inform product targeting
+    - Frequency indicators (high/medium/low) assigned to each theme
+
+  expected_output: >
+    A structured categorization report in markdown format containing:
+
+
+    1. **Executive Summary** (2-3 sentences): Overview of discussion landscape and
+       primary themes discovered
+
+    2. **Theme Categories** (5-10 categories): For each category provide:
+       - Category name and definition
+       - Frequency indicator (High/Medium/Low based on mention count)
+       - Primary user segments discussing this theme
+       - 3-5 representative quote snippets from discussions
+       - Estimated number of distinct discussions mentioning this theme
+
+    3. **User Segment Analysis**: Distinct user types identified across all content
+       with their primary concerns
+
+    4. **Discussion Quality Assessment**: Overall quality indicators (engagement levels,
+       depth of discussion, authenticity of pain points expressed)
+
+
+    Format: Well-structured markdown with clear sections, bullet points, and quote blocks.
+    Length: 800-1500 words.
+
+extract_pain_points:
+  description: >
+    Transform the categorized content into specific, actionable pain points that could
+    be addressed by SaaS solutions.
+
+
+    **What to do:**
+
+    1. Review the categorization report from the previous task
+    2. For each high and medium-frequency theme, extract 2-5 specific pain points
+    3. Formulate each pain point as a clear problem statement in user language
+    4. Provide supporting evidence: direct quotes from users, mention frequency,
+       context about when/how this problem occurs
+    5. Identify the severity indicators in the language (words like "frustrating",
+       "critical", "showstopper", "annoying")
+    6. Note any mention of current solutions, workarounds, or tools users are trying
+
+
+    **How to approach:**
+
+    - Focus on problems that are specific enough to design solutions for (avoid
+      vague complaints like "tool is bad")
+    - Look for pain points that multiple users express independently—convergence
+      indicates real market problems
+    - Distinguish between nice-to-have improvements and genuine pain points
+    - Pay special attention when users mention money, time waste, or business impact
+    - Capture exact user language—don't paraphrase their pain into corporate speak
+
+
+    **Quality Standards:**
+
+    - Each pain point must be actionable (clear what solving it means)
+    - Each must have at least 3 supporting quotes from different users/discussions
+    - Each must include frequency data (how many times mentioned)
+    - Avoid duplicates—merge similar pain points into single statements
+
+
+    **Acceptance Criteria:**
+
+    - Minimum 10 distinct pain points extracted
+    - Each pain point has clear problem articulation
+    - Supporting evidence includes direct user quotes
+    - Mention frequency quantified for each
+    - Source platforms identified (Reddit/Twitter)
+
+  expected_output: >
+    A comprehensive pain point extraction report in markdown format:
+
+
+    1. **Summary** (3-4 sentences): Overview of pain point landscape, key patterns,
+       and priority problem areas
+
+    2. **Extracted Pain Points** (10-20 pain points): For each pain point provide:
+       - **Title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
+       - **Problem Statement**: 2-3 sentence clear articulation of the specific problem
+         in user language
+       - **Representative Quotes**: 3-5 direct user quotes supporting this pain point
+       - **Mention Count**: Number of times this problem appeared across discussions
+       - **Source Platforms**: Which platforms this was mentioned on (Reddit/Twitter/Both)
+       - **User Context**: What users are trying to accomplish when they hit this problem
+       - **Current Solutions Mentioned**: Any tools, workarounds, or approaches users
+         currently employ
+
+    3. **Pain Point Categories**: Group the pain points into logical clusters for easier
+       analysis
+
+    4. **Priority Indicators**: Which pain points appear most severe based on language
+       intensity and frequency
+
+
+    Format: Structured markdown with clear hierarchical organization.
+    Length: 1500-2500 words with substantial quote evidence.
+
+validate_pain_points:
+  description: >
+    Score and validate the extracted pain points using evidence-based criteria to
+    identify the highest-potential opportunities.
+
+
+    **What to do:**
+
+    1. Review each extracted pain point with its supporting evidence
+    2. Score each pain point on two dimensions (0.0 to 1.0 scale):
+
+       **Severity Score (0.0-1.0):**
+       - 0.8-1.0: Critical business impact, blocks important workflows, mentioned with
+         strong emotional language ("nightmare", "critical", "can't work without")
+       - 0.5-0.7: Significant inconvenience, wastes time/money, clear frustration
+       - 0.3-0.4: Notable annoyance, mentioned but not framed as critical
+       - 0.0-0.2: Minor inconvenience, weak signals
+
+       **Willingness to Pay (0.0-1.0):**
+       - 0.8-1.0: Explicit mentions of paying, budget availability, or current spend on
+         inadequate solutions
+       - 0.5-0.7: Strong frustration with existing paid tools, or mentions of value/ROI
+       - 0.3-0.4: Some indication they'd consider solutions, but no money mentions
+       - 0.0-0.2: No financial indicators, might expect free solutions
+
+    3. For each score, provide specific evidence from the discussions that justifies it
+    4. Calculate mention count across all discussions
+    5. Identify the categories each pain point belongs to
+    6. Create a final validated list prioritized by opportunity potential
+
+
+    **How to approach:**
+
+    - Be rigorous—scores must be defensible with quote evidence
+    - Look for business impact indicators (time, money, revenue, customer satisfaction)
+    - Willingness to pay signals: mentions of budgets, current tool costs, "would pay X for...",
+      frustration with expensive existing tools, questions about pricing
+    - Consider both explicit statements and implicit indicators
+    - When in doubt, score conservatively—better to underrate than overinflate
+
+
+    **Quality Standards:**
+
+    - Every score must have quote-based justification
+    - Scores should discriminate—not everything can be 0.9
+    - Validate logical consistency (high severity usually correlates with WTP)
+    - Final validated list should focus on actionable opportunities
+
+
+    **Acceptance Criteria:**
+
+    - All extracted pain points scored on both dimensions
+    - Score justifications reference specific evidence
+    - At least 40% of pain points score ≥0.6 on both dimensions
+    - Pain points ranked by opportunity level (High/Medium/Low)
+    - Top 5 pain points clearly identified with supporting rationale
+
+  expected_output: >
+    A complete PainPointAnalysisResult Pydantic model with the following structure:
+
+
+    **pain_points** (List[PainPoint]): Each containing:
+    - title: Descriptive name
+    - description: 2-3 sentence problem statement
+    - mention_count: Frequency across discussions (integer)
+    - severity_score: Float 0.0-1.0 with justification in description
+    - willingness_to_pay: Float 0.0-1.0 with evidence
+    - representative_quotes: List of 3-5 supporting user quotes
+    - source_platforms: List ["reddit", "twitter", etc.]
+    - categories: List of theme categories this pain point belongs to
+
+
+    **total_mentions**: Sum of all mention counts across pain points
+
+
+    **top_categories**: List of 3-5 most frequently mentioned problem categories
+
+
+    **analysis_summary**: 4-6 sentence executive summary covering:
+    - Total pain points validated
+    - Distribution across opportunity levels (High/Medium/Low)
+    - Key patterns and insights
+    - Top 3 recommended pain points for solution development
+    - Overall market signal strength
+
+
+    The model should be properly structured for JSON serialization and downstream processing.
+
+# IdeaGenerationCrew Tasks
+
+brainstorm_solutions:
+  description: >
+    Generate innovative SaaS solution concepts that directly address the validated
+    pain points from the previous analysis stage.
+
+    # Validated Pain Points for Solution Ideation
+
+    ## Analysis Summary
+    {analysis_summary}
+
+    ## High-Opportunity Pain Points ({high_priority_count} identified)
+    {high_priority_list}
+
+    ## Medium-Opportunity Pain Points ({medium_priority_count} identified)
+    {medium_priority_list}
+
+    ## Top Categories
+    {top_categories}
+
+    Total validated pain points: {total_pain_points}
+    Total mentions across all discussions: {total_mentions}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+
+    **What to do:**
+
+    1. Review the validated pain points, focusing on High and Medium opportunity ones
+    2. For each major pain point or cluster, brainstorm 1-2 SaaS solution concepts
+    3. Focus on solutions that can be built as MVP within 3-6 months
+    4. Consider different solution approaches: automation, integration, workflow tools,
+       analytics, collaboration platforms, etc.
+    5. Ensure each solution has clear value proposition tied to pain point relief
+    6. IMPORTANT: Explain WHY each solution was selected based on the specific pain points
+       and user frustrations discovered in the research
+
+
+    **How to approach:**
+
+    - Think in terms of user workflows and jobs-to-be-done
+    - Prioritize solutions that address multiple pain points simultaneously
+    - Focus on WHAT the solution does and WHY it matters to users, not HOW to build it technically
+    - Consider feasibility at a high level—avoid requiring breakthrough technology
+    - Think about network effects, data advantages, and defensibility
+    - Consider business model from day one (SaaS pricing, freemium, usage-based)
+    - Reference specific pain point data (severity scores, user quotes, mention counts) to
+      justify why this solution is needed
+
+
+    **Acceptance Criteria:**
+
+    - Generate 3-5 distinct solution concepts
+    - Each concept addresses at least one High-opportunity pain point
+    - Solutions are technically feasible with current technology
+    - Clear value proposition articulated for each
+    - MVP scope realistic for 3-6 month development
+    - Strong rationale connecting solution to discovered pain points
+
+  expected_output: >
+    Solution concept brainstorm document with 3-5 solution ideas, each containing:
+
+
+    1. **Solution Name**: Catchy, descriptive name
+    2. **One-Line Value Proposition**: Clear statement of the core benefit
+    3. **Pain Points Addressed**: List which validated pain points this solves (reference
+       by title and severity level)
+    4. **Why This Solution**: 2-3 sentences explaining WHY this idea was selected based
+       on the pain point research—reference specific user frustrations, severity scores,
+       or quotes that justify the need
+    5. **Core Concept**: 3-4 sentence explanation of WHAT the solution does and HOW
+       users interact with it (workflow-level, not technical implementation)
+    6. **MVP Feature Set**: 5-7 essential features for the initial version (user-facing
+       capabilities, not technical components)
+    7. **Solution Approach**: 1-2 sentences on the general approach (e.g., "marketplace
+       model," "workflow automation," "analytics dashboard") - NO detailed tech stack
+    8. **Business Model Sketch**: Initial thoughts on pricing/monetization
+    9. **Key Differentiators**: What makes this unique or better than existing alternatives
+
+
+    Format: Structured markdown with clear sections for each solution.
+    Length: 1000-1500 words total.
+    NOTE: Focus on user value and pain point relief, NOT technical implementation details.
+
+evaluate_solutions:
+  description: >
+    Critically assess the brainstormed solution concepts across multiple dimensions
+    to identify strengths, weaknesses, and risks.
+
+
+    **What to do:**
+
+    1. Analyze each solution concept on four key dimensions:
+
+       **Technical Feasibility (0.0-1.0 scale):**
+       - Can this be built with current technology?
+       - What are the technical risks or challenges?
+       - Are there third-party dependencies or integration challenges?
+       - 0.8-1.0: Highly feasible with current tech, minimal risks
+       - 0.5-0.7: Feasible but with moderate challenges or dependencies
+       - 0.3-0.4: Significant technical challenges or uncertainties
+       - 0.0-0.2: Major technical barriers or breakthrough tech required
+
+       **Market Fit (0.0-1.0 scale):**
+       - How directly does this address the validated pain points?
+       - Is the target market clearly defined?
+       - Are there adoption barriers?
+       - 0.8-1.0: Perfect alignment with high-opportunity pain points
+       - 0.5-0.7: Good fit with clear target market, minor barriers
+       - 0.3-0.4: Partial fit or unclear market definition
+       - 0.0-0.2: Weak connection to validated pain points
+
+       **Development Complexity (Low/Medium/High):**
+       - Time to MVP estimate
+       - Team size requirements
+       - Technical expertise needed
+
+       **Differentiation Potential (0.0-1.0 scale):**
+       - How crowded is this solution space?
+       - What makes this solution defensible?
+       - Is there a unique insight or approach?
+       - 0.8-1.0: Unique approach with strong defensibility
+       - 0.5-0.7: Clear differentiation in crowded market
+       - 0.3-0.4: Limited differentiation, competitive market
+       - 0.0-0.2: Commoditized space with weak differentiation
+
+    2. Identify key risks and challenges for each solution
+    3. Note any dependencies (technical, partnerships, data, etc.)
+    4. Provide honest assessment of competitive positioning
+    5. Rank solutions by overall opportunity potential
+
+
+    **How to approach:**
+
+    - Be critically honest—this is not advocacy, it's evaluation
+    - Consider implementation realities, not just ideal scenarios
+    - Think about what could go wrong—technical, market, competitive risks
+    - Evaluate timing—is the market ready for this solution?
+    - Consider defensibility—can this solution build moats over time?
+
+
+    **Acceptance Criteria:**
+
+    - All solutions scored on all four dimensions
+    - Scores justified with reasoning
+    - Key risks identified for each solution
+    - Comparative analysis provided
+    - Clear recommendation or ranking
+
+  expected_output: >
+    Solution evaluation report analyzing all brainstormed concepts:
+
+
+    **For each solution:**
+
+    1. **Solution Name** (reference from brainstorm)
+    2. **Evaluation Scores:**
+       - Technical Feasibility: X.X (0.0-1.0 scale) with justification
+       - Market Fit: X.X (0.0-1.0 scale) with justification
+       - Development Complexity: Low/Medium/High with estimate
+       - Differentiation Potential: X.X (0.0-1.0 scale) with analysis
+    3. **Strengths**: 3-5 key advantages or positive factors
+    4. **Weaknesses**: 3-5 concerns, risks, or challenges
+    5. **Key Risks**: Critical factors that could cause failure
+    6. **Dependencies**: Required partnerships, data, or technologies
+    7. **Competitive Positioning**: How this compares to alternatives
+
+
+    **Comparative Analysis:**
+
+    - Side-by-side comparison table of all solutions on key dimensions
+    - Ranking by overall opportunity (considering all factors)
+    - Clear recommendation of top 2-3 solutions to develop further
+
+
+    Format: Structured markdown with tables and clear sections.
+    Length: 1200-2000 words.
+
+refine_solutions:
+  description: >
+    Transform the evaluated solution concepts into comprehensive, actionable product
+    proposals ready for validation and development planning.
+
+
+    **What to do:**
+
+    1. Take the top 2-3 solutions from the evaluation
+    2. For each solution, develop comprehensive details:
+
+       **Target Personas:**
+       - Define 2-3 specific buyer/user personas with demographics, roles, goals,
+         pain points, and buying behavior
+
+       **Detailed Feature Specifications:**
+       - Expand MVP features into user stories or feature descriptions
+       - Prioritize features (Must-have / Should-have / Nice-to-have)
+       - Consider user workflows and feature interconnections
+
+       **Unique Value Proposition:**
+       - Craft compelling UVP that differentiates from alternatives
+       - Focus on outcomes and benefits, not just features
+       - Make it clear, specific, and user-centered
+
+       **Pricing Strategy:**
+       - Recommend pricing model (subscription tiers, usage-based, freemium)
+       - Suggest price points based on value delivered and market comps
+       - Consider customer acquisition economics
+
+       **Go-to-Market Positioning:**
+       - How to position against competitors
+       - Key messaging themes
+       - Marketing channel recommendations
+
+       **Data Requirements:**
+       - Assess if this solution requires data aggregation from multiple sources
+       - Identify specific data sources needed (APIs, web scraping, user input, etc.)
+       - Note any data partnerships or integrations required
+
+    3. Add any additional strategic details that strengthen the product vision
+
+
+    **How to approach:**
+
+    - Think like a product strategist preparing a funding pitch
+    - Make personas specific and realistic—avoid generic descriptions
+    - Ensure features map to persona needs and pain points
+    - Price based on value delivered, not costs
+    - Positioning should highlight what makes this solution special
+
+
+    **Quality Standards:**
+
+    - Every detail should be actionable and specific
+    - Personas should guide targeting and messaging decisions
+    - Features should be understandable to developers and designers
+    - UVP should be testable with target users
+    - Pricing should be defensible with market analysis
+
+
+    **Acceptance Criteria:**
+
+    - 2-3 solutions fully refined
+    - Each has 2-3 detailed personas
+    - Feature specifications prioritized and user-story formatted
+    - Compelling UVP articulated
+    - Pricing strategy with rationale
+    - Go-to-market positioning clear
+
+  expected_output: >
+    Comprehensive product proposals as IdeaGenerationResult Pydantic model:
+
+
+    **solution_ideas** (List[SolutionIdea]): Each containing:
+
+    - solution_name: Clear, memorable name
+    - value_proposition: One compelling sentence
+    - pain_points_addressed: List of pain point titles from validation
+    - description: 3-4 sentence detailed explanation
+    - target_personas: List of 2-3 detailed persona descriptions (each 3-4 sentences
+      with role, goals, pain points, buying behavior)
+    - core_features: List of 8-12 prioritized features with brief descriptions
+    - technical_approach: Architecture overview and key technologies
+    - differentiation_factors: List of 3-5 unique differentiators
+    - requires_data_aggregation: Boolean - does this solution need to aggregate data
+      from multiple sources?
+    - data_sources: List of specific data sources needed (APIs, databases, web scraping
+      targets, third-party integrations, etc.)
+    - estimated_development_time: "X-Y months" estimate
+    - pricing_strategy: Detailed pricing model recommendation
+    - market_fit_score: Float 0.0-1.0 from evaluation
+    - technical_feasibility_score: Float 0.0-1.0 from evaluation
+
+
+    **recommended_solution**: The top solution ID/name
+
+
+    **market_insights**: 4-5 sentence summary of key strategic insights across all
+    refined solutions
+
+
+    The model should be properly structured for JSON serialization.
+
+# CompetitiveCrew Tasks
+
+research_competitors:
+  description: >
+    Research competitors for each of the {solution_count} solution concepts provided below.
+
+    # Solution Concepts for Competitive Research
+
+    **Number of Solutions:** {solution_count}
+
+    **Market Insights:**
+    {market_insights}
+
+    **Recommended Focus:**
+    {recommended_solution}
+
+    ## Solution Details:
+    {solutions_list}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **Objective:**
+    For each solution above, identify 3-5 primary competitors and 2-3 alternative solutions.
+    Use search tools to research products, pricing, features, and customer feedback.
+
+    **Key Deliverables per Competitor:**
+    - Product name, website, and description
+    - 3-5 core features and capabilities
+    - Pricing model and price points
+    - 2-3 strengths (what users like)
+    - 2-3 weaknesses (what users complain about)
+    - Market positioning (target audience, key messaging)
+
+  expected_output: >
+    Markdown report with competitor profiles for each solution:
+
+    **For each solution:**
+
+    1. **Solution Name**
+
+    2. **Competitive Landscape Summary** (2-3 sentences)
+
+    3. **Direct Competitors** (3-5 companies):
+       - Name, website
+       - Core features (3-5 bullets)
+       - Pricing model
+       - Strengths (2-3 points)
+       - Weaknesses (2-3 points)
+       - Target audience
+
+    4. **Alternative Solutions** (2-3 options)
+
+    5. **Customer Sentiment** (2-3 sentences on what users say about existing tools)
+
+    6. **Market Gaps** (2-3 observations about unmet needs)
+
+    Format: Well-organized markdown. Length: 1000-1500 words per solution.
+
+analyze_competitive_landscape:
+  description: >
+    Analyze the competitive research from the previous task to identify market gaps,
+    differentiation opportunities, and strategic positioning for each solution.
+
+    **Objective:**
+    For each solution researched, identify market gaps, differentiation strategies,
+    competitive intensity, and positioning recommendations based on the competitor
+    data from the previous task.
+
+    **Key Analysis Areas:**
+    - Market gaps (unmet needs, underserved segments)
+    - Differentiation opportunities (features, pricing, positioning)
+    - Competitive intensity assessment (Low/Medium/High)
+    - Strategic positioning recommendations
+
+  expected_output: >
+    CompetitiveAnalysisResult Pydantic model:
+
+    **solution_landscapes** (List[CompetitiveLandscape]): For each solution:
+    - solution_name
+    - competitors (List[Competitor])
+    - market_gaps (3-5 unmet needs)
+    - differentiation_opportunities (3-5 ways to differentiate)
+    - competitive_intensity ("Low"/"Medium"/"High" with 1-2 sentence justification)
+    - recommended_positioning (2-3 sentence strategy)
+    - pricing_insights (market pricing analysis)
+
+    **top_opportunities** (List[str]): 3-5 top differentiation opportunities across all solutions
+
+    **strategic_recommendations**: 4-5 sentence executive summary covering competitive
+    landscape assessment, which solutions have clearest advantage, and key strategic insights
