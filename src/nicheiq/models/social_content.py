@@ -5,11 +5,13 @@ Pydantic models for social media content (Stages 4-5).
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RedditComment(BaseModel):
     """Represents a single Reddit comment."""
+
+    model_config = ConfigDict(extra='forbid')
 
     comment_id: str = Field(..., description="Reddit comment ID")
     author: str = Field(..., description="Comment author username")
@@ -25,21 +27,9 @@ class RedditComment(BaseModel):
 class RedditPost(BaseModel):
     """Represents a Reddit post with comments."""
 
-    post_id: str = Field(..., description="Reddit post ID")
-    title: str = Field(..., description="Post title")
-    selftext: str = Field(..., description="Post body text")
-    author: str = Field(..., description="Post author username")
-    subreddit: str = Field(..., description="Subreddit name")
-    score: int = Field(..., description="Post score (upvotes - downvotes)")
-    num_comments: int = Field(..., description="Number of comments")
-    created_utc: datetime = Field(..., description="Post creation timestamp")
-    url: str = Field(..., description="Post URL")
-    comments: List[RedditComment] = Field(
-        default_factory=list, description="Top-level comments"
-    )
-
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
             "example": {
                 "post_id": "abc123",
                 "title": "Struggling to find good freelancers",
@@ -53,10 +43,26 @@ class RedditPost(BaseModel):
                 "comments": [],
             }
         }
+    )
+
+    post_id: str = Field(..., description="Reddit post ID")
+    title: str = Field(..., description="Post title")
+    selftext: str = Field(..., description="Post body text")
+    author: str = Field(..., description="Post author username")
+    subreddit: str = Field(..., description="Subreddit name")
+    score: int = Field(..., description="Post score (upvotes - downvotes)")
+    num_comments: int = Field(..., description="Number of comments")
+    created_utc: datetime = Field(..., description="Post creation timestamp")
+    url: str = Field(..., description="Post URL")
+    comments: List[RedditComment] = Field(
+        default_factory=list, description="Top-level comments"
+    )
 
 
 class TwitterTweet(BaseModel):
     """Represents a single tweet."""
+
+    model_config = ConfigDict(extra='forbid')
 
     tweet_id: str = Field(..., description="Twitter tweet ID")
     author_username: str = Field(..., description="Tweet author username")
@@ -75,13 +81,9 @@ class TwitterTweet(BaseModel):
 class TwitterThread(BaseModel):
     """Represents a Twitter thread (original tweet + replies)."""
 
-    thread_id: str = Field(..., description="Thread identifier (original tweet ID)")
-    original_tweet: TwitterTweet = Field(..., description="Original tweet starting the thread")
-    replies: List[TwitterTweet] = Field(default_factory=list, description="Reply tweets")
-    total_engagement: int = Field(..., description="Total likes + retweets across thread")
-
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
             "example": {
                 "thread_id": "xyz789",
                 "original_tweet": {},
@@ -89,10 +91,18 @@ class TwitterThread(BaseModel):
                 "total_engagement": 150,
             }
         }
+    )
+
+    thread_id: str = Field(..., description="Thread identifier (original tweet ID)")
+    original_tweet: TwitterTweet = Field(..., description="Original tweet starting the thread")
+    replies: List[TwitterTweet] = Field(default_factory=list, description="Reply tweets")
+    total_engagement: int = Field(..., description="Total likes + retweets across thread")
 
 
 class SocialContentCollection(BaseModel):
     """Collection of social media content from both platforms."""
+
+    model_config = ConfigDict(extra='forbid')
 
     reddit_posts: List[RedditPost] = Field(
         default_factory=list, description="Collected Reddit posts"

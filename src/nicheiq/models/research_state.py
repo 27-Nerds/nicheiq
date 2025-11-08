@@ -3,19 +3,33 @@ Pydantic models for research flow state management.
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .competitor import CompetitiveAnalysisResult
+from .data_source import DataSourceResearchResult
 from .keyword_data import KeywordValidationResult
 from .pain_point import PainPointAnalysisResult
+from .seo_strategy import SEOStrategyReport
 from .social_content import SocialContentCollection
-from .solution_idea import IdeaGenerationResult
+from .solution_idea import IdeaGenerationResult, SolutionIdea
+from .solution_selection import SolutionSelection
+
+
+class SelectionCriteriaScore(BaseModel):
+    """Single selection criteria score entry."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    criterion: str = Field(..., description="Criterion name (e.g., 'market_fit', 'technical_feasibility')")
+    score: float = Field(..., description="Score value (0-1 scale)")
 
 
 class NicheContext(BaseModel):
     """Initial niche understanding (Stage 1)."""
+
+    model_config = ConfigDict(extra='forbid')
 
     niche_input: str = Field(..., description="User's niche input")
     niche_description: str = Field(..., description="LLM-generated niche description")
@@ -26,6 +40,8 @@ class NicheContext(BaseModel):
 class SearchQuery(BaseModel):
     """A single search query."""
 
+    model_config = ConfigDict(extra='forbid')
+
     query: str = Field(..., description="Search query text")
     query_type: str = Field(
         ..., description="Type: problem/alternative/frustration/solution"
@@ -33,23 +49,134 @@ class SearchQuery(BaseModel):
     platform: str = Field(..., description="Target platform: reddit/twitter")
 
 
+class SearchResultItem(BaseModel):
+    """A single search result with metadata for relevance validation."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    url: str = Field(..., description="URL of the search result")
+    title: str = Field(..., description="Title of the page/post")
+    snippet: str = Field(..., description="Text snippet from search result")
+
+
+class ThreadRelevanceValidation(BaseModel):
+    """Validation result for thread relevance to niche."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    is_relevant: bool = Field(..., description="Whether thread is relevant to niche")
+    confidence: float = Field(..., description="Confidence score 0-1")
+    reason: str = Field(..., description="Brief explanation of relevance decision")
+
+
 class FinalReport(BaseModel):
     """Final comprehensive research report (Stage 10)."""
 
+    model_config = ConfigDict(extra='forbid')
+
     niche: str = Field(..., description="Niche analyzed")
     executive_summary: str = Field(..., description="High-level executive summary")
+
+    # Solution Selection (Stage 8.5)
+    selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
+    selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
+    runner_up_solutions: Optional[List[str]] = Field(default=None, description="Other viable solutions considered")
+    selection_criteria_scores: Optional[List[SelectionCriteriaScore]] = Field(
+        default=None,
+        description="Breakdown of selection criteria scores (0-1 scale): market_fit, technical_feasibility, competitive_advantage, keyword_opportunity, data_requirements"
+    )
+    recommended_focus: Optional[str] = Field(
+        default=None,
+        description="Strategic focus recommendation for the selected solution (e.g., geographic expansion, segment targeting, niche dominance)"
+    )
+
+    # Detailed Solution Description (NEW - addresses "WHAT" and "HOW" gaps)
+    selected_solution_details: Optional[SolutionIdea] = Field(
+        default=None,
+        description="Complete details of the selected solution including features, personas, technical approach, pricing strategy"
+    )
+    solution_user_journey: Optional[str] = Field(
+        default=None,
+        description="Step-by-step user workflow explaining HOW users interact with the solution (5-8 numbered steps, markdown format)"
+    )
+    solution_implementation_overview: Optional[str] = Field(
+        default=None,
+        description="High-level implementation plan with phases, timeline, dependencies (2-3 paragraphs, markdown format)"
+    )
+    mvp_scope_definition: Optional[str] = Field(
+        default=None,
+        description="Detailed MVP scope: must-have features, post-MVP features, success criteria (markdown format with sections)"
+    )
+
+    # Problem Section
     top_pain_points: List[str] = Field(..., description="Top identified pain points")
+    pain_points_summary: str = Field(
+        ..., description="Summary of pain point analysis with severity and WTP insights"
+    )
+
+    # Solution Section
     recommended_solutions: List[str] = Field(
         ..., description="Recommended solution ideas to pursue"
     )
+    solutions_summary: str = Field(
+        ..., description="Summary of solution ideas with market fit and differentiation"
+    )
+
+    # Competitive Section
+    competitive_summary: str = Field(
+        ..., description="Summary of competitive landscape and positioning opportunities"
+    )
+    competitive_analysis: Optional[CompetitiveAnalysisResult] = Field(
+        default=None,
+        description="Detailed competitive analysis with competitor profiles, market gaps, and differentiation opportunities"
+    )
+
+    # Market Validation
     market_validation: str = Field(..., description="Overall market validation conclusion")
-    seo_implementation_guide: str = Field(
-        ..., description="Detailed SEO implementation strategy"
+
+    # SEO Strategy (Enhanced from simple string to comprehensive report)
+    seo_strategy: Optional[SEOStrategyReport] = Field(
+        default=None, description="Comprehensive SEO strategy with tiered keywords, content plan, and roadmap"
+    )
+
+    # Organic Acquisition Strategy (NEW - SEO-First Focus)
+    acquisition_strategy_summary: Optional[str] = Field(
+        default=None,
+        description=(
+            "Overview of customer acquisition strategy emphasizing organic channels. "
+            "Explains the content generation model, programmatic SEO opportunities, "
+            "and how the product architecture naturally creates indexable pages. "
+            "2-3 paragraphs covering: (1) content creation mechanism, (2) discovery patterns, "
+            "(3) scaling strategy for organic growth."
+        )
+    )
+    estimated_cac_breakdown: Optional[str] = Field(
+        default=None,
+        description=(
+            "Customer acquisition cost breakdown comparing organic vs paid channels. "
+            "Format: Markdown table or structured text with: "
+            "(1) Organic CAC estimate with rationale, "
+            "(2) Paid CAC estimate for comparison, "
+            "(3) CAC advantage ratio (X:1), "
+            "(4) Scalability assessment. "
+            "Should reference programmatic SEO page count, keyword search volumes, "
+            "and project type benchmarks (directories $15-30, aggregators $20-40, etc.)."
+        )
+    )
+
+    # Data Sourcing (for solutions requiring aggregation)
+    data_source_research: Optional[DataSourceResearchResult] = Field(
+        default=None,
+        description="Structured data source research results with discovered APIs, providers, cost estimates, and implementation roadmap (Stage 9.75)"
     )
     data_sourcing_recommendations: str = Field(
         ..., description="Data sourcing strategy for aggregation projects"
     )
+
+    # Next Steps
     next_steps: List[str] = Field(..., description="Recommended next steps")
+
+    # Metadata
     generated_at: datetime = Field(
         default_factory=datetime.utcnow, description="Report generation timestamp"
     )
@@ -58,6 +185,27 @@ class FinalReport(BaseModel):
 
 class ResearchState(BaseModel):
     """Complete state for the research flow."""
+
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
+            "example": {
+                "niche_context": {},
+                "search_queries": [],
+                "search_results": {},
+                "social_content": {},
+                "pain_point_analysis": {},
+                "idea_generation": {},
+                "competitive_analysis": {},
+                "keyword_validation": {},
+                "final_report": {},
+                "started_at": "2025-01-15T10:00:00",
+                "completed_at": None,
+                "current_stage": 1,
+                "errors": [],
+            }
+        }
+    )
 
     # Stage 1: Niche Analysis
     niche_context: Optional[NicheContext] = None
@@ -77,8 +225,20 @@ class ResearchState(BaseModel):
     # Stage 8: Competitive Analysis
     competitive_analysis: Optional[CompetitiveAnalysisResult] = None
 
-    # Stage 9: Keyword Validation
+    # Stage 8.5: Solution Selection
+    solution_selection: Optional[SolutionSelection] = None
+
+    # Stage 9: Seed Keywords
+    seed_keywords: List[str] = Field(default_factory=list, description="Seed keywords for SEO research")
+
+    # Stage 9 (Legacy): Keyword Validation - DEPRECATED, kept for backward compatibility
     keyword_validation: Optional[KeywordValidationResult] = None
+
+    # Stage 9.5: SEO Strategy (includes integrated keyword research)
+    seo_strategy_report: Optional[SEOStrategyReport] = None
+
+    # Stage 9.75: Data Source Research (for selected solution only)
+    data_source_research: Optional[DataSourceResearchResult] = None
 
     # Stage 10: Final Report
     final_report: Optional[FinalReport] = None
@@ -88,22 +248,3 @@ class ResearchState(BaseModel):
     completed_at: Optional[datetime] = None
     current_stage: int = Field(default=1, description="Current pipeline stage (1-10)")
     errors: List[str] = Field(default_factory=list, description="Errors encountered")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "niche_context": {},
-                "search_queries": [],
-                "search_results": {},
-                "social_content": {},
-                "pain_point_analysis": {},
-                "idea_generation": {},
-                "competitive_analysis": {},
-                "keyword_validation": {},
-                "final_report": {},
-                "started_at": "2025-01-15T10:00:00",
-                "completed_at": None,
-                "current_stage": 1,
-                "errors": [],
-            }
-        }

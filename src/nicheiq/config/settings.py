@@ -23,6 +23,22 @@ class Settings(BaseSettings):
     # OpenAI Configuration
     openai_api_key: str = Field(..., description="OpenAI API key")
     openai_model_name: str = Field(default="gpt-4o", description="OpenAI model to use")
+    function_calling_llm: str = Field(
+        default="gpt-4o-mini",
+        description="Model to use for function/tool calling (cheaper model recommended)"
+    )
+    content_analysis_llm: str = Field(
+        default="gpt-4o",
+        description="Model to use for content analysis and categorization tasks (gpt-4o or gpt-4o-mini recommended)"
+    )
+    thread_validation_llm: str = Field(
+        default="gpt-4o-mini",
+        description="Model to use for thread relevance validation in Stage 5 (gpt-4o-mini or gpt-3.5-turbo for cost efficiency)"
+    )
+    brainstorm_llm: str = Field(
+        default="gpt-4o",
+        description="Model to use for solution brainstorming/ideation (gpt-4o, o1-mini, or claude-3-5-sonnet for creative thinking)"
+    )
 
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: Optional[str] = Field(default=None, description="CrewAI+ API key")
@@ -42,8 +58,12 @@ class Settings(BaseSettings):
     twitter_password: Optional[str] = Field(default=None, description="Twitter password")
     twitter_email: Optional[str] = Field(default=None, description="Twitter email")
     twitter_cookies_cache: str = Field(
-        default=".twitter_cookies.json",
+        default="data/twitter_cookies.json",
         description="Path to cache Twitter cookies (auto-created after first login)"
+    )
+    enable_twitter: bool = Field(
+        default=True,
+        description="Enable/disable Twitter/X data collection (set to False to skip Twitter entirely)"
     )
 
     # DataForSEO API
@@ -59,22 +79,29 @@ class Settings(BaseSettings):
     )
 
     # Search Configuration
+    num_search_queries: int = Field(
+        default=40, description="Number of search queries to generate for discovering pain points"
+    )
     max_search_results: int = Field(
         default=20, description="Maximum search results per query"
     )
     min_reddit_upvotes: int = Field(
-        default=5, description="Minimum upvotes for Reddit posts"
+        default=10, description="Minimum upvotes for Reddit posts (higher threshold for quality)"
     )
     min_reddit_comments: int = Field(
-        default=3, description="Minimum comments for Reddit posts"
+        default=5, description="Minimum comments for Reddit posts (higher threshold for quality)"
     )
     reddit_comment_limit: Optional[int] = Field(
         default=None,
         description="Max MoreComments to replace (None=all comments, 32=most comments, 0=top-level only)",
     )
-    min_twitter_likes: int = Field(default=5, description="Minimum likes for Twitter posts")
+    min_comment_length: int = Field(
+        default=50,
+        description="Minimum character length for Reddit comments (filters out short/low-value comments)"
+    )
+    min_twitter_likes: int = Field(default=10, description="Minimum likes for Twitter posts (higher threshold for quality)")
     min_twitter_replies: int = Field(
-        default=3, description="Minimum replies for Twitter posts"
+        default=5, description="Minimum replies for Twitter posts (higher threshold for quality)"
     )
 
     # Keyword Research Configuration
@@ -84,10 +111,40 @@ class Settings(BaseSettings):
     keyword_max_competition: float = Field(
         default=0.7, description="Maximum competition level (0-1)"
     )
-    target_location: int = Field(
-        default=2840, description="Target location code (2840 = United States)"
+    target_location: Optional[int] = Field(
+        default=None, description="Target location code (e.g., 2840 = United States). If None, API uses global data."
     )
-    target_language: str = Field(default="en", description="Target language code")
+    target_language: Optional[str] = Field(
+        default=None, description="Target language code (e.g., 'en'). If None, API uses default language."
+    )
+
+    # SEO Refinement Settings (Stage 9.5)
+    seo_refinement_enabled: bool = Field(
+        default=True,
+        description="Enable SEO score refinement based on keyword data from Stage 9"
+    )
+    seo_refinement_volume_baselines: dict = Field(
+        default={
+            'directory': 50_000,
+            'aggregator': 50_000,
+            'comparison-tool': 30_000,
+            'marketplace': 30_000,
+            'saas': 10_000
+        },
+        description="Baseline monthly volumes by project type for refinement calculations"
+    )
+    seo_refinement_max_volume_boost: float = Field(
+        default=1.2,
+        description="Maximum volume multiplier boost (default 1.2 = 20% boost)"
+    )
+    seo_refinement_max_tier1_boost: float = Field(
+        default=0.20,
+        description="Maximum Tier 1 keyword boost (default 0.20 = 20% boost)"
+    )
+    seo_refinement_volume_discount_floor: float = Field(
+        default=0.7,
+        description="Minimum volume discount for CAC calculations (default 0.7 = 30% max discount)"
+    )
 
     # Output Configuration
     output_dir: Path = Field(

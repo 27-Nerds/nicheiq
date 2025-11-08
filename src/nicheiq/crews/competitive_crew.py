@@ -4,7 +4,7 @@ Multi-agent crew for researching competitors and identifying market opportunitie
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List
+from typing import List, Optional
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -14,6 +14,52 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult, CompetitiveLandscape
 from ..models.solution_idea import IdeaGenerationResult, SolutionIdea
+from ..models.social_content import SocialContentCollection, RedditPost, TwitterThread
+
+
+class CachedSerperDevTool(SerperDevTool):
+    """
+    Wrapper around SerperDevTool that caches search results within a session.
+
+    Reduces redundant API calls when multiple solutions have overlapping competitors
+    in the same niche. Cache is session-scoped (cleared between research runs).
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._cache = {}
+        self._hits = 0
+        self._misses = 0
+
+    def run(self, search_query: str, **kwargs):
+        """Execute search with caching."""
+        # Normalize query for cache key
+        cache_key = search_query.strip().lower()
+
+        if cache_key in self._cache:
+            self._hits += 1
+            logger.debug(f"Cache hit for: {search_query[:50]}... (hits: {self._hits}, misses: {self._misses})")
+            return self._cache[cache_key]
+
+        # Cache miss - execute actual search
+        self._misses += 1
+        logger.debug(f"Cache miss for: {search_query[:50]}... (hits: {self._hits}, misses: {self._misses})")
+        result = super().run(search_query, **kwargs)
+        self._cache[cache_key] = result
+
+        return result
+
+    def get_cache_stats(self):
+        """Return cache performance statistics."""
+        total = self._hits + self._misses
+        hit_rate = (self._hits / total * 100) if total > 0 else 0
+        return {
+            "hits": self._hits,
+            "misses": self._misses,
+            "total": total,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "cache_size": len(self._cache)
+        }
 
 
 @CrewBase
@@ -31,35 +77,183 @@ class CompetitiveCrew:
     agents_config = "config/agents.yaml"
     tasks_config = "config/tasks.yaml"
 
-    def __init__(self, solution_ideas: IdeaGenerationResult):
+    def __init__(
+        self,
+        solution_ideas: IdeaGenerationResult,
+        social_content: Optional[SocialContentCollection] = None
+    ):
         """
-        Initialize CompetitiveCrew with refined solution ideas.
+        Initialize CompetitiveCrew with refined solution ideas and optional social content.
 
         Args:
             solution_ideas: Results from IdeaGenerationCrew
+            social_content: Optional social content for competitor intelligence from user discussions
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
         self.solution_ideas = solution_ideas
 
-        # Initialize search tool for competitive research
-        self.search_tool = SerperDevTool()
+        # Initialize search tool for competitive research with caching
+        self.search_tool = CachedSerperDevTool()
+
+        # Initialize knowledge sources for competitor intelligence
+        self.knowledge_sources = []
+
+        # Cache crew instance to avoid re-embedding knowledge sources in parallel mode
+        self._crew_instance = None
+
+        # Create filtered knowledge source if social content is provided
+        if social_content and (social_content.reddit_posts or social_content.twitter_threads):
+            competitor_intel = self._prepare_competitor_intelligence(social_content)
+
+            if competitor_intel:
+                from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
+
+                self.competitor_knowledge = StringKnowledgeSource(
+                    content=competitor_intel,
+                    chunk_size=1000,     # Smaller chunks for focused competitor mentions
+                    chunk_overlap=150    # Moderate overlap for context
+                )
+                self.knowledge_sources.append(self.competitor_knowledge)
+                logger.info(
+                    f"Competitor intelligence knowledge source created ({len(competitor_intel)} chars) "
+                    f"from {len(social_content.reddit_posts)} Reddit posts and "
+                    f"{len(social_content.twitter_threads)} Twitter threads"
+                )
 
         logger.info(
             f"CompetitiveCrew initialized with {len(solution_ideas.solution_ideas)} "
-            f"solution concepts"
+            f"solution concepts{' and competitor intelligence' if self.knowledge_sources else ''}"
         )
+
+    def _prepare_competitor_intelligence(self, social_content: SocialContentCollection) -> str:
+        """
+        Extract competitor and tool mentions from social discussions.
+
+        Filters content to focus on:
+        - Existing tools/platforms users mention
+        - Alternative solutions and workarounds
+        - Competitor comparisons and switching behavior
+        - Pricing and value discussions
+
+        Args:
+            social_content: Reddit and Twitter discussions from research
+
+        Returns:
+            Formatted string with filtered competitor intelligence, or empty if none found
+        """
+        # Keywords indicating competitor/tool mentions
+        competitor_indicators = [
+            # Usage patterns
+            "using", "used", "tried", "currently use", "switched from", "switched to",
+            # Comparisons and alternatives
+            "alternative", "instead of", "compared to", "better than", "worse than",
+            "vs", "versus", "comparison",
+            # Commercial indicators
+            "pricing", "pay for", "subscription", "free version", "paid plan",
+            "cost", "expensive", "cheap", "affordable", "worth",
+            # Product types
+            "tool", "platform", "software", "app", "service", "product", "solution"
+        ]
+
+        filtered_content = []
+        total_filtered = 0
+
+        # Filter Reddit posts
+        for post in social_content.reddit_posts:
+            post_text = f"{post.title} {post.selftext}".lower()
+
+            # Check if post mentions tools/competitors
+            if any(indicator in post_text for indicator in competitor_indicators):
+                formatted = f"""[REDDIT - r/{post.subreddit}]
+[SCORE: {post.score}]
+
+### {post.title}
+
+{post.selftext if post.selftext else '[No content]'}
+
+---
+## Top Comments (Competitor Mentions):
+
+"""
+                # Include comments mentioning tools (no limits with RAG)
+                comment_count = 0
+                for comment in post.comments:  # Check ALL comments (was 30)
+                    if any(indicator in comment.body.lower() for indicator in competitor_indicators):
+                        # Include full comment body (no truncation with RAG)
+                        formatted += f"- [{comment.score} pts] {comment.body}\n"
+                        comment_count += 1
+                        # No max limit - RAG handles large datasets efficiently
+
+                # Only add if we found relevant comments or selftext
+                if comment_count > 0 or any(indicator in post.selftext.lower() for indicator in competitor_indicators):
+                    filtered_content.append(formatted)
+                    total_filtered += 1
+
+        # Filter Twitter threads
+        for thread in social_content.twitter_threads:
+            thread_text = thread.original_tweet.text.lower()
+
+            if any(indicator in thread_text for indicator in competitor_indicators):
+                formatted = f"""[TWITTER - @{thread.original_tweet.author_username}]
+[ENGAGEMENT: {thread.original_tweet.likes} likes, {thread.original_tweet.retweets} RTs]
+
+## Original Tweet:
+
+{thread.original_tweet.text}
+
+---
+## Replies (Competitor Mentions):
+
+"""
+                # Include replies mentioning tools (no limits with RAG)
+                reply_count = 0
+                for reply in thread.replies:  # Check ALL replies (was 50)
+                    if any(indicator in reply.text.lower() for indicator in competitor_indicators):
+                        # Include full reply text (no truncation with RAG)
+                        formatted += f"- @{reply.author_username} [{reply.likes}❤️]: {reply.text}\n"
+                        reply_count += 1
+                        # No max limit - RAG handles large datasets efficiently
+
+                # Only add if we found relevant replies or original tweet mentions competitors
+                if reply_count > 0 or any(indicator in thread_text for indicator in competitor_indicators):
+                    filtered_content.append(formatted)
+                    total_filtered += 1
+
+        if filtered_content:
+            logger.debug(
+                f"Filtered competitor intelligence: {total_filtered} discussions "
+                f"({len(filtered_content)} total pieces) mentioning existing tools/alternatives"
+            )
+            return "\n\n===\n\n".join(filtered_content)
+        else:
+            logger.info("No competitor mentions found in social discussions")
+            return ""
 
     @agent
     def competitive_researcher(self) -> Agent:
         """
         Agent responsible for discovering and profiling competitors.
         Uses search tools to find existing solutions and alternatives.
+
+        Uses low temperature (0.3) for factual research with structured output.
         """
+        from langchain_openai import ChatOpenAI
+
         return Agent(
             config=self.agents_config["competitive_researcher"],
             tools=[self.search_tool],
+            llm=ChatOpenAI(
+                model=settings.openai_model_name,
+                temperature=0.3,  # Low temperature for consistent factual research
+                api_key=settings.openai_api_key
+            ),
             verbose=True,
+            function_calling_llm=ChatOpenAI(
+                model=settings.function_calling_llm,
+                temperature=0.1,  # Low temperature for reliable tool calls
+                api_key=settings.openai_api_key
+            ),
         )
 
     @agent
@@ -67,9 +261,18 @@ class CompetitiveCrew:
         """
         Agent responsible for analyzing competitive landscape.
         Identifies gaps, opportunities, and differentiation strategies.
+
+        Uses moderate temperature (0.4) for analytical + strategic insights.
         """
+        from langchain_openai import ChatOpenAI
+
         return Agent(
             config=self.agents_config["competitive_analyst"],
+            llm=ChatOpenAI(
+                model=settings.openai_model_name,
+                temperature=0.4,  # Moderate temperature for strategic analysis with structure
+                api_key=settings.openai_api_key
+            ),
             verbose=True,
         )
 
@@ -103,17 +306,44 @@ class CompetitiveCrew:
     @crew
     def crew(self) -> Crew:
         """
-        Assemble the CompetitiveCrew with all agents and tasks.
+        Assemble the CompetitiveCrew with all agents, tasks, and optional knowledge sources.
+
+        If competitor intelligence knowledge sources are available, they are attached
+        at crew level so agents can access user discussions about existing tools.
+
+        IMPORTANT: Crew instance is cached to prevent duplicate embeddings when analyzing
+        multiple solutions in parallel. Knowledge sources are embedded only once.
 
         Returns:
-            Configured Crew instance
+            Configured Crew instance with optional knowledge sources
         """
-        return Crew(
-            agents=self.agents,
-            tasks=self.tasks,
-            verbose=True,
-            process_type="sequential",
-        )
+        # Return cached instance if available (prevents re-embedding in parallel mode)
+        if self._crew_instance is not None:
+            logger.debug("Reusing cached crew instance (avoiding duplicate embeddings)")
+            return self._crew_instance
+
+        crew_config = {
+            "agents": self.agents,
+            "tasks": self.tasks,
+            "verbose": True,
+            "process_type": "sequential",
+        }
+
+        # Add knowledge sources if available
+        if self.knowledge_sources:
+            crew_config["knowledge_sources"] = self.knowledge_sources
+            crew_config["embedder"] = {
+                "provider": "openai",
+                "config": {
+                    "model": "text-embedding-3-small"  # Cost-effective embeddings
+                }
+            }
+
+        # Create and cache the crew instance
+        self._crew_instance = Crew(**crew_config)
+        logger.debug("Created and cached new crew instance")
+
+        return self._crew_instance
 
     def _analyze_single_solution(self, idea: SolutionIdea, index: int, total: int) -> CompetitiveLandscape:
         """
@@ -194,6 +424,12 @@ class CompetitiveCrew:
             )
 
         try:
+            # PRE-INITIALIZE crew to embed knowledge sources ONCE before parallel processing
+            # This prevents duplicate embedding errors when multiple threads access crew simultaneously
+            logger.debug("Pre-initializing crew and knowledge sources...")
+            _ = self.crew()  # Triggers embedding on first call, then cached
+            logger.debug("Crew pre-initialized successfully")
+
             all_landscapes = []
 
             if parallel and total_solutions > 1:
@@ -263,9 +499,15 @@ class CompetitiveCrew:
                 strategic_recommendations=strategic_recommendations
             )
 
+            # Log cache performance statistics
+            cache_stats = self.search_tool.get_cache_stats()
             logger.info(
                 f"Competitive analysis complete: {len(result.solution_landscapes)} "
                 f"landscape(s) analyzed, {len(result.top_opportunities)} top opportunities identified"
+            )
+            logger.info(
+                f"Search cache performance: {cache_stats['hits']} hits, {cache_stats['misses']} misses, "
+                f"{cache_stats['hit_rate']} hit rate ({cache_stats['cache_size']} cached queries)"
             )
             return result
 

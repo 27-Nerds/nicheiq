@@ -5,6 +5,7 @@ Main entry point for NicheIQ - Autonomous Market Research Agent.
 import sys
 from pathlib import Path
 
+import nest_asyncio
 from loguru import logger
 
 from .config.settings import settings
@@ -13,6 +14,9 @@ from .flows import ResearchFlow
 
 def setup_logging():
     """Configure loguru logging based on settings."""
+    # Apply nest_asyncio to allow nested event loops (fixes twitter-api-client integration)
+    nest_asyncio.apply()
+
     logger.remove()  # Remove default handler
 
     # Console handler with colors
@@ -66,12 +70,13 @@ def validate_environment():
     return True
 
 
-def run_research(niche_description: str) -> str:
+def run_research(niche_description: str, allowed_project_types=None) -> str:
     """
     Run the complete NicheIQ research pipeline.
 
     Args:
         niche_description: Description of the niche/market to research
+        allowed_project_types: Optional list of allowed project types
 
     Returns:
         Path to the generated research report
@@ -83,12 +88,16 @@ def run_research(niche_description: str) -> str:
     logger.info("NicheIQ - Autonomous Market Research Agent")
     logger.info("=" * 80)
 
+    # Log project type constraints if provided
+    if allowed_project_types:
+        logger.info(f"Project type constraints: {', '.join(allowed_project_types)}")
+
     # Validate environment
     if not validate_environment():
         raise EnvironmentError("Environment validation failed. Please check your .env file.")
 
     # Initialize and run research flow
-    flow = ResearchFlow(niche_description=niche_description)
+    flow = ResearchFlow(niche_description=niche_description, allowed_project_types=allowed_project_types)
     report_path = flow.run_research()
 
     return report_path
@@ -107,6 +116,9 @@ def main():
 Examples:
   # Basic usage with niche description
   python -m nicheiq.main --niche "AI-powered project management for remote teams"
+
+  # Constrain to specific project types
+  python -m nicheiq.main --niche "expat relocation services" --project-types directory,aggregator
 
   # With custom output directory
   python -m nicheiq.main --niche "Developer tools for API testing" --output ./results
@@ -137,6 +149,12 @@ Examples:
         help=f"Logging level (default: {settings.log_level})",
     )
 
+    parser.add_argument(
+        "--project-types",
+        type=str,
+        help="Comma-separated list of allowed project types: saas,directory,aggregator,comparison-tool,marketplace (e.g., 'directory,aggregator')",
+    )
+
     args = parser.parse_args()
 
     # Get niche description from args or environment
@@ -147,6 +165,19 @@ Examples:
             "Niche description is required. Provide it via --niche argument or NICHEIQ_NICHE environment variable."
         )
 
+    # Parse project types if provided
+    allowed_project_types = None
+    if args.project_types:
+        allowed_project_types = [pt.strip() for pt in args.project_types.split(',')]
+        # Validate project types
+        valid_types = {'saas', 'directory', 'aggregator', 'comparison-tool', 'marketplace'}
+        invalid_types = set(allowed_project_types) - valid_types
+        if invalid_types:
+            parser.error(
+                f"Invalid project type(s): {', '.join(invalid_types)}. "
+                f"Valid types are: {', '.join(valid_types)}"
+            )
+
     # Update settings if custom values provided
     if args.output:
         settings.output_dir = args.output
@@ -156,7 +187,7 @@ Examples:
 
     # Run research
     try:
-        report_path = run_research(niche_description)
+        report_path = run_research(niche_description, allowed_project_types)
         logger.info(f"\n✓ Research completed successfully!")
         logger.info(f"✓ Report saved to: {report_path}")
         sys.exit(0)

@@ -63,6 +63,7 @@ dmypy.json
 # Output and Data
 output/
 reports/
+data/  # Twitter cache and authentication data
 *.pdf
 *.pkl
 *.trained
@@ -88,3 +89,5 @@ Thumbs.db
 *.temp
 tmp/
 temp/
+
+data/

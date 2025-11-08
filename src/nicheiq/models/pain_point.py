@@ -2,15 +2,50 @@
 Pydantic models for pain point analysis (Stage 6).
 """
 
-from typing import List
+from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .keyword_data import OpportunityLevel
 
 
+class UnvalidatedPainPoint(BaseModel):
+    """Pain point extracted by analyst without severity/WTP scores yet."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    title: str = Field(..., description="Short title of the pain point")
+    description: str = Field(..., description="Detailed description of the problem")
+    mention_count: int = Field(..., description="Number of times this problem was mentioned")
+    representative_quotes: List[str] = Field(
+        ..., description="Real user quotes representing this pain point"
+    )
+    source_platforms: Optional[List[str]] = Field(
+        default=None, description="Platforms where this pain was found (Reddit, Twitter)"
+    )
+    categories: Optional[List[str]] = Field(
+        default=None, description="Categories this pain point belongs to"
+    )
+
+
+class PainPointExtraction(BaseModel):
+    """Output from pain_point_analyst before validation."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    niche: str = Field(..., description="The niche being analyzed")
+    extracted_pain_points: List[UnvalidatedPainPoint] = Field(
+        ..., description="Pain points extracted from discussions (not yet scored)"
+    )
+    extraction_summary: str = Field(
+        ..., description="Summary of extraction process and key findings"
+    )
+
+
 class PainPoint(BaseModel):
     """Represents a user pain point discovered from social discussions."""
+
+    model_config = ConfigDict(extra='forbid')
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
@@ -30,34 +65,18 @@ class PainPoint(BaseModel):
     representative_quotes: List[str] = Field(
         ..., description="Real user quotes representing this pain point"
     )
-    source_platforms: List[str] = Field(
-        default_factory=list, description="Platforms where this pain was found (Reddit, Twitter)"
+    source_platforms: Optional[List[str]] = Field(
+        default=None, description="Platforms where this pain was found (Reddit, Twitter)"
     )
-    categories: List[str] = Field(
-        default_factory=list, description="Categories this pain point belongs to"
+    categories: Optional[List[str]] = Field(
+        default=None, description="Categories this pain point belongs to"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "title": "Difficulty finding specialized freelancers",
-                "description": "Users struggle to find freelancers with niche technical skills",
-                "mention_count": 15,
-                "severity_score": 0.8,
-                "willingness_to_pay": 0.9,
-                "opportunity_level": "high",
-                "representative_quotes": [
-                    "I've been searching for weeks for a Rust developer",
-                    "Why is it so hard to find good designers for SaaS landing pages?"
-                ],
-                "source_platforms": ["Reddit", "Twitter"],
-                "categories": ["hiring", "freelancing"],
-            }
-        }
 
 
 class PainPointAnalysisResult(BaseModel):
     """Complete result of pain point analysis."""
+
+    model_config = ConfigDict(extra='forbid')
 
     niche: str = Field(..., description="The niche being analyzed")
     pain_points: List[PainPoint] = Field(..., description="List of discovered pain points")
@@ -68,14 +87,3 @@ class PainPointAnalysisResult(BaseModel):
         ..., description="Top categories of pain points identified"
     )
     analysis_summary: str = Field(..., description="Executive summary of pain point analysis")
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "niche": "SaaS development tools",
-                "pain_points": [],
-                "total_mentions": 127,
-                "top_categories": ["collaboration", "deployment", "monitoring"],
-                "analysis_summary": "Analysis of 45 discussions revealed 5 major pain points with 127 total mentions...",
-            }
-        }

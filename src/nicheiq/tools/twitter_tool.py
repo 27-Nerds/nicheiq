@@ -62,18 +62,35 @@ class TwitterCollectorTool(BaseTool):
             cookies = {}
             if hasattr(scraper, 'session') and hasattr(scraper.session, 'cookies'):
                 cookie_jar = scraper.session.cookies
+                logger.debug(f"Extracting cookies from session (found {len(cookie_jar)} cookies)")
+
                 # Extract the important cookies
                 for cookie in cookie_jar:
                     if cookie.name in ['ct0', 'auth_token']:
                         cookies[cookie.name] = cookie.value
+                        logger.debug(f"  Found cookie '{cookie.name}': {cookie.value[:10]}...")
+            else:
+                logger.warning("Scraper session does not have cookies attribute")
+                return False
 
             if 'ct0' in cookies and 'auth_token' in cookies:
+                # Ensure parent directory exists
+                self._cookies_cache_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Save cookies to file
                 with open(self._cookies_cache_path, 'w') as f:
                     json.dump(cookies, f, indent=2)
+
                 logger.info(f"✓ Saved Twitter cookies to {self._cookies_cache_path}")
+                logger.debug(f"  Saved cookies: ct0={cookies['ct0'][:10]}..., auth_token={cookies['auth_token'][:10]}...")
                 return True
             else:
-                logger.warning("Could not extract required cookies from session")
+                missing = []
+                if 'ct0' not in cookies:
+                    missing.append('ct0')
+                if 'auth_token' not in cookies:
+                    missing.append('auth_token')
+                logger.warning(f"Could not extract required cookies from session (missing: {', '.join(missing)})")
                 return False
         except Exception as e:
             logger.warning(f"Failed to save cookies: {e}")
@@ -121,7 +138,15 @@ class TwitterCollectorTool(BaseTool):
                     logger.info("✓ Twitter authentication successful (username/password)")
 
                     # Save cookies for future use
-                    self._save_cookies(self._scraper)
+                    cookie_save_success = self._save_cookies(self._scraper)
+                    if not cookie_save_success:
+                        logger.warning(
+                            "⚠️  Cookies could not be saved. Next run will require re-authentication.\n"
+                            "    Check that:\n"
+                            "    1. Scraper session contains 'ct0' and 'auth_token' cookies\n"
+                            "    2. File write permissions are correct\n"
+                            "    3. twitter-api-client library version is compatible"
+                        )
 
                     return self._scraper
                 except Exception as auth_error:
@@ -209,7 +234,7 @@ class TwitterCollectorTool(BaseTool):
         stop=stop_after_attempt(settings.max_retries),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    async def collect_thread(self, url: str) -> TwitterThread:
+    def collect_thread(self, url: str) -> TwitterThread:
         """
         Collect a Twitter thread (original tweet + replies).
 
@@ -233,18 +258,80 @@ class TwitterCollectorTool(BaseTool):
 
             # Get tweet details (includes conversation thread)
             try:
-                tweet_details = [tweet async for tweet in scraper.tweets_details([int(tweet_id)])]
+                # Create async helper to collect tweets
+                async def _collect_tweets():
+                    tweets_list = []
+                    result = scraper.tweets_details([int(tweet_id)])
+
+                    # Handle both async iterator and list return types
+                    # (twitter-api-client returns different types based on auth state)
+                    if hasattr(result, '__aiter__'):
+                        # It's an async iterator - iterate normally
+                        async for tweet in result:
+                            tweets_list.append(tweet)
+                    elif isinstance(result, list):
+                        # Already a list (happens with some auth failures)
+                        tweets_list = result
+                    else:
+                        # Try to convert to list as fallback
+                        logger.warning(f"Unexpected type from tweets_details: {type(result)}")
+                        tweets_list = list(result) if result else []
+
+                    return tweets_list
+
+                # With nest_asyncio applied in main.py, can use asyncio.run directly
+                # even if there's a running event loop (from CrewAI Flow)
+                import asyncio
+                tweet_details = asyncio.run(_collect_tweets())
+
             except Exception as fetch_error:
-                logger.error(f"tweets_details() API call failed: {type(fetch_error).__name__}: {fetch_error}")
-                # Check if it's a JSON decode error
-                if "JSONDecodeError" in str(type(fetch_error).__name__) or "JSONDecodeError" in str(fetch_error):
-                    logger.warning(
-                        "Twitter returned non-JSON response. Possible causes:\n"
+                error_type = type(fetch_error).__name__
+                error_msg = str(fetch_error)
+                logger.error(f"tweets_details() API call failed: {error_type}: {error_msg}")
+
+                # Check for authentication/JSON errors
+                if "JSONDecodeError" in error_type or "JSONDecodeError" in error_msg:
+                    logger.error(
+                        "⚠️  TWITTER AUTHENTICATION FAILED - Non-JSON Response\n"
+                        "\n"
+                        "Possible causes:\n"
                         "  1. Account rate limited or suspended\n"
                         "  2. Tweet deleted or made private\n"
-                        "  3. Twitter's anti-bot detection triggered\n"
-                        "  4. twitter-api-client library needs update"
+                        "  3. Twitter anti-bot detection triggered\n"
+                        "  4. Invalid or expired credentials/cookies\n"
+                        "\n"
+                        "Recommended solutions:\n"
+                        "  1. Export cookies manually from browser:\n"
+                        "     - Log into twitter.com in your browser\n"
+                        "     - Open DevTools (F12) → Application → Cookies\n"
+                        "     - Copy 'ct0' and 'auth_token' cookie values\n"
+                        f"     - Save to: {self._cookies_cache_path}\n"
+                        "       Format: {\"ct0\": \"value1\", \"auth_token\": \"value2\"}\n"
+                        "  2. Check if your Twitter account has security challenges\n"
+                        "  3. Wait 15-30 minutes if rate limited"
                     )
+                elif "NoneType" in error_msg or "has no attribute 'json'" in error_msg:
+                    logger.error(
+                        "⚠️  TWITTER API RETURNED EMPTY RESPONSE\n"
+                        "\n"
+                        "This typically means:\n"
+                        "  - Authentication failed completely\n"
+                        "  - Twitter blocked the request\n"
+                        "  - Cookies are invalid/expired\n"
+                        "\n"
+                        "Action required: Export cookies manually from browser login\n"
+                        f"Save to: {self._cookies_cache_path}"
+                    )
+                elif "TypeError" in error_type and "__aiter__" in error_msg:
+                    logger.error(
+                        "⚠️  ASYNC ITERATION ERROR\n"
+                        "\n"
+                        "The twitter-api-client library returned unexpected data type.\n"
+                        "This can happen when authentication fails.\n"
+                        "\n"
+                        "Check authentication and try manual cookie export."
+                    )
+
                 raise
 
             if not tweet_details:
@@ -287,7 +374,7 @@ class TwitterCollectorTool(BaseTool):
             logger.error(f"Failed to collect Twitter thread {url}: {type(e).__name__}: {e}")
             raise
 
-    async def collect_threads(self, urls: List[str]) -> List[TwitterThread]:
+    def collect_threads(self, urls: List[str]) -> List[TwitterThread]:
         """
         Collect multiple Twitter threads with quality filtering.
 
@@ -302,7 +389,7 @@ class TwitterCollectorTool(BaseTool):
         try:
             for url in urls:
                 try:
-                    thread = await self.collect_thread(url)
+                    thread = self.collect_thread(url)
 
                     # Quality filtering
                     original = thread.original_tweet
@@ -329,21 +416,9 @@ class TwitterCollectorTool(BaseTool):
             return threads
 
         finally:
-            # Cleanup scraper to close any pending async tasks
-            if self._scraper:
-                try:
-                    # Close the scraper if it has a close method
-                    if hasattr(self._scraper, 'close'):
-                        await self._scraper.close()
-                    # Clear pending tasks
-                    import asyncio
-                    pending = asyncio.all_tasks()
-                    for task in pending:
-                        if not task.done() and 'Scraper._process' in str(task):
-                            task.cancel()
-                except Exception as cleanup_error:
-                    logger.debug(f"Scraper cleanup warning: {cleanup_error}")
-                    pass
+            # Note: Scraper cleanup is handled by garbage collection
+            # Cannot use async cleanup in synchronous method
+            pass
 
     async def _run(self, urls: str) -> str:
         """

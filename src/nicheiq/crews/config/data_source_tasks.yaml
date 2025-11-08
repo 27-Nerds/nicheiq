@@ -1,0 +1,317 @@
+# DataSourceResearchCrew Task Configurations
+
+discover_data_sources:
+  description: >
+    Search for and discover REAL data sources (APIs, databases, providers) needed for the solution.
+
+    **Solution Context:**
+    - Solution: {solution_name}
+    - Description: {solution_description}
+    - Core Features: {solution_features}
+    - Requires Data Aggregation: {requires_data_aggregation}
+    - Currently Identified Sources: {existing_data_sources}
+    - Niche: {niche_description}
+
+    **SEO Context:**
+    {seo_priorities}
+
+    **Competitive Context:**
+    {competitive_data_notes}
+
+    **Your Task:**
+
+    Use SerperDevTool to search for actual data sources. For EACH type of data this solution needs,
+    perform 3-5 targeted searches to find real APIs and providers.
+
+    **Search Strategy:**
+
+    1. **Identify Data Needs**: Based on solution features, what specific data does it need?
+       Examples:
+       - Job aggregator needs: job listings, company data, salary data
+       - Directory needs: provider listings, reviews, pricing info
+       - Comparison tool needs: feature data, pricing, user ratings
+
+    2. **For Each Data Need, Search:**
+       - "[data type] API" (e.g., "job listing API", "real estate data API")
+       - "[industry] data provider" (e.g., "freelance marketplace data", "SaaS pricing database")
+       - "[specific platform] API documentation" (e.g., "Indeed API", "LinkedIn Jobs API")
+       - "[domain] database API" (e.g., "developer tools database API")
+       - "[data type] aggregation service"
+
+    3. **Click-Through Verification**:
+       - Find API documentation URLs in search results
+       - Look for pricing pages, developer portals, "Get API Key" buttons
+       - Check if it's publicly accessible or partner-only
+       - Note if there's a free tier or trial
+
+    4. **Document Findings**:
+       For each source found, record:
+       - Provider name (exact, from search results)
+       - URL to API docs or provider website
+       - Access model: "free", "freemium", "paid", "application-required", "partner-only"
+       - Any rate limits or pricing mentioned in search snippets
+       - Coverage notes if mentioned (e.g., "US only", "20M+ records")
+
+    **Quality Standards:**
+
+    - Search for 10-15 potential sources minimum
+    - Verify EVERY source through search results (no hallucination)
+    - Include URLs for all sources
+    - If search returns NO public APIs for a data type, explicitly state:
+      "No public API found - alternatives: web scraping, partnerships, manual curation"
+    - Find backup/fallback sources (what if primary API shuts down?)
+
+    **Common Data Source Types to Search:**
+
+    For Aggregator/Directory Solutions:
+    - Industry-specific APIs (job boards, real estate listings, etc.)
+    - Public datasets (government open data, research datasets)
+    - Third-party data marketplaces (AWS Data Exchange, Kaggle, etc.)
+    - Platform APIs (social media, review sites, etc.)
+    - Web scraping targets (if no APIs exist)
+
+    For SaaS/Productivity Tools:
+    - Integration APIs (calendar, email, project management)
+    - Third-party service APIs (payment, analytics, notifications)
+    - User-generated content storage
+    - Reference data APIs (time zones, currencies, etc.)
+
+    **If requires_data_aggregation is False:**
+    - Note that this solution doesn't require external data aggregation
+    - Focus on integration APIs for features (payment, auth, analytics, etc.)
+    - Keep search scope limited to essential integrations
+
+  expected_output: >
+    Comprehensive list of discovered data sources including:
+
+    **Primary Sources** (3-7 sources):
+    - Provider name
+    - URL
+    - Access model
+    - Coverage/scope notes
+    - Any pricing/limits mentioned
+
+    **Alternative Sources** (3-5 sources):
+    - Backup options if primary sources fail
+
+    **Gaps Identified**:
+    - Data needs with NO public APIs found
+    - Suggested alternatives (scraping, partnerships, manual)
+
+    Format as structured markdown with clear sections for each data type needed.
+
+evaluate_data_sources:
+  description: >
+    Evaluate the discovered data sources for quality, feasibility, cost, and prioritization.
+
+    **Solution Context:**
+    - Solution: {solution_name}
+    - SEO Priorities: {seo_priorities}
+    - Competitive Notes: {competitive_data_notes}
+
+    **Discovered Sources:**
+    You have access to the data sources discovered in the previous task. Review the complete list of
+    discovered APIs, providers, and data sources from the discovery phase.
+
+    **Your Task:**
+
+    For EACH discovered data source, evaluate on these dimensions:
+
+    **1. Coverage Assessment:**
+    - What percentage of the target market does this data cover?
+    - Are there geographic limitations? (e.g., "US only")
+    - How complete is the data? (e.g., "80% of listings have pricing")
+    - Examples of what's included vs excluded
+
+    **2. Data Freshness:**
+    - Update frequency: real-time, hourly, daily, weekly, monthly?
+    - Is staleness acceptable for this use case?
+    - Example: Job listings need daily updates; historical salary data can be monthly
+
+    **3. Integration Complexity:**
+    - LOW: Well-documented REST API with client libraries, clear examples
+    - MEDIUM: API exists but limited docs, authentication complex, rate limits strict
+    - HIGH: No API, requires web scraping, JavaScript rendering, CAPTCHAs
+
+    **4. Cost Analysis:**
+    - Free tier limits (if any)
+    - Paid tier pricing
+    - Estimate monthly cost at MVP scale (1k-10k users)
+    - Estimate cost at growth scale (100k+ users)
+    - Unit economics: does cost per user make sense?
+
+    **5. Data Quality:**
+    - Accuracy/reliability based on provider reputation
+    - Known issues from search results or reviews
+    - Schema/format consistency
+    - Error handling needed
+
+    **6. Prioritization:**
+
+    Use this framework to prioritize sources:
+
+    - **HIGH Priority if:**
+      - Supports high-traffic SEO keywords (from SEO context)
+      - Solves high-severity pain points
+      - Competitors use similar data (competitive advantage)
+      - Good coverage, reasonable cost, low integration complexity
+
+    - **MEDIUM Priority if:**
+      - Nice-to-have data for secondary features
+      - Medium SEO value
+      - Higher cost but feasible
+      - Medium integration complexity
+
+    - **LOW Priority if:**
+      - Low SEO value
+      - Solves low-priority pain points
+      - High cost or complexity
+      - Can defer to post-MVP
+
+    **7. Risk Assessment:**
+
+    Identify risks for each source:
+    - Provider might shut down or change terms
+    - Data might be incomplete or stale
+    - Cost might spike at scale
+    - Rate limits might constrain growth
+    - Legal/compliance issues (ToS violations, data privacy)
+
+  expected_output: >
+    Evaluation report with:
+
+    **Prioritized Sources:**
+
+    **HIGH Priority** (1-3 sources):
+    - Source name
+    - Coverage: X%
+    - Freshness: daily
+    - Integration: LOW complexity
+    - Cost: $X/mo @ MVP, $Y/mo @ 100k users
+    - Priority rationale: "Supports 'keyword' (10k searches/mo), low cost, easy integration"
+    - Risks: [list 2-3 risks]
+
+    **MEDIUM Priority** (2-4 sources):
+    - [same format]
+
+    **LOW Priority** (remaining sources):
+    - [same format]
+
+    **Data Quality Risks:**
+    - Overall risk assessment
+    - Critical risks that could block launch
+    - Mitigation strategies
+
+    Format as structured markdown.
+
+create_data_roadmap:
+  description: >
+    Create implementation roadmap for integrating data sources based on priorities and feasibility.
+
+    **Solution:** {solution_name}
+
+    **Evaluated Sources:**
+    You have access to the evaluated and prioritized data sources from the previous tasks. Review the
+    discovery results and quality evaluations to create a comprehensive implementation roadmap.
+
+    **Your Task:**
+
+    Create a phased implementation plan for data integration:
+
+    **Phase 1: MVP Data Sources (Months 1-3)**
+    - Which 1-3 data sources are ESSENTIAL for launch?
+    - Focus on: high priority, low complexity, low/free cost
+    - Goal: Minimum viable data coverage to validate product
+
+    **Phase 2: Growth Data Sources (Months 4-6)**
+    - Which 2-3 sources expand coverage or quality?
+    - May include paid sources if revenue supports it
+    - Goal: Improve data completeness and freshness
+
+    **Phase 3: Premium Data Sources (Months 6-12)**
+    - Which sources enable premium features?
+    - Higher cost or complexity sources
+    - Goal: Differentiation and premium tiers
+
+    **Fallback Strategies:**
+
+    For each critical data source, document:
+    - What happens if this source becomes unavailable?
+    - Fallback option #1 (alternative API)
+    - Fallback option #2 (web scraping)
+    - Fallback option #3 (manual curation or user-generated)
+
+    **Cost Projection:**
+
+    Estimate total monthly data costs:
+    - MVP (1k users): $X-Y/month
+    - Growth (10k users): $X-Y/month
+    - Scale (100k users): $X-Y/month
+
+    Check unit economics: cost per user should be < 10-20% of revenue per user.
+
+    **SEO Alignment:**
+
+    Connect data capabilities to SEO priorities:
+    - "Real-time job listings enable 'remote jobs' content (15k searches/mo)"
+    - "Salary data supports 'developer salary' keywords (8k searches/mo)"
+
+    **Competitive Insights:**
+
+    Compare to competitors:
+    - What data do competitors access that we can't?
+    - What data can we access that gives us an advantage?
+    - Where are we at parity vs differentiated?
+
+    **Data Partnerships:**
+
+    If critical data requires partnerships:
+    - Who to partner with?
+    - Effort estimate: LOW, MEDIUM, HIGH
+    - Timeline: 1-2 months, 3-6 months, 6-12 months
+    - Alternative if partnership fails
+
+    **Output as DataSourceResearchResult Pydantic model.**
+
+  expected_output: >
+    DataSourceResearchResult Pydantic model with ALL required fields:
+
+    **solution_name**: Name of the solution
+
+    **primary_data_sources**: List[DataSource] (1-3 HIGH priority sources)
+    - provider
+    - url
+    - access_model
+    - cost_estimate
+    - coverage
+    - update_frequency
+    - integration_complexity
+    - priority: "HIGH"
+    - priority_rationale (link to SEO keywords or pain points)
+    - rate_limits (if known)
+    - data_quality_notes
+    - fallback_for: null (these are primary)
+
+    **fallback_sources**: List[DataSource] (2-4 backup sources)
+    - [same structure as primary]
+    - priority: "MEDIUM" or "LOW"
+    - fallback_for: [list of primary sources this backs up]
+
+    **data_partnerships_needed**: List[DataPartnership] (if applicable)
+    - partner_type: "direct-partnership", "web-scraping", "manual-curation", "user-generated"
+    - description
+    - effort_estimate: "low", "medium", "high"
+    - timeline
+    - notes
+
+    **estimated_monthly_cost**: String (e.g., "$250-500/month for 10k users")
+
+    **data_quality_risks**: List[str] (3-5 key risks)
+
+    **implementation_roadmap**: String (2-3 paragraphs with phased approach)
+
+    **competitive_data_insights**: String (how our data access compares to competitors)
+
+    **seo_aligned_priorities**: String (how data sources support high-traffic keywords)
+
+    IMPORTANT: Must be valid DataSourceResearchResult Pydantic model.

@@ -5,7 +5,16 @@ Pydantic models for keyword research data (Stage 9).
 from enum import Enum
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class MonthlySearchVolume(BaseModel):
+    """Monthly search volume entry."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    month: str = Field(..., description="Month identifier (e.g., '2025-01')")
+    volume: int = Field(..., description="Search volume for this month")
 
 
 class KeywordIntent(str, Enum):
@@ -28,6 +37,24 @@ class OpportunityLevel(str, Enum):
 class Keyword(BaseModel):
     """Represents a single keyword with its metrics."""
 
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
+            "example": {
+                "keyword": "freelancer marketplace for rust developers",
+                "search_volume": 320,
+                "competition": 0.45,
+                "competition_index": 32.0,
+                "cpc": 2.50,
+                "keyword_difficulty": 42.0,
+                "search_intent": "commercial",
+                "opportunity_level": "high",
+                "trend": "rising",
+                "monthly_searches": {"2025-01": 280, "2025-02": 310, "2025-03": 320},
+            }
+        }
+    )
+
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Monthly search volume")
     competition: float = Field(..., ge=0.0, le=1.0, description="Competition level (0-1)")
@@ -47,29 +74,15 @@ class Keyword(BaseModel):
     trend: Optional[str] = Field(
         default=None, description="Trend direction (rising, stable, declining)"
     )
-    monthly_searches: Optional[Dict[str, int]] = Field(
+    monthly_searches: Optional[List[MonthlySearchVolume]] = Field(
         default=None, description="Historical monthly search volumes"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "keyword": "freelancer marketplace for rust developers",
-                "search_volume": 320,
-                "competition": 0.45,
-                "competition_index": 32.0,
-                "cpc": 2.50,
-                "keyword_difficulty": 42.0,
-                "search_intent": "commercial",
-                "opportunity_level": "high",
-                "trend": "rising",
-                "monthly_searches": {"2025-01": 280, "2025-02": 310, "2025-03": 320},
-            }
-        }
 
 
 class GeographicBreakdown(BaseModel):
     """Search volume breakdown by geography."""
+
+    model_config = ConfigDict(extra='forbid')
 
     country: str = Field(..., description="Country name")
     country_code: str = Field(..., description="ISO country code")
@@ -79,6 +92,8 @@ class GeographicBreakdown(BaseModel):
 
 class KeywordCluster(BaseModel):
     """Group of related keywords."""
+
+    model_config = ConfigDict(extra='forbid')
 
     cluster_name: str = Field(..., description="Name/theme of this keyword cluster")
     keywords: List[Keyword] = Field(..., description="Keywords in this cluster")
@@ -93,6 +108,25 @@ class KeywordCluster(BaseModel):
 
 class KeywordResearchReport(BaseModel):
     """Complete keyword research report for a solution idea."""
+
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
+            "example": {
+                "solution_idea": "NicheHire",
+                "total_keywords_analyzed": 45,
+                "high_opportunity_keywords": [],
+                "medium_opportunity_keywords": [],
+                "low_opportunity_keywords": [],
+                "keyword_clusters": [],
+                "geographic_breakdown": [],
+                "long_tail_opportunities": [],
+                "seasonal_patterns": "Stable search volume throughout the year",
+                "total_addressable_searches": 12500,
+                "demand_validation": "Strong validated demand with 12.5k monthly searches",
+            }
+        }
+    )
 
     solution_idea: str = Field(..., description="Name of the solution idea")
     total_keywords_analyzed: int = Field(..., description="Total keywords analyzed")
@@ -124,26 +158,21 @@ class KeywordResearchReport(BaseModel):
         ..., description="Overall assessment of search demand"
     )
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "solution_idea": "NicheHire",
-                "total_keywords_analyzed": 45,
-                "high_opportunity_keywords": [],
-                "medium_opportunity_keywords": [],
-                "low_opportunity_keywords": [],
-                "keyword_clusters": [],
-                "geographic_breakdown": [],
-                "long_tail_opportunities": [],
-                "seasonal_patterns": "Stable search volume throughout the year",
-                "total_addressable_searches": 12500,
-                "demand_validation": "Strong validated demand with 12.5k monthly searches",
-            }
-        }
-
 
 class KeywordValidationResult(BaseModel):
     """Complete keyword validation for all solution ideas."""
+
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
+            "example": {
+                "niche": "SaaS development tools",
+                "reports": [],
+                "overall_market_size": 45000,
+                "market_assessment": "Significant market with 45k monthly searches...",
+            }
+        }
+    )
 
     niche: str = Field(..., description="The niche being analyzed")
     reports: List[KeywordResearchReport] = Field(
@@ -155,13 +184,3 @@ class KeywordValidationResult(BaseModel):
     market_assessment: str = Field(
         ..., description="Overall market size assessment"
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "niche": "SaaS development tools",
-                "reports": [],
-                "overall_market_size": 45000,
-                "market_assessment": "Significant market with 45k monthly searches...",
-            }
-        }
