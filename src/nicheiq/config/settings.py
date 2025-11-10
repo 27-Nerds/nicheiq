@@ -99,6 +99,10 @@ class Settings(BaseSettings):
         default=50,
         description="Minimum character length for Reddit comments (filters out short/low-value comments)"
     )
+    min_comment_score: int = Field(
+        default=2,
+        description="Minimum score for Reddit comments (filters out low-quality/downvoted comments)"
+    )
     min_twitter_likes: int = Field(default=10, description="Minimum likes for Twitter posts (higher threshold for quality)")
     min_twitter_replies: int = Field(
         default=5, description="Minimum replies for Twitter posts (higher threshold for quality)"
@@ -144,6 +148,28 @@ class Settings(BaseSettings):
     seo_refinement_volume_discount_floor: float = Field(
         default=0.7,
         description="Minimum volume discount for CAC calculations (default 0.7 = 30% max discount)"
+    )
+
+    # Keyword Enrichment Settings (Stage 9.5 Iterative)
+    keyword_enrichment_target_count: int = Field(
+        default=150,
+        description="Target number of keywords with meaningful search volume"
+    )
+    keyword_enrichment_min_volume: int = Field(
+        default=500,
+        description="Minimum monthly search volume for a keyword to count toward target"
+    )
+    keyword_enrichment_max_rounds: int = Field(
+        default=5,
+        description="Maximum enrichment iterations to prevent runaway costs"
+    )
+    keyword_enrichment_batch_size: int = Field(
+        default=20,
+        description="Number of seeds per DataForSEO API call (API limit)"
+    )
+    keyword_enrichment_min_coverage: float = Field(
+        default=0.7,
+        description="Minimum percentage of topic clusters that must have keywords (0.0-1.0)"
     )
 
     # Output Configuration

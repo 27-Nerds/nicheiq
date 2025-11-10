@@ -384,6 +384,27 @@ class CompetitiveCrew:
         # Return the landscape for this solution
         if single_result.solution_landscapes:
             landscape = single_result.solution_landscapes[0]
+
+            # VALIDATION: Verify landscape solution_name matches input solution name
+            if landscape.solution_name != idea.solution_name:
+                # Try fuzzy matching: case-insensitive substring search
+                search_name_lower = landscape.solution_name.lower()
+                idea_name_lower = idea.solution_name.lower()
+
+                if (search_name_lower in idea_name_lower or idea_name_lower in search_name_lower):
+                    logger.warning(
+                        f"⚠️ [{index}/{total}] Competitive analysis renamed solution: "
+                        f"'{landscape.solution_name}' → '{idea.solution_name}' (corrected)"
+                    )
+                    landscape.solution_name = idea.solution_name
+                else:
+                    logger.error(
+                        f"❌ [{index}/{total}] Landscape solution name '{landscape.solution_name}' does not match "
+                        f"input solution '{idea.solution_name}' - correcting to input name"
+                    )
+                    # Force correction even without fuzzy match
+                    landscape.solution_name = idea.solution_name
+
             competitors_found = len(landscape.competitors)
             logger.info(f"[{index}/{total}] ✓ Completed {idea.solution_name}: {competitors_found} competitor(s) identified")
             return landscape

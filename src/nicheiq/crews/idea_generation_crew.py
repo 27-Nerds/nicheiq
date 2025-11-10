@@ -476,6 +476,34 @@ class IdeaGenerationCrew:
             # Extract enhanced solutions
             result = crew_output.pydantic
 
+            # VALIDATION: Verify solution names match originals (detect and correct LLM renaming)
+            original_names = [sol.solution_name for sol in original_ideas.solution_ideas]
+            for enhanced_sol in result.solution_ideas:
+                # Check for exact match first
+                if enhanced_sol.solution_name not in original_names:
+                    # Try fuzzy matching: case-insensitive substring search
+                    matched_name = None
+                    search_name_lower = enhanced_sol.solution_name.lower()
+
+                    for original_name in original_names:
+                        # Check if enhanced name is substring of original or vice versa
+                        if (search_name_lower in original_name.lower() or
+                            original_name.lower() in search_name_lower):
+                            matched_name = original_name
+                            break
+
+                    if matched_name:
+                        logger.warning(
+                            f"⚠️ Competitive enhancement renamed solution: "
+                            f"'{enhanced_sol.solution_name}' → '{matched_name}' (corrected)"
+                        )
+                        enhanced_sol.solution_name = matched_name
+                    else:
+                        logger.error(
+                            f"❌ Enhanced solution name '{enhanced_sol.solution_name}' does not match "
+                            f"any original solution. Expected one of: {original_names}"
+                        )
+
             # VALIDATION: Check for null required fields after competitive enhancement
             null_fields_by_solution = {}
             for idea in result.solution_ideas:

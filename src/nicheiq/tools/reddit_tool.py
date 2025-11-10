@@ -47,17 +47,22 @@ class RedditCollectorTool(BaseTool):
     def _parse_comment(self, comment) -> Optional[RedditComment]:
         """
         Recursively parse a PRAW comment and its replies into our RedditComment model.
-        Filters out short comments (below min_comment_length).
+        Filters out short comments (below min_comment_length) and low-score comments.
 
         Args:
             comment: PRAW Comment object
 
         Returns:
-            RedditComment model instance with nested replies, or None if comment is too short
+            RedditComment model instance with nested replies, or None if comment fails quality filters
         """
         # Filter out short comments (low-value, often just "+1", "same", "lol", etc.)
         if len(comment.body) < settings.min_comment_length:
             logger.debug(f"Filtering short comment ({len(comment.body)} chars): {comment.body[:30]}...")
+            return None
+
+        # Filter out low-score comments (downvoted or low-quality)
+        if comment.score < settings.min_comment_score:
+            logger.debug(f"Filtering low-score comment (score {comment.score}): {comment.body[:30]}...")
             return None
 
         replies = []

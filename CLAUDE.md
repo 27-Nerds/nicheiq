@@ -64,6 +64,32 @@ description: >
   - Search for solutions: "using", "tried", "alternative to"
 ```
 
+## Complete Pipeline Stages
+
+The research pipeline includes main stages plus sub-stages for refinement and selection:
+
+**Stage Flow:**
+1. **Stage 1**: Niche validation via LLM
+2-4. *(Reserved for future validation stages)*
+5. **Stage 5**: Search & discover
+   - Generates search queries with QueryGenerator
+   - Validates thread relevance with ThreadRelevanceValidator (filters before scraping)
+   - Collects Reddit posts (PRAW) and Twitter threads (twitter-api-client)
+6. **Stage 6**: PainPointCrew analyzes social content (RAG-based)
+7. **Stage 7**: IdeaGenerationCrew generates solution ideas
+8. **Stage 8**: CompetitiveCrew analyzes competition
+   - **Stage 8.5**: Refines solutions with competitive insights
+   - **Stage 8.75**: Solution selection based on scores
+9. **Stage 9**: Keyword research via DataForSEOTool
+   - **Stage 9.5** (conditional): SEO refinement with keyword data
+   - **Stage 9.75** (conditional): Data source research if `requires_data_aggregation=True`
+10. **Stage 10**: Final report synthesis via LLM
+
+**Key Decision Points:**
+- Stage 8: Runs with parallelization (`max_workers=4`)
+- Stage 9.5: Triggered if `SEO_REFINEMENT_ENABLED=True`
+- Stage 9.75: Triggered if selected solution has `requires_data_aggregation=True`
+
 ## Common Development Commands
 
 ```bash
@@ -74,6 +100,10 @@ uv pip install -e .
 # Run research
 python -m nicheiq.main --niche "AI tools for content creators"
 python -m nicheiq.main --niche "Your niche" --output ./custom_output --log-level DEBUG
+
+# Run research with project type constraints
+python -m nicheiq.main --niche "expat relocation" --project-types directory,aggregator
+# Valid types: saas, directory, aggregator, comparison-tool, marketplace
 
 # Testing
 pytest
@@ -86,6 +116,9 @@ mypy src/
 
 # Verify API credentials
 python check_setup.py
+
+# Validate report for data accuracy
+python validate_report.py output/final_report_*.json output/research_state_raw_*.json
 ```
 
 ## Key Technical Patterns
@@ -200,7 +233,7 @@ for batch_start in range(0, len(all_keywords), batch_size):
 ```
 
 **Quality Filtering**: Apply thresholds early to reduce processing:
-- Reddit: `MIN_REDDIT_UPVOTES`, `MIN_REDDIT_COMMENTS`
+- Reddit: `MIN_REDDIT_UPVOTES`, `MIN_REDDIT_COMMENTS`, `MIN_COMMENT_LENGTH`, `MIN_COMMENT_SCORE`
 - Twitter: `MIN_TWITTER_LIKES`, `MIN_TWITTER_REPLIES`
 - Keywords: `KEYWORD_MIN_SEARCH_VOLUME`, `KEYWORD_MAX_COMPETITION`
 
@@ -220,6 +253,34 @@ Generic, niche-agnostic search queries (no brand names):
 ```
 
 See `src/nicheiq/utils/helpers.py` QueryGenerator for implementation.
+
+### 7. Thread Relevance Validation
+
+**Problem**: Search results include many false positives (keyword matches in wrong context).
+
+**Solution**: Batch validate search results (title + snippet) before expensive scraping:
+
+```python
+from nicheiq.utils.helpers import ThreadRelevanceValidator
+
+validator = ThreadRelevanceValidator()  # Uses THREAD_VALIDATION_LLM
+validated = validator.validate_batch(
+    niche_description="your niche",
+    search_results=search_results,  # List[SearchResultItem]
+    batch_size=10  # Validate 10 at a time
+)
+
+# Returns: List[(SearchResultItem, is_relevant: bool)]
+relevant_results = [result for result, is_relevant in validated if is_relevant]
+```
+
+**Benefits:**
+- Reduces scraping API costs by filtering before collection
+- Improves signal-to-noise ratio in pain point analysis
+- Uses cheaper model (gpt-4o-mini) for cost efficiency
+- Batches validation requests (10 results per API call)
+
+**Configuration:** Set `THREAD_VALIDATION_LLM` in .env (default: gpt-4o-mini)
 
 ## Important File Locations
 
@@ -282,6 +343,47 @@ Twitter credentials are cached in `data/twitter_cookies.json` after first succes
 - Without `CHROMA_OPENAI_API_KEY`, knowledge sources will silently fail with "Failed to init knowledge" warnings
 - This is a CrewAI 1.3.0 requirement for ChromaDB-based vector storage
 
+## Advanced Configuration
+
+### Multi-Model Strategy
+
+NicheIQ uses different models for different tasks to optimize cost vs quality:
+
+- `OPENAI_MODEL_NAME` (gpt-4o): Default for general agent reasoning
+- `FUNCTION_CALLING_LLM` (gpt-4o-mini): Tool/function calls (cost optimization)
+- `CONTENT_ANALYSIS_LLM` (gpt-4o): Content categorization (quality critical)
+- `THREAD_VALIDATION_LLM` (gpt-4o-mini): Relevance filtering (cost optimization)
+- `BRAINSTORM_LLM` (gpt-4o): Solution ideation (supports o1-mini, claude-3-5-sonnet)
+
+**Pattern:** Use gpt-4o-mini for deterministic/simple tasks, gpt-4o for creative/complex reasoning.
+
+### Twitter Control
+
+- `ENABLE_TWITTER` (bool): Set to False to skip Twitter entirely (saves cost if Twitter data not critical)
+- Twitter credentials are optional - guest mode is used as fallback
+
+### Reddit Comment Depth
+
+- `REDDIT_COMMENT_LIMIT` (int or None): Controls MoreComments expansion
+  - `None`: Fetch ALL comments (most comprehensive, slowest)
+  - `32`: Fetch most comments (good balance)
+  - `0`: Top-level comments only (fastest, may miss deep discussions)
+
+### SEO Refinement (Stage 9.5)
+
+Controls how keyword data refines solution scores:
+- `SEO_REFINEMENT_ENABLED`: Toggle refinement stage (default: True)
+- `SEO_REFINEMENT_VOLUME_BASELINES`: Expected volumes by project type for scoring
+- Refinement updates: `seo_scalability_score_refined`, `estimated_cac_organic_refined`
+
+### Keyword Enrichment (Stage 9.5 Iterative)
+
+Controls iterative keyword expansion to reach target coverage:
+- `KEYWORD_ENRICHMENT_TARGET_COUNT`: Target keyword count (default: 150)
+- `KEYWORD_ENRICHMENT_MAX_ROUNDS`: Safety limit on iterations (default: 5)
+- `KEYWORD_ENRICHMENT_MIN_COVERAGE`: Topic cluster coverage requirement (default: 0.7)
+- Cost: ~$0.01-0.05 per enrichment round
+
 ## Debugging Tips
 
 **Enable verbose logging:**
@@ -306,6 +408,10 @@ python -m nicheiq.main --niche "..." --log-level DEBUG
 - "No module named 'nicheiq'": Run `pip install -e .`
 - Twitter JSON decode error: Account rate limited or tweet private/deleted
 - DataForSEO insufficient credits: Reduce `KEYWORD_MIN_SEARCH_VOLUME`
+
+**Report validation:**
+- Run `validate_report.py` after research runs to detect hallucinations and data accuracy issues
+- Checks for pain point conflation, score rounding, CAC accuracy, page count accuracy, and competition intensity
 
 ## Performance Expectations
 

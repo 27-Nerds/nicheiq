@@ -55,6 +55,10 @@ class ResearchFlow(Flow[ResearchState]):
         self.reddit_tool = RedditCollectorTool()
         self.twitter_tool = TwitterCollectorTool()
 
+        # Import DataForSEO tool for iterative enrichment
+        from ..tools.dataforseo_tool import DataForSEOExpandTool
+        self.dataforseo_tool = DataForSEOExpandTool()
+
         logger.info(f"ResearchFlow initialized for niche: {niche_description[:100]}...")
 
     @start()
@@ -599,6 +603,7 @@ Return a valid JSON object with this structure:
                 solutions=solutions,
                 competitive_landscapes=competitive_landscapes,
                 pain_points=self.state.pain_point_analysis,
+                idea_generation_result=self.state.idea_generation,
             )
 
             # Use LLM with structured output to make selection
@@ -638,6 +643,7 @@ Return a valid JSON object with this structure:
         solutions: list,
         competitive_landscapes: list,
         pain_points,
+        idea_generation_result=None,
     ) -> str:
         """Create comprehensive prompt for solution selection."""
 
@@ -689,10 +695,18 @@ Return a valid JSON object with this structure:
                 for pp in sorted_pps
             ]
 
+        # Extract product strategist recommendation if available
+        strategist_recommendation = ""
+        if idea_generation_result:
+            if idea_generation_result.recommended_solution:
+                strategist_recommendation += f"\n**PRODUCT STRATEGIST RECOMMENDATION:** {idea_generation_result.recommended_solution}\n"
+            if idea_generation_result.market_insights:
+                strategist_recommendation += f"\n**MARKET INSIGHTS FROM PRODUCT STRATEGIST:**\n{idea_generation_result.market_insights}\n"
+
         return f"""You are a strategic product advisor selecting which solution to focus on for MVP development and SEO strategy.
 
 **NICHE:** {self.niche_description}
-
+{strategist_recommendation}
 **HIGH-PRIORITY PAIN POINTS:**
 {chr(10).join(high_priority_pps) if high_priority_pps else "No pain points available"}
 
@@ -700,7 +714,7 @@ Return a valid JSON object with this structure:
 {chr(10).join(solutions_analysis)}
 
 **YOUR TASK:**
-Select ONE solution to focus on based on these weighted criteria:
+Select ONE solution to focus on based on these weighted criteria. **Consider the Product Strategist's recommendation and market insights above**, but make your independent assessment based on the full criteria below:
 
 1. **Market Fit (25%):** How directly does it address high-severity, high-WTP pain points?
    - Alignment with top pain points
@@ -756,6 +770,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
 **SELECTION OUTPUT:**
 - **selected_solution_name:** The name of the chosen solution (MUST match one of the solution names exactly)
 - **selection_rationale:** 2-3 paragraphs explaining WHY this solution was selected:
+  * Whether you agree or disagree with the Product Strategist's recommendation and why
   * Which pain points it addresses best (reference specific pain point titles and scores)
   * **Its competitive advantages and positioning** (reference competitive intensity, gaps, differentiation opportunities)
   * Why it's more viable than alternatives (compare competitive landscapes)
@@ -792,7 +807,90 @@ When comparing solutions with similar market fit and technical feasibility, use 
 
         logger.info(f"[OK] Solution selection complete: {selection.selected_solution_name}")
 
+        # VALIDATION: Verify selected solution name exists, use fuzzy matching to correct if needed
+        available_solutions = self.state.idea_generation.solution_ideas
+        matched_solution = self._find_solution_by_name(
+            selection.selected_solution_name,
+            available_solutions
+        )
+
+        if matched_solution and matched_solution.solution_name != selection.selected_solution_name:
+            # LLM returned shortened name - correct it
+            logger.warning(
+                f"Correcting selected solution name: '{selection.selected_solution_name}' "
+                f"→ '{matched_solution.solution_name}'"
+            )
+            selection.selected_solution_name = matched_solution.solution_name
+
+            # Also correct runner-up names if present
+            if selection.runner_up_solutions:
+                corrected_runner_ups = []
+                for runner_up_name in selection.runner_up_solutions:
+                    matched_runner_up = self._find_solution_by_name(runner_up_name, available_solutions)
+                    if matched_runner_up:
+                        if matched_runner_up.solution_name != runner_up_name:
+                            logger.warning(
+                                f"Correcting runner-up name: '{runner_up_name}' "
+                                f"→ '{matched_runner_up.solution_name}'"
+                            )
+                        corrected_runner_ups.append(matched_runner_up.solution_name)
+                    else:
+                        logger.warning(f"Runner-up '{runner_up_name}' not found, keeping original name")
+                        corrected_runner_ups.append(runner_up_name)
+                selection.runner_up_solutions = corrected_runner_ups
+
+        elif not matched_solution:
+            logger.error(
+                f"Selected solution '{selection.selected_solution_name}' could not be matched "
+                f"to any available solution (exact or fuzzy). This may cause downstream errors."
+            )
+
         return selection
+
+    def _find_solution_by_name(self, solution_name: str, solution_list: list) -> Optional['SolutionIdea']:
+        """
+        Find solution by name with fuzzy matching fallback.
+
+        Handles cases where LLM returns shortened names (e.g., "PaperPath" instead of
+        "PaperPath (Global Paperwork Aggregator)").
+
+        Args:
+            solution_name: Name to search for (may be shortened)
+            solution_list: List of SolutionIdea objects to search
+
+        Returns:
+            Matching SolutionIdea or None if no match found
+        """
+        # Try exact match first
+        exact_match = next(
+            (sol for sol in solution_list if sol.solution_name == solution_name),
+            None
+        )
+
+        if exact_match:
+            return exact_match
+
+        # Try fuzzy match: case-insensitive substring search
+        # (handles "PaperPath" matching "PaperPath (Global Paperwork Aggregator)")
+        logger.warning(
+            f"Exact match failed for solution name '{solution_name}'. "
+            f"Attempting fuzzy match..."
+        )
+
+        search_name_lower = solution_name.lower()
+        for solution in solution_list:
+            if search_name_lower in solution.solution_name.lower():
+                logger.warning(
+                    f"✓ Fuzzy match found: '{solution_name}' → '{solution.solution_name}'"
+                )
+                return solution
+
+        # No match found
+        logger.error(
+            f"No match found for solution '{solution_name}' in available solutions: "
+            f"{[sol.solution_name for sol in solution_list]}"
+        )
+        return None
 
     def _format_pain_points_for_keywords(self) -> str:
         """Format top pain points for keyword context."""
@@ -912,7 +1010,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
 {solution.programmatic_seo_opportunity_refined}
 
 **Refinement Metadata:**
-{json.dumps(solution.seo_refinement_metadata, indent=2) if solution.seo_refinement_metadata else 'N/A'}
+{json.dumps(solution.seo_refinement_metadata.model_dump(), indent=2) if solution.seo_refinement_metadata else 'N/A'}
 """
         return formatted
 
@@ -1088,6 +1186,217 @@ When comparing solutions with similar market fit and technical feasibility, use 
         # Return top 20 long-tail opportunities
         return long_tail[:20]
 
+    def _iterative_keyword_enrichment(
+        self,
+        conceptual_keywords: list,
+        topic_clusters: list,
+    ) -> list:
+        """
+        Phase 9.5b: Iteratively enrich keywords with DataForSEO until sufficient coverage.
+
+        Args:
+            conceptual_keywords: List of ConceptualKeyword objects from Phase 9.5a
+            topic_clusters: List of TopicCluster objects from Phase 9.5a
+
+        Returns:
+            List of enriched keywords with search volumes and competition data
+        """
+        all_enriched = []
+        seeds_used = set()
+        max_rounds = settings.keyword_enrichment_max_rounds
+
+        logger.info(
+            f"Starting iterative enrichment with {len(conceptual_keywords)} conceptual keywords "
+            f"across {len(topic_clusters)} clusters"
+        )
+
+        for round_num in range(1, max_rounds + 1):
+            # Select next batch of seeds
+            next_seeds = self._select_next_seed_batch(
+                conceptual_keywords=conceptual_keywords,
+                enriched_so_far=all_enriched,
+                topic_clusters=topic_clusters,
+                seeds_used=seeds_used,
+                batch_size=settings.keyword_enrichment_batch_size
+            )
+
+            if not next_seeds:
+                logger.info(f"No more seeds to process after {round_num - 1} rounds")
+                break
+
+            # Call DataForSEO Keyword Expansion
+            logger.info(f"Round {round_num}: Enriching {len(next_seeds)} seeds...")
+            suggestions = self.dataforseo_tool.expand_keywords(
+                seed_keywords=next_seeds,
+                location_code=settings.target_location
+            )
+
+            # Merge and deduplicate
+            all_enriched.extend(suggestions)
+            seeds_used.update(next_seeds)
+
+            # Check if we have enough
+            quality_keywords = [
+                k for k in all_enriched
+                if k.get('search_volume', 0) >= settings.keyword_enrichment_min_volume
+            ]
+            coverage = self._calculate_cluster_coverage(quality_keywords, topic_clusters, conceptual_keywords)
+
+            logger.info(
+                f"Round {round_num} complete: {len(quality_keywords)} quality keywords "
+                f"({len(all_enriched)} total), {coverage:.1%} cluster coverage"
+            )
+
+            # Stopping condition
+            if (
+                len(quality_keywords) >= settings.keyword_enrichment_target_count
+                and coverage >= settings.keyword_enrichment_min_coverage
+            ):
+                logger.info(f"✓ Enrichment target reached after {round_num} rounds")
+                break
+
+        logger.info(
+            f"Enrichment complete: {len(all_enriched)} keywords discovered, "
+            f"{len(quality_keywords)} with volume >= {settings.keyword_enrichment_min_volume}"
+        )
+        return all_enriched
+
+    def _select_next_seed_batch(
+        self,
+        conceptual_keywords: list,
+        enriched_so_far: list,
+        topic_clusters: list,
+        seeds_used: set,
+        batch_size: int = 20
+    ) -> list:
+        """
+        Smart seed selection prioritizing uncovered clusters and high-performers.
+
+        Args:
+            conceptual_keywords: List of ConceptualKeyword objects
+            enriched_so_far: List of enriched keyword dicts from DataForSEO
+            topic_clusters: List of TopicCluster objects
+            seeds_used: Set of keywords already used as seeds
+            batch_size: Number of seeds to select
+
+        Returns:
+            List of keyword strings to use as next seeds
+        """
+        candidates = []
+
+        # Priority 1: Seeds from underrepresented clusters (40% of batch)
+        underrepresented = self._find_underrepresented_clusters(enriched_so_far, topic_clusters, conceptual_keywords)
+        cluster_seeds = [
+            kw.keyword for kw in conceptual_keywords
+            if kw.cluster in underrepresented and kw.keyword not in seeds_used
+        ]
+        # Sort by priority (1=highest)
+        cluster_seeds_sorted = sorted(
+            [kw for kw in conceptual_keywords if kw.keyword in cluster_seeds],
+            key=lambda k: k.priority
+        )
+        candidates.extend([kw.keyword for kw in cluster_seeds_sorted[:int(batch_size * 0.4)]])
+
+        # Priority 2: High-volume keywords as new seeds - suggestions of suggestions (30% of batch)
+        high_performers = sorted(
+            [k for k in enriched_so_far if k.get('search_volume', 0) > 5000],
+            key=lambda k: k.get('search_volume', 0),
+            reverse=True
+        )
+        candidates.extend([
+            k['keyword'] for k in high_performers[:int(batch_size * 0.3)]
+            if k['keyword'] not in seeds_used
+        ])
+
+        # Priority 3: Remaining high-priority conceptual seeds (30% of batch)
+        remaining = [
+            kw for kw in conceptual_keywords
+            if kw.keyword not in seeds_used
+        ]
+        remaining_sorted = sorted(remaining, key=lambda k: k.priority)
+        candidates.extend([kw.keyword for kw in remaining_sorted[:int(batch_size * 0.3)]])
+
+        # Return up to batch_size unique seeds
+        unique_candidates = []
+        seen = set()
+        for candidate in candidates:
+            if candidate not in seen and candidate not in seeds_used:
+                unique_candidates.append(candidate)
+                seen.add(candidate)
+                if len(unique_candidates) >= batch_size:
+                    break
+
+        return unique_candidates
+
+    def _find_underrepresented_clusters(
+        self,
+        enriched_keywords: list,
+        topic_clusters: list,
+        conceptual_keywords: list
+    ) -> list:
+        """
+        Find topic clusters that have few enriched keywords.
+
+        Args:
+            enriched_keywords: List of enriched keyword dicts from DataForSEO
+            topic_clusters: List of TopicCluster objects
+            conceptual_keywords: List of ConceptualKeyword objects
+
+        Returns:
+            List of cluster names that need more coverage
+        """
+        # Count enriched keywords per cluster
+        cluster_counts = {}
+        enriched_keyword_set = {k['keyword'].lower() for k in enriched_keywords}
+
+        for conceptual_kw in conceptual_keywords:
+            if conceptual_kw.keyword.lower() in enriched_keyword_set:
+                cluster_counts[conceptual_kw.cluster] = cluster_counts.get(conceptual_kw.cluster, 0) + 1
+
+        # Find clusters below average
+        if not cluster_counts:
+            # No enriched keywords yet - return all clusters
+            return [c.name for c in topic_clusters]
+
+        avg_count = sum(cluster_counts.values()) / len(topic_clusters)
+        underrepresented = [
+            cluster.name for cluster in topic_clusters
+            if cluster_counts.get(cluster.name, 0) < avg_count
+        ]
+
+        return underrepresented if underrepresented else [c.name for c in topic_clusters[:2]]
+
+    def _calculate_cluster_coverage(
+        self,
+        enriched_keywords: list,
+        topic_clusters: list,
+        conceptual_keywords: list
+    ) -> float:
+        """
+        Calculate what percentage of topic clusters have enriched keywords.
+
+        Args:
+            enriched_keywords: List of enriched keyword dicts from DataForSEO
+            topic_clusters: List of TopicCluster objects
+            conceptual_keywords: List of ConceptualKeyword objects
+
+        Returns:
+            Float between 0.0 and 1.0 representing cluster coverage
+        """
+        if not topic_clusters:
+            return 0.0
+
+        # Map enriched keywords back to clusters
+        enriched_keyword_set = {k['keyword'].lower() for k in enriched_keywords}
+        clusters_with_keywords = set()
+
+        for conceptual_kw in conceptual_keywords:
+            if conceptual_kw.keyword.lower() in enriched_keyword_set:
+                clusters_with_keywords.add(conceptual_kw.cluster)
+
+        coverage = len(clusters_with_keywords) / len(topic_clusters)
+        return coverage
+
     @listen(stage_8_75_select_solution)
     def stage_9_generate_seo_strategy(self):
         """
@@ -1116,16 +1425,18 @@ When comparing solutions with similar market fit and technical feasibility, use 
             self.state.current_stage = 10
             return
 
-        # Get the selected solution
+        # Get the selected solution (with fuzzy matching fallback)
         selected_solution_name = self.state.solution_selection.selected_solution_name
-        selected_solution = next(
-            (sol for sol in self.state.idea_generation.solution_ideas
-             if sol.solution_name == selected_solution_name),
-            None
+        selected_solution = self._find_solution_by_name(
+            selected_solution_name,
+            self.state.idea_generation.solution_ideas
         )
 
         if not selected_solution:
-            logger.error(f"Selected solution '{selected_solution_name}' not found in solution ideas!")
+            logger.error(
+                f"Selected solution '{selected_solution_name}' not found in solution ideas! "
+                f"Available solutions: {[sol.solution_name for sol in self.state.idea_generation.solution_ideas]}"
+            )
             self.state.seo_strategy_report = None
             self.state.current_stage = 10
             return
@@ -1141,11 +1452,30 @@ When comparing solutions with similar market fit and technical feasibility, use 
             pain_points=self.state.pain_point_analysis,
         )
 
-        # Generate comprehensive SEO strategy
-        # Crew will: generate seeds FOR THIS SOLUTION -> expand with DataForSEO -> analyze -> create strategy
-        logger.info(f"Starting integrated keyword research + SEO strategy for {selected_solution_name}...")
+        # Phase 9.5a: Conceptual keyword expansion (SEO crew)
+        logger.info(f"Phase 9.5a: Conceptual keyword expansion for {selected_solution_name}...")
         try:
-            seo_strategy = seo_crew.create_strategy()
+            expanded_keywords = seo_crew.expand_keywords_phase_1()
+            logger.info(
+                f"✓ Conceptual expansion complete: {len(expanded_keywords.keywords)} keywords, "
+                f"{len(expanded_keywords.topic_clusters)} clusters"
+            )
+
+            # Phase 9.5b: Iterative DataForSEO enrichment (programmatic)
+            logger.info("Phase 9.5b: Iterative keyword enrichment with DataForSEO...")
+            enriched_keywords = self._iterative_keyword_enrichment(
+                conceptual_keywords=expanded_keywords.keywords,
+                topic_clusters=expanded_keywords.topic_clusters,
+            )
+            logger.info(f"✓ Enrichment complete: {len(enriched_keywords)} keywords with search data")
+
+            # Phase 9.5c: Generate comprehensive SEO strategy from enriched keywords
+            # Crew will: analyze enriched keywords -> create tiered strategy -> content plan
+            logger.info(f"Phase 9.5c: Creating final SEO strategy for {selected_solution_name}...")
+            seo_strategy = seo_crew.create_strategy_from_enriched(
+                enriched_keywords=enriched_keywords,
+                topic_clusters=expanded_keywords.topic_clusters
+            )
             self.state.seo_strategy_report = seo_strategy
 
             # Extract seed keywords from SEO strategy report
@@ -1312,16 +1642,18 @@ When comparing solutions with similar market fit and technical feasibility, use 
             self.state.current_stage = 10
             return
 
-        # Get the selected solution
+        # Get the selected solution (with fuzzy matching fallback)
         selected_solution_name = self.state.solution_selection.selected_solution_name
-        selected_solution = next(
-            (sol for sol in self.state.idea_generation.solution_ideas
-             if sol.solution_name == selected_solution_name),
-            None
+        selected_solution = self._find_solution_by_name(
+            selected_solution_name,
+            self.state.idea_generation.solution_ideas
         )
 
         if not selected_solution:
-            logger.warning("Selected solution not found - skipping data source research")
+            logger.warning(
+                f"Selected solution '{selected_solution_name}' not found - skipping data source research. "
+                f"Available solutions: {[sol.solution_name for sol in self.state.idea_generation.solution_ideas]}"
+            )
             self.state.data_source_research = None
             self.state.current_stage = 10
             return
@@ -1456,20 +1788,21 @@ When comparing solutions with similar market fit and technical feasibility, use 
         """Extract key data from all stages for synthesis."""
         context = {
             "niche": self.niche_description,
-            "pain_points": [],
+            "research_pain_points": [],  # RENAMED: Make distinction clear
             "solutions": [],
             "competitors": [],
             "keywords": {},
         }
 
-        # Extract pain points
+        # Extract RESEARCH-DISCOVERED pain points (from Stage 6 social media analysis)
+        # These are validated findings from actual user discussions, NOT solution assumptions
         if self.state.pain_point_analysis:
-            context["pain_points"] = [
+            context["research_pain_points"] = [
                 {
                     "title": pp.title,
                     "description": pp.description,
-                    "severity": pp.severity_score,
-                    "wtp": pp.willingness_to_pay,
+                    "severity": pp.severity_score,  # EXACT score, no rounding
+                    "wtp": pp.willingness_to_pay,  # EXACT score, no rounding
                     "opportunity": pp.opportunity_level.value,
                     "mention_count": pp.mention_count,
                 }
@@ -1610,11 +1943,19 @@ Niche: {context['niche']}
 **COMPLETE SELECTED SOLUTION DETAILS:**
 {self._format_solution_details(context.get('selected_solution_full_details'))}
 
-**Pain Points Discovered:**
-{json.dumps(context.get('pain_points', []), indent=2)}
+**RESEARCH-DISCOVERED Pain Points (Stage 6 - Social Media Analysis):**
+{json.dumps(context.get('research_pain_points', []), indent=2)}
 
 Pain Points Summary: {context.get('pain_points_summary', 'N/A')}
 Total Pain Points Validated: {context.get('total_pain_points_validated', 0)}
+
+**CRITICAL: Research vs Solution Pain Points:**
+The pain points listed above are RESEARCH-DISCOVERED from actual user discussions (Stage 6).
+These are validated findings from Reddit/Twitter analysis, NOT assumptions made during solution ideation.
+
+DO NOT confuse these with "pain_points_addressed" in the solution details - those are the solution creator's
+assumptions about what pain points a solution COULD address. Only use research-discovered pain points for
+the "top_pain_points" field in the final report.
 
 **Note on Pain Point Validation Process:**
 Pain points were extracted by an analyst agent and then scored by a validator agent using strict 1:1 mapping.
@@ -1718,8 +2059,10 @@ Generate a comprehensive final report focused on the SELECTED SOLUTION with the 
     - Be specific about what ships in v1 vs what waits
 
 11. **top_pain_points**:
-    - List of 5-7 most critical pain point titles (just the titles as strings)
-    - Focus on high-opportunity, high-severity points that the SELECTED SOLUTION addresses
+    - List of 5-7 most critical RESEARCH-DISCOVERED pain point titles (just the titles as strings)
+    - Use ONLY the pain points from "RESEARCH-DISCOVERED Pain Points" section above
+    - DO NOT include pain points from solution.pain_points_addressed (those are solution assumptions, not research)
+    - Focus on high-opportunity, high-severity points from actual user research
 
 12. **recommended_solutions**:
    - List with the SELECTED SOLUTION as first item, followed by 1-2 runner-ups (strings)
@@ -1742,8 +2085,10 @@ Generate a comprehensive final report focused on the SELECTED SOLUTION with the 
 
 16. **competitive_summary**:
    - 2-3 paragraph summary of competitive landscape
-   - Include positioning opportunities, key gaps, competitive intensity
-   - Reference specific competitors and opportunities
+   - Include positioning opportunities, key gaps, number of competitors identified
+   - **CRITICAL**: Only include competitive intensity labels if explicitly provided in selected_solution_competitive_intensity
+     (If value is null/None, describe competitive landscape WITHOUT intensity labels - just describe competitors and gaps)
+   - Reference specific competitors and opportunities by name
 
 17. **data_sourcing_recommendations**:
    - 200-400 word strategy for solutions requiring data aggregation
@@ -1763,7 +2108,8 @@ Generate a comprehensive final report focused on the SELECTED SOLUTION with the 
    - Paragraph 2: Discovery Patterns - What search queries will users use to find the solution?
      * Reference the organic_discovery_queries from selected_solution_details
      * Explain the search intent behind these queries
-     * Estimate potential page count in year 1 (e.g., "100 listings = 100 unique landing pages")
+     * **CRITICAL**: Use EXACT page count from seo_refinement_metadata.estimated_year1_pages if available
+       (DO NOT estimate or make up page counts - use actual calculated value from keyword research)
    - Paragraph 3: Scaling Strategy - How will organic acquisition scale?
      * User-generated content loops (directories, marketplaces)
      * Data refresh cycles (aggregators)
@@ -1774,16 +2120,17 @@ Generate a comprehensive final report focused on the SELECTED SOLUTION with the 
 
 19. **estimated_cac_breakdown**:
    - Create a markdown-formatted CAC breakdown comparing organic vs paid acquisition
+   - **CRITICAL: Use EXACT CAC values from selected_solution_details - DO NOT estimate, round, or modify them**
    - Format as a structured comparison (can use markdown table or bullet list):
 
      **Organic Acquisition (SEO/Content):**
-     - Estimated CAC: [Use estimated_cac_organic from selected_solution_details]
+     - Estimated CAC: [Use EXACT value from estimated_cac_organic or estimated_cac_organic_refined if available]
      - Channels: Programmatic SEO pages, organic search, content marketing
-     - Rationale: [Explain based on project type - directories $15-30, aggregators $20-40, comparison $50-100, SaaS $200-400]
+     - Rationale: [Explain based on project type and keyword data]
      - Scalability: [Reference seo_scalability_score - High/Medium/Limited]
 
      **Paid Acquisition (Ads/PPC):**
-     - Estimated CAC: [Use estimated_cac_paid from selected_solution_details]
+     - Estimated CAC: [Use EXACT value from estimated_cac_paid - DO NOT change the range (e.g., if it says $150-300, use $150-300, NOT $50-100)]
      - Channels: Google Ads, social media ads, retargeting
      - Rationale: [Explain based on keyword competition and niche]
 

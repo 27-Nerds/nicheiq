@@ -63,6 +63,54 @@ class ContentType(str, Enum):
     DOCUMENTATION = "documentation"
 
 
+class ConceptualKeyword(BaseModel):
+    """
+    Conceptual keyword from Phase 9.5a expansion (before DataForSEO enrichment).
+    Includes strategic context and cluster assignment for intelligent enrichment.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    keyword: str = Field(..., description="The keyword phrase")
+    cluster: str = Field(..., description="Topic cluster this keyword belongs to")
+    priority: int = Field(..., ge=1, le=5, description="Strategic priority (1=highest, 5=lowest)")
+    rationale: Optional[str] = Field(
+        default=None,
+        description="Why this keyword is important strategically"
+    )
+
+
+class TopicCluster(BaseModel):
+    """Topic cluster for organizing keywords strategically."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = Field(..., description="Cluster name (e.g., 'International Shipping', 'Customs')")
+    description: str = Field(..., description="Brief description of this topic area")
+    strategic_importance: int = Field(
+        ..., ge=1, le=5, description="Importance for SEO strategy (1=critical, 5=nice-to-have)"
+    )
+
+
+class ExpandedKeywordList(BaseModel):
+    """
+    Result of Phase 9.5a conceptual keyword expansion.
+    Contains 100-200 strategically selected keywords organized by topic clusters.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    keywords: List[ConceptualKeyword] = Field(
+        ..., description="Conceptually expanded keywords (100-200 total)"
+    )
+    topic_clusters: List[TopicCluster] = Field(
+        ..., description="Topic clusters for organizing keywords"
+    )
+    expansion_rationale: str = Field(
+        ..., description="Overall strategy behind keyword expansion"
+    )
+
+
 class MonthlySearchData(BaseModel):
     """Single month's search volume data from DataForSEO."""
 

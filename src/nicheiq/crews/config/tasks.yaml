@@ -3,6 +3,13 @@
 
 categorize_content:
   description: >
+    ═══ CRITICAL RULES (Read First) ═══
+    ✓ ONLY analyze content provided below - NO invented quotes/segments
+    ✓ Need ≥5 substantive discussions → else report "Insufficient discussion data"
+    ✓ Every quote MUST be direct copy from content - NO paraphrasing
+    ✓ Categories emerge from data patterns, not assumptions
+    ✓ Fewer categories with evidence > many without
+
     **NICHE CONTEXT:** {niche_description}
 
     You are provided with ALL social media discussions below. Review this complete content to create
@@ -39,18 +46,6 @@ categorize_content:
     5. Note the frequency and intensity of discussions in each category
 
 
-    **CRITICAL DATA ACCURACY RULES:**
-
-    - ONLY use discussion content from the Reddit and Twitter sections provided above
-    - If the content sections are empty or you cannot find at least 5 distinct discussions with substantive content, you MUST state "Insufficient discussion data for categorization" and return an error
-    - DO NOT invent example discussions, quotes, or user segments based on general knowledge of this niche
-    - DO NOT use your training data or assumptions about what problems might exist in this niche
-    - Every quote you include MUST be directly copied from the content above - do not paraphrase or create fictional quotes
-    - Every user segment you identify MUST be based on how users self-describe in the actual discussions
-    - If you cannot find sufficient data to create 5 categories, create fewer categories and note "Limited discussion data available"
-    - Acceptable output: Fewer than 5 categories OR "Insufficient data" if content quality is too low
-
-
     **How to approach:**
 
     - Read through the discussions systematically to find repeated keywords, phrases, and concepts
@@ -72,6 +67,12 @@ categorize_content:
     - Each category has clear definition and at least 3 representative quote examples from the content above
     - User segments are specific enough to inform product targeting
     - Frequency indicators (high/medium/low) assigned to each theme based on mention count
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+    ✗ If <5 substantive discussions found → Return "Insufficient discussion data"
+    ✗ DO NOT use training data or niche assumptions
+    ✗ User segments MUST match self-descriptions from discussions above
+    ✗ Every quote MUST be directly copied from content above - NO paraphrasing
 
   expected_output: >
     YOU MUST RETURN THE ACTUAL COMPLETE CATEGORIZATION REPORT in the EXACT format below.
@@ -157,10 +158,6 @@ categorize_content:
     - **Authenticity**: [Do pain points seem genuine vs hypothetical]
     - **Overall quality**: [High/Medium/Low with brief justification]
 
-
-    CRITICAL REMINDER: This must be the ACTUAL FILLED-IN REPORT with real categories,
-    quotes, and analysis from the content provided above - NOT a template or description.
-
 extract_pain_points:
   description: >
     **NICHE CONTEXT:** {niche_description}
@@ -187,44 +184,30 @@ extract_pain_points:
     ═══════════════════════════════════════════════════════════════════════════
 
 
-    **What to do:**
+    **WORKFLOW** (Apply your 3-Quote Minimum Protocol):
 
-    1. Review the categorization report from the previous task to understand the category structure
-    2. For each high and medium-frequency category from that report, extract 2-5 specific pain points
-    3. Formulate each pain point as a clear problem statement in user language
-    4. Query knowledge sources for supporting evidence within each category: direct quotes from users,
-       mention frequency, context about when/how this problem occurs
-    5. Identify the severity indicators in the language (words like "frustrating",
-       "critical", "showstopper", "annoying")
-    6. Note any mention of current solutions, workarounds, or tools users are trying
+    1. Review categorization report → identify high/medium-frequency categories
+    2. For each category → extract 2-5 specific pain points with supporting evidence
+    3. Query knowledge sources → find ≥3 direct quotes per pain point
+    4. Identify severity indicators → "frustrating", "critical", "showstopper"
+    5. Note current solutions/workarounds users mention
 
+    **SEARCH STRATEGY** (Knowledge Source Queries):
 
-    **How to approach:**
+    | Query Type | Purpose | Keywords |
+    |------------|---------|----------|
+    | Problem keywords | Find quote evidence | Specific problem terms from categories |
+    | Emotional language | Severity assessment | "frustrating", "critical", "annoying", "showstopper" |
+    | Impact mentions | Business impact | "time", "expensive", "productivity", "revenue" |
+    | Workarounds | Current solutions | "using", "tried", "alternative to" |
 
-    - Focus on problems that are specific enough to design solutions for (avoid
-      vague complaints like "tool is bad")
-    - Query knowledge sources to find multiple users expressing the same pain independently
-    - Distinguish between nice-to-have improvements and genuine pain points
-    - Pay special attention when users mention money, time waste, or business impact
-    - Capture exact user language from knowledge sources—don't paraphrase into corporate speak
-    - Use knowledge source metadata (PLATFORM, SUBREDDIT) to identify source platforms
-
-
-    **Search Strategy for Supporting Evidence:**
-
-    - Query for specific problem keywords to find quote evidence
-    - Search for emotional language around each pain point
-    - Look for frequency: "How many discussions mention this problem?"
-    - Find impact mentions: "time", "expensive", "productivity", "revenue"
-    - Identify workarounds: "What solutions do users currently try?"
-
-
-    **Quality Standards:**
-
-    - Each pain point must be actionable (clear what solving it means)
-    - Each must have at least 3 supporting quotes from knowledge sources
-    - Each must include frequency data (how many times mentioned)
-    - Avoid duplicates—merge similar pain points into single statements
+    **QUALITY STANDARDS:**
+    ✓ Actionable (clear what solving means)
+    ✓ ≥3 supporting quotes from knowledge sources
+    ✓ Frequency data (mention count)
+    ✓ Specific, not vague ("manual data entry" NOT "tool is bad")
+    ✓ Exact user language (no corporate speak paraphrasing)
+    ✗ Duplicates (merge similar pain points)
 
 
     **CRITICAL DATA ACCURACY RULES:**
@@ -292,57 +275,26 @@ validate_pain_points:
     Think of your job as: Take the list you received → Add scores → Return the same list with scores.
 
 
-    **What to do:**
+    **SCORING RUBRIC** (Apply your Evidence-Based Scoring Framework):
 
-    1. Review each extracted pain point from the previous task with its supporting evidence
-    2. Query knowledge sources to verify and strengthen evidence for each pain point
-    3. Score each pain point on two dimensions (0.0 to 1.0 scale):
+    | Score Range | Severity Indicators | Willingness-to-Pay Indicators |
+    |-------------|---------------------|-------------------------------|
+    | **0.8-1.0** (High) | Critical business impact, workflow blocker, strong emotional language ("nightmare", "critical", "can't work without") | Explicit payment mentions, budget availability, current spend on inadequate solutions |
+    | **0.5-0.7** (Medium) | Significant inconvenience, wastes time/money, clear frustration | Frustration with existing paid tools, value/ROI mentions |
+    | **0.3-0.4** (Low) | Notable annoyance, mentioned but not critical | Some consideration for solutions, no money mentions |
+    | **0.0-0.2** (Minimal) | Minor inconvenience, weak signals | No financial indicators, expect free solutions |
 
-       **Severity Score (0.0-1.0):**
-       - 0.8-1.0: Critical business impact, blocks important workflows, mentioned with
-         strong emotional language ("nightmare", "critical", "can't work without")
-       - 0.5-0.7: Significant inconvenience, wastes time/money, clear frustration
-       - 0.3-0.4: Notable annoyance, mentioned but not framed as critical
-       - 0.0-0.2: Minor inconvenience, weak signals
+    **WORKFLOW:**
+    1. Review extracted pain points with supporting evidence
+    2. Query knowledge sources for severity/WTP indicators (use keywords: "critical", "pay", "cost", "budget", "time", "revenue")
+    3. Apply scoring rubric with quote-based justification
+    4. Prioritize by opportunity level (High: both scores ≥0.6, Medium: one score ≥0.6, Low: both <0.6)
 
-       **Willingness to Pay (0.0-1.0):**
-       - 0.8-1.0: Explicit mentions of paying, budget availability, or current spend on
-         inadequate solutions
-       - 0.5-0.7: Strong frustration with existing paid tools, or mentions of value/ROI
-       - 0.3-0.4: Some indication they'd consider solutions, but no money mentions
-       - 0.0-0.2: No financial indicators, might expect free solutions
-
-    4. For each score, search knowledge sources for specific evidence that justifies it
-    5. Calculate mention count across all discussions in knowledge sources
-    6. Identify the categories each pain point belongs to
-    7. Create a final validated list prioritized by opportunity potential
-
-
-    **Search Strategy for Evidence:**
-
-    - Query knowledge sources for severity indicators: "critical", "blocks", "can't", "impossible"
-    - Search for financial signals: "pay", "cost", "expensive", "budget", "pricing", "worth"
-    - Look for business impact: "revenue", "time", "hours", "productivity", "customers"
-    - Find explicit willingness to pay: "would pay", "worth", "cheap", "affordable"
-
-
-    **How to approach:**
-
-    - Be rigorous—scores must be defensible with quote evidence from knowledge sources
-    - Look for business impact indicators (time, money, revenue, customer satisfaction)
-    - Willingness to pay signals: mentions of budgets, current tool costs, "would pay X for...",
-      frustration with expensive existing tools, questions about pricing
-    - Consider both explicit statements and implicit indicators
-    - When in doubt, score conservatively—better to underrate than overinflate
-    - Cross-reference evidence across both Reddit and Twitter knowledge sources
-
-
-    **Quality Standards:**
-
-    - Every score must have quote-based justification
-    - Scores should discriminate—not everything can be 0.9
-    - Validate logical consistency (high severity usually correlates with WTP)
-    - Final validated list should focus on actionable opportunities
+    **QUALITY STANDARDS:**
+    - Scores must be defensible with quotes
+    - Discriminate—not everything is 0.9
+    - Score conservatively when uncertain
+    - Cross-reference Reddit + Twitter evidence
 
 
     **CRITICAL DATA ACCURACY RULES:**
@@ -479,48 +431,15 @@ brainstorm_solutions:
     If specific project types are listed above, you MUST generate solutions ONLY of those types.
     If "No constraints" is shown, you are free to suggest any solution type that best addresses the pain points.
 
-    **Valid Solution Types (Ordered by SEO/Organic Acquisition Potential):**
+    **Valid Solution Types** (Apply your "Indexable Pages First" framework):
 
-    - **directory**: Curated listings, resource collections, discovery platforms, niche directories
-      * **SEO Advantage**: User submissions create unique indexable pages organically
-      * **Programmatic SEO**: Each listing = new landing page targeting long-tail keywords
-      * **CAC Impact**: ~$57/page vs $400+ traditional SEO (87% cost reduction)
-      * **Content Model**: Directory submissions generate fresh content continuously without manual effort
-      * **Success Example**: Zapier grew to 10.6M organic visits from integration directory pages
-      * **Typical CAC**: $15-30 organic vs $200-350 paid (12x cost advantage)
-
-    - **aggregator**: Multi-source data collection, normalization, unified views, price comparison
-      * **SEO Advantage**: Aggregated data creates naturally comprehensive, authoritative content
-      * **Programmatic SEO**: Category × location × filter variations = thousands of unique pages
-      * **CAC Impact**: Audience segmentation increases organic traffic 28.2% vs 1.8% without
-      * **Content Model**: Data combinations create unique comparison pages programmatically
-      * **Success Example**: GetLatka generates $60k/month revenue from "[Company] revenue" programmatic pages
-      * **Typical CAC**: $20-40 organic vs $180-300 paid (8x cost advantage)
-
-    - **comparison-tool**: Side-by-side analysis, alternative finders, decision support tools
-      * **SEO Advantage**: "[Tool A] vs [Tool B]" pages target high buyer-intent keywords
-      * **Programmatic SEO**: Comparison matrix generates N² pages from N tools (scalable content)
-      * **CAC Impact**: High conversion intent = lower effective CAC despite moderate traffic
-      * **Content Model**: User-generated reviews + spec comparisons create multi-layered content
-      * **Success Example**: AlternativeTo, Slant.co rank for thousands of comparison queries
-      * **Typical CAC**: $50-100 organic vs $200-350 paid (4x cost advantage)
-
-    - **marketplace**: Two-sided platforms connecting buyers and sellers, service marketplaces
-      * **SEO Advantage**: Seller profiles + product listings + user reviews = deep content layers
-      * **Programmatic SEO**: Service × location × category = scalable page generation
-      * **CAC Impact**: Network effects compound SEO value over time (slow start, strong finish)
-      * **Content Model**: User-generated content from profiles, transactions, ratings
-      * **Success Example**: Upwork, Fiverr rank for "[service] freelancer" location queries
-      * **Typical CAC**: $80-150 organic initially, improving to $30-60 at scale
-
-    - **saas**: SaaS workflow automation, productivity tools, task orchestration, process management
-      * **SEO Limitation**: Limited programmatic opportunities; relies heavily on blog content marketing
-      * **Programmatic SEO**: Minimal - typically limited to marketing pages + integration listings
-      * **CAC Impact**: Higher CAC ($200-400/customer), requires sustained content marketing investment
-      * **Content Model**: Educational blog posts, use case guides, tutorial videos (manual creation)
-      * **Success Example**: SaaS companies achieve SEO success but with higher effort/cost ratio
-      * **Typical CAC**: $200-400 organic, $300-600 paid (limited cost advantage)
-      * **Recommendation**: Consider adding directory/comparison features to boost SEO potential
+    | Type | SEO Advantage | Programmatic SEO Potential | Organic CAC | Paid CAC | Content Model |
+    |------|---------------|---------------------------|-------------|----------|---------------|
+    | **directory** | User submissions = unique pages | Each listing = landing page | $15-30 | $200-350 | Submissions generate fresh content continuously |
+    | **aggregator** | Comprehensive authoritative content | Category × location × filter permutations | $20-40 | $180-300 | Data combinations create comparison pages |
+    | **comparison-tool** | High buyer-intent "[A] vs [B]" queries | N tools = N² comparison pages | $50-100 | $200-350 | User reviews + spec comparisons |
+    | **marketplace** | Profiles + listings + reviews layers | Service × location × category variations | $80-150 (→$30-60) | $200-400 | User-generated content from transactions |
+    | **saas** | Limited programmatic opportunities | Minimal (marketing + integrations) | $200-400 | $300-600 | Manual blog/tutorial creation |
 
     **For each solution:**
     - Set the `project_type` field to match one of the allowed types
@@ -544,41 +463,19 @@ brainstorm_solutions:
     The knowledge sources contain 3-5 quotes per pain point (vs. 1 in the summary above).
 
 
-    **SEO-FIRST SOLUTION DESIGN PRINCIPLES:**
+    **SEO-FIRST SOLUTION DESIGN** (Prioritize organic content generation for lowest CAC):
 
-    When brainstorming solutions, PRIORITIZE architectures with organic content generation for lowest CAC:
+    | Tier | Approach | SEO Score | Examples | Key Questions |
+    |------|----------|-----------|----------|---------------|
+    | **BEST** | Self-Generating Content | 0.8-1.0 | User submissions (directories), data aggregation (aggregators), UGC (marketplaces) | What unique pages from core actions? 100+ pages year 1? |
+    | **GOOD** | Programmatic Content | 0.5-0.7 | Category × filter combos, geographic variations, template guides | What page patterns from data? What's multiplication factor? |
+    | **LIMITED** | Manual Content Marketing | 0.2-0.4 | Blog posts, tutorials, use cases | How many pages realistically? Can we add directory features? |
 
-    1. **BEST: Self-Generating Content (Target SEO Scalability Score: 0.8-1.0)**
-       - User submissions create pages (directories): Each listing = unique indexable page
-       - Data aggregation creates comparisons (aggregators): Category × filter × location permutations
-       - UGC creates reviews/ratings (marketplaces): Profiles + listings + reviews
-       - **Content Question**: What unique, indexable pages does this create from core user actions?
-       - **Scale Question**: Can we generate 100+ pages from the core mechanic within first year?
-
-    2. **GOOD: Programmatic Content Opportunities (Target SEO Scalability Score: 0.5-0.7)**
-       - Category × filter combinations (comparison tools): N tools = N² comparison pages
-       - Geographic variations (local directories): Service × city permutations
-       - Template-based guides (knowledge bases): Problem × solution × vertical combinations
-       - **Content Question**: What systematic page patterns can we generate from structured data?
-       - **Scale Question**: What's the multiplication factor? (e.g., 50 tools × 50 competitors = 2,500 comparison pages)
-
-    3. **LIMITED: Traditional Content Marketing (Target SEO Scalability Score: 0.2-0.4)**
-       - Blog posts, guides, tutorials (SaaS): Manual content creation, slower scaling
-       - Integration pages, use case pages: Limited to number of actual integrations/cases
-       - **Content Question**: How many unique pages can we realistically create manually?
-       - **Consider**: Can we ADD directory/comparison features to improve SEO? (Hybrid model)
-
-    **For EVERY Solution, Answer These SEO Questions:**
-    - **Content**: What unique, indexable pages does this create? How many in year 1?
-    - **Discovery**: What search queries would find these pages? (List 5-10 examples)
-    - **CAC**: Estimated organic CAC vs paid CAC? (Use project type benchmarks above)
-    - **Scalability**: Can content generation keep pace with growth, or hit a ceiling?
-
-    **Required SEO Field Population:**
-    - programmatic_seo_opportunity: Describe the content generation mechanism and page count potential
-    - content_generation_model: Explain WHAT content gets created (user/data/manual)
-    - organic_discovery_queries: List 5-10 actual search queries users would type
-    - estimated_cac_organic: Use project type CAC benchmarks ($15-30 directory, $20-40 aggregator, etc.)
+    **Required SEO Fields for EVERY Solution:**
+    - programmatic_seo_opportunity: Content generation mechanism + page count potential
+    - content_generation_model: What content gets created (user/data/manual)
+    - organic_discovery_queries: 5-10 actual search queries users would type
+    - estimated_cac_organic: Use project type CAC benchmarks from table above
     - estimated_cac_paid: Estimate based on niche keyword competitiveness
     - seo_scalability_score: 0.8-1.0 (directory/aggregator), 0.5-0.7 (comparison/marketplace), 0.2-0.4 (SaaS)
 
@@ -763,18 +660,17 @@ refine_solutions:
     proposals ready for validation and development planning.
 
 
-    **CRITICAL - Score Preservation from Evaluation:**
+    **FIELD HANDLING REQUIREMENTS** (from EvaluationResult context):
 
-    The previous evaluate_solutions task generated structured evaluation scores for each solution.
-    You have access to this data via context. You MUST extract and preserve these scores EXACTLY:
+    | Field | Action | Rule |
+    |-------|--------|------|
+    | technical_feasibility_score | PRESERVE exactly | Copy from evaluation (0.0-1.0) |
+    | market_fit_score | PRESERVE exactly | Copy from evaluation (0.0-1.0) |
+    | estimated_development_time | PRESERVE exactly | Copy from evaluation ("X-Y months") |
+    | technical_approach | REQUIRED | 2-3 sentence architecture (platform, integrations, storage, tech) |
+    | data_sources | REQUIRED | List APIs if requires_data_aggregation=True, else [] |
 
-    From the EvaluationResult context, extract for EACH solution:
-    - technical_feasibility_score: (0.0-1.0) → Put in solution's technical_feasibility_score field
-    - market_fit_score: (0.0-1.0) → Put in solution's market_fit_score field
-    - estimated_development_time: ("X-Y months") → Put in solution's estimated_development_time field
-
-    DO NOT recalculate or modify these scores - preserve them EXACTLY as evaluated.
-    These fields are REQUIRED and must NOT be null in your output.
+    All fields mandatory (no null values). Extract from context, don't recalculate.
 
 
     **Search Strategy for Persona and Strategy Development:**
@@ -794,82 +690,21 @@ refine_solutions:
     - Defensible positioning (from real competitive mentions)
 
 
-    **Solution-Type-Specific Refinement Guidance:**
+    **SOLUTION-TYPE REFINEMENT PATTERNS**:
 
-    Adapt your refinement approach based on the solution type you're working with:
+    - **Catalog/Directory/Aggregator**: Curation criteria, content sourcing, taxonomy, freshness strategy, discovery UX
+    - **Marketplace**: Two-sided bootstrapping, trust mechanisms, transaction flow, supply acquisition
+    - **Comparison Engine**: Attribute normalization, scoring methodology, data prioritization, update frequency
+    - **Workflow/SaaS**: User workflow mapping, integration points, customization balance
 
-    **For Catalogs/Directories/Aggregators:**
-    - Define curation criteria and quality gates for inclusion
-    - Specify content sourcing strategy (submission-based, crawled, partnerships)
-    - Detail taxonomy/categorization structure
-    - Address data freshness: update frequency, staleness handling
-    - Define discovery mechanisms: search, filters, browse hierarchies
-    - If data aggregation required: specify data sources, refresh schedules, normalization
-
-    **For Marketplaces:**
-    - Address two-sided market dynamics: supply and demand bootstrapping plan
-    - Define trust mechanisms: verification, ratings, dispute resolution
-    - Specify transaction flow and fee structure
-    - Detail supply acquisition strategy for cold start
-    - Consider network effects and defensibility moats
-
-    **For Comparison Engines:**
-    - Define attribute normalization strategy (standardizing different data formats)
-    - Specify scoring/ranking methodology
-    - Detail data source prioritization and conflict resolution
-    - Address update frequency and freshness guarantees
-
-    **For Workflow/Automation Tools:**
-    - Map detailed user workflows and automation triggers
-    - Specify integration points and data flow
-    - Define customization vs. opinionation balance
-
-    **For ALL Solution Types:**
-    - Preserve and enhance the detailed "How It Works" user journey description
-    - Ensure solution type considerations are reflected in features, personas, and pricing
+    Preserve detailed "How It Works" user journey from ideation phase.
 
 
     **What to do:**
 
     1. Take the top 2-3 solutions from the evaluation ranking
-
-    2. For EACH solution, you MUST populate ALL of the following REQUIRED FIELDS (no null values allowed):
-
-       **a) technical_feasibility_score (float 0.0-1.0) - REQUIRED:**
-       - Extract from EvaluationResult context
-       - Look for the solution's technical_feasibility_score in the evaluation data
-       - PRESERVE exact value - do not recalculate
-       - Example: If evaluation shows 0.85, set technical_feasibility_score: 0.85
-       - DO NOT leave as null
-
-       **b) market_fit_score (float 0.0-1.0) - REQUIRED:**
-       - Extract from EvaluationResult context
-       - Look for the solution's market_fit_score in the evaluation data
-       - PRESERVE exact value - do not recalculate
-       - Example: If evaluation shows 0.92, set market_fit_score: 0.92
-       - DO NOT leave as null
-
-       **c) estimated_development_time (string) - REQUIRED:**
-       - Extract from EvaluationResult context
-       - Look for the solution's estimated_development_time
-       - Format: "X-Y months" (e.g., "3-4 months", "6-8 months", "4-6 months")
-       - DO NOT leave as null
-
-       **d) technical_approach (string) - REQUIRED:**
-       - Provide 2-3 sentence overview of technical architecture
-       - Include: Platform/framework, key integrations, data storage, notable technologies
-       - Example: "Built as a Next.js web app with PostgreSQL database. Integrates via REST APIs
-         with landlord property management systems and Stripe for payments. Uses AWS S3 for
-         document storage and Twilio for video tours."
-       - DO NOT leave as null or empty
-
-       **e) data_sources (list of strings) - CONDITIONAL:**
-       - If requires_data_aggregation=True: List specific APIs, databases, scraping targets
-         Example: ["Zillow API", "Google Maps API", "User-submitted listings"]
-       - If requires_data_aggregation=False: Set to empty list []
-       - DO NOT leave as null
-
-    3. After populating REQUIRED FIELDS, develop comprehensive details:
+    2. Apply Field Handling Requirements table above (preserve scores, populate required fields)
+    3. Develop comprehensive details for each solution:
 
        **Target Personas:**
        - Define 2-3 specific buyer/user personas with demographics, roles, goals,
@@ -983,20 +818,20 @@ incorporate_competitive_insights:
     opportunities, and competitive insights to strengthen differentiation.
 
     **CRITICAL - Field Management Rules:**
-    The original solutions include scores and technical details. Handle them as follows:
 
-    **Fields to PRESERVE exactly (DO NOT modify):**
-    - Technical Feasibility Score (0.0-1.0) - Technical difficulty is independent of competition
+    | Field | Action | Rule |
+    |-------|--------|------|
+    | technical_feasibility_score | PRESERVE exactly | DO NOT modify - technical difficulty independent of competition |
+    | market_fit_score | EXTRACT + optionally ADJUST UP | May increase by max 0.1 if gaps reveal better fit. NEVER decrease. NEVER null. |
+    | technical_approach | EXTRACT + optionally ENHANCE | May ADD 1-2 sentences on competitive differentiation. Preserve core. |
+    | estimated_development_time | EXTRACT + optionally ADJUST | If adding 3+ features, adjust timeline (e.g., "3-4" → "4-5 months"). |
 
-    **Fields to EXTRACT and potentially ADJUST UP:**
-    - Market Fit Score (0.0-1.0) - If competitive gaps reveal BETTER market fit than initially assessed, you may increase this score by up to 0.1 points. Otherwise preserve the original value. NEVER decrease it. NEVER leave it null.
+    All fields mandatory - extract from solutions below, DO NOT leave null.
 
-    **Fields to EXTRACT and potentially ENHANCE:**
-    - Technical Approach - Extract original value. You may ADD 1-2 sentences about competitive differentiation in technical implementation, but preserve the core approach description.
-    - Estimated Development Time - Extract original value. If you add significant new features (3+), you may adjust timeline (e.g., "3-4 months" → "4-5 months"). Otherwise preserve original.
-
-    These fields are provided in the solutions below. You MUST extract them from the input.
-    DO NOT leave any of these fields null.
+    **CRITICAL - Solution Name Preservation:**
+    When creating enhanced SolutionIdea objects, you MUST use the EXACT solution names
+    from the "Original Solutions" input above. DO NOT rename, rephrase, or modify solution names.
+    Example: If input shows "Unpakt", output MUST be "Unpakt" (not "MoveGuard" or any variation).
 
     **Original Solutions:**
     {solutions_summary}
@@ -1004,42 +839,30 @@ incorporate_competitive_insights:
     **Competitive Intelligence Per Solution:**
     {competitive_landscapes}
 
-    **What to do:**
+    **WORKFLOW:**
 
-    1. For EACH solution, review its competitive landscape:
-       - Market gaps discovered (unmet needs in the market)
-       - Differentiation opportunities identified (ways to stand out)
-       - Competitive intensity assessment (how crowded the market is)
-       - Recommended positioning (strategic positioning advice)
-       - Pricing insights (competitive pricing context)
+    1. Review competitive landscape per solution → gaps, differentiation opportunities, positioning, pricing
+    2. Enhance solution targeting gaps:
+       - Add features addressing market gaps
+       - Update differentiation_factors with competitive insights
+       - Refine value_proposition against competitor weaknesses
+       - Adjust pricing_strategy based on competitive context
+    3. Maintain integrity:
+       ✓ Add, refine, sharpen (preserve core)
+       ✓ Trace enhancements to specific competitive insights
+       ✗ Create new solutions or remove core features
 
-    2. Enhance each solution by:
-       - **Adding features** that specifically target identified market gaps
-       - **Updating differentiation_factors** with competitive positioning insights
-       - **Refining value_proposition** to sharpen against competitor weaknesses
-       - **Adjusting pricing_strategy** based on competitive pricing insights
-       - **Enhancing core_features** to exploit underserved market areas
-       - **Preserving existing strengths** while adding competitive advantages
-
-    3. Maintain solution integrity:
-       - DON'T create entirely new solutions
-       - DON'T remove core features or change the fundamental value proposition
-       - DO add, refine, and sharpen based on competitive context
-       - DO update positioning to reflect discovered market opportunities
-       - DO ensure each enhancement is traceable to a specific competitive insight
-
-    **Quality Standards:**
-    - Each solution should gain 2-3 NEW differentiation factors derived from competitive gaps
-    - Updated features should directly address specific market gaps identified
-    - Value proposition should be sharpened (not replaced) to highlight competitive advantages
-    - Pricing strategy should incorporate competitive pricing insights
-    - All enhancements should be evidence-based (tied to specific competitive findings)
+    **QUALITY TARGETS:**
+    - 2-3 NEW differentiation factors per solution from competitive gaps
+    - Features directly address identified market gaps
+    - Value proposition sharpened (not replaced) for competitive advantage
+    - Evidence-based enhancements tied to specific competitive findings
 
   expected_output: >
     IdeaGenerationResult Pydantic model with ENHANCED solutions:
 
     **solution_ideas** (List[SolutionIdea]): Each solution enhanced with:
-    - solution_name: UNCHANGED (original name preserved)
+    - solution_name: **MUST BE EXACT MATCH** to original input name (e.g., "Unpakt" → "Unpakt", NOT "MoveGuard")
     - description: PRESERVED (core description intact, may be slightly enhanced)
     - value_proposition: REFINED to sharpen competitive positioning
     - pain_points_addressed: UNCHANGED (original pain points preserved)
@@ -1209,782 +1032,199 @@ analyze_competitive_landscape:
 
 # SEOStrategyCrew Tasks
 
-analyze_keyword_opportunities:
+expand_keywords_conceptually:
   description: >
-    Perform complete keyword research workflow FOR THE SELECTED SOLUTION: generate seed keywords
-    specifically for this solution, expand using DataForSEO, analyze results, and create tiered
-    opportunity structure (Tier 1-4) prioritizing quick wins while building toward long-term authority.
-
-
-    **Search Strategy for Intent-Based Keyword Mining:**
-
-    Your knowledge sources contain ALL user quotes from pain point discussions. Query them to extract
-    REAL SEARCH INTENT patterns that users would type into Google/search engines:
-
-    **Problem Discovery Intent:**
-    - Query: pain point titles + "how to", "why", "can't", "struggling", "difficult", "frustrated"
-    - Look for: Question patterns, problem descriptions, emotional language
-    - Extract: Actual phrases users would search when experiencing the problem
-
-    **Solution-Seeking Intent:**
-    - Query: "looking for", "need a", "any tool", "software that", "best way to", "how can I"
-    - Look for: Users asking for recommendations, alternatives, or solutions
-    - Extract: Capability searches (e.g., "tool to X", "software for Y")
-
-    **Competitive Intelligence:**
-    - Query: competitor names from competitive_context, "using", "tried", "switched from", "vs"
-    - Look for: Users mentioning tools they currently use or tried
-    - Extract: Actual competitor names for alternative keywords
-
-    **Feature/Capability Focus:**
-    - Query: feature names, "automate", "track", "manage", "monitor", "analyze"
-    - Look for: Specific capabilities users want or lack in current tools
-    - Extract: Feature-focused searches (e.g., "automated X", "bulk Y", "real-time Z")
-
-    **Long-tail Problem Patterns:**
-    - Query: pain point + persona/context from quotes (e.g., "for agencies", "with Gmail", "on Mac")
-    - Look for: Very specific problem variations with context
-    - Extract: Ultra-specific searches (e.g., "fix X for Y", "X when Z")
-
-    **CRITICAL: Every seed keyword should be something a user would ACTUALLY TYPE into a search engine
-    when they have the pain point but DON'T YET KNOW your solution exists.**
-
-
-    **Niche:** {niche}
-
-    **SELECTED SOLUTION TO FOCUS ON:**
-
-    **Solution Name:** {selected_solution_name}
-    **Value Proposition:** {selected_solution_value_prop}
-    **Target Personas:** {selected_solution_personas}
-    **Core Features:** {selected_solution_features}
-    **Pain Points Addressed:** {selected_solution_pain_points}
-
-    **Why This Solution Was Selected:**
-    {selection_rationale}
-
-    **Pain Points Context:**
-    {pain_points_context}
-
-    **Competitive Context for This Solution:**
-    {competitive_context}
-
-    **Your Complete Workflow:**
-
-    **STEP 1: Generate SHORT Seed Keywords (Core Topics)**
-
-    Generate 50-80 SHORT seed keywords (1-4 words) that represent CORE TOPICS related to the solution.
-    More seeds = better expansion coverage. These seeds will be fed to DataForSEO to expand into 400-800 longer keyword variations.
-
-    **CRITICAL CONCEPT: Seed keywords are SHORT root terms, NOT long search queries.**
-
-    **What Seeds Are:**
-    - Short core topics: 1-4 words typically
-    - Root terms for expansion: "tax residency", "visa processing", "expat healthcare"
-    - Input for keyword tools: DataForSEO expands these into long-tail variations
-
-    **What Seeds Are NOT:**
-    - NOT long phrases: ❌ "how to stop feeling homesick after moving abroad"
-    - NOT full questions: ❌ "why am I so lonely after moving to another country"
-    - NOT conversational: ❌ "struggling with loneliness after moving overseas"
-
-    **TARGET: 50-80 short seed keywords (DataForSEO will expand to 400-800 keywords)**
-    **If expansion yields < 300 keywords, generate additional seeds and expand again**
-
-    **Seed Keyword Categories (50-80 total, OR 40-65 if no geographic):**
-
-    1. **Core Problem Seeds (12-15):** Short problem topics
-       - Pattern: [problem topic] OR [problem area]
-       - Length: 1-3 words
-       - Examples: "tax residency", "visa delays", "healthcare costs", "homesickness", "language barrier"
-       - Extract from pain points: Look for the CORE TOPIC, not the full complaint
-       - User says "struggling with prolonged family separation due to visa delays" → Seed: "visa delays"
-       - User says "frustrated with double taxation" → Seed: "double taxation"
-       - Generate ONE short seed per major pain point (12-15 pain points → 12-15 seeds)
-       - Include synonyms/variations: "visa delays" + "visa processing" + "visa backlog"
-
-    2. **Solution Category Seeds (12-15):** Short solution types
-       - Pattern: [solution type] OR [capability type]
-       - Length: 1-3 words
-       - Examples: "tax calculator", "relocation planner", "expat community", "visa tracker", "tax software"
-       - Focus on GENERAL solution types, not specific tools
-       - Extract from solution features: "day counter" → Seed: "day counter"
-       - Core capabilities: "residency tracking", "tax compliance", "document sharing"
-       - Generate seeds for 12-15 core capabilities/solution types
-       - Include variations: "tax calculator" + "tax software" + "tax tool"
-
-    3. **Competitor Brand Seeds (8-12):** Actual competitor names ONLY
-       - Pattern: [competitor name]
-       - Length: 1-2 words (brand names)
-       - Examples: "TurboTax", "Xero", "QuickBooks" (for tax software)
-       - **ONLY use actual competitor names from competitive_context**
-       - If no competitors in competitive_context, SKIP this category entirely
-       - Do NOT invent competitors or use generic terms
-       - Just the brand name as seed (DataForSEO will expand to "X alternative", "X vs Y", etc.)
-       - Include all competitors from competitive_context (8-12 if available)
-
-    4. **Feature/Capability Seeds (10-15):** Core feature keywords
-       - Pattern: [feature name] OR [capability term]
-       - Length: 1-3 words
-       - Examples: "email tracking", "residency calculator", "tax estimation", "document upload", "adviser matching"
-       - Extract from {selected_solution_features}
-       - Just the feature name, not full descriptions
-       - "Automated day counting for tax residency" → Seed: "day counting"
-       - "Platform for vetted advisers" → Seed: "tax adviser"
-       - Generate 10-15 feature seeds with variations
-
-    5. **Target Persona Seeds (5-8):** User types or roles
-       - Pattern: [persona/role]
-       - Length: 1-2 words
-       - Examples: "expats", "digital nomads", "relocating employees", "international movers", "assignees"
-       - Extract from {selected_solution_personas}
-       - Just the persona label
-       - "Professionals relocating for work" → Seed: "relocating professionals"
-       - Include persona variations and synonyms
-
-    6. **Geographic Seeds (5-15):** Location-specific terms
-       - **FIRST: Assess if niche has geographic relevance:**
-         * Healthcare/medical → YES
-         * Moving/relocation → YES
-         * Legal/compliance → YES
-         * Financial/tax → YES
-         * Pure software/tech → NO (skip this category)
-
-       - **IF RELEVANT:**
-         * Pattern: [location name] OR [location + core topic]
-         * Length: 1-3 words
-         * Examples: "usa taxes", "canada healthcare", "portugal visa", "uk relocation", "germany tax"
-         * Major markets: USA, UK, Canada, Australia, Germany, France, Spain, Netherlands, Singapore
-         * Generate location + topic combinations: "usa tax residency", "canada relocation", "uk visa"
-         * 5-15 seeds covering major markets with topic combinations
-
-       - **IF NOT RELEVANT, SKIP and note:** "Geographic keywords not applicable - adjust total to 40-65 seeds"
-
-    **CRITICAL RULES for Short Seed Generation:**
-
-    - **KEEP IT SHORT:** 1-4 words maximum per seed
-    - **NO QUESTIONS:** No "how to", "why", "what" prefixes
-    - **NO MODIFIERS:** No "best", "top", "cheap" (DataForSEO adds these)
-    - **CORE TOPICS ONLY:** Root terms that can be expanded
-    - **USE CONCRETE TERMS:** No placeholders like [problem] or [tool]
-    - **LEVERAGE KNOWLEDGE SOURCES:** Query pain point titles for core topics
-    - Example GOOD seeds: "tax residency", "visa processing", "Mailchimp" (competitor)
-    - Example BAD seeds: "how to track emails", "best email software", "alternative to [tool]"
-
-
-    **CRITICAL DATA ACCURACY RULES FOR COMPETITOR SEEDS:**
-
-    - ONLY use competitor names if competitive_context contains actual competitor names
-    - If competitive_context is empty or shows "[NO COMPETITIVE DATA AVAILABLE]", SKIP competitor seeds entirely
-    - DO NOT invent competitor names or use generic terms like "leading tool"
-    - Only include specific brand names that appear in competitive_context
-    - If only 1-2 competitors found, generate 1-2 competitor seeds (not 5-8)
-    - Acceptable: Generating 30-40 total seeds if competitor category must be skipped
-
-
-    **CRITICAL ACCURACY RULES - NO PLACEHOLDERS IN SEEDS:**
-
-    - **NEVER use placeholder syntax**: [drug], [country], [tool], [problem]
-    - **ALWAYS use concrete terms**: "insulin", "canada", "notion", "tax residency"
-    - **NO template variables**: No curly braces, angle brackets, or double braces
-
-    **Examples of INVALID seeds:**
-    ❌ "[medication] costs" - placeholder syntax
-    ❌ "best [tool] for [task]" - placeholders
-    ❌ "how to fix [problem]" - too long AND placeholder
-    ❌ "struggling with [issue]" - conversational AND placeholder
-
-    **Examples of VALID seeds:**
-    ✅ "insulin costs" - short, concrete, 2 words
-    ✅ "tax residency" - short, concrete, 2 words
-    ✅ "visa delays" - short, concrete, 2 words
-    ✅ "TurboTax" - competitor brand name, 1 word
-    ✅ "expat healthcare" - short, concrete, 2 words
-
-    **If generating multiple seeds in same category:**
-    - Use DIFFERENT concrete terms, not placeholders
-    - Core problems: "visa delays", "tax residency", "healthcare costs", "homesickness"
-    - Geographic: "usa taxes", "canada visa", "uk relocation", "germany healthcare"
-    - Features: "tax calculator", "day counter", "document upload", "adviser matching"
-
-
-    **STEP 2: Expand Seeds with DataForSEO Tool (MINIMUM 2 ROUNDS REQUIRED)**
-
-    **CRITICAL REQUIREMENT: You MUST run AT LEAST 2 rounds of keyword expansion to achieve comprehensive coverage.**
-
-    **How DataForSEO Expansion Works:**
-    - You provide SHORT seed keywords (1-4 words): "project management", "team collaboration", "Asana"
-    - DataForSEO returns EXPANDED variations including long-tail keywords
-    - Example: "project management" → expands to "project management software", "best project management tools", "project management app", "free project management", etc.
-    - Each short seed typically expands to 8-15 keyword variations
-
-    **MANDATORY TWO-ROUND EXPANSION WORKFLOW:**
-
-    **Round 1 (Core Expansion - REQUIRED):**
-    - Generate 30-45 core seed keywords covering:
-      * Core problems (12-15 seeds)
-      * Solution categories (10-12 seeds)
-      * Competitor brands (5-10 seeds, if available)
-      * Top features (5-8 seeds)
-    - Call "Expand Keywords with DataForSEO" tool with these 30-45 seeds
-    - Format: Comma-separated list
-    - Example: "[core problem 1], [core problem 2], [solution type 1], [solution type 2], [competitor 1], [competitor 2], [feature 1], [feature 2]"
-    - Expected output: 200-400 expanded keywords
-    - **Save the expanded_keywords_count from tool output**
-
-    **Round 2 (Diversification - REQUIRED):**
-    - Generate 25-40 DIFFERENT seed keywords using alternative angles:
-      * Problem synonyms and variations
-      * Feature-benefit combinations
-      * Persona-specific terms
-      * Geographic variations (if relevant to niche)
-      * Long-tail problem seeds
-    - Call "Expand Keywords with DataForSEO" tool AGAIN with these 25-40 new seeds
-    - Tool automatically deduplicates with Round 1 results
-    - Expected output: 150-350 additional keywords
-    - **Total after Round 2: 350-750 keywords**
-
-    **Round 3+ (Optional - If Needed for Coverage):**
-    - If combined total < 300 keywords after Round 2:
-      * Generate 20-30 additional seeds from unexplored angles
-      * Call DataForSEO tool again
-      * Continue until reaching 300+ total keywords
-    - If combined total > 750 keywords after Round 2:
-      * Stop expansion (excellent coverage achieved)
-
-    **Quality Guidelines:**
-    - Round 1: 30-45 seeds → 200-400 keywords
-    - Round 2: 25-40 seeds → 150-350 keywords
-    - **Total target: 350-750 expanded keywords (minimum 300)**
-    - Each seed expands 8-15x on average
-    - Multiple rounds discover diverse keyword variations
-    - DataForSEO finds long-tail variations you wouldn't manually generate
-
-    **Example Two-Round Workflow:**
-
-    **Round 1 Input (40 seeds):**
-    Core problems, main solution types, top competitors, primary features
-    **Round 1 Output:** 320 expanded keywords ✓
-
-    **Round 2 Input (35 seeds):**
-    Problem variations, alternative phrasings, persona-specific terms, feature combinations, geographic terms (if relevant)
-    **Round 2 Output:** 280 additional keywords (600 total) ✓ Excellent coverage
-
-    **CRITICAL TRACKING:**
-    - After Round 1: Note expanded_keywords_count (e.g., "Round 1: 320 keywords")
-    - After Round 2: Note expanded_keywords_count (e.g., "Round 2: +280 keywords = 600 total")
-    - Record cumulative total_monthly_search_volume across all rounds
-    - **You MUST run at least 2 rounds - single round is insufficient for comprehensive keyword discovery**
-    - The tool automatically deduplicates across rounds
-
-    **STEP 3: Analyze Expanded Keywords**
-
-    **CRITICAL: Check how many keywords DataForSEO returned with valid search_volume.**
-
-    If DataForSEO returned **< 10 keywords with valid search_volume** (not null):
-    - **STOP - Return empty tiers with explanation**
-    - Set `total_keywords_analyzed` to actual count from DataForSEO (e.g., 0, 3, 7)
-    - Set `total_monthly_volume` to actual sum from DataForSEO
-    - Set all tier lists to EMPTY: `tier_1_keywords: []`, `tier_2_keywords: []`, etc.
-    - Set `key_findings`: ["Insufficient keyword data - DataForSEO returned only X keywords with search volume", "Recommend generating different seed keywords", "Consider alternative solution angles or niche pivots"]
-    - Set `tier_1_quick_win_strategy`: "Insufficient keyword data (only X keywords found). Generate 30-50 additional seeds and re-run expansion."
-    - **DO NOT invent keywords to fill tiers**
-
-    If DataForSEO returned **10+ keywords:**
-    - Proceed to analyze: volume vs competition sweet spots, geographic variations, long-tail opportunities
-
-    **ANTI-HALLUCINATION RULES:**
-
-    **NEVER:**
-    ❌ Invent keywords not in DataForSEO output
-    ❌ Use keywords where DataForSEO returned search_volume: null
-    ❌ Invent search_volume, competition, or cpc metrics
-    ❌ Create keywords from feature names without DataForSEO validation
-
-    **ALWAYS:**
-    ✅ Use ONLY keywords from DataForSEO tool output with valid search_volume
-    ✅ Use EXACT numbers from tool output (don't round or estimate)
-    ✅ If DataForSEO returned 0 keywords, return empty tiers
-    ✅ If DataForSEO returned 7 keywords, your tiers can only use those 7
-
-    **CRITICAL: Field Mapping from DataForSEO Output**
-
-    DataForSEO returns TWO volume-related fields:
-    1. `search_volume`: Single integer (e.g., 210) - average monthly searches **← USE THIS**
-    2. `monthly_searches`: Array of 12 monthly objects with historical data **← DO NOT USE THIS**
-
-    **When populating TieredKeyword search_volume field:**
-    ✅ Set `search_volume` = EXACT value from DataForSEO `search_volume` field (single integer)
-    ✅ OPTIONALLY set `monthly_searches` = array from DataForSEO for historical reference only
-    ❌ DO NOT sum values from `monthly_searches` array for search_volume
-    ❌ DO NOT average values from `monthly_searches` array for search_volume
-    ❌ DO NOT pick peak/max values from `monthly_searches` array for search_volume
-
-    **Example:**
-    If DataForSEO returns:
-    ```json
-    {
-      "keyword": "international moving checklist",
-      "search_volume": 210,
-      "monthly_searches": [
-        {"year": 2024, "month": 1, "search_volume": 600},
-        {"year": 2024, "month": 2, "search_volume": 550},
-        ...12 months total
-      ]
-    }
-    ```
-    Then in TieredKeyword:
-    - `search_volume = 210` (NOT 7200, NOT 600, NOT any calculation)
-    - `monthly_searches = [...]` (optional, for historical reference)
-
-    **When populating TieredKeyword competition field:**
-
-    DataForSEO returns TWO competition-related fields:
-    1. `competition`: String (e.g., "LOW", "MEDIUM", "HIGH") **← USE THIS**
-    2. `competition_index`: Integer 0-100 (e.g., 1, 23, 75) **← USE THIS**
-
-    **Format as: "[competition] ([competition_index])"**
-
-    ✅ CORRECT formatting examples:
-    - DataForSEO: `competition: "LOW", competition_index: 1` → TieredKeyword: `competition: "LOW (1)"`
-    - DataForSEO: `competition: "LOW", competition_index: 23` → TieredKeyword: `competition: "LOW (23)"`
-    - DataForSEO: `competition: "MEDIUM", competition_index: 55` → TieredKeyword: `competition: "MEDIUM (55)"`
-    - DataForSEO: `competition: "HIGH", competition_index: 87` → TieredKeyword: `competition: "HIGH (87)"`
-
-    ❌ NEVER:
-    - Invent competition levels (DataForSEO says "LOW (1)" but you write "MEDIUM (55)")
-    - Mix up competition_index values between keywords
-    - Use competition_index from a different keyword
-    - Guess or estimate competition values
-
-    **Example from actual API response:**
-    ```json
-    {
-      "keyword": "homesickness",
-      "search_volume": 90500,
-      "competition": "LOW",
-      "competition_index": 1
-    }
-    ```
-    **MUST become in TieredKeyword:**
-    - `keyword: "homesickness"`
-    - `search_volume: 90500` (EXACT value, not 42000)
-    - `competition: "LOW (1)"` (formatted from competition + competition_index, not "LOW (23)")
-
-    **STEP 4: Create Tiered Structure (ONLY if DataForSEO returned 10+ keywords)**
-
-    **Tier 1 - Immediate Implementation (0-3 months):**
-    - 1-5 keywords with HIGH volume + LOW competition **FROM DATAFORSEO OUTPUT ONLY**
-    - Use EXACT search_volume from DataForSEO (not invented)
-    - Calculate opportunity scores using REAL metrics
-    - Quick wins that can generate traffic fast
-    - Include clear targeting strategy for each
-    - **If DataForSEO returned 10-20 keywords total, you may only find 1-2 Tier 1 opportunities - that's acceptable**
-
-    **Tier 2 - High Value Keywords (3-6 months):**
-    - 3-5 keywords with MEDIUM competition but strong strategic value
-    - May require more content depth or authority building
-    - Balance volume with achievability
-
-    **Tier 3 - Geographic/Niche Opportunities:**
-    - Group keywords by geographic markets (if applicable)
-    - Example: "Spanish-Speaking Markets", "UK Markets"
-    - Include total volume, competition level, and strategy notes
-    - Identify underserved regional opportunities
-
-    **Tier 4 - Category/Specialized Keywords:**
-    - Group keywords by document type, service category, or specialization
-    - Example: "Education Documents", "Immigration Services"
-    - Total volume per category
-    - Strategy recommendations for each category
-
-    **STEP 5: Generate Key Findings and Summary**
-
-    - 3-5 bullet points summarizing the most important SEO insights
-    - Example: "Local search dominates - 'near me' searches account for X monthly searches"
-    - Example: "Low-competition niche identified in [specific area]"
-    - CRITICAL: Include accurate count of total keywords analyzed from DataForSEO tool results
-    - CRITICAL: Include accurate total monthly search volume from DataForSEO tool results
-
-    **QUALITY CHECKPOINT - Keyword Coverage Assessment:**
-    - **If total keyword count < 150:** Note in your summary: "Limited keyword data available (only X keywords analyzed) - recommend additional research in specific areas: [list 2-3 specific areas where more seeds could be generated]"
-    - **If total keyword count 150-300:** This is acceptable coverage - no additional note needed
-    - **If total keyword count > 300:** This is excellent comprehensive coverage - you may note: "Comprehensive keyword coverage achieved (X keywords analyzed across Y categories)"
-    - **Document your expansion process:** Note how many DataForSEO tool calls you made (e.g., "Generated through 2 expansion rounds with 85 total seed keywords")
-
-    **What to Analyze:**
-    - Search volume patterns (where is the demand?)
-    - Competition gaps (where can we win?)
-    - Geographic opportunities (underserved markets?)
-    - Category patterns (document types, service areas?)
-    - Quick wins vs long-term plays
-
-    **Output Requirements:**
-    - **seed_keywords_generated**: The COMPLETE list of 50-80 short seed keywords you generated in STEP 1 (before expansion). Format as a simple list of strings: ["tax residency", "visa delays", "TurboTax", ...]. Include ALL seeds you generated - this will be passed to the final SEO report.
-    - **total_keywords_analyzed**: EXACT count from DataForSEO tool results (NOT estimated)
-    - **total_monthly_volume**: SUM of all search volumes from DataForSEO tool results
-    - Tier 1: 3-5 keywords with opportunity scores, competition assessment, and strategy
-    - Tier 2: 3-5 keywords (if data supports it)
-    - Tier 3: Geographic keyword groups (if applicable)
-    - Tier 4: Category keyword groups (if applicable)
-    - Key findings: 3-5 bullet points
-    - Quick win strategy narrative (1-2 paragraphs)
+    Phase 9.5a: Conceptual Keyword Expansion - Generate 100-200 strategic keywords
+    organized by topic clusters WITHOUT using DataForSEO yet. This is pure strategic
+    thinking to identify what keywords SHOULD exist before validating with real data.
+
+    **Context:**
+    - Niche: {niche}
+    - Selected Solution: {selected_solution_name}
+    - Value Proposition: {selected_solution_value_prop}
+    - Pain Points: {selected_solution_pain_points}
+    - Target Personas: {selected_solution_personas}
+    - Core Features: {selected_solution_features}
+    - Competitive Context: {competitive_context}
+
+    **Your Task: Strategic Keyword Expansion**
+
+    Think like a searcher experiencing the pain points in this niche. What would they type
+    into Google at different stages of their journey? Generate keywords covering:
+
+    **1. Identify 5-8 Topic Clusters**
+
+    Group keywords by major themes (e.g., "Visa Application Process", "Cost Estimation",
+    "Document Preparation", "Timeline Planning"). Each cluster should represent a distinct
+    user need or journey stage.
+
+    For each cluster, specify:
+    - **name**: Topic cluster name
+    - **description**: Brief description of this topic area
+    - **strategic_importance**: 1-5 (1=critical for SEO, 5=nice-to-have)
+
+    **2. Generate 100-200 Conceptual Keywords**
+
+    For each keyword, provide:
+    - **keyword**: The search phrase (1-6 words, concrete and searchable)
+    - **cluster**: Which topic cluster it belongs to
+    - **priority**: 1-5 (1=highest strategic priority, 5=lowest)
+    - **rationale**: Why this keyword matters (1 sentence)
+
+    **Keyword Categories & Distribution:**
+
+    | Category | Target % | What to Include | Examples | Extract From |
+    |----------|----------|-----------------|----------|--------------|
+    | Problem Discovery | 30% | First encounter searches | "visa application complicated" | Pain points |
+    | Solution Seeking | 25% | Looking for solutions | "visa application service" | Value prop |
+    | Feature/Capability | 20% | Specific functionalities | "track visa status" | Core features |
+    | Competitor/Alternative | 15% | Branded searches | Real competitor names ONLY | competitive_context |
+    | Geographic/Demographic | 10% | Location/user-specific | "US visa application" | Personas |
+
+    **Quality Rules:**
+    ✓ Specific, not generic ("portugal tax residency" NOT "tax problems")
+    ✓ Searchable phrases (what people TYPE, not TALK)
+    ✓ Mix head (2-word) and long-tail (5-6 word)
+    ✓ Cover funnel: Awareness → Consideration → Decision
+    ✓ Programmatic SEO templates for directories/aggregators
+    ✗ NO placeholders - concrete terms only
+
+    **Cluster Distribution:**
+    - All 5-8 clusters: ≥10 keywords each
+    - High-importance (1-2): 25-40 keywords
+    - Lower-importance (4-5): 8-15 keywords
+
+    **Search Strategy:**
+    Use knowledge sources to extract real user language patterns:
+    - Query pain point quotes for actual search phrases users mentioned
+    - Extract competitor names from competitive landscape for branded searches
+    - Find feature-specific language in solution descriptions
 
   expected_output: >
-    Structured keyword analysis with:
+    ExpandedKeywordList model with:
 
-    **Tier 1 Keywords** (3-5 keywords):
-    - keyword, search_volume, monthly_searches (optional), competition (e.g., "LOW (30)"), opportunity_score, strategy, intent
+    **keywords**: List[ConceptualKeyword] (100-200 keywords)
+    - keyword: str (the search phrase)
+    - cluster: str (topic cluster name)
+    - priority: int (1-5, strategic importance)
+    - rationale: Optional[str] (why this keyword matters)
 
-    **Tier 2 Keywords** (3-5 keywords, if applicable):
-    - Same structure as Tier 1
+    **topic_clusters**: List[TopicCluster] (5-8 clusters)
+    - name: str (cluster name)
+    - description: str (what this cluster covers)
+    - strategic_importance: int (1-5, SEO priority)
 
-    **Tier 3 Geographic Groups** (if applicable):
-    - region_name, total_volume, competition_level, keywords list (with search_volume), strategy_notes
+    **expansion_rationale**: str (2-3 sentences explaining overall expansion strategy)
 
-    **Tier 4 Category Groups** (if applicable):
-    - category_name, total_volume, keywords list (with search_volume), strategy_recommendation
+    This structured output will be used for iterative DataForSEO enrichment to discover
+    actual search volumes and related keywords.
 
-    **Key Findings**: 3-5 bullet points
-
-    **Tier 1 Quick Win Strategy**: 1-2 paragraph narrative explaining the quick win approach
-
-    Format: Well-structured markdown with clear sections and tables where appropriate.
-
-develop_content_strategy:
+create_strategy_from_enriched_keywords:
   description: >
-    Transform keyword opportunities into a comprehensive content strategy with topic
-    clusters, content recommendations, and competitive positioning.
+    Phase 9.5c: Create comprehensive SEO strategy using PRE-ENRICHED keywords from
+    Phase 9.5b iterative DataForSEO enrichment. You receive keywords that already
+    have real search volumes and competition data.
 
+    **Context:**
+    - Niche: {niche}
+    - Selected Solution: {selected_solution_name}
+    - Enriched Keywords Count: {enriched_keywords_count}
+    - Topic Clusters from Phase 9.5a: {topic_clusters_summary}
 
-    **Search Strategy for Content Strategy Development:**
+    **IMPORTANT: Keywords Are Already Enriched**
 
-    Use knowledge sources to align content recommendations with actual user needs and questions:
+    You DO NOT need to:
+    - Generate seed keywords (already done in Phase 9.5a)
+    - Call DataForSEO tools (already done in Phase 9.5b)
+    - Expand keywords (already done programmatically)
 
-    - Search for user questions: "how to", "what is", "how do I", "why", "when should"
-    - Search for content format preferences: "guide", "tutorial", "example", "template", "checklist"
-    - Search for comparison intent: "vs", "versus", "compared to", "better than", "difference between"
-    - Search for decision-stage signals: "best", "top", "review", "recommendation", "which"
-    - Search for specific problems to address: "issue", "problem", "trouble", "error", "mistake"
-    - Query pain point titles to understand topic priorities and urgency
+    You MUST:
+    - Analyze the provided enriched keywords with REAL search volumes & competition
+    - Create tiered opportunity structure based on actual data
+    - Develop content strategy aligned with topic clusters
+    - Create implementation roadmap with phased rollout
 
-    This grounds your content clusters and recommendations in actual user search behavior and needs.
+    **Enriched Keywords Available:**
 
+    You have access to {enriched_keywords_count} keywords with the following data:
+    - **keyword**: The search phrase (string)
+    - **search_volume**: Average monthly searches (integer, real DataForSEO data)
+    - **competition**: Competition level (string, format: "LOW (23)", "MEDIUM (54)", etc.)
+    - **monthly_searches**: 12-month search volume trend (optional array)
 
-    **Context from Previous Task:**
-    You have access to the tiered keyword analysis including Tier 1-4 keywords,
-    geographic groups, category groups, and key findings.
+    These keywords are organized across the following topic clusters from Phase 9.5a:
+    {topic_clusters_summary}
 
-    **Additional Context:**
-    - Competitive Summary: {competitive_summary}
-    - Solutions Summary: {solutions_summary}
-    - Recommended Solution: {recommended_solution}
+    **Your Task: Data-Driven SEO Strategy**
 
-    **Your Task:**
+    **STEP 1: Tier Assignment (Data-Driven)** - Apply your 3-Phase Compound SEO Roadmap:
 
-    1. **Create Topic Clusters** (3-5 clusters):
-       - Identify content pillars that group related keywords
-       - Each cluster should have:
-         * Cluster name (e.g., "Email Deliverability Optimization")
-         * Primary keyword
-         * 5-15 supporting keywords
-         * Total monthly volume for cluster
-         * Content recommendation (2-4 sentences on what to create)
-         * Estimated traffic potential (e.g., "800-1200 monthly visits")
-         * Priority (1=highest, 5=lowest)
+    | Tier | Timeline | Selection Criteria | Count | Strategy |
+    |------|----------|-------------------|-------|----------|
+    | **Tier 1** | 0-3 months | HIGH vol (>2000) + LOW comp (<30)<br>OR MEDIUM vol (500-2000) + VERY LOW comp (<15) | 3-5 | Quick wins for fast traction |
+    | **Tier 2** | 3-6 months | HIGH vol + MEDIUM comp (30-60)<br>OR strong strategic alignment | 3-5 | Balance volume & competition |
+    | **Tier 3** | Geographic | Location-specific keywords by region | Groups | Regional expansion |
+    | **Tier 4** | Category | Category/type/document clusters | Groups | Programmatic SEO templates |
 
-    2. **Develop Comprehensive Content Strategy:**
+    Calculate opportunity_score: search_volume / competition_index for ranking prioritization.
 
-       **Include these numbered sections:**
+    **STEP 2: Topic Clustering & Content Strategy**
 
-       1. **Information-Intent Content** (educational/awareness):
-          - "How to..." guides
-          - "What is..." educational content
-          - Problem-solving resources
-          - Target: Top of funnel, awareness stage
+    Map keywords to content themes aligned with the topic clusters from Phase 9.5a.
+    For each cluster:
+    - Identify pillar content opportunity (high-volume core keyword)
+    - List supporting cluster keywords (related long-tail terms)
+    - Recommend content types (landing page, guide, comparison, FAQ)
+    - Estimate traffic potential (sum of keyword volumes)
 
-       2. **Service/Product Pages** (conversion-focused):
-          - Document type pages
-          - Service category pages
-          - Geographic landing pages
-          - Target: Bottom of funnel, ready to buy
+    **STEP 3: Content Calendar (First 90 Days)**
 
-       3. **Comparison & Decision Content**:
-          - Price comparison pages
-          - "Best [solution] for [use case]"
-          - Alternative comparisons
-          - Target: Middle of funnel, evaluation stage
+    Create prioritized content roadmap:
+    - Week 1-4: Tier 1 quick wins (3-5 pieces)
+    - Week 5-8: Tier 2 strategic content (3-5 pieces)
+    - Week 9-12: Topic cluster expansion (5-8 pieces)
 
-       Write 4-6 paragraphs with specific content recommendations and rationale.
+    For each content piece:
+    - Primary keyword target
+    - Content type and length
+    - Estimated organic traffic (based on search volume)
 
-    3. **Identify Competitive Positioning Opportunities:**
-       - What keyword gaps can we exploit?
-       - Where are competitors weak?
-       - What unique angles can we own?
-       - Which low-competition/high-value niches should we dominate?
+    **STEP 4: Implementation Roadmap**
 
-       Write 2-4 sections with specific examples. Format as markdown with headers.
+    | Phase | Timeline | Focus | Deliverables |
+    |-------|----------|-------|--------------|
+    | **Phase 1** | Month 1-3 | Foundation & Quick Wins | Tier 1 content, technical SEO basics, ranking tracking |
+    | **Phase 2** | Month 4-6 | Strategic Expansion | Tier 2 content, topic cluster hubs, internal linking |
+    | **Phase 3** | Month 7-12 | Scaling & Programmatic | Tiers 3-4 expansion, programmatic SEO, optimization |
 
-    **Output Requirements:**
-    - Topic clusters: 3-5 clusters with all required fields
-    - Content strategy: 4-6 paragraph markdown with numbered sections
-    - Competitive positioning: 2-4 sections with specific keyword gap examples
+    **STEP 5: Metrics & Success Criteria**
+
+    Define success metrics based on actual keyword data:
+    - Target organic traffic (sum of Tier 1 + Tier 2 volumes × estimated CTR)
+    - Ranking goals (position 1-3 for Tier 1, position 1-10 for Tier 2)
+    - Content production KPIs (pieces per month, word count targets)
+    - Timeline to first traffic, first conversion
+
+    **CRITICAL: Use Real Data Only**
+
+    All recommendations must reference actual search volumes and competition indices
+    from the enriched keywords. Do not estimate or hallucinate metrics - use the
+    provided data or explicitly state "data not available" if missing.
 
   expected_output: >
-    Comprehensive content strategy including:
+    Complete SEOStrategyReport Pydantic model with:
 
-    **Topic Clusters** (3-5 clusters):
-    - cluster_name
-    - primary_keyword
-    - supporting_keywords (5-15)
-    - total_monthly_volume
-    - content_recommendation (2-4 sentences)
-    - estimated_traffic_potential
-    - priority (1-5)
+    **tier_1_keywords**: List[TieredKeyword] (3-5 quick wins with real volumes)
+    **tier_2_keywords**: List[TieredKeyword] (3-5 strategic keywords)
+    **tier_3_geographic_groups**: List[GeographicKeywordGroup] (if applicable)
+    **tier_4_category_groups**: List[CategoryKeywordGroup] (if applicable)
+    **topic_clusters**: List[TopicClusterWithKeywords] (5-8 content themes)
+    **content_recommendations**: List[ContentRecommendation] (15-25 content pieces)
+    **implementation_phases**: List[ImplementationPhase] (3 phases with timelines)
+    **competitive_positioning**: str (how to differentiate in search results)
+    **success_metrics**: str (target traffic, rankings, timeline based on real data)
+    **key_insights**: List[str] (3-5 insights from keyword analysis)
+    **total_keywords_analyzed**: int (total enriched keywords received)
+    **seed_keywords_generated**: List[str] (for backward compatibility, can be empty or subset)
 
-    **Content Strategy** (markdown, 4-6 paragraphs with numbered sections):
-    1. Information-Intent Content
-    2. Service/Product Pages
-    3. Comparison & Decision Content
-
-    **Competitive Positioning** (markdown, 2-4 sections):
-    - Keyword gaps to exploit
-    - Low-competition/high-value niches
-    - Unique positioning angles
-
-    Format: Professional markdown with clear sections, bullet points, and specific recommendations.
-
-create_implementation_roadmap:
-  description: >
-    Create the final comprehensive SEO strategy report with technical recommendations,
-    implementation roadmap, metrics, and actionable next steps.
-
-    **Context from Previous Tasks:**
-    You have access to:
-    - Tiered keyword analysis (Tier 1-4)
-    - Topic clusters
-    - Content strategy
-    - Competitive positioning
-
-    **Your Task:**
-
-    1. **Technical SEO Recommendations** (markdown, 5-7 sections):
-
-       **a) Keyword-Driven Site Architecture:**
-
-       Create a complete site structure based on your keyword tiers and clusters:
-
-       - **URL Hierarchy Diagram**: ASCII/markdown diagram showing how keyword clusters map to sections
-         Example structure:
-         ```
-         Homepage
-         ├── /tools/ (Tier 1 problem-solving keywords: 45k volume)
-         │   ├── /tools/substantial-presence-calculator/ → "substantial presence test" (3.2k/mo)
-         │   ├── /tools/tax-residency-checker/ → "tax residency calculator" (1.8k/mo)
-         │   └── /tools/capital-gains-estimator/ → "capital gains tax calculator" (2.1k/mo)
-         ├── /services/ (Commercial intent keywords: 28k volume)
-         │   ├── /services/one-off-review/ → "tax compliance review service" (1.2k/mo)
-         │   └── /services/per-relocation/ → "relocation tax planning" (890/mo)
-         ├── /country/ (Geographic keywords from Tier 3: 67k volume)
-         │   ├── /country/uk/ → "uk tax obligations" (8.5k/mo)
-         │   │   ├── /country/uk/capital-gains/ → "uk capital gains tax non-resident" (2.1k/mo)
-         │   │   └── /country/uk/residency/ → "uk tax residency rules" (1.7k/mo)
-         │   └── /country/spain/ → similar structure for Spanish keywords
-         └── /vs/ (Competitor keywords: 15k volume)
-             ├── /vs/turbotax-alternative/ → "turbotax alternative" (4.2k/mo)
-             └── /vs/taxact-vs-hrblock/ → comparison keywords
-         ```
-
-       - **Section-to-Keyword Mapping**: Explain how each top-level section addresses specific keyword clusters
-         * /tools/ → Tier 1 quick wins (problem-solving intent)
-         * /services/ → Commercial keywords (transactional intent)
-         * /country/ → Geographic keywords from Tier 3 (informational + local intent)
-         * /vs/ → Competitor alternative keywords (comparison intent)
-
-       - **Total Page Count**: Calculate pages needed from keyword opportunities
-         Example: "12 country pages × 3-5 subtopics each = 36-60 country pages + 8 tool pages + 4 service pages = 48-72 total pages for MVP"
-
-       **b) Keyword-Based Page Type Inventory:**
-
-       Create a structured table of page types derived from keyword analysis:
-
-       | Page Type | Target Keywords | URL Pattern | Intent | Page Count | Priority | Schema |
-       |-----------|----------------|-------------|--------|-----------|----------|--------|
-       | Calculator Tools | Tier 1: "substantial presence test" (3.2k), "tax calculator" (2.1k) | /tools/<tool-name>/ | Problem-solving | 6-8 pages | P0 | HowTo, WebApplication |
-       | Geographic Guides | Tier 3: "uk tax obligations" (8.5k), "spain tax" (6.2k) | /country/<country>/ | Informational + Local | 12-15 pages | P0 | Article, FAQPage |
-       | Service Pages | Commercial: "tax review service" (1.2k), "compliance help" (890) | /services/<service>/ | Transactional | 3-5 pages | P0 | Service, Offer |
-       | Comparison Pages | Competitor: "turbotax alternative" (4.2k), "<comp1> vs <comp2>" | /vs/<comparison>/ | Comparison | 8-10 pages | P1 | Review, Product |
-
-       For each page type, specify:
-       - Target keyword cluster and example keywords with volumes
-       - URL pattern optimized for keywords
-       - Primary search intent (problem-solving, informational, transactional, comparison)
-       - Estimated page count based on keyword opportunities
-       - Launch priority (P0=Tier 1, P1=Tier 2, P2=Tier 3-4)
-       - Required schema markup types
-       - SEO optimization notes (title templates, H1 patterns, internal linking)
-
-       **c) URL Structure Patterns:**
-
-       Detailed URL patterns with SEO best practices:
-       - **Descriptive slugs**: Use target keywords in URLs (e.g., /tools/substantial-presence-test/ not /tools/spt/)
-       - **Shallow hierarchy**: Max 3 levels deep (/category/subcategory/page/)
-       - **Consistent patterns**: Same structure for similar content (all tools follow /tools/<keyword>/)
-       - **Hyphens not underscores**: tax-calculator not tax_calculator
-
-       Provide code examples where helpful.
-
-       **d) Schema Markup:**
-
-       Which schema types to implement based on keyword intent and page types:
-       - Problem-solving pages (calculator tools): HowTo, WebApplication, FAQPage
-       - Geographic pages: Article, FAQPage, LocalBusiness (if applicable)
-       - Service pages: Service, Offer, AggregateRating
-       - Comparison pages: Review, Product, Organization
-
-       Provide JSON-LD examples for key page types.
-
-       **e) Local SEO** (if geographic keywords present):
-
-       - Google Business Profile optimization for each target location
-       - Local schema markup (LocalBusiness, PostalAddress)
-       - Location-specific landing pages based on Tier 3 geographic keywords
-
-       **f) Mobile Optimization:**
-
-       - Core Web Vitals targets (LCP <2.5s, FID <100ms, CLS <0.1)
-       - Mobile-first indexing considerations
-       - Responsive design requirements
-
-       **g) Internal Linking Strategy:**
-
-       - Hub-and-spoke model linking keyword clusters
-       - Topic cluster connections (pillar pages → cluster pages)
-       - Strategic linking from high-authority pages to conversion pages
-
-    2. **Implementation Roadmap** (markdown, 3-4 phases):
-
-       **Phase 1: Quick Wins (Weeks 1-4)**
-       - Target: X monthly search volume
-       - Specific deliverables (e.g., "Create 5 core service pages for Tier 1 keywords")
-       - Technical setup tasks
-       - Success metrics
-
-       **Phase 2: [Phase Name] (Weeks 5-12)**
-       - Target: Additional X monthly search volume
-       - Specific deliverables
-       - Success metrics
-
-       **Phase 3: [Phase Name] (Weeks 13-20)**
-       - Continue with additional phases as needed
-
-       **Phase 4: Scale & Optimize (Weeks 21+)**
-       - Ongoing optimization and scaling
-
-    3. **Key Metrics to Track** (4-6 KPIs):
-
-       **SEO Performance:**
-       - Organic traffic to money pages
-       - Ranking positions for Tier 1-4 keywords
-       - Click-through rates from SERPs
-
-       **Business Metrics:**
-       - Conversion rate by traffic source
-       - Sign-ups/leads from organic traffic
-       - Revenue attribution to SEO
-
-    4. **Risk Mitigation** (optional but recommended, 2-4 challenges):
-
-       **Potential Challenges:**
-       1. Local competition - established players with strong local SEO
-          - **Mitigation:** Focus on multi-city presence and transparency angle
-
-       2. [Additional challenges and mitigations]
-
-    5. **Budget Allocation** (optional, Option A/B/C format):
-
-       **Option A: Geographic Focus**
-       - Focus area, estimated cost, expected ROI
-
-       **Option B: Category Focus**
-       - Focus area, estimated cost, expected ROI
-
-       **Option C: Balanced Approach (Recommended)**
-       - Combines best of both, estimated cost
-
-    6. **Long-Term Strategy** (3 sections):
-
-       **Year 1: Foundation**
-       - Capture X% of identified opportunities
-       - Establish authority in key markets
-
-       **Year 2: Expansion**
-       - Expand coverage, build content hub
-
-       **Year 3: Dominance**
-       - Own category, build brand recognition
-
-    7. **Conclusion:**
-
-       - **Bottom Line**: 1 paragraph summary of opportunity
-       - **Competitive Advantages**: 2-4 key advantages
-       - **Critical Success Factors**: 3-4 factors
-       - **Expected Timeline**: 3, 6, 12, 18 month milestones
-
-    8. **Next Steps Checklist** (5-8 actionable items):
-       - Use ✅ for completed items (if any)
-       - Use ⬜ for pending items
-       - Example: "⬜ Choose initial market focus (Spain recommended)"
-
-    **CRITICAL: Output as SEOStrategyReport Pydantic Model**
-
-    All sections must be properly formatted markdown. Use headers, bullet points,
-    tables, and code blocks as appropriate to create a professional report.
-
-  expected_output: >
-    SEOStrategyReport Pydantic model with ALL required fields:
-
-    **Metadata:**
-    - seed_keywords_generated: Extract the seed keywords list from the keyword strategist's output in task 1 (STEP 1). This should be a List[str] of 50-80 short seed keywords (1-4 words each) that were generated BEFORE DataForSEO expansion. If no seeds are mentioned, set to empty list []. DO NOT include expanded keywords - only the original seeds.
-    - total_keywords_analyzed: Exact count from DataForSEO expansion
-    - total_monthly_volume: Sum of all search volumes
-    - key_findings (3-5 bullets)
-
-    **Tiered Keywords:**
-    - tier_1_keywords (List[TieredKeyword])
-    - tier_1_quick_win_strategy (markdown)
-    - tier_2_keywords (List[TieredKeyword], optional)
-    - tier_2_strategy (markdown, optional)
-    - tier_3_geographic_groups (List[GeographicKeywordGroup], optional)
-    - tier_4_category_groups (List[CategoryKeywordGroup], optional)
-
-    **Content:**
-    - content_strategy (markdown)
-    - topic_clusters (List[TopicCluster])
-
-    **Technical & Strategy:**
-    - technical_seo_recommendations (markdown)
-    - keyword_driven_site_architecture (KeywordDrivenSiteArchitecture object):
-      * url_hierarchy_diagram (ASCII diagram string)
-      * section_keyword_mapping (dict mapping sections to keyword clusters)
-      * total_pages_from_keywords (int)
-      * keyword_coverage_explanation (string)
-    - keyword_based_page_types (List[KeywordBasedPageType]):
-      * Each with: page_type_name, url_pattern, target_keyword_cluster, example_keywords,
-        primary_intent, estimated_page_count, priority, required_schema, seo_optimization_notes
-    - competitive_positioning (markdown)
-    - implementation_roadmap (markdown)
-    - key_metrics_to_track (list)
-    - risk_mitigation (markdown, optional)
-    - budget_allocation (markdown, optional)
-    - long_term_strategy (markdown)
-
-    **Conclusion:**
-    - conclusion_bottom_line (string)
-    - competitive_advantages (list)
-    - critical_success_factors (list)
-    - expected_timeline (string)
-    - next_steps_checklist (list with ✅/⬜)
-
-    This report should be comprehensive, professional, and immediately actionable.
-    Total length: Equivalent to 3000-5000 word markdown report.
+    All keyword data in output MUST match the enriched keyword data provided - no hallucination.

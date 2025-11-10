@@ -13,7 +13,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
-from ..models.seo_strategy import SEOStrategyReport
+from ..models.seo_strategy import ExpandedKeywordList, SEOStrategyReport
 from ..models.solution_idea import IdeaGenerationResult
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
 
@@ -202,7 +202,7 @@ class SEOStrategyCrew:
             tools=[self.dataforseo_expand_tool, self.dataforseo_volume_tool, self.search_tool],
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
-                temperature=0.2,  # Low temperature for analytical keyword analysis
+                temperature=0.0,  # Zero temperature for precise data extraction (no creativity needed)
                 api_key=settings.openai_api_key
             ),
             verbose=True,
@@ -254,43 +254,28 @@ class SEOStrategyCrew:
         )
 
     @task
-    def analyze_keyword_opportunities_task(self) -> Task:
+    def expand_keywords_conceptually_task(self) -> Task:
         """
-        Task: Analyze keywords and create tiered opportunity structure.
+        Task: Phase 9.5a - Conceptual keyword expansion without DataForSEO.
 
-        Output: Tiered keywords (1-4) with opportunity scores and strategies.
+        Output: ExpandedKeywordList with 100-200 conceptual keywords organized by topic clusters.
         """
         return Task(
-            config=self.tasks_config["analyze_keyword_opportunities"],
-            agent=self.keyword_strategist(),
+            config=self.tasks_config["expand_keywords_conceptually"],
+            agent=self.content_strategist(),  # Use content strategist for strategic thinking
+            output_pydantic=ExpandedKeywordList,
         )
 
     @task
-    def develop_content_strategy_task(self) -> Task:
+    def create_strategy_from_enriched_task(self) -> Task:
         """
-        Task: Create comprehensive content strategy with topic clusters.
+        Task: Phase 9.5c - Create SEO strategy from pre-enriched keywords.
 
-        Depends on: analyze_keyword_opportunities_task
-        Output: Content recommendations, topic clusters, competitive positioning.
+        Output: SEOStrategyReport with data-driven strategy based on real keyword volumes.
         """
         return Task(
-            config=self.tasks_config["develop_content_strategy"],
-            agent=self.content_strategist(),
-            context=[self.analyze_keyword_opportunities_task()],
-        )
-
-    @task
-    def create_implementation_roadmap_task(self) -> Task:
-        """
-        Task: Create technical SEO recommendations and phased implementation plan.
-
-        Depends on: develop_content_strategy_task
-        Output: Complete SEO strategy report with roadmap, metrics, and next steps.
-        """
-        return Task(
-            config=self.tasks_config["create_implementation_roadmap"],
-            agent=self.seo_specialist(),
-            context=[self.develop_content_strategy_task()],
+            config=self.tasks_config["create_strategy_from_enriched_keywords"],
+            agent=self.seo_specialist(),  # Single agent for strategy synthesis
             output_pydantic=SEOStrategyReport,
         )
 
@@ -324,24 +309,20 @@ class SEOStrategyCrew:
 
         return Crew(**crew_config)
 
-    def create_strategy(self) -> SEOStrategyReport:
+    def expand_keywords_phase_1(self) -> ExpandedKeywordList:
         """
-        Execute integrated keyword research and SEO strategy development workflow
-        for the SELECTED SOLUTION.
+        Execute Phase 9.5a: Conceptual Keyword Expansion.
 
-        The keyword_strategist agent will:
-        1. Generate seed keywords specifically for the selected solution
-        2. Use DataForSEO tool to expand seed keywords
-        3. Analyze search metrics and competition
-        4. Create tiered opportunity structure
+        Runs ONLY the conceptual expansion task without DataForSEO.
+        Returns 100-200 strategic keywords organized by topic clusters.
 
         Returns:
-            SEOStrategyReport with comprehensive keyword strategy and implementation plan
+            ExpandedKeywordList with conceptual keywords for Phase 9.5b enrichment
         """
-        logger.info(f"Starting integrated keyword research + SEO strategy for: {self.selected_solution.solution_name}")
+        logger.info(f"Starting Phase 9.5a: Conceptual keyword expansion for: {self.selected_solution.solution_name}")
 
         try:
-            # Format pain points for seed keyword generation
+            # Format pain points context
             pain_points_context = ""
             if self.pain_points and self.pain_points.pain_points:
                 pain_points_context = "\n".join([
@@ -351,33 +332,9 @@ class SEOStrategyCrew:
                     for pp in self.pain_points.pain_points[:10]
                 ])
 
-            # Format SELECTED SOLUTION context (not all solutions)
-            selected_solution_context = f"""**SELECTED SOLUTION:** {self.selected_solution.solution_name}
-
-**Value Proposition:** {self.selected_solution.value_proposition}
-
-**Target Personas:** {', '.join(str(p) for p in (self.selected_solution.target_personas[:3] if self.selected_solution.target_personas else ['General users']))}
-
-**Core Features:**
-{chr(10).join(f"- {f}" for f in (self.selected_solution.core_features[:5] if self.selected_solution.core_features else ['N/A']))}
-
-**Pain Points Addressed:**
-{chr(10).join(f"- {p}" for p in (self.selected_solution.pain_points_addressed[:3] if self.selected_solution.pain_points_addressed else ['N/A']))}
-
-**Why This Solution Was Selected:**
-{self.selection_rationale}"""
-
-            # Format competitive landscape FOR SELECTED SOLUTION
+            # Format competitive context
             competitive_context = ""
             found_landscape = False
-
-            # Debug: Log available landscapes
-            landscape_names = [l.solution_name for l in self.competitive_analysis.solution_landscapes]
-            logger.debug(
-                f"Looking for competitive landscape match:\n"
-                f"  Selected solution: '{self.selected_solution.solution_name}'\n"
-                f"  Available landscapes: {landscape_names}"
-            )
 
             for landscape in self.competitive_analysis.solution_landscapes:
                 if landscape.solution_name == self.selected_solution.solution_name:
@@ -388,63 +345,124 @@ class SEOStrategyCrew:
 - **Differentiation Opportunities:** {', '.join(landscape.differentiation_opportunities[:3])}
 - **Recommended Positioning:** {landscape.recommended_positioning}"""
                     found_landscape = True
-                    logger.info(f"✓ Found competitive landscape for {landscape.solution_name} with {len(landscape.competitors)} competitors")
+                    logger.info(f"✓ Found competitive landscape for {landscape.solution_name}")
                     break
 
-            # ANTI-HALLUCINATION CHECK: Warn if no competitive data available
             if not found_landscape:
-                logger.warning(
-                    f"No competitive landscape found for selected solution '{self.selected_solution.solution_name}' "
-                    f"- competitor keyword generation will be limited or skipped by agent"
-                )
-                competitive_context = "[NO COMPETITIVE DATA AVAILABLE - Skip competitor keywords section or note as insufficient data]"
+                logger.warning(f"No competitive landscape found for '{self.selected_solution.solution_name}'")
+                competitive_context = "[NO COMPETITIVE DATA AVAILABLE - Skip competitor keywords or note as insufficient data]"
 
-            # Debug logging
-            logger.debug("=" * 80)
-            logger.debug("SEO STRATEGY CONTEXT - FOCUSED ON SELECTED SOLUTION")
-            logger.debug("=" * 80)
-            logger.debug(f"Niche: {self.niche}")
-            logger.debug(f"Selected Solution: {self.selected_solution.solution_name}")
-            logger.debug(f"Pain points: {len(self.pain_points.pain_points) if self.pain_points else 0}")
-            logger.debug("=" * 80)
+            # Create a single-task crew for conceptual expansion
+            expansion_crew = Crew(
+                agents=[self.content_strategist()],
+                tasks=[self.expand_keywords_conceptually_task()],
+                verbose=True,
+                process_type="sequential",
+            )
 
-            # Prepare summaries for content strategy task
-            competitive_summary = ""
-            if found_landscape:
-                competitive_summary = f"{landscape.competitive_intensity} competition with {len(landscape.competitors)} main competitors"
-            else:
-                competitive_summary = "Limited competitive data available"
-
-            solutions_summary = f"{self.selected_solution.solution_name} - {self.selected_solution.value_proposition}"
-            recommended_solution = self.selected_solution.solution_name
-
-            # Execute crew with FOCUSED context
-            # The keyword_strategist agent will generate seeds FOR THIS SOLUTION, expand with DataForSEO, and create strategy
-            crew_output = self.crew().kickoff(inputs={
+            # Execute with focused context
+            crew_output = expansion_crew.kickoff(inputs={
                 "niche": self.niche,
-                "pain_points_context": pain_points_context,
                 "selected_solution_name": self.selected_solution.solution_name,
                 "selected_solution_value_prop": self.selected_solution.value_proposition,
                 "selected_solution_personas": ', '.join(str(p) for p in (self.selected_solution.target_personas[:3] if self.selected_solution.target_personas else [])),
                 "selected_solution_features": ', '.join(str(f) for f in (self.selected_solution.core_features[:5] if self.selected_solution.core_features else [])),
                 "selected_solution_pain_points": ', '.join(str(p) for p in (self.selected_solution.pain_points_addressed[:3] if self.selected_solution.pain_points_addressed else [])),
-                "selection_rationale": self.selection_rationale,
                 "competitive_context": competitive_context,
-                "competitive_summary": competitive_summary,
-                "solutions_summary": solutions_summary,
-                "recommended_solution": recommended_solution,
             })
 
-            # Extract the Pydantic model from CrewOutput
+            # Extract the Pydantic model
             result = crew_output.pydantic
             logger.info(
-                f"Integrated keyword research + SEO strategy complete: "
-                f"{result.total_keywords_analyzed} keywords analyzed, "
-                f"{len(result.tier_1_keywords)} Tier 1 keywords, "
+                f"Phase 9.5a complete: {len(result.keywords)} conceptual keywords generated, "
                 f"{len(result.topic_clusters)} topic clusters identified"
             )
             return result
 
         except Exception as e:
-            logger.error(f"Integrated keyword research + SEO strategy failed: {e}")
+            logger.error(f"Phase 9.5a conceptual expansion failed: {e}")
+            raise
+
+    def create_strategy_from_enriched(
+        self,
+        enriched_keywords: list,
+        topic_clusters: list
+    ) -> SEOStrategyReport:
+        """
+        Execute Phase 9.5c: Create SEO strategy from pre-enriched keywords.
+
+        This method receives keywords that have already been enriched with DataForSEO
+        data (search volumes, competition) and creates a comprehensive strategy.
+
+        Args:
+            enriched_keywords: List of dicts from DataForSEO with volumes/competition
+            topic_clusters: List of TopicCluster objects from Phase 9.5a
+
+        Returns:
+            SEOStrategyReport with data-driven strategy
+        """
+        logger.info(f"Starting Phase 9.5c: Creating strategy from {len(enriched_keywords)} enriched keywords")
+
+        try:
+            # Format enriched keywords for task input
+            enriched_keywords_formatted = []
+            for k in enriched_keywords:
+                # Format competition as string with label and index
+                # e.g., "LOW (23)", "MEDIUM (54)", "HIGH (78)"
+                competition_index = k.get("competition_index", 0)
+                if competition_index < 30:
+                    comp_label = "LOW" if competition_index >= 15 else "VERY LOW"
+                elif competition_index < 60:
+                    comp_label = "MEDIUM"
+                elif competition_index < 80:
+                    comp_label = "HIGH"
+                else:
+                    comp_label = "VERY HIGH"
+
+                competition_str = f"{comp_label} ({competition_index})"
+
+                formatted = {
+                    "keyword": k.get("keyword", ""),
+                    "search_volume": k.get("search_volume", 0),
+                    "competition": competition_str,
+                }
+                # Include monthly_searches if available
+                if k.get("monthly_searches"):
+                    formatted["monthly_searches"] = k.get("monthly_searches")
+                enriched_keywords_formatted.append(formatted)
+
+            # Format topic clusters summary
+            topic_clusters_summary = "\n".join([
+                f"- **{c.name}** (Priority {c.strategic_importance}/5): {c.description}"
+                for c in topic_clusters
+            ])
+
+            # Create a single-task crew for strategy creation from enriched data
+            strategy_crew = Crew(
+                agents=[self.seo_specialist()],  # Single specialist agent
+                tasks=[self.create_strategy_from_enriched_task()],
+                verbose=True,
+                process_type="sequential",
+            )
+
+            # Execute with enriched keywords
+            crew_output = strategy_crew.kickoff(inputs={
+                "niche": self.niche,
+                "selected_solution_name": self.selected_solution.solution_name,
+                "enriched_keywords": enriched_keywords_formatted,
+                "enriched_keywords_count": len(enriched_keywords),
+                "topic_clusters_summary": topic_clusters_summary,
+            })
+
+            # Extract the Pydantic model
+            result = crew_output.pydantic
+            logger.info(
+                f"Phase 9.5c complete: SEO strategy created with "
+                f"{len(result.tier_1_keywords) if result.tier_1_keywords else 0} Tier 1 keywords, "
+                f"{len(result.topic_clusters) if result.topic_clusters else 0} topic clusters"
+            )
+            return result
+
+        except Exception as e:
+            logger.error(f"Phase 9.5c strategy creation from enriched keywords failed: {e}")
             raise
