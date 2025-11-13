@@ -69,6 +69,8 @@ Generate {num_queries} search queries for DISCOVERING pain points, not searching
 - "moving abroad problems" (lets users tell you what's hard)
 - "international relocation frustrating" (surfaces emotional struggle threads)
 - "coordinate international move" (broad action, users share specific struggles)
+- "premium skincare problems" (preserves premium modifier, broad discovery)
+- "luxury travel frustrating" (preserves luxury context, emotional thread discovery)
 
 **Query Types - DISCOVERY FOCUSED:**
 
@@ -81,14 +83,14 @@ Generate {num_queries} search queries for DISCOVERING pain points, not searching
    - "[niche] annoying"
    - "tired of [niche]"
 
-   Examples: "freelancing problems", "remote work frustrating", "struggling with meal planning"
+   Examples: "freelancing problems", "remote work frustrating", "premium skincare frustrating", "luxury travel problems"
 
 2. **Short Action Phrases (25%)** - ONLY 2-3 words, NO specific sub-tasks
    - "[action verb] [broad category]" (e.g., "track expenses" NOT "track business receipts for taxes")
    - Keep extremely short and general
    - Let threads reveal specific struggles
 
-   Examples: "manage clients", "schedule meetings", "track leads", "follow up", "coordinate team"
+   Examples: "manage clients", "track leads", "choose premium skincare", "compare luxury products", "maintain routine"
 
 3. **Open Discovery Questions (20%)** - Let users share methods/tools/struggles
    - "how do you [broad task]"
@@ -96,7 +98,7 @@ Generate {num_queries} search queries for DISCOVERING pain points, not searching
    - "any recommendations for [niche]"
    - "how can I [broad activity]"
 
-   Examples: "how do you manage projects", "what's the best way to find clients", "any recommendations for time tracking"
+   Examples: "how do you manage premium skincare", "what's the best luxury travel planning", "any recommendations for professional tools"
 
 4. **Tool/Solution Discovery (15%)** - Find what tools exist and gaps
    - "tools for [niche]"
@@ -106,7 +108,7 @@ Generate {num_queries} search queries for DISCOVERING pain points, not searching
    - "software for [niche]"
    - "[niche] vs [competitor category]"
 
-   Examples: "tools for content creators", "CRM alternatives", "project management recommendations"
+   Examples: "tools for premium skincare", "luxury travel apps", "professional design software", "high-end alternatives"
 
 5. **Evidence of Active Struggle (10%)** - Emotional indicators of pain
    - "can't figure out [broad area]"
@@ -114,16 +116,51 @@ Generate {num_queries} search queries for DISCOVERING pain points, not searching
    - "giving up on [broad task]"
    - "[niche] keeps failing"
 
-   Examples: "can't figure out invoicing", "frustrated with freelance platforms", "giving up on content scheduling"
+   Examples: "premium skincare too expensive", "luxury products not working", "frustrated with high-end tools", "professional software overwhelming"
 
 **Construction Guidelines:**
 
 1. **Keep queries SHORT** (2-5 words ideal, max 7 words)
-2. **Use broad niche terms**, not specific sub-problems
-3. **NO detailed scenarios** - "moving abroad" NOT "moving abroad as a digital nomad with pets"
-4. **NO solution assumptions** - let users tell you what they need
-5. **Mix platforms** - some queries work better on Reddit, some on Twitter
-6. **Include emotion words** - "frustrated", "struggling", "hate", "difficult", "tired of"
+2. **PRESERVE ALL critical niche modifiers** (premium, luxury, professional, budget, high-end, etc.) - these define the target audience
+   - ✓ CORRECT: "premium skincare problems" (preserves premium context)
+   - ✗ WRONG: "skincare problems" (lost critical positioning)
+   - ✓ CORRECT: "luxury travel frustrating" (preserves luxury market)
+   - ✗ WRONG: "travel frustrating" (too generic)
+3. **Use broad problem areas**, not specific sub-problems (but keep modifiers!)
+4. **NO detailed scenarios** - "moving abroad" NOT "moving abroad as a digital nomad with pets"
+5. **NO solution assumptions** - let users tell you what they need
+6. **GRAMMAR CHECK** - Every query must be grammatically complete and natural:
+   - ✓ "how do you manage skincare" (complete with object)
+   - ✗ "how do you skincare" (skincare is not a verb)
+   - ✓ "what's the best skincare routine" (complete phrase)
+   - ✗ "what's the best skincare" (incomplete thought)
+7. **Mix platforms** - some queries work better on Reddit, some on Twitter
+8. **Include emotion words** - "frustrated", "struggling", "hate", "difficult", "tired of"
+
+**Niche-Specific Customization:**
+
+When the niche includes modifiers like "premium", "luxury", "professional", "budget", etc., generate additional queries exploring modifier-specific concerns:
+
+- **Premium/Luxury niches**: Include queries about pricing, value, authenticity, ROI
+  - "premium [niche] too expensive"
+  - "luxury [niche] worth it"
+  - "[niche] authenticity concerns"
+  - "counterfeit [niche] products"
+  - "high-end [niche] alternatives"
+
+- **Budget/Affordable niches**: Include queries about quality, compromises, hidden costs
+  - "cheap [niche] quality"
+  - "budget [niche] that works"
+  - "affordable [niche] recommendations"
+
+- **Professional/B2B niches**: Include queries about enterprise needs, compliance, integration
+  - "professional grade [niche]"
+  - "[niche] for teams"
+  - "enterprise [niche] solutions"
+
+- **Demographic niches** (e.g., "content creators", "freelancers"): Include role-specific queries
+  - "[role] struggling with [task]"
+  - "[role] [niche] challenges"
 
 **Platform Selection:**
 - Reddit: Better for detailed problems, recommendations, "how do you", tool discussions

@@ -20,6 +20,20 @@ class SelectionCriteriaScore(BaseModel):
     score: float = Field(..., description="Score value (0-1 scale)")
 
 
+class SolutionScores(BaseModel):
+    """Complete selection scores for a single solution."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Name of the solution")
+    market_fit_score: float = Field(..., ge=0.0, le=1.0, description="Market fit score (0-1)")
+    technical_feasibility_score: float = Field(..., ge=0.0, le=1.0, description="Technical feasibility score (0-1)")
+    competitive_advantage_score: float = Field(..., ge=0.0, le=1.0, description="Competitive advantage score (0-1)")
+    seo_growth_potential_score: float = Field(..., ge=0.0, le=1.0, description="SEO growth potential score (0-1)")
+    composite_score: float = Field(..., ge=0.0, le=1.0, description="Weighted composite score")
+    rank: int = Field(..., description="Rank among all solutions (1 = best)")
+
+
 class SolutionSelection(BaseModel):
     """
     Results of solution selection process (Stage 8.5).
@@ -48,9 +62,18 @@ class SolutionSelection(BaseModel):
     selection_criteria_scores: Optional[List[SelectionCriteriaScore]] = Field(
         default=None,
         description=(
-            "Breakdown of selection criteria scores (0-1 scale). "
+            "Breakdown of selection criteria scores (0-1 scale) for the selected solution. "
             "Typical criteria: market_fit, technical_feasibility, competitive_advantage, "
             "organic_acquisition_potential"
+        )
+    )
+
+    all_solution_scores: Optional[List[SolutionScores]] = Field(
+        default=None,
+        description=(
+            "Complete scores for ALL solutions evaluated (selected + runner-ups). "
+            "Includes market_fit, technical_feasibility, competitive_advantage, seo_growth_potential, "
+            "composite score, and rank. Enables transparent comparison across all alternatives."
         )
     )
 

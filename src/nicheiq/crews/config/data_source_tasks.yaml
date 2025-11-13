@@ -89,31 +89,40 @@ evaluate_data_sources:
     • Rate limit constraints • Legal/compliance issues (ToS violations, data privacy)
 
   expected_output: >
-    Evaluation report with:
+    SourceEvaluationReport Pydantic model with:
 
-    **Prioritized Sources:**
+    **high_priority_sources**: List[EvaluatedDataSource] (1-3 sources)
+    Each EvaluatedDataSource contains:
+    - provider: Provider name
+    - url: API documentation URL (Optional)
+    - priority: "HIGH"
+    - priority_rationale: Why HIGH priority (links to SEO keywords, pain points, competitive advantage)
+    - quality_metrics:
+        - coverage_score: "80% market coverage" or similar description
+        - freshness: "daily" or "weekly" or "real-time"
+        - integration_complexity: "LOW", "MEDIUM", or "HIGH"
+        - cost_viability: "FREE", "LOW", "MEDIUM", or "HIGH"
+        - quality_assessment: Reliability notes and known issues
+    - mvp_cost_estimate: "$0-100/mo" or similar (Optional)
+    - scale_cost_estimate: "$500-1000/mo" or similar (Optional)
+    - identified_risks: List of 2-4 specific risks
+    - mitigation_strategies: List of mitigation approaches (Optional)
 
-    **HIGH Priority** (1-3 sources):
-    - Source name
-    - Coverage: X%
-    - Freshness: daily
-    - Integration: LOW complexity
-    - Cost: $X/mo @ MVP, $Y/mo @ 100k users
-    - Priority rationale: "Supports 'keyword' (10k searches/mo), low cost, easy integration"
-    - Risks: [list 2-3 risks]
+    **medium_priority_sources**: List[EvaluatedDataSource] (2-4 sources)
+    [Same structure as high_priority_sources, but priority: "MEDIUM"]
 
-    **MEDIUM Priority** (2-4 sources):
-    - [same format]
+    **low_priority_sources**: List[EvaluatedDataSource]
+    [Same structure as high_priority_sources, but priority: "LOW"]
 
-    **LOW Priority** (remaining sources):
-    - [same format]
+    **overall_data_quality_risk**: String narrative assessing overall data landscape risks
 
-    **Data Quality Risks:**
-    - Overall risk assessment
-    - Critical risks that could block launch
-    - Mitigation strategies
+    **critical_blockers**: List[str] of risks that could block launch (e.g., "Insufficient coverage for MVP", "All sources require expensive partnerships")
 
-    Format as structured markdown.
+    **evaluation_summary**: 2-3 sentence summary of evaluation findings
+
+    CRITICAL: Return valid SourceEvaluationReport Pydantic object with ALL fields populated.
+    DO NOT return markdown text or a description of what the report should contain.
+    Every priority_rationale MUST link to specific SEO keywords or pain points from the solution context.
 
 create_data_roadmap:
   description: >
@@ -121,9 +130,15 @@ create_data_roadmap:
 
     **Solution:** {solution_name}
 
-    **Evaluated Sources:**
-    You have access to the evaluated and prioritized data sources from the previous tasks. Review the
-    discovery results and quality evaluations to create a comprehensive implementation roadmap.
+    **HOW TO ACCESS EVALUATION DATA:**
+    Task 2 output (SourceEvaluationReport) is available in your context. Extract:
+    - From Task 2: high_priority_sources, medium_priority_sources, quality_metrics
+    - PRESERVE evaluation data in source_evaluation field
+    - Use priority_rationale from Task 2 for primary_data_sources
+    - Convert identified_risks to data_quality_risks list
+    - Use quality_metrics.integration_complexity and cost_viability for roadmap phases
+
+    Your output must include ACTUAL EVALUATION DATA from Task 2, structured into roadmap phases.
 
     **Your Task:**
 
@@ -189,40 +204,64 @@ create_data_roadmap:
 
     **solution_name**: Name of the solution
 
+    **source_evaluation**: SourceEvaluationReport
+    - COPY complete evaluation from Task 2 context (preserve all priority tiers)
+    - Includes high/medium/low_priority_sources with full evaluation details
+
+    **implementation_phases**: List[RoadmapPhase] (3 phases)
+    Phase 1 (MVP - Months 1-3):
+    - phase_number: 1
+    - phase_name: "MVP"
+    - timeline: "Months 1-3"
+    - goal: "Minimum viable data coverage to validate product"
+    - data_sources: [List provider names from high_priority_sources]
+    - estimated_monthly_cost: "$X-Y"
+    - key_milestones: ["Integrate API X", "Validate data quality", "Set up caching"]
+    - fallback_strategies: ["If X fails, use Y", "Manual curation fallback"]
+
+    Phase 2 (Growth - Months 4-6):
+    - phase_number: 2
+    - phase_name: "Growth"
+    - timeline: "Months 4-6"
+    - goal: "Improve data completeness and freshness"
+    - data_sources: [List provider names from medium_priority_sources]
+    - estimated_monthly_cost: "$X-Y"
+    - key_milestones: [List 2-3 milestones]
+    - fallback_strategies: [List 2-3 fallback options]
+
+    Phase 3 (Scale - Months 6-12):
+    - phase_number: 3
+    - phase_name: "Scale"
+    - timeline: "Months 6-12"
+    - goal: "Differentiation and premium features"
+    - data_sources: [List premium sources]
+    - estimated_monthly_cost: "$X-Y"
+    - key_milestones: [List 2-3 milestones]
+    - fallback_strategies: [List 2-3 fallback options]
+
     **primary_data_sources**: List[DataSource] (1-3 HIGH priority sources)
-    - provider
-    - url
-    - access_model
-    - cost_estimate
-    - coverage
-    - update_frequency
-    - integration_complexity
-    - priority: "HIGH"
-    - priority_rationale (link to SEO keywords or pain points)
-    - rate_limits (if known)
-    - data_quality_notes
-    - fallback_for: null (these are primary)
+    - Convert high_priority_sources from Task 2 to DataSource objects
+    - provider, url, access_model, cost_estimate, coverage, update_frequency
+    - integration_complexity, priority: "HIGH", priority_rationale (from Task 2)
+    - rate_limits, data_quality_notes, fallback_for: null
 
     **fallback_sources**: List[DataSource] (2-4 backup sources)
+    - Convert medium/low_priority_sources from Task 2
     - [same structure as primary]
     - priority: "MEDIUM" or "LOW"
     - fallback_for: [list of primary sources this backs up]
 
     **data_partnerships_needed**: List[DataPartnership] (if applicable)
-    - partner_type: "direct-partnership", "web-scraping", "manual-curation", "user-generated"
-    - description
-    - effort_estimate: "low", "medium", "high"
-    - timeline
-    - notes
+    - partner_type, description, effort_estimate, timeline, notes
 
     **estimated_monthly_cost**: String (e.g., "$250-500/month for 10k users")
 
-    **data_quality_risks**: List[str] (3-5 key risks)
+    **data_quality_risks**: List[str] (3-5 key risks extracted from Task 2 evaluation)
 
-    **implementation_roadmap**: String (2-3 paragraphs with phased approach)
+    **implementation_roadmap**: String (2-3 paragraphs with phased approach - keep for backward compatibility)
 
     **competitive_data_insights**: String (how our data access compares to competitors)
 
     **seo_aligned_priorities**: String (how data sources support high-traffic keywords)
 
-    IMPORTANT: Must be valid DataSourceResearchResult Pydantic model.
+    IMPORTANT: Must be valid DataSourceResearchResult Pydantic model with BOTH source_evaluation and implementation_phases populated.

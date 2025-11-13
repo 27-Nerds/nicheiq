@@ -3,20 +3,63 @@ PainPointCrew - Stage 6: Pain Point Analysis
 Multi-agent crew for analyzing social discussions and extracting validated pain points.
 """
 
-from typing import List
+from typing import List, Tuple, Any
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
+from crewai.tasks.task_output import TaskOutput
 from loguru import logger
 
 from ..config.settings import settings
 from ..models.pain_point import (
+    ContentCategorizationReport,
     PainPoint,
     PainPointAnalysisResult,
     PainPointExtraction,
     UnvalidatedPainPoint,
 )
 from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
+
+
+def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
+    """
+    Guardrail function to ensure PainPointAnalysisResult is valid with no extra text.
+
+    This prevents agents from adding explanatory commentary like "The above JSON object fully complies..."
+    which causes Pydantic parsing to fail.
+
+    Returns:
+        Tuple[bool, Any]: (success, validated_result_or_error_message)
+    """
+    try:
+        # Check if Pydantic output exists
+        if not result.pydantic:
+            # Log raw output preview for debugging
+            raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
+            logger.error(f"Guardrail validation failed - No Pydantic output found. Raw output preview: {raw_preview}...")
+            return (False, "CRITICAL ERROR: Return ONLY the PainPointAnalysisResult Pydantic model with NO additional text, explanations, or commentary. Do not add phrases like 'The above JSON object fully complies...'")
+
+        # Validate it's the correct type
+        pain_analysis = result.pydantic  # Should be PainPointAnalysisResult
+
+        # Check pain_points list exists
+        if not hasattr(pain_analysis, 'pain_points'):
+            logger.error(f"Guardrail validation failed - Missing 'pain_points' field. Output type: {type(pain_analysis)}")
+            return (False, "OUTPUT ERROR: Missing 'pain_points' field in PainPointAnalysisResult")
+
+        if not pain_analysis.pain_points:
+            logger.error(f"Guardrail validation failed - Empty pain_points list")
+            return (False, "VALIDATION ERROR: Empty pain_points list. You must score and validate all extracted pain points.")
+
+        # Success - return the validated Pydantic output
+        logger.debug(f"Guardrail validation passed: {len(pain_analysis.pain_points)} pain points validated")
+        return (True, result.pydantic)
+
+    except Exception as e:
+        # Log exception details for debugging
+        raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
+        logger.error(f"Guardrail validation exception: {str(e)}. Raw output preview: {raw_preview}...")
+        return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the PainPointAnalysisResult model with no extra text.")
 
 
 @CrewBase
@@ -298,6 +341,7 @@ class PainPointCrew:
     def _prepare_reddit_content(self) -> str:
         """
         Format Reddit posts with discussions for knowledge source with metadata headers.
+        Includes POST_ID for traceability in pain point attribution.
 
         Returns:
             Formatted string with embedded metadata for semantic search
@@ -305,6 +349,7 @@ class PainPointCrew:
         formatted = []
         for post in self.reddit_posts:
             formatted.append(f"""[PLATFORM: REDDIT]
+[POST_ID: {post.post_id}]
 [SUBREDDIT: r/{post.subreddit}]
 [SCORE: {post.score}]
 [URL: {post.url}]
@@ -323,6 +368,7 @@ class PainPointCrew:
     def _prepare_twitter_content(self) -> str:
         """
         Format Twitter threads for knowledge source with metadata headers.
+        Includes THREAD_ID for traceability in pain point attribution.
 
         Returns:
             Formatted string with embedded metadata for semantic search
@@ -330,6 +376,7 @@ class PainPointCrew:
         formatted = []
         for thread in self.twitter_threads:
             formatted.append(f"""[PLATFORM: TWITTER]
+[THREAD_ID: {thread.thread_id}]
 [AUTHOR: @{thread.original_tweet.author_username}]
 [ENGAGEMENT: {thread.original_tweet.likes} likes, {thread.original_tweet.retweets} RTs]
 [URL: {thread.original_tweet.url}]
@@ -416,6 +463,7 @@ class PainPointCrew:
         return Task(
             config=self.tasks_config["categorize_content"],
             agent=self.content_researcher(),
+            output_pydantic=ContentCategorizationReport,
         )
 
     @task
@@ -446,6 +494,8 @@ class PainPointCrew:
             agent=self.pain_point_validator(),
             context=[self.extract_pain_points_task()],
             output_pydantic=PainPointAnalysisResult,
+            guardrail=validate_pydantic_pain_point_output,
+            guardrail_max_retries=3,
         )
 
     @crew
@@ -561,6 +611,26 @@ class PainPointCrew:
 
             # Extract the Pydantic model from CrewOutput
             result = crew_output.pydantic
+
+            # Capture categorization from Task 1 (categorize_content)
+            try:
+                task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+                if task_outputs and len(task_outputs) > 0:
+                    categorization_task_output = task_outputs[0]  # First task is categorize_content
+                    if hasattr(categorization_task_output, 'pydantic') and categorization_task_output.pydantic:
+                        result.content_categorization = categorization_task_output.pydantic
+                        logger.info(
+                            f"[OK] Captured content categorization: "
+                            f"{len(result.content_categorization.theme_categories)} themes, "
+                            f"{len(result.content_categorization.user_segments)} segments"
+                        )
+                    else:
+                        logger.warning("Task 1 output does not have pydantic attribute")
+                else:
+                    logger.warning("Could not access task outputs for categorization capture")
+            except Exception as e:
+                logger.warning(f"Failed to capture content categorization: {e}")
+                # Graceful degradation - continue without categorization
 
             # Verify results contain actual content from knowledge sources (sampling check)
             if result.pain_points:

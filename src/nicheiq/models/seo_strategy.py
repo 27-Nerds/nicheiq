@@ -9,7 +9,7 @@ from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from loguru import logger
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 def validate_keyword(keyword: str, field_name: str = "keyword") -> bool:
@@ -65,7 +65,12 @@ class ContentType(str, Enum):
 
 class ConceptualKeyword(BaseModel):
     """
-    Conceptual keyword from Phase 9.5a expansion (before DataForSEO enrichment).
+    Conceptual keyword from Phase 9.5a hybrid seed generation (before DataForSEO enrichment).
+
+    Keywords should follow the 70-30 hybrid approach:
+    - 70% Broad Seeds: 1-2 words (max 3 words)
+    - 30% Targeted Keywords: 3-5 words
+
     Includes strategic context and cluster assignment for intelligent enrichment.
     """
 
@@ -78,6 +83,19 @@ class ConceptualKeyword(BaseModel):
         default=None,
         description="Why this keyword is important strategically"
     )
+
+    @field_validator('keyword')
+    @classmethod
+    def validate_keyword_length(cls, v: str) -> str:
+        """Log warning if keyword exceeds recommended length (helps detect prompt issues)."""
+        word_count = len(v.split())
+        if word_count > 5:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Keyword '{v}' has {word_count} words (recommended: 1-5 words). "
+                f"Review Phase 9.5a prompt if many keywords exceed 5 words."
+            )
+        return v
 
 
 class TopicCluster(BaseModel):
@@ -94,14 +112,16 @@ class TopicCluster(BaseModel):
 
 class ExpandedKeywordList(BaseModel):
     """
-    Result of Phase 9.5a conceptual keyword expansion.
-    Contains 100-200 strategically selected keywords organized by topic clusters.
+    Result of Phase 9.5a hybrid seed keyword generation.
+    Contains 40-50 strategically selected keywords using 70-30 mix:
+    - 70% Broad Seeds (28-35 keywords, 1-2 words)
+    - 30% Targeted Keywords (12-15 keywords, 3-5 words)
     """
 
     model_config = ConfigDict(extra='forbid')
 
     keywords: List[ConceptualKeyword] = Field(
-        ..., description="Conceptually expanded keywords (100-200 total)"
+        ..., description="Hybrid seed keywords (40-50 total): 70% broad seeds (1-2 words) + 30% targeted keywords (3-5 words)"
     )
     topic_clusters: List[TopicCluster] = Field(
         ..., description="Topic clusters for organizing keywords"
@@ -133,8 +153,8 @@ class TieredKeyword(BaseModel):
 
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Average monthly search volume from DataForSEO (single value)")
-    monthly_searches: Optional[List[MonthlySearchData]] = Field(
-        default=None,
+    monthly_searches: List[MonthlySearchData] = Field(
+        default_factory=list,
         description="Historical 12-month search volume data from DataForSEO (array of {year, month, search_volume} objects). For reference only - do not sum or use for primary volume metric."
     )
     competition: str = Field(
@@ -149,6 +169,14 @@ class TieredKeyword(BaseModel):
     intent: Optional[str] = Field(
         default=None, description="Search intent (e.g., 'High conversion intent', 'Informational')"
     )
+
+    @field_validator('monthly_searches', mode='before')
+    @classmethod
+    def coerce_monthly_searches_none_to_empty_list(cls, v):
+        """Coerce None to [] for monthly_searches (DataForSEO may return null)."""
+        if v is None or v == "null":
+            return []
+        return v
 
     @field_validator('keyword')
     @classmethod
@@ -182,13 +210,21 @@ class CategoryKeywordEntry(BaseModel):
     keyword_name: str = Field(..., description="Keyword name (document type, service name, etc.)")
     search_volume: int = Field(..., description="Average monthly search volume from DataForSEO")
     competition: Optional[str] = Field(default=None, description="Competition level")
-    cpc: Optional[str] = Field(default=None, description="Cost per click estimate")
+    cpc: float = Field(default=0.0, description="Cost per click estimate (defaults to 0 if unavailable)")
 
     @field_validator('keyword_name')
     @classmethod
     def validate_keyword_constraints(cls, v: str) -> str:
         """Strip whitespace (validation happens elsewhere to allow filtering)."""
         return v.strip()
+
+    @field_validator('cpc', mode='before')
+    @classmethod
+    def coerce_cpc_none_to_zero(cls, v):
+        """Coerce None to 0 for CPC field (DataForSEO may return null)."""
+        if v is None or v == "null":
+            return 0.0
+        return v
 
 
 class GeographicKeywordGroup(BaseModel):
@@ -330,6 +366,126 @@ class KeywordDrivenSiteArchitecture(BaseModel):
     )
     keyword_coverage_explanation: Optional[str] = Field(
         default=None, description="Explanation of how site structure ensures all high-priority keywords have dedicated landing pages (2-3 sentences)"
+    )
+
+
+class UniversalSEOElements(BaseModel):
+    """Universal SEO elements that appear on every page."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    title_tag_formula: str = Field(
+        ...,
+        description="Title tag format pattern (e.g., '[Primary Keyword] | [Secondary] | [Brand]')"
+    )
+    title_tag_guidelines: str = Field(
+        ...,
+        description="Character limits, keyword placement, CTR optimization tips (2-3 paragraphs, markdown)"
+    )
+    meta_description_guidelines: str = Field(
+        ...,
+        description="Length, CTA inclusion, keyword usage best practices (2-3 paragraphs, markdown)"
+    )
+    canonical_url_strategy: str = Field(
+        ...,
+        description="Self-referencing canonicals, filter/sort handling, duplicate content prevention (2 paragraphs, markdown)"
+    )
+    open_graph_tags: str = Field(
+        ...,
+        description="Required OG tags (og:title, og:description, og:image, og:url) with format examples (markdown)"
+    )
+    robots_meta_guidelines: str = Field(
+        ...,
+        description="When to use index/noindex, follow/nofollow with page type examples (2 paragraphs, markdown)"
+    )
+
+
+class PageTypeImplementation(BaseModel):
+    """SEO implementation template for specific page type."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    page_type: str = Field(
+        ...,
+        description="Page type name (e.g., 'Homepage', 'Location Page', 'Profile Page', 'Content Page')"
+    )
+    url_pattern: str = Field(
+        ...,
+        description="URL structure pattern (e.g., '/translators/{city}', '/guides/{topic}')"
+    )
+    target_keywords: List[str] = Field(
+        ...,
+        description="3-5 primary and secondary keyword patterns for this page type"
+    )
+    title_tag_example: str = Field(
+        ...,
+        description="Example title tag applying the formula to this page type"
+    )
+    meta_description_example: str = Field(
+        ...,
+        description="Example meta description for this page type"
+    )
+    h1_structure: str = Field(
+        ...,
+        description="H1 format pattern (e.g., '[Service] in [Location] - [Value Prop]')"
+    )
+    h2_structure: str = Field(
+        ...,
+        description="Recommended H2 sections (3-6 suggestions, markdown list)"
+    )
+    schema_types: List[str] = Field(
+        ...,
+        description="Required schema types (e.g., ['Organization', 'Service', 'Breadcrumb', 'FAQ'])"
+    )
+    internal_linking_strategy: str = Field(
+        ...,
+        description="How this page type should link to others (2-3 sentences)"
+    )
+    content_guidelines: str = Field(
+        ...,
+        description="Min/optimal word count, required sections, quality standards (2-3 sentences)"
+    )
+
+
+class SchemaExample(BaseModel):
+    """Individual schema markup code example."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    schema_type: str = Field(
+        ...,
+        description="Schema.org type (e.g., 'Organization', 'Service', 'FAQ', 'Article', 'BreadcrumbList')"
+    )
+    json_ld_code: str = Field(
+        ...,
+        description="JSON-LD code snippet for this schema type"
+    )
+
+
+class SchemaMarkupStrategy(BaseModel):
+    """Schema markup implementation guide with code examples."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    why_schema_matters: str = Field(
+        ...,
+        description="Benefits: rich results, voice search, AI search, CTR boost (2-3 paragraphs, markdown)"
+    )
+    priority_schema_types: List[str] = Field(
+        ...,
+        description="Ordered list of 6-8 essential schema types (Organization, Service, Person, Review, FAQ, Article, BreadcrumbList, etc.)"
+    )
+    implementation_method: str = Field(
+        ...,
+        description="JSON-LD format, placement in <head>, why JSON-LD over Microdata (2 paragraphs, markdown)"
+    )
+    schema_examples: List[SchemaExample] = Field(
+        ...,
+        description="JSON-LD code snippets for each priority schema type (6-8 examples)"
+    )
+    testing_validation: str = Field(
+        ...,
+        description="Tools and process: Google Rich Results Test, Schema Validator, Search Console monitoring (2 paragraphs, markdown)"
     )
 
 
@@ -502,4 +658,187 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     next_steps_checklist: List[str] = Field(
         ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
+    )
+
+    # ========================================
+    # IMPLEMENTATION GUIDE (TASK 5)
+    # ========================================
+    universal_seo_elements: Optional[UniversalSEOElements] = Field(
+        default=None,
+        description="Universal SEO elements for every page (title tags, meta descriptions, canonical, OG tags, robots)"
+    )
+    page_type_implementations: Optional[List[PageTypeImplementation]] = Field(
+        default=None,
+        description="SEO templates for 4-6 key page types (homepage, location pages, profile pages, content pages)"
+    )
+    schema_markup_strategy: Optional[SchemaMarkupStrategy] = Field(
+        default=None,
+        description="Schema markup implementation guide with JSON-LD code examples and testing guidance"
+    )
+
+    @field_validator('total_monthly_volume', mode='before')
+    @classmethod
+    def validate_total_monthly_volume(cls, v):
+        """Coerce None to 0 when all keywords have null volumes."""
+        if v is None or v == "null":
+            return 0
+        return v
+
+
+# ========================================
+# INTERMEDIATE MODELS FOR MULTI-TASK FLOW
+# ========================================
+
+
+class KeywordAnalysisResult(BaseModel):
+    """
+    Intermediate result from Task 1: Keyword Analysis & Tiering.
+
+    The keyword_strategist agent analyzes enriched keywords and creates
+    tiered opportunity structure with competitive positioning.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Tier structure
+    tier_1_keywords: List[TieredKeyword] = Field(
+        ..., description="High volume + low competition keywords (3-5 keywords)"
+    )
+    tier_1_quick_win_strategy: str = Field(
+        ..., description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
+    )
+    tier_2_keywords: Optional[List[TieredKeyword]] = Field(
+        default=None, description="High value keywords with medium competition (3-5 keywords)"
+    )
+    tier_2_strategy: Optional[str] = Field(
+        default=None, description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, markdown)"
+    )
+    tier_3_geographic_groups: Optional[List[GeographicKeywordGroup]] = Field(
+        default=None, description="Geographic keyword opportunities grouped by region"
+    )
+    tier_4_category_groups: Optional[List[CategoryKeywordGroup]] = Field(
+        default=None, description="Category-based keyword groups (document types, service categories)"
+    )
+
+    # Metadata and findings
+    total_keywords_analyzed: int = Field(..., description="Total number of keywords analyzed")
+    total_monthly_volume: int = Field(..., description="Total monthly search volume across all keywords")
+    key_findings: List[str] = Field(..., description="3-5 bullet points highlighting key SEO findings")
+    competitive_positioning: str = Field(
+        ..., description="Keyword gaps to exploit, unique positioning angles (markdown, 2-4 sections)"
+    )
+
+    @field_validator('total_monthly_volume', mode='before')
+    @classmethod
+    def validate_total_monthly_volume(cls, v):
+        """Coerce None to 0 when all keywords have null volumes."""
+        if v is None or v == "null":
+            return 0
+        return v
+
+    @model_validator(mode='after')
+    def validate_keyword_distribution(self) -> 'KeywordAnalysisResult':
+        """
+        Validate that keywords are reasonably distributed across tiers.
+
+        If total_keywords_analyzed is significantly higher than keywords actually
+        tiered, log a warning about potential keyword loss.
+        """
+        tier_1_count = len(self.tier_1_keywords)
+        tier_2_count = len(self.tier_2_keywords) if self.tier_2_keywords else 0
+
+        tier_3_count = 0
+        if self.tier_3_geographic_groups:
+            for group in self.tier_3_geographic_groups:
+                tier_3_count += len(group.keywords)
+
+        tier_4_count = 0
+        if self.tier_4_category_groups:
+            for group in self.tier_4_category_groups:
+                tier_4_count += len(group.keywords)
+
+        total_tiered = tier_1_count + tier_2_count + tier_3_count + tier_4_count
+
+        # Warn if <70% of keywords are accounted for
+        if self.total_keywords_analyzed > 20:  # Only validate for substantial keyword sets
+            keyword_utilization = total_tiered / self.total_keywords_analyzed
+            if keyword_utilization < 0.7:
+                logger.warning(
+                    f"⚠️  Keyword utilization low: {total_tiered}/{self.total_keywords_analyzed} "
+                    f"({keyword_utilization:.1%}) keywords tiered. "
+                    f"{self.total_keywords_analyzed - total_tiered} keywords may be unutilized. "
+                    f"[Tier 1: {tier_1_count}, Tier 2: {tier_2_count}, "
+                    f"Tier 3: {tier_3_count}, Tier 4: {tier_4_count}]"
+                )
+            else:
+                logger.info(
+                    f"✅ Keyword utilization: {total_tiered}/{self.total_keywords_analyzed} "
+                    f"({keyword_utilization:.1%}) keywords tiered. "
+                    f"[Tier 1: {tier_1_count}, Tier 2: {tier_2_count}, "
+                    f"Tier 3: {tier_3_count}, Tier 4: {tier_4_count}]"
+                )
+
+        return self
+
+
+class ContentStrategyResult(BaseModel):
+    """
+    Intermediate result from Task 2: Content & Technical Strategy.
+
+    The content_strategist agent develops content strategy, topic clusters,
+    and technical SEO recommendations based on keyword analysis.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Content strategy
+    content_strategy: str = Field(
+        ..., description="Comprehensive content strategy with numbered sections (markdown, 4-6 paragraphs)"
+    )
+    topic_clusters: Optional[List[TopicCluster]] = Field(
+        default=None, description="Content pillars/clusters (3-5 clusters)"
+    )
+
+    # Technical SEO
+    technical_seo_recommendations: str = Field(
+        ..., description="Technical SEO recommendations with URL structure, schema markup, code examples (markdown, 3-5 sections)"
+    )
+    keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] = Field(
+        default=None, description="Site structure organized around keyword clusters and search intent patterns"
+    )
+    keyword_based_page_types: Optional[List[KeywordBasedPageType]] = Field(
+        default=None, description="Page types derived from keyword analysis (4-8 page types)"
+    )
+
+
+class ImplementationPlanResult(BaseModel):
+    """
+    Intermediate result from Task 3: Implementation Planning.
+
+    The seo_specialist agent creates phased implementation roadmap with
+    metrics, timeline, budget, and risk mitigation strategies.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Implementation
+    implementation_roadmap: str = Field(
+        ..., description="Phased implementation plan (markdown, 3-4 phases with timelines and targets)"
+    )
+    key_metrics_to_track: List[str] = Field(
+        ..., description="4-6 critical KPIs (SEO Performance + Business Metrics)"
+    )
+    expected_timeline: str = Field(
+        ..., description="Timeline expectations (3, 6, 12, 18 months milestones)"
+    )
+    next_steps_checklist: List[str] = Field(
+        ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
+    )
+
+    # Optional planning elements
+    risk_mitigation: Optional[str] = Field(
+        default=None, description="Potential challenges and mitigation strategies (markdown, 2-4 challenges)"
+    )
+    budget_allocation: Optional[str] = Field(
+        default=None, description="Budget recommendations with options (markdown, Option A/B/C)"
     )

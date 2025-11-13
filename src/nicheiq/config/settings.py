@@ -180,11 +180,31 @@ class Settings(BaseSettings):
         default=Path("./output/reports"), description="Reports output directory"
     )
 
+    # Checkpoint Configuration
+    checkpoint_enabled: bool = Field(
+        default=True,
+        description="Enable checkpoint/resume functionality to recover from failures"
+    )
+    checkpoint_dir: Path = Field(
+        default=Path("./output/checkpoints"),
+        description="Checkpoint storage directory"
+    )
+    checkpoint_max_age_days: int = Field(
+        default=7,
+        description="Maximum age of checkpoints before auto-cleanup (0 = disable cleanup)"
+    )
+    checkpoint_auto_cleanup: bool = Field(
+        default=True,
+        description="Automatically cleanup old checkpoints on startup"
+    )
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # Create output directories if they don't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.reports_dir.mkdir(parents=True, exist_ok=True)
+        if self.checkpoint_enabled:
+            self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Global settings instance

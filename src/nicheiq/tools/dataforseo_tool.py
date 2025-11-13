@@ -214,6 +214,7 @@ class DataForSEOBaseClient:
             sanitized_keywords = unique_keywords
 
         logger.info(f"Expanding {len(sanitized_keywords)} seed keywords (batching in chunks of {MAX_KEYWORDS_RELATED})")
+        logger.debug(f"Sanitized keywords to send: {sanitized_keywords}")
         if sanitized_count > 0:
             logger.info(f"Sanitized {sanitized_count} keywords with invalid characters")
 
@@ -226,6 +227,7 @@ class DataForSEOBaseClient:
 
         for batch_idx, batch in enumerate(keyword_batches, 1):
             logger.info(f"Processing batch {batch_idx}/{len(keyword_batches)} with {len(batch)} keywords")
+            logger.debug(f"Batch {batch_idx} keywords: {batch}")
 
             # Format payload as list (DataForSEO API format)
             # Only include location_code and language_code if they are not None
@@ -250,7 +252,10 @@ class DataForSEOBaseClient:
                     task_data = response["tasks"][0]
                     if task_data.get("status_code") != 20000:
                         error_msg = task_data.get("status_message", "Unknown task error")
-                        logger.error(f"DataForSEO task error: {error_msg}")
+                        status_code = task_data.get("status_code")
+                        logger.error(f"DataForSEO task error (code {status_code}): {error_msg}")
+                        logger.error(f"Failed batch {batch_idx} keywords: {batch}")
+                        logger.debug(f"Full API response: {json.dumps(task_data, indent=2)}")
                         continue
                     result_data = task_data.get("result")
                 elif response.get("result"):
@@ -260,7 +265,16 @@ class DataForSEOBaseClient:
                     logger.warning(f"No results returned for batch {batch_idx}")
                     continue
 
+                # Track keywords before processing this batch
+                keywords_before_batch = len(all_keywords)
+
                 # Process results
+                # NOTE: DataForSEO may return null for any field when data is unavailable
+                # Null Handling Strategy:
+                # - search_volume: null → skip keyword (not useful without volume data)
+                # - competition_index: null → default to 0 (represents "no competition data")
+                # - cpc: null → default to 0 (represents "no cost data")
+                # - monthly_searches: null → default to [] (represents "no historical data")
                 for item in result_data:
                     # Parse response according to docs
                     search_volume = item.get("search_volume")
@@ -287,8 +301,12 @@ class DataForSEOBaseClient:
                                 "search_volume": search_volume,
                                 "competition": competition_float,
                                 "competition_index": competition_index,
-                                "cpc": item.get("cpc", 0),
+                                "cpc": item.get("cpc") or 0,  # Coalesce None to 0
                             })
+
+                # Log batch success
+                keywords_added = len(all_keywords) - keywords_before_batch
+                logger.debug(f"Batch {batch_idx} completed: {keywords_added} keywords passed filters and added to results")
 
             except Exception as e:
                 logger.error(f"Keyword expansion failed for batch {batch_idx}: {e}")
@@ -418,6 +436,12 @@ class DataForSEOBaseClient:
                     continue
 
                 # Process results
+                # NOTE: DataForSEO may return null for any field when data is unavailable
+                # Null Handling Strategy:
+                # - search_volume: null → skip keyword (not useful without volume data)
+                # - competition_index: null → default to 0 (represents "no competition data")
+                # - cpc: null → default to 0 (represents "no cost data")
+                # - monthly_searches: null → default to [] (represents "no historical data")
                 result_count = 0
                 for item in result_data:
                     search_volume = item.get("search_volume")
@@ -440,7 +464,7 @@ class DataForSEOBaseClient:
                         "search_volume": search_volume,
                         "competition": competition_float,
                         "competition_index": competition_index,
-                        "cpc": item.get("cpc", 0),
+                        "cpc": item.get("cpc") or 0,  # Coalesce None to 0
                         "monthly_searches": item.get("monthly_searches", []),
                     })
                     result_count += 1
@@ -626,7 +650,7 @@ class DataForSEOSearchVolumeTool(BaseTool, DataForSEOBaseClient):
             # Calculate summary stats
             total_volume = sum(kw.get("search_volume", 0) for kw in keyword_metrics)
             avg_competition = sum(kw.get("competition", 0) for kw in keyword_metrics) / len(keyword_metrics) if keyword_metrics else 0
-            avg_cpc = sum(kw.get("cpc", 0) for kw in keyword_metrics) / len(keyword_metrics) if keyword_metrics else 0
+            avg_cpc = sum(kw.get("cpc") or 0 for kw in keyword_metrics) / len(keyword_metrics) if keyword_metrics else 0
 
             # Format results
             result = {

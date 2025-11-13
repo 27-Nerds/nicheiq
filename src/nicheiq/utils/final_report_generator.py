@@ -220,7 +220,7 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
         for kw in seo.tier_1_keywords:
             opp_score = f"{kw.opportunity_score:,}" if kw.opportunity_score else "N/A"
             sections.append(
-                f"| **{kw.keyword}** | {kw.monthly_volume:,} | {kw.competition} | {opp_score} | {kw.strategy} |"
+                f"| **{kw.keyword}** | {kw.search_volume:,} | {kw.competition} | {opp_score} | {kw.strategy} |"
             )
 
         sections.extend([
@@ -243,7 +243,7 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
         for kw in seo.tier_2_keywords:
             intent = kw.intent if kw.intent else "N/A"
             sections.append(
-                f"| **{kw.keyword}** | {kw.monthly_volume:,} | {kw.competition} | {intent} |"
+                f"| **{kw.keyword}** | {kw.search_volume:,} | {kw.competition} | {intent} |"
             )
 
         if seo.tier_2_strategy:
@@ -306,8 +306,9 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
                 doc_type = kw.get("document_type") or kw.get("category", "N/A")
                 volume = kw.get("monthly_volume", 0)
                 comp = kw.get("competition", "N/A")
-                cpc = kw.get("cpc", "")
-                sections.append(f"| {doc_type} | {volume:,} | {comp} | {cpc} |")
+                cpc = kw.get("cpc") or 0
+                cpc_formatted = f"${cpc:.2f}" if cpc > 0 else "N/A"
+                sections.append(f"| {doc_type} | {volume:,} | {comp} | {cpc_formatted} |")
 
             sections.extend([
                 "",

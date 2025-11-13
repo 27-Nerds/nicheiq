@@ -5,7 +5,7 @@ Pydantic models for keyword research data (Stage 9).
 from enum import Enum
 from typing import Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class MonthlySearchVolume(BaseModel):
@@ -58,10 +58,10 @@ class Keyword(BaseModel):
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Monthly search volume")
     competition: float = Field(..., ge=0.0, le=1.0, description="Competition level (0-1)")
-    competition_index: Optional[float] = Field(
-        default=None, description="Competition index score"
+    competition_index: float = Field(
+        default=0.0, description="Competition index score (defaults to 0 if unavailable)"
     )
-    cpc: Optional[float] = Field(default=None, description="Cost per click in USD")
+    cpc: float = Field(default=0.0, description="Cost per click in USD (defaults to 0 if unavailable)")
     keyword_difficulty: Optional[float] = Field(
         default=None, ge=0.0, le=100.0, description="Keyword difficulty score (0-100)"
     )
@@ -74,9 +74,25 @@ class Keyword(BaseModel):
     trend: Optional[str] = Field(
         default=None, description="Trend direction (rising, stable, declining)"
     )
-    monthly_searches: Optional[List[MonthlySearchVolume]] = Field(
-        default=None, description="Historical monthly search volumes"
+    monthly_searches: List[MonthlySearchVolume] = Field(
+        default_factory=list, description="Historical monthly search volumes (defaults to empty list if unavailable)"
     )
+
+    @field_validator('competition_index', 'cpc', mode='before')
+    @classmethod
+    def coerce_numeric_none_to_zero(cls, v):
+        """Coerce None to 0 for numeric fields (DataForSEO may return null)."""
+        if v is None or v == "null":
+            return 0.0
+        return v
+
+    @field_validator('monthly_searches', mode='before')
+    @classmethod
+    def coerce_monthly_searches_none_to_empty_list(cls, v):
+        """Coerce None to [] for monthly_searches (DataForSEO may return null)."""
+        if v is None or v == "null":
+            return []
+        return v
 
 
 class GeographicBreakdown(BaseModel):

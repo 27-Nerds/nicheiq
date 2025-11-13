@@ -661,6 +661,87 @@ expected_output: >
 
 ---
 
+### 5.3 Pydantic Structured Output with Context Chaining ✅
+
+**Context:** CrewAI's `output_pydantic` parameter enables validation but has a known limitation.
+
+**The Problem:**
+- CrewAI does NOT automatically inject Pydantic `Field(description=...)` into LLM prompts
+- Documented in GitHub Issue #1338 (marked "not planned")
+- Result: LLM sees basic schema structure (`{"solution_ideas": List[SolutionIdea]}`) but not field-level guidance
+- Can cause "schema confusion" where agent outputs schema definition instead of populated data
+
+**The Solution (Community Recommended):**
+When using `output_pydantic`, manually add explicit field guidance + structure examples to task prompts.
+
+#### Pattern 1: Field Requirements in expected_output
+
+```yaml
+task_name:
+  description: >
+    [Task instructions]
+
+  expected_output: >
+    Complete ModelName Pydantic model with ALL fields populated:
+
+    REQUIRED FIELDS:
+    - field1: Description of what to populate (source: context from Task N)
+    - field2: Description and constraints (e.g., "0.0-1.0 score")
+    - nested_list: List of X objects with [specific fields]
+
+    CRITICAL: Return ACTUAL DATA extracted from context, not schema definitions.
+```
+
+#### Pattern 2: Structure Example (For Complex Nested Models)
+
+```yaml
+expected_output: >
+    Complete ModelName Pydantic model.
+
+    STRUCTURE EXAMPLE (populate with actual content from context):
+    {
+      "field1": "Actual value from Task 1 context",
+      "field2": 0.85,
+      "nested_list": [
+        {"name": "Real data", "score": 0.9},
+        {"name": "Real data 2", "score": 0.8}
+      ]
+    }
+
+    DO NOT output schema like: {"type": "object", "properties": {...}}
+```
+
+#### Pattern 3: Context Chaining Guidance
+
+When tasks use `context=[previous_task]`, add explicit extraction instructions:
+
+```yaml
+description: >
+    **HOW TO ACCESS CONTEXT:**
+
+    Task N output is available in your context. Extract:
+    - From Task N: field_a, field_b (PRESERVE these exactly)
+    - Use to enhance: field_c, field_d
+
+    Your output must contain ACTUAL VALUES from context, enhanced with new analysis.
+```
+
+**Why This Works:**
+- LLM receives clear guidance on what to populate in each field
+- Examples show populated data (not abstract schema)
+- Reduces "schema confusion" errors
+- Aligns with CrewAI GitHub #1338 community workaround
+
+**Trade-off:** Some duplication between Pydantic model definitions and prompt text, but necessary given CrewAI limitation.
+
+**Example from codebase:** See `src/nicheiq/crews/config/unified_solution_tasks.yaml` - competitive_refinement task demonstrates all 3 patterns.
+
+**References:**
+- CrewAI GitHub Issue #1338: "Pydantic model schema not added to system prompt"
+- CrewAI GitHub Issue #2188: Feature request for improved pydantic_output using field descriptions
+
+---
+
 ## Part 6: Common Anti-Patterns to Avoid
 
 ### 6.1 Fabricated Quantification 🚨 CRITICAL

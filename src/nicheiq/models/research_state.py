@@ -3,27 +3,18 @@ Pydantic models for research flow state management.
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .competitor import CompetitiveAnalysisResult
 from .data_source import DataSourceResearchResult
 from .keyword_data import KeywordValidationResult
-from .pain_point import PainPointAnalysisResult
+from .pain_point import ContentCategorizationReport, PainPointAnalysisResult
 from .seo_strategy import SEOStrategyReport
 from .social_content import SocialContentCollection
 from .solution_idea import IdeaGenerationResult, SolutionIdea
-from .solution_selection import SolutionSelection
-
-
-class SelectionCriteriaScore(BaseModel):
-    """Single selection criteria score entry."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    criterion: str = Field(..., description="Criterion name (e.g., 'market_fit', 'technical_feasibility')")
-    score: float = Field(..., description="Score value (0-1 scale)")
+from .solution_selection import SolutionSelection, SelectionCriteriaScore
 
 
 class NicheContext(BaseModel):
@@ -67,6 +58,186 @@ class ThreadRelevanceValidation(BaseModel):
     is_relevant: bool = Field(..., description="Whether thread is relevant to niche")
     confidence: float = Field(..., description="Confidence score 0-1")
     reason: str = Field(..., description="Brief explanation of relevance decision")
+
+
+class SubredditBreakdown(BaseModel):
+    """Breakdown of posts by subreddit."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = Field(..., description="Subreddit name (without r/ prefix)")
+    post_count: int = Field(..., description="Number of posts from this subreddit")
+
+
+class ResearchMetadata(BaseModel):
+    """Metadata about the research data collection process."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    reddit_posts_analyzed: int = Field(..., description="Total Reddit posts collected")
+    reddit_comments_analyzed: int = Field(..., description="Total Reddit comments analyzed")
+    twitter_threads_analyzed: int = Field(..., description="Total Twitter threads collected")
+    top_subreddits: List[SubredditBreakdown] = Field(
+        ..., description="Breakdown of posts by subreddit (top 10)"
+    )
+    collection_date: datetime = Field(..., description="When data collection occurred")
+    data_size_mb: float = Field(..., description="Total data size in megabytes")
+
+
+class AlternativeSolution(BaseModel):
+    """Condensed summary of a runner-up solution for comparison."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Name of the alternative solution")
+    summary: str = Field(..., description="2-3 paragraph overview of the solution")
+    market_fit_score: float = Field(..., ge=0.0, le=1.0, description="Market fit score")
+    technical_feasibility_score: float = Field(..., ge=0.0, le=1.0, description="Technical feasibility")
+    competitive_advantage_score: float = Field(..., ge=0.0, le=1.0, description="Competitive advantage score")
+    seo_growth_potential_score: float = Field(..., ge=0.0, le=1.0, description="SEO scalability score")
+    key_differentiator: str = Field(..., description="Primary unique value proposition")
+    best_suited_for: str = Field(..., description="When this solution is the best choice")
+    pivot_trigger: str = Field(..., description="Conditions that would justify pivoting to this solution")
+
+
+class CompetitorMatrixEntry(BaseModel):
+    """Single competitor entry showing which solutions it competes against."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    competitor_name: str = Field(..., description="Name of the competitor")
+    solutions_competed: List[str] = Field(..., description="List of solution names this competitor appears in")
+    competitor_type: str = Field(..., description="Type: direct, partial, indirect")
+    threat_level: str = Field(..., description="Overall threat level: high, medium, low")
+
+
+class CompetitiveIntensityEntry(BaseModel):
+    """Competitive intensity for a single solution."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Name of the solution")
+    intensity: str = Field(..., description="Competitive intensity: Low, Medium, or High")
+
+
+class CompetitiveLandscapeMatrix(BaseModel):
+    """Cross-solution competitive analysis showing overlap and patterns."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    all_solutions_analyzed: List[str] = Field(..., description="Names of all solutions analyzed")
+    competitor_overlap: List[CompetitorMatrixEntry] = Field(
+        ..., description="Competitors appearing in multiple solution landscapes"
+    )
+    competitive_intensity_by_solution: List[CompetitiveIntensityEntry] = Field(
+        ..., description="Competitive intensity for each solution analyzed"
+    )
+    market_insight: str = Field(
+        ..., description="Strategic insight about competitive landscape patterns"
+    )
+
+
+class TopRedditThread(BaseModel):
+    """Summary of a high-engagement Reddit thread for evidence appendix."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    post_id: str = Field(..., description="Reddit post ID")
+    title: str = Field(..., description="Post title")
+    subreddit: str = Field(..., description="Subreddit name")
+    score: int = Field(..., description="Post score (upvotes)")
+    num_comments: int = Field(..., description="Number of comments")
+    url: str = Field(..., description="Link to Reddit post")
+    key_insight: str = Field(..., description="1-sentence summary of why this thread is significant")
+
+
+class QuoteSource(BaseModel):
+    """Single quote with source attribution."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    quote: str = Field(..., description="The quote text")
+    post_id: str = Field(..., description="Post ID where quote was found")
+    subreddit: str = Field(..., description="Subreddit name")
+    score: str = Field(..., description="Post score/engagement")
+
+
+class PainPointEvidence(BaseModel):
+    """Evidence linking pain point quotes to original Reddit posts."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    pain_point_title: str = Field(..., description="Pain point title")
+    quotes_with_sources: List[QuoteSource] = Field(
+        ..., description="List of quotes with source attribution"
+    )
+
+
+class EvidenceAppendix(BaseModel):
+    """Appendix containing evidence traceability for research validation."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    top_reddit_threads: List[TopRedditThread] = Field(
+        ..., description="Top 10 most engaging Reddit discussions analyzed"
+    )
+    pain_point_quote_sources: List[PainPointEvidence] = Field(
+        ..., description="Traceability from pain points to original posts"
+    )
+
+
+class DataInfrastructurePhase(BaseModel):
+    """Single phase of data infrastructure implementation."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    phase_number: int = Field(..., description="Phase number (1, 2, or 3)")
+    phase_name: str = Field(..., description="Phase name (e.g., 'MVP', 'Growth', 'Scale')")
+    timeline: str = Field(..., description="Timeline for this phase (e.g., 'Months 1-3')")
+    data_sources: List[str] = Field(..., description="Data sources to integrate in this phase")
+    estimated_monthly_cost: str = Field(..., description="Cost range for this phase (e.g., '$200-300')")
+    key_risks: List[str] = Field(..., description="Risks and mitigation strategies")
+
+
+class DataInfrastructureRoadmap(BaseModel):
+    """Complete data infrastructure implementation roadmap."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    phases: List[DataInfrastructurePhase] = Field(..., description="3-phase implementation plan")
+    cost_scaling_insight: str = Field(
+        ..., description="Summary of how costs scale with user growth and mitigation strategies"
+    )
+
+
+class DecisionCriterion(BaseModel):
+    """Single go/no-go decision criterion."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    criterion_type: str = Field(..., description="Type: 'go' or 'no-go'")
+    condition: str = Field(..., description="Condition to evaluate (e.g., 'SEO keyword volume >10k/mo')")
+    rationale: str = Field(..., description="Why this criterion matters")
+
+
+class PivotTrigger(BaseModel):
+    """Condition that would trigger a pivot to an alternative solution."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    trigger_condition: str = Field(..., description="Condition triggering pivot")
+    pivot_to_solution: str = Field(..., description="Alternative solution to pivot to")
+    rationale: str = Field(..., description="Why this pivot makes sense")
+
+
+class DecisionFramework(BaseModel):
+    """Framework for making go/no-go and pivot decisions."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    go_criteria: List[DecisionCriterion] = Field(..., description="Criteria for proceeding with selected solution")
+    no_go_criteria: List[DecisionCriterion] = Field(..., description="Criteria for stopping the project")
+    pivot_triggers: List[PivotTrigger] = Field(..., description="Conditions for pivoting to alternatives")
 
 
 class FinalReport(BaseModel):
@@ -175,6 +346,36 @@ class FinalReport(BaseModel):
 
     # Next Steps
     next_steps: List[str] = Field(..., description="Recommended next steps")
+
+    # Enhanced Report Sections (NEW - improve data preservation and traceability)
+    research_metadata: Optional[ResearchMetadata] = Field(
+        default=None,
+        description="Metadata about data collection: Reddit/Twitter post counts, subreddit breakdown, collection date, data size"
+    )
+    alternative_solutions: Optional[List[AlternativeSolution]] = Field(
+        default=None,
+        description="Detailed summaries of runner-up solutions with scores and pivot criteria (top 2 alternatives)"
+    )
+    competitive_landscape_matrix: Optional[CompetitiveLandscapeMatrix] = Field(
+        default=None,
+        description="Cross-solution competitive analysis showing competitor overlap and intensity patterns"
+    )
+    evidence_appendix: Optional[EvidenceAppendix] = Field(
+        default=None,
+        description="Traceability appendix: top Reddit threads analyzed and pain point quote sources with post IDs"
+    )
+    data_infrastructure_roadmap: Optional[DataInfrastructureRoadmap] = Field(
+        default=None,
+        description="3-phase data infrastructure implementation plan with cost projections and scale risks"
+    )
+    decision_framework: Optional[DecisionFramework] = Field(
+        default=None,
+        description="Go/no-go criteria and pivot triggers for decision-making"
+    )
+    content_categorization: Optional[ContentCategorizationReport] = Field(
+        default=None,
+        description="Content categorization analysis: theme categories, user segments, and discussion quality from Stage 6 Task 1"
+    )
 
     # Metadata
     generated_at: datetime = Field(

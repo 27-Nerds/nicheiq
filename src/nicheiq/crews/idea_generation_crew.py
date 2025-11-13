@@ -193,6 +193,94 @@ class IdeaGenerationCrew:
             output_pydantic=IdeaGenerationResult,
         )
 
+    def _validate_no_field_loss(self, task_output) -> tuple:
+        """
+        Guardrail function to validate competitive refinement preserves all solution fields.
+
+        CrewAI guardrails:
+        - Accept TaskOutput as input
+        - Return (bool, Any) tuple: (is_valid, result_or_error)
+        - If False returned, task auto-retries
+
+        Validates:
+        1. Solution count matches original input (no dropped solutions)
+        2. All required fields are not None
+        3. All SEO fields are preserved (especially refined fields)
+
+        Args:
+            task_output: TaskOutput from competitive insights task
+
+        Returns:
+            (True, result) if valid, (False, error_message) if validation fails
+        """
+        try:
+            result = task_output.pydantic
+
+            if not isinstance(result, IdeaGenerationResult):
+                return (False, f"Invalid output type: expected IdeaGenerationResult, got {type(result)}")
+
+            # Check solution count (stored in instance variable for comparison)
+            if not hasattr(self, '_expected_solution_count'):
+                # First run, store expected count for future validations
+                self._expected_solution_count = len(result.solution_ideas)
+                logger.debug(f"Guardrail: Set expected solution count to {self._expected_solution_count}")
+            else:
+                # Validate count matches
+                actual_count = len(result.solution_ideas)
+                if actual_count != self._expected_solution_count:
+                    return (
+                        False,
+                        f"Solution count mismatch: expected {self._expected_solution_count}, got {actual_count}. "
+                        f"Agent dropped {self._expected_solution_count - actual_count} solution(s)."
+                    )
+
+            # Validate all required fields are present
+            field_errors = []
+            for idx, idea in enumerate(result.solution_ideas):
+                missing_fields = []
+
+                # Check required string fields
+                if not idea.solution_name or idea.solution_name.strip() == "":
+                    missing_fields.append("solution_name")
+                if not idea.description or idea.description.strip() == "":
+                    missing_fields.append("description")
+                if not idea.value_proposition or idea.value_proposition.strip() == "":
+                    missing_fields.append("value_proposition")
+
+                # Check required list fields
+                if not idea.pain_points_addressed:
+                    missing_fields.append("pain_points_addressed")
+                if not idea.core_features:
+                    missing_fields.append("core_features")
+                if not idea.target_personas:
+                    missing_fields.append("target_personas")
+
+                # Check required score fields
+                if idea.market_fit_score is None:
+                    missing_fields.append("market_fit_score")
+                if idea.technical_feasibility_score is None:
+                    missing_fields.append("technical_feasibility_score")
+
+                # Check conditional data aggregation fields
+                if idea.requires_data_aggregation and not idea.data_sources:
+                    missing_fields.append("data_sources (required when requires_data_aggregation=True)")
+
+                if missing_fields:
+                    field_errors.append(f"Solution '{idea.solution_name}': {', '.join(missing_fields)}")
+
+            if field_errors:
+                return (
+                    False,
+                    f"Required fields missing in {len(field_errors)} solution(s):\n" + "\n".join(field_errors)
+                )
+
+            # All validations passed
+            logger.info(f"✓ Guardrail validation passed: {len(result.solution_ideas)} solutions with all fields preserved")
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Guardrail validation error: {str(e)}")
+
     def _create_competitive_insights_task(self) -> Task:
         """
         Create task for enhancing solutions with competitive intelligence.
@@ -201,12 +289,13 @@ class IdeaGenerationCrew:
         in refine_with_competition() method, not in the main crew workflow.
 
         Returns:
-            Task for competitive enhancement with structured output
+            Task for competitive enhancement with structured output and guardrail validation
         """
         return Task(
             config=self.tasks_config["incorporate_competitive_insights"],
             agent=self.solution_refiner(),  # Reuse refiner for enhancement
             output_pydantic=IdeaGenerationResult,
+            guardrail=self._validate_no_field_loss,  # Auto-validates and retries on failure
         )
 
     @crew
@@ -427,17 +516,33 @@ class IdeaGenerationCrew:
 
         try:
             # Format solutions for input - MUST include ALL required fields for preservation
+            # This comprehensive formatting ensures agents can reconstruct complete SolutionIdea objects
             solutions_summary = "\n\n".join([
                 f"**{sol.solution_name}**\n"
                 f"- Description: {sol.description}\n"
                 f"- Value Prop: {sol.value_proposition}\n"
-                f"- Core Features: {', '.join(sol.core_features[:5])}\n"
-                f"- Current Differentiation: {', '.join(sol.differentiation_factors or ['None yet'])}\n"
-                f"- Pricing: {sol.pricing_strategy or 'Not defined'}\n"
+                f"- Pain Points Addressed: {', '.join(sol.pain_points_addressed)}\n"
+                f"- Core Features: {', '.join(sol.core_features)}\n"  # ALL features, not truncated
+                f"- Target Personas: {', '.join(sol.target_personas)}\n"
                 f"- Technical Approach: {sol.technical_approach or 'Not defined'}\n"
+                f"- Current Differentiation: {', '.join(sol.differentiation_factors or ['None yet'])}\n"
+                f"- Requires Data Aggregation: {sol.requires_data_aggregation}\n"
+                f"- Data Sources: {', '.join(sol.data_sources) if sol.data_sources else 'None'}\n"
+                f"- Estimated Development Time: {sol.estimated_development_time or 'Not defined'}\n"
+                f"- Pricing Strategy: {sol.pricing_strategy or 'Not defined'}\n"
                 f"- Market Fit Score: {sol.market_fit_score}\n"
                 f"- Technical Feasibility Score: {sol.technical_feasibility_score}\n"
-                f"- Estimated Development Time: {sol.estimated_development_time or 'Not defined'}"
+                f"- Project Type: {sol.project_type or 'Not defined'}\n"
+                f"- Programmatic SEO Opportunity: {sol.programmatic_seo_opportunity or 'Not assessed'}\n"
+                f"- Content Generation Model: {sol.content_generation_model or 'Not defined'}\n"
+                f"- Organic Discovery Queries (sample): {', '.join(sol.organic_discovery_queries[:5]) if sol.organic_discovery_queries else 'None defined'}\n"
+                f"- Estimated CAC Organic: {sol.estimated_cac_organic or 'Not estimated'}\n"
+                f"- Estimated CAC Paid: {sol.estimated_cac_paid or 'Not estimated'}\n"
+                f"- SEO Scalability Score: {sol.seo_scalability_score if sol.seo_scalability_score is not None else 'Not scored'}\n"
+                f"- SEO Scalability Score (Refined): {sol.seo_scalability_score_refined if sol.seo_scalability_score_refined is not None else 'Not yet refined'}\n"
+                f"- Estimated CAC Organic (Refined): {sol.estimated_cac_organic_refined or 'Not yet refined'}\n"
+                f"- Programmatic SEO Opportunity (Refined): {sol.programmatic_seo_opportunity_refined or 'Not yet refined'}\n"
+                f"- SEO Refinement Metadata: {sol.seo_refinement_metadata.model_dump() if sol.seo_refinement_metadata else 'Not yet calculated'}"
                 for sol in original_ideas.solution_ideas
             ])
 
@@ -459,6 +564,10 @@ class IdeaGenerationCrew:
             logger.debug(f"Competitive landscapes: {len(competitive_analysis.solution_landscapes)}")
             logger.debug("=" * 80)
 
+            # Set expected solution count for guardrail validation
+            self._expected_solution_count = len(original_ideas.solution_ideas)
+            logger.debug(f"Guardrail: Expecting {self._expected_solution_count} solutions in output")
+
             # Create single-task crew just for competitive enhancement
             enhancement_crew = Crew(
                 agents=[self.solution_refiner()],
@@ -475,6 +584,22 @@ class IdeaGenerationCrew:
 
             # Extract enhanced solutions
             result = crew_output.pydantic
+
+            # VALIDATION: Verify solution count matches input (detect dropped solutions)
+            if len(result.solution_ideas) != len(original_ideas.solution_ideas):
+                logger.error(
+                    f"❌ Competitive refinement dropped {len(original_ideas.solution_ideas) - len(result.solution_ideas)} solution(s)! "
+                    f"Input: {len(original_ideas.solution_ideas)}, Output: {len(result.solution_ideas)}"
+                )
+                dropped_names = set(sol.solution_name for sol in original_ideas.solution_ideas) - set(sol.solution_name for sol in result.solution_ideas)
+                logger.error(f"Dropped solutions: {dropped_names}")
+
+                # Auto-restore dropped solutions from original input (fail-safe)
+                output_names = {sol.solution_name for sol in result.solution_ideas}
+                for original_sol in original_ideas.solution_ideas:
+                    if original_sol.solution_name not in output_names:
+                        logger.warning(f"⚠️ Auto-restoring dropped solution: {original_sol.solution_name}")
+                        result.solution_ideas.append(original_sol)
 
             # VALIDATION: Verify solution names match originals (detect and correct LLM renaming)
             original_names = [sol.solution_name for sol in original_ideas.solution_ideas]

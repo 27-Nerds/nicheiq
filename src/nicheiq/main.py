@@ -70,13 +70,20 @@ def validate_environment():
     return True
 
 
-def run_research(niche_description: str, allowed_project_types=None) -> str:
+def run_research(
+    niche_description: str,
+    allowed_project_types=None,
+    resume: bool = False,
+    checkpoint_path: str = None
+) -> str:
     """
     Run the complete NicheIQ research pipeline.
 
     Args:
         niche_description: Description of the niche/market to research
         allowed_project_types: Optional list of allowed project types
+        resume: If True, automatically resume from latest checkpoint
+        checkpoint_path: Explicit checkpoint folder path to resume from
 
     Returns:
         Path to the generated research report
@@ -96,11 +103,88 @@ def run_research(niche_description: str, allowed_project_types=None) -> str:
     if not validate_environment():
         raise EnvironmentError("Environment validation failed. Please check your .env file.")
 
-    # Initialize and run research flow
+    # Initialize research flow
     flow = ResearchFlow(niche_description=niche_description, allowed_project_types=allowed_project_types)
-    report_path = flow.run_research()
+
+    # Handle checkpoint resume
+    if checkpoint_path:
+        logger.info(f"Attempting to resume from checkpoint: {checkpoint_path}")
+        checkpoint = Path(checkpoint_path)
+        if not checkpoint.exists():
+            logger.error(f"Checkpoint not found: {checkpoint_path}")
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        if flow.resume_from_checkpoint(checkpoint):
+            report_path = flow._execute_remaining_stages()
+        else:
+            logger.warning("Failed to resume from checkpoint, starting fresh")
+            report_path = flow.run_with_resume(auto_resume=False)
+    elif resume:
+        logger.info("Auto-resume enabled - checking for latest checkpoint")
+        report_path = flow.run_with_resume(auto_resume=True)
+    else:
+        report_path = flow.run_with_resume(auto_resume=False)
 
     return report_path
+
+
+def list_checkpoints(niche_description: str = None):
+    """
+    List available checkpoints for a niche (or all checkpoints).
+
+    Args:
+        niche_description: Optional niche to filter checkpoints
+    """
+    setup_logging()
+
+    if not settings.checkpoint_enabled:
+        logger.warning("Checkpointing is disabled")
+        return
+
+    if not settings.checkpoint_dir.exists():
+        logger.info("No checkpoints directory found")
+        return
+
+    # Get all checkpoint folders
+    checkpoints = sorted(
+        settings.checkpoint_dir.glob("checkpoint_*"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )
+
+    if not checkpoints:
+        logger.info("No checkpoints found")
+        return
+
+    # Filter by niche if specified
+    if niche_description:
+        niche_slug = "".join(c if c.isalnum() else "_" for c in niche_description[:50]).lower().strip("_")
+        checkpoints = [cp for cp in checkpoints if niche_slug in cp.name.lower()]
+
+    logger.info(f"\nFound {len(checkpoints)} checkpoint(s):")
+    logger.info("=" * 80)
+
+    for cp in checkpoints:
+        metadata_file = cp / "metadata.json"
+        if metadata_file.exists():
+            import json
+            with open(metadata_file, "r") as f:
+                metadata = json.load(f)
+
+            niche = metadata.get("niche_description", "Unknown")[:60]
+            current_stage = metadata.get("current_stage", "?")
+            completed = metadata.get("completed_stages", [])
+            last_checkpoint = metadata.get("last_checkpoint_at", "Unknown")
+
+            logger.info(f"\n📁 {cp.name}")
+            logger.info(f"   Niche: {niche}...")
+            logger.info(f"   Current Stage: {current_stage}")
+            logger.info(f"   Completed Stages: {', '.join(str(s) for s in completed)}")
+            logger.info(f"   Last Checkpoint: {last_checkpoint}")
+            logger.info(f"   Path: {cp}")
+        else:
+            logger.info(f"\n📁 {cp.name} (no metadata)")
+
+    logger.info("\n" + "=" * 80)
 
 
 def main():
@@ -126,6 +210,22 @@ Examples:
   # Using environment variable
   export NICHEIQ_NICHE="SaaS for freelance designers"
   python -m nicheiq.main
+
+  # Checkpoint/Resume examples:
+  # Auto-resume from latest checkpoint if available
+  python -m nicheiq.main --niche "AI tools" --resume
+
+  # Resume from specific checkpoint folder
+  python -m nicheiq.main --niche "AI tools" --checkpoint ./output/checkpoints/checkpoint_ai_tools_20250110_143052
+
+  # List all available checkpoints
+  python -m nicheiq.main --list-checkpoints
+
+  # List checkpoints for specific niche
+  python -m nicheiq.main --niche "AI tools" --list-checkpoints
+
+  # Disable checkpointing for this run
+  python -m nicheiq.main --niche "AI tools" --no-checkpoint
         """
     )
 
@@ -155,7 +255,37 @@ Examples:
         help="Comma-separated list of allowed project types: saas,directory,aggregator,comparison-tool,marketplace (e.g., 'directory,aggregator')",
     )
 
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Automatically resume from latest checkpoint if available",
+    )
+
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        help="Path to specific checkpoint folder to resume from",
+    )
+
+    parser.add_argument(
+        "--list-checkpoints",
+        action="store_true",
+        help="List all available checkpoints for the specified niche (or all if no niche specified)",
+    )
+
+    parser.add_argument(
+        "--no-checkpoint",
+        action="store_true",
+        help="Disable checkpointing for this run",
+    )
+
     args = parser.parse_args()
+
+    # Handle --list-checkpoints command
+    if args.list_checkpoints:
+        niche_filter = args.niche or settings.niche_description
+        list_checkpoints(niche_filter)
+        sys.exit(0)
 
     # Get niche description from args or environment
     niche_description = args.niche or settings.niche_description
@@ -185,9 +315,17 @@ Examples:
     if args.log_level:
         settings.log_level = args.log_level
 
+    if args.no_checkpoint:
+        settings.checkpoint_enabled = False
+
     # Run research
     try:
-        report_path = run_research(niche_description, allowed_project_types)
+        report_path = run_research(
+            niche_description,
+            allowed_project_types,
+            resume=args.resume,
+            checkpoint_path=args.checkpoint
+        )
         logger.info(f"\n✓ Research completed successfully!")
         logger.info(f"✓ Report saved to: {report_path}")
         sys.exit(0)

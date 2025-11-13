@@ -4,9 +4,11 @@ Combines Flow-based orchestration with specialized Crews for complex analysis.
 """
 
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Tuple
 import asyncio
 import json
+import time
+from datetime import datetime, timedelta
 
 from crewai.flow.flow import Flow, listen, start
 from crewai.llm import LLM
@@ -15,11 +17,12 @@ from loguru import logger
 from pydantic import ValidationError
 
 from ..config.settings import settings
-from ..crews import CompetitiveCrew, IdeaGenerationCrew, PainPointCrew, SEOStrategyCrew
+from ..crews import PainPointCrew, SEOStrategyCrew, UnifiedSolutionCrew
 from ..models.research_state import FinalReport, ResearchState
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..utils.helpers import SearchHelper, generate_competitive_queries
+from .checkpoint_manager import CheckpointManager
 
 
 class ResearchFlow(Flow[ResearchState]):
@@ -30,8 +33,7 @@ class ResearchFlow(Flow[ResearchState]):
     1-4: Niche Input & Validation (Flow)
     5: Search & Discover (Flow + SerperDevTool)
     6: Pain Point Analysis (PainPointCrew)
-    7: Solution Ideation (IdeaGenerationCrew)
-    8: Competitive Analysis (CompetitiveCrew)
+    7-8.75: Unified Solution Pipeline (UnifiedSolutionCrew - ideation, competitive analysis, refinement, selection)
     9: Integrated Keyword Research + SEO Strategy (SEOStrategyCrew + DataForSEO)
     10: Final Report Generation (Flow)
     """
@@ -60,6 +62,234 @@ class ResearchFlow(Flow[ResearchState]):
         self.dataforseo_tool = DataForSEOExpandTool()
 
         logger.info(f"ResearchFlow initialized for niche: {niche_description[:100]}...")
+
+        # Initialize checkpoint manager
+        self.checkpoint_mgr = CheckpointManager(
+            niche_description=niche_description,
+            state=self.state,
+            allowed_project_types=allowed_project_types
+        )
+
+    # ========== HELPER METHODS ==========
+
+    def _execute_with_retry(self, func, max_retries: int = 3, backoff: float = 2.0, operation_name: str = "operation"):
+        """
+        Execute function with exponential backoff retry for API failures.
+
+        Args:
+            func: Function to execute
+            max_retries: Maximum retry attempts
+            backoff: Base backoff time in seconds (exponentially increased)
+            operation_name: Description of operation for logging
+
+        Returns:
+            Result of function call
+
+        Raises:
+            Last exception if all retries fail
+        """
+        last_exception = None
+
+        for attempt in range(max_retries):
+            try:
+                return func()
+            except (TimeoutError, ConnectionError) as e:
+                last_exception = e
+                if attempt == max_retries - 1:
+                    logger.error(f"{operation_name} failed after {max_retries} attempts")
+                    raise
+                wait_time = backoff ** attempt
+                logger.warning(
+                    f"{operation_name} failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                    f"Retrying in {wait_time:.1f}s..."
+                )
+                time.sleep(wait_time)
+            except Exception as e:
+                # Don't retry on non-network errors
+                logger.error(f"{operation_name} failed with non-retryable error: {e}")
+                raise
+
+        # Should never reach here, but for type safety
+        if last_exception:
+            raise last_exception
+
+    def resume_from_checkpoint(self, checkpoint_path: Optional[Path] = None) -> bool:
+        """
+        Resume research flow from checkpoint.
+
+        Args:
+            checkpoint_path: Explicit checkpoint folder path, or None to auto-detect
+
+        Returns:
+            True if resumed successfully, False otherwise
+        """
+        if not settings.checkpoint_enabled:
+            logger.warning("Checkpointing is disabled - cannot resume")
+            return False
+
+        # Find checkpoint
+        checkpoint = checkpoint_path or self.checkpoint_mgr.find_latest_checkpoint()
+        if not checkpoint:
+            logger.info("No checkpoint found for this niche")
+            return False
+
+        # Load checkpoint
+        if not self.checkpoint_mgr.load_checkpoint_folder(checkpoint):
+            return False
+
+        # Cleanup old checkpoints
+        self.checkpoint_mgr.cleanup_old_checkpoints()
+
+        logger.info(f"Resume from stage {self.state.current_stage}")
+        return True
+
+    def run_with_resume(self, auto_resume: bool = True) -> str:
+        """
+        Execute research pipeline with checkpoint resume support.
+
+        Args:
+            auto_resume: If True, automatically resume from latest checkpoint if available
+
+        Returns:
+            Path to final report
+        """
+        # Try to resume from checkpoint
+        if auto_resume and self.resume_from_checkpoint():
+            logger.info("Resuming from checkpoint - skipping completed stages")
+            return self._execute_remaining_stages()
+
+        # No checkpoint or resume failed - run normal flow
+        logger.info("Starting fresh research run")
+        self.kickoff()
+
+        # Generate final report path
+        if self.state.final_report:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            report_filename = f"final_report_{timestamp}.json"
+            return str(settings.output_dir / report_filename)
+
+        return ""
+
+    def _validate_stage_prerequisites(self, stage_num: float) -> bool:
+        """
+        Validate that required data exists before executing a stage.
+
+        Args:
+            stage_num: Stage number to validate prerequisites for
+
+        Returns:
+            True if prerequisites are met, False if stage should be skipped
+        """
+        prerequisites = {
+            6: lambda: (
+                self.state.social_content is not None and
+                (bool(self.state.social_content.reddit_posts) or bool(self.state.social_content.twitter_threads))
+            ),
+            7: lambda: (
+                self.state.pain_point_analysis is not None and
+                bool(self.state.pain_point_analysis.pain_points)
+            ),
+            8: lambda: (
+                self.state.idea_generation is not None and
+                bool(self.state.idea_generation.solution_ideas)
+            ),
+            8.5: lambda: (
+                self.state.competitive_analysis is not None and
+                self.state.idea_generation is not None
+            ),
+            8.75: lambda: (
+                self.state.idea_generation is not None and
+                bool(self.state.idea_generation.solution_ideas)
+            ),
+            9: lambda: (
+                self.state.solution_selection is not None and
+                self.state.idea_generation is not None
+            ),
+            9.5: lambda: (
+                settings.seo_refinement_enabled and
+                self.state.seo_strategy_report is not None and
+                self.state.solution_selection is not None
+            ),
+            9.75: lambda: (
+                self.state.solution_selection is not None
+            ),
+        }
+
+        # If no prerequisites defined, allow execution
+        if stage_num not in prerequisites:
+            return True
+
+        # Check prerequisites
+        try:
+            return prerequisites[stage_num]()
+        except Exception as e:
+            logger.warning(f"Error checking prerequisites for stage {stage_num}: {e}")
+            return False
+
+    def _execute_remaining_stages(self) -> str:
+        """
+        Execute remaining stages after checkpoint resume.
+        Manually calls stage methods based on current_stage.
+        Validates prerequisites before executing each stage to prevent cascade failures.
+        """
+        current = self.state.current_stage
+        logger.info(f"Executing stages from {current} onwards...")
+
+        # Stage mapping: (stage_number, method_name)
+        # We need to execute stages >= current_stage
+        try:
+            if current <= 1:
+                self.stage_1_validate_niche()
+
+            if current <= 5:
+                self.stage_5_search_and_discover()
+
+            if current <= 6 and self._validate_stage_prerequisites(6):
+                self.stage_6_analyze_pain_points()
+            elif current <= 6:
+                logger.info("Skipping Stage 6 (Pain Point Analysis) - prerequisites not met")
+
+            # Stages 7-8.75 now handled by unified solution pipeline
+            if current <= 7 and self._validate_stage_prerequisites(7):
+                logger.info("Executing Unified Solution Pipeline (Stages 7-8.75)...")
+                self.stages_7_through_8_75_unified_solution_pipeline()
+            elif current <= 7:
+                logger.info("Skipping Stages 7-8.75 (Unified Solution Pipeline) - prerequisites not met")
+                # Skip all solution stages if prerequisites not met
+                self.state.current_stage = 9
+
+            if current <= 9 and self._validate_stage_prerequisites(9):
+                self.stage_9_generate_seo_strategy()
+            elif current <= 9:
+                logger.info("Skipping Stage 9 (SEO Strategy) - prerequisites not met")
+
+            if current <= 9.5 and self._validate_stage_prerequisites(9.5):
+                self.stage_9_5_refine_seo_scores()
+            elif current <= 9.5:
+                logger.info("Skipping Stage 9.5 (SEO Refinement) - prerequisites not met")
+
+            if current <= 9.75 and self._validate_stage_prerequisites(9.75):
+                self.stage_9_75_research_data_sources()
+            elif current <= 9.75:
+                logger.info("Skipping Stage 9.75 (Data Source Research) - prerequisites not met")
+
+            if current <= 10:
+                self.stage_10_generate_report()
+
+            # Generate final report path
+            if self.state.final_report:
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                report_filename = f"final_report_{timestamp}.json"
+                return str(settings.output_dir / report_filename)
+
+        except Exception as e:
+            logger.error(f"Error during stage execution: {e}")
+            self.state.errors.append(f"Resume execution failed: {str(e)}")
+            raise
+
+        return ""
+
+    # ========== STAGE METHODS ==========
 
     @start()
     def stage_1_validate_niche(self):
@@ -287,7 +517,11 @@ Return a valid JSON object with this structure:
             twitter_threads=twitter_threads
         )
 
+        # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 6
+
+        # Checkpoint: Save social content
+        self.checkpoint_mgr.save_stage("stage_5_social_content", self.state.social_content)
 
     @listen(stage_5_search_and_discover)
     def stage_6_analyze_pain_points(self):
@@ -303,6 +537,7 @@ Return a valid JSON object with this structure:
         if not self.state.social_content or (not self.state.social_content.reddit_posts and not self.state.social_content.twitter_threads):
             logger.warning("No social content collected. Skipping pain point analysis.")
             self.state.current_stage = 7
+            self.checkpoint_mgr.save_stage("stage_6_pain_points", {"skipped": True, "reason": "No social content collected"})
             return
 
         # ANTI-HALLUCINATION CHECK: Verify content quality
@@ -317,6 +552,7 @@ Return a valid JSON object with this structure:
                 f"- skipping pain point analysis to prevent hallucination"
             )
             self.state.current_stage = 7
+            self.checkpoint_mgr.save_stage("stage_6_pain_points", {"skipped": True, "reason": f"Insufficient content quality: {total_discussions} discussions < 3 minimum"})
             return
 
         if total_engagement < 5:
@@ -353,25 +589,41 @@ Return a valid JSON object with this structure:
             for pp in high_opp[:3]:
                 logger.info(f"  - {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})")
 
-        self.state.current_stage =7
+        # Update stage first, then checkpoint (so resume skips this stage)
+        self.state.current_stage = 7
+
+        # Checkpoint: Save pain point analysis
+        self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
 
     @listen(stage_6_analyze_pain_points)
-    def stage_7_generate_ideas(self):
+    def stages_7_through_8_75_unified_solution_pipeline(self):
         """
-        Stage 7: Solution Ideation
+        Stages 7-8.75: Unified Solution Pipeline (CrewAI Best Practice)
 
-        Uses IdeaGenerationCrew to generate and refine SaaS solution concepts.
+        Consolidates stages using UnifiedSolutionCrew with context chaining:
+        - Stage 7: Solution Ideation (brainstorm + evaluate + refine)
+        - Stage 8: Competitive Analysis (research + gap analysis)
+        - Stage 8.5: Competitive Refinement (enhance with insights)
+        - Stage 8.75: Solution Selection (strategic scoring and selection)
+
+        Benefits:
+        - Automatic field preservation via output_pydantic + context
+        - No manual data formatting between stages
+        - Guardrails prevent data loss
+        - Follows CrewAI documentation best practices
         """
         logger.info("=" * 80)
-        logger.info("STAGE 7: Solution Ideation")
+        logger.info("STAGES 7-8.75: Unified Solution Pipeline")
         logger.info("=" * 80)
 
+        # Prerequisites check
         if not self.state.pain_point_analysis or not self.state.pain_point_analysis.pain_points:
-            logger.warning("No pain points available. Skipping solution ideation.")
-            self.state.current_stage =8
+            logger.warning("No pain points available. Skipping solution pipeline.")
+            self.state.current_stage = 9
+            self.checkpoint_mgr.save_stage("stages_7_8_75_unified", {"skipped": True, "reason": "No pain points available"})
             return
 
-        # ANTI-HALLUCINATION CHECK: Verify pain point quality for solution generation
+        # ANTI-HALLUCINATION CHECK: Verify pain point quality
         high_priority = [
             pp for pp in self.state.pain_point_analysis.pain_points
             if pp.opportunity_level.value == "high"
@@ -383,469 +635,52 @@ Return a valid JSON object with this structure:
 
         if not high_priority and not medium_priority:
             logger.warning(
-                f"No high or medium priority pain points available "
-                f"({len(self.state.pain_point_analysis.pain_points)} total pain points all scored too low) "
-                f"- skipping solution ideation to prevent hallucinated solutions"
+                f"No high or medium priority pain points available - skipping solution pipeline"
             )
-            self.state.current_stage = 8
+            self.state.current_stage = 9
+            self.checkpoint_mgr.save_stage("stages_7_8_75_unified", {"skipped": True, "reason": "No high/medium priority pain points"})
             return
-
-        if len(high_priority) < 2 and len(medium_priority) < 3:
-            logger.warning(
-                f"Insufficient high-quality pain points for robust solution generation "
-                f"({len(high_priority)} high-priority, {len(medium_priority)} medium-priority) "
-                f"- solution quality may be limited"
-            )
 
         logger.info(
             f"Pain point quality check: {len(high_priority)} high-priority, "
             f"{len(medium_priority)} medium-priority pain points"
         )
 
-        # Initialize and run IdeaGenerationCrew
-        idea_crew = IdeaGenerationCrew(
-            pain_point_analysis=self.state.pain_point_analysis,
-            allowed_project_types=self.allowed_project_types
-        )
-
-        logger.info("Running solution ideation crew...")
-        self.state.idea_generation = idea_crew.generate_ideas()
-
-        logger.info(f"[OK] Generated {len(self.state.idea_generation.solution_ideas)} solution concepts")
-
-        # Log solution summaries
-        for i, idea in enumerate(self.state.idea_generation.solution_ideas, 1):
-            logger.info(f"  {i}. {idea.solution_name}: {idea.value_proposition}")
-            logger.info(f"     Target: {idea.target_personas[0] if idea.target_personas else 'N/A'}")
-
-        self.state.current_stage =8
-
-    @listen(stage_7_generate_ideas)
-    def stage_8_analyze_competition(self):
-        """
-        Stage 8: Competitive Analysis
-
-        Uses CompetitiveCrew to research competitors and identify opportunities.
-        """
-        logger.info("=" * 80)
-        logger.info("STAGE 8: Competitive Analysis")
-        logger.info("=" * 80)
-
-        if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
-            logger.warning("No solution ideas available. Skipping competitive analysis.")
-            self.state.current_stage =9
-            return
-
-        # ANTI-HALLUCINATION CHECK: Verify solution detail completeness
-        incomplete_solutions = []
-        for idea in self.state.idea_generation.solution_ideas:
-            if (not idea.value_proposition or len(idea.value_proposition) < 20 or
-                not idea.core_features or len(idea.core_features) < 2 or
-                not idea.target_personas or len(idea.target_personas) < 1):
-                incomplete_solutions.append(idea.solution_name)
-
-        if len(incomplete_solutions) == len(self.state.idea_generation.solution_ideas):
-            logger.warning(
-                f"All {len(incomplete_solutions)} solution ideas lack sufficient detail "
-                f"(missing value prop, features, or personas) - skipping competitive analysis "
-                f"to prevent hallucinated competitor research"
-            )
-            self.state.current_stage = 9
-            return
-
-        if incomplete_solutions:
-            logger.warning(
-                f"{len(incomplete_solutions)} solutions have incomplete details: "
-                f"{', '.join(incomplete_solutions[:3])} - competitive analysis may be limited"
-            )
-
-        complete_solutions = len(self.state.idea_generation.solution_ideas) - len(incomplete_solutions)
-        logger.info(f"Solution detail check: {complete_solutions} complete solutions ready for competitive analysis")
-
-        # Initialize and run CompetitiveCrew with optional social content for competitor intelligence
-        competitive_crew = CompetitiveCrew(
-            solution_ideas=self.state.idea_generation,
-            social_content=self.state.social_content  # Pass for competitor intelligence
-        )
-
-        logger.info("Running competitive analysis crew...")
-        self.state.competitive_analysis = competitive_crew.analyze_competition(
-            parallel=True,
-            max_workers=4  # Increased from default 2 for better parallelization
-        )
-
-        logger.info(f"[OK] Analyzed {len(self.state.competitive_analysis.solution_landscapes)} competitive landscapes")
-        logger.info(f"[OK] Identified {len(self.state.competitive_analysis.top_opportunities)} key opportunities")
-
-        # Log top opportunities
-        if self.state.competitive_analysis.top_opportunities:
-            logger.info("[OK] Top differentiation opportunities:")
-            for opp in self.state.competitive_analysis.top_opportunities[:3]:
-                logger.info(f"  - {opp}")
-
-        self.state.current_stage = 8.5
-
-    @listen(stage_8_analyze_competition)
-    def stage_8_5_refine_with_competitive_insights(self):
-        """
-        Stage 8.5: Competitive Refinement
-
-        Enhances solution ideas with competitive intelligence before selection.
-        Uses competitive gaps and positioning opportunities to strengthen solutions.
-        """
-        logger.info("=" * 80)
-        logger.info("STAGE 8.5: Competitive Refinement")
-        logger.info("=" * 80)
-
-        if not self.state.competitive_analysis or not self.state.idea_generation:
-            logger.warning("Missing competitive analysis or solutions - skipping refinement")
-            self.state.current_stage = 8.75
-            return
-
-        # Initialize IdeaGenerationCrew with original pain points
-        from ..crews.idea_generation_crew import IdeaGenerationCrew
-
-        idea_crew = IdeaGenerationCrew(
-            pain_point_analysis=self.state.pain_point_analysis,
-            allowed_project_types=self.allowed_project_types
-        )
-
-        # Enhance solutions with competitive insights
-        logger.info("Refining solutions with competitive intelligence...")
-        refined_ideas = idea_crew.refine_with_competition(
-            original_ideas=self.state.idea_generation,
-            competitive_analysis=self.state.competitive_analysis
-        )
-
-        # Update state with refined solutions
-        self.state.idea_generation = refined_ideas
-
-        logger.info(
-            f"[OK] Refined {len(refined_ideas.solution_ideas)} solutions "
-            f"with competitive positioning"
-        )
-
-        self.state.current_stage = 8.75
-
-    @listen(stage_8_5_refine_with_competitive_insights)
-    def stage_8_75_select_solution(self):
-        """
-        Stage 8.75: Solution Selection
-
-        Selects ONE solution from Stage 7 to focus on for SEO strategy and implementation.
-        Uses competitive analysis + pain points + market fit to make strategic selection decision.
-        """
-        logger.info("=" * 80)
-        logger.info("STAGE 8.75: Solution Selection")
-        logger.info("=" * 80)
-
-        if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
-            logger.warning("No solution ideas available. Skipping solution selection.")
-            self.state.current_stage = 9
-            return
-
-        # Get all solutions with their competitive landscapes
-        solutions = self.state.idea_generation.solution_ideas
-        competitive_landscapes = (
-            self.state.competitive_analysis.solution_landscapes
-            if self.state.competitive_analysis
-            else []
-        )
-
-        logger.info(f"Evaluating {len(solutions)} solution candidates...")
-
-        # If only one solution, auto-select it
-        if len(solutions) == 1:
-            solution = solutions[0]
-            logger.info(f"Only one solution available - auto-selecting: {solution.solution_name}")
-
-            # Find competitive landscape for context
-            landscape = next(
-                (l for l in competitive_landscapes if l.solution_name == solution.solution_name),
-                None
-            )
-
-            from ..models.solution_selection import SolutionSelection, SelectionCriteriaScore
-
-            # Build rationale with competitive context if available
-            rationale = f"Auto-selected {solution.solution_name} as the only generated solution. "
-            rationale += f"This solution addresses validated pain points with a clear value proposition: {solution.value_proposition}"
-
-            if landscape:
-                rationale += f"\n\nCompetitive Analysis: {landscape.competitive_intensity} competitive intensity "
-                rationale += f"with {len(landscape.competitors)} identified competitors. "
-                if landscape.market_gaps:
-                    rationale += f"Key market gaps identified: {', '.join(landscape.market_gaps[:2])}. "
-                if landscape.recommended_positioning:
-                    rationale += f"Recommended positioning: {landscape.recommended_positioning}"
-
-            self.state.solution_selection = SolutionSelection(
-                selected_solution_name=solution.solution_name,
-                selection_rationale=rationale,
-                selection_criteria_scores=[
-                    SelectionCriteriaScore(criterion="market_fit", score=solution.market_fit_score or 0.75),
-                    SelectionCriteriaScore(criterion="technical_feasibility", score=solution.technical_feasibility_score or 0.75),
-                    SelectionCriteriaScore(criterion="competitive_advantage", score=0.65),  # Default moderate score
-                    SelectionCriteriaScore(criterion="seo_growth_potential", score=0.70),  # Default moderate score
-                ],
-                runner_up_solutions=[],
-                recommended_focus=landscape.recommended_positioning if landscape and landscape.recommended_positioning else "Validate MVP with early adopter segment before scaling",
-            )
-            self.state.current_stage = 9
-            return
-
-        # Multiple solutions - run LLM selection
-        logger.info("Analyzing solutions and making strategic selection...")
-
         try:
-            # Build selection prompt with comprehensive context
-            selection_prompt = self._create_solution_selection_prompt(
-                solutions=solutions,
-                competitive_landscapes=competitive_landscapes,
-                pain_points=self.state.pain_point_analysis,
-                idea_generation_result=self.state.idea_generation,
+            # Initialize UnifiedSolutionCrew
+            unified_crew = UnifiedSolutionCrew(
+                pain_point_analysis=self.state.pain_point_analysis,
+                social_content=self.state.social_content,
+                allowed_project_types=self.allowed_project_types
             )
 
-            # Use LLM with structured output to make selection
-            selection = self._select_solution_with_llm(selection_prompt)
-            self.state.solution_selection = selection
+            # Execute complete pipeline (4 tasks in sequence with context chaining)
+            logger.info("Executing unified solution pipeline (4-task flow)...")
+            refined_solutions, competitive_analysis, solution_selection = unified_crew.execute_pipeline()
 
-            logger.info(f"[OK] Selected Solution: {selection.selected_solution_name}")
-            logger.info(f"  Selection Rationale: {selection.selection_rationale[:150]}...")
+            # Save results to state
+            self.state.idea_generation = refined_solutions
+            self.state.competitive_analysis = competitive_analysis
+            self.state.solution_selection = solution_selection
 
-            if selection.runner_up_solutions:
-                logger.info(f"  Runner-ups: {', '.join(selection.runner_up_solutions)}")
+            # Log results
+            logger.info(f"[OK] Solution Pipeline Complete:")
+            logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
+            logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
+            logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
 
-            logger.info(f"  Recommended Focus: {selection.recommended_focus}")
+            # Update stage first (skip to SEO strategy)
+            self.state.current_stage = 9
+
+            # Checkpoints: Save all intermediate outputs
+            self.checkpoint_mgr.save_stage("stage_7_solutions", self.state.idea_generation)
+            self.checkpoint_mgr.save_stage("stage_8_competitive", self.state.competitive_analysis)
+            self.checkpoint_mgr.save_stage("stage_8_5_refinement", self.state.idea_generation)
+            self.checkpoint_mgr.save_stage("stage_8_75_solution_selection", self.state.solution_selection)
 
         except Exception as e:
-            logger.error(f"Solution selection failed: {e}")
-            # Fallback: select first solution
-            logger.warning("Falling back to first solution as default selection")
-
-            from ..models.solution_selection import SolutionSelection, SelectionCriteriaScore
-            solution = solutions[0]
-            self.state.solution_selection = SolutionSelection(
-                selected_solution_name=solution.solution_name,
-                selection_rationale=(
-                    f"Default selection of {solution.solution_name} due to selection process failure. "
-                    "Manual review recommended."
-                ),
-                selection_criteria_scores=[],  # Empty list instead of dict for fallback case
-                runner_up_solutions=[s.solution_name for s in solutions[1:]],
-                recommended_focus="To be determined after manual review",
-            )
-
-        self.state.current_stage = 9
-
-    def _create_solution_selection_prompt(
-        self,
-        solutions: list,
-        competitive_landscapes: list,
-        pain_points,
-        idea_generation_result=None,
-    ) -> str:
-        """Create comprehensive prompt for solution selection."""
-
-        # Format solutions with their competitive context
-        solutions_analysis = []
-        for i, solution in enumerate(solutions, 1):
-            # Find matching competitive landscape
-            landscape = next(
-                (l for l in competitive_landscapes if l.solution_name == solution.solution_name),
-                None
-            )
-
-            solutions_analysis.append(f"""
-**Solution {i}: {solution.solution_name}**
-
-**Value Proposition:** {solution.value_proposition}
-
-**Market Fit Score:** {solution.market_fit_score if solution.market_fit_score is not None else 'N/A'}
-**Technical Feasibility:** {solution.technical_feasibility_score if solution.technical_feasibility_score is not None else 'N/A'}
-
-**Target Personas:** {', '.join(str(p) for p in (solution.target_personas[:2] if solution.target_personas else ['Not specified']))}
-
-**Core Features:** {', '.join(str(f) for f in (solution.core_features[:5] if solution.core_features else ['None']))}
-
-**Pain Points Addressed:** {', '.join(str(p) for p in (solution.pain_points_addressed[:3] if solution.pain_points_addressed else ['None']))}
-
-**Competitive Context:**
-{f"- Intensity: {landscape.competitive_intensity}" if landscape else "No competitive analysis available"}
-{f"- Competitors Found: {len(landscape.competitors)}" if landscape else ""}
-{f"- Top Competitors: {', '.join(c.name for c in landscape.competitors[:3])}" if landscape and landscape.competitors else ""}
-{f"- Market Gaps: {', '.join(str(g) for g in landscape.market_gaps[:3])}" if landscape and landscape.market_gaps else ""}
-{f"- Differentiation Opportunities: {', '.join(str(d) for d in landscape.differentiation_opportunities[:3])}" if landscape and landscape.differentiation_opportunities else ""}
-{f"- Recommended Positioning: {landscape.recommended_positioning}" if landscape and landscape.recommended_positioning else ""}
-
-**Data Requirements:** {'Requires data aggregation' if solution.requires_data_aggregation else 'No external data required'}
-{f"Data Sources: {', '.join(str(ds) for ds in solution.data_sources[:3])}" if solution.data_sources else ""}
-""")
-
-        # Get pain point priorities
-        high_priority_pps = []
-        if pain_points and pain_points.pain_points:
-            sorted_pps = sorted(
-                pain_points.pain_points,
-                key=lambda p: (p.severity_score + p.willingness_to_pay) / 2,
-                reverse=True
-            )[:5]
-            high_priority_pps = [
-                f"- {pp.title} (Severity: {pp.severity_score:.1f}, WTP: {pp.willingness_to_pay:.1f})"
-                for pp in sorted_pps
-            ]
-
-        # Extract product strategist recommendation if available
-        strategist_recommendation = ""
-        if idea_generation_result:
-            if idea_generation_result.recommended_solution:
-                strategist_recommendation += f"\n**PRODUCT STRATEGIST RECOMMENDATION:** {idea_generation_result.recommended_solution}\n"
-            if idea_generation_result.market_insights:
-                strategist_recommendation += f"\n**MARKET INSIGHTS FROM PRODUCT STRATEGIST:**\n{idea_generation_result.market_insights}\n"
-
-        return f"""You are a strategic product advisor selecting which solution to focus on for MVP development and SEO strategy.
-
-**NICHE:** {self.niche_description}
-{strategist_recommendation}
-**HIGH-PRIORITY PAIN POINTS:**
-{chr(10).join(high_priority_pps) if high_priority_pps else "No pain points available"}
-
-**SOLUTION CANDIDATES:**
-{chr(10).join(solutions_analysis)}
-
-**YOUR TASK:**
-Select ONE solution to focus on based on these weighted criteria. **Consider the Product Strategist's recommendation and market insights above**, but make your independent assessment based on the full criteria below:
-
-1. **Market Fit (25%):** How directly does it address high-severity, high-WTP pain points?
-   - Alignment with top pain points
-   - Willingness to pay indicators from user discussions
-
-2. **Competitive Advantage (25%):** Does it have clear differentiation and viable positioning?
-   - **CRITICAL: Analyze competitive intensity for each solution**
-   - Market gaps that can be exploited
-   - Differentiation opportunities identified in competitive analysis
-   - Whether recommended positioning is strong and defensible
-   - Lower competition = higher score (e.g., "LOW" intensity better than "HIGH")
-
-3. **Technical Feasibility (25%):** Can it be built in 3-6 months with reasonable complexity?
-   - Development timeline estimate
-   - Data sourcing complexity (if requires_data_aggregation)
-   - Technical risk factors
-
-4. **Organic Acquisition Potential (25%):** Can it attract customers organically with low CAC?
-   - **CRITICAL: Prioritize solutions with programmatic SEO potential**
-   - Architecture that naturally generates indexable content (directories, aggregators > SaaS)
-   - Estimated CAC organic vs CAC paid ratio (lower organic CAC = higher score)
-   - SEO scalability score from solution evaluation
-   - Content generation model (self-generating > programmatic > manual)
-   - Keyword opportunity potential from competitive analysis
-
-**COMPETITIVE ANALYSIS USAGE:**
-- **Prioritize solutions with clearer differentiation opportunities**
-- **Favor solutions in markets with identified gaps**
-- **Consider competitive intensity** - "LOW" or "MEDIUM" intensity markets may offer faster traction than "HIGH" intensity
-- **Leverage recommended positioning** - solutions with stronger positioning strategies score higher
-- **Count competitors** - fewer direct competitors = easier market entry
-
-**SEO-FIRST DECISION FRAMEWORK:**
-When comparing solutions with similar market fit and technical feasibility, use SEO potential as the tiebreaker:
-
-- **Directories/Aggregators (SEO Score 0.8-1.0):** Favor these heavily - each listing/data point = new indexable page
-  * Example: 100 listings = 100 unique landing pages targeting long-tail keywords
-  * CAC advantage: $15-40 organic vs $200-350 paid (5-12x cost reduction)
-
-- **Comparison Tools/Marketplaces (SEO Score 0.5-0.7):** Good programmatic opportunities
-  * Example: N tools = N² comparison pages, seller profiles create natural content
-  * CAC advantage: $50-150 organic vs $200-350 paid (2-4x cost reduction)
-
-- **Traditional SaaS (SEO Score 0.2-0.4):** Only choose if significantly stronger on other dimensions
-  * Limited to blog/guides, requires sustained content marketing investment
-  * CAC disadvantage: $200-400 organic, $300-600 paid (minimal cost advantage)
-
-**Decision Rules:**
-1. If two solutions have similar market fit (±0.1), favor the one with higher SEO scalability
-2. A directory/aggregator with 0.7 market fit may outperform a SaaS with 0.8 market fit due to 5-12x lower CAC
-3. Prioritize solutions where organic_acquisition_potential ≥ 0.6 unless other factors are exceptional
-
-**SELECTION OUTPUT:**
-- **selected_solution_name:** The name of the chosen solution (MUST match one of the solution names exactly)
-- **selection_rationale:** 2-3 paragraphs explaining WHY this solution was selected:
-  * Whether you agree or disagree with the Product Strategist's recommendation and why
-  * Which pain points it addresses best (reference specific pain point titles and scores)
-  * **Its competitive advantages and positioning** (reference competitive intensity, gaps, differentiation opportunities)
-  * Why it's more viable than alternatives (compare competitive landscapes)
-  * What makes it the best focus for initial SEO strategy
-- **selection_criteria_scores:** List of SelectionCriteriaScore objects with these criteria:
-  * market_fit (0-1 scale)
-  * competitive_advantage (0-1 scale) - **CRITICAL: Base this on competitive landscape data**
-  * technical_feasibility (0-1 scale)
-  * organic_acquisition_potential (0-1 scale) - **CRITICAL: Use SEO scalability score and CAC analysis**
-- **runner_up_solutions:** Other viable solutions in priority order (just names as strings)
-- **recommended_focus:** Strategic focus recommendation incorporating competitive positioning
-  * Examples: "Target [market gap] starting with [segment]", "Differentiate via [opportunity] in [geographic market]", "Niche dominance in [vertical] by leveraging [competitive advantage]"
-
-**IMPORTANT:**
-- Be strategic and data-driven
-- **Weight competitive landscape heavily** - a solution with great market fit but overwhelming competition may be less viable than one with good market fit and clear differentiation
-- Focus on maximizing early traction and sustainable competitive positioning
-- Reference specific data points from competitive analysis in your rationale"""
-
-    def _select_solution_with_llm(self, prompt: str):
-        """Use LLM with structured output to select solution."""
-        from langchain_openai import ChatOpenAI
-        from ..models.solution_selection import SolutionSelection
-
-        logger.info("Generating solution selection with LLM (structured output)...")
-
-        structured_llm = ChatOpenAI(
-            model=settings.openai_model_name,
-            temperature=0.3,  # Lower temperature for more consistent analytical decisions
-            api_key=settings.openai_api_key
-        ).with_structured_output(SolutionSelection)
-
-        selection = structured_llm.invoke(prompt)
-
-        logger.info(f"[OK] Solution selection complete: {selection.selected_solution_name}")
-
-        # VALIDATION: Verify selected solution name exists, use fuzzy matching to correct if needed
-        available_solutions = self.state.idea_generation.solution_ideas
-        matched_solution = self._find_solution_by_name(
-            selection.selected_solution_name,
-            available_solutions
-        )
-
-        if matched_solution and matched_solution.solution_name != selection.selected_solution_name:
-            # LLM returned shortened name - correct it
-            logger.warning(
-                f"Correcting selected solution name: '{selection.selected_solution_name}' "
-                f"→ '{matched_solution.solution_name}'"
-            )
-            selection.selected_solution_name = matched_solution.solution_name
-
-            # Also correct runner-up names if present
-            if selection.runner_up_solutions:
-                corrected_runner_ups = []
-                for runner_up_name in selection.runner_up_solutions:
-                    matched_runner_up = self._find_solution_by_name(runner_up_name, available_solutions)
-                    if matched_runner_up:
-                        if matched_runner_up.solution_name != runner_up_name:
-                            logger.warning(
-                                f"Correcting runner-up name: '{runner_up_name}' "
-                                f"→ '{matched_runner_up.solution_name}'"
-                            )
-                        corrected_runner_ups.append(matched_runner_up.solution_name)
-                    else:
-                        logger.warning(f"Runner-up '{runner_up_name}' not found, keeping original name")
-                        corrected_runner_ups.append(runner_up_name)
-                selection.runner_up_solutions = corrected_runner_ups
-
-        elif not matched_solution:
-            logger.error(
-                f"Selected solution '{selection.selected_solution_name}' could not be matched "
-                f"to any available solution (exact or fuzzy). This may cause downstream errors."
-            )
-
-        return selection
+            logger.error(f"Unified solution pipeline failed: {e}")
+            raise
 
     def _find_solution_by_name(self, solution_name: str, solution_list: list) -> Optional['SolutionIdea']:
         """
@@ -1010,7 +845,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
 {solution.programmatic_seo_opportunity_refined}
 
 **Refinement Metadata:**
-{json.dumps(solution.seo_refinement_metadata.model_dump(), indent=2) if solution.seo_refinement_metadata else 'N/A'}
+{json.dumps(solution.seo_refinement_metadata if isinstance(solution.seo_refinement_metadata, dict) else solution.seo_refinement_metadata.model_dump(), indent=2) if solution.seo_refinement_metadata else 'N/A'}
 """
         return formatted
 
@@ -1189,31 +1024,48 @@ When comparing solutions with similar market fit and technical feasibility, use 
     def _iterative_keyword_enrichment(
         self,
         conceptual_keywords: list,
+        validated_seeds: list,
         topic_clusters: list,
     ) -> list:
         """
-        Phase 9.5b: Iteratively enrich keywords with DataForSEO until sufficient coverage.
+        Phase 9.5c: Iteratively enrich keywords with DataForSEO using VALIDATED seeds.
+
+        Uses VALIDATED seeds (pre-filtered by get_search_volume in Phase 9.5b) instead of
+        raw conceptual keywords to maximize success rate and reduce API waste.
 
         Args:
-            conceptual_keywords: List of ConceptualKeyword objects from Phase 9.5a
+            conceptual_keywords: Full list of ConceptualKeyword objects for cluster coverage calculation
+            validated_seeds: Pre-validated keywords with search volume (from Phase 9.5b bulk validation)
             topic_clusters: List of TopicCluster objects from Phase 9.5a
 
         Returns:
             List of enriched keywords with search volumes and competition data
         """
-        all_enriched = []
+        # Build validated keyword lookup for filtering conceptual keywords
+        validated_keyword_set = {kw['keyword'].lower() for kw in validated_seeds}
+
+        # Filter conceptual keywords to only validated ones
+        validated_conceptual = [
+            kw for kw in conceptual_keywords
+            if kw.keyword.lower() in validated_keyword_set
+        ]
+
+        logger.info(
+            f"Starting enrichment with {len(validated_conceptual)}/{len(conceptual_keywords)} "
+            f"validated conceptual seeds across {len(topic_clusters)} clusters"
+        )
+
+        # Initialize with pre-validated keywords
+        all_enriched = validated_seeds.copy()
         seeds_used = set()
         max_rounds = settings.keyword_enrichment_max_rounds
 
-        logger.info(
-            f"Starting iterative enrichment with {len(conceptual_keywords)} conceptual keywords "
-            f"across {len(topic_clusters)} clusters"
-        )
+        logger.info(f"Starting with {len(all_enriched)} pre-validated keywords from bulk validation")
 
         for round_num in range(1, max_rounds + 1):
-            # Select next batch of seeds
+            # Select next batch of validated seeds
             next_seeds = self._select_next_seed_batch(
-                conceptual_keywords=conceptual_keywords,
+                conceptual_keywords=validated_conceptual,  # Only use validated seeds
                 enriched_so_far=all_enriched,
                 topic_clusters=topic_clusters,
                 seeds_used=seeds_used,
@@ -1272,8 +1124,12 @@ When comparing solutions with similar market fit and technical feasibility, use 
         """
         Smart seed selection prioritizing uncovered clusters and high-performers.
 
+        NOTE: As of Phase 9.5b redesign, conceptual_keywords contains only
+        PRE-VALIDATED keywords (filtered by get_search_volume bulk validation).
+        This ensures high success rate when expanding seeds.
+
         Args:
-            conceptual_keywords: List of ConceptualKeyword objects
+            conceptual_keywords: List of ConceptualKeyword objects (validated seeds only)
             enriched_so_far: List of enriched keyword dicts from DataForSEO
             topic_clusters: List of TopicCluster objects
             seeds_used: Set of keywords already used as seeds
@@ -1397,7 +1253,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
         coverage = len(clusters_with_keywords) / len(topic_clusters)
         return coverage
 
-    @listen(stage_8_75_select_solution)
+    @listen(stages_7_through_8_75_unified_solution_pipeline)
     def stage_9_generate_seo_strategy(self):
         """
         Stage 9: Integrated Keyword Research + SEO Strategy Development
@@ -1416,6 +1272,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
             logger.warning("No solution selected - skipping SEO strategy")
             self.state.seo_strategy_report = None
             self.state.current_stage = 10
+            self.checkpoint_mgr.save_stage("stage_9_seo_strategy", {"skipped": True, "reason": "No solution selected"})
             return
 
         # Check if we have required data
@@ -1423,6 +1280,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
             logger.warning("Insufficient data for SEO strategy - skipping")
             self.state.seo_strategy_report = None
             self.state.current_stage = 10
+            self.checkpoint_mgr.save_stage("stage_9_seo_strategy", {"skipped": True, "reason": "Insufficient data for SEO strategy"})
             return
 
         # Get the selected solution (with fuzzy matching fallback)
@@ -1439,6 +1297,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
             )
             self.state.seo_strategy_report = None
             self.state.current_stage = 10
+            self.checkpoint_mgr.save_stage("stage_9_seo_strategy", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
         logger.info(f"Generating SEO strategy for selected solution: {selected_solution_name}")
@@ -1461,21 +1320,114 @@ When comparing solutions with similar market fit and technical feasibility, use 
                 f"{len(expanded_keywords.topic_clusters)} clusters"
             )
 
-            # Phase 9.5b: Iterative DataForSEO enrichment (programmatic)
-            logger.info("Phase 9.5b: Iterative keyword enrichment with DataForSEO...")
+            # Phase 9.5b: Bulk validation with DataForSEO (NEW)
+            logger.info("Phase 9.5b: Bulk validation of conceptual keywords with DataForSEO...")
+
+            # Extract keyword strings from conceptual keywords
+            conceptual_keyword_strings = [kw.keyword for kw in expanded_keywords.keywords]
+            logger.info(f"Validating {len(conceptual_keyword_strings)} conceptual keywords...")
+
+            # Bulk validate using get_search_volume (handles up to 1,000 keywords)
+            validated_keywords = self.dataforseo_tool.get_search_volume(
+                keywords=conceptual_keyword_strings,
+                location_code=settings.target_location
+            )
+
+            logger.info(f"DataForSEO returned metrics for {len(validated_keywords)} keywords")
+
+            # Filter to keywords meeting minimum volume threshold
+            min_volume = settings.keyword_enrichment_min_volume  # Default: 500
+            quality_validated = [
+                kw for kw in validated_keywords
+                if kw.get('search_volume', 0) >= min_volume
+            ]
+
+            logger.info(
+                f"✓ Validation complete: {len(quality_validated)}/{len(conceptual_keyword_strings)} "
+                f"keywords have volume >= {min_volume}"
+            )
+
+            # Fallback: If too few validated keywords, lower threshold and retry filter
+            if len(quality_validated) < 20:
+                logger.warning(
+                    f"⚠️ Only {len(quality_validated)} keywords meet volume threshold. "
+                    f"Lowering to {min_volume // 5} to find more seeds..."
+                )
+                quality_validated = [
+                    kw for kw in validated_keywords
+                    if kw.get('search_volume', 0) >= (min_volume // 5)
+                ]
+                logger.info(f"With lowered threshold: {len(quality_validated)} validated keywords")
+
+            # Absolute minimum check
+            if len(quality_validated) < 5:
+                logger.error(
+                    f"❌ Bulk validation failed: Only {len(quality_validated)} keywords have search volume. "
+                    f"Niche may be too specific or DataForSEO has insufficient data."
+                )
+                logger.warning("Skipping SEO strategy generation - insufficient keyword data")
+                self.state.current_stage = 9.5
+                self.checkpoint_mgr.save_stage("stage_9_seo_strategy", {
+                    "skipped": True,
+                    "reason": f"Insufficient validated keywords ({len(quality_validated)} < 5)"
+                })
+                return
+
+            # Phase 9.5c: Iterative DataForSEO enrichment (programmatic)
+            logger.info(
+                f"Phase 9.5c: Iterative keyword enrichment with {len(quality_validated)} "
+                f"validated seeds..."
+            )
             enriched_keywords = self._iterative_keyword_enrichment(
                 conceptual_keywords=expanded_keywords.keywords,
+                validated_seeds=quality_validated,
                 topic_clusters=expanded_keywords.topic_clusters,
             )
             logger.info(f"✓ Enrichment complete: {len(enriched_keywords)} keywords with search data")
 
-            # Phase 9.5c: Generate comprehensive SEO strategy from enriched keywords
-            # Crew will: analyze enriched keywords -> create tiered strategy -> content plan
-            logger.info(f"Phase 9.5c: Creating final SEO strategy for {selected_solution_name}...")
-            seo_strategy = seo_crew.create_strategy_from_enriched(
+            # Generate comprehensive SEO strategy using 4-task multitask flow
+            # Task 1: Keyword Analysis & Tiering
+            # Task 2: Content & Technical Strategy
+            # Task 3: Implementation Planning
+            # Task 4: Final Synthesis
+            logger.info(f"Creating final SEO strategy (4-task flow) for {selected_solution_name}...")
+            seo_strategy = seo_crew.create_strategy_multitask(
                 enriched_keywords=enriched_keywords,
                 topic_clusters=expanded_keywords.topic_clusters
             )
+
+            # VALIDATION: Verify keyword utilization (detect dropped keywords)
+            total_tier_1 = len(seo_strategy.tier_1_keywords)
+            total_tier_2 = len(seo_strategy.tier_2_keywords or [])
+            total_tier_3 = sum(len(g.keywords) for g in (seo_strategy.tier_3_geographic_groups or []))
+            total_tier_4 = sum(len(g.keywords) for g in (seo_strategy.tier_4_category_groups or []))
+            total_tiered = total_tier_1 + total_tier_2 + total_tier_3 + total_tier_4
+
+            input_count = len(enriched_keywords)
+            utilization = total_tiered / input_count if input_count > 0 else 0
+
+            filtered_count = input_count - total_tiered
+            filtering_rate = filtered_count / input_count if input_count > 0 else 0
+
+            logger.info(
+                f"Keyword analysis: {total_tiered}/{input_count} tiered ({utilization:.1%}), "
+                f"{filtered_count} filtered ({filtering_rate:.1%}) - "
+                f"Tier 1: {total_tier_1}, Tier 2: {total_tier_2}, Tier 3: {total_tier_3}, Tier 4: {total_tier_4}"
+            )
+
+            # Validate tiering coverage (adaptive, no fixed target)
+            if input_count > 20:
+                if utilization < 0.3:  # Less than 30% tiered (very low coverage)
+                    logger.warning(
+                        f"⚠️ Low tiering coverage: {total_tiered}/{input_count} tiered ({utilization:.1%})"
+                    )
+                    logger.warning(
+                        f"This suggests either: (1) Filtering was too aggressive (check STEP 0), "
+                        f"or (2) Tier 3/4 grouping was incomplete. Review key_findings for details."
+                    )
+                elif utilization >= 0.6:  # 60%+ tiered (good coverage after filtering)
+                    logger.info(f"✓ Good tiering coverage: {utilization:.1%} of keywords distributed across tiers")
+
             self.state.seo_strategy_report = seo_strategy
 
             # Extract seed keywords from SEO strategy report
@@ -1494,7 +1446,12 @@ When comparing solutions with similar market fit and technical feasibility, use 
             self.state.seo_strategy_report = None
             logger.warning("Continuing to final report without SEO strategy")
 
+        # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 9.5
+
+        # Checkpoint: Save SEO strategy
+        if self.state.seo_strategy_report:
+            self.checkpoint_mgr.save_stage("stage_9_seo_strategy", self.state.seo_strategy_report)
 
     @listen(stage_9_generate_seo_strategy)
     def stage_9_5_refine_seo_scores(self):
@@ -1519,12 +1476,14 @@ When comparing solutions with similar market fit and technical feasibility, use 
         if not settings.seo_refinement_enabled:
             logger.info("SEO refinement disabled - skipping Stage 9.5")
             self.state.current_stage = 9.75
+            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": "SEO refinement disabled in settings"})
             return
 
         # Skip if no SEO strategy or no solution selection
         if not self.state.seo_strategy_report or not self.state.solution_selection:
             logger.info("No SEO strategy or solution selection - skipping refinement")
             self.state.current_stage = 9.75
+            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": "No SEO strategy or solution selection"})
             return
 
         # Get selected solution
@@ -1538,12 +1497,14 @@ When comparing solutions with similar market fit and technical feasibility, use 
         if not selected_solution:
             logger.warning(f"Selected solution '{selected_solution_name}' not found - skipping refinement")
             self.state.current_stage = 9.75
+            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
         # Check if solution has SEO fields to refine
         if selected_solution.seo_scalability_score is None:
             logger.info("Solution has no SEO scores to refine - skipping")
             self.state.current_stage = 9.75
+            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": "Solution has no SEO scores to refine"})
             return
 
         logger.info(f"Refining SEO scores for: {selected_solution_name}")
@@ -1595,11 +1556,22 @@ When comparing solutions with similar market fit and technical feasibility, use 
             selected_solution.seo_scalability_score_refined = refined_scalability['score']
             selected_solution.estimated_cac_organic_refined = refined_cac['cac_range']
             selected_solution.programmatic_seo_opportunity_refined = refined_programmatic
-            selected_solution.seo_refinement_metadata = {
-                'scalability_refinement': refined_scalability['metadata'],
-                'cac_refinement': refined_cac['metadata'],
-                'timestamp': datetime.utcnow().isoformat()
-            }
+
+            # Flatten metadata structure to match SEORefinementMetadata Pydantic model
+            scalability_meta = refined_scalability['metadata']
+            cac_meta = refined_cac['metadata']
+
+            from ..models.solution_idea import SEORefinementMetadata
+            selected_solution.seo_refinement_metadata = SEORefinementMetadata(
+                baseline_volume_used=scalability_meta.get('baseline_volume'),
+                volume_multiplier=scalability_meta.get('volume_multiplier'),
+                tier1_multiplier=scalability_meta.get('tier1_multiplier'),
+                competition_modifier=scalability_meta.get('competition_modifier'),
+                base_cac=cac_meta.get('base_cac'),
+                difficulty_multiplier=cac_meta.get('difficulty_multiplier'),
+                volume_discount=cac_meta.get('volume_discount'),
+                estimated_year1_pages=cac_meta.get('estimated_year1_pages')
+            )
 
             logger.info("[OK] SEO scores refined:")
             logger.info(
@@ -1640,6 +1612,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
             logger.info("No solution selected - skipping data source research")
             self.state.data_source_research = None
             self.state.current_stage = 10
+            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", {"skipped": True, "reason": "No solution selected"})
             return
 
         # Get the selected solution (with fuzzy matching fallback)
@@ -1656,6 +1629,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
             )
             self.state.data_source_research = None
             self.state.current_stage = 10
+            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
         # Only run if solution requires data aggregation
@@ -1666,6 +1640,7 @@ When comparing solutions with similar market fit and technical feasibility, use 
             )
             self.state.data_source_research = None
             self.state.current_stage = 10
+            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", {"skipped": True, "reason": "Solution doesn't require data aggregation"})
             return
 
         logger.info(
@@ -1713,7 +1688,507 @@ When comparing solutions with similar market fit and technical feasibility, use 
             self.state.data_source_research = None
             logger.warning("Continuing to final report without data source research")
 
+        # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 10
+
+        # Checkpoint: Save data source research
+        if self.state.data_source_research:
+            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", self.state.data_source_research)
+
+    def _generate_research_metadata(self) -> Optional["ResearchMetadata"]:
+        """
+        Generate research metadata section with social content collection statistics.
+
+        Returns:
+            ResearchMetadata object with Reddit/Twitter stats, subreddit breakdown, and collection info
+        """
+        from ..models.research_state import ResearchMetadata, SubredditBreakdown
+
+        if not self.state.social_content:
+            return None
+
+        try:
+            # Count Reddit posts and comments
+            reddit_posts_analyzed = len(self.state.social_content.reddit_posts)
+            reddit_comments_analyzed = sum(len(post.comments) for post in self.state.social_content.reddit_posts)
+
+            # Count Twitter threads
+            twitter_threads_analyzed = len(self.state.social_content.twitter_threads)
+
+            # Calculate subreddit breakdown (top 10)
+            subreddit_counts: Dict[str, int] = {}
+            for post in self.state.social_content.reddit_posts:
+                subreddit_counts[post.subreddit] = subreddit_counts.get(post.subreddit, 0) + 1
+
+            top_subreddits = [
+                SubredditBreakdown(name=name, post_count=count)
+                for name, count in sorted(subreddit_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            ]
+
+            # Calculate data size (rough estimate from JSON serialization)
+            social_content_json = self.state.social_content.model_dump_json()
+            data_size_mb = len(social_content_json.encode('utf-8')) / (1024 * 1024)
+
+            return ResearchMetadata(
+                reddit_posts_analyzed=reddit_posts_analyzed,
+                reddit_comments_analyzed=reddit_comments_analyzed,
+                twitter_threads_analyzed=twitter_threads_analyzed,
+                top_subreddits=top_subreddits,
+                collection_date=self.state.social_content.collection_timestamp,
+                data_size_mb=round(data_size_mb, 2)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate research metadata: {e}")
+            return None
+
+    def _generate_alternative_solutions(self) -> Optional[List["AlternativeSolution"]]:
+        """
+        Generate alternative solution summaries for runner-up solutions.
+
+        Returns:
+            List of AlternativeSolution objects (top 2 runner-ups with full details)
+        """
+        from ..models.research_state import AlternativeSolution
+
+        if not self.state.solution_selection or not self.state.idea_generation:
+            return None
+
+        try:
+            # Get runner-up solution names
+            runner_up_names = self.state.solution_selection.runner_up_solutions or []
+            if not runner_up_names:
+                return None
+
+            # Find full solution details from idea_generation stage
+            all_solutions = {idea.solution_name: idea for idea in self.state.idea_generation.solution_ideas}
+
+            # Build score lookup map from all_solution_scores
+            score_map = {}
+            if self.state.solution_selection.all_solution_scores:
+                score_map = {
+                    scores.solution_name: scores
+                    for scores in self.state.solution_selection.all_solution_scores
+                }
+
+            alternative_solutions = []
+            for runner_up_name in runner_up_names[:2]:  # Top 2 runners-up
+                if runner_up_name not in all_solutions:
+                    logger.warning(f"Runner-up solution '{runner_up_name}' not found in idea generation results")
+                    continue
+
+                solution = all_solutions[runner_up_name]
+
+                # Get scores from all_solution_scores if available
+                scores = score_map.get(runner_up_name)
+
+                # Generate 2-3 paragraph summary
+                summary = f"""**Overview:** {solution.description}
+
+**Key Features:** {', '.join(solution.core_features[:5])}
+
+**Target Users:** This solution is best suited for {', '.join(solution.target_personas[:2])}.
+It differentiates through {solution.differentiation_factors[0] if solution.differentiation_factors else 'unique positioning'}.
+
+**Technical Approach:** {solution.technical_approach}
+"""
+
+                # Use scores from SolutionSelection if available, otherwise fall back to solution fields
+                if scores:
+                    market_fit = scores.market_fit_score
+                    technical_feasibility = scores.technical_feasibility_score
+                    competitive_advantage = scores.competitive_advantage_score
+                    seo_growth = scores.seo_growth_potential_score
+                else:
+                    # Fallback to solution fields if all_solution_scores not populated
+                    market_fit = solution.market_fit_score or 0.0
+                    technical_feasibility = solution.technical_feasibility_score or 0.0
+                    competitive_advantage = solution.market_fit_score or 0.7  # Use market_fit as proxy
+                    seo_growth = solution.seo_scalability_score or 0.0
+
+                # Determine pivot trigger based on solution characteristics
+                pivot_trigger = f"Pivot to {runner_up_name} if: "
+                if market_fit > 0.9:
+                    pivot_trigger += "user research reveals significantly higher demand for this specific pain point, "
+                if seo_growth > 0.85:
+                    pivot_trigger += "SEO keyword volume for this solution is 2x higher than primary choice, "
+                if technical_feasibility > 0.9:
+                    pivot_trigger += "faster time-to-market is critical and this solution has simpler tech requirements"
+
+                alternative_solutions.append(AlternativeSolution(
+                    solution_name=solution.solution_name,
+                    summary=summary.strip(),
+                    market_fit_score=market_fit,
+                    technical_feasibility_score=technical_feasibility,
+                    competitive_advantage_score=competitive_advantage,
+                    seo_growth_potential_score=seo_growth,
+                    key_differentiator=solution.differentiation_factors[0] if solution.differentiation_factors else "Unique market positioning",
+                    best_suited_for=solution.target_personas[0] if solution.target_personas else "Target user segment",
+                    pivot_trigger=pivot_trigger.rstrip(", ")
+                ))
+
+            return alternative_solutions if alternative_solutions else None
+        except Exception as e:
+            logger.warning(f"Failed to generate alternative solutions: {e}")
+            return None
+
+    def _generate_competitive_landscape_matrix(self) -> Optional["CompetitiveLandscapeMatrix"]:
+        """
+        Generate cross-solution competitive analysis showing competitor overlap and patterns.
+
+        Returns:
+            CompetitiveLandscapeMatrix with competitor overlap and intensity analysis
+        """
+        from ..models.research_state import CompetitiveLandscapeMatrix, CompetitorMatrixEntry, CompetitiveIntensityEntry
+
+        if not self.state.competitive_analysis:
+            return None
+
+        try:
+            # Collect all solution names
+            all_solutions = [landscape.solution_name for landscape in self.state.competitive_analysis.solution_landscapes]
+
+            # Build competitor overlap map
+            competitor_appearances: Dict[str, Dict[str, Any]] = {}
+            competitive_intensity_list: List[CompetitiveIntensityEntry] = []
+
+            for landscape in self.state.competitive_analysis.solution_landscapes:
+                # Track competitive intensity
+                competitive_intensity_list.append(
+                    CompetitiveIntensityEntry(
+                        solution_name=landscape.solution_name,
+                        intensity=landscape.competitive_intensity
+                    )
+                )
+
+                # Track competitor appearances
+                for competitor in landscape.competitors:
+                    if competitor.name not in competitor_appearances:
+                        competitor_appearances[competitor.name] = {
+                            "solutions": [],
+                            "type": competitor.competitor_type,
+                            "threat_level": "medium"  # default
+                        }
+                    competitor_appearances[competitor.name]["solutions"].append(landscape.solution_name)
+
+            # Create competitor matrix entries (only multi-solution competitors)
+            competitor_overlap = [
+                CompetitorMatrixEntry(
+                    competitor_name=name,
+                    solutions_competed=data["solutions"],
+                    competitor_type=data["type"],
+                    threat_level=data["threat_level"]
+                )
+                for name, data in competitor_appearances.items()
+                if len(data["solutions"]) > 1  # Only show competitors in multiple solution spaces
+            ]
+
+            # Sort by number of solutions competed (most versatile competitors first)
+            competitor_overlap.sort(key=lambda x: len(x.solutions_competed), reverse=True)
+
+            # Generate market insight
+            intensity_counts = {}
+            for entry in competitive_intensity_list:
+                intensity_counts[entry.intensity] = intensity_counts.get(entry.intensity, 0) + 1
+
+            market_insight = f"Analyzed {len(all_solutions)} solution concepts across the competitive landscape. "
+            if intensity_counts:
+                market_insight += f"Competitive intensity distribution: {', '.join(f'{k}: {v}' for k, v in intensity_counts.items())}. "
+            if competitor_overlap:
+                market_insight += f"{len(competitor_overlap)} competitors appear across multiple solution spaces, indicating platform players with broad market coverage. "
+                top_competitor = competitor_overlap[0]
+                market_insight += f"Most versatile competitor: {top_competitor.competitor_name} (competes in {len(top_competitor.solutions_competed)} solution categories)."
+
+            return CompetitiveLandscapeMatrix(
+                all_solutions_analyzed=all_solutions,
+                competitor_overlap=competitor_overlap,
+                competitive_intensity_by_solution=competitive_intensity_list,
+                market_insight=market_insight
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate competitive landscape matrix: {e}")
+            return None
+
+    def _generate_evidence_appendix(self) -> Optional["EvidenceAppendix"]:
+        """
+        Generate evidence appendix with top Reddit threads and pain point quote sources.
+
+        Returns:
+            EvidenceAppendix with traceability from pain points to original posts
+        """
+        from ..models.research_state import EvidenceAppendix, TopRedditThread, PainPointEvidence, QuoteSource
+
+        if not self.state.social_content or not self.state.pain_point_analysis:
+            return None
+
+        try:
+            # Extract top 10 Reddit threads by engagement score
+            reddit_posts = sorted(
+                self.state.social_content.reddit_posts,
+                key=lambda p: p.score,
+                reverse=True
+            )[:10]
+
+            top_reddit_threads = [
+                TopRedditThread(
+                    post_id=post.post_id,
+                    title=post.title,
+                    subreddit=post.subreddit,
+                    score=post.score,
+                    num_comments=post.num_comments,
+                    url=post.url,
+                    key_insight=f"High-engagement discussion ({post.score} score, {post.num_comments} comments) in r/{post.subreddit}"
+                )
+                for post in reddit_posts
+            ]
+
+            # Create post ID to metadata mapping
+            post_metadata: Dict[str, Dict[str, Any]] = {}
+            for post in self.state.social_content.reddit_posts:
+                post_metadata[post.post_id] = {
+                    "subreddit": post.subreddit,
+                    "score": post.score,
+                    "url": post.url
+                }
+            for thread in self.state.social_content.twitter_threads:
+                post_metadata[thread.thread_id] = {
+                    "subreddit": "Twitter",  # Use "Twitter" as platform indicator
+                    "score": thread.original_tweet.likes,
+                    "url": thread.original_tweet.url
+                }
+
+            # Map pain points to source posts
+            pain_point_quote_sources = []
+            for pain_point in self.state.pain_point_analysis.pain_points:
+                quotes_with_sources = []
+                # Match quotes to source posts using source_post_ids if available
+                source_ids = pain_point.source_post_ids if hasattr(pain_point, 'source_post_ids') else []
+
+                for i, quote in enumerate(pain_point.representative_quotes[:3]):  # Top 3 quotes
+                    source_id = source_ids[i] if i < len(source_ids) else "unknown"
+                    metadata = post_metadata.get(source_id, {"subreddit": "Unknown", "score": 0})
+
+                    quotes_with_sources.append(QuoteSource(
+                        quote=quote[:200] + "..." if len(quote) > 200 else quote,  # Truncate long quotes
+                        post_id=source_id,
+                        subreddit=metadata["subreddit"],
+                        score=str(metadata["score"])
+                    ))
+
+                pain_point_quote_sources.append(PainPointEvidence(
+                    pain_point_title=pain_point.title,
+                    quotes_with_sources=quotes_with_sources
+                ))
+
+            return EvidenceAppendix(
+                top_reddit_threads=top_reddit_threads,
+                pain_point_quote_sources=pain_point_quote_sources
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate evidence appendix: {e}")
+            return None
+
+    def _generate_data_infrastructure_roadmap(self) -> Optional["DataInfrastructureRoadmap"]:
+        """
+        Generate 3-phase data infrastructure implementation roadmap with cost projections.
+
+        Returns:
+            DataInfrastructureRoadmap with phased implementation plan and cost scaling insight
+        """
+        from ..models.research_state import DataInfrastructureRoadmap, DataInfrastructurePhase
+
+        if not self.state.data_source_research:
+            return None
+
+        try:
+            data_research = self.state.data_source_research
+
+            # Extract implementation roadmap phases from existing data
+            phases = []
+
+            # NEW: Use structured implementation_phases if available
+            if data_research.implementation_phases:
+                phases = [
+                    DataInfrastructurePhase(
+                        phase_number=phase.phase_number,
+                        phase_name=phase.phase_name,
+                        timeline=phase.timeline,
+                        data_sources=phase.data_sources,
+                        estimated_monthly_cost=phase.estimated_monthly_cost,
+                        key_risks=phase.fallback_strategies[:3] if phase.fallback_strategies else []
+                    )
+                    for phase in data_research.implementation_phases
+                ]
+            # FALLBACK: Parse implementation roadmap text if available
+            elif data_research.implementation_roadmap:
+                roadmap_text = data_research.implementation_roadmap
+                # Extract phases from formatted text (simple parsing)
+                phase_texts = roadmap_text.split("Phase ")
+                for i, phase_text in enumerate(phase_texts[1:], start=1):  # Skip first empty split
+                    lines = phase_text.strip().split("\n")
+                    phase_name_line = lines[0] if lines else f"Phase {i}"
+
+                    # Extract phase name (e.g., "1 (Months 1-3): Launch MVP..." -> "MVP")
+                    if ":" in phase_name_line:
+                        phase_name_full = phase_name_line.split(":", 1)[1].strip()
+                        phase_name = phase_name_full.split()[0] if phase_name_full else f"Phase {i}"
+                        timeline_match = phase_name_line.split("(")[1].split(")")[0] if "(" in phase_name_line else f"Months {i*3-2}-{i*3}"
+                    else:
+                        phase_name = f"Phase {i}"
+                        timeline_match = f"Months {i*3-2}-{i*3}"
+
+                    # Extract data sources mentioned in phase text
+                    data_sources = []
+                    for source in data_research.primary_data_sources[:3]:  # Top 3 sources
+                        if source.provider.lower() in phase_text.lower():
+                            data_sources.append(source.provider)
+
+                    phases.append(DataInfrastructurePhase(
+                        phase_number=i,
+                        phase_name=phase_name if phase_name != f"Phase {i}" else ["MVP", "Growth", "Scale"][i-1] if i <= 3 else f"Phase {i}",
+                        timeline=timeline_match,
+                        data_sources=data_sources if data_sources else [s.provider for s in data_research.primary_data_sources[:2]],
+                        estimated_monthly_cost=data_research.estimated_monthly_cost.split(";")[i-1].strip() if ";" in data_research.estimated_monthly_cost else data_research.estimated_monthly_cost,
+                        key_risks=[risk.strip() for risk in data_research.data_quality_risks[:2]] if data_research.data_quality_risks else []
+                    ))
+
+            # If parsing failed, create default 3-phase structure
+            if len(phases) < 3:
+                phases = [
+                    DataInfrastructurePhase(
+                        phase_number=1,
+                        phase_name="MVP",
+                        timeline="Months 1-3",
+                        data_sources=[s.provider for s in data_research.primary_data_sources[:2]],
+                        estimated_monthly_cost=data_research.estimated_monthly_cost.split(";")[0] if ";" in data_research.estimated_monthly_cost else data_research.estimated_monthly_cost.split("/")[0] if "/" in data_research.estimated_monthly_cost else data_research.estimated_monthly_cost,
+                        key_risks=[data_research.data_quality_risks[0]] if data_research.data_quality_risks else []
+                    ),
+                    DataInfrastructurePhase(
+                        phase_number=2,
+                        phase_name="Growth",
+                        timeline="Months 4-6",
+                        data_sources=[s.provider for s in data_research.primary_data_sources],
+                        estimated_monthly_cost="Scale with usage",
+                        key_risks=[data_research.data_quality_risks[1]] if len(data_research.data_quality_risks) > 1 else []
+                    ),
+                    DataInfrastructurePhase(
+                        phase_number=3,
+                        phase_name="Scale",
+                        timeline="Months 7-12",
+                        data_sources=[s.provider for s in data_research.primary_data_sources] + [s.provider for s in data_research.fallback_sources[:1]],
+                        estimated_monthly_cost="High volume - implement cost optimization",
+                        key_risks=[data_research.data_quality_risks[2]] if len(data_research.data_quality_risks) > 2 else ["Cost scaling at high volume"]
+                    )
+                ]
+
+            # Generate cost scaling insight
+            cost_scaling_insight = f"Data infrastructure costs start at {phases[0].estimated_monthly_cost} during MVP, " \
+                                   f"scaling with user growth. {data_research.data_quality_risks[0] if data_research.data_quality_risks else 'Monitor API rate limits and implement fallback strategies'} " \
+                                   f"Critical mitigation: Implement tiered data source strategy with free/low-cost sources for baseline features, " \
+                                   f"premium APIs for advanced personalization. Monitor unit economics to prevent cost spiral at scale."
+
+            return DataInfrastructureRoadmap(
+                phases=phases[:3],  # Ensure exactly 3 phases
+                cost_scaling_insight=cost_scaling_insight
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate data infrastructure roadmap: {e}")
+            return None
+
+    def _generate_decision_framework(self) -> Optional["DecisionFramework"]:
+        """
+        Generate go/no-go criteria and pivot triggers for decision-making.
+
+        Returns:
+            DecisionFramework with actionable criteria based on research findings
+        """
+        from ..models.research_state import DecisionFramework, DecisionCriterion, PivotTrigger
+
+        if not self.state.pain_point_analysis or not self.state.solution_selection:
+            return None
+
+        try:
+            # Generate go criteria based on research findings
+            go_criteria = [
+                DecisionCriterion(
+                    criterion_type="go",
+                    condition="Validate 3+ high-severity pain points (severity >0.7) from Reddit threads with score >20",
+                    rationale="Confirms real user demand with social validation signals"
+                ),
+                DecisionCriterion(
+                    criterion_type="go",
+                    condition="At least 2 identified competitors have <$10M funding or are bootstrapped",
+                    rationale="Indicates beatable competitive landscape without dominant well-funded players"
+                ),
+            ]
+
+            # Add SEO-related go criterion if available
+            if self.state.seo_strategy_report:
+                go_criteria.append(DecisionCriterion(
+                    criterion_type="go",
+                    condition="Top 10 target keywords show >10k monthly combined search volume with competition <60",
+                    rationale="Validates organic acquisition channel viability and CAC estimates"
+                ))
+
+            # Add data sourcing go criterion if applicable
+            if self.state.data_source_research:
+                go_criteria.append(DecisionCriterion(
+                    criterion_type="go",
+                    condition="Secure 2+ core data sources with confirmed API access or free tier availability",
+                    rationale="De-risks technical feasibility and MVP launch timeline"
+                ))
+
+            # Generate no-go criteria
+            no_go_criteria = [
+                DecisionCriterion(
+                    criterion_type="no-go",
+                    condition="Pain point validation shows <5 discussions total or <10 total mentions across all pain points",
+                    rationale="Insufficient market signal indicates weak demand or poor niche-market fit"
+                ),
+                DecisionCriterion(
+                    criterion_type="no-go",
+                    condition="Competitive analysis reveals 3+ direct competitors with >$50M funding each",
+                    rationale="Over-saturated market with well-capitalized incumbents makes differentiation extremely difficult"
+                ),
+                DecisionCriterion(
+                    criterion_type="no-go",
+                    condition="SEO keyword research shows <5k monthly search volume for top 10 keywords combined",
+                    rationale="Insufficient organic demand makes customer acquisition cost prohibitively high"
+                ),
+            ]
+
+            # Add data sourcing no-go criterion if applicable
+            if self.state.data_source_research:
+                no_go_criteria.append(DecisionCriterion(
+                    criterion_type="no-go",
+                    condition="Data source costs exceed $5k/month at 10k users, breaking unit economics",
+                    rationale="Unsustainable cost structure prevents profitable scaling"
+                ))
+
+            # Generate pivot triggers based on alternative solutions
+            pivot_triggers = []
+            if self.state.solution_selection.runner_up_solutions:
+                for runner_up_name in self.state.solution_selection.runner_up_solutions[:2]:
+                    pivot_triggers.append(PivotTrigger(
+                        trigger_condition=f"User interviews reveal {runner_up_name} pain points are 2x more frequently mentioned than selected solution pain points",
+                        pivot_to_solution=runner_up_name,
+                        rationale="Market demand signal stronger for alternative approach, justifies strategic pivot"
+                    ))
+
+            # Add generic pivot trigger
+            pivot_triggers.append(PivotTrigger(
+                trigger_condition="MVP validation shows <10% conversion from landing page to signup after 100+ visitors",
+                pivot_to_solution=self.state.solution_selection.runner_up_solutions[0] if self.state.solution_selection.runner_up_solutions else "Alternative approach",
+                rationale="Low conversion indicates value proposition mismatch, warrants testing alternative solution framing"
+            ))
+
+            return DecisionFramework(
+                go_criteria=go_criteria,
+                no_go_criteria=no_go_criteria,
+                pivot_triggers=pivot_triggers
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate decision framework: {e}")
+            return None
 
     @listen(stage_9_75_research_data_sources)
     def stage_10_generate_report(self):
@@ -1749,8 +2224,44 @@ When comparing solutions with similar market fit and technical feasibility, use 
                 final_report.data_source_research = self.state.data_source_research
                 logger.info("[OK] Data source research integrated into final report")
 
+            # Generate enhanced report sections (Phase 3 - data preservation and traceability)
+            logger.info("Generating enhanced report sections...")
+
+            final_report.research_metadata = self._generate_research_metadata()
+            if final_report.research_metadata:
+                logger.info(f"[OK] Research metadata generated: {final_report.research_metadata.reddit_posts_analyzed} Reddit posts, {final_report.research_metadata.twitter_threads_analyzed} Twitter threads")
+
+            final_report.alternative_solutions = self._generate_alternative_solutions()
+            if final_report.alternative_solutions:
+                logger.info(f"[OK] Alternative solutions generated: {len(final_report.alternative_solutions)} runner-up solutions detailed")
+
+            final_report.competitive_landscape_matrix = self._generate_competitive_landscape_matrix()
+            if final_report.competitive_landscape_matrix:
+                logger.info(f"[OK] Competitive landscape matrix generated: {len(final_report.competitive_landscape_matrix.competitor_overlap)} multi-solution competitors identified")
+
+            final_report.evidence_appendix = self._generate_evidence_appendix()
+            if final_report.evidence_appendix:
+                logger.info(f"[OK] Evidence appendix generated: {len(final_report.evidence_appendix.top_reddit_threads)} top threads, {len(final_report.evidence_appendix.pain_point_quote_sources)} pain points with source attribution")
+
+            final_report.data_infrastructure_roadmap = self._generate_data_infrastructure_roadmap()
+            if final_report.data_infrastructure_roadmap:
+                logger.info(f"[OK] Data infrastructure roadmap generated: {len(final_report.data_infrastructure_roadmap.phases)}-phase implementation plan")
+
+            final_report.decision_framework = self._generate_decision_framework()
+            if final_report.decision_framework:
+                logger.info(f"[OK] Decision framework generated: {len(final_report.decision_framework.go_criteria)} go criteria, {len(final_report.decision_framework.no_go_criteria)} no-go criteria, {len(final_report.decision_framework.pivot_triggers)} pivot triggers")
+
+            # Content categorization from Stage 6 Task 1
+            if self.state.pain_point_analysis and self.state.pain_point_analysis.content_categorization:
+                final_report.content_categorization = self.state.pain_point_analysis.content_categorization
+                logger.info(
+                    f"[OK] Content categorization included: "
+                    f"{len(final_report.content_categorization.theme_categories)} theme categories, "
+                    f"{len(final_report.content_categorization.user_segments)} user segments"
+                )
+
             self.state.final_report = final_report
-            logger.info("[OK] Final report synthesis complete")
+            logger.info("[OK] Final report synthesis complete with enhanced sections")
         except Exception as e:
             logger.error(f"Failed to generate final report with LLM: {e}")
             logger.warning("Falling back to basic report generation")

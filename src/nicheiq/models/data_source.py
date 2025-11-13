@@ -68,6 +68,90 @@ class DataPartnership(BaseModel):
     notes: Optional[str] = Field(default=None, description="Additional context or considerations")
 
 
+class DataQualityMetrics(BaseModel):
+    """5D Data Quality Matrix scores for a data source."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    coverage_score: str = Field(..., description="Coverage % or description (e.g., '80% market coverage')")
+    freshness: str = Field(..., description="Update frequency: real-time, hourly, daily, weekly, monthly")
+    integration_complexity: str = Field(..., description="LOW, MEDIUM, or HIGH")
+    cost_viability: str = Field(..., description="Cost assessment: FREE, LOW, MEDIUM, HIGH")
+    quality_assessment: str = Field(..., description="Accuracy/reliability notes")
+
+
+class EvaluatedDataSource(BaseModel):
+    """Data source with full evaluation from Task 2."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    provider: str = Field(..., description="Provider name")
+    url: Optional[str] = Field(default=None, description="API documentation URL")
+    priority: str = Field(..., description="HIGH, MEDIUM, or LOW")
+    priority_rationale: str = Field(
+        ..., description="Why this priority (SEO keywords, pain points, competitive advantage)"
+    )
+    quality_metrics: DataQualityMetrics = Field(..., description="5D quality matrix scores")
+    mvp_cost_estimate: Optional[str] = Field(
+        default=None, description="Cost at 1k-10k users"
+    )
+    scale_cost_estimate: Optional[str] = Field(
+        default=None, description="Cost at 100k+ users"
+    )
+    identified_risks: List[str] = Field(
+        default_factory=list, description="2-4 specific risks"
+    )
+    mitigation_strategies: Optional[List[str]] = Field(
+        default=None, description="How to mitigate risks"
+    )
+
+
+class SourceEvaluationReport(BaseModel):
+    """Complete evaluation output from Task 2."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    high_priority_sources: List[EvaluatedDataSource] = Field(
+        ..., description="1-3 HIGH priority sources"
+    )
+    medium_priority_sources: List[EvaluatedDataSource] = Field(
+        ..., description="2-4 MEDIUM priority sources"
+    )
+    low_priority_sources: List[EvaluatedDataSource] = Field(
+        ..., description="Remaining sources"
+    )
+    overall_data_quality_risk: str = Field(
+        ..., description="Overall risk assessment narrative"
+    )
+    critical_blockers: List[str] = Field(
+        default_factory=list, description="Risks that could block launch"
+    )
+    evaluation_summary: str = Field(
+        ..., description="2-3 sentence summary of evaluation findings"
+    )
+
+
+class RoadmapPhase(BaseModel):
+    """Structured phase in implementation roadmap."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    phase_number: int = Field(..., description="1, 2, or 3")
+    phase_name: str = Field(..., description="MVP, Growth, or Scale")
+    timeline: str = Field(..., description="e.g., 'Months 1-3'")
+    goal: str = Field(..., description="What this phase achieves")
+    data_sources: List[str] = Field(..., description="Provider names for this phase")
+    estimated_monthly_cost: str = Field(
+        ..., description="Cost range (e.g., '$100-200')"
+    )
+    key_milestones: List[str] = Field(
+        default_factory=list, description="Success criteria"
+    )
+    fallback_strategies: List[str] = Field(
+        default_factory=list, description="What to do if sources fail"
+    )
+
+
 class DataSourceResearchResult(BaseModel):
     """Complete result of data source research for selected solution."""
 
@@ -81,6 +165,14 @@ class DataSourceResearchResult(BaseModel):
     fallback_sources: Optional[List[DataSource]] = Field(
         default=None,
         description="Backup data sources if primary options fail or are restricted"
+    )
+    source_evaluation: Optional[SourceEvaluationReport] = Field(
+        default=None,
+        description="Detailed evaluation from Task 2 (priorities, quality matrix, risks)"
+    )
+    implementation_phases: Optional[List[RoadmapPhase]] = Field(
+        default=None,
+        description="3-phase structured roadmap with goals, milestones, costs, and fallbacks"
     )
     data_partnerships_needed: Optional[List[DataPartnership]] = Field(
         default=None,

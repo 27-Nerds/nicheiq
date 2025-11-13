@@ -13,7 +13,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.competitor import CompetitiveLandscape
-from ..models.data_source import DataSourceResearchResult
+from ..models.data_source import DataSourceResearchResult, SourceEvaluationReport
 from ..models.seo_strategy import SEOStrategyReport
 from ..models.solution_idea import SolutionIdea
 
@@ -116,12 +116,13 @@ class DataSourceResearchCrew:
     def evaluate_data_sources_task(self) -> Task:
         """
         Task: Evaluate discovered data sources for quality, cost, and feasibility.
-        Output: Prioritized data sources with quality assessments.
+        Output: SourceEvaluationReport with priority tiers and quality metrics.
         """
         return Task(
             config=self.tasks_config["evaluate_data_sources"],
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task()],
+            output_pydantic=SourceEvaluationReport,
         )
 
     @task
@@ -180,8 +181,30 @@ class DataSourceResearchCrew:
                 "seo_priorities": seo_priorities,
             })
 
-            # Extract the Pydantic model from CrewOutput
+            # Extract the Pydantic model from CrewOutput (Task 3)
             result = crew_output.pydantic
+
+            # Capture evaluation from Task 2 (evaluate_data_sources)
+            try:
+                task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+                if task_outputs and len(task_outputs) >= 2:
+                    evaluation_task_output = task_outputs[1]  # Second task is evaluate_data_sources
+                    if hasattr(evaluation_task_output, 'pydantic') and evaluation_task_output.pydantic:
+                        result.source_evaluation = evaluation_task_output.pydantic
+                        logger.info(
+                            f"[OK] Captured source evaluation: "
+                            f"{len(result.source_evaluation.high_priority_sources)} HIGH priority, "
+                            f"{len(result.source_evaluation.medium_priority_sources)} MEDIUM priority, "
+                            f"{len(result.source_evaluation.low_priority_sources)} LOW priority"
+                        )
+                    else:
+                        logger.warning("Task 2 output does not have pydantic attribute")
+                else:
+                    logger.warning("Could not access task outputs for evaluation capture")
+            except Exception as e:
+                logger.warning(f"Failed to capture source evaluation: {e}")
+                # Graceful degradation - continue without evaluation
+
             logger.info(
                 f"Data source research complete: "
                 f"{len(result.primary_data_sources)} primary sources discovered"

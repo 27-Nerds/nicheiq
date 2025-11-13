@@ -7,13 +7,18 @@ from typing import List, Optional
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
-from crewai_tools import SerperDevTool
 from loguru import logger
 
 from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
-from ..models.seo_strategy import ExpandedKeywordList, SEOStrategyReport
+from ..models.seo_strategy import (
+    ExpandedKeywordList,
+    SEOStrategyReport,
+    KeywordAnalysisResult,
+    ContentStrategyResult,
+    ImplementationPlanResult,
+)
 from ..models.solution_idea import IdeaGenerationResult
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
 
@@ -64,9 +69,6 @@ class SEOStrategyCrew:
         self.selection_rationale = selection_rationale
         self.competitive_analysis = competitive_analysis
         self.pain_points = pain_points
-
-        # Initialize search tool for competitive keyword research
-        self.search_tool = SerperDevTool()
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -199,7 +201,7 @@ class SEOStrategyCrew:
 
         return Agent(
             config=self.agents_config["keyword_strategist"],
-            tools=[self.dataforseo_expand_tool, self.dataforseo_volume_tool, self.search_tool],
+            tools=[self.dataforseo_expand_tool, self.dataforseo_volume_tool],  # Removed SerperDevTool to prevent confusion with CSV data
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.0,  # Zero temperature for precise data extraction (no creativity needed)
@@ -256,26 +258,168 @@ class SEOStrategyCrew:
     @task
     def expand_keywords_conceptually_task(self) -> Task:
         """
-        Task: Phase 9.5a - Conceptual keyword expansion without DataForSEO.
+        Task: Phase 9.5a - Hybrid seed keyword generation (70% broad seeds + 30% targeted keywords).
 
-        Output: ExpandedKeywordList with 100-200 conceptual keywords organized by topic clusters.
+        Output: ExpandedKeywordList with 40-50 total keywords organized by 5-8 topic clusters.
         """
         return Task(
             config=self.tasks_config["expand_keywords_conceptually"],
             agent=self.content_strategist(),  # Use content strategist for strategic thinking
             output_pydantic=ExpandedKeywordList,
         )
+    # ========================================
+    # MULTI-TASK SEO STRATEGY (4-TASK FLOW)
+    # ========================================
 
     @task
-    def create_strategy_from_enriched_task(self) -> Task:
+    def analyze_keywords_and_tier_task(self) -> Task:
         """
-        Task: Phase 9.5c - Create SEO strategy from pre-enriched keywords.
+        Task 1: Keyword Analysis & Tiering.
 
-        Output: SEOStrategyReport with data-driven strategy based on real keyword volumes.
+        Analyzes pre-enriched keywords and creates tiered opportunity structure.
+
+        Output: KeywordAnalysisResult with tier structure, competitive positioning, key findings.
         """
         return Task(
-            config=self.tasks_config["create_strategy_from_enriched_keywords"],
-            agent=self.seo_specialist(),  # Single agent for strategy synthesis
+            config=self.tasks_config["analyze_keywords_and_tier"],
+            agent=self.keyword_strategist(),
+            output_pydantic=KeywordAnalysisResult,
+        )
+
+    @task
+    def develop_content_technical_strategy_task(self) -> Task:
+        """
+        Task 2: Content & Technical Strategy.
+
+        Develops content strategy, topic clusters, and technical SEO recommendations
+        based on keyword analysis from Task 1.
+
+        Depends on: analyze_keywords_and_tier_task
+        Output: ContentStrategyResult with content plan and technical recommendations.
+        """
+        return Task(
+            config=self.tasks_config["develop_content_technical_strategy"],
+            agent=self.content_strategist(),
+            context=[self.analyze_keywords_and_tier_task()],  # Depends on Task 1
+            output_pydantic=ContentStrategyResult,
+        )
+
+    @task
+    def create_implementation_plan_task(self) -> Task:
+        """
+        Task 3: Implementation Planning.
+
+        Creates phased implementation roadmap with metrics, timeline, budget, and risks
+        based on keyword analysis and content strategy.
+
+        Depends on: analyze_keywords_and_tier_task, develop_content_technical_strategy_task
+        Output: ImplementationPlanResult with roadmap, metrics, timeline.
+        """
+        return Task(
+            config=self.tasks_config["create_implementation_plan"],
+            agent=self.seo_specialist(),
+            context=[
+                self.analyze_keywords_and_tier_task(),  # Task 1
+                self.develop_content_technical_strategy_task(),  # Task 2
+            ],
+            output_pydantic=ImplementationPlanResult,
+        )
+
+    def _validate_seo_synthesis(self, task_output):
+        """
+        Guardrail to ensure Task 4 preserves all fields from Tasks 1-3.
+
+        Validates that all critical fields are populated in the SEOStrategyReport
+        to prevent field loss during synthesis. Automatically retries if validation fails.
+
+        Returns:
+            (True, result) if valid, (False, error_message) if validation fails
+        """
+        try:
+            result = task_output.pydantic
+
+            # Check critical fields are populated
+            required_fields = {
+                'tier_1_keywords': list,
+                'tier_1_quick_win_strategy': str,
+                'content_strategy': str,
+                'technical_seo_recommendations': str,
+                'implementation_roadmap': str,
+                'key_metrics_to_track': list,
+                'long_term_strategy': str,
+                'conclusion_bottom_line': str,
+                'competitive_advantages': list,
+                'critical_success_factors': list,
+                'expected_timeline': str,
+                'next_steps_checklist': list
+            }
+
+            for field, expected_type in required_fields.items():
+                value = getattr(result, field, None)
+                if value is None:
+                    return (False, f"Missing required field: {field}")
+                if expected_type == list and len(value) == 0:
+                    return (False, f"Empty required list field: {field}")
+                if expected_type == str and len(value.strip()) == 0:
+                    return (False, f"Empty required string field: {field}")
+
+            logger.info(
+                f"[OK] SEO synthesis validation passed: "
+                f"all {len(required_fields)} critical fields populated"
+            )
+            return (True, result)
+
+        except Exception as e:
+            logger.error(f"SEO synthesis validation error: {e}")
+            return (False, f"Validation error: {str(e)}")
+
+    @task
+    def synthesize_final_seo_strategy_task(self) -> Task:
+        """
+        Task 4: Final Strategy Synthesis.
+
+        Synthesizes outputs from Tasks 1-3 into complete SEOStrategyReport with
+        long-term strategy, competitive advantages, and conclusion.
+
+        Depends on: All previous tasks (1, 2, 3)
+        Output: Complete SEOStrategyReport - FINAL output for Stage 9.
+        """
+        return Task(
+            config=self.tasks_config["synthesize_final_seo_strategy"],
+            agent=self.seo_specialist(),
+            context=[
+                self.analyze_keywords_and_tier_task(),  # Task 1
+                self.develop_content_technical_strategy_task(),  # Task 2
+                self.create_implementation_plan_task(),  # Task 3
+            ],
+            output_pydantic=SEOStrategyReport,
+            guardrail=self._validate_seo_synthesis,
+        )
+
+    @task
+    def create_implementation_guide_task(self) -> Task:
+        """
+        Task 5: Create SEO Implementation Guide.
+
+        Generates detailed technical implementation guidance for SEO strategy:
+        - Universal SEO elements (title tags, meta descriptions, canonical, OG tags, robots)
+        - Page-specific implementations (4-6 page type templates with examples)
+        - Schema markup strategy (JSON-LD code examples, priority types, testing)
+
+        Preserves ALL 26 fields from Task 4 and adds 3 new implementation fields.
+
+        Depends on: All previous tasks (1, 2, 3, 4)
+        Output: Enhanced SEOStrategyReport with implementation details (29 total fields)
+        """
+        return Task(
+            config=self.tasks_config["create_implementation_guide"],
+            agent=self.seo_specialist(),
+            context=[
+                self.analyze_keywords_and_tier_task(),           # Task 1 (for keyword reference)
+                self.develop_content_technical_strategy_task(),  # Task 2 (for page types)
+                self.create_implementation_plan_task(),          # Task 3 (for roadmap)
+                self.synthesize_final_seo_strategy_task(),       # Task 4 (ALL 26 fields to preserve)
+            ],
             output_pydantic=SEOStrategyReport,
         )
 
@@ -311,13 +455,16 @@ class SEOStrategyCrew:
 
     def expand_keywords_phase_1(self) -> ExpandedKeywordList:
         """
-        Execute Phase 9.5a: Conceptual Keyword Expansion.
+        Execute Phase 9.5a: Hybrid Seed Keyword Generation.
 
-        Runs ONLY the conceptual expansion task without DataForSEO.
-        Returns 100-200 strategic keywords organized by topic clusters.
+        Generates a strategic mix using 70-30 approach:
+        - 70% Broad Seeds (28-35 keywords, 1-2 words): For DataForSEO expansion into thousands of variations
+        - 30% Targeted Keywords (12-15 keywords, 3-5 words): Strategic high-value queries for direct validation
+
+        Returns 40-50 total keywords organized by 5-8 topic clusters.
 
         Returns:
-            ExpandedKeywordList with conceptual keywords for Phase 9.5b enrichment
+            ExpandedKeywordList with hybrid seed keywords for Phase 9.5b bulk validation and expansion
         """
         logger.info(f"Starting Phase 9.5a: Conceptual keyword expansion for: {self.selected_solution.solution_name}")
 
@@ -383,53 +530,91 @@ class SEOStrategyCrew:
             logger.error(f"Phase 9.5a conceptual expansion failed: {e}")
             raise
 
-    def create_strategy_from_enriched(
+    def _format_keywords_as_csv(self, enriched_keywords: list) -> str:
+        """
+        Format keywords as CSV for direct context injection.
+
+        CSV is 2x more token-efficient than JSON for tabular data and provides
+        complete keyword visibility to agents without requiring RAG queries.
+
+        Returns:
+            CSV string with header and keyword data
+        """
+        # CSV header
+        lines = ["keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier"]
+
+        for k in enriched_keywords:
+            keyword_text = k.get("keyword", "")
+            search_volume = k.get("search_volume", 0)
+            competition_index = k.get("competition_index", 0)
+            cpc = float(k.get("cpc") or 0)
+
+            # Calculate opportunity score
+            opp_score = search_volume / max(competition_index, 1)
+
+            # Format competition label
+            if competition_index < 30:
+                comp_label = "LOW" if competition_index >= 15 else "VERY_LOW"
+            elif competition_index < 60:
+                comp_label = "MEDIUM"
+            elif competition_index < 80:
+                comp_label = "HIGH"
+            else:
+                comp_label = "VERY_HIGH"
+
+            # Assign tier based on opportunity score
+            if opp_score > 100:
+                tier = "TIER_1_QUICK_WIN"
+            elif opp_score > 50:
+                tier = "TIER_2_STRATEGIC"
+            elif opp_score > 20:
+                tier = "TIER_3_MEDIUM"
+            else:
+                tier = "TIER_4_LONG_TAIL"
+
+            # Add CSV row (escape commas in keyword text if present)
+            keyword_escaped = keyword_text.replace(',', ' ')
+            lines.append(
+                f"{keyword_escaped},{search_volume},{competition_index},"
+                f"{comp_label},{cpc:.2f},{opp_score:.1f},{tier}"
+            )
+
+        return "\n".join(lines)
+
+    def create_strategy_multitask(
         self,
         enriched_keywords: list,
         topic_clusters: list
     ) -> SEOStrategyReport:
         """
-        Execute Phase 9.5c: Create SEO strategy from pre-enriched keywords.
+        Execute 5-Task SEO Strategy Flow with Direct CSV Input.
 
-        This method receives keywords that have already been enriched with DataForSEO
-        data (search volumes, competition) and creates a comprehensive strategy.
+        Creates comprehensive SEO strategy using sequential 5-task flow:
+        1. Keyword Analysis & Tiering
+        2. Content & Technical Strategy
+        3. Implementation Planning
+        4. Final Synthesis
+        5. Implementation Guide (NEW - Universal SEO, Page Templates, Schema)
+
+        Uses direct CSV input for keyword data (industry best practice for structured data).
+        CSV format is 2x more token-efficient than JSON and provides complete visibility.
 
         Args:
             enriched_keywords: List of dicts from DataForSEO with volumes/competition
             topic_clusters: List of TopicCluster objects from Phase 9.5a
 
         Returns:
-            SEOStrategyReport with data-driven strategy
+            Complete SEOStrategyReport with implementation details (29 fields total)
         """
-        logger.info(f"Starting Phase 9.5c: Creating strategy from {len(enriched_keywords)} enriched keywords")
+        logger.info(f"Starting 5-Task SEO Strategy Flow for: {self.selected_solution.solution_name}")
+        logger.info(f"Processing {len(enriched_keywords)} enriched keywords across {len(topic_clusters)} topic clusters")
 
         try:
-            # Format enriched keywords for task input
-            enriched_keywords_formatted = []
-            for k in enriched_keywords:
-                # Format competition as string with label and index
-                # e.g., "LOW (23)", "MEDIUM (54)", "HIGH (78)"
-                competition_index = k.get("competition_index", 0)
-                if competition_index < 30:
-                    comp_label = "LOW" if competition_index >= 15 else "VERY LOW"
-                elif competition_index < 60:
-                    comp_label = "MEDIUM"
-                elif competition_index < 80:
-                    comp_label = "HIGH"
-                else:
-                    comp_label = "VERY HIGH"
-
-                competition_str = f"{comp_label} ({competition_index})"
-
-                formatted = {
-                    "keyword": k.get("keyword", ""),
-                    "search_volume": k.get("search_volume", 0),
-                    "competition": competition_str,
-                }
-                # Include monthly_searches if available
-                if k.get("monthly_searches"):
-                    formatted["monthly_searches"] = k.get("monthly_searches")
-                enriched_keywords_formatted.append(formatted)
+            # Format keywords as CSV for direct context injection
+            keywords_csv = self._format_keywords_as_csv(enriched_keywords)
+            csv_line_count = keywords_csv.count('\n') + 1
+            csv_token_estimate = len(keywords_csv) // 4  # Rough estimate: 4 chars per token
+            logger.info(f"Created keyword CSV: {csv_line_count} lines, ~{csv_token_estimate:,} tokens")
 
             # Format topic clusters summary
             topic_clusters_summary = "\n".join([
@@ -437,32 +622,52 @@ class SEOStrategyCrew:
                 for c in topic_clusters
             ])
 
-            # Create a single-task crew for strategy creation from enriched data
+            # Create 5-task crew WITHOUT Knowledge Sources
             strategy_crew = Crew(
-                agents=[self.seo_specialist()],  # Single specialist agent
-                tasks=[self.create_strategy_from_enriched_task()],
+                agents=[
+                    self.keyword_strategist(),
+                    self.content_strategist(),
+                    self.seo_specialist(),
+                ],
+                tasks=[
+                    self.analyze_keywords_and_tier_task(),           # Task 1
+                    self.develop_content_technical_strategy_task(),  # Task 2 (context: Task 1)
+                    self.create_implementation_plan_task(),          # Task 3 (context: Tasks 1+2)
+                    self.synthesize_final_seo_strategy_task(),       # Task 4 (context: Tasks 1+2+3)
+                    self.create_implementation_guide_task(),         # Task 5 (context: ALL previous tasks)
+                ],
+                # NO knowledge_sources - using direct CSV input
+                # NO embedder - no RAG needed
                 verbose=True,
                 process_type="sequential",
             )
 
-            # Execute with enriched keywords
+            # Execute with CSV directly in inputs
+            logger.info("Executing Task 1: Keyword Analysis & Tiering (keywords via CSV)...")
+            logger.info(f"All {len(enriched_keywords)} keywords visible in context")
             crew_output = strategy_crew.kickoff(inputs={
                 "niche": self.niche,
                 "selected_solution_name": self.selected_solution.solution_name,
-                "enriched_keywords": enriched_keywords_formatted,
+                "selected_solution_description": self.selected_solution.description,
                 "enriched_keywords_count": len(enriched_keywords),
+                "enriched_keywords_csv": keywords_csv,  # ← Direct CSV input
                 "topic_clusters_summary": topic_clusters_summary,
             })
 
-            # Extract the Pydantic model
+            # Extract the final Pydantic model (from Task 5)
             result = crew_output.pydantic
             logger.info(
-                f"Phase 9.5c complete: SEO strategy created with "
-                f"{len(result.tier_1_keywords) if result.tier_1_keywords else 0} Tier 1 keywords, "
-                f"{len(result.topic_clusters) if result.topic_clusters else 0} topic clusters"
+                f"5-Task SEO Strategy Flow complete:\n"
+                f"  - Tier 1 keywords: {len(result.tier_1_keywords) if result.tier_1_keywords else 0}\n"
+                f"  - Topic clusters: {len(result.topic_clusters) if result.topic_clusters else 0}\n"
+                f"  - Total monthly volume: {result.total_monthly_volume if result.total_monthly_volume is not None else 0}\n"
+                f"  - Page type implementations: {len(result.page_type_implementations) if result.page_type_implementations else 0}\n"
+                f"  - Implementation guide: {'✓ Included' if result.universal_seo_elements else '✗ Not generated'}\n"
+                f"  - Implementation roadmap: {'✓' if result.implementation_roadmap else '✗'}\n"
+                f"  - Long-term strategy: {'✓' if result.long_term_strategy else '✗'}"
             )
             return result
 
         except Exception as e:
-            logger.error(f"Phase 9.5c strategy creation from enriched keywords failed: {e}")
+            logger.error(f"4-Task SEO Strategy Flow failed: {e}")
             raise
