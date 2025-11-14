@@ -218,6 +218,16 @@ class SolutionIdea(BaseModel):
         )
     )
 
+    estimated_indexable_pages: Optional[int] = Field(
+        default=None,
+        description=(
+            "Estimated total potential indexable pages for SEO. "
+            "Represents the full scope of programmatic content generation potential. "
+            "Used for CAC calculations and growth projections. "
+            "Populated during Stage 9.5 SEO refinement based on keyword research."
+        )
+    )
+
     # Refined SEO Metrics (Stage 9.5 - Post-Keyword Discovery)
     seo_scalability_score_refined: Optional[float] = Field(
         default=None,

@@ -475,3 +475,51 @@ def generate_competitive_queries(product_idea: str) -> List[str]:
         f"leading {product_idea} platforms",
     ]
     return queries
+
+
+def find_solution_by_name(solution_name: str, solution_list: list) -> Optional:
+    """
+    Find solution by name with fuzzy matching fallback.
+
+    Handles cases where LLM returns shortened names (e.g., "PaperPath" instead of
+    "PaperPath (Global Paperwork Aggregator)").
+
+    Used by: Stage 9 (SEO), Stage 9.5 (SEO refinement), Stage 10 (Report generation).
+
+    Args:
+        solution_name: Name to search for (may be shortened)
+        solution_list: List of SolutionIdea objects to search
+
+    Returns:
+        Matching SolutionIdea or None if no match found
+    """
+    # Try exact match first
+    exact_match = next(
+        (sol for sol in solution_list if sol.solution_name == solution_name),
+        None
+    )
+
+    if exact_match:
+        return exact_match
+
+    # Try fuzzy match: case-insensitive substring search
+    # (handles "PaperPath" matching "PaperPath (Global Paperwork Aggregator)")
+    logger.warning(
+        f"Exact match failed for solution name '{solution_name}'. "
+        f"Attempting fuzzy match..."
+    )
+
+    search_name_lower = solution_name.lower()
+    for solution in solution_list:
+        if search_name_lower in solution.solution_name.lower():
+            logger.warning(
+                f"✓ Fuzzy match found: '{solution_name}' → '{solution.solution_name}'"
+            )
+            return solution
+
+    # No match found
+    logger.error(
+        f"No match found for solution '{solution_name}' in available solutions: "
+        f"{[sol.solution_name for sol in solution_list]}"
+    )
+    return None
