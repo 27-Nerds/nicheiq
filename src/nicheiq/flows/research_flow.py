@@ -642,10 +642,11 @@ Now generate 10 seed keywords for the solution described above."""
             # Get competitors from solution's competitive landscape
             competitors = []
             if hasattr(solution, 'competitive_landscape') and solution.competitive_landscape:
-                if hasattr(solution.competitive_landscape, 'competitors'):
+                if (hasattr(solution.competitive_landscape, 'competitors') and
+                    solution.competitive_landscape.competitors is not None):
                     competitors = [
                         c.name for c in solution.competitive_landscape.competitors[:10]
-                        if hasattr(c, 'name')
+                        if c is not None and hasattr(c, 'name')
                     ]
 
             if not competitors:
@@ -718,7 +719,8 @@ Now generate 10 seed keywords for the solution described above."""
             # Get pain points from flow state
             pain_points = None
             if hasattr(self.state, 'pain_point_analysis') and self.state.pain_point_analysis:
-                pain_points = self.state.pain_point_analysis.pain_points
+                if hasattr(self.state.pain_point_analysis, 'pain_points'):
+                    pain_points = self.state.pain_point_analysis.pain_points
 
             if not pain_points:
                 logger.warning("[Strategy 3] No pain points found, using solution pain_points_addressed")
@@ -730,11 +732,14 @@ Now generate 10 seed keywords for the solution described above."""
             else:
                 # Extract top 10 pain points by severity
                 pain_points_sorted = sorted(
-                    pain_points,
+                    [p for p in pain_points if p is not None],
                     key=lambda p: getattr(p, 'severity_score', 0),
                     reverse=True
                 )[:10]
-                pain_points_text = [p.title for p in pain_points_sorted if hasattr(p, 'title')]
+                pain_points_text = [
+                    p.title for p in pain_points_sorted
+                    if p is not None and hasattr(p, 'title') and p.title is not None
+                ]
 
             # Convert pain points to query patterns
             query_patterns = [
@@ -995,7 +1000,7 @@ Now generate 10 seed keywords for the solution described above."""
             kw for kw in expanded_keywords
             if kw.get('search_volume', 0) < low_volume_threshold
         ]
-        low_volume_ratio = len(low_volume_keywords) / total_keywords
+        low_volume_ratio = len(low_volume_keywords) / total_keywords if total_keywords > 0 else 1.0
 
         if low_volume_ratio > 0.8:
             issues.append(f"low_search_volume_ratio_{low_volume_ratio:.2f}")
@@ -1040,7 +1045,7 @@ Now generate 10 seed keywords for the solution described above."""
                 keywords=keywords_to_validate,
                 solution_name=solution.solution_name,
                 solution_description=solution.description,
-                niche_context=niche_context,
+                niche_description=niche_context.niche_description if niche_context else "",
                 project_type=project_type,
                 threshold=relevance_threshold
             )
