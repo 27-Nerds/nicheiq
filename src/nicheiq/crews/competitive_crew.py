@@ -74,8 +74,8 @@ class CompetitiveCrew:
     - Analyst identifies gaps and positioning strategies
     """
 
-    agents_config = "config/agents.yaml"
-    tasks_config = "config/tasks.yaml"
+    agents_config = "config/competitive_agents.yaml"
+    tasks_config = "config/competitive_tasks.yaml"
 
     def __init__(
         self,

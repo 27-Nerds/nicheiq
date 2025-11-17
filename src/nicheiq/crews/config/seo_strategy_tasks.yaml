@@ -1,0 +1,655 @@
+# SEO Strategy Crew Tasks
+# 5-task sequential workflow for keyword research and SEO strategy development
+
+expand_keywords_conceptually:
+  description: >
+    Phase 9.5a: Hybrid Seed Keyword Generation - Generate a strategic mix of BROAD SEEDS
+    (1-2 words) for DataForSEO expansion + TARGETED KEYWORDS (3-5 words) for direct validation.
+
+    **CRITICAL UNDERSTANDING:**
+    - DataForSEO's expansion API works by detecting categories and finding variations
+    - BROAD seeds (1-2 words) expand into thousands of long-tail keywords automatically
+    - SPECIFIC seeds (4+ words) have nowhere to expand and limit discovery
+    - Your job: Generate the RIGHT seeds, let DataForSEO create the variations
+
+    **Context:**
+    - Niche: {niche}
+    - Selected Solution: {selected_solution_name}
+    - Value Proposition: {selected_solution_value_prop}
+    - Pain Points: {selected_solution_pain_points}
+    - Target Personas: {selected_solution_personas}
+    - Core Features: {selected_solution_features}
+    - Competitive Context: {competitive_context}
+
+    **RELEVANCE REMINDER:**
+    All keywords generated here will be expanded by DataForSEO (Phase 9.5b) which may produce
+    thousands of variations. Ensure your seed keywords are TIGHTLY ALIGNED with the niche and
+    solution context above. Avoid generic terms from unrelated domains. Keywords should be
+    extractable from the provided context fields, not invented from outside knowledge.
+
+    **Task: Generate 40-50 Total Keywords Using 70-30 Hybrid Strategy**
+
+    ## PART 1: Broad Seeds (70% = 28-35 keywords, 1-2 words each)
+
+    Extract category terms from research data using the 5-Type System:
+
+    **Type 1: Core Product/Service Terms (5-8 keywords)**
+    - Extract NOUNS from: {niche}, {selected_solution_name}, {selected_solution_value_prop}
+    - Pattern: main product/service category (1-2 words)
+    - Examples: "visa application", "relocation", "immigration" (NOT "visa application service for expats")
+
+    **Type 2: Problem/Need Terms (8-12 keywords)**
+    - Extract core PROBLEMS from: {selected_solution_pain_points}
+    - Pattern: pain point nouns without modifiers (1-2 words)
+    - Examples: "documentation", "bureaucracy", "timeline" (NOT "overwhelming documentation process")
+
+    **Type 3: Feature/Attribute Terms (5-8 keywords)**
+    - Extract KEY FEATURES from: {selected_solution_features}
+    - Pattern: feature nouns (1-2 words)
+    - Examples: "tracking", "checklist", "reminders" (NOT "progress tracking for applicants")
+
+    **Type 4: Solution/Method Terms (3-5 keywords)**
+    - Extract solution TYPES from: {selected_solution_value_prop}
+    - Pattern: solution category (1-2 words)
+    - Examples: "service", "platform", "tool", "guide"
+
+    **Type 5: Modifier Terms (2-5 keywords)**
+    - Extract BROAD modifiers from: {selected_solution_personas}, {niche}
+    - Pattern: industry/demographic (1-2 words)
+    - Examples: "expat", "international", "business" (NOT "first-time expat families")
+
+    **Broad Seed Quality Rules:**
+    ✓ MUST be 1-2 words (3 words MAX in rare cases)
+    ✓ NO personas, scenarios, or combined concepts
+    ✓ NO questions ("how to..." is output, not input)
+    ✓ Extract NOUNS from context, don't create long phrases
+    ✓ Think "category bucket" not "specific search query"
+    ✗ NEVER 4+ words - these are outputs, not seeds!
+
+    ## PART 2: Targeted Keywords (30% = 12-15 keywords, 3-5 words each)
+
+    Strategic high-value keywords based on validated pain points:
+
+    **Selection Criteria:**
+    - Extract from HIGH-SEVERITY pain points (severity >= 7)
+    - Match high-priority features that solve top pain points
+    - Include 2-3 competitor comparison terms from {competitive_context}
+    - Cover awareness → consideration → decision funnel
+
+    **Targeted Keyword Rules:**
+    ✓ 3-5 words (combines 2-3 broad seeds strategically)
+    ✓ Based on actual pain point data, not speculation
+    ✓ High commercial intent (solution-seeking, comparison)
+    ✓ Competitor names ONLY from {competitive_context} (real brands)
+    ✗ NO overly specific scenarios (e.g., "solution for problem1 and problem2 and problem3")
+    ✗ NO persona combinations (e.g., "for busy working professionals with families")
+
+    ## PART 3: Topic Clusters (5-8 clusters)
+
+    Group keywords by major themes representing distinct user needs:
+    - **name**: Cluster name (2-4 words, descriptive)
+    - **description**: What this cluster covers (1 sentence)
+    - **strategic_importance**: 1-5 (1=critical, 5=nice-to-have)
+
+    Ensure all keywords map to a cluster. Broad seeds should distribute across clusters.
+
+    ## Extraction Method (Data-Driven, Niche-Agnostic):
+
+    1. **Parse {niche}**: Extract 3-5 core nouns → Type 1 seeds
+    2. **Parse {selected_solution_pain_points}**: Extract problem nouns → Type 2 seeds
+    3. **Parse {selected_solution_features}**: Extract feature nouns → Type 3 seeds
+    4. **Parse {selected_solution_value_prop}**: Extract solution types → Type 4 seeds
+    5. **Parse {selected_solution_personas}**: Extract broad demographics → Type 5 seeds
+    6. **Combine strategically**: Create 12-15 targeted keywords from high-priority combinations
+    7. **Extract competitors**: From {competitive_context}, use actual brand names only
+
+    ## Examples (Generic Pattern, NOT Skincare-Specific):
+
+    **Niche: "AI-powered project management for remote teams"**
+
+    **✅ GOOD Broad Seeds (70%):**
+    - Type 1: "project management", "workflow", "collaboration"
+    - Type 2: "productivity", "communication", "delays"
+    - Type 3: "automation", "tracking", "reporting"
+    - Type 4: "software", "platform", "tool"
+    - Type 5: "remote", "distributed", "async"
+
+    **✅ GOOD Targeted Keywords (30%):**
+    - "project management for remote teams" (3 broad seeds combined)
+    - "workflow automation software" (2 broad seeds + type)
+    - "Asana vs Monday comparison" (competitor names from competitive_context)
+
+    **❌ BAD Seeds (DON'T DO THIS):**
+    - "project management solution for remote software development teams with agile workflows" (9 words, overly specific)
+    - "best project management for startups with limited budget" (8 words, multiple modifiers)
+    - "how to improve remote team collaboration when working across timezones" (11 words, question)
+
+  expected_output: >
+    ExpandedKeywordList model with:
+
+    **keywords**: List[ConceptualKeyword] (40-50 total keywords)
+    - **70% broad seeds (1-2 words)**: For DataForSEO expansion into thousands of variations
+    - **30% targeted keywords (3-5 words)**: Strategic high-value queries for direct validation
+    - keyword: str (the search phrase - ENFORCE LENGTH RULES)
+    - cluster: str (which topic cluster it belongs to)
+    - priority: int (1-5, strategic importance)
+    - rationale: str (why this keyword/seed matters - 1 sentence)
+
+    **topic_clusters**: List[TopicCluster] (5-8 clusters)
+    - name: str (cluster name)
+    - description: str (what this cluster covers)
+    - strategic_importance: int (1-5, SEO priority)
+
+    **expansion_rationale**: str (2-3 sentences explaining the hybrid strategy and expected expansion potential)
+
+    **Output Structure Example:**
+    - 28-35 broad seeds (1-2 words) will expand to 10,000-30,000 keywords via DataForSEO
+    - 12-15 targeted keywords (3-5 words) validated directly for high-intent commercial terms
+    - Total discovery: ~15,000-40,000 keyword opportunities from 40-50 strategic inputs
+
+analyze_keywords_and_tier:
+  description: >
+    ═══ CRITICAL RULES (Read First) ═══
+    ✓ Use ONLY enriched keyword data provided - NO fabricated volumes
+    ✓ STEP 0 (Relevance Filtering) is MANDATORY - filter irrelevant keywords first
+    ✓ Calculate opportunity_score = search_volume / competition_index
+    ✓ Every tier assignment MUST reference actual data from keywords
+    ✓ Target 60-80% retention after filtering - distribute RELEVANT keywords across tiers
+    ✓ Track filtered keyword count in key_findings field
+
+    **Task 1: Keyword Analysis & Tiering**
+
+    Apply your Intent-First Tiering Methodology to {enriched_keywords_count} pre-enriched keywords.
+
+    **ENRICHED KEYWORDS DATA (CSV Format - Direct Input):**
+
+    You have access to {enriched_keywords_count} keywords provided as CSV data below.
+
+    **CSV STRUCTURE:**
+
+    ```csv
+    {enriched_keywords_csv}
+    ```
+
+    **CSV COLUMNS:**
+    - **keyword**: The keyword phrase (string)
+    - **search_volume**: Monthly search volume (integer)
+    - **competition_index**: Competition score 0-100 (integer, lower is better)
+    - **competition_level**: Human-readable competition (VERY_LOW/LOW/MEDIUM/HIGH/VERY_HIGH)
+    - **cpc**: Cost per click in USD (float)
+    - **opportunity_score**: Calculated as search_volume / competition_index (float, higher is better)
+    - **tier**: Pre-calculated tier assignment (TIER_1_QUICK_WIN/TIER_2_STRATEGIC/TIER_3_MEDIUM/TIER_4_LONG_TAIL)
+
+    **TIER DEFINITIONS (from CSV data):**
+    - **TIER_1_QUICK_WIN**: opportunity_score > 100 (High volume, low competition)
+    - **TIER_2_STRATEGIC**: opportunity_score 50-100 (Medium volume, moderate competition)
+    - **TIER_3_MEDIUM**: opportunity_score 20-50 (Moderate volume)
+    - **TIER_4_LONG_TAIL**: opportunity_score < 20 (Lower volume but viable)
+
+    **INSTRUCTIONS FOR PARSING CSV:**
+    - Parse the CSV data above (header + data rows)
+    - Each row represents one keyword with all metrics calculated
+    - Filter keywords by tier column to identify tier assignments
+    - DO NOT use SerperDevTool or web search - ALL data is in the CSV above
+    - The tier column provides initial guidance, but you should apply strategic refinement based on solution context
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Topic Clusters: {topic_clusters_summary}
+    - Total Keywords Available: {enriched_keywords_count}
+
+    **WORKFLOW (FOLLOW IN ORDER):**
+
+    **STEP 0: RELEVANCE FILTERING (MANDATORY - Execute First):**
+
+    Before tiering keywords, FILTER OUT keywords that are NOT relevant to the niche and solution.
+
+    **Context from Inputs:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Solution Description: {selected_solution_description}
+
+    **Relevance Criteria (STRICTER - Apply in Order):**
+
+    1. **Context Match Test (MANDATORY):**
+       - Read the full solution description above
+       - Ask: "Does this keyword relate to the SPECIFIC problem domain described?"
+       - If keyword is about a DIFFERENT product/service domain → EXCLUDE
+
+    2. **Ambiguity Filter (for generic terms):**
+       - Generic terms like "comparison", "review", "filter", "tool", "platform", "access", "user"
+       - These are ONLY relevant if combined with niche-specific context
+       - Examples:
+         * "skincare comparison" → KEEP (skincare + comparison)
+         * "comparison tool" → EXCLUDE (generic, no niche context)
+         * "user reviews skincare" → KEEP (niche context present)
+         * "user reviews" → EXCLUDE (generic, could be ANY product)
+         * "ingredient filter" → KEEP (if solution involves ingredients)
+         * "typescript filter" → EXCLUDE (programming, unrelated domain)
+
+    3. **Cross-Domain Exclusion (MANDATORY):**
+       - If keyword clearly belongs to another domain → EXCLUDE immediately
+       - Common false positives to EXCLUDE:
+         * Software/Programming: "microsoft", "excel", "access", "typescript", "vue", "react", "css"
+         * Electronics: "cpu", "ssd", "monitor", "tv", "benchmark", "tbw"
+         * Finance: "mortgage", "credit card", "loan", "insurance" (unless niche is finance)
+         * Vehicles: "car", "tire", "chariot", "bike" (unless niche is automotive)
+         * Telecom: "verizon", "t-mobile", "phone plan" (unless niche is telecom)
+
+    **Filtering Process:**
+    1. For EACH keyword, apply Context Match Test - does it relate to {niche} and {selected_solution_name}?
+    2. If keyword contains only generic terms (comparison, review, filter, etc.) WITHOUT niche context → EXCLUDE
+    3. If keyword contains terms from unrelated domains (software, electronics, finance, etc.) → EXCLUDE
+    4. Only KEEP keywords that have clear connection to the niche domain described in solution description
+
+    **NO FIXED RETENTION TARGET** - Filter based on relevance, not percentages. Quality over quantity.
+
+    **Examples of CORRECT Filtering:**
+
+    Niche: "premium skincare" | Solution: "ingredient comparison tool"
+    ✓ KEEP: "luxury face serum", "retinol vs vitamin c", "sensitive skin products"
+    ✓ KEEP: "skincare ingredient comparison", "moisturizer reviews" (niche context present)
+    ✗ EXCLUDE: "comparison tool", "user reviews", "filter settings" (generic, no skincare context)
+    ✗ EXCLUDE: "microsoft access", "cpu comparison", "mortgage rates" (different domains)
+
+    Niche: "expat relocation" | Solution: "visa requirement aggregator"
+    ✓ KEEP: "spain visa requirements", "expat moving checklist", "relocation services"
+    ✓ KEEP: "visa comparison", "immigration reviews" (niche context present)
+    ✗ EXCLUDE: "product comparison", "service reviews", "database access" (generic or different domain)
+
+    Niche: "SaaS project management" | Solution: "tool comparison platform"
+    ✓ KEEP: "asana vs trello", "project management software reviews", "agile tools"
+    ✓ KEEP: "saas comparison", "collaboration platform features" (niche context present)
+    ✗ EXCLUDE: "platform", "tool", "comparison" (too generic without SaaS/project context)
+    ✗ EXCLUDE: "skincare comparison", "visa requirements" (different domains)
+
+    1. **Calculate Scores** → opportunity_score for each keyword
+    2. **Rank & Select** → Top keywords per tier criteria (select 3-5 from pool for Tier 1, 3-5 from remaining pool for Tier 2)
+    3. **GROUP ALL REMAINING KEYWORDS** (CRITICAL - Maximize Coverage):
+
+       **IMPORTANT**: After selecting 3-5 keywords for Tier 1 and 3-5 for Tier 2, you should have
+       HUNDREDS of remaining relevant keywords. These MUST be organized into Tier 3/4 groups.
+
+       **Goal**: Tier 80-90% of RELEVANT keywords. Only skip keywords that are truly ambiguous or marginal.
+
+       🚨 **LOCATION CONSTRAINT FOR TIER 3:**
+       ONLY group keywords in Tier 3 that EXPLICITLY mention a location, city, or country name in the keyword text itself.
+       If a keyword does NOT contain an explicit location → assign to Tier 4 instead.
+
+       **Examples:**
+       ✓ Tier 3: "moving to spain costs", "relocation services berlin", "uk visa requirements" (explicit locations)
+       ✗ Tier 4: "international moving costs", "expat relocation guide", "moving abroad checklist" (no specific location)
+
+       a. **Geographic Tier (Tier 3) - Location-Specific Keywords Only:**
+          - Scan keywords for EXPLICIT location mentions: country names, city names, regional terms
+          - Group by geographic market (e.g., "European Markets", "Asian Markets", "North America")
+          - For each region, create GeographicKeywordGroup:
+            * region_name: Descriptive name for the geographic cluster
+            * total_volume: Sum of search volumes for all keywords in group
+            * competition_level: Average competition assessment (LOW/MEDIUM/HIGH)
+            * keywords: List of GeographicKeywordEntry with city/keyword/search_volume/competition
+            * strategy_notes: 1-3 sentences on geographic expansion approach
+          - ⚠️ CRITICAL: Do NOT hallucinate city names for keywords without explicit locations
+
+       b. **Category Tier (Tier 4) - ALL Non-Geographic Keywords:**
+          - Include: (1) Keywords with no explicit location, (2) Generic thematic keywords
+          - Scan ALL remaining keywords for category patterns
+
+          **Category Discovery Strategies:**
+          - By ingredient/component: Group keywords containing similar ingredients (e.g., "retinol", "vitamin c")
+          - By product type: Group by product categories (e.g., "serum", "moisturizer", "cleanser")
+          - By user concern: Group by problems/needs (e.g., "acne", "anti-aging", "sensitivity")
+          - By modifier: Group by price tier, brand type, quality level (e.g., "luxury", "affordable", "natural")
+          - By comparison type: Group comparison keywords (e.g., "X vs Y", "best X", "X alternatives")
+          - By review/rating focus: Group review-oriented keywords
+          - Miscellaneous: Catch-all for keywords that don't fit above categories
+
+          **Aim for comprehensive coverage**: Create 8-15 category groups to cover most relevant keywords.
+          Each category should have 20-100+ keywords for programmatic SEO potential.
+
+          - For each category, create CategoryKeywordGroup:
+            * category_name: Descriptive name for the thematic cluster
+            * total_volume: Sum of search volumes for all keywords in group
+            * keywords: List of CategoryKeywordEntry with keyword_name/search_volume/competition
+            * strategy_recommendation: 2-4 sentences on how to target this category
+
+       c. **Pre-Submission Validation (SELF-CHECK):**
+          - Count total keywords tiered: Tier 1 + Tier 2 + (sum Tier 3) + (sum Tier 4)
+          - Count filtered keywords: {enriched_keywords_count} - total_tiered
+          - Report filtering stats in key_findings
+
+          **Self-Assessment Questions:**
+          - Did I tier 80-90% of the RELEVANT keywords after filtering?
+          - Do I have at least 8-12 Tier 4 category groups covering diverse themes?
+          - Are there obvious keyword patterns I missed that should be grouped?
+          - If <50% of keywords are tiered, did I filter too aggressively?
+
+          **Example of GOOD Distribution:**
+          Input: 1,603 keywords → Filtered 620 (39%, strict filtering) → Tiered 890 relevant keywords (90%)
+          - 5 Tier 1 + 5 Tier 2 + 320 Tier 3 + 560 Tier 4 = 890 total ✓
+          - 12 diverse Tier 4 category groups with 20-80 keywords each ✓
+          - Filtering rate: 39% (adaptive, quality-focused) ✓
+
+    4. **Position Analysis** → Competitor gaps and differentiation angles
+    5. **Key Findings** → 3-5 data-driven insights (volume patterns, competition gaps, tier distribution stats)
+
+    **TIER ASSIGNMENT CRITERIA:**
+
+    | Tier | Selection Criteria | Count | Timeline | Purpose |
+    |------|-------------------|-------|----------|---------|
+    | **Tier 1** | Vol >2000 + Comp <30<br>OR Vol 500-2000 + Comp <15 | 3-5 (from pool) | 0-3 mo | Quick wins |
+    | **Tier 2** | Vol >2000 + Comp 30-60<br>OR strategic fit | 3-5 (from pool) | 3-6 mo | Strategic growth |
+    | **Tier 3** | Keywords with EXPLICIT locations | ALL remaining (grouped) | 6-12 mo | Geographic expansion |
+    | **Tier 4** | Category clusters + non-location keywords | ALL remaining (grouped) | 6-12 mo | Programmatic SEO |
+
+    ═══ CRITICAL RULES (Read Last) ═══
+    ✓ RELEVANT keywords MUST be distributed across tiers - filtered keywords should NOT be tiered
+    ✓ Report filtering stats in key_findings (e.g., "Filtered 620/1603 (39%) - strict domain filtering")
+    ✓ AIM for 80-90% coverage of RELEVANT keywords after filtering - create enough Tier 4 categories
+    ✓ Tier 3/4 grouping is WHERE MOST KEYWORDS GO - these tiers should contain hundreds of keywords, not dozens
+    ✓ Create 8-15 diverse Tier 4 categories to maximize programmatic SEO coverage
+    ✓ "Miscellaneous" category is acceptable for keywords that don't fit clear patterns
+    ✗ NO estimates or hallucinations - use exact data only
+    ✗ Do NOT assign city names to keywords without explicit locations
+    ✗ Do NOT tier filtered keywords - they should be excluded from all tier assignments
+    ✗ If you're only tiering <50% of keywords, either filtering was too strict OR grouping was incomplete
+
+  expected_output: >
+    KeywordAnalysisResult Pydantic model with ALL fields:
+
+    **Tier Structure** (with real volumes/competition):
+    - tier_1_keywords (3-5 keywords), tier_1_quick_win_strategy
+    - tier_2_keywords (3-5 keywords, optional), tier_2_strategy (optional)
+    - tier_3_geographic_groups (REQUIRED if geographic patterns exist - group remaining location-based keywords)
+    - tier_4_category_groups (REQUIRED if category patterns exist - group remaining thematic keywords)
+
+    **CRITICAL:** After STEP 0 filtering, distribute RELEVANT keywords across tiers.
+    Target: 80-90% of relevant keywords tiered (NO fixed filtering percentage - adapt to domain match quality).
+
+    **Metadata**:
+    - total_keywords_analyzed, total_monthly_volume
+    - key_findings (3-5 bullets MUST include:
+      * Filtering stats: "Filtered X/Y (Z%) - [reason: strict domain filtering / lenient for niche match]"
+      * Tier distribution: "Tiered A keywords (B% of relevant): Tier 1=C, Tier 2=D, Tier 3=E, Tier 4=F"
+      * Coverage assessment: "Overall coverage: (filtered + tiered) / total = G%"
+      * Category insights: "Created H Tier 4 categories covering [themes]")
+    - competitive_positioning (markdown, 2-4 sections)
+
+    MUST use exact enriched keyword data - no fabrication.
+
+develop_content_technical_strategy:
+  description: >
+    ═══ CRITICAL RULES (Read First) ═══
+    ✓ Build on KeywordAnalysisResult from Task 1
+    ✓ Content strategy MUST align with keyword tiers
+    ✓ Technical recommendations MUST include code examples
+
+    **Task 2: Content & Technical Strategy**
+
+    **CONTEXT from Task 1:**
+
+    Access to KeywordAnalysisResult with tier structure, volumes, competitive positioning.
+
+    **CONTENT STRATEGY** (4-6 numbered sections, markdown):
+
+    1. **Content Prioritization** → Map Tier 1/2 keywords to content types
+    2. **Topic Cluster Architecture** → 3-5 pillar hubs with supporting articles
+    3. **Content Calendar** → First 90 days (Tier 1 weeks 1-4, Tier 2 weeks 5-8)
+    4. **Content Formats** → Match to search intent (guides, comparisons, FAQs)
+    5. **Conversion Integration** → CTAs and conversion paths per content type
+
+    **TOPIC CLUSTERS** (3-5 clusters):
+
+    | Element | Specification |
+    |---------|--------------|
+    | cluster_name | Content pillar theme from Tier 1/2 |
+    | primary_keyword | High-volume core keyword |
+    | supporting_keywords | Related long-tail terms |
+    | total_monthly_volume | Sum of cluster keyword volumes |
+    | priority | 1 (critical), 2 (important), 3 (nice-to-have) |
+
+    **TECHNICAL SEO** (markdown, 3-5 sections with code):
+
+    - **URL Structure** → Keyword-optimized patterns with examples
+    - **Schema Markup** → Structured data code examples for rich snippets
+    - **Internal Linking** → Hub-and-spoke architecture
+    - **Page Speed** → Core Web Vitals optimization
+    - **Mobile Optimization** → Mobile-first considerations
+
+    ═══ CRITICAL RULES (Read Last) ═══
+    ✗ All recommendations MUST align with Task 1 keyword tiers
+
+  expected_output: >
+    ContentStrategyResult Pydantic model:
+
+    - content_strategy: str (4-6 numbered paragraphs, markdown)
+    - topic_clusters: Optional[List[TopicCluster]] (3-5 pillars)
+    - technical_seo_recommendations: str (markdown, 3-5 sections, code examples)
+    - keyword_driven_site_architecture: Optional (site structure by clusters)
+    - keyword_based_page_types: Optional[List] (4-8 scalable templates)
+
+create_implementation_plan:
+  description: >
+    ═══ CRITICAL RULES (Read First) ═══
+    ✓ Build on KeywordAnalysisResult + ContentStrategyResult
+    ✓ Timeline projections MUST be realistic (SEO compounds over 6-12 mo)
+    ✓ Metrics MUST be specific and measurable
+
+    **Task 3: Implementation Planning**
+
+    Apply your 3-Phase Compound SEO Roadmap using context from Tasks 1-2.
+
+    **CONTEXT from Tasks 1-2:**
+
+    - Tier structure with volumes (Task 1)
+    - Content strategy and technical recommendations (Task 2)
+
+    **PHASED ROADMAP** (markdown table):
+
+    | Phase | Timeline | Focus | Deliverables | Success Metrics |
+    |-------|----------|-------|--------------|-----------------|
+    | **Phase 1** | Mo 1-3 | Foundation + Quick Wins | Tier 1 content (3-5), tech SEO basics | First rankings, 500-2K visits/mo |
+    | **Phase 2** | Mo 4-6 | Strategic Expansion | Tier 2 content (3-5), clusters, linking | Pos 1-10 for 5-10 KWs, 2-5K visits/mo |
+    | **Phase 3** | Mo 7-12 | Scaling | Tiers 3-4, programmatic templates | 20+ ranking KWs, 5-10K visits/mo |
+
+    For each phase: deliverables, resources, budget, dependencies.
+
+    **KEY METRICS** (4-6 KPIs):
+
+    **SEO Performance:**
+    - Organic traffic (visits/month with growth targets)
+    - Keyword rankings (position targets per tier)
+    - Indexed pages (page count per phase)
+
+    **Business Metrics:**
+    - Conversions from organic (signups/trials/purchases)
+    - Organic CAC
+    - Customer LTV from SEO channel
+
+    **TIMELINE MILESTONES:**
+    - Month 3/6/12/18: Specific targets (X pages, Y rankings, Z visits)
+
+    **NEXT STEPS CHECKLIST** (5-8 items with checkboxes):
+    - [ ] Set up analytics tracking
+    - [ ] Complete technical SEO audit
+    - [ ] Create content brief templates
+    - [ ] Establish editorial calendar
+
+    ═══ CRITICAL RULES (Read Last) ═══
+    ✗ Timeline projections MUST be realistic based on Task 1-2 data
+
+  expected_output: >
+    ImplementationPlanResult Pydantic model:
+
+    - implementation_roadmap: str (markdown, 3-4 phases with tables)
+    - key_metrics_to_track: List[str] (4-6 KPIs)
+    - expected_timeline: str (3/6/12/18 month milestones)
+    - next_steps_checklist: List[str] (5-8 items with checkboxes)
+    - risk_mitigation: Optional[str] (2-4 challenges with mitigations)
+    - budget_allocation: Optional[str] (3 budget tiers)
+
+synthesize_final_seo_strategy:
+  description: >
+    ═══ TASK 4: FINAL SYNTHESIS ═══
+    ✓ Generate ONLY 4 new strategic synthesis fields (Python will merge with Tasks 1-3)
+    ✓ Focus on long-term vision and competitive positioning
+    ✓ NO new keyword analysis - synthesis only
+
+    **Task 4: Final Strategy Synthesis**
+
+    **HOW TO ACCESS CONTEXT:**
+
+    Tasks 1-3 are available in your context for reference:
+    - Task 1: KeywordAnalysisResult (keyword tiers, volumes, competitive positioning)
+    - Task 2: ContentStrategyResult (content plan, technical SEO, site architecture)
+    - Task 3: ImplementationPlanResult (roadmap, metrics, timeline, next steps)
+
+    **YOUR TASK: Generate Strategic Synthesis**
+
+    **LONG-TERM STRATEGY** (3 sections, markdown):
+
+    **Year 1: Foundation & Traction**
+    - Target: Position 1-10 for Tier 1 keywords
+    - Content: 30-50 pieces covering core topics
+    - Traffic: 5K-10K organic visits/month
+
+    **Year 2: Expansion & Authority**
+    - Target: Dominate Tier 1 (pos 1-3), expand Tier 2/3
+    - Content: 100+ pieces, comprehensive clusters
+    - Traffic: 20K-50K organic visits/month
+
+    **Year 3: Leadership & Scaling**
+    - Target: Category leadership, programmatic SEO
+    - Content: 300+ pages via programmatic generation
+    - Traffic: 50K-100K+ organic visits/month
+
+    **COMPETITIVE ADVANTAGES** (2-4 bullets):
+    - What unique positioning does SEO strategy enable?
+    - What keyword opportunities do competitors miss?
+    - What moats are built through this approach?
+
+    **CRITICAL SUCCESS FACTORS** (3-4 bullets):
+    - Content quality and consistency
+    - Technical execution (speed, mobile, schema)
+    - Resource commitment
+    - Patience and persistence (6-12 month compounding)
+
+    ═══ CRITICAL RULES (Read Last) ═══
+    ✗ This is SYNTHESIS only - do NOT generate new keyword analysis
+    ✗ Python will merge with Tasks 1-3 - focus ONLY on strategic synthesis
+
+  expected_output: >
+    FinalSynthesis Pydantic model with 4 strategic fields ONLY:
+
+    1. long_term_strategy: str
+       - Year 1/2/3 strategic milestones (markdown, 3 sections)
+       - Foundation & Traction → Expansion & Authority → Leadership & Scaling
+
+    2. conclusion_bottom_line: str
+       - Executive summary (1 paragraph)
+       - Bottom line: Why this SEO strategy will succeed
+
+    3. competitive_advantages: List[str]
+       - 2-4 key competitive advantages from SEO analysis
+       - What unique positioning does this enable?
+
+    4. critical_success_factors: List[str]
+       - 3-4 critical make-or-break elements
+       - Content quality, technical execution, resources, patience
+
+    NOTE: Tasks 1-3 fields will be merged automatically by Python. Focus on strategic vision.
+
+create_implementation_guide:
+  description: >
+    ═══ TASK 5: IMPLEMENTATION GUIDE ═══
+    ✓ Generate ONLY 3 new implementation fields (Python will merge with Task 4)
+    ✓ Focus on high-quality, actionable implementation guidance
+    ✓ Use moderate code examples (JSON-LD snippets, NOT full HTML pages)
+
+    **Task 5: Create SEO Implementation Guide**
+
+    **HOW TO ACCESS CONTEXT:**
+
+    Tasks 1-4 are available in your context for reference:
+    - Task 1: KeywordAnalysisResult (keyword tiers, volumes)
+    - Task 2: ContentStrategyResult (content plan, site architecture)
+    - Task 3: ImplementationPlanResult (roadmap, metrics)
+    - Task 4: SEOStrategyReport (complete SEO strategy - for reference only)
+
+    **YOUR TASK: Generate Implementation Details**
+
+    Generate 3 comprehensive implementation sections:
+
+    **1. Universal SEO Elements** (UniversalSEOElements model):
+    - title_tag_formula: Pattern like "[Primary KW] | [Secondary] | [Brand]"
+    - title_tag_guidelines: Length (50-60 chars), keyword placement, CTR optimization (2-3 paragraphs)
+    - meta_description_guidelines: Length (150-160 chars), CTA, keyword usage (2-3 paragraphs)
+    - canonical_url_strategy: Self-referencing, filter handling, duplicate prevention (2 paragraphs)
+    - open_graph_tags: Required tags with format examples (og:title, og:description, og:image, og:url)
+    - robots_meta_guidelines: When to use index/noindex, examples by page type (2 paragraphs)
+
+    **2. Page-Specific Implementations** (List[PageTypeImplementation] - 4-6 page types):
+
+    For EACH page type (Homepage, Location Pages, Profile Pages, Content/Guide Pages):
+    - page_type: Descriptive name
+    - url_pattern: URL structure (e.g., "/service/[location]")
+    - target_keywords: 3-5 keyword patterns from Task 1 tiers
+    - title_tag_example: Real example applying formula to {selected_solution_name}
+    - meta_description_example: Real example
+    - h1_structure: H1 format pattern
+    - h2_structure: 3-6 recommended H2 sections
+    - schema_types: Required schema types (e.g., ["Service", "Breadcrumb", "FAQ"])
+    - internal_linking_strategy: How to link to/from this page type
+    - content_guidelines: Min/optimal word count, required sections
+
+    **3. Schema Markup Strategy** (SchemaMarkupStrategy model):
+    - why_schema_matters: Benefits (rich results, voice search, AI search, CTR) - 2-3 paragraphs
+    - priority_schema_types: Ordered list of 6-8 essential types
+    - implementation_method: JSON-LD format, <head> placement, why JSON-LD - 2 paragraphs
+    - schema_examples: List of SchemaExample objects, each containing:
+      * schema_type: The Schema.org type (e.g., "Organization", "Service", "FAQ")
+      * json_ld_code: JSON-LD code snippet for this type
+
+      Example format for Organization schema:
+      ```json
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        "name": "[solution_name]",
+        "url": "https://example.com",
+        "logo": "https://example.com/logo.png"
+      }
+      ```
+      Provide similar examples for: Service, Person, Review, AggregateRating, FAQ, Article, BreadcrumbList
+    - testing_validation: Tools and process (Google Rich Results Test, Schema Validator) - 2 paragraphs
+
+    Use {selected_solution_name}, {niche}, {topic_clusters_summary} from context for customization.
+    Reference keyword tiers from Task 1 when suggesting target keywords.
+    Align page types with keyword_based_page_types from Task 2 if available.
+
+  expected_output: >
+    ImplementationGuide Pydantic model with 3 implementation fields ONLY:
+
+    1. universal_seo_elements: UniversalSEOElements
+       - title_tag_formula: Pattern like "[Primary KW] | [Secondary] | [Brand]"
+       - title_tag_guidelines: Length (50-60 chars), keyword placement, CTR optimization (2-3 paragraphs, markdown)
+       - meta_description_guidelines: Length (150-160 chars), CTA, keyword usage (2-3 paragraphs, markdown)
+       - canonical_url_strategy: Self-referencing, filter handling, duplicate prevention (2 paragraphs, markdown)
+       - open_graph_tags: Required OG tags (og:title, og:description, og:image, og:url) with format examples (markdown)
+       - robots_meta_guidelines: When to use index/noindex, follow/nofollow with page type examples (2 paragraphs, markdown)
+
+    2. page_type_implementations: List[PageTypeImplementation]
+       - 4-6 page types with complete SEO templates
+       - Each with: page_type name, url_pattern, target_keywords (3-5), title_tag_example, meta_description_example,
+         h1_structure, h2_structure (3-6 sections), schema_types (required types), internal_linking_strategy,
+         content_guidelines (word count, required sections)
+
+    3. schema_markup_strategy: SchemaMarkupStrategy
+       - why_schema_matters: Benefits (rich results, voice search, AI search, CTR boost) - 2-3 paragraphs, markdown
+       - priority_schema_types: Ordered list of 6-8 essential Schema.org types
+       - implementation_method: JSON-LD format, placement in <head>, why JSON-LD over Microdata (2 paragraphs, markdown)
+       - schema_examples: List of SchemaExample objects (6-8 examples), each with schema_type and json_ld_code snippet
+       - testing_validation: Tools and process (Google Rich Results Test, Schema Validator, Search Console) - 2 paragraphs, markdown
+
+    NOTE: Task 4 fields will be merged automatically by Python. Focus on creating excellent implementation guidance.

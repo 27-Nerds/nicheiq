@@ -27,7 +27,13 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult, CompetitiveLandscape
 from ..models.pain_point import PainPointAnalysisResult
-from ..models.solution_idea import EvaluationResult, IdeaGenerationResult, SolutionIdea
+from ..models.research_state import NicheContext
+from ..models.solution_idea import (
+    CompetitiveEnhancements,
+    EvaluationResult,
+    IdeaGenerationResult,
+    SolutionIdea,
+)
 from ..models.solution_selection import SolutionSelection
 from ..models.social_content import SocialContentCollection
 
@@ -81,6 +87,7 @@ class UnifiedSolutionCrew:
         pain_point_analysis: PainPointAnalysisResult,
         social_content: Optional[SocialContentCollection] = None,
         allowed_project_types: Optional[List[str]] = None,
+        niche_context: Optional[NicheContext] = None,
     ):
         """
         Initialize UnifiedSolutionCrew with pain points and optional context.
@@ -89,10 +96,12 @@ class UnifiedSolutionCrew:
             pain_point_analysis: Validated pain points from PainPointCrew
             social_content: Optional social content for competitor intelligence
             allowed_project_types: Optional constraints on project types
+            niche_context: Optional structured niche context with market segments and boundaries
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
         self.allowed_project_types = allowed_project_types
+        self.niche_context = niche_context
 
         # Initialize search tool for competitive research
         self.search_tool = CachedSerperDevTool()
@@ -287,6 +296,7 @@ class UnifiedSolutionCrew:
         """
         Agent for competitive research and competitor profiling.
         Uses SerperDevTool for market intelligence.
+        Uses function_calling_llm for cost-efficient tool calls.
         """
         return Agent(
             config=self.agents_config["competitive_researcher"],
@@ -294,6 +304,11 @@ class UnifiedSolutionCrew:
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.3,
+                api_key=settings.openai_api_key
+            ),
+            function_calling_llm=ChatOpenAI(
+                model=settings.function_calling_llm,  # gpt-4o-mini for cost-efficient tool calls
+                temperature=0.1,  # Low temperature for reliable tool execution
                 api_key=settings.openai_api_key
             ),
             verbose=True,
@@ -378,16 +393,25 @@ class UnifiedSolutionCrew:
     @task
     def competitive_refinement_task(self) -> Task:
         """
-        Task 3: Enhance solutions with competitive insights.
+        Task 3: Generate competitive enhancements for solutions.
+
+        Generates ONLY enhancements based on competitive analysis:
+        - new_core_features (2-4 NEW features from competitive gaps)
+        - new_differentiation_factors (2-3 NEW factors)
+        - value_proposition_update (if competitive analysis suggests changes)
+        - pricing_strategy_update (if competitive analysis suggests changes)
+        - market_fit_score_adjustment (±0.1 if justified)
+
+        All base solution fields from Task 1 will be preserved via Python merge in execute_pipeline().
+
         Depends on: solution_ideation_task + competitive_analysis_task (via context)
-        Output: IdeaGenerationResult with enhanced solutions.
+        Output: CompetitiveEnhancements (enhancements only)
         """
         return Task(
             config=self.tasks_config["competitive_refinement"],
             agent=self.solution_refiner(),
             context=[self.solution_ideation_task(), self.competitive_analysis_task()],
-            output_pydantic=IdeaGenerationResult,
-            guardrail=self._validate_no_field_loss,  # Ensure no data loss
+            output_pydantic=CompetitiveEnhancements,
         )
 
     @task
@@ -565,6 +589,16 @@ class UnifiedSolutionCrew:
                 for pp in medium_priority[:10]
             ]) if medium_priority else ""
 
+            # Format niche context for task inputs
+            if self.niche_context:
+                market_segments_formatted = "\n".join([f"- {seg}" for seg in self.niche_context.market_segments])
+                niche_description = self.niche_context.niche_description
+                industry_boundaries = self.niche_context.industry_boundaries
+            else:
+                market_segments_formatted = "Not provided"
+                niche_description = "Not provided"
+                industry_boundaries = "Not provided"
+
             # Execute crew with unified pipeline
             logger.info("Executing Task 1: Solution Ideation...")
             crew_output = self.crew().kickoff(inputs={
@@ -576,7 +610,10 @@ class UnifiedSolutionCrew:
                 "top_categories": ', '.join(str(c) for c in (self.pain_point_analysis.top_categories or [])),
                 "total_pain_points": len(self.pain_point_analysis.pain_points),
                 "total_mentions": self.pain_point_analysis.total_mentions,
-                "allowed_project_types": ', '.join(self.allowed_project_types) if self.allowed_project_types else "All types allowed"
+                "allowed_project_types": ', '.join(self.allowed_project_types) if self.allowed_project_types else "All types allowed",
+                "niche_description": niche_description,
+                "market_segments": market_segments_formatted,
+                "industry_boundaries": industry_boundaries
             })
 
             # Extract final result (Task 4 output - SolutionSelection)
@@ -585,9 +622,51 @@ class UnifiedSolutionCrew:
             # Access intermediate task outputs (CrewAI provides access via crew_output.tasks_outputs)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
 
-            # Extract Task 1, Task 2, Task 3 outputs from intermediate results
-            refined_solutions = task_outputs[2].pydantic if len(task_outputs) > 2 else None
-            competitive_analysis = task_outputs[1].pydantic if len(task_outputs) > 1 else None
+            # Extract Task 1 (base solutions), Task 2 (competitive analysis), Task 3 (enhancements)
+            base_solutions = task_outputs[0].pydantic if len(task_outputs) > 0 else None  # IdeaGenerationResult
+            competitive_analysis = task_outputs[1].pydantic if len(task_outputs) > 1 else None  # CompetitiveAnalysisResult
+            enhancements = task_outputs[2].pydantic if len(task_outputs) > 2 else None  # CompetitiveEnhancements
+
+            # Python merge: Apply enhancements to base solutions
+            from copy import deepcopy
+            refined_solutions = deepcopy(base_solutions)
+
+            if enhancements and enhancements.solution_enhancements:
+                for solution in refined_solutions.solution_ideas:
+                    # Find matching enhancement
+                    enhancement = next(
+                        (e for e in enhancements.solution_enhancements if e.solution_name == solution.solution_name),
+                        None
+                    )
+
+                    if enhancement:
+                        # Merge new features (extend, don't replace)
+                        if enhancement.new_core_features:
+                            solution.core_features = list(set(solution.core_features + enhancement.new_core_features))
+
+                        # Merge new differentiation factors
+                        if enhancement.new_differentiation_factors:
+                            solution.differentiation_factors = list(set(
+                                solution.differentiation_factors + enhancement.new_differentiation_factors
+                            ))
+
+                        # Update value proposition if refined
+                        if enhancement.value_proposition_update:
+                            solution.value_proposition = enhancement.value_proposition_update
+
+                        # Update pricing strategy if refined
+                        if enhancement.pricing_strategy_update:
+                            solution.pricing_strategy = enhancement.pricing_strategy_update
+
+                        # Adjust market fit score if suggested
+                        if enhancement.market_fit_score_adjustment:
+                            solution.market_fit_score = min(10.0, max(0.0,
+                                solution.market_fit_score + enhancement.market_fit_score_adjustment
+                            ))
+
+                logger.info(
+                    f"[OK] Applied competitive enhancements to {len(refined_solutions.solution_ideas)} solutions"
+                )
 
             logger.info(f"✓ Unified Pipeline Complete:")
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")

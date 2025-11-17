@@ -152,6 +152,41 @@ class RoadmapPhase(BaseModel):
     )
 
 
+class DataImplementationPlan(BaseModel):
+    """Task 3 output: Implementation planning data (ONLY new fields added by Task 3).
+
+    This intermediate model contains ONLY the implementation planning fields.
+    Python will merge this with SourceEvaluationReport to create DataSourceResearchResult.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    implementation_phases: List[RoadmapPhase] = Field(
+        ...,
+        description="3-phase structured roadmap (MVP/Growth/Scale) with goals, milestones, costs, and fallbacks"
+    )
+    data_partnerships_needed: Optional[List[DataPartnership]] = Field(
+        default=None,
+        description="Data partnerships or alternative collection methods required"
+    )
+    estimated_monthly_cost: str = Field(
+        ...,
+        description="Total estimated monthly data costs (e.g., '$250-500/month for 10k users')"
+    )
+    implementation_roadmap: str = Field(
+        ...,
+        description="Recommended phased approach for data integration (2-3 paragraphs)"
+    )
+    competitive_data_insights: Optional[str] = Field(
+        default=None,
+        description="What data sources do competitors use? How does our access compare?"
+    )
+    seo_aligned_priorities: Optional[str] = Field(
+        default=None,
+        description="How data source priorities align with high-traffic SEO keywords"
+    )
+
+
 class DataSourceResearchResult(BaseModel):
     """Complete result of data source research for selected solution."""
 

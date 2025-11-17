@@ -13,8 +13,9 @@ from .keyword_data import KeywordValidationResult
 from .pain_point import ContentCategorizationReport, PainPointAnalysisResult
 from .seo_strategy import SEOStrategyReport
 from .social_content import SocialContentCollection
-from .solution_idea import IdeaGenerationResult, SolutionIdea
+from .solution_idea import IdeaGenerationResult, SolutionIdea, SolutionSEORefinement
 from .solution_selection import SolutionSelection, SelectionCriteriaScore
+from .solution_refinement import SolutionRefinement
 
 
 class NicheContext(BaseModel):
@@ -335,6 +336,44 @@ class FinalReport(BaseModel):
         )
     )
 
+    # Keyword Validation & Refinement (Stage 8.8 and 8.85)
+    keyword_validation_overview: Optional[str] = Field(
+        default=None,
+        description=(
+            "Executive summary of keyword validation results across top 3 solution candidates from Stage 8.8. "
+            "Format: 2-3 paragraphs covering: "
+            "(1) Validation methodology and data sources (e.g., DataForSEO metrics), "
+            "(2) Key findings per solution with quantitative metrics (total keywords, Tier 1 count, avg search volume), "
+            "(3) Cross-solution comparison highlighting keyword opportunities and competitive density. "
+            "Should reference specific data points from keyword_validation_results to support strategic decisions."
+        )
+    )
+
+    solution_keyword_comparison: Optional[str] = Field(
+        default=None,
+        description=(
+            "Comparative keyword analysis showing how top 3 solutions differ in SEO opportunity from Stage 8.8. "
+            "Format: Markdown table or structured comparison with: "
+            "(1) Solution name and total validated keywords, "
+            "(2) Tier 1 quick wins count and average competition level, "
+            "(3) Total market volume and geographic distribution, "
+            "(4) SEO difficulty assessment (Low/Medium/High) with rationale. "
+            "Used to justify solution selection based on organic acquisition potential."
+        )
+    )
+
+    content_strategy_preview: Optional[str] = Field(
+        default=None,
+        description=(
+            "Preview of content strategy recommendations based on keyword validation insights from Stage 8.8. "
+            "Format: 2-3 paragraphs outlining: "
+            "(1) Programmatic content opportunities identified (page templates, topic clusters), "
+            "(2) Geographic or categorical expansion priorities from keyword data, "
+            "(3) Quick win content recommendations for immediate SEO traction (Tier 1 keywords). "
+            "Serves as bridge between keyword validation and detailed SEO strategy (Stage 9)."
+        )
+    )
+
     # Data Sourcing (for solutions requiring aggregation)
     data_source_research: Optional[DataSourceResearchResult] = Field(
         default=None,
@@ -429,8 +468,26 @@ class ResearchState(BaseModel):
     # Stage 8.5: Solution Selection
     solution_selection: Optional[SolutionSelection] = None
 
+    # Stage 8.8: Keyword Validation Results (quick validation for top 3 solutions)
+    keyword_validation_results: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Keyword validation results for top 3 solutions from Stage 8.8"
+    )
+
+    # Stage 8.85: Solution Refinement (strategic recommendations based on keyword insights)
+    solution_refinement: Optional[SolutionRefinement] = Field(
+        default=None,
+        description="Strategic refinement recommendations from Stage 8.85"
+    )
+
     # Stage 9: Seed Keywords
     seed_keywords: List[str] = Field(default_factory=list, description="Seed keywords for SEO research")
+
+    # Stage 9.5: SEO Enrichment (refined scores using keyword data from Stage 9)
+    seo_enrichment: Optional[SolutionSEORefinement] = Field(
+        default=None,
+        description="SEO score refinements from Stage 9.5 using actual keyword research data"
+    )
 
     # Stage 9 (Legacy): Keyword Validation - DEPRECATED, kept for backward compatibility
     keyword_validation: Optional[KeywordValidationResult] = None

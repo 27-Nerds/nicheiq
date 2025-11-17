@@ -3,7 +3,7 @@ SEOStrategyCrew - Stage 9: Integrated Keyword Research + SEO Strategy
 Multi-agent crew that performs keyword expansion and develops comprehensive SEO strategy.
 """
 
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -18,9 +18,15 @@ from ..models.seo_strategy import (
     KeywordAnalysisResult,
     ContentStrategyResult,
     ImplementationPlanResult,
+    FinalSynthesis,
+    ImplementationGuide,
 )
 from ..models.solution_idea import IdeaGenerationResult
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
+from ..utils.helpers import KeywordSeedGenerator
+
+if TYPE_CHECKING:
+    from ..models.research_state import NicheContext
 
 
 @CrewBase
@@ -36,8 +42,8 @@ class SEOStrategyCrew:
     - SEO Specialist creates technical roadmap and implementation plan
     """
 
-    agents_config = "config/agents.yaml"
-    tasks_config = "config/tasks.yaml"
+    agents_config = "config/seo_strategy_agents.yaml"
+    tasks_config = "config/seo_strategy_tasks.yaml"
 
     def __init__(
         self,
@@ -46,6 +52,7 @@ class SEOStrategyCrew:
         selection_rationale: str,
         competitive_analysis: CompetitiveAnalysisResult,
         pain_points: Optional[PainPointAnalysisResult] = None,
+        niche_context: Optional['NicheContext'] = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -61,6 +68,7 @@ class SEOStrategyCrew:
             selection_rationale: Why this solution was selected over alternatives
             competitive_analysis: Competitive landscape from Stage 8
             pain_points: Optional pain point analysis from Stage 6
+            niche_context: Optional niche context with market_segments and industry_boundaries
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -69,6 +77,7 @@ class SEOStrategyCrew:
         self.selection_rationale = selection_rationale
         self.competitive_analysis = competitive_analysis
         self.pain_points = pain_points
+        self.niche_context = niche_context
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -191,28 +200,25 @@ class SEOStrategyCrew:
     @agent
     def keyword_strategist(self) -> Agent:
         """
-        Agent responsible for expanding seed keywords using DataForSEO and creating tiered opportunity structure.
-        Uses DataForSEO tools to expand keywords and analyze search metrics.
-        Identifies quick wins (Tier 1) vs long-term plays (Tier 4).
+        Agent responsible for analyzing pre-enriched keywords from CSV input and creating tiered opportunity structure.
 
-        Uses low temperature (0.2) for data-driven keyword analysis.
+        NOTE: Receives complete keyword data via CSV input (enriched in Phase 9.5b with DataForSEO).
+        Agent analyzes existing data to identify quick wins (Tier 1) vs long-term plays (Tier 4).
+        Does NOT call external APIs - all keyword data is pre-validated and provided in task context.
+
+        Uses zero temperature for data-driven keyword analysis (no creativity needed).
         """
         from langchain_openai import ChatOpenAI
 
         return Agent(
             config=self.agents_config["keyword_strategist"],
-            tools=[self.dataforseo_expand_tool, self.dataforseo_volume_tool],  # Removed SerperDevTool to prevent confusion with CSV data
+            tools=[],  # No tools needed - analyzes CSV data provided in task context
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.0,  # Zero temperature for precise data extraction (no creativity needed)
                 api_key=settings.openai_api_key
             ),
             verbose=True,
-            function_calling_llm=ChatOpenAI(
-                model=settings.function_calling_llm,
-                temperature=0.1,  # Low temperature for reliable tool calls
-                api_key=settings.openai_api_key
-            ),
         )
 
     @agent
@@ -250,6 +256,7 @@ class SEOStrategyCrew:
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.3,  # Low-moderate temperature for technical precision
+                timeout=180,  # Increased timeout to 180 seconds for complex implementation tasks
                 api_key=settings.openai_api_key
             ),
             verbose=True,
@@ -378,22 +385,26 @@ class SEOStrategyCrew:
         """
         Task 4: Final Strategy Synthesis.
 
-        Synthesizes outputs from Tasks 1-3 into complete SEOStrategyReport with
-        long-term strategy, competitive advantages, and conclusion.
+        Generates ONLY 4 new strategic synthesis fields:
+        - long_term_strategy (Year 1/2/3 strategic milestones)
+        - conclusion_bottom_line (Executive summary paragraph)
+        - competitive_advantages (2-4 key advantages)
+        - critical_success_factors (3-4 success factors)
+
+        All 21 fields from Tasks 1-3 will be preserved via Python merge in create_strategy_multitask().
 
         Depends on: All previous tasks (1, 2, 3)
-        Output: Complete SEOStrategyReport - FINAL output for Stage 9.
+        Output: FinalSynthesis (4 fields only)
         """
         return Task(
             config=self.tasks_config["synthesize_final_seo_strategy"],
             agent=self.seo_specialist(),
             context=[
-                self.analyze_keywords_and_tier_task(),  # Task 1
-                self.develop_content_technical_strategy_task(),  # Task 2
-                self.create_implementation_plan_task(),  # Task 3
+                self.analyze_keywords_and_tier_task(),  # Task 1 (reference)
+                self.develop_content_technical_strategy_task(),  # Task 2 (reference)
+                self.create_implementation_plan_task(),  # Task 3 (reference)
             ],
-            output_pydantic=SEOStrategyReport,
-            guardrail=self._validate_seo_synthesis,
+            output_pydantic=FinalSynthesis,
         )
 
     @task
@@ -401,15 +412,15 @@ class SEOStrategyCrew:
         """
         Task 5: Create SEO Implementation Guide.
 
-        Generates detailed technical implementation guidance for SEO strategy:
-        - Universal SEO elements (title tags, meta descriptions, canonical, OG tags, robots)
-        - Page-specific implementations (4-6 page type templates with examples)
-        - Schema markup strategy (JSON-LD code examples, priority types, testing)
+        Generates ONLY 3 new implementation fields:
+        - universal_seo_elements (title tags, meta descriptions, canonical, OG tags, robots)
+        - page_type_implementations (4-6 page type templates with examples)
+        - schema_markup_strategy (JSON-LD code examples, priority types, testing)
 
-        Preserves ALL 26 fields from Task 4 and adds 3 new implementation fields.
+        All 26 fields from Task 4 will be preserved via Python merge in create_strategy_multitask().
 
         Depends on: All previous tasks (1, 2, 3, 4)
-        Output: Enhanced SEOStrategyReport with implementation details (29 total fields)
+        Output: ImplementationGuide (3 fields only)
         """
         return Task(
             config=self.tasks_config["create_implementation_guide"],
@@ -418,9 +429,9 @@ class SEOStrategyCrew:
                 self.analyze_keywords_and_tier_task(),           # Task 1 (for keyword reference)
                 self.develop_content_technical_strategy_task(),  # Task 2 (for page types)
                 self.create_implementation_plan_task(),          # Task 3 (for roadmap)
-                self.synthesize_final_seo_strategy_task(),       # Task 4 (ALL 26 fields to preserve)
+                self.synthesize_final_seo_strategy_task(),       # Task 4 (reference only)
             ],
-            output_pydantic=SEOStrategyReport,
+            output_pydantic=ImplementationGuide,
         )
 
     @crew
@@ -455,7 +466,7 @@ class SEOStrategyCrew:
 
     def expand_keywords_phase_1(self) -> ExpandedKeywordList:
         """
-        Execute Phase 9.5a: Hybrid Seed Keyword Generation.
+        Execute Phase 9.5a: Hybrid Seed Keyword Generation using KeywordSeedGenerator.
 
         Generates a strategic mix using 70-30 approach:
         - 70% Broad Seeds (28-35 keywords, 1-2 words): For DataForSEO expansion into thousands of variations
@@ -466,68 +477,55 @@ class SEOStrategyCrew:
         Returns:
             ExpandedKeywordList with hybrid seed keywords for Phase 9.5b bulk validation and expansion
         """
-        logger.info(f"Starting Phase 9.5a: Conceptual keyword expansion for: {self.selected_solution.solution_name}")
+        logger.info(f"Starting Phase 9.5a: Context-aware seed keyword generation for: {self.selected_solution.solution_name}")
 
         try:
-            # Format pain points context
-            pain_points_context = ""
-            if self.pain_points and self.pain_points.pain_points:
-                pain_points_context = "\n".join([
-                    f"**{pp.title}** (Severity: {pp.severity_score}/10, Mentions: {pp.mention_count})\n"
-                    f"- Problem: {pp.description}\n"
-                    f"- User Quote: {pp.representative_quotes[0] if pp.representative_quotes else 'N/A'}\n"
-                    for pp in self.pain_points.pain_points[:10]
-                ])
+            # Initialize KeywordSeedGenerator
+            generator = KeywordSeedGenerator()
 
-            # Format competitive context
-            competitive_context = ""
-            found_landscape = False
-
-            for landscape in self.competitive_analysis.solution_landscapes:
-                if landscape.solution_name == self.selected_solution.solution_name:
-                    competitive_context = f"""**Competitive Landscape for {landscape.solution_name}:**
-- **Intensity:** {landscape.competitive_intensity}
-- **Competitors ({len(landscape.competitors)}):** {', '.join(c.name for c in landscape.competitors[:5])}
-- **Market Gaps:** {', '.join(landscape.market_gaps[:3])}
-- **Differentiation Opportunities:** {', '.join(landscape.differentiation_opportunities[:3])}
-- **Recommended Positioning:** {landscape.recommended_positioning}"""
-                    found_landscape = True
-                    logger.info(f"✓ Found competitive landscape for {landscape.solution_name}")
-                    break
-
-            if not found_landscape:
-                logger.warning(f"No competitive landscape found for '{self.selected_solution.solution_name}'")
-                competitive_context = "[NO COMPETITIVE DATA AVAILABLE - Skip competitor keywords or note as insufficient data]"
-
-            # Create a single-task crew for conceptual expansion
-            expansion_crew = Crew(
-                agents=[self.content_strategist()],
-                tasks=[self.expand_keywords_conceptually_task()],
-                verbose=True,
-                process_type="sequential",
+            # Generate seeds with full context
+            result = generator.generate_seeds(
+                solution=self.selected_solution,
+                niche_context=self.niche_context,
+                pain_points=self.pain_points,
+                competitive_analysis=self.competitive_analysis,
+                num_broad_seeds=30,
+                num_targeted_seeds=15
             )
 
-            # Execute with focused context
-            crew_output = expansion_crew.kickoff(inputs={
-                "niche": self.niche,
-                "selected_solution_name": self.selected_solution.solution_name,
-                "selected_solution_value_prop": self.selected_solution.value_proposition,
-                "selected_solution_personas": ', '.join(str(p) for p in (self.selected_solution.target_personas[:3] if self.selected_solution.target_personas else [])),
-                "selected_solution_features": ', '.join(str(f) for f in (self.selected_solution.core_features[:5] if self.selected_solution.core_features else [])),
-                "selected_solution_pain_points": ', '.join(str(p) for p in (self.selected_solution.pain_points_addressed[:3] if self.selected_solution.pain_points_addressed else [])),
-                "competitive_context": competitive_context,
-            })
+            if not result:
+                logger.error("KeywordSeedGenerator returned None - falling back to minimal keywords")
+                # Fallback: return minimal keyword list
+                from ..models.seo_strategy import ConceptualKeyword, ConceptualTopicCluster
+                fallback_keywords = [
+                    ConceptualKeyword(
+                        keyword=self.selected_solution.solution_name.lower(),
+                        cluster="Core Product",
+                        priority=1,
+                        rationale="Fallback keyword - generator failed"
+                    )
+                ]
+                fallback_clusters = [
+                    ConceptualTopicCluster(
+                        name="Core Product",
+                        description="Primary solution keywords",
+                        strategic_importance=1
+                    )
+                ]
+                result = ExpandedKeywordList(
+                    keywords=fallback_keywords,
+                    topic_clusters=fallback_clusters,
+                    expansion_rationale="Fallback mode - generator failed"
+                )
 
-            # Extract the Pydantic model
-            result = crew_output.pydantic
             logger.info(
-                f"Phase 9.5a complete: {len(result.keywords)} conceptual keywords generated, "
+                f"Phase 9.5a complete: {len(result.keywords)} seed keywords generated, "
                 f"{len(result.topic_clusters)} topic clusters identified"
             )
             return result
 
         except Exception as e:
-            logger.error(f"Phase 9.5a conceptual expansion failed: {e}")
+            logger.error(f"Phase 9.5a keyword generation failed: {e}", exc_info=True)
             raise
 
     def _format_keywords_as_csv(self, enriched_keywords: list) -> str:
@@ -563,7 +561,9 @@ class SEOStrategyCrew:
                 comp_label = "VERY_HIGH"
 
             # Assign tier based on opportunity score
-            if opp_score > 100:
+            if opp_score > 200:
+                tier = "TIER_0_PREMIUM"
+            elif opp_score > 100:
                 tier = "TIER_1_QUICK_WIN"
             elif opp_score > 50:
                 tier = "TIER_2_STRATEGIC"
@@ -584,7 +584,7 @@ class SEOStrategyCrew:
     def create_strategy_multitask(
         self,
         enriched_keywords: list,
-        topic_clusters: list
+        expanded_keywords: Optional[ExpandedKeywordList] = None
     ) -> SEOStrategyReport:
         """
         Execute 5-Task SEO Strategy Flow with Direct CSV Input.
@@ -601,13 +601,14 @@ class SEOStrategyCrew:
 
         Args:
             enriched_keywords: List of dicts from DataForSEO with volumes/competition
-            topic_clusters: List of TopicCluster objects from Phase 9.5a
+            expanded_keywords: Optional ExpandedKeywordList from Phase 9.5a (contains ConceptualKeyword objects and ConceptualTopicCluster metadata)
 
         Returns:
             Complete SEOStrategyReport with implementation details (29 fields total)
         """
         logger.info(f"Starting 5-Task SEO Strategy Flow for: {self.selected_solution.solution_name}")
-        logger.info(f"Processing {len(enriched_keywords)} enriched keywords across {len(topic_clusters)} topic clusters")
+        logger.info(f"Processing {len(enriched_keywords)} enriched keywords" +
+                   (f" with {len(expanded_keywords.keywords)} seed keywords" if expanded_keywords else ""))
 
         try:
             # Format keywords as CSV for direct context injection
@@ -616,11 +617,14 @@ class SEOStrategyCrew:
             csv_token_estimate = len(keywords_csv) // 4  # Rough estimate: 4 chars per token
             logger.info(f"Created keyword CSV: {csv_line_count} lines, ~{csv_token_estimate:,} tokens")
 
-            # Format topic clusters summary
-            topic_clusters_summary = "\n".join([
-                f"- **{c.name}** (Priority {c.strategic_importance}/5): {c.description}"
-                for c in topic_clusters
-            ])
+            # Format topic clusters summary (with None handling)
+            if expanded_keywords and expanded_keywords.topic_clusters:
+                topic_clusters_summary = "\n".join([
+                    f"- **{c.name}** (Priority {c.strategic_importance}/5): {c.description}"
+                    for c in expanded_keywords.topic_clusters
+                ])
+            else:
+                topic_clusters_summary = "No topic clusters identified"
 
             # Create 5-task crew WITHOUT Knowledge Sources
             strategy_crew = Crew(
@@ -654,10 +658,44 @@ class SEOStrategyCrew:
                 "topic_clusters_summary": topic_clusters_summary,
             })
 
-            # Extract the final Pydantic model (from Task 5)
-            result = crew_output.pydantic
+            # Extract all task outputs (Tasks 1-5)
+            task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+            if len(task_outputs) < 5:
+                logger.error(f"Expected 5 task outputs, got {len(task_outputs)}")
+                raise ValueError("Incomplete task execution in SEO strategy crew")
+
+            task_1_output = task_outputs[0].pydantic  # KeywordAnalysisResult (10 fields)
+            task_2_output = task_outputs[1].pydantic  # ContentStrategyResult (5 fields)
+            task_3_output = task_outputs[2].pydantic  # ImplementationPlanResult (6 fields)
+            task_4_output = task_outputs[3].pydantic  # FinalSynthesis (4 fields)
+            task_5_output = task_outputs[4].pydantic  # ImplementationGuide (3 fields)
+
+            # Prepare seed keywords from conceptual expansion (if available)
+            seed_keywords = [k.keyword for k in expanded_keywords.keywords] if expanded_keywords else None
+
+            # Python merge: Combine all task outputs into complete SEOStrategyReport
+            result = SEOStrategyReport(
+                # Metadata (from inputs)
+                seed_keywords_generated=seed_keywords,
+                # Task 1 fields (10 fields)
+                **task_1_output.model_dump(),
+                # Task 2 fields (5 fields)
+                **task_2_output.model_dump(),
+                # Task 3 fields (6 fields)
+                **task_3_output.model_dump(),
+                # Task 4 fields (4 fields)
+                long_term_strategy=task_4_output.long_term_strategy,
+                conclusion_bottom_line=task_4_output.conclusion_bottom_line,
+                competitive_advantages=task_4_output.competitive_advantages,
+                critical_success_factors=task_4_output.critical_success_factors,
+                # Task 5 fields (3 fields)
+                universal_seo_elements=task_5_output.universal_seo_elements,
+                page_type_implementations=task_5_output.page_type_implementations,
+                schema_markup_strategy=task_5_output.schema_markup_strategy,
+            )
+
             logger.info(
-                f"5-Task SEO Strategy Flow complete:\n"
+                f"[OK] 5-Task SEO Strategy Flow complete (Tasks 1-5 merged via Python):\n"
                 f"  - Tier 1 keywords: {len(result.tier_1_keywords) if result.tier_1_keywords else 0}\n"
                 f"  - Topic clusters: {len(result.topic_clusters) if result.topic_clusters else 0}\n"
                 f"  - Total monthly volume: {result.total_monthly_volume if result.total_monthly_volume is not None else 0}\n"

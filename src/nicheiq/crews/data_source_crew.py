@@ -13,7 +13,11 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.competitor import CompetitiveLandscape
-from ..models.data_source import DataSourceResearchResult, SourceEvaluationReport
+from ..models.data_source import (
+    DataImplementationPlan,
+    DataSourceResearchResult,
+    SourceEvaluationReport,
+)
 from ..models.seo_strategy import SEOStrategyReport
 from ..models.solution_idea import SolutionIdea
 
@@ -129,13 +133,13 @@ class DataSourceResearchCrew:
     def create_data_roadmap_task(self) -> Task:
         """
         Task: Create implementation roadmap for data integration.
-        Output: DataSourceResearchResult with phased approach.
+        Output: DataImplementationPlan (implementation fields only, Python will merge with Task 2).
         """
         return Task(
             config=self.tasks_config["create_data_roadmap"],
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task(), self.evaluate_data_sources_task()],
-            output_pydantic=DataSourceResearchResult,
+            output_pydantic=DataImplementationPlan,
         )
 
     @crew
@@ -181,29 +185,78 @@ class DataSourceResearchCrew:
                 "seo_priorities": seo_priorities,
             })
 
-            # Extract the Pydantic model from CrewOutput (Task 3)
-            result = crew_output.pydantic
+            # Python merge: Extract all task outputs and merge Task 2 + Task 3
+            task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+            if len(task_outputs) < 3:
+                logger.error(f"Expected 3 task outputs, got {len(task_outputs)}")
+                raise ValueError("Incomplete task execution in data source crew")
 
-            # Capture evaluation from Task 2 (evaluate_data_sources)
-            try:
-                task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-                if task_outputs and len(task_outputs) >= 2:
-                    evaluation_task_output = task_outputs[1]  # Second task is evaluate_data_sources
-                    if hasattr(evaluation_task_output, 'pydantic') and evaluation_task_output.pydantic:
-                        result.source_evaluation = evaluation_task_output.pydantic
-                        logger.info(
-                            f"[OK] Captured source evaluation: "
-                            f"{len(result.source_evaluation.high_priority_sources)} HIGH priority, "
-                            f"{len(result.source_evaluation.medium_priority_sources)} MEDIUM priority, "
-                            f"{len(result.source_evaluation.low_priority_sources)} LOW priority"
-                        )
-                    else:
-                        logger.warning("Task 2 output does not have pydantic attribute")
-                else:
-                    logger.warning("Could not access task outputs for evaluation capture")
-            except Exception as e:
-                logger.warning(f"Failed to capture source evaluation: {e}")
-                # Graceful degradation - continue without evaluation
+            # Task 1: discover_data_sources (string output, not used)
+            evaluation_output = task_outputs[1].pydantic  # Task 2: SourceEvaluationReport
+            implementation_output = task_outputs[2].pydantic  # Task 3: DataImplementationPlan
+
+            logger.info(
+                f"Python merge: Combining evaluation ({len(evaluation_output.high_priority_sources)} HIGH priority sources) "
+                f"with implementation plan ({len(implementation_output.implementation_phases)} phases)"
+            )
+
+            # Convert Task 2 evaluation sources to primary/fallback DataSource objects
+            from ..models.data_source import DataSource
+
+            primary_sources = []
+            for src in evaluation_output.high_priority_sources:
+                primary_sources.append(DataSource(
+                    provider=src.provider,
+                    url=src.url,
+                    access_model="TBD",  # Not in EvaluatedDataSource, placeholder
+                    integration_complexity=src.quality_metrics.integration_complexity.lower(),
+                    priority="HIGH",
+                    priority_rationale=src.priority_rationale,
+                    cost_estimate=src.mvp_cost_estimate or "Cost estimate TBD",
+                    coverage=src.quality_metrics.coverage_score,
+                    update_frequency=src.quality_metrics.freshness,
+                    data_quality_notes=src.quality_metrics.quality_assessment,
+                ))
+
+            fallback_sources = []
+            for src in evaluation_output.medium_priority_sources + evaluation_output.low_priority_sources:
+                fallback_sources.append(DataSource(
+                    provider=src.provider,
+                    url=src.url,
+                    access_model="TBD",
+                    integration_complexity=src.quality_metrics.integration_complexity.lower(),
+                    priority="MEDIUM" if src in evaluation_output.medium_priority_sources else "LOW",
+                    priority_rationale=src.priority_rationale,
+                    cost_estimate=src.mvp_cost_estimate or "Cost estimate TBD",
+                    coverage=src.quality_metrics.coverage_score,
+                    update_frequency=src.quality_metrics.freshness,
+                    data_quality_notes=src.quality_metrics.quality_assessment,
+                ))
+
+            # Extract data quality risks from evaluation
+            data_quality_risks = []
+            for src in evaluation_output.high_priority_sources + evaluation_output.medium_priority_sources:
+                data_quality_risks.extend(src.identified_risks)
+
+            # Create final result by merging all components
+            result = DataSourceResearchResult(
+                solution_name=self.solution.solution_name,
+                primary_data_sources=primary_sources,
+                fallback_sources=fallback_sources if fallback_sources else None,
+                source_evaluation=evaluation_output,  # Preserve full evaluation
+                implementation_phases=implementation_output.implementation_phases,
+                data_partnerships_needed=implementation_output.data_partnerships_needed,
+                estimated_monthly_cost=implementation_output.estimated_monthly_cost,
+                data_quality_risks=data_quality_risks if data_quality_risks else None,
+                implementation_roadmap=implementation_output.implementation_roadmap,
+                competitive_data_insights=implementation_output.competitive_data_insights,
+                seo_aligned_priorities=implementation_output.seo_aligned_priorities,
+            )
+
+            logger.info(
+                f"[OK] Python merge complete: {len(result.primary_data_sources)} primary sources, "
+                f"{len(result.fallback_sources) if result.fallback_sources else 0} fallback sources"
+            )
 
             logger.info(
                 f"Data source research complete: "

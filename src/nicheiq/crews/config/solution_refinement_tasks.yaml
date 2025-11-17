@@ -1,0 +1,173 @@
+# SolutionRefinementCrew Task Configurations
+
+refine_solution_strategy:
+  description: >
+    Analyze keyword validation results for **{solution_name}** and provide strategic refinement recommendations
+    to maximize market opportunity and organic acquisition potential.
+
+    **SOLUTION CONTEXT:**
+    - Name: {solution_name}
+    - Description: {solution_description}
+    - Core Features: {core_features}
+    - Target Personas: {target_personas}
+    - Original Composite Score: {composite_score}
+
+    **KEYWORD VALIDATION DATA:**
+    - Validated Keywords: {validated_keyword_count}/20 ({validated_keyword_count} seeds had real search volume)
+    - Total Monthly Volume: {total_monthly_volume} searches/month
+    - Keyword Demand Score: {keyword_demand_score} (0-1 scale: 0.80+ = exceptional, 0.65-0.79 = strong, 0.50-0.64 = moderate)
+    - Top Keywords: {top_keywords}
+    - Top Geographic Keywords: {top_geographic_keywords}
+    - Demand Signal: {demand_signal} (strong >5k/mo, moderate 2k-5k, weak <2k)
+    - Average Competition: {avg_competition} (0-100 scale, lower = easier to rank)
+    - Validation Signals: {validation_signals}
+
+    **YOUR TASK:**
+    Provide strategic recommendations across 4 dimensions based on keyword insights:
+
+    **1. GEOGRAPHIC PRIORITIZATION**
+
+    Analyze top_geographic_keywords to identify which markets show strongest demand. Consider:
+    - Which countries/regions appear in validated keywords?
+    - What's the search volume distribution by geography?
+    - Which markets have lower competition (easier entry)?
+    - Which markets have higher GDP/market maturity (better monetization)?
+
+    Return ranked list of 3-5 priority markets. Format: ["Spain", "Germany", "United Kingdom"]
+
+    Prioritization logic:
+    - PRIMARY: Markets with highest keyword volume AND lower competition
+    - SECONDARY: Tier-1 markets (US, UK, Canada, Australia, Germany, France) even if moderate competition
+    - AVOID: Emerging markets unless they dominate keyword volume (>50%)
+
+    **2. CATEGORY/POSITIONING PIVOT RECOMMENDATION**
+
+    Analyze top_keywords and validated_keyword_count patterns to detect if market searches differently than solution positions.
+
+    Examples of pivot signals:
+    - Solution targets "digital nomads" but keywords show "remote workers", "expats", "location-independent professionals"
+    - Solution is "B2C SaaS" but keywords show "team", "business", "enterprise" → B2B pivot
+    - Solution focuses on Feature X but keywords emphasize Feature Y
+
+    Only recommend pivot if:
+    - >40% of validated keywords point to different category/positioning
+    - AND alternative category has lower avg_competition
+    - AND alternative category aligns with solution's core capabilities
+
+    If no clear pivot signal, return null.
+
+    **3. FEATURE PRIORITIZATION**
+
+    Map validated keywords to solution's core_features to determine which features users actively search for.
+
+    For each feature in core_features:
+    - Count how many validated keywords mention or imply this feature
+    - Calculate avg_search_volume for keywords supporting this feature
+    - Assess if feature addresses high-competition keywords (users care enough to research)
+
+    Return top 5-10 features ranked by: (keyword_support_count × avg_volume) ÷ competition
+
+    For each feature, provide:
+    - feature_name: Name from core_features (or inferred from keywords if not in list)
+    - priority: 1-10 rank (1 = highest)
+    - keyword_support: Count of keywords validating this feature
+    - rationale: Why this priority based on keyword data (1-2 sentences)
+
+    Edge case: If core_features is sparse/generic, infer features from top_keywords.
+
+    **4. CONTENT STRATEGY PREVIEW**
+
+    Based on keyword structure and clusters, recommend early content strategy (2-3 paragraphs).
+
+    Consider:
+    - **Pillar Pages**: Which broad keywords (1-2 words, high volume) need comprehensive pillar content?
+    - **Comparison Content**: Are there "[solution] vs [competitor]" or "[solution] alternative" keywords?
+    - **Geographic Landing Pages**: Do location-specific keywords justify geo-targeted pages?
+    - **How-to Guides**: Are there "how to [solve problem]" informational keywords?
+    - **Topic Clusters**: Do keywords group into 3-5 thematic clusters (each deserving content hub)?
+
+    Format as narrative paragraphs, not bullet points. Be specific about content types tied to actual keywords.
+
+    **5. STRATEGIC INSIGHTS**
+
+    Identify 3-8 non-obvious opportunities, risks, or advantages revealed by keyword analysis.
+
+    Examples of valuable insights:
+    - "Tier-2 cities (Austin, Portland) show 30% of volume but zero competitor focus - opportunity for local dominance"
+    - "Seasonal spike in Q1 (tax season) suggests time-limited launch window for maximum impact"
+    - "Long-tail keywords (4-5 words) dominate validated set - indicates educational content gap competitors haven't filled"
+    - "High avg_competition (72) despite moderate volume warns of saturated market - differentiation critical"
+    - "No transactional keywords validated - market is research-stage, not buying-stage yet"
+
+    Avoid generic insights like "focus on SEO" or "create quality content".
+
+    **OUTPUT REQUIREMENTS:**
+
+    Return SolutionRefinement Pydantic model with:
+    - geographic_priorities: List[str] with 3-5 markets ranked by opportunity
+    - category_pivot_recommendation: Optional[str] - only if >40% keyword evidence supports pivot
+    - feature_priorities: List[FeaturePriority] with top 5-10 features (each has feature_name, priority, keyword_support, rationale)
+    - content_strategy_preview: str - 2-3 paragraphs outlining content roadmap tied to keyword clusters
+    - strategic_insights: List[str] - 3-8 actionable, non-obvious insights
+
+  expected_output: >
+    SolutionRefinement model containing:
+
+    **geographic_priorities** (List[str]):
+    Ranked list of 3-5 geographic markets to prioritize based on keyword volume, competition, and market maturity.
+    Example: ["Spain", "Germany", "United Kingdom", "France", "Portugal"]
+    Order reflects strategic priority (start with #1, expand to #2-3, consider #4-5 for future).
+
+    **category_pivot_recommendation** (Optional[str]):
+    Suggested category/vertical positioning shift if keyword data reveals better opportunity.
+    Only populated if >40% of keywords point to different category AND lower competition.
+    Example: "Pivot from 'digital nomad tools' to 'remote work platforms' - 65% of keywords use 'remote work' terminology with 20% lower avg competition"
+    Set to null if no clear pivot signal detected.
+
+    **feature_priorities** (List[FeaturePriority]):
+    Top 5-10 features ranked by keyword support and search demand.
+    Each FeaturePriority contains:
+    - feature_name: str (from core_features or inferred from keywords)
+    - priority: int (1 = highest priority, 10 = lowest)
+    - keyword_support: int (number of keywords validating this feature)
+    - rationale: str (1-2 sentences explaining why this priority based on keyword insights)
+
+    Example entry:
+    {
+      "feature_name": "Tax Filing Integration",
+      "priority": 1,
+      "keyword_support": 8,
+      "rationale": "8 validated keywords (avg 1,200 volume) mention tax filing, compliance, or accounting - highest search intent of all features with moderate competition (45)"
+    }
+
+    **content_strategy_preview** (str):
+    2-3 paragraph narrative outlining content roadmap based on keyword themes.
+    Should specify:
+    - Which pillar pages to create (tied to broad keywords)
+    - Comparison content opportunities (competitor keywords)
+    - Geographic landing page strategy (location keywords)
+    - Topic cluster organization (thematic groups)
+    - Programmatic SEO potential (if structure supports it)
+
+    Example:
+    "The keyword analysis reveals a three-tier content strategy. First, create pillar pages for the two dominant keyword clusters: 'expat relocation services' (4,200/mo volume) and 'visa assistance platforms' (2,800/mo). These broad terms should anchor comprehensive guides covering the full relocation journey.
+
+    Second, leverage the strong geographic signal (45% of keywords are location-specific) by building dedicated landing pages for top markets: Spain, Germany, and UK. Each page should target '[service] in [country]' keywords and feature localized provider listings.
+
+    Third, capitalize on comparison keyword volume ('[competitor] alternative' keywords at 1,500/mo) by creating structured comparison pages highlighting differentiation vs the 3 main competitors. This addresses commercial intent and captures users actively evaluating options."
+
+    **strategic_insights** (List[str]):
+    3-8 specific, actionable insights based on keyword patterns.
+    Each insight should:
+    - Highlight non-obvious opportunity or risk
+    - Reference actual keyword data (volume, competition, patterns)
+    - Suggest clear action or implication
+
+    Example insights:
+    [
+      "Strong demand in tier-2 EU markets (Portugal 18%, Netherlands 12%) overlooked by US-focused competitors - opportunity for early regional dominance before market saturates",
+      "Seasonal spike pattern: 40% higher volume Nov-Jan (tax season) suggests Q4 launch timing critical for maximum organic traction during peak research phase",
+      "Long-tail dominance (15 of 18 validated keywords are 3+ words) indicates educational content gap - competitors focus on broad terms, leaving how-to guides underserved",
+      "High avg competition (68) despite moderate total volume (12k/mo) warns market is competitive - product differentiation and unique positioning critical for ranking",
+      "Geographic concentration: 65% volume in just 3 countries (Spain, Germany, UK) enables focused go-to-market vs dispersed strategy - dominate these markets before expanding"
+    ]

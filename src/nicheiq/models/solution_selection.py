@@ -33,6 +33,29 @@ class SolutionScores(BaseModel):
     composite_score: float = Field(..., ge=0.0, le=1.0, description="Weighted composite score")
     rank: int = Field(..., description="Rank among all solutions (1 = best)")
 
+    # Stage 8.8: Keyword Validation Fields
+    keyword_demand_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Keyword demand score from Stage 8.8 validation (0-1). "
+            "Formula: (0.60 × volume_score) + (0.40 × opportunity_score). "
+            "0.80-1.0: Exceptional, 0.65-0.79: Strong, 0.50-0.64: Moderate, <0.50: Weak"
+        )
+    )
+
+    adjusted_composite_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Adjusted composite score after keyword validation. "
+            "Formula: composite_score × keyword_demand_score. "
+            "Used for final re-ranking in Stage 8.8."
+        )
+    )
+
 
 class SolutionSelection(BaseModel):
     """

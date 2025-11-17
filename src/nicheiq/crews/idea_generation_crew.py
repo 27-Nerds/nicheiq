@@ -28,8 +28,8 @@ class IdeaGenerationCrew:
     - Refiner adds strategic details and positioning
     """
 
-    agents_config = "config/agents.yaml"
-    tasks_config = "config/tasks.yaml"
+    agents_config = "config/idea_generation_agents.yaml"
+    tasks_config = "config/idea_generation_tasks.yaml"
 
     def __init__(self, pain_point_analysis: PainPointAnalysisResult, allowed_project_types: Optional[List[str]] = None):
         """

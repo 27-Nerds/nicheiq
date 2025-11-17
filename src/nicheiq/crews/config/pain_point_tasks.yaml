@@ -1,0 +1,294 @@
+# PainPointCrew Tasks
+# Following best practices: 80% effort on task design, specific expected outputs, clear success criteria
+
+categorize_content:
+  description: >
+    ═══ CRITICAL RULES (Read First) ═══
+    ✓ ONLY analyze content provided below - NO invented quotes/segments
+    ✓ Need ≥5 substantive discussions → else report "Insufficient discussion data"
+    ✓ Every quote MUST be direct copy from content - NO paraphrasing
+    ✓ Categories emerge from data patterns, not assumptions
+    ✓ Fewer categories with evidence > many without
+
+    **NICHE CONTEXT:** {niche_description}
+
+    You are provided with ALL social media discussions below. Review this complete content to create
+    a systematic categorization of themes, problems, and user segments RELEVANT TO THE NICHE ABOVE.
+
+    **Content Summary:**
+    - Reddit posts: {reddit_posts_count} posts with {total_reddit_comments} comments
+    - Twitter threads: {twitter_threads_count} threads with {total_twitter_replies} replies
+    - Total content pieces: {total_content}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    ## COMPLETE REDDIT DISCUSSIONS:
+
+    {full_reddit_content}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    ## COMPLETE TWITTER DISCUSSIONS:
+
+    {full_twitter_content}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+
+    **What to do:**
+
+    1. Review ALL the content provided above (both Reddit and Twitter sections)
+    2. Identify recurring problems, frustrations, and topics being discussed
+    3. Group discussions into 5-10 distinct theme categories based on the actual patterns
+       you discover in the discussions (categories will vary by niche - let the data guide you)
+    4. For each category, identify the user segments expressing these concerns based on
+       what you find in the discussions (segment names should match user self-descriptions)
+    5. Note the frequency and intensity of discussions in each category
+
+
+    **How to approach:**
+
+    - Read through the discussions systematically to find repeated keywords, phrases, and concepts
+    - Pay attention to the language users employ—their exact words matter
+    - Look for patterns in:
+      * Problems: "frustration", "difficult", "can't", "impossible", "broken", "struggle"
+      * User identities: "I am", "as a", "we are", role-specific terms
+      * Impact statements: "time", "money", "expensive", "hours", "cost", "afford"
+      * Emotional language: "hate", "love", "annoying", "painful", "frustrated", "stressed"
+      * Workarounds: "using", "tried", "workaround", "alternative", "instead"
+    - Consider both explicit statements ("I hate that...") and implicit problems
+    - Segment by user type when you see clear distinctions in needs or contexts
+    - Use the metadata (PLATFORM, SUBREDDIT, SCORE, ENGAGEMENT) to understand context and importance
+
+
+    **Acceptance Criteria:**
+
+    - Minimum 5 distinct theme categories identified
+    - Each category has clear definition and at least 3 representative quote examples from the content above
+    - User segments are specific enough to inform product targeting
+    - Frequency indicators (high/medium/low) assigned to each theme based on mention count
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+    ✗ If <5 substantive discussions found → Return "Insufficient discussion data"
+    ✗ DO NOT use training data or niche assumptions
+    ✗ User segments MUST match self-descriptions from discussions above
+    ✗ Every quote MUST be directly copied from content above - NO paraphrasing
+
+  expected_output: >
+    A ContentCategorizationReport object with the following structure:
+
+    **executive_summary**: 2-3 sentence overview of the discussion landscape, primary themes discovered,
+    and key user segments identified. This should be a cohesive narrative, not bullet points.
+
+    **theme_categories**: List of ThemeCategory objects (aim for 5-10 categories based on distinct patterns in discussions).
+    Each ThemeCategory object must contain:
+       - **category_name**: Clear, descriptive category name (e.g., "Skepticism and Value Perception of Luxury vs Affordable Skincare")
+       - **definition**: What this category represents based on actual discussion patterns (2-3 sentences)
+       - **frequency**: Either "High", "Medium", or "Low" based on mention count
+       - **mention_count**: Number of distinct discussions mentioning this theme (integer)
+       - **primary_user_segments**: List of specific user types discussing this theme (e.g., ["Budget-conscious consumers", "Luxury skincare aspirants"])
+       - **representative_quotes**: 3-6 direct user quotes from knowledge sources that exemplify this theme (actual quotes, not paraphrased)
+
+    **user_segments**: List of UserSegment objects (aim for 4-8 segments based on distinct user types in discussions).
+    Each UserSegment object must contain:
+       - **segment_name**: User segment name from self-descriptions in discussions (e.g., "Sensitive Skin Sufferers", "Skincare Minimalists")
+       - **primary_concerns**: List of main pain points/topics for this segment (3-6 concerns)
+       - **mention_frequency**: Either "High", "Medium", or "Low"
+
+    **discussion_quality_assessment**: Narrative assessment (2-3 paragraphs) covering:
+       - Engagement levels (upvotes, likes, replies across discussions)
+       - Discussion depth (how detailed and substantive are conversations)
+       - Authenticity (do pain points seem genuine vs hypothetical)
+       - Any patterns in community interaction
+
+    **overall_quality**: One of "High", "Medium", or "Low" with 1-sentence justification
+
+    CRITICAL: Return a valid ContentCategorizationReport Pydantic object with ALL fields populated.
+    DO NOT return markdown text or a description of what the report should contain.
+    Every quote in representative_quotes MUST be directly copied from knowledge sources - NO paraphrasing.
+    Every user segment name MUST match self-descriptions from discussions - NO generic assumptions.
+
+extract_pain_points:
+  description: >
+    **NICHE CONTEXT:** {niche_description}
+
+    Transform the categorized content into specific, actionable pain points relevant
+    to the niche being analyzed.
+
+    ═══════════════════════════════════════════════════════════════════════════
+    **WORKFLOW: Use Previous Task's Categorization as Foundation**
+
+    The previous task (content researcher) has provided a comprehensive categorization
+    report. Use this as your PRIMARY structure for organizing pain points.
+
+    - Start with the categories identified in the previous task's report
+    - Focus on high and medium-frequency categories from that report
+    - When you need MORE CONTEXT about a category, query knowledge sources to find
+      additional examples, quotes, and evidence within that category
+    - Knowledge sources should ENHANCE your understanding of the existing categories,
+      not replace them with new categorization
+
+    Think of it this way: The previous task told you "these are the main themes in
+    the discussions." Your job is to dive deeper into each theme using knowledge
+    sources to extract specific, actionable pain points with evidence.
+    ═══════════════════════════════════════════════════════════════════════════
+
+
+    **WORKFLOW** (Apply your 3-Quote Minimum Protocol):
+
+    1. Review categorization report → identify high/medium-frequency categories
+    2. For each category → extract 2-5 specific pain points with supporting evidence
+    3. Query knowledge sources → find ≥3 direct quotes per pain point
+    4. Identify severity indicators → "frustrating", "critical", "showstopper"
+    5. Note current solutions/workarounds users mention
+
+    **SEARCH STRATEGY** (Knowledge Source Queries):
+
+    | Query Type | Purpose | Keywords |
+    |------------|---------|----------|
+    | Problem keywords | Find quote evidence | Specific problem terms from categories |
+    | Emotional language | Severity assessment | "frustrating", "critical", "annoying", "showstopper" |
+    | Impact mentions | Business impact | "time", "expensive", "productivity", "revenue" |
+    | Workarounds | Current solutions | "using", "tried", "alternative to" |
+
+    **QUALITY STANDARDS:**
+    ✓ Actionable (clear what solving means)
+    ✓ ≥3 supporting quotes from knowledge sources
+    ✓ Frequency data (mention count)
+    ✓ Specific, not vague ("manual data entry" NOT "tool is bad")
+    ✓ Exact user language (no corporate speak paraphrasing)
+    ✗ Duplicates (merge similar pain points)
+
+
+    **CRITICAL DATA ACCURACY RULES:**
+
+    - ONLY extract pain points that have explicit evidence in the knowledge sources you can query
+    - Each pain point MUST have at least 3 real user quotes - if you cannot find 3 quotes from knowledge sources, DO NOT create that pain point
+    - DO NOT invent or paraphrase pain points based on general niche knowledge or assumptions
+    - If knowledge source queries return no results for a potential pain point, that pain point does NOT exist in the collected data
+    - Every quote MUST be a direct quote from knowledge sources - do not create fictional or "example" quotes
+    - If you can only identify fewer than 10 pain points with proper evidence, that is acceptable - return what you can verify
+    - Acceptable output: Empty pain points list with explanation "Insufficient evidence in knowledge sources" if no validated pain points can be extracted
+    - DO NOT fill gaps with generic problems you think might exist in this niche
+
+
+    **Acceptance Criteria:**
+
+    - Minimum 10 distinct pain points extracted
+    - Each pain point has clear problem articulation
+    - Supporting evidence includes direct user quotes from knowledge sources
+    - Mention frequency quantified for each
+    - Source platforms identified (Reddit/Twitter)
+    - Source post IDs tracked for traceability
+
+
+    **SOURCE TRACEABILITY:**
+
+    When extracting pain points, track the specific posts where each pain point was found:
+    - Each formatted post includes a [POST_ID: ...] or [THREAD_ID: ...] header
+    - When you extract a quote from a post, record that post's ID in the source_post_ids field
+    - This enables traceability from pain point → quote → original Reddit/Twitter post
+    - Example: If you find quotes in posts with [POST_ID: abc123] and [POST_ID: def456], add ["abc123", "def456"] to source_post_ids
+
+  expected_output: >
+    A PainPointExtraction object with the following structure:
+
+
+    **niche**: The niche being analyzed
+
+
+    **extracted_pain_points**: List of UnvalidatedPainPoint objects (10-20 pain points), each containing:
+       - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
+       - **description**: 2-3 sentence clear articulation of the specific problem in user language,
+         including user context and current solutions mentioned
+       - **mention_count**: Number of times this problem appeared across discussions
+       - **representative_quotes**: 3-5 direct user quotes supporting this pain point
+       - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
+       - **categories**: List of categories this pain point belongs to
+       - **source_post_ids**: List of post IDs where this pain point was found (e.g., ["abc123", "def456"]) - extracted from [POST_ID: ...] or [THREAD_ID: ...] headers in the formatted content
+
+
+    **extraction_summary**: 3-4 sentences overview of pain point landscape, key patterns,
+       priority problem areas, and pain point categories
+
+
+    CRITICAL: Return structured Pydantic data, not markdown. This output will be passed directly
+    to the validator for scoring. Do NOT include severity/WTP scores - those are added by the validator.
+
+validate_pain_points:
+  description: >
+    ═══ TASK 3: VALIDATION & SCORING ═══
+    ✓ Generate ONLY validation scores for extracted pain points (Python will merge with Task 2)
+    ✓ Focus on evidence-based scoring using knowledge sources
+    ✓ DO NOT copy pain point fields—only generate scores
+
+    **NICHE CONTEXT:** {niche_description}
+
+    **HOW TO ACCESS CONTEXT:**
+
+    Task 2 output (PainPointExtraction) is available in your context. Extract:
+    - From Task 2: extracted_pain_points list (titles, descriptions, quotes, mention counts)
+    - DO NOT copy these fields—reference pain_point_title only for matching
+
+    **YOUR TASK: Generate Validation Scores**
+
+    For EACH pain point in Task 2 extraction, generate scoring data:
+    - pain_point_title: The exact title from Task 2 (for Python matching)
+    - severity_score: Float 0.0-1.0 based on evidence
+    - willingness_to_pay: Float 0.0-1.0 based on financial signals
+    - opportunity_level: OpportunityLevel enum (high/medium/low)
+    - scoring_rationale: Brief explanation (2-3 sentences)
+
+    **SCORING RUBRIC** (Apply your Evidence-Based Scoring Framework):
+
+    | Score Range | Severity Indicators | Willingness-to-Pay Indicators |
+    |-------------|---------------------|-------------------------------|
+    | **0.8-1.0** (High) | Critical business impact, workflow blocker, strong emotional language ("nightmare", "critical", "can't work without") | Explicit payment mentions, budget availability, current spend on inadequate solutions |
+    | **0.5-0.7** (Medium) | Significant inconvenience, wastes time/money, clear frustration | Frustration with existing paid tools, value/ROI mentions |
+    | **0.3-0.4** (Low) | Notable annoyance, mentioned but not critical | Some consideration for solutions, no money mentions |
+    | **0.0-0.2** (Minimal) | Minor inconvenience, weak signals | No financial indicators, expect free solutions |
+
+    **WORKFLOW:**
+    1. Review extracted pain points from Task 2 context
+    2. Query knowledge sources for severity/WTP indicators (use keywords: "critical", "pay", "cost", "budget", "time", "revenue")
+    3. Apply scoring rubric with quote-based justification
+    4. Calculate opportunity level (High: both scores ≥0.6, Medium: one score ≥0.6, Low: both <0.6)
+
+    **QUALITY STANDARDS:**
+    - Scores must be defensible with quotes from knowledge sources
+    - Discriminate—not everything is 0.9
+    - Score conservatively when uncertain
+    - Cross-reference Reddit + Twitter evidence
+
+    **CRITICAL DATA ACCURACY RULES:**
+    - Scores MUST be based ONLY on evidence you can find in knowledge sources through queries
+    - If knowledge source queries return insufficient evidence for a score, assign 0.0 and note "Insufficient evidence"
+    - DO NOT assign scores based on assumptions about what severity "should" be for this type of problem
+    - Every severity score ≥0.5 MUST have at least one direct quote showing strong emotional language or business impact
+    - Every WTP score ≥0.5 MUST have at least one quote mentioning money, budget, cost, or pricing
+
+    **CRITICAL CONSTRAINT: 1:1 Mapping Required**
+    - You MUST score EXACTLY the pain points from Task 2—no more, no fewer
+    - DO NOT add new pain points, merge, split, or remove pain points
+    - Use exact pain_point_title from Task 2 for matching
+
+  expected_output: >
+    ValidationResult Pydantic model with scoring data ONLY:
+
+    **niche**: The niche being analyzed
+
+    **pain_point_scores**: List[PainPointScoring] with EXACTLY one score per Task 2 pain point:
+    - pain_point_title: Exact title from Task 2 (for Python matching)
+    - severity_score: Float 0.0-1.0 based on evidence analysis
+    - willingness_to_pay: Float 0.0-1.0 based on financial signals
+    - opportunity_level: OpportunityLevel enum (high/medium/low) based on scores
+    - scoring_rationale: Brief explanation (2-3 sentences)
+
+    **validation_summary**: 4-6 sentence executive summary covering:
+    - Total pain points scored (MUST match Task 2 count)
+    - Distribution across opportunity levels (High/Medium/Low)
+    - Key scoring patterns and insights
+    - Top 3 recommended pain points for solution development
+    - Overall market signal strength
+
+    NOTE: Python will merge these scores with Task 2 pain points. Focus on generating accurate, evidence-based scores.

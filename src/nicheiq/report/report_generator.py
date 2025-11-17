@@ -228,6 +228,118 @@ class ReportGenerator:
                 self.state.idea_generation.solution_ideas
             )
 
+        # Extract keyword validation and refinement data (Stage 8.8 and 8.85)
+        keyword_validation_overview = None
+        solution_keyword_comparison = None
+        content_strategy_preview = None
+
+        # Defensive: Handle malformed keyword_validation_results from old checkpoints
+        if (self.state.keyword_validation_results and
+            isinstance(self.state.keyword_validation_results, dict) and
+            "data" in self.state.keyword_validation_results):
+            logger.warning("Detected legacy checkpoint format for keyword_validation_results - attempting recovery")
+            try:
+                import ast
+                self.state.keyword_validation_results = ast.literal_eval(
+                    self.state.keyword_validation_results["data"]
+                )
+            except Exception as e:
+                logger.error(f"Failed to recover keyword_validation_results: {e}")
+                self.state.keyword_validation_results = None
+
+        if self.state.keyword_validation_results:
+            # Build keyword validation overview (2-3 paragraphs)
+            validation_count = len(self.state.keyword_validation_results)
+            overview_parts = [
+                f"## Keyword Validation Methodology\n\n"
+                f"Validated top {validation_count} solution candidates using hybrid seed generation "
+                f"(10 programmatic + 10 LLM seeds per solution) with DataForSEO keyword data API.\n\n"
+                f"## Key Findings by Solution\n\n"
+            ]
+
+            comparison_rows = ["| Solution | Total Keywords | Tier 1 Quick Wins | Total Volume | Avg Competition | SEO Difficulty |",
+                             "|----------|---------------|-------------------|--------------|-----------------|----------------|"]
+
+            for result in self.state.keyword_validation_results:
+                sol_name = result.get("solution_name", "Unknown")
+                validated = result.get("validated_count", 0)
+                total_vol = result.get("total_volume", 0)
+                avg_comp = result.get("avg_competition", 0)
+                demand_score = result.get("keyword_demand_score", 0)
+                demand_signal = result.get("demand_signal", "unknown")
+
+                # Tier 1 count estimation (top keywords)
+                top_kws = result.get("top_keywords", [])
+                tier1_count = len([k for k in top_kws if k.get("competition", 100) < 40])
+
+                # SEO difficulty assessment
+                if avg_comp < 40:
+                    seo_difficulty = "Low"
+                elif avg_comp < 60:
+                    seo_difficulty = "Medium"
+                else:
+                    seo_difficulty = "High"
+
+                overview_parts.append(
+                    f"**{sol_name}**: {validated}/20 keywords validated, "
+                    f"{total_vol:,} total monthly volume, "
+                    f"demand score: {demand_score:.2f} ({demand_signal})\n"
+                )
+
+                comparison_rows.append(
+                    f"| {sol_name} | {validated} | {tier1_count} | {total_vol:,} | {avg_comp:.1f}% | {seo_difficulty} |"
+                )
+
+            overview_parts.append(
+                f"\n## Cross-Solution Comparison\n\n"
+                f"Keyword demand scores ranged from "
+                f"{min(r.get('keyword_demand_score', 0) for r in self.state.keyword_validation_results):.2f} to "
+                f"{max(r.get('keyword_demand_score', 0) for r in self.state.keyword_validation_results):.2f}. "
+                f"Validation enabled re-ranking based on actual search demand rather than architectural estimates."
+            )
+
+            keyword_validation_overview = "\n".join(overview_parts)
+            solution_keyword_comparison = "\n".join(comparison_rows)
+
+        # Extract content strategy preview from refinement data
+        if self.state.solution_refinement:
+            refinement = self.state.solution_refinement
+            preview_parts = [
+                "## Programmatic Content Opportunities\n\n"
+            ]
+
+            # Geographic opportunities
+            if refinement.geographic_priorities:
+                preview_parts.append(
+                    f"Geographic expansion priorities identified: {', '.join(refinement.geographic_priorities[:3])}. "
+                    f"Create localized landing pages for each target market.\n\n"
+                )
+
+            # Feature priorities for content clusters
+            if refinement.feature_priorities:
+                top_features = refinement.feature_priorities[:3]
+                preview_parts.append(
+                    f"## Quick Win Content Recommendations\n\n"
+                    f"Top content clusters based on keyword support:\n"
+                )
+                for fp in top_features:
+                    preview_parts.append(f"- **{fp.feature_name}**: {fp.keyword_support} keywords, priority {fp.priority}/10\n")
+
+            # Strategic insights
+            if refinement.strategic_insights:
+                preview_parts.append(f"\n{refinement.content_strategy_preview}")
+
+            content_strategy_preview = "".join(preview_parts)
+
+        # Merge enrichments into selected_solution_details (unified enrichment pattern)
+        # This merges Stage 8.85 (keyword refinement) + Stage 9.5 (SEO refinement) into base solution
+        if selected_solution_details:
+            selected_solution_details = self._merge_solution_enrichments(
+                base_solution=selected_solution_details,
+                keyword_enrichment=self.state.solution_refinement,
+                seo_enrichment=getattr(self.state, 'seo_enrichment', None)
+            )
+
         # Generate solution_user_journey from features
         solution_user_journey = None
         if selected_solution_details and selected_solution_details.core_features:
@@ -394,6 +506,11 @@ Expand to new markets or segments based on validated learnings."""
             acquisition_strategy_summary=acquisition_strategy_summary,
             estimated_cac_breakdown=estimated_cac_breakdown,
 
+            # Keyword validation & refinement (Stage 8.8 and 8.85)
+            keyword_validation_overview=keyword_validation_overview,
+            solution_keyword_comparison=solution_keyword_comparison,
+            content_strategy_preview=content_strategy_preview,
+
             # Data sourcing (template or structured)
             data_source_research=self.state.data_source_research,
             data_sourcing_recommendations=data_sourcing_recommendations,
@@ -410,6 +527,91 @@ Expand to new markets or segments based on validated learnings."""
             # Metadata
             generated_at=datetime.utcnow(),
         )
+
+    def _merge_solution_enrichments(
+        self,
+        base_solution: "SolutionIdea",
+        keyword_enrichment: Optional["SolutionRefinement"],
+        seo_enrichment: Optional["SolutionSEORefinement"]
+    ) -> "SolutionIdea":
+        """
+        Merge base solution with enrichments from later stages.
+
+        This implements the unified enrichment pattern where:
+        - Stage 7 creates base solution with core fields
+        - Stage 8.85 outputs keyword enrichment (geographic priorities, features, insights)
+        - Stage 9.5 outputs SEO enrichment (refined scores using keyword data)
+        - Report generator merges all into complete SolutionIdea
+
+        Benefits:
+        - Base solutions remain immutable during pipeline
+        - Each stage output is independently testable
+        - Clear what data each stage contributes
+        - No null fields in final output
+
+        Args:
+            base_solution: Original solution from Stage 7 (UnifiedSolutionCrew)
+            keyword_enrichment: Optional enrichment from Stage 8.85 (SolutionRefinementCrew)
+            seo_enrichment: Optional enrichment from Stage 9.5 (Flow-based SEO refinement)
+
+        Returns:
+            Complete SolutionIdea with all available enrichments applied
+        """
+        from copy import deepcopy
+
+        # Start with deep copy of base solution (immutability)
+        enriched = deepcopy(base_solution)
+
+        # Apply keyword enrichment (Stage 8.85)
+        if keyword_enrichment:
+            # Map SolutionRefinement fields to SolutionIdea fields
+            enriched.keyword_geographic_priorities = keyword_enrichment.geographic_priorities
+
+            # Convert FeaturePriority objects to simple list of feature names
+            enriched.keyword_feature_priorities = [
+                f.feature_name for f in keyword_enrichment.feature_priorities
+            ] if keyword_enrichment.feature_priorities else None
+
+            # Join strategic insights into single string
+            enriched.keyword_strategic_insights = ". ".join(
+                keyword_enrichment.strategic_insights
+            ) if keyword_enrichment.strategic_insights else None
+
+            enriched.category_pivot_suggestion = keyword_enrichment.category_pivot_recommendation
+
+            logger.info(
+                f"[Report] Applied keyword enrichment: "
+                f"{len(keyword_enrichment.geographic_priorities) if keyword_enrichment.geographic_priorities else 0} geo priorities, "
+                f"{len(keyword_enrichment.feature_priorities) if keyword_enrichment.feature_priorities else 0} feature priorities"
+            )
+
+        # Apply SEO enrichment (Stage 9.5)
+        if seo_enrichment:
+            enriched.seo_scalability_score_refined = seo_enrichment.seo_scalability_score_refined
+            enriched.estimated_cac_organic_refined = seo_enrichment.estimated_cac_organic_refined
+            enriched.programmatic_seo_opportunity_refined = seo_enrichment.programmatic_seo_opportunity_refined
+            enriched.estimated_indexable_pages = seo_enrichment.estimated_indexable_pages
+            enriched.seo_refinement_metadata = seo_enrichment.seo_refinement_metadata
+
+            # Format optional values (handle None)
+            scalability_str = (
+                f"{seo_enrichment.seo_scalability_score_refined:.2f}"
+                if seo_enrichment.seo_scalability_score_refined is not None
+                else "N/A"
+            )
+            pages_str = (
+                f"{seo_enrichment.estimated_indexable_pages:,}"
+                if seo_enrichment.estimated_indexable_pages is not None
+                else "N/A"
+            )
+
+            logger.info(
+                f"[Report] Applied SEO enrichment: "
+                f"refined scalability {scalability_str}, "
+                f"{pages_str} pages"
+            )
+
+        return enriched
 
     def _enhance_report_with_llm(self, base_report: FinalReport) -> FinalReport:
         """

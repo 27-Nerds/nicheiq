@@ -98,8 +98,8 @@ class ConceptualKeyword(BaseModel):
         return v
 
 
-class TopicCluster(BaseModel):
-    """Topic cluster for organizing keywords strategically."""
+class ConceptualTopicCluster(BaseModel):
+    """Topic cluster for organizing keywords strategically (Phase 9.5a output)."""
 
     model_config = ConfigDict(extra='forbid')
 
@@ -123,7 +123,7 @@ class ExpandedKeywordList(BaseModel):
     keywords: List[ConceptualKeyword] = Field(
         ..., description="Hybrid seed keywords (40-50 total): 70% broad seeds (1-2 words) + 30% targeted keywords (3-5 words)"
     )
-    topic_clusters: List[TopicCluster] = Field(
+    topic_clusters: List[ConceptualTopicCluster] = Field(
         ..., description="Topic clusters for organizing keywords"
     )
     expansion_rationale: str = Field(
@@ -841,4 +841,49 @@ class ImplementationPlanResult(BaseModel):
     )
     budget_allocation: Optional[str] = Field(
         default=None, description="Budget recommendations with options (markdown, Option A/B/C)"
+    )
+
+
+class FinalSynthesis(BaseModel):
+    """
+    Task 4 output: Final SEO Strategy Synthesis (4 new fields only).
+
+    Contains strategic synthesis and long-term vision that extends
+    outputs from Tasks 1-3. These fields will be merged with Tasks 1-3 via Python.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    long_term_strategy: str = Field(
+        ..., description="Year 1/2/3 strategic milestones (markdown, 3 sections)"
+    )
+    conclusion_bottom_line: str = Field(
+        ..., description="Bottom line summary (1 paragraph)"
+    )
+    competitive_advantages: List[str] = Field(
+        ..., description="2-4 key competitive advantages from SEO analysis"
+    )
+    critical_success_factors: List[str] = Field(
+        ..., description="3-4 critical success factors"
+    )
+
+
+class ImplementationGuide(BaseModel):
+    """
+    Task 5 output: SEO Implementation Guide (3 new fields only).
+
+    Contains technical implementation details that extend SEOStrategyReport.
+    These fields will be merged with Task 4 output via Python.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    universal_seo_elements: UniversalSEOElements = Field(
+        ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"
+    )
+    page_type_implementations: List[PageTypeImplementation] = Field(
+        ..., description="SEO templates for 4-6 key page types"
+    )
+    schema_markup_strategy: SchemaMarkupStrategy = Field(
+        ..., description="Schema markup strategy with JSON-LD examples and testing"
     )

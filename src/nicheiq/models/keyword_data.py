@@ -200,3 +200,83 @@ class KeywordValidationResult(BaseModel):
     market_assessment: str = Field(
         ..., description="Overall market size assessment"
     )
+
+
+# Stage 8.8 - Quick Keyword Validation Models
+
+
+class KeywordSeedResult(BaseModel):
+    """LLM-generated seed keywords for quick validation (Stage 8.8)."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    seeds: List[str] = Field(
+        ...,
+        min_length=10,
+        max_length=10,
+        description="Exactly 10 keyword seeds covering diverse search intents and specificity levels"
+    )
+
+
+class KeywordValidationSummary(BaseModel):
+    """Quick validation results for a single solution (Stage 8.8)."""
+
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
+            "example": {
+                "solution_name": "ExpatEase Directory",
+                "validated_count": 18,
+                "total_volume": 14250,
+                "avg_competition": 42.5,
+                "keyword_demand_score": 0.78,
+                "top_keywords": [],
+                "top_geographic_keywords": ["expat services spain", "relocation portugal"],
+                "demand_signal": "strong",
+                "validation_signals": {
+                    "has_search_demand": True,
+                    "keyword_diversity": True,
+                    "high_volume_presence": True,
+                    "average_volume_per_keyword": 791.7
+                }
+            }
+        }
+    )
+
+    solution_name: str = Field(..., description="Name of the solution")
+    validated_count: int = Field(
+        ..., ge=0, le=20, description="Number of keywords validated (out of 20)"
+    )
+    total_volume: int = Field(..., ge=0, description="Total monthly search volume across validated keywords")
+    avg_competition: float = Field(
+        ..., ge=0.0, le=100.0, description="Average competition index across validated keywords"
+    )
+    keyword_demand_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Hybrid demand score: (0.60 × volume_score) + (0.40 × opportunity_score). "
+            "0.80-1.0: Exceptional, 0.65-0.79: Strong, 0.50-0.64: Moderate, 0.35-0.49: Weak, 0.0-0.34: Critical"
+        )
+    )
+    top_keywords: List[Dict] = Field(
+        default_factory=list,
+        description="Top 5 keywords by search volume with metrics (keyword, volume, competition)"
+    )
+    top_geographic_keywords: List[str] = Field(
+        default_factory=list,
+        description="Top 3 geographic keywords indicating regional demand"
+    )
+    demand_signal: str = Field(
+        ...,
+        description="Overall demand assessment: 'strong' (>5k volume), 'moderate' (2k-5k), 'weak' (<2k)"
+    )
+    validation_signals: Dict = Field(
+        ...,
+        description=(
+            "Binary validation signals: has_search_demand (>1k total), "
+            "keyword_diversity (>=5 valid), high_volume_presence (any keyword >500), "
+            "average_volume_per_keyword"
+        )
+    )

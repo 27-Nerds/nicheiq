@@ -161,18 +161,21 @@ class DataForSEOBaseClient:
         self,
         seed_keywords: List[str],
         location_code: int = None,
-        language_code: str = None
+        language_code: str = None,
+        max_results_per_batch: int = 600
     ) -> List[Dict[str, Any]]:
         """
         Expand seed keywords using DataForSEO Keywords for Keywords endpoint.
         This implements Step 9.2 of the keyword validation process.
 
         COST OPTIMIZATION: Batches up to 20 keywords per request.
+        QUALITY CONTROL: Limits total expansions per batch to prevent keyword bloat.
 
         Args:
             seed_keywords: Initial list of keywords to expand
             location_code: DataForSEO location code (optional, default: None for global data)
             language_code: Language code (optional, default: None for API default)
+            max_results_per_batch: Maximum keywords to keep per batch (default: 600, ~50 per seed for batch of 12)
 
         Returns:
             List of expanded keyword data
@@ -231,7 +234,10 @@ class DataForSEOBaseClient:
 
             # Format payload as list (DataForSEO API format)
             # Only include location_code and language_code if they are not None
-            task_payload = {"keywords": batch}
+            task_payload = {
+                "keywords": batch,
+                "sort_by": "relevance"  # Prioritize most relevant keyword suggestions
+            }
             if location_code is not None:
                 task_payload["location_code"] = location_code
             if language_code is not None:
@@ -268,6 +274,9 @@ class DataForSEOBaseClient:
                 # Track keywords before processing this batch
                 keywords_before_batch = len(all_keywords)
 
+                # Collect batch keywords (with limit to prevent bloat)
+                batch_keywords = []
+
                 # Process results
                 # NOTE: DataForSEO may return null for any field when data is unavailable
                 # Null Handling Strategy:
@@ -296,13 +305,29 @@ class DataForSEOBaseClient:
 
                         # Filter by max competition
                         if competition_float <= settings.keyword_max_competition:
-                            all_keywords.append({
+                            batch_keywords.append({
                                 "keyword": item.get("keyword", ""),
                                 "search_volume": search_volume,
                                 "competition": competition_float,
                                 "competition_index": competition_index,
                                 "cpc": item.get("cpc") or 0,  # Coalesce None to 0
                             })
+
+                # Limit batch results to prevent keyword bloat
+                # Sort by opportunity score (volume/competition) and take top N
+                if len(batch_keywords) > max_results_per_batch:
+                    logger.info(
+                        f"Batch {batch_idx} returned {len(batch_keywords)} keywords. "
+                        f"Limiting to top {max_results_per_batch} by opportunity score."
+                    )
+                    batch_keywords.sort(
+                        key=lambda k: k["search_volume"] / max(k["competition_index"], 1),
+                        reverse=True
+                    )
+                    batch_keywords = batch_keywords[:max_results_per_batch]
+
+                # Add limited batch to all keywords
+                all_keywords.extend(batch_keywords)
 
                 # Log batch success
                 keywords_added = len(all_keywords) - keywords_before_batch

@@ -68,8 +68,12 @@ ResearchFlow (Main Orchestrator - research_flow.py)
 
 ### CrewAI Configuration Files
 
-**agents.yaml**: Defines agent personas (role, goal, backstory)
-**tasks.yaml**: Defines task instructions - some use direct inputs, others use knowledge sources
+Each crew has dedicated configuration files following the pattern `{crew_name}_agents.yaml` and `{crew_name}_tasks.yaml`:
+
+- **Agents config**: Defines agent personas (role, goal, backstory)
+- **Tasks config**: Defines task instructions - some use direct inputs, others use knowledge sources
+
+**Example**: PainPointCrew uses `pain_point_agents.yaml` and `pain_point_tasks.yaml`
 
 When modifying tasks that use knowledge sources, include search strategy instructions:
 ```yaml
@@ -444,8 +448,8 @@ CHECKPOINT_AUTO_CLEANUP=true
    - Updates solution's SEO difficulty/opportunity scores using keyword data
 
 **Configuration:**
-- `src/nicheiq/crews/config/agents.yaml` - Agent definitions
-- `src/nicheiq/crews/config/tasks.yaml` - Task specs with search strategies
+- `src/nicheiq/crews/config/{crew_name}_agents.yaml` - Agent definitions (dedicated per crew)
+- `src/nicheiq/crews/config/{crew_name}_tasks.yaml` - Task specs with search strategies (dedicated per crew)
 - `src/nicheiq/config/settings.py` - Centralized settings
 
 **Data Models:**
@@ -498,7 +502,7 @@ CHECKPOINT_AUTO_CLEANUP=true
 
 **Pre-Flight Checklist:**
 1. List all inputs in `crew.kickoff(inputs={...})`
-2. Find task file (tasks.yaml or crew-specific config)
+2. Find crew's task config file (`{crew_name}_tasks.yaml` in `src/nicheiq/crews/config/`)
 3. Verify placeholders: For each input key, ensure `{key}` appears in task description
 4. Log input sizes for debugging
 5. Validate outputs contain expected data, not hallucinations
@@ -608,6 +612,76 @@ CrewAI doesn't auto-inject Pydantic `Field(description=...)` (GitHub #1338). **W
 - Official Docs: https://docs.crewai.com/
 - Knowledge Sources: https://docs.crewai.com/en/concepts/knowledge
 - Flow State: https://docs.crewai.com/en/guides/flows/mastering-flow-state
+
+### 10. Context-Aware Query/Keyword Generation
+
+**Problem**: Template-driven query generation produces nonsensical results (e.g., "apps for home appliances").
+**Solution**: Use context-aware generators with NicheContext (market_segments, industry_boundaries).
+
+```python
+from nicheiq.utils.helpers import KeywordSeedGenerator
+
+generator = KeywordSeedGenerator()
+result = generator.generate_seeds(
+    solution=selected_solution,
+    niche_context=niche_context,
+    pain_points=pain_points,
+    competitive_analysis=competitive_analysis
+)
+# Returns 40-50 keywords with semantic validation and market segment integration
+```
+
+**Available Generators**:
+- `QueryGenerator` - Social media search queries
+- `CompetitorQueryGenerator` - Competitor search with solution-type awareness
+- `KeywordSeedGenerator` - SEO seed keywords (used in Stage 9.5a)
+
+**Key Features**: Chain-of-thought analysis, 6 semantic validation rules, input sanitization, market segment extraction as keyword modifiers.
+
+**Benefits**: Eliminates nonsensical patterns, leverages full niche context, generates solution-type-appropriate terminology.
+
+### 11. Token Monitoring & Soft Caps
+
+**Problem**: Large social media collections can approach context limits with extended models (1M tokens), causing unexpected costs.
+**Solution**: Monitor token usage with soft caps for cost visibility without hard failures.
+
+```python
+from nicheiq.utils.helpers import ContentTokenMonitor
+
+monitor = ContentTokenMonitor()
+
+# Log content stats with cost estimate
+token_count = monitor.log_content_stats(
+    content=formatted_content,
+    label="Stage 6 - Reddit content",
+    model="gpt-4o"
+)
+# Logs: "Stage 6 - Reddit content: 112,430 tokens (~$0.28), 11.2% of 1M context"
+
+# Check soft caps (warns but doesn't fail)
+monitor.check_soft_cap(tokens=token_count, label="Stage 6", model="gpt-4o")
+```
+
+**Configuration** (.env):
+```bash
+TOKEN_MONITORING_ENABLED=true
+TOKEN_WARNING_THRESHOLD=200000      # Log warning at 200K tokens
+TOKEN_SOFT_CAP_ENABLED=false        # Disabled by default
+TOKEN_SOFT_CAP=400000               # If enabled, log critical warning at 400K
+```
+
+**Features**:
+- Accurate token counting via tiktoken
+- Cost estimation for GPT-4/GPT-4o models
+- Warning thresholds (always enabled)
+- Optional soft caps (log critical warning when exceeded)
+- No pipeline failures - monitoring only
+
+**Usage Locations**:
+- Stage 5 (ResearchFlow): Collection size monitoring
+- Stage 6 (PainPointCrew): Task 1 input monitoring
+
+**Benefits**: Cost visibility, early warnings for large collections, no failures, configurable thresholds.
 
 ## Output Structure
 

@@ -139,16 +139,84 @@ competitive_analysis:
     **CONTEXT from Task 1** (Automatic via CrewAI Context Chaining):
 
     You have access to IdeaGenerationResult containing all solution concepts.
-    For each solution, extract: solution_name, description, core_features, target_personas.
+    For each solution, extract: solution_name, description, core_features, target_personas, project_type.
+
+    **CONTEXT: Niche Research Background**
+
+    **Niche Description:** {niche_description}
+
+    **Target Market Segments:**
+    {market_segments}
+
+    **Industry Boundaries:** {industry_boundaries}
 
     **WORKFLOW (FOLLOW IN ORDER):**
 
     1. **FOR EACH SOLUTION** (iterate over all solutions from Task 1):
-       a. **Competitor Discovery** (SerperDevTool):
-          - Search: "[solution name] competitors"
-          - Search: "[niche] tools"
-          - Search: "alternatives to [major tool in niche]"
-          - Search: "best [niche] platforms"
+       a. **Context-Aware Competitor Discovery** (SerperDevTool):
+
+          **SEMANTIC VALIDATION RULES (Apply Before Searching):**
+
+          Before generating search queries, validate they make semantic sense for the solution's project_type:
+
+          Rule 1: **Physical Products/Services → NO Software Terms**
+          - If niche involves physical products (appliances, furniture, vehicles, etc.):
+          - ✓ Use: "directory", "comparison", "review site", "marketplace"
+          - ✗ Avoid: "app", "software", "tool", "platform" (unless compound like "comparison platform")
+
+          Rule 2: **B2C Consumer Solutions → NO Enterprise Terms**
+          - If market_segments show consumer/residential focus:
+          - ✓ Use: "consumer", "home", "personal", "family"
+          - ✗ Avoid: "enterprise", "for teams", "business software"
+
+          Rule 3: **Local/Regional Services → Geographic Context**
+          - If niche is location-specific (relocation, local services):
+          - ✓ Include: city names, regions, "international", "expat"
+          - ✗ Generic global searches may miss relevant local competitors
+
+          Rule 4: **Solution Type Alignment**
+          - Match search terminology to project_type from Task 1:
+            - **directory** → "directory", "listing", "database", "catalog"
+            - **saas** → "software", "tool", "platform", "app"
+            - **aggregator** → "comparison", "aggregator", "search engine"
+            - **marketplace** → "marketplace", "platform", "exchange"
+            - **comparison-tool** → "comparison", "vs", "alternative"
+
+          Rule 5: **Leverage Market Segments for Targeted Searches**
+          - Use segment keywords from market_segments:
+          - Example: "affordable X for first-time buyers" if segment mentions budget-conscious
+          - Example: "energy-efficient X" if segment mentions eco-conscious
+
+          Rule 6: **Respect Industry Boundaries**
+          - ONLY search within scope defined in industry_boundaries
+          - If boundaries say "OUT OF SCOPE: furniture, decor" → exclude those from searches
+
+          **Example Context-Aware Queries:**
+
+          For B2C Directory (Home Appliances):
+          ✓ "best home appliance review sites"
+          ✓ "appliance comparison directories"
+          ✓ "Consumer Reports alternatives for appliances"
+          ✗ "home appliance software" (semantic mismatch)
+          ✗ "enterprise appliance solutions" (wrong audience)
+
+          For B2B SaaS (Project Management):
+          ✓ "remote team project management software"
+          ✓ "async collaboration tools for distributed teams"
+          ✓ "timezone-friendly project platforms"
+          ✗ "project management directory" (wrong solution type)
+
+          **Intelligent Search Strategy:**
+
+          Generate 6-8 context-aware queries by:
+          1. Analyzing solution's project_type, core_features, target_personas
+          2. Extracting keywords from niche_description and market_segments
+          3. Applying semantic validation rules above
+          4. Creating diverse query types:
+             - Direct competitor searches
+             - Segment-specific searches (using market_segments keywords)
+             - Problem-solution searches (from pain_points_addressed)
+             - Alternative/comparison searches
 
        b. **Verify with Knowledge Sources**:
           - Search for: "using", "tried", "alternative", "competitor", tool names
@@ -169,13 +237,6 @@ competitive_analysis:
           - Recommended positioning: Strategic angle for differentiation
 
     2. **Compile CompetitiveAnalysisResult** with per-solution landscapes
-
-    **SEARCH STRATEGIES:**
-
-    - Competitor names: "[niche] tools", "best [niche] software", "[problem] solutions"
-    - Alternatives: "alternative to [competitor]", "[competitor] vs"
-    - Reviews/feedback: "[competitor] review", "[competitor] complaints", "[competitor] reddit"
-    - Pricing: "[competitor] pricing", "[competitor] cost", "[niche] pricing comparison"
 
     **VERIFICATION STANDARD:**
 
@@ -212,177 +273,103 @@ competitive_analysis:
 
 competitive_refinement:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ MUST return ALL solutions from Task 1 - NO filtering or dropping
-    ✓ Preserve EXACT solution names (no renaming)
-    ✓ Preserve ALL 25 SolutionIdea fields - ADD/ENHANCE only
-    ✓ technical_feasibility_score → PRESERVE exactly (independent of competition)
-    ✓ market_fit_score → EXTRACT + optionally ADJUST UP by max 0.1 (never decrease)
-    ✓ ALL refined SEO fields → PRESERVE if present (seo_scalability_score_refined, etc.)
-    ✓ Output ACTUAL DATA VALUES from Task 1 context - not schema definitions
-    ✗ DO NOT drop solutions with weak competitive data - preserve unchanged
-    ✗ DO NOT filter or combine solutions
-    ✗ DO NOT nullify any fields present in Task 1 output
-    ✗ DO NOT output JSON Schema (e.g., {"properties": {...}, "type": "object", "additionalProperties": false})
-    ✗ DO NOT output field type definitions - output actual populated field values
+    ═══ TASK 3: COMPETITIVE ENHANCEMENTS ═══
+    ✓ Generate ONLY enhancements based on competitive analysis
+    ✓ Focus on NEW features, differentiation factors, and refinements
+    ✓ Python will merge with Task 1 base solutions automatically
+    ✗ DO NOT copy or preserve fields from Task 1 - that's handled by Python
+    ✗ DO NOT output complete SolutionIdea objects - ONLY enhancements
 
-    **TASK 3: Competitive Refinement (Enhance with Insights)**
+    **TASK 3: Competitive Refinement (Generate Enhancements)**
 
-    Enhance solutions from Task 1 with competitive intelligence from Task 2.
+    Generate competitive enhancements for solutions from Task 1 based on insights from Task 2.
 
-    **CONTEXT from Tasks 1 & 2** (Automatic via CrewAI Context Chaining):
+    **HOW TO ACCESS CONTEXT:**
 
-    - Task 1 Output (IdeaGenerationResult): Complete solutions with all fields
-    - Task 2 Output (CompetitiveAnalysisResult): Competitive landscapes per solution
+    Tasks 1 and 2 are available in your context for reference:
+    - Task 1: IdeaGenerationResult (base solutions - reference for solution names)
+    - Task 2: CompetitiveAnalysisResult (competitive insights to apply)
 
-    **HOW TO ACCESS TASK CONTEXT (CrewAI Context Chaining):**
+    **YOUR TASK: Generate Competitive Enhancements**
 
-    Task 1 and Task 2 outputs are available in your context. Here's how to extract and use this data:
+    For EACH solution from Task 1, analyze Task 2 competitive insights and generate ONLY:
 
-    1. **From Task 1 (IdeaGenerationResult):**
-       - Access: solution_ideas list containing SolutionIdea objects with ALL 25 fields populated
-       - Extract: solution_name, description, pain_points_addressed, core_features, technical_approach, etc.
-       - YOU MUST copy these exact values into your output - do NOT leave them blank
+    **1. new_core_features** (List[str]): 2-4 NEW features inspired by competitive gaps
+       - NOT all features - ONLY new additions from competitive analysis
+       - Example: "Real-time pricing dashboard", "AI-powered provider matching"
 
-    2. **From Task 2 (CompetitiveAnalysisResult):**
-       - Access: solution_landscapes list with CompetitiveLandscape objects per solution
-       - Extract: market_gaps, differentiation_opportunities, recommended_positioning, pricing_insights
-       - Use these insights to ENHANCE the solutions from Task 1 (add features, refine positioning)
+    **2. new_differentiation_factors** (List[str]): 2-3 NEW factors based on market gaps
+       - What makes this solution stand out vs competitors?
+       - Example: "Real-time pricing transparency dashboard", "No competitor offers live pricing"
 
-    **CRITICAL OUTPUT FORMAT:**
-    - Your output must contain ACTUAL DATA VALUES extracted from Task 1 and enhanced with Task 2
-    - DO NOT output the Pydantic schema structure (field definitions with "type", "description", "properties")
-    - DO NOT output placeholder values or field names without values
-    - OUTPUT the actual populated IdeaGenerationResult object with real solution data
+    **3. value_proposition_update** (Optional[str]): Refined value prop (ONLY if competitive analysis suggests changes)
+       - Leave empty if no refinement needed
+       - If provided: Enhanced version focusing on competitive positioning
 
-    **INPUT COUNT VALIDATION:**
+    **4. pricing_strategy_update** (Optional[str]): Refined pricing (ONLY if competitive analysis suggests changes)
+       - Leave empty if no refinement needed
+       - If provided: Updated strategy with competitive pricing context
 
-    Count solutions in Task 1 output. Your output MUST contain EXACTLY the same count.
-    Before finalizing, verify: input_count == output_count. If mismatch, recover missing solutions.
+    **5. market_fit_score_adjustment** (Optional[float]): ±0.1 score adjustment (ONLY if competitive insights justify)
+       - Range: -0.1 to +0.1
+       - Leave empty if no adjustment warranted
+       - Positive if gaps reveal better fit, negative if competition is stronger than expected
 
-    **WORKFLOW (FOLLOW IN ORDER):**
+    **6. overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs)
+       - Summarize key competitive themes across ALL solutions
+       - Highlight market opportunities and positioning strategies
 
-    1. **FOR EACH SOLUTION** in Task 1 output (iterate over ALL):
+    **WORKFLOW:**
+
+    1. For each solution in Task 1:
        a. Find matching CompetitiveLandscape from Task 2
        b. Review: market_gaps, differentiation_opportunities, recommended_positioning
-       c. **ENHANCE** (preserve core + add insights):
-          - core_features: ADD 2-4 new features targeting market gaps
-          - differentiation_factors: ADD 2-3 new factors from competitive analysis
-          - value_proposition: REFINE to sharpen competitive positioning
-          - pricing_strategy: REFINE with competitive pricing context
-          - market_fit_score: OPTIONALLY increase by max 0.1 if gaps reveal better fit
-       d. **PRESERVE EXACTLY** (do NOT modify):
-          - technical_feasibility_score (independent of competition)
-          - solution_name (EXACT match to Task 1)
-          - pain_points_addressed (from original pain point analysis)
-          - target_personas (may slightly refine, but preserve core)
-          - requires_data_aggregation (business model characteristic)
-          - ALL refined SEO fields if present (seo_scalability_score_refined, estimated_cac_organic_refined, programmatic_seo_opportunity_refined, seo_refinement_metadata)
+       c. Generate enhancements based on competitive insights
 
-    2. **Verify Preservation**:
-       - Count output solutions == input solutions (from Task 1)
-       - All solution names match Task 1 exactly
-       - No null fields that were non-null in Task 1
+    2. Create one SolutionEnhancement object per solution with:
+       - solution_name (must match Task 1 exactly)
+       - new_core_features (2-4 new features)
+       - new_differentiation_factors (2-3 new factors)
+       - Optional updates (only if warranted)
 
-    **FIELD MANAGEMENT RULES:**
+    3. Write overall_competitive_insights covering all solutions
 
-    | Field | Action | Rule |
-    |-------|--------|------|
-    | technical_feasibility_score | PRESERVE | DO NOT modify |
-    | market_fit_score | EXTRACT + optional +0.1 | May increase if gaps reveal better fit. NEVER decrease. NEVER null. |
-    | technical_approach | EXTRACT + optional ENHANCE | May ADD 1-2 sentences on differentiation |
-    | core_features | ENHANCE | ADD 2-4 new features targeting gaps |
-    | differentiation_factors | ENHANCE | ADD 2-3 competitive factors |
-    | value_proposition | REFINE | Sharpen positioning (preserve core) |
-    | pricing_strategy | REFINE | Add competitive context |
-    | seo_scalability_score_refined | PRESERVE | DO NOT nullify |
-    | estimated_cac_organic_refined | PRESERVE | DO NOT nullify |
-    | programmatic_seo_opportunity_refined | PRESERVE | DO NOT nullify |
-    | seo_refinement_metadata | PRESERVE | DO NOT nullify (8 sub-fields) |
-
-    **COMMON MISTAKES TO AVOID:**
-
-    ❌ Dropping solution because lower scores than others
-    ❌ Filtering solutions based on perceived viability
-    ❌ Combining multiple solutions into one "best" solution
-    ❌ Returning only solutions with strong competitive data
-    ❌ Changing solution names (even minor edits)
-    ❌ Nullifying refined SEO fields from Stage 9.5
-
-    ✓ Return ALL solutions, even if enhancement is minimal
-    ✓ Preserve solutions with weak competitive data unchanged
-    ✓ Focus on incremental improvements, not filtering
-
-    **EXAMPLE OF CORRECT OUTPUT (Populated Data):**
+    **EXAMPLE OUTPUT:**
 
     {
-      "solution_ideas": [
+      "solution_enhancements": [
         {
-          "solution_name": "RelocatePro Directory",  // ← ACTUAL name from Task 1
-          "description": "When users arrive at RelocatePro Directory, they are greeted by a user-friendly interface...",  // ← ACTUAL description from Task 1
-          "value_proposition": "A comprehensive directory that connects users with verified relocation service providers, enhanced with real-time pricing transparency",  // ← REFINED from Task 1
-          "pain_points_addressed": ["Lack of transparency in service pricing", "Difficulty in finding reliable service providers"],  // ← PRESERVED from Task 1
-          "core_features": ["Verified Provider Listings", "User Reviews and Ratings", "Search Filters", "NEW: Real-time pricing dashboard", "NEW: AI-powered provider matching"],  // ← ENHANCED: original features + 2 new ones
-          "target_personas": ["Individuals relocating for work", "Families seeking moving services"],  // ← PRESERVED from Task 1
-          "technical_approach": "The RelocatePro Directory will be built on a robust web platform utilizing microservices. Enhanced with real-time data sync for pricing transparency.",  // ← ENHANCED: original + 1 sentence
-          "differentiation_factors": ["High SEO scalability", "Verified reviews", "NEW: Real-time pricing transparency dashboard", "NEW: Competitive gap targeting: No competitor offers live pricing"],  // ← ENHANCED: original + 2 new factors from Task 2
-          "requires_data_aggregation": false,  // ← PRESERVED from Task 1
-          "market_fit_score": 0.95,  // ← ADJUSTED UP from 0.9 (Task 1) based on competitive gaps
-          "technical_feasibility_score": 0.9,  // ← PRESERVED EXACTLY from Task 1
-          "seo_scalability_score_refined": 0.9,  // ← PRESERVED if present in Task 1
-          "estimated_cac_organic_refined": "$5-10 (refined based on keyword competition)",  // ← PRESERVED if present
-          "programmatic_seo_opportunity_refined": "High - estimated 500 unique SEO pages",  // ← PRESERVED if present
-          "seo_refinement_metadata": { /* 8 sub-fields */ },  // ← PRESERVED EXACTLY if present
-          ...all other 25 fields with ACTUAL VALUES...
-        },
-        {
-          "solution_name": "ExpatFinance Aggregator",  // ← Second solution with all fields
-          "description": "ExpatFinance Aggregator welcomes users with a dashboard...",
-          ...all fields populated with actual data...
+          "solution_name": "RelocatePro Directory",
+          "new_core_features": [
+            "Real-time pricing dashboard for service transparency",
+            "AI-powered provider matching based on user preferences"
+          ],
+          "new_differentiation_factors": [
+            "Real-time pricing transparency - no competitor offers live pricing",
+            "AI matching technology reduces search time by 60%"
+          ],
+          "value_proposition_update": "A comprehensive directory enhanced with real-time pricing transparency and AI-powered matching",
+          "pricing_strategy_update": null,
+          "market_fit_score_adjustment": 0.05
         }
       ],
-      "recommended_solution": "RelocatePro Directory",
-      "market_insights": "The relocation services market shows high demand for pricing transparency. Competitors lack real-time pricing features, creating opportunity for RelocatePro to differentiate through live pricing dashboards."
-    }
-
-    **WRONG OUTPUT (Schema Definition - DO NOT OUTPUT THIS):**
-
-    {
-      "additionalProperties": false,
-      "properties": {
-        "solution_name": { "type": "string", "description": "Name of the proposed product" },  // ← WRONG: This is a schema, not data
-        "description": { "type": "string" }
-      }
+      "overall_competitive_insights": "The relocation market shows strong opportunity for price transparency... [2-3 paragraphs]"
     }
 
   expected_output: >
-    IdeaGenerationResult Pydantic model with ENHANCED solutions:
+    CompetitiveEnhancements Pydantic model with enhancements ONLY:
 
-    **solution_ideas** (List[SolutionIdea]): ALL solutions from Task 1, each enhanced with:
-    - solution_name: **EXACT MATCH** to Task 1 input
-    - description: PRESERVED (core intact, may be slightly enhanced)
-    - value_proposition: REFINED for competitive positioning
-    - pain_points_addressed: UNCHANGED
-    - core_features: ENHANCED with 2-4 new features targeting gaps
-    - target_personas: UNCHANGED or slightly refined
-    - technical_approach: ENHANCED (preserve + add 1-2 sentences on differentiation)
-    - differentiation_factors: SIGNIFICANTLY ENHANCED (add 2-3 competitive factors)
-    - requires_data_aggregation: UNCHANGED
-    - data_sources: UNCHANGED or enhanced if new needs identified
-    - estimated_development_time: ADJUSTED IF NEEDED (only if adding 3+ features)
-    - pricing_strategy: REFINED with competitive insights
-    - market_fit_score: EXTRACT + optionally ADJUST UP (max +0.1)
-    - technical_feasibility_score: PRESERVE EXACTLY
-    - seo_scalability_score_refined: PRESERVE EXACTLY
-    - estimated_cac_organic_refined: PRESERVE EXACTLY
-    - programmatic_seo_opportunity_refined: PRESERVE EXACTLY
-    - seo_refinement_metadata: PRESERVE EXACTLY
+    **solution_enhancements** (List[SolutionEnhancement]): One enhancement per solution
+    - solution_name: Must match Task 1 solution name exactly
+    - new_core_features: 2-4 NEW features from competitive gaps (not all features)
+    - new_differentiation_factors: 2-3 NEW competitive advantages (not all factors)
+    - value_proposition_update: Optional refined value prop
+    - pricing_strategy_update: Optional refined pricing
+    - market_fit_score_adjustment: Optional ±0.1 adjustment
 
-    **recommended_solution**: PRESERVE from Task 1 (do NOT adjust)
+    **overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs)
 
-    **market_insights**: UPDATED with competitive learnings (4-6 sentences)
-
-    Enhanced solutions with competitive advantages, ready for selection.
+    NOTE: Task 1 base solution fields will be merged automatically by Python. Focus on generating excellent enhancements.
 
 solution_selection:
   description: >
@@ -496,7 +483,7 @@ solution_selection:
     - criterion="seo_growth_potential", score=0.X, justification="[specific data]"
 
     **all_solution_scores** (List[SolutionScores]): CRITICAL - Scores for ALL solutions evaluated:
-    For EACH solution (selected + runner-ups), include:
+    For EACH solution (selected + runner-ups), include ONLY these 7 fields:
     - solution_name: [exact name from Task 3]
     - market_fit_score: 0.X (from solution's market_fit_score field)
     - technical_feasibility_score: 0.X (from solution's technical_feasibility_score field)
@@ -504,6 +491,9 @@ solution_selection:
     - seo_growth_potential_score: 0.X (from solution's seo_scalability_score field)
     - composite_score: 0.X (weighted average: 0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
     - rank: N (1=best, 2=second, etc.)
+
+    CRITICAL: DO NOT include keyword_demand_score or adjusted_composite_score fields.
+    These will be calculated later by Stage 8.8 using real DataForSEO API validation.
 
     **runner_up_solutions** (List[str]): 2-3 alternative solution names ranked by composite score
 

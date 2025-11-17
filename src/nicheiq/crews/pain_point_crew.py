@@ -16,17 +16,20 @@ from ..models.pain_point import (
     PainPoint,
     PainPointAnalysisResult,
     PainPointExtraction,
+    PainPointScoring,
     UnvalidatedPainPoint,
+    ValidationResult,
 )
 from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
+from ..utils.helpers import ContentTokenMonitor
 
 
 def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
     """
-    Guardrail function to ensure PainPointAnalysisResult is valid with no extra text.
+    Guardrail function to ensure ValidationResult is valid with no extra text.
 
-    This prevents agents from adding explanatory commentary like "The above JSON object fully complies..."
-    which causes Pydantic parsing to fail.
+    This prevents agents from adding explanatory commentary and validates that
+    the number of scores matches the number of extracted pain points.
 
     Returns:
         Tuple[bool, Any]: (success, validated_result_or_error_message)
@@ -37,29 +40,29 @@ def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
             # Log raw output preview for debugging
             raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
             logger.error(f"Guardrail validation failed - No Pydantic output found. Raw output preview: {raw_preview}...")
-            return (False, "CRITICAL ERROR: Return ONLY the PainPointAnalysisResult Pydantic model with NO additional text, explanations, or commentary. Do not add phrases like 'The above JSON object fully complies...'")
+            return (False, "CRITICAL ERROR: Return ONLY the ValidationResult Pydantic model with NO additional text, explanations, or commentary. Do not add phrases like 'The above JSON object fully complies...'")
 
         # Validate it's the correct type
-        pain_analysis = result.pydantic  # Should be PainPointAnalysisResult
+        validation_result = result.pydantic  # Should be ValidationResult
 
-        # Check pain_points list exists
-        if not hasattr(pain_analysis, 'pain_points'):
-            logger.error(f"Guardrail validation failed - Missing 'pain_points' field. Output type: {type(pain_analysis)}")
-            return (False, "OUTPUT ERROR: Missing 'pain_points' field in PainPointAnalysisResult")
+        # Check pain_point_scores list exists
+        if not hasattr(validation_result, 'pain_point_scores'):
+            logger.error(f"Guardrail validation failed - Missing 'pain_point_scores' field. Output type: {type(validation_result)}")
+            return (False, "OUTPUT ERROR: Missing 'pain_point_scores' field in ValidationResult")
 
-        if not pain_analysis.pain_points:
-            logger.error(f"Guardrail validation failed - Empty pain_points list")
-            return (False, "VALIDATION ERROR: Empty pain_points list. You must score and validate all extracted pain points.")
+        if not validation_result.pain_point_scores:
+            logger.error(f"Guardrail validation failed - Empty pain_point_scores list")
+            return (False, "VALIDATION ERROR: Empty pain_point_scores list. You must score all extracted pain points.")
 
         # Success - return the validated Pydantic output
-        logger.debug(f"Guardrail validation passed: {len(pain_analysis.pain_points)} pain points validated")
+        logger.debug(f"Guardrail validation passed: {len(validation_result.pain_point_scores)} pain points scored")
         return (True, result.pydantic)
 
     except Exception as e:
         # Log exception details for debugging
         raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
         logger.error(f"Guardrail validation exception: {str(e)}. Raw output preview: {raw_preview}...")
-        return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the PainPointAnalysisResult model with no extra text.")
+        return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the ValidationResult model with no extra text.")
 
 
 @CrewBase
@@ -75,8 +78,8 @@ class PainPointCrew:
     - Validator scores and validates findings
     """
 
-    agents_config = "config/agents.yaml"
-    tasks_config = "config/tasks.yaml"
+    agents_config = "config/pain_point_agents.yaml"
+    tasks_config = "config/pain_point_tasks.yaml"
 
     def __init__(self, reddit_posts: List[RedditPost] = None, twitter_threads: List[TwitterThread] = None, niche_description: str = ""):
         """
@@ -487,13 +490,13 @@ class PainPointCrew:
         Task: Score and validate extracted pain points.
 
         Depends on: extract_pain_points_task
-        Output: Validated pain points with severity and WTP scores.
+        Output: ValidationResult with severity and WTP scores (scores only, Python will merge).
         """
         return Task(
             config=self.tasks_config["validate_pain_points"],
             agent=self.pain_point_validator(),
             context=[self.extract_pain_points_task()],
-            output_pydantic=PainPointAnalysisResult,
+            output_pydantic=ValidationResult,
             guardrail=validate_pydantic_pain_point_output,
             guardrail_max_retries=3,
         )
@@ -596,6 +599,32 @@ class PainPointCrew:
                 logger.warning("⚠️  No knowledge sources attached to crew!")
             logger.debug("=" * 80)
 
+            # Token monitoring: Log content size and check soft caps
+            if settings.token_monitoring_enabled:
+                monitor = ContentTokenMonitor()
+
+                # Monitor Reddit content
+                reddit_tokens = monitor.log_content_stats(
+                    content=self.formatted_reddit_content,
+                    label="Stage 6 - Reddit content",
+                    model=settings.content_analysis_llm
+                )
+
+                # Monitor Twitter content
+                twitter_tokens = monitor.log_content_stats(
+                    content=self.formatted_twitter_content,
+                    label="Stage 6 - Twitter content",
+                    model=settings.content_analysis_llm
+                )
+
+                # Combined token check
+                total_tokens = reddit_tokens + twitter_tokens
+                monitor.check_soft_cap(
+                    tokens=total_tokens,
+                    label="Stage 6 - Total content (Reddit + Twitter)",
+                    model=settings.content_analysis_llm
+                )
+
             # Hybrid approach: Pass full content for first agent (comprehensive categorization),
             # while knowledge sources remain available for subsequent agents (targeted evidence retrieval)
             crew_output = crew_instance.kickoff(inputs={
@@ -609,28 +638,71 @@ class PainPointCrew:
                 "total_content": len(self.reddit_posts) + len(self.twitter_threads),
             })
 
-            # Extract the Pydantic model from CrewOutput
-            result = crew_output.pydantic
+            # Python merge: Extract all task outputs and merge Task 2 + Task 3
+            task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+            if len(task_outputs) < 3:
+                logger.error(f"Expected 3 task outputs, got {len(task_outputs)}")
+                raise ValueError("Incomplete task execution in pain point crew")
 
-            # Capture categorization from Task 1 (categorize_content)
-            try:
-                task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-                if task_outputs and len(task_outputs) > 0:
-                    categorization_task_output = task_outputs[0]  # First task is categorize_content
-                    if hasattr(categorization_task_output, 'pydantic') and categorization_task_output.pydantic:
-                        result.content_categorization = categorization_task_output.pydantic
-                        logger.info(
-                            f"[OK] Captured content categorization: "
-                            f"{len(result.content_categorization.theme_categories)} themes, "
-                            f"{len(result.content_categorization.user_segments)} segments"
-                        )
-                    else:
-                        logger.warning("Task 1 output does not have pydantic attribute")
+            categorization_output = task_outputs[0].pydantic  # Task 1: ContentCategorizationReport
+            extraction_output = task_outputs[1].pydantic      # Task 2: PainPointExtraction
+            validation_output = task_outputs[2].pydantic      # Task 3: ValidationResult
+
+            logger.info(
+                f"Python merge: Combining {len(extraction_output.extracted_pain_points)} extracted pain points "
+                f"with {len(validation_output.pain_point_scores)} validation scores"
+            )
+
+            # Merge Task 2 (extraction) + Task 3 (validation) → final PainPointAnalysisResult
+            final_pain_points = []
+            unmatched_scores = []
+
+            for unvalidated in extraction_output.extracted_pain_points:
+                # Find matching score by title
+                matching_score = next(
+                    (score for score in validation_output.pain_point_scores
+                     if score.pain_point_title == unvalidated.title),
+                    None
+                )
+
+                if matching_score:
+                    # Merge unvalidated pain point + validation scores
+                    final_pain_points.append(PainPoint(
+                        **unvalidated.model_dump(),  # All original fields
+                        severity_score=matching_score.severity_score,
+                        willingness_to_pay=matching_score.willingness_to_pay,
+                        opportunity_level=matching_score.opportunity_level,
+                    ))
                 else:
-                    logger.warning("Could not access task outputs for categorization capture")
-            except Exception as e:
-                logger.warning(f"Failed to capture content categorization: {e}")
-                # Graceful degradation - continue without categorization
+                    logger.warning(f"No validation score found for pain point: '{unvalidated.title}' - skipping")
+                    unmatched_scores.append(unvalidated.title)
+
+            # Validate merge completeness
+            if len(final_pain_points) != len(extraction_output.extracted_pain_points):
+                logger.warning(
+                    f"Merge incomplete: {len(final_pain_points)}/{len(extraction_output.extracted_pain_points)} "
+                    f"pain points matched with scores. Unmatched: {unmatched_scores}"
+                )
+
+            # Create final result
+            result = PainPointAnalysisResult(
+                niche=extraction_output.niche,
+                pain_points=final_pain_points,
+                total_mentions=sum(pp.mention_count for pp in final_pain_points),
+                top_categories=list(set(
+                    cat
+                    for pp in final_pain_points
+                    if pp.categories
+                    for cat in pp.categories
+                ))[:10],  # Top 10 unique categories
+                analysis_summary=validation_output.validation_summary,
+                content_categorization=categorization_output,  # From Task 1
+            )
+
+            logger.info(
+                f"[OK] Python merge complete: {len(result.pain_points)} validated pain points, "
+                f"{len(result.top_categories)} categories"
+            )
 
             # Verify results contain actual content from knowledge sources (sampling check)
             if result.pain_points:

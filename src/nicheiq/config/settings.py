@@ -39,6 +39,10 @@ class Settings(BaseSettings):
         default="gpt-4o",
         description="Model to use for solution brainstorming/ideation (gpt-4o, o1-mini, or claude-3-5-sonnet for creative thinking)"
     )
+    keyword_validation_llm: str = Field(
+        default="gpt-4.1-nano",
+        description="Model to use for keyword relevance validation in Stage 9.5c (gpt-4.1-nano recommended for cost efficiency)"
+    )
 
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: Optional[str] = Field(default=None, description="CrewAI+ API key")
@@ -121,6 +125,10 @@ class Settings(BaseSettings):
     target_language: Optional[str] = Field(
         default=None, description="Target language code (e.g., 'en'). If None, API uses default language."
     )
+    keyword_relevance_threshold: float = Field(
+        default=0.65,
+        description="Minimum relevance score (0.0-1.0) for keyword validation in Stage 9.5c (never lowered)"
+    )
 
     # SEO Refinement Settings (Stage 9.5)
     seo_refinement_enabled: bool = Field(
@@ -164,12 +172,62 @@ class Settings(BaseSettings):
         description="Maximum enrichment iterations to prevent runaway costs"
     )
     keyword_enrichment_batch_size: int = Field(
-        default=20,
-        description="Number of seeds per DataForSEO API call (API limit)"
+        default=12,
+        description="Number of seeds per DataForSEO API call (reduced for better quality)"
     )
     keyword_enrichment_min_coverage: float = Field(
         default=0.7,
         description="Minimum percentage of topic clusters that must have keywords (0.0-1.0)"
+    )
+
+    # Token Monitoring Configuration (Soft Caps for Cost Control)
+    token_monitoring_enabled: bool = Field(
+        default=True,
+        description="Enable token counting and cost monitoring for LLM inputs"
+    )
+    token_warning_threshold: int = Field(
+        default=200_000,
+        description="Log warning when content exceeds this token count (for cost visibility)"
+    )
+    token_soft_cap_enabled: bool = Field(
+        default=False,
+        description="Enable soft cap enforcement (logs critical warning but doesn't fail)"
+    )
+    token_soft_cap: int = Field(
+        default=400_000,
+        description="Soft cap token limit - if enabled, logs critical warning when exceeded"
+    )
+    cost_logging_enabled: bool = Field(
+        default=True,
+        description="Log estimated API costs for token usage"
+    )
+
+    # Stage 8.8: Keyword Validation Configuration
+    keyword_validation_enabled: bool = Field(
+        default=True,
+        description="Enable keyword demand validation for top 3 solutions before final selection"
+    )
+    keyword_min_search_volume: int = Field(
+        default=50,
+        description="Minimum monthly search volume for a keyword to be considered 'validated'"
+    )
+    keyword_min_volume_threshold: int = Field(
+        default=10,
+        description="Minimum search volume threshold for relevance checking (lower than min_search_volume)"
+    )
+    keyword_pivot_max_attempts: int = Field(
+        default=4,
+        description="Maximum number of pivot attempts (different seed generation strategies) before accepting best result"
+    )
+    keyword_quick_expansion_size: int = Field(
+        default=50,
+        description="Target number of keywords for quick expansion during relevance testing"
+    )
+
+    # Stage 8.85: Solution Refinement Configuration
+    solution_refinement_enabled: bool = Field(
+        default=True,
+        description="Enable strategic refinement of selected solution based on keyword insights"
     )
 
     # Output Configuration

@@ -38,6 +38,44 @@ class SEORefinementMetadata(BaseModel):
     )
 
 
+class SolutionSEORefinement(BaseModel):
+    """
+    SEO score refinements from Stage 9.5 using actual keyword data.
+
+    Contains ONLY the refined/new fields added after keyword research.
+    Used in unified enrichment pattern where each stage outputs only its additions,
+    then report generator merges all enrichments into complete SolutionIdea.
+    """
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Name of solution being refined")
+
+    seo_scalability_score_refined: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0,
+        description="Refined SEO scalability score using actual keyword volume data from Stage 9"
+    )
+
+    estimated_cac_organic_refined: Optional[str] = Field(
+        default=None,
+        description="Refined organic CAC range based on keyword difficulty and volume (e.g., '$12-25')"
+    )
+
+    programmatic_seo_opportunity_refined: Optional[str] = Field(
+        default=None,
+        description="Quantified programmatic SEO opportunity with page count estimates"
+    )
+
+    estimated_indexable_pages: Optional[int] = Field(
+        default=None,
+        description="Estimated number of indexable pages based on keyword research and content model"
+    )
+
+    seo_refinement_metadata: Optional[SEORefinementMetadata] = Field(
+        default=None,
+        description="Detailed calculation metadata showing how refined scores were derived"
+    )
+
+
 class SolutionEvaluation(BaseModel):
     """Evaluation scores and analysis for a single solution."""
 
@@ -274,6 +312,52 @@ class SolutionIdea(BaseModel):
         )
     )
 
+    # Keyword Validation & Refinement (Stage 8.8 and 8.85)
+    keyword_geographic_priorities: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Geographic priorities identified from keyword validation data (Stage 8.8). "
+            "List of 3-8 countries/regions with highest keyword opportunity based on search volume and competition. "
+            "Examples: 'Portugal (450 keywords, avg vol 1.2k)', 'Spain (320 keywords, avg vol 890)', "
+            "'Germany (280 keywords, high competition)'. "
+            "Used for geographic expansion planning and localized content strategy."
+        )
+    )
+
+    keyword_feature_priorities: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Feature or category priorities identified from keyword themes in Stage 8.8 validation. "
+            "List of 3-8 feature areas or product categories with strong keyword support. "
+            "Examples: 'Health insurance (580 keywords, Tier 1: 45)', 'Tax planning (320 keywords, Tier 1: 28)', "
+            "'Banking services (210 keywords, high competition)'. "
+            "Informs MVP scope and product roadmap decisions based on organic discovery potential."
+        )
+    )
+
+    keyword_strategic_insights: Optional[str] = Field(
+        default=None,
+        description=(
+            "Strategic insights derived from keyword validation data in Stage 8.8. "
+            "2-3 sentence analysis covering: unexpected keyword opportunities discovered, "
+            "competitive gaps revealed by low-competition/high-volume keywords, "
+            "or geographic/categorical patterns that suggest pivot opportunities. "
+            "Examples: 'Discovered untapped demand in Eastern Europe with 30% lower competition', "
+            "'Tax residency keywords show 3x higher volume than anticipated, suggesting product expansion'."
+        )
+    )
+
+    category_pivot_suggestion: Optional[str] = Field(
+        default=None,
+        description=(
+            "Category or positioning pivot suggestion based on keyword validation findings from Stage 8.8. "
+            "Single sentence recommendation if keyword data reveals stronger opportunity in adjacent category. "
+            "Format: 'Consider pivoting from [original positioning] to [suggested positioning] based on [data insight]'. "
+            "Examples: 'Consider pivoting from general expat directory to tax-focused platform based on 2.5x higher keyword volume in tax residency vertical', "
+            "'null' if current positioning aligns with keyword data. Set to None if no pivot recommended."
+        )
+    )
+
 
 class IdeaGenerationResult(BaseModel):
     """Complete result of solution idea generation."""
@@ -286,4 +370,54 @@ class IdeaGenerationResult(BaseModel):
     )
     market_insights: str = Field(
         ..., description="Market insights and opportunity assessment"
+    )
+
+
+class SolutionEnhancement(BaseModel):
+    """Enhancement data for a single solution from competitive analysis."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Solution name (must match Task 1)")
+    new_core_features: List[str] = Field(
+        default_factory=list,
+        description="NEW features to add from competitive analysis (not all features)"
+    )
+    new_differentiation_factors: List[str] = Field(
+        default_factory=list,
+        description="NEW differentiation factors from competitive gaps (not all factors)"
+    )
+    value_proposition_update: Optional[str] = Field(
+        default=None,
+        description="Updated value proposition (only if competitive analysis suggests refinement)"
+    )
+    pricing_strategy_update: Optional[str] = Field(
+        default=None,
+        description="Refined pricing strategy (only if competitive analysis suggests changes)"
+    )
+    market_fit_score_adjustment: Optional[float] = Field(
+        default=None,
+        ge=-0.1,
+        le=0.1,
+        description="Market fit score adjustment based on competitive insights (max ±0.1)"
+    )
+
+
+class CompetitiveEnhancements(BaseModel):
+    """
+    Task 3 output: Competitive enhancements for solutions (ONLY new/changed data).
+
+    Contains competitive insights to enhance solutions from Task 1.
+    These enhancements will be merged with Task 1 solutions via Python.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_enhancements: List[SolutionEnhancement] = Field(
+        ...,
+        description="Enhancements for each solution based on competitive analysis"
+    )
+    overall_competitive_insights: str = Field(
+        ...,
+        description="Cross-solution competitive insights and market positioning (2-3 paragraphs)"
     )

@@ -90,6 +90,8 @@ class CheckpointManager:
                 data_json = stage_data.model_dump(mode='json')
             elif isinstance(stage_data, dict):
                 data_json = stage_data
+            elif isinstance(stage_data, list):
+                data_json = stage_data  # Lists are JSON-serializable
             else:
                 data_json = {"data": str(stage_data)}
 
@@ -212,7 +214,10 @@ class CheckpointManager:
             "stage_8_competitive.json": "competitive_analysis",
             "stage_8_5_refinement.json": "idea_generation",  # Stage 8.5 updates idea_generation with competitive insights
             "stage_8_75_solution_selection.json": "solution_selection",
+            "stage_8_8_keyword_validation.json": "keyword_validation_results",  # Stage 8.8 keyword demand validation
+            "stage_8_85_solution_refinement.json": "solution_refinement",  # Stage 8.85 strategic refinements
             "stage_9_seo_strategy.json": "seo_strategy_report",
+            "stage_9_5_seo_refinement.json": "seo_enrichment",  # Stage 9.5 SEO score refinement
             "stage_9_75_data_sources.json": "data_source_research",
         }
 
@@ -231,9 +236,27 @@ class CheckpointManager:
                     if hasattr(field_type, '__origin__'):  # Optional type
                         field_type = field_type.__args__[0]
 
-                    # Instantiate Pydantic model
+                    # Load based on field type
                     try:
-                        setattr(self.state, state_attr, field_type(**stage_data))
+                        # Handle legacy checkpoint format where lists were wrapped as {"data": str(...)}
+                        if (isinstance(stage_data, dict) and
+                            len(stage_data) == 1 and
+                            "data" in stage_data and
+                            isinstance(stage_data["data"], str)):
+                            try:
+                                import ast
+                                stage_data = ast.literal_eval(stage_data["data"])
+                                logger.debug(f"  Unwrapped legacy checkpoint format for {stage_file}")
+                            except (ValueError, SyntaxError) as e:
+                                logger.warning(f"  Failed to unwrap legacy checkpoint: {e}")
+
+                        # Check if it's a Pydantic model (has model_dump method)
+                        if hasattr(field_type, 'model_fields'):
+                            # Pydantic model - instantiate with kwargs
+                            setattr(self.state, state_attr, field_type(**stage_data))
+                        else:
+                            # Non-Pydantic type (list, dict, etc.) - set directly
+                            setattr(self.state, state_attr, stage_data)
                         logger.debug(f"  Loaded {stage_file} → {state_attr}")
                     except Exception as e:
                         logger.warning(f"  Failed to load {stage_file}: {e}")

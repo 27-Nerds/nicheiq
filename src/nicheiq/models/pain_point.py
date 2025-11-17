@@ -104,6 +104,46 @@ class PainPointExtraction(BaseModel):
     )
 
 
+class PainPointScoring(BaseModel):
+    """Scoring data for a single pain point from validation task (Task 3 output).
+
+    This intermediate model contains ONLY the new scoring fields added by the validator.
+    Python will merge this with UnvalidatedPainPoint to create the final PainPoint.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    pain_point_title: str = Field(
+        ..., description="Title reference key to match with UnvalidatedPainPoint"
+    )
+    severity_score: float = Field(
+        ..., ge=0.0, le=1.0, description="Severity score (0-1) based on emotional language"
+    )
+    willingness_to_pay: float = Field(
+        ..., ge=0.0, le=1.0, description="Indicator of willingness to pay for solution (0-1)"
+    )
+    opportunity_level: OpportunityLevel = Field(
+        ..., description="Overall opportunity level (high/medium/low)"
+    )
+    scoring_rationale: Optional[str] = Field(
+        default=None, description="Brief explanation of why these scores were assigned"
+    )
+
+
+class ValidationResult(BaseModel):
+    """Task 3 output: Validation scores for all pain points (ONLY new scoring data)."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    niche: str = Field(..., description="The niche being analyzed")
+    pain_point_scores: List[PainPointScoring] = Field(
+        ..., description="Validation scores for each extracted pain point"
+    )
+    validation_summary: str = Field(
+        ..., description="Summary of validation methodology and overall assessment"
+    )
+
+
 class PainPoint(BaseModel):
     """Represents a user pain point discovered from social discussions."""
 
