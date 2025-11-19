@@ -322,7 +322,7 @@ class KeywordBasedPageType(BaseModel):
         ..., description="Which keyword tier/cluster this page type targets (e.g., 'Tier 1 quick wins', 'Geographic group: Spanish markets')"
     )
     example_keywords: List[str] = Field(
-        ..., min_items=2, max_items=5, description="2-5 example target keywords this page type addresses"
+        ..., min_length=2, max_length=5, description="2-5 example target keywords this page type addresses"
     )
     primary_intent: str = Field(
         ..., description="Primary search intent: 'commercial', 'informational', 'navigational', 'transactional'"

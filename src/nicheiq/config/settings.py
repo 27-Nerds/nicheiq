@@ -6,7 +6,7 @@ Uses pydantic-settings for type-safe environment variable loading.
 from pathlib import Path
 from typing import Optional
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     keyword_validation_llm: str = Field(
         default="gpt-4.1-nano",
         description="Model to use for keyword relevance validation in Stage 9.5c (gpt-4.1-nano recommended for cost efficiency)"
+    )
+    keyword_research_llm: str = Field(
+        default="gpt-4o-mini",
+        description="Model to use for keyword research crew in Stage 8.8 (gpt-4o-mini for cost efficiency, gpt-4o for better quality)"
     )
 
     # CrewAI+ (Enterprise) - Optional
@@ -223,6 +227,34 @@ class Settings(BaseSettings):
         default=50,
         description="Target number of keywords for quick expansion during relevance testing"
     )
+    keyword_validation_top_pain_points: int = Field(
+        default=5,
+        description="Number of top pain points to include in keyword validation context"
+    )
+    keyword_validation_top_competitors: int = Field(
+        default=10,
+        description="Number of top competitors to include in keyword validation context"
+    )
+    keyword_validation_temperature: float = Field(
+        default=0.7,
+        description="LLM temperature for keyword research crew (0.7 recommended for creative tasks with constraints)"
+    )
+
+    @field_validator('keyword_validation_top_pain_points', 'keyword_validation_top_competitors')
+    @classmethod
+    def validate_positive_count(cls, v):
+        """Validate that count fields are at least 1."""
+        if v < 1:
+            raise ValueError("Must be at least 1")
+        return v
+
+    @field_validator('keyword_validation_temperature')
+    @classmethod
+    def validate_temperature_range(cls, v):
+        """Validate that temperature is in valid range for LLMs."""
+        if not 0.0 <= v <= 2.0:
+            raise ValueError("Temperature must be between 0.0 and 2.0")
+        return v
 
     # Stage 8.85: Solution Refinement Configuration
     solution_refinement_enabled: bool = Field(

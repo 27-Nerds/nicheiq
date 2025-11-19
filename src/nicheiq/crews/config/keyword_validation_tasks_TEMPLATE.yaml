@@ -1,0 +1,95 @@
+# Context Chaining Template for KeywordValidationCrew
+#
+# Purpose: Template for future implementation if keyword validation strategies
+#          become sequential tasks with context chaining (instead of parallel execution)
+#
+# Use Case: If you want to pass results from hybrid_strategy to competitor_strategy,
+#           or create a multi-task validation pipeline with accumulated results
+#
+# Reference: CLAUDE.md Section "Key Technical Patterns" > "CrewAI Context Chaining"
+
+example_sequential_task:
+  description: >
+    ═══ HOW TO ACCESS CONTEXT ═══
+    This task receives output from the previous task via CrewAI context chaining.
+
+    **IMPORTANT:** The previous task's Pydantic output is automatically available.
+    You MUST extract and preserve these fields:
+
+    | Field from Context | Type | How to Access |
+    |--------------------|------|---------------|
+    | strategy_name | str | Read from previous task output |
+    | keywords | List[EnrichedKeyword] | Copy EXACTLY (preserve all fields) |
+    | total_keywords | int | Read count |
+    | avg_relevance_score | float | Read score |
+    | quality_flag | str | Check if "SUCCESS" or "INSUFFICIENT" |
+
+    **Context Chaining Pattern:**
+    ```python
+    @task
+    def task_1_initial_validation(self) -> Task:
+        return Task(
+            config=self.tasks_config["task_1"],
+            agent=self.keyword_analyst(),
+            output_pydantic=KeywordAttemptResult
+        )
+
+    @task
+    def task_2_enhanced_validation(self) -> Task:
+        return Task(
+            config=self.tasks_config["task_2"],
+            agent=self.keyword_analyst(),
+            context=[self.task_1_initial_validation()],  # Auto-passes Pydantic
+            output_pydantic=CombinedKeywordResult
+        )
+    ```
+
+    **YOUR TASK:**
+    1. Extract previous attempt results from context
+    2. Verify context data integrity (all fields present)
+    3. Build upon previous results (accumulate keywords, update scores)
+    4. Return enhanced output preserving ALL previous data
+
+    ═══════════════════════════════════════════════════════════════════
+
+    [Rest of task description continues here...]
+
+  expected_output: >
+    Complete Pydantic model with ALL fields from context PLUS new fields.
+
+    **CRITICAL CONTEXT PRESERVATION:**
+    - DO NOT drop fields from previous task
+    - DO NOT modify existing keyword data
+    - ADD new keywords to existing list
+    - RECALCULATE averages including previous results
+
+    **Example Structure:**
+    {
+      "accumulated_strategies": ["hybrid", "competitor"],
+      "previous_attempts": 2,
+      "all_keywords": [...],  # Combined from all attempts
+      "total_keywords": 45,   # Sum across attempts
+      "best_relevance_score": 0.72,
+      "combined_quality_flag": "SUCCESS"
+    }
+
+# Notes for Implementation:
+#
+# 1. Context chaining requires sequential task execution (NOT parallel)
+# 2. Use output_pydantic on source task to enable automatic passing
+# 3. Add validation in target task to ensure context fields are present
+# 4. Document field preservation requirements in expected_output
+# 5. Test with small datasets before production use
+#
+# Benefits of Context Chaining:
+# - Automatic field preservation (no manual JSON formatting)
+# - Type safety via Pydantic models
+# - Reduced prompt engineering (no need to describe previous output)
+# - Reliable data passing (CrewAI handles serialization)
+#
+# Trade-offs:
+# - Sequential execution slower than parallel
+# - More complex task dependencies
+# - Harder to debug (context passing is implicit)
+#
+# See CLAUDE.md for more examples and best practices.

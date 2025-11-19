@@ -280,3 +280,113 @@ class KeywordValidationSummary(BaseModel):
             "average_volume_per_keyword"
         )
     )
+
+
+# Stage 8.8 - CrewAI Agent-Based Validation Models
+
+
+class EnrichedKeyword(BaseModel):
+    """Keyword with metrics from DataForSEO expansion."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    keyword: str = Field(..., description="The keyword phrase")
+    search_volume: int = Field(..., ge=0, description="Monthly search volume")
+    competition: float = Field(..., ge=0.0, le=1.0, description="Competition level (0-1)")
+    cpc: Optional[float] = Field(default=None, description="Cost per click in USD")
+    tier: Optional[str] = Field(default=None, description="Keyword tier classification (quick_win, strategic_growth)")
+    geography: Optional[str] = Field(default=None, description="Geographic modifier if present")
+
+
+class KeywordAttemptResult(BaseModel):
+    """Result from a single keyword research strategy attempt (e.g., hybrid, competitor)."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    strategy_name: str = Field(..., description="Strategy used (hybrid, competitor, pain_point, category)")
+    keywords: List[EnrichedKeyword] = Field(default_factory=list, description="Keywords found by this strategy")
+    total_keywords: int = Field(..., ge=0, description="Number of keywords found")
+    avg_relevance_score: float = Field(..., ge=0.0, le=1.0, description="Average semantic relevance score")
+    quality_flag: str = Field(..., description="SUCCESS if relevance ≥ 0.6 AND keywords ≥ 20, else INSUFFICIENT")
+    error_log: Optional[str] = Field(default=None, description="Error details if strategy failed")
+
+
+class CrewKeywordValidationResult(BaseModel):
+    """
+    Final keyword validation result from KeywordValidationCrew.
+
+    IMPORTANT: This model MUST maintain backward compatibility with Stage 8.85.
+    Use model_dump() to convert to dict format expected by solution refinement logic.
+
+    Note: No custom to_dict() needed - Pydantic's model_dump() handles serialization.
+    """
+
+    model_config = ConfigDict(
+        extra='forbid',
+        json_schema_extra={
+            "example": {
+                "solution_name": "ExpatEase Directory",
+                "validated_count": 42,
+                "total_volume": 18750,
+                "avg_competition": 38.5,
+                "keyword_demand_score": 0.78,
+                "top_keywords": [
+                    {"keyword": "expat health insurance", "volume": 3200, "competition": 0.42},
+                    {"keyword": "relocation services portugal", "volume": 2100, "competition": 0.38},
+                    {"keyword": "expat tax advisor spain", "volume": 1850, "competition": 0.35},
+                    {"keyword": "international moving companies", "volume": 1650, "competition": 0.45},
+                    {"keyword": "expat community barcelona", "volume": 1420, "competition": 0.32}
+                ],
+                "top_geographic_keywords": [
+                    "expat services spain",
+                    "relocation portugal",
+                    "expat life barcelona"
+                ],
+                "demand_signal": "strong",
+                "validation_signals": {
+                    "has_search_demand": True,
+                    "keyword_diversity": True,
+                    "high_volume_presence": True,
+                    "average_volume_per_keyword": 446.4
+                },
+                "attempts_made": 1,
+                "best_relevance_score": 0.78,
+                "accumulated_keywords_count": 42
+            }
+        }
+    )
+
+    solution_name: str = Field(..., description="Name of the solution")
+    validated_count: int = Field(..., ge=0, description="Number of validated keywords")
+    total_volume: int = Field(..., ge=0, description="Total monthly search volume")
+    avg_competition: float = Field(..., ge=0.0, le=100.0, description="Average competition index")
+    keyword_demand_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Keyword demand multiplier for solution scoring"
+    )
+    top_keywords: List[Dict] = Field(
+        default_factory=list,
+        description="Top keywords with metrics (for Stage 8.85 compatibility)"
+    )
+    top_geographic_keywords: List[str] = Field(
+        default_factory=list,
+        description="Geographic keywords (for Stage 8.85 compatibility)"
+    )
+    demand_signal: str = Field(
+        ...,
+        description="Demand classification: strong | moderate | weak"
+    )
+    validation_signals: Dict = Field(
+        ...,
+        description="Binary validation flags for Stage 8.85"
+    )
+
+    # New fields specific to crew-based approach
+    attempts_made: int = Field(..., ge=1, le=4, description="Number of strategy attempts")
+    best_relevance_score: float = Field(..., ge=0.0, le=1.0, description="Best relevance score achieved")
+    accumulated_keywords_count: Optional[int] = Field(
+        default=None,
+        description="Total keywords accumulated across attempts"
+    )
