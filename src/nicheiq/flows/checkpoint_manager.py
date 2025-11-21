@@ -5,11 +5,12 @@ Handles saving and loading checkpoint state to enable resume functionality
 and recovery from failures.
 """
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional, get_origin, get_args
 import json
 import shutil
 from datetime import datetime, timedelta
+from pathlib import Path
+import types
+from typing import Any, Union, get_args, get_origin
 
 from loguru import logger
 
@@ -33,7 +34,7 @@ class CheckpointManager:
         self,
         niche_description: str,
         state: ResearchState,
-        allowed_project_types: Optional[List[str]] = None
+        allowed_project_types: list[str | None] = None
     ):
         """
         Initialize checkpoint manager.
@@ -46,7 +47,7 @@ class CheckpointManager:
         self.niche_description = niche_description
         self.state = state
         self.allowed_project_types = allowed_project_types
-        self.checkpoint_folder: Optional[Path] = None
+        self.checkpoint_folder: Path | None = None
 
     def _get_niche_slug(self) -> str:
         """Generate filesystem-safe slug from niche description."""
@@ -125,7 +126,7 @@ class CheckpointManager:
 
         # Load existing metadata if exists
         if metadata_file.exists():
-            with open(metadata_file, "r", encoding="utf-8") as f:
+            with open(metadata_file, encoding="utf-8") as f:
                 metadata = json.load(f)
         else:
             metadata = {
@@ -158,7 +159,7 @@ class CheckpointManager:
                 temp_file.unlink()  # Clean up temp file on error
             raise  # Re-raise so outer try/catch can handle
 
-    def find_latest_checkpoint(self) -> Optional[Path]:
+    def find_latest_checkpoint(self) -> Path | None:
         """Find most recent checkpoint folder for current niche."""
         if not settings.checkpoint_enabled or not settings.checkpoint_dir.exists():
             return None
@@ -199,7 +200,7 @@ class CheckpointManager:
                 )
                 return False
 
-            with open(metadata_file, "r", encoding="utf-8") as f:
+            with open(metadata_file, encoding="utf-8") as f:
                 metadata = json.load(f)
 
             # Validate niche matches
@@ -227,13 +228,18 @@ class CheckpointManager:
             logger.error(f"Failed to load checkpoint: {e}")
             return False
 
-    def _reconstruct_state_from_checkpoint(self, folder_path: Path, metadata: Dict[str, Any]) -> None:
+    def _reconstruct_state_from_checkpoint(self, folder_path: Path, metadata: dict[str, Any]) -> None:
         """Reconstruct ResearchState from individual stage checkpoint files."""
         # Map stage files to state attributes
         stage_mapping = {
             "stage_1_niche_context.json": "niche_context",
             "stage_5_social_content.json": "social_content",
             "stage_6_pain_points.json": "pain_point_analysis",
+            # Task-level checkpoints for Stages 7-8.75 unified pipeline
+            "stage_7_1_ideation.json": "idea_generation",
+            "stage_7_2_competitive.json": "competitive_analysis",
+            # stage_7_3_refinement.json contains CompetitiveEnhancements (merged into idea_generation)
+            # Legacy stage files (for backward compatibility)
             "stage_7_solutions.json": "idea_generation",
             "stage_8_competitive.json": "competitive_analysis",
             "stage_8_5_refinement.json": "idea_generation",  # Stage 8.5 updates idea_generation with competitive insights
@@ -253,16 +259,20 @@ class CheckpointManager:
         for stage_file, state_attr in stage_mapping.items():
             file_path = folder_path / stage_file
             if file_path.exists():
-                with open(file_path, "r", encoding="utf-8") as f:
+                with open(file_path, encoding="utf-8") as f:
                     stage_data = json.load(f)
 
                 # Get the Pydantic model class for this attribute
                 field_info = ResearchState.model_fields.get(state_attr)
                 if field_info and field_info.annotation:
-                    # Extract the actual type (handle Optional[Type])
+                    # Extract the actual type (handle both Optional[X] and X | None)
                     field_type = field_info.annotation
-                    if hasattr(field_type, '__origin__'):  # Optional type
-                        field_type = field_type.__args__[0]
+                    origin = get_origin(field_type)
+                    # Handle both Optional[X] (typing.Union) and X | None (types.UnionType)
+                    if origin is Union or isinstance(field_type, types.UnionType):
+                        args = get_args(field_type)
+                        # Get the non-None type from the union
+                        field_type = next((t for t in args if t is not type(None)), args[0])
 
                     # Load based on field type
                     try:
@@ -271,20 +281,33 @@ class CheckpointManager:
                             list_item_type = get_args(field_type)[0]
                             if hasattr(list_item_type, 'model_fields'):
                                 # List of Pydantic models - convert each dict
-                                setattr(self.state, state_attr, [list_item_type(**item) for item in stage_data])
+                                logger.debug(f"  Reconstructing list of {list_item_type.__name__} for {state_attr}")
+                                reconstructed = [list_item_type(**item) for item in stage_data]
+                                setattr(self.state, state_attr, reconstructed)
+                                logger.debug(f"  ✓ Loaded {len(reconstructed)} {list_item_type.__name__} objects from {stage_file}")
                             else:
                                 # List of primitives - set directly
                                 setattr(self.state, state_attr, stage_data)
+                                logger.debug(f"  ✓ Loaded {stage_file} → {state_attr} (primitive list)")
                         # Check if it's a Pydantic model (has model_fields)
                         elif hasattr(field_type, 'model_fields'):
                             # Pydantic model - instantiate with kwargs
-                            setattr(self.state, state_attr, field_type(**stage_data))
+                            logger.debug(f"  Reconstructing {field_type.__name__} for {state_attr}")
+                            reconstructed = field_type(**stage_data)
+                            setattr(self.state, state_attr, reconstructed)
+                            logger.debug(f"  ✓ Loaded {stage_file} → {state_attr} ({field_type.__name__})")
                         else:
                             # Non-Pydantic type (dict, etc.) - set directly
                             setattr(self.state, state_attr, stage_data)
-                        logger.debug(f"  Loaded {stage_file} → {state_attr}")
+                            logger.debug(f"  ✓ Loaded {stage_file} → {state_attr} (raw data)")
                     except Exception as e:
-                        logger.warning(f"  Failed to load {stage_file}: {e}")
+                        logger.error(
+                            f"  ✗ Failed to reconstruct Pydantic model for {stage_file} → {state_attr}: {e}\n"
+                            f"    Field type: {field_type}\n"
+                            f"    Falling back to raw dict data (this may cause attribute access errors later)"
+                        )
+                        # Fallback: set as raw dict
+                        setattr(self.state, state_attr, stage_data)
 
         # Restore metadata fields
         self.state.current_stage = metadata.get("current_stage", 1)
@@ -293,7 +316,7 @@ class CheckpointManager:
         if metadata.get("started_at"):
             self.state.started_at = datetime.fromisoformat(metadata["started_at"])
 
-    def get_completed_stages(self, folder_path: Optional[Path] = None) -> List[str]:
+    def get_completed_stages(self, folder_path: Path | None = None) -> list[str]:
         """Get list of completed stage identifiers from checkpoint folder."""
         checkpoint_folder = folder_path or self.checkpoint_folder
         if checkpoint_folder is None or not checkpoint_folder.exists():
@@ -303,7 +326,7 @@ class CheckpointManager:
         if not metadata_file.exists():
             return []
 
-        with open(metadata_file, "r", encoding="utf-8") as f:
+        with open(metadata_file, encoding="utf-8") as f:
             metadata = json.load(f)
 
         return metadata.get("completed_stages", [])

@@ -1,0 +1,254 @@
+# Keyword Seed Generation Prompt
+# Used by: KeywordSeedGenerator.generate_seeds()
+# Variables: niche_description, market_segments, industry_boundaries, solution_name,
+#            solution_type, value_proposition, core_features, target_personas,
+#            pain_points_addressed, competitors, num_broad_seeds, num_targeted_seeds, total_seeds
+
+template: |
+  You are an SEO keyword strategist generating seed keywords for expansion.
+
+  NICHE CONTEXT:
+  **Niche Description:** {niche_description}
+
+  **Target Market Segments:**
+  {market_segments}
+
+  **Industry Boundaries:** {industry_boundaries}
+
+  SOLUTION DETAILS:
+  **Solution Name:** {solution_name}
+  **Solution Type:** {solution_type}
+  **Value Proposition:** {value_proposition}
+  **Core Features:** {core_features}
+  **Target Personas:** {target_personas}
+  **Pain Points Addressed:** {pain_points_addressed}
+  **Known Competitors:** {competitors}
+
+  ═══════════════════════════════════════════════════════════════════════════
+
+  TASK: Generate {total_seeds} strategically selected seed keywords for SEO expansion.
+
+  **REQUIRED OUTPUT MIX:**
+  - {num_broad_seeds} Broad Seeds (1-2 words): Core category terms with high search volume potential
+  - {num_targeted_seeds} Targeted Keywords (3-5 words): Long-tail combinations addressing specific user needs
+
+  ═══════════════════════════════════════════════════════════════════════════
+
+  **CHAIN-OF-THOUGHT PROCESS (FOLLOW IN ORDER):**
+
+  **STEP 1: ANALYZE NICHE CHARACTERISTICS**
+
+  Before generating keywords, analyze:
+  1. **Market Type:** B2B vs B2C? (evidence from market segments, personas)
+  2. **Product Nature:** Physical products, digital service, SaaS platform, marketplace? (evidence from solution type, features)
+  3. **Geographic Scope:** Local, national, international? (evidence from personas, niche description)
+  4. **Price Positioning:** Budget, mid-tier, premium? (evidence from market segments, value proposition)
+  5. **User Intent:** Informational, transactional, navigational? (evidence from pain points)
+
+  Write 2-3 sentences summarizing your analysis.
+
+  **STEP 2: EXTRACT MARKET SEGMENT CHARACTERISTICS**
+
+  From the market_segments above, extract:
+  1. **Demographics:** Age groups, experience levels, roles (e.g., "beginner", "professional", "enterprise")
+  2. **Constraints:** Budget limitations, space constraints, time pressures (e.g., "affordable", "compact", "fast")
+  3. **Priorities:** Values and preferences (e.g., "eco-friendly", "energy efficient", "convenient", "quality")
+  4. **Context:** Usage scenarios (e.g., "first home", "small business", "remote teams")
+
+  List 5-8 segment characteristics you'll use as keyword modifiers.
+
+  **STEP 3: APPLY SEMANTIC VALIDATION RULES**
+
+  Before generating keywords, review these rules:
+
+  **RULE 1: No "apps for X" unless software ecosystem exists**
+  - Valid: "apps for meal planning", "apps for project management" (software categories)
+  - Invalid: "apps for home appliances", "apps for furniture" (physical products)
+  - Check: Does the niche involve software/digital tools? If not, avoid "app/apps" keywords.
+
+  **RULE 2: No "enterprise X" unless B2B variant exists**
+  - Valid: "enterprise project management", "enterprise CRM" (B2B software markets)
+  - Invalid: "enterprise home appliances", "enterprise consumer products" (B2C markets)
+  - Check: Do market_segments mention businesses/teams? If not, use "consumer", "home", "personal".
+
+  **RULE 3: Extract segment characteristics for seed modifiers**
+  - Use characteristics from STEP 2 as keyword modifiers
+  - Examples: "affordable [category]", "compact [category]", "eco-friendly [category]"
+  - This grounds keywords in actual user needs (not generic guesses)
+
+  **RULE 4: Respect industry boundaries**
+  - Review the "Industry Boundaries" section above
+  - If it says "OUT OF SCOPE: furniture, decor" -> DO NOT generate keywords for those categories
+  - Only generate keywords within the "IN SCOPE" boundaries
+
+  **RULE 5: Geographic context for local services**
+  - If niche is location-specific (relocation, local services, regional markets):
+    * Include city/region names in targeted keywords
+    * Add "international", "global", "expat" for cross-border niches
+  - If niche is global/online, skip geographic modifiers
+
+  **RULE 6: Solution type alignment**
+  - Match keyword terminology to solution_type:
+    * **directory** -> use "directory", "listing", "catalog", "database", "guide"
+    * **saas** -> use "software", "tool", "platform", "app", "system"
+    * **aggregator** -> use "comparison", "aggregator", "search engine", "finder"
+    * **marketplace** -> use "marketplace", "platform", "exchange", "network"
+    * **comparison-tool** -> use "comparison", "vs", "alternative", "review"
+
+  **RULE 7: Avoid invented/novel solution names as keywords**
+  - The solution_name field may contain branded terms, portmanteaus, or novel compound words
+  - These invented brands have ZERO search volume until established through marketing
+  - **Your task:** Extract the CATEGORY/PROBLEM the solution addresses, NOT the brand name itself
+
+  **How to identify invented brands:**
+  - Portmanteaus: "ExpatEase", "RefactorHub", "NicheSignal" (blended words)
+  - Compound words with mid-word capitals: "TravelBuddy", "CodeMentor"
+  - Unfamiliar terms not recognized as existing products/services
+  - Terms that appear to be marketing names vs descriptive categories
+
+  **What to do:**
+  1. Analyze solution_name to understand the UNDERLYING CATEGORY
+  2. Extract category keywords from value_proposition, core_features, pain_points_addressed
+  3. Generate keywords for the category/problem space, NOT the brand
+
+  **Examples:**
+  - "ExpatEase" -> Extract "expat relocation", "expat services", "international moving" (NOT "ExpatEase")
+  - "NicheSignal Atlas" -> Extract "niche research", "market research", "business ideas" (NOT "NicheSignal")
+  - "RefactorHub" -> Extract "code refactoring", "developer tools", "refactoring software" (NOT "RefactorHub")
+  - "HealthTrack Pro" -> Extract "health tracking", "fitness tracker", "health app" (NOT "HealthTrack")
+
+  **Exception:** Only use solution_name as a keyword if:
+  - It matches an existing competitor name in the competitors list
+  - It's a well-established product with known search volume
+  - The prompt explicitly instructs you to include it
+
+  Write 1 sentence confirming you'll extract categories instead of using invented brand names.
+
+  **RULE 8: Domain-lock ambiguous terms with mandatory qualifiers**
+
+  Polysemous terms (words with multiple meanings) MUST include domain-qualifying modifiers:
+
+  **High-Risk Ambiguous Terms:**
+  - "validate" -> "business validation" or "idea validation" (NOT bare "validate")
+  - "test" -> "market testing" or "user testing" (NOT bare "test")
+  - "track" -> "customer tracking" or "analytics tracking" (NOT bare "track")
+  - "monitor" -> "performance monitoring" or "uptime monitoring" (NOT bare "monitor")
+  - "discover" -> "market discovery" or "pain point discovery" (NOT bare "discover")
+  - "manage" -> "project management" or "team management" (NOT bare "manage")
+  - "optimize" -> "conversion optimization" or "SEO optimization" (NOT bare "optimize")
+
+  **Domain-locking examples:**
+  - "Struggle to Validate Ideas" -> "business idea validation", "startup validation tools"
+  - "Track Customer Behavior" -> "customer behavior tracking", "user analytics tracking"
+  - NOT: "Struggle to Validate Ideas" -> "validate", "validation" (expands to code validation)
+  - NOT: "Track Behavior" -> "track", "tracking" (expands to GPS tracking)
+
+  **Self-Check:** If keyword is 1-2 words with action verb -> Add domain qualifier
+
+  Write 1 sentence confirming you'll add domain qualifiers to ambiguous terms.
+
+  Write 1-2 sentences confirming you've reviewed all 8 rules.
+
+  **STEP 4: PLAN TOPIC CLUSTERS**
+
+  Create 5-8 thematic topic clusters to organize keywords:
+  1. Core product/service cluster
+  2. Problem/need cluster (from pain_points_addressed)
+  3. Segment-specific clusters (1-2 clusters per major segment)
+  4. Geographic cluster (if applicable)
+  5. Competitive cluster (alternatives, comparisons)
+
+  For each cluster, define:
+  - **name:** Short cluster name (e.g., "Affordable Solutions", "International Shipping")
+  - **description:** What keywords belong here
+  - **strategic_importance:** 1-5 (1=critical, 5=nice-to-have)
+
+  List your 5-8 planned clusters.
+
+  **STEP 5: GENERATE KEYWORD MIX**
+
+  Now generate keywords following this structure:
+
+  **5.1 Broad Seeds ({num_broad_seeds} keywords, 1-2 words each):**
+
+  Generate by extracting:
+  - **Type 1:** Core nouns from niche_description, solution_name (5-8 keywords)
+    * Extract NOUNS only (not full phrases)
+    * Example: "appliances", "tools", "software", "directory"
+
+  - **Type 2:** Problem/need terms from pain_points_addressed (5-8 keywords)
+    * Extract core PROBLEMS with domain-qualifying context (apply RULE 8)
+    * Transform into user search queries (what would they type on Google?)
+
+    **Correct extraction patterns:**
+    - "Struggle to Validate Ideas" -> "business idea validation", "startup validation tools"
+    - "Difficulty Finding Niches" -> "niche market research", "profitable niche finder"
+    - "Can't Track ROI" -> "marketing ROI tracking", "campaign analytics tools"
+
+    **Incorrect patterns (avoid bare ambiguous terms):**
+    - NOT: "Struggle to Validate Ideas" -> "validate", "validation"
+    - NOT: "Difficulty Testing Markets" -> "test", "testing"
+    - NOT: "Can't Track Metrics" -> "track", "tracking"
+
+    **Validation:** Would this keyword return business tools (correct) or code libraries (incorrect)?
+
+  - **Type 3:** Category/industry terms (5-8 keywords)
+    * Broad category descriptors
+    * Example: "home", "business", "enterprise", "consumer"
+
+  - **Type 4:** Action/intent terms (5-8 keywords)
+    * User intent verbs + nouns
+    * Example: "find", "compare", "choose", "select", "buy"
+
+  - **Type 5:** Segment modifiers from STEP 2 (5-8 keywords)
+    * Single-word characteristics
+    * Example: "affordable", "compact", "efficient", "professional"
+
+  **5.2 Targeted Keywords ({num_targeted_seeds} keywords, 3-5 words each):**
+
+  Generate by combining:
+  - Segment modifier + category + intent (e.g., "affordable home appliances comparison")
+  - Problem + solution type (e.g., "energy efficient appliance reviews")
+  - Geographic + category (if applicable: "international relocation services directory")
+  - Competitor alternative (e.g., "alternative to [major competitor]")
+
+  **CRITICAL REQUIREMENTS:**
+
+  1. **Diversity:** Cover ALL personas, pain points, and market segments
+  2. **No repetition:** Each keyword must be unique
+  3. **Rationale:** Provide brief rationale for each keyword (why it's strategically valuable)
+  4. **Cluster assignment:** Assign each keyword to one of your topic clusters from STEP 4
+  5. **Priority scoring:** Assign priority 1-5 (1=critical/highest, 5=nice-to-have/lowest) based on:
+     - Priority 1-2: Core category terms, high-volume problems, critical segment keywords
+     - Priority 3-4: Segment-specific, geographic, competitive alternatives
+     - Priority 5: Nice-to-have variations, low-priority modifiers
+  6. **Semantic validation:** Ensure all keywords pass the 7 validation rules from STEP 3
+
+  ═══════════════════════════════════════════════════════════════════════════
+
+  **OUTPUT FORMAT:**
+
+  Return a JSON object with this exact structure:
+
+  {{
+    "keywords": [
+      {{
+        "keyword": "affordable appliances",
+        "rationale": "Targets budget-conscious segment (first-time homebuyers)",
+        "cluster": "Affordable Solutions",
+        "priority": 1
+      }},
+      // ... {total_seeds} total keywords
+    ],
+    "topic_clusters": [
+      {{
+        "name": "Affordable Solutions",
+        "description": "Keywords targeting budget-conscious consumers",
+        "strategic_importance": 1
+      }},
+      // ... 5-8 total clusters
+    ],
+    "expansion_rationale": "2-3 sentence summary of overall keyword strategy and coverage"
+  }}
+
+  Generate the keywords now, following STEP 1-5 process.

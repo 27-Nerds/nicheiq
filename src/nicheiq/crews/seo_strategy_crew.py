@@ -3,7 +3,7 @@ SEOStrategyCrew - Stage 9: Integrated Keyword Research + SEO Strategy
 Multi-agent crew that performs keyword expansion and develops comprehensive SEO strategy.
 """
 
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -13,21 +13,21 @@ from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.seo_strategy import (
-    ExpandedKeywordList,
-    SEOStrategyReport,
-    KeywordAnalysisResult,
     ContentStrategyResult,
-    ImplementationPlanResult,
+    ExpandedKeywordList,
     FinalSynthesis,
     ImplementationGuide,
+    ImplementationPlanResult,
+    KeywordAnalysisResult,
+    SEOStrategyReport,
 )
-from ..models.solution_idea import IdeaGenerationResult
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
-from ..utils.helpers import KeywordSeedGenerator
+from ..utils.generation import KeywordSeedGenerator
 
 if TYPE_CHECKING:
+    from ..models.competitor import CompetitiveLandscape
     from ..models.research_state import NicheContext
-
+    from ..models.solution_idea import SolutionIdea
 
 @CrewBase
 class SEOStrategyCrew:
@@ -51,8 +51,8 @@ class SEOStrategyCrew:
         selected_solution: 'SolutionIdea',
         selection_rationale: str,
         competitive_analysis: CompetitiveAnalysisResult,
-        pain_points: Optional[PainPointAnalysisResult] = None,
-        niche_context: Optional['NicheContext'] = None,
+        pain_points: PainPointAnalysisResult | None = None,
+        niche_context: 'NicheContext | None' = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -126,7 +126,7 @@ class SEOStrategyCrew:
             f"{' with ' + str(len(self.knowledge_sources)) + ' knowledge source(s)' if self.knowledge_sources else ''}"
         )
 
-    def _find_solution_landscape(self) -> Optional['CompetitiveLandscape']:
+    def _find_solution_landscape(self) -> 'CompetitiveLandscape | None':
         """
         Find competitive landscape for the selected solution.
 
@@ -333,7 +333,7 @@ class SEOStrategyCrew:
             output_pydantic=ImplementationPlanResult,
         )
 
-    def _validate_seo_synthesis(self, task_output) -> Tuple[bool, Any]:
+    def _validate_seo_synthesis(self, task_output) -> tuple[bool, Any]:
         """
         Guardrail to ensure Task 4 preserves all fields from Tasks 1-3.
 
@@ -341,7 +341,7 @@ class SEOStrategyCrew:
         to prevent field loss during synthesis. Automatically retries if validation fails.
 
         Returns:
-            Tuple[bool, Any]: (True, result) if valid, (False, error_message) if validation fails
+            tuple[bool, Any]: (True, result) if valid, (False, error_message) if validation fails
         """
         try:
             result = task_output.pydantic
@@ -366,9 +366,9 @@ class SEOStrategyCrew:
                 value = getattr(result, field, None)
                 if value is None:
                     return (False, f"Missing required field: {field}")
-                if expected_type == list and len(value) == 0:
+                if expected_type is list and len(value) == 0:
                     return (False, f"Empty required list field: {field}")
-                if expected_type == str and len(value.strip()) == 0:
+                if expected_type is str and len(value.strip()) == 0:
                     return (False, f"Empty required string field: {field}")
 
             logger.info(
@@ -447,22 +447,35 @@ class SEOStrategyCrew:
         Returns:
             Configured Crew instance with optional knowledge sources
         """
+        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.helpers import sanitize_collection_name
+
+        embedder_config = {
+            "provider": "openai",
+            "config": {
+                "model_name": "text-embedding-3-small"  # Cost-effective embeddings
+            }
+        }
+
         crew_config = {
             "agents": self.agents,
             "tasks": self.tasks,
             "verbose": True,
             "process_type": "sequential",
+            "embedder": embedder_config,
         }
 
-        # Add knowledge sources and embedder if available
+        # Create Knowledge with niche-specific collection name for isolation
         if self.knowledge_sources:
-            crew_config["knowledge_sources"] = self.knowledge_sources
-            crew_config["embedder"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "text-embedding-3-small"  # Cost-effective embeddings
-                }
-            }
+            collection_name = sanitize_collection_name(self.niche, "seo")
+            logger.info(f"Creating SEO knowledge with collection: {collection_name}")
+            knowledge = Knowledge(
+                sources=self.knowledge_sources,
+                embedder=embedder_config,
+                collection_name=collection_name,
+            )
+            knowledge.add_sources()
+            crew_config["knowledge"] = knowledge
 
         return Crew(**crew_config)
 
@@ -556,7 +569,7 @@ class SEOStrategyCrew:
             logger.warning(f"Failed to extract page types from Task 2: {e}")
             return "Unable to extract page types from Task 2 - generate based on project_type standards"
 
-    def _validate_implementation_guide(self, task_output) -> Tuple[bool, Any]:
+    def _validate_implementation_guide(self, task_output) -> tuple[bool, Any]:
         """
         Guardrail function to validate Task 5 implementation guide output for customization.
 
@@ -569,7 +582,7 @@ class SEOStrategyCrew:
             task_output: TaskOutput from Task 5 (create_implementation_guide)
 
         Returns:
-            Tuple[bool, Any]: (success, validated_result_or_error_message)
+            tuple[bool, Any]: (success, validated_result_or_error_message)
         """
         try:
             # Check if Pydantic output exists
@@ -688,7 +701,7 @@ class SEOStrategyCrew:
     def create_strategy_multitask(
         self,
         enriched_keywords: list,
-        expanded_keywords: Optional[ExpandedKeywordList] = None
+        expanded_keywords: ExpandedKeywordList | None = None
     ) -> SEOStrategyReport:
         """
         Execute 5-Task SEO Strategy Flow with Direct CSV Input.
@@ -763,7 +776,7 @@ class SEOStrategyCrew:
                 competitor_names_formatted = "No direct competitors identified"
 
             # Format pain point metrics for keyword contextualization using unified helper
-            from ..utils.helpers import format_pain_points_for_agents
+            from ..utils.pain_point_formatters import format_pain_points_for_agents
 
             if self.pain_points and self.pain_points.pain_points:
                 pain_points_formatted = format_pain_points_for_agents(

@@ -1,0 +1,105 @@
+# Seed Generation Prompt for Stage 8.8 LLM-based keyword generation
+# Used by: SeedGenerator.generate_llm_seeds()
+# Variables: solution_name, solution_description, core_features, target_personas,
+#            pain_points, project_type, competitors
+
+template: |
+  You are a keyword research specialist generating seed keywords for market demand validation.
+
+  **YOUR TASK:**
+  Generate exactly 10 high-quality seed keywords that represent different ways real users search for this solution.
+
+  **SOLUTION DETAILS:**
+  Solution Name: {solution_name}
+  Description: {solution_description}
+  Core Features: {core_features}
+  Target Personas: {target_personas}
+  Pain Points Addressed: {pain_points}
+  Project Type: {project_type}
+  Competitors: {competitors}
+
+  **SEED KEYWORD REQUIREMENTS:**
+
+  1. **Diversity Mandate** - Your 10 seeds MUST cover:
+     - 3-4 broad market keywords (1-2 words, high volume potential)
+       Examples: "expat insurance", "relocation service", "tax software"
+
+     - 2-3 specific solution keywords (2-3 words, mid-volume, feature/persona-specific)
+       Examples: "digital nomad insurance", "expat tax filing", "Spain visa guide"
+
+     - 2-3 problem/need-based keywords (3-5 words, intent-rich)
+       Examples: "best health insurance for expats", "how to file taxes abroad"
+
+     - 1-2 competitive/comparison keywords (if {competitors} field contains real competitors)
+       Examples: Use ACTUAL competitor names from {competitors} field:
+       - "[CompetitorName] alternative", "vs [CompetitorName]", "[CompetitorName] comparison"
+       - If competitors="SafetyWing, Cigna Global" -> "SafetyWing alternative", "Cigna Global comparison"
+
+  2. **Search Intent Coverage** - Include mix of:
+     - Informational: "what is...", "how to...", "best..."
+     - Navigational: "[category] directory", "[solution type] list"
+     - Transactional: "buy...", "get...", "find..."
+     - Comparison: "vs", "alternative", "better than"
+
+  3. **Geographic Variations** - If solution is location-specific, include 1-2 geo-modifiers:
+     - Country-level: "expat insurance Spain", "UK visa service"
+     - City-level (for local): "Barcelona coworking space"
+     - Regional: "EU visa requirements", "Southeast Asia nomad insurance"
+
+  4. **Category Extraction Mandate:**
+
+     **CRITICAL:** The solution_name field may contain an INVENTED BRAND NAME that doesn't exist yet.
+
+     **Your Task:** Extract the UNDERLYING CATEGORY, not the brand.
+
+     **How to extract category:**
+     1. Read the {solution_description}, {core_features}, and {pain_points} fields
+     2. Ask: "What EXISTING MARKET/PROBLEM does this solution address?"
+     3. Extract category terms from these fields (NOT from solution_name)
+     4. Use category keywords that people ALREADY search for
+
+     **Examples:**
+
+     **Example 1:** AI-powered recipe organizer for home cooks
+     - Solution Name: "RecipeGenius" (invented brand)
+     - Category Analysis: Addresses recipe organization and meal planning
+     - CORRECT keywords: "recipe organizer", "recipe app", "meal planning tool", "cooking app"
+     - WRONG keywords: "RecipeGenius", "RecipeGenius alternative"
+
+     **Example 2:** Global relocation platform for expats
+     - Solution Name: "ExpatEase" (invented brand)
+     - Category Analysis: Addresses expat relocation, visa, insurance, logistics
+     - CORRECT keywords: "expat relocation", "international moving", "expat services", "visa help"
+     - WRONG keywords: "ExpatEase", "ExpatEase platform"
+
+     **Exception:** ONLY use solution_name as a keyword if it matches an existing competitor in {competitors} field.
+
+  5. **Quality Filters:**
+     DO include: Natural search language, competitor names, problem descriptions, persona labels
+     DO vary: Word count (1-5 words), specificity levels, user intents
+     DON'T include: Solution name if it's an invented brand, overly generic single words ("platform", "tool", "service"), duplicate patterns
+     DON'T repeat: Same keyword with minor variations (pick the strongest version)
+
+  **EDGE CASE HANDLING:**
+
+  - **Novel/Invented Solution Names**: If solution_name appears to be a made-up brand (portmanteau, CamelCase, or unfamiliar term), treat it as NON-EXISTENT in search data.
+
+    **How to identify invented brands:**
+    - Portmanteaus: "ExpatEase", "RefactorHub" (blended words)
+    - CamelCase: "TravelBuddy", "CodeMentor" (mid-word capitals)
+    - Unfamiliar compound terms that aren't recognized products
+
+    **What to do:**
+    - Extract category from {solution_description} and {core_features}
+    - Use category keywords that people ALREADY search for
+
+  - **Technical/B2B Niches**: Include technical terminology + business outcome keywords
+    Example: "API documentation tool" + "developer onboarding automation"
+
+  - **Highly Specific Niches**: Balance niche terms with adjacent broader categories
+    Example: For "sous vide recipe app" -> Include "sous vide recipes" + "precision cooking" + "cooking app"
+
+  - **No Clear Competitors**: Skip comparison keywords, add more problem/need-based seeds
+    Example: "how to find reliable expat services" instead of "[Competitor] alternative"
+
+  Now generate 10 seed keywords for the solution described above.

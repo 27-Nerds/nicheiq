@@ -6,19 +6,16 @@ Exports in multiple formats: PNG (for PDF), JSON (for web), SVG (scalable).
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple
-from datetime import datetime
 
 from loguru import logger
 
 try:
+    import plotly.express as px  # noqa: F401
     import plotly.graph_objects as go
-    import plotly.express as px
     PLOTLY_AVAILABLE = True
 except ImportError:
     PLOTLY_AVAILABLE = False
     logger.warning("Plotly not available - visualizations will be skipped")
-
 
 class ChartGenerator:
     """
@@ -41,9 +38,9 @@ class ChartGenerator:
 
     def generate_pain_point_matrix(
         self,
-        pain_points: List,
+        pain_points: list,
         output_name: str = "pain_point_matrix"
-    ) -> Optional[Tuple[str, str]]:
+    ) -> tuple[str, str | None]:
         """
         Generate scatter plot: Severity vs Willingness-to-Pay.
 
@@ -119,7 +116,7 @@ class ChartGenerator:
         self,
         tier_counts: dict,
         output_name: str = "keyword_opportunity"
-    ) -> Optional[Tuple[str, str]]:
+    ) -> tuple[str, str | None]:
         """
         Generate bar chart showing keyword distribution by tier.
 
@@ -177,9 +174,9 @@ class ChartGenerator:
 
     def generate_competitive_landscape(
         self,
-        competitors: List,
+        competitors: list,
         output_name: str = "competitive_landscape"
-    ) -> Optional[Tuple[str, str]]:
+    ) -> tuple[str, str | None]:
         """
         Generate competitive landscape visualization.
 

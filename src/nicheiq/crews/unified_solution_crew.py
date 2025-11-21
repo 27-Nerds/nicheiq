@@ -16,28 +16,77 @@ Benefits over separate crews:
 """
 
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..flows.checkpoint_manager import CheckpointManager
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
+from crewai.tools import BaseTool
 from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..models.competitor import CompetitiveAnalysisResult, CompetitiveLandscape
+from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import NicheContext
+from ..models.social_content import SocialContentCollection
 from ..models.solution_idea import (
     CompetitiveEnhancements,
-    EvaluationResult,
     IdeaGenerationResult,
-    SolutionIdea,
 )
 from ..models.solution_selection import SolutionSelection
-from ..models.social_content import SocialContentCollection
+from ..utils.generation import CompetitorQueryGenerator
 
+
+class CompetitorQueryTool(BaseTool):
+    """
+    Tool for generating context-aware competitor search queries.
+    Uses CompetitorQueryGenerator with semantic validation.
+    """
+    name: str = "generate_competitor_queries"
+    description: str = (
+        "Generate strategic competitor search queries for a solution. "
+        "Input format: 'solution_name|project_type|pain_points' "
+        "(pain_points is comma-separated list, optional). "
+        "Returns list of validated search queries with rationale."
+    )
+
+    _generator: CompetitorQueryGenerator = None
+    _niche_context: NicheContext | None = None
+
+    def __init__(self, niche_context: NicheContext | None = None, **kwargs):
+        super().__init__(**kwargs)
+        self._generator = CompetitorQueryGenerator()
+        self._niche_context = niche_context
+
+    def _run(self, input_str: str) -> str:
+        """Generate competitor queries from input string."""
+        parts = input_str.split("|")
+        solution_name = parts[0].strip() if len(parts) > 0 else ""
+        project_type = parts[1].strip() if len(parts) > 1 else "saas"
+        pain_points = [p.strip() for p in parts[2].split(",")] if len(parts) > 2 and parts[2].strip() else None
+
+        queries = self._generator.generate_competitor_queries(
+            solution_name=solution_name,
+            project_type=project_type,
+            niche_context=self._niche_context,
+            pain_points_addressed=pain_points,
+            num_queries=8
+        )
+
+        if not queries:
+            return "No queries generated. Try with different input."
+
+        # Format output for agent consumption
+        result = f"Generated {len(queries)} competitor search queries:\n\n"
+        for i, q in enumerate(queries, 1):
+            result += f"{i}. [{q.get('type', 'category')}] {q.get('query')}\n"
+            result += f"   Rationale: {q.get('rationale', 'N/A')}\n\n"
+
+        return result
 
 class CachedSerperDevTool(SerperDevTool):
     """
@@ -67,7 +116,6 @@ class CachedSerperDevTool(SerperDevTool):
 
         return result
 
-
 @CrewBase
 class UnifiedSolutionCrew:
     """
@@ -86,9 +134,10 @@ class UnifiedSolutionCrew:
     def __init__(
         self,
         pain_point_analysis: PainPointAnalysisResult,
-        social_content: Optional[SocialContentCollection] = None,
-        allowed_project_types: Optional[List[str]] = None,
-        niche_context: Optional[NicheContext] = None,
+        social_content: SocialContentCollection | None = None,
+        allowed_project_types: list[str] | None = None,
+        niche_context: NicheContext | None = None,
+        checkpoint_mgr: "CheckpointManager | None" = None,
     ):
         """
         Initialize UnifiedSolutionCrew with pain points and optional context.
@@ -98,14 +147,19 @@ class UnifiedSolutionCrew:
             social_content: Optional social content for competitor intelligence
             allowed_project_types: Optional constraints on project types
             niche_context: Optional structured niche context with market segments and boundaries
+            checkpoint_mgr: Optional checkpoint manager for task-level saves
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
         self.allowed_project_types = allowed_project_types
         self.niche_context = niche_context
+        self.checkpoint_mgr = checkpoint_mgr
 
         # Initialize search tool for competitive research
         self.search_tool = CachedSerperDevTool()
+
+        # Initialize competitor query generator tool
+        self.query_tool = CompetitorQueryTool(niche_context=niche_context)
 
         # Initialize knowledge sources
         self.knowledge_sources = []
@@ -303,12 +357,13 @@ class UnifiedSolutionCrew:
     def competitive_researcher(self) -> Agent:
         """
         Agent for competitive research and competitor profiling.
+        Uses CompetitorQueryTool for context-aware query generation.
         Uses SerperDevTool for market intelligence.
         Uses function_calling_llm for cost-efficient tool calls.
         """
         return Agent(
             config=self.agents_config["competitive_researcher"],
-            tools=[self.search_tool],
+            tools=[self.query_tool, self.search_tool],
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.3,
@@ -438,13 +493,13 @@ class UnifiedSolutionCrew:
 
     # ========== GUARDRAILS ==========
 
-    def _validate_no_field_loss(self, task_output) -> Tuple[bool, Any]:
+    def _validate_no_field_loss(self, task_output) -> tuple[bool, Any]:
         """
         Guardrail for competitive_refinement_task to ensure no data loss.
         Validates solution count and required fields are preserved.
 
         Returns:
-            Tuple[bool, Any]: (success: bool, result_or_error: Any)
+            tuple[bool, Any]: (success: bool, result_or_error: Any)
         """
         try:
             result = task_output.pydantic
@@ -509,7 +564,7 @@ class UnifiedSolutionCrew:
                     field_errors.append(f"Solution '{idea.solution_name}': {', '.join(missing_fields)}")
 
             if field_errors:
-                return (False, f"Required fields missing:\n" + "\n".join(field_errors))
+                return (False, "Required fields missing:\n" + "\n".join(field_errors))
 
             logger.info(f"✓ Guardrail passed: {len(result.solution_ideas)} solutions with all fields preserved")
             return (True, result)
@@ -524,20 +579,35 @@ class UnifiedSolutionCrew:
         """
         Assemble UnifiedSolutionCrew with 4 sequential tasks and knowledge sources.
         """
+        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.helpers import sanitize_collection_name
+
+        embedder_config = {
+            "provider": "openai",
+            "config": {"model_name": "text-embedding-3-small"}
+        }
+
         crew_config = {
             "agents": self.agents,
             "tasks": self.tasks,
             "verbose": True,
             "process_type": "sequential",
+            "embedder": embedder_config,
         }
 
-        # Add knowledge sources if available
+        # Create Knowledge with niche-specific collection name for isolation
         if self.knowledge_sources:
-            crew_config["knowledge_sources"] = self.knowledge_sources
-            crew_config["embedder"] = {
-                "provider": "openai",
-                "config": {"model": "text-embedding-3-small"}
-            }
+            # Get niche from context for collection naming
+            niche = self.niche_context.niche_input if self.niche_context else "default"
+            collection_name = sanitize_collection_name(niche, "solution")
+            logger.info(f"Creating solution knowledge with collection: {collection_name}")
+            knowledge = Knowledge(
+                sources=self.knowledge_sources,
+                embedder=embedder_config,
+                collection_name=collection_name,
+            )
+            knowledge.add_sources()
+            crew_config["knowledge"] = knowledge
 
         return Crew(**crew_config)
 
@@ -572,7 +642,10 @@ class UnifiedSolutionCrew:
 
         try:
             # Use unified formatting helpers
-            from ..utils.helpers import format_pain_points_for_agents, extract_pain_points_by_priority
+            from ..utils.pain_point_formatters import (
+                extract_pain_points_by_priority,
+                format_pain_points_for_agents,
+            )
 
             # Extract pain points by priority
             high_priority, medium_priority, low_priority = extract_pain_points_by_priority(
@@ -648,6 +721,18 @@ class UnifiedSolutionCrew:
             competitive_analysis = task_outputs[1].pydantic if len(task_outputs) > 1 else None  # CompetitiveAnalysisResult
             enhancements = task_outputs[2].pydantic if len(task_outputs) > 2 else None  # CompetitiveEnhancements
 
+            # Save task-level checkpoints for resume capability
+            if self.checkpoint_mgr:
+                if base_solutions:
+                    self.checkpoint_mgr.save_stage("stage_7_1_ideation", base_solutions)
+                    logger.debug("Checkpoint saved: stage_7_1_ideation")
+                if competitive_analysis:
+                    self.checkpoint_mgr.save_stage("stage_7_2_competitive", competitive_analysis)
+                    logger.debug("Checkpoint saved: stage_7_2_competitive")
+                if enhancements:
+                    self.checkpoint_mgr.save_stage("stage_7_3_refinement", enhancements)
+                    logger.debug("Checkpoint saved: stage_7_3_refinement")
+
             # Python merge: Apply enhancements to base solutions
             from copy import deepcopy
             refined_solutions = deepcopy(base_solutions)
@@ -689,7 +774,7 @@ class UnifiedSolutionCrew:
                     f"[OK] Applied competitive enhancements to {len(refined_solutions.solution_ideas)} solutions"
                 )
 
-            logger.info(f"✓ Unified Pipeline Complete:")
+            logger.info("✓ Unified Pipeline Complete:")
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
             logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")

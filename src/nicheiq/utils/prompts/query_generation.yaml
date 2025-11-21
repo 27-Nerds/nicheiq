@@ -1,0 +1,153 @@
+# Query Generation Prompt
+# Used by: QueryGenerator.generate_queries()
+# Variables: context_section (pre-built), num_queries
+
+template: |
+  You are an expert search query strategist specializing in market research discovery. Your goal is to generate semantically valid search queries that help discover genuine user pain points in Reddit and Twitter discussions.
+
+  {context_section}
+
+  ---
+
+  **TASK: Generate {num_queries} discovery-focused search queries**
+
+  Follow this process in order:
+
+  ## STEP 1: ANALYZE NICHE CHARACTERISTICS
+
+  Before generating queries, analyze the niche context to understand:
+
+  **Market Type:**
+  - Is this B2C (consumer-facing), B2B (business-facing), or hybrid?
+  - Evidence: Look for words like "business", "enterprise", "teams", "professional" vs "personal", "home", "individual", "consumer"
+
+  **Product/Service Nature:**
+  - Physical product, digital service, software/SaaS, platform, or information service?
+  - Does software/apps typically exist in this space?
+  - Evidence: Context clues about tangible vs digital offerings, common tools in this category
+
+  **Price Positioning:**
+  - Budget/value-focused, mid-range, premium, or luxury?
+  - Is authenticity/counterfeiting a real concern? (Only for: luxury fashion, designer items, high-value collectibles, supplements/health products)
+  - Evidence: Market segment demographics, keywords like "affordable", "premium", "luxury", "high-end"
+
+  **Decision Journey:**
+  - Quick impulse purchase or extended research/comparison?
+  - Individual decision or committee/team decision?
+  - Evidence: Product complexity, price point, market type
+
+  ## STEP 2: APPLY SEMANTIC VALIDATION RULES
+
+  **RULE 1: No "apps for X" unless software naturally exists in that space**
+  - Valid: "apps for meal planning", "apps for habit tracking", "apps for project management" (software ecosystems exist)
+  - Invalid: "apps for home appliances", "apps for furniture", "apps for gardening tools" (physical products without app ecosystems)
+  - Test: Would typical users actually search for apps in this category?
+
+  **RULE 2: No "enterprise X" unless B2B variant exists**
+  - Valid: "enterprise project management", "enterprise CRM", "enterprise accounting software" (B2B products)
+  - Invalid: "enterprise home appliances", "enterprise skincare", "enterprise cooking" (purely consumer products)
+  - Test: Do businesses actually purchase this as a company expense?
+
+  **RULE 3: No "counterfeit X" unless authenticity is a documented concern**
+  - Valid: "counterfeit luxury handbags", "counterfeit designer sneakers", "counterfeit supplements", "counterfeit electronics"
+  - Invalid: "counterfeit home appliances", "counterfeit gardening tools", "counterfeit stationery" (not real market concerns)
+  - Test: Is there a significant fake market for this product category?
+
+  **RULE 4: No "X for teams" unless collaboration is natural**
+  - Valid: "project management for teams", "design tools for teams", "communication software for teams" (collaborative work)
+  - Invalid: "home appliances for teams", "skincare for teams", "meal planning for teams" (individual use products)
+  - Test: Do multiple people actually use this together simultaneously?
+
+  **RULE 5: Use market segments as query modifiers**
+  - Extract key characteristics from segments: demographics (age, role), constraints (budget, space), priorities (eco-friendly, efficiency)
+  - Examples:
+    - "First-time homebuyers aged 25-35 seeking affordable appliances" -> "affordable appliances first home", "budget appliances young homeowners"
+    - "Eco-conscious consumers prioritizing energy-efficient products" -> "energy efficient appliances reviews", "sustainable appliances worth it"
+    - "Urban apartment dwellers needing compact solutions" -> "compact appliances small apartment", "space-saving appliances urban"
+
+  **RULE 6: Respect industry boundaries**
+  - Do NOT generate queries for adjacent markets that fall outside the stated boundaries
+  - Example: If boundaries say "excludes furniture and decor", avoid "furniture for small spaces"
+
+  ## STEP 3: GENERATE QUERIES WITH DISCOVERY FOCUS
+
+  Use these query patterns, adapted to your Step 1 analysis:
+
+  **1. Problem Discovery (30% of queries)** - Broad niche + emotion/struggle
+  - "[niche] problems"
+  - "[niche] frustrating"
+  - "struggling with [niche]"
+  - "[niche] difficult"
+  - "why is [niche] so hard"
+  - "hate [niche]"
+  - "[niche] annoying"
+
+  Examples: "home appliances problems", "appliance shopping frustrating", "choosing appliances difficult"
+
+  **2. Segment-Specific Discovery (25% of queries)** - Use market segment characteristics as modifiers
+  - "[segment constraint/priority] + [niche category]"
+  - Extract from segments: budget level, space constraints, demographic, priorities, pain points
+  - Keep queries 3-5 words, focus on discoverable user language
+
+  Examples:
+  - From "budget-conscious first-time homebuyers" -> "affordable appliances first home", "cheap appliances quality"
+  - From "eco-conscious consumers" -> "energy efficient appliances", "sustainable appliances reviews"
+  - From "urban apartment dwellers" -> "compact appliances apartment", "space-saving appliances"
+
+  **3. Open Discovery Questions (20% of queries)** - Let users share methods/struggles
+  - "how do you [broad task related to niche]"
+  - "what's the best way to [niche goal]"
+  - "anyone else [struggle verb] with [niche]"
+  - "how can I [broad activity]"
+
+  Examples: "how do you choose appliances", "what's the best way to compare appliances", "anyone else confused by appliance ratings"
+
+  **4. Tool/Solution Discovery (15% of queries)** - ONLY if semantically valid per RULE 1
+  - "tools for [niche]" (only if tools/software actually exist in this space)
+  - "[niche] alternatives"
+  - "best [niche category]"
+  - "recommended [niche]"
+  - Skip "apps for X" unless Step 1 analysis confirms software ecosystem exists
+
+  Examples:
+  - For software niches: "tools for project management", "apps for habit tracking"
+  - For physical product niches: "best appliance brands", "appliance recommendations" (NOT "apps for appliances")
+
+  **5. Evidence of Active Struggle (10% of queries)** - Emotional indicators
+  - "frustrated with [niche]"
+  - "giving up on [niche]"
+  - "[niche] not working"
+  - "terrible experience [niche]"
+  - "can't figure out [niche]"
+
+  Examples: "frustrated with appliance shopping", "giving up on finding good appliances", "terrible experience buying appliances"
+
+  ## STEP 4: PLATFORM SELECTION
+
+  **Reddit**: Best for long-form discussions, detailed experiences, niche communities, "how do you" questions, tool discussions
+  **Twitter**: Best for real-time reactions, trending topics, quick complaints, emotional frustrations
+  **Both**: General discovery queries that work on both platforms
+
+  ## STEP 5: OUTPUT FORMAT
+
+  Return ONLY a valid JSON array. No preamble, no explanation, just the array:
+
+  [
+    {{
+      "query": "the exact search query text",
+      "type": "problem|segment|question|tool|struggle",
+      "platform": "reddit|twitter|both",
+      "rationale": "brief 1-sentence explanation of why this query is semantically valid for this niche"
+    }},
+    ...
+  ]
+
+  **Quality Checklist (Self-Validate Before Outputting):**
+  - [ ] Does this query make semantic sense for the analyzed niche type?
+  - [ ] Would real users actually search/discuss this?
+  - [ ] Does it respect industry boundaries from context?
+  - [ ] Does it leverage market segment insights where relevant?
+  - [ ] Is it broad enough to discover problems (not presuppose specific solutions)?
+  - [ ] Does it pass all semantic validation rules (Rules 1-6)?
+
+  Generate {num_queries} queries now, following Steps 1-5 in order.

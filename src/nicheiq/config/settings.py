@@ -4,7 +4,6 @@ Uses pydantic-settings for type-safe environment variable loading.
 """
 
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -49,7 +48,7 @@ class Settings(BaseSettings):
     )
 
     # CrewAI+ (Enterprise) - Optional
-    crewai_api_key: Optional[str] = Field(default=None, description="CrewAI+ API key")
+    crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")
 
     # Serper.dev API
     serper_api_key: str = Field(..., description="Serper.dev API key for Google Search")
@@ -62,9 +61,9 @@ class Settings(BaseSettings):
     )
 
     # Twitter Configuration
-    twitter_username: Optional[str] = Field(default=None, description="Twitter username")
-    twitter_password: Optional[str] = Field(default=None, description="Twitter password")
-    twitter_email: Optional[str] = Field(default=None, description="Twitter email")
+    twitter_username: str | None = Field(default=None, description="Twitter username")
+    twitter_password: str | None = Field(default=None, description="Twitter password")
+    twitter_email: str | None = Field(default=None, description="Twitter email")
     twitter_cookies_cache: str = Field(
         default="data/twitter_cookies.json",
         description="Path to cache Twitter cookies (auto-created after first login)"
@@ -82,7 +81,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", description="Logging level")
     max_retries: int = Field(default=3, description="Maximum retry attempts for API calls")
     timeout_seconds: int = Field(default=30, description="API request timeout in seconds")
-    niche_description: Optional[str] = Field(
+    niche_description: str | None = Field(
         default=None, description="Niche/market area to research (optional, can be provided via CLI)"
     )
 
@@ -99,7 +98,7 @@ class Settings(BaseSettings):
     min_reddit_comments: int = Field(
         default=5, description="Minimum comments for Reddit posts (higher threshold for quality)"
     )
-    reddit_comment_limit: Optional[int] = Field(
+    reddit_comment_limit: int | None = Field(
         default=None,
         description="Max MoreComments to replace (None=all comments, 32=most comments, 0=top-level only)",
     )
@@ -123,10 +122,10 @@ class Settings(BaseSettings):
     keyword_max_competition: float = Field(
         default=0.7, description="Maximum competition level (0-1)"
     )
-    target_location: Optional[int] = Field(
+    target_location: int | None = Field(
         default=None, description="Target location code (e.g., 2840 = United States). If None, API uses global data."
     )
-    target_language: Optional[str] = Field(
+    target_language: str | None = Field(
         default=None, description="Target language code (e.g., 'en'). If None, API uses default language."
     )
     keyword_relevance_threshold: float = Field(
@@ -295,7 +294,6 @@ class Settings(BaseSettings):
         self.reports_dir.mkdir(parents=True, exist_ok=True)
         if self.checkpoint_enabled:
             self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
 
 # Global settings instance
 settings = Settings()

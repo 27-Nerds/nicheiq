@@ -3,17 +3,15 @@ SolutionRefinementCrew - Stage 8.85: Solution Refinement Based on Keyword Insigh
 Single-agent crew for strategic refinement of selected solution using keyword validation data.
 """
 
-from typing import Optional
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..models.solution_refinement import SolutionRefinement
-from ..models.solution_idea import SolutionIdea
 from ..models.keyword_data import CrewKeywordValidationResult
+from ..models.solution_idea import SolutionIdea
+from ..models.solution_refinement import SolutionRefinement
 
 
 @CrewBase
@@ -88,7 +86,7 @@ class SolutionRefinementCrew:
         selected_solution: SolutionIdea,
         keyword_validation: CrewKeywordValidationResult,
         composite_score: float
-    ) -> Optional[SolutionRefinement]:
+    ) -> SolutionRefinement | None:
         """
         Execute refinement crew to generate strategic recommendations.
 
@@ -149,7 +147,7 @@ class SolutionRefinementCrew:
                 )
                 return result.pydantic
             else:
-                logger.error(f"[Stage 8.85] Refinement failed - no Pydantic output")
+                logger.error("[Stage 8.85] Refinement failed - no Pydantic output")
                 return None
 
         except Exception as e:

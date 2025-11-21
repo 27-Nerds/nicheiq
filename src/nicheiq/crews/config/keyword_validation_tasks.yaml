@@ -26,7 +26,7 @@ hybrid_strategy:
 
     **WORKFLOW:**
     1. **Seed Generation** → Create 8-12 seeds combining:
-       - Solution name variations: "{solution_name} alternative", "{solution_name} tool"
+       - Solution name variations: "[solution_name] alternative", "[solution_name] tool"
        - Pain point queries: Extract 3-4 problem phrases from pain points above
        - Market segment modifiers: Use segments like {market_segments}
 

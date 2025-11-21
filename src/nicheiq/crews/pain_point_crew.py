@@ -3,7 +3,7 @@ PainPointCrew - Stage 6: Pain Point Analysis
 Multi-agent crew for analyzing social discussions and extracting validated pain points.
 """
 
-from typing import List, Tuple, Any
+from typing import Any
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -16,19 +16,17 @@ from ..models.pain_point import (
     PainPoint,
     PainPointAnalysisResult,
     PainPointExtraction,
-    PainPointScoring,
     UnvalidatedPainPoint,
     ValidationResult,
 )
 from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
-from ..utils.helpers import ContentTokenMonitor
+from ..utils.token_monitor import ContentTokenMonitor
 
 # Source tracking pattern for [source: ID] suffixes
 # Matches alphanumeric, dash, underscore, period (1-50 chars) for post/thread IDs
 SOURCE_TAG_PATTERN = r'[\w\-_\.]{1,50}'
 
-
-def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
+def validate_pydantic_pain_point_output(result: TaskOutput) -> tuple[bool, Any]:
     """
     Guardrail function to ensure ValidationResult is valid with no extra text.
 
@@ -36,7 +34,7 @@ def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
     the number of scores matches the number of extracted pain points.
 
     Returns:
-        Tuple[bool, Any]: (success, validated_result_or_error_message)
+        tuple[bool, Any]: (success, validated_result_or_error_message)
     """
     try:
         # Check if Pydantic output exists
@@ -55,7 +53,7 @@ def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
             return (False, "OUTPUT ERROR: Missing 'pain_point_scores' field in ValidationResult")
 
         if not validation_result.pain_point_scores:
-            logger.error(f"Guardrail validation failed - Empty pain_point_scores list")
+            logger.error("Guardrail validation failed - Empty pain_point_scores list")
             return (False, "VALIDATION ERROR: Empty pain_point_scores list. You must score all extracted pain points.")
 
         # Success - return the validated Pydantic output
@@ -67,7 +65,6 @@ def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
         raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
         logger.error(f"Guardrail validation exception: {str(e)}. Raw output preview: {raw_preview}...")
         return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the ValidationResult model with no extra text.")
-
 
 @CrewBase
 class PainPointCrew:
@@ -85,7 +82,7 @@ class PainPointCrew:
     agents_config = "config/pain_point_agents.yaml"
     tasks_config = "config/pain_point_tasks.yaml"
 
-    def __init__(self, reddit_posts: List[RedditPost] = None, twitter_threads: List[TwitterThread] = None, niche_description: str = "", market_segments: List[str] = None, industry_boundaries: str = ""):
+    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = ""):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -166,7 +163,7 @@ class PainPointCrew:
             f"({total_twitter_replies} replies) - {len(self.knowledge_sources)} knowledge source(s) ready"
         )
 
-    def _filter_low_quality_reddit(self, posts: List[RedditPost]) -> List[RedditPost]:
+    def _filter_low_quality_reddit(self, posts: list[RedditPost]) -> list[RedditPost]:
         """
         Filter out low-quality Reddit posts before analysis.
 
@@ -211,7 +208,7 @@ class PainPointCrew:
 
         return quality_posts
 
-    def _filter_low_quality_twitter(self, threads: List[TwitterThread]) -> List[TwitterThread]:
+    def _filter_low_quality_twitter(self, threads: list[TwitterThread]) -> list[TwitterThread]:
         """
         Filter out low-quality Twitter threads before analysis.
 
@@ -248,7 +245,7 @@ class PainPointCrew:
 
         return quality_threads
 
-    def _format_comments_with_replies(self, comments: List[RedditComment], post_id: str = "unknown", depth: int = 0, max_depth: int = 3) -> str:
+    def _format_comments_with_replies(self, comments: list[RedditComment], post_id: str = "unknown", depth: int = 0, max_depth: int = 3) -> str:
         """
         Recursively format comments with their nested replies.
 
@@ -292,7 +289,7 @@ class PainPointCrew:
         # Filter out any empty strings before joining
         return "\n".join(str(item) for item in formatted if item)
 
-    def _format_twitter_replies(self, replies: List[TwitterTweet], thread_id: str = "unknown") -> str:
+    def _format_twitter_replies(self, replies: list[TwitterTweet], thread_id: str = "unknown") -> str:
         """
         Format Twitter replies with comprehensive content and conversation threading.
 
@@ -523,21 +520,38 @@ class PainPointCrew:
         Returns:
             Configured Crew instance with knowledge sources
         """
+        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.helpers import sanitize_collection_name
+
+        embedder_config = {
+            "provider": "openai",
+            "config": {
+                "model_name": "text-embedding-3-small"  # Cost-effective embeddings
+            }
+        }
+
+        # Create Knowledge with niche-specific collection name for isolation
+        knowledge = None
+        if self.knowledge_sources:
+            collection_name = sanitize_collection_name(self.niche_description, "pain")
+            logger.info(f"Creating knowledge with collection: {collection_name}")
+            knowledge = Knowledge(
+                sources=self.knowledge_sources,
+                embedder=embedder_config,
+                collection_name=collection_name,
+            )
+            knowledge.add_sources()
+
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
-            knowledge_sources=self.knowledge_sources,  # Attach knowledge sources
+            knowledge=knowledge,  # Use pre-configured Knowledge instead of knowledge_sources
             verbose=True,
             process_type="sequential",  # Tasks run in order
-            embedder={
-                "provider": "openai",
-                "config": {
-                    "model": "text-embedding-3-small"  # Cost-effective embeddings
-                }
-            }
+            embedder=embedder_config
         )
 
-    def _extract_and_clean_sources(self, pain_points: List[UnvalidatedPainPoint]) -> List[UnvalidatedPainPoint]:
+    def _extract_and_clean_sources(self, pain_points: list[UnvalidatedPainPoint]) -> list[UnvalidatedPainPoint]:
         """
         Extract source_post_ids from [source: ID] suffixes in quotes and clean quote text.
 

@@ -44,7 +44,7 @@ seo_specialist:
     unique value proposition, solution name, and target personas of the specific solution
     being analyzed. Design URL structures, schema markup strategies, and page type
     implementations that are immediately actionable for developers. Never use placeholder
-    syntax like [solution_name] or {variable} in final examples—always provide fully
+    syntax like [solution_name] or \{variable\} in final examples—always provide fully
     populated, production-ready code and content that developers can use without modification.
   backstory: >
     Your 15 years in technical SEO span agency work, in-house roles, and consulting

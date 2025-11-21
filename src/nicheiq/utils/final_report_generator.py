@@ -9,16 +9,10 @@ translation services example, combining:
 - SEO Strategy (comprehensive keyword strategy)
 """
 
-from datetime import datetime
-from typing import List
 
 from ..models.research_state import FinalReport
 from ..models.seo_strategy import (
-    CategoryKeywordGroup,
-    GeographicKeywordGroup,
     SEOStrategyReport,
-    TieredKeyword,
-    TopicCluster,
 )
 
 
@@ -67,7 +61,6 @@ def generate_markdown_report(final_report: FinalReport) -> str:
 
     return "\n\n".join(sections)
 
-
 def _generate_header(report: FinalReport) -> str:
     """Generate report header."""
     timestamp = report.generated_at.strftime("%B %Y")
@@ -79,13 +72,11 @@ def _generate_header(report: FinalReport) -> str:
 **Generated:** {timestamp}
 **Research Pipeline:** NicheIQ 10-Stage Analysis"""
 
-
 def _generate_executive_summary(report: FinalReport) -> str:
     """Generate executive summary section."""
     return f"""## EXECUTIVE SUMMARY
 
 {report.executive_summary}"""
-
 
 def _generate_solution_selection_section(report: FinalReport) -> str:
     """Generate solution selection section (Stage 8.5)."""
@@ -120,7 +111,6 @@ def _generate_solution_selection_section(report: FinalReport) -> str:
 
     return "\n".join(section)
 
-
 def _generate_pain_points_section(report: FinalReport) -> str:
     """Generate pain points section."""
     section = [
@@ -138,7 +128,6 @@ def _generate_pain_points_section(report: FinalReport) -> str:
         section.append(f"{i}. **{pain_point}**")
 
     return "\n".join(section)
-
 
 def _generate_solutions_section(report: FinalReport) -> str:
     """Generate solutions section."""
@@ -158,7 +147,6 @@ def _generate_solutions_section(report: FinalReport) -> str:
 
     return "\n".join(section)
 
-
 def _generate_competitive_section(report: FinalReport) -> str:
     """Generate competitive landscape section."""
     return f"""---
@@ -167,7 +155,6 @@ def _generate_competitive_section(report: FinalReport) -> str:
 
 {report.competitive_summary}"""
 
-
 def _generate_market_validation(report: FinalReport) -> str:
     """Generate market validation section."""
     return f"""---
@@ -175,7 +162,6 @@ def _generate_market_validation(report: FinalReport) -> str:
 ## MARKET VALIDATION
 
 {report.market_validation}"""
-
 
 def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
     """
@@ -454,7 +440,6 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
 
     return "\n".join(sections)
 
-
 def _generate_data_sourcing_section(report: FinalReport) -> str:
     """Generate data sourcing recommendations."""
     return f"""---
@@ -462,7 +447,6 @@ def _generate_data_sourcing_section(report: FinalReport) -> str:
 ## DATA SOURCING RECOMMENDATIONS
 
 {report.data_sourcing_recommendations}"""
-
 
 def _generate_next_steps(report: FinalReport) -> str:
     """Generate next steps section."""

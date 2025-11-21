@@ -3,7 +3,7 @@ Pydantic models for competitive analysis (Stage 8).
 """
 
 from enum import Enum
-from typing import List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,7 +15,6 @@ class CompetitorType(str, Enum):
     PARTIAL = "partial"
     INDIRECT = "indirect"
 
-
 class MarketSaturation(str, Enum):
     """Level of market saturation."""
 
@@ -23,7 +22,6 @@ class MarketSaturation(str, Enum):
     MEDIUM = "medium"
     HIGH = "high"
     VERY_HIGH = "very_high"
-
 
 class Competitor(BaseModel):
     """Represents a competitive product or service."""
@@ -34,13 +32,12 @@ class Competitor(BaseModel):
     url: Optional[str] = Field(default=None, description="Website URL")
     competitor_type: CompetitorType = Field(..., description="Type of competitor")
     description: str = Field(..., description="What this competitor offers")
-    key_features: List[str] = Field(..., description="Main features they provide")
+    key_features: list[str] = Field(..., description="Main features they provide")
     pricing_model: Optional[str] = Field(
         default=None, description="Pricing model if available"
     )
-    strengths: Optional[List[str]] = Field(default=None, description="Competitor strengths")
-    weaknesses: Optional[List[str]] = Field(default=None, description="Competitor weaknesses")
-
+    strengths: Optional[list[str]] = Field(default=None, description="Competitor strengths")
+    weaknesses: Optional[list[str]] = Field(default=None, description="Competitor weaknesses")
 
 class CompetitiveLandscape(BaseModel):
     """Complete competitive analysis for a solution idea."""
@@ -48,13 +45,13 @@ class CompetitiveLandscape(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
-    competitors: Optional[List[Competitor]] = Field(
+    competitors: Optional[list[Competitor]] = Field(
         default=None, description="All competitors (direct, indirect, and partial solutions)"
     )
-    market_gaps: List[str] = Field(
+    market_gaps: list[str] = Field(
         ..., description="Specific unmet needs or underserved areas in the market"
     )
-    differentiation_opportunities: List[str] = Field(
+    differentiation_opportunities: list[str] = Field(
         ..., description="Specific ways this solution can differentiate from competitors"
     )
     competitive_intensity: str = Field(
@@ -67,16 +64,15 @@ class CompetitiveLandscape(BaseModel):
         ..., description="Market pricing analysis and recommended pricing approach"
     )
 
-
 class CompetitiveAnalysisResult(BaseModel):
     """Complete result of competitive analysis for all solution ideas."""
 
     model_config = ConfigDict(extra='forbid')
 
-    solution_landscapes: List[CompetitiveLandscape] = Field(
+    solution_landscapes: list[CompetitiveLandscape] = Field(
         ..., description="Competitive landscape for each solution idea"
     )
-    top_opportunities: List[str] = Field(
+    top_opportunities: list[str] = Field(
         ..., description="3-5 highest-potential differentiation opportunities across all solutions"
     )
     strategic_recommendations: str = Field(

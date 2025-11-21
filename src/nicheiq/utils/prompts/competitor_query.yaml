@@ -1,0 +1,144 @@
+# Competitor Query Generation Prompt
+# Used by: CompetitorQueryGenerator.generate_competitor_queries()
+# Variables: context_section (pre-built), num_queries, project_type
+
+template: |
+  You are an expert competitive intelligence researcher specializing in discovering and validating market competitors. Your goal is to generate semantically valid search queries that discover actual competitors for a specific solution.
+
+  {context_section}
+
+  ---
+
+  **TASK: Generate {num_queries} strategic competitor search queries**
+
+  Follow this process in order:
+
+  ## STEP 1: ANALYZE SOLUTION & NICHE CHARACTERISTICS
+
+  Before generating queries, analyze the solution context to understand:
+
+  **Solution Type Analysis:**
+  - Project Type: {project_type}
+  - What category of product is this?
+    - SaaS -> software/tools/platforms competitors
+    - Directory -> curated lists/catalogs/directories competitors
+    - Aggregator -> data platforms/comparison sites/aggregators competitors
+    - Comparison-tool -> comparison engines/review platforms competitors
+    - Marketplace -> platforms/exchanges/marketplaces competitors
+
+  **Market Type:**
+  - Is this B2C (consumer-facing), B2B (business-facing), or hybrid?
+  - Evidence: Look for "business", "teams", "enterprise" vs "personal", "home", "individual"
+
+  **Product Nature:**
+  - Physical products, digital services, software, platform, or information service?
+  - Does the niche have established digital competitors?
+  - Evidence: Industry boundaries, niche description
+
+  **Competitor Landscape:**
+  - Established players likely? (mature market) vs Fragmented/emerging? (new market)
+  - Evidence: Pain points mention existing tools/platforms?
+
+  ## STEP 2: APPLY SEMANTIC VALIDATION RULES
+
+  **RULE 1: Match competitor category to solution type**
+  - SaaS -> Search: "software", "tools", "platforms", "apps"
+  - Directory -> Search: "directories", "catalogs", "curated lists", "guides"
+  - Aggregator -> Search: "comparison sites", "data aggregators", "vs platforms"
+  - Comparison-tool -> Search: "comparison engines", "review sites", "ranking platforms"
+  - Marketplace -> Search: "marketplaces", "platforms", "exchanges"
+
+  **RULE 2: Adapt search terms to product nature**
+  - Physical products -> "sites", "directories", "guides", "reviews", "comparison sites"
+  - Digital/SaaS -> "software", "tools", "platforms", "apps", "solutions"
+  - Services -> "platforms", "marketplaces", "networks", "directories"
+  - Information -> "guides", "databases", "resources", "directories"
+
+  **RULE 3: Use market segments for targeted competitor searches**
+  - Extract key characteristics from market segments (if provided)
+  - Examples:
+    - "First-time homebuyers" -> search "[category] for first-time buyers"
+    - "Budget-conscious families" -> search "affordable [category]", "cheap [category] alternatives"
+    - "Remote teams" -> search "[category] for remote teams", "distributed team [category]"
+
+  **RULE 4: Focus on competitor discovery, not solution promotion**
+  - Search for what EXISTS in the market (competitors), not marketing terms
+  - Use established category names, not branded terms
+  - Examples:
+    - Good: "project management software", "expense tracking apps"
+    - Bad: "[SolutionName] competitors" (unless SolutionName is already established)
+
+  **RULE 5: Use pain points to find problem-specific competitors**
+  - If pain points mention existing tools/brands, search for those
+  - Search for solutions addressing the same pain points
+  - Examples:
+    - Pain point: "Hard to find reliable contractors" -> "contractor directories", "verified contractor platforms"
+    - Pain point: "Comparing appliances is confusing" -> "appliance comparison sites", "appliance review platforms"
+
+  **RULE 6: Respect industry boundaries**
+  - Only search within the defined scope from industry_boundaries
+  - Avoid adjacent markets explicitly excluded
+
+  ## STEP 3: GENERATE QUERIES (5 Types)
+
+  **1. Direct Competitor Category (30% of queries)** - Core competitor type
+  - "[solution category] [type]" where type matches project_type
+  - Examples:
+    - SaaS: "project management software", "expense tracking tools"
+    - Directory: "contractor directories", "restaurant guides"
+    - Aggregator: "flight comparison sites", "insurance aggregators"
+    - Marketplace: "freelance marketplaces", "rental platforms"
+
+  **2. Alternative/Comparison Searches (25% of queries)** - What users search
+  - "best [category]"
+  - "[category] alternatives"
+  - "[category] comparison"
+  - "top [category] platforms/tools/sites"
+
+  **3. Segment-Specific Competitors (20% of queries)** - Use market segment characteristics
+  - "[category] for [segment characteristic]"
+  - Extract from market segments: demographics, constraints, priorities
+  - Examples:
+    - "project management for small teams"
+    - "affordable appliance directories"
+    - "contractor platforms for homeowners"
+
+  **4. Problem-Specific Solutions (15% of queries)** - Pain point targeting
+  - "solve [pain point] tools/platforms"
+  - "[pain point] solutions"
+  - Examples:
+    - "reliable contractor platforms"
+    - "verified service provider directories"
+    - "compare [product category] easily"
+
+  **5. Established Player Searches (10% of queries)** - Known competitors
+  - Only if you can infer likely established players from niche/category
+  - "[established player] vs"
+  - "[established player] alternatives"
+  - "better than [established player]"
+  - Examples:
+    - "Upwork alternatives" (if marketplace for freelancers)
+    - "Zillow competitors" (if real estate directory)
+
+  ## STEP 4: OUTPUT FORMAT
+
+  Return ONLY a valid JSON array. No preamble, no explanation, just the array:
+
+  [
+    {{
+      "query": "the exact search query text",
+      "type": "category|alternative|segment|problem|established",
+      "rationale": "1-sentence explanation of why this query finds relevant competitors for this solution type"
+    }},
+    ...
+  ]
+
+  **Quality Checklist (Self-Validate Before Outputting):**
+  - [ ] Does this query match the project_type? (e.g., "directories" for directory solutions)
+  - [ ] Would this query actually find competitors, not just general info?
+  - [ ] Does it respect industry boundaries?
+  - [ ] Does it leverage market segment insights where available?
+  - [ ] Is it specific enough to find actual products/platforms?
+  - [ ] Does it pass semantic validation rules (Rules 1-6)?
+
+  Generate {num_queries} queries now, following Steps 1-4 in order.

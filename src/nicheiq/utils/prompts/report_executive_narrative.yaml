@@ -1,0 +1,82 @@
+# Executive Narrative Generation Prompt
+# Used by: ReportGenerator._generate_executive_narrative()
+# Variables: solution_name, solution_description, target_personas, niche_description,
+#            pain_point_title, pain_point_severity, pain_point_wtp,
+#            market_fit_score, competitive_advantage_score, technical_feasibility_score,
+#            seo_growth_score, total_keyword_count, tier1_keyword_count,
+#            competitor_count, high_priority_pain_points,
+#            zero_keywords_note, zero_competitors_note
+
+template: |
+  Generate executive narrative for market research report.
+
+  **Solution Context:**
+  Name: {solution_name}
+  Description: {solution_description}
+  Target Personas: {target_personas}
+  Niche: {niche_description}
+
+  **Top Pain Point:**
+  Title: {pain_point_title}
+  Severity: {pain_point_severity}/1.0
+  WTP Score: {pain_point_wtp}/1.0
+
+  **Selection Criteria Scores (0-1.0 scale):**
+  - Market Fit: {market_fit_score}/1.0
+  - Competitive Advantage: {competitive_advantage_score}/1.0
+  - Technical Feasibility: {technical_feasibility_score}/1.0
+  - SEO Scalability: {seo_growth_score}/1.0
+
+  **Market Metrics:**
+  - Total Keywords: {total_keyword_count}{zero_keywords_note}
+  - Tier 1 Keywords: {tier1_keyword_count}
+  - Primary Competitors: {competitor_count}{zero_competitors_note}
+  - High Priority Pain Points: {high_priority_pain_points}
+
+  **MINIMUM DATA REQUIREMENTS:**
+  - All scores and metrics are provided above
+  - Generate narrative based ONLY on this data
+  - If keyword_count == 0: Mention "limited keyword data" in verdict
+  - If competitor_count == 0: Note "emerging market" status
+
+  **Generate 3 fields:**
+
+  1. **tagline**: One-sentence value proposition (10-15 words)
+     - Format: "[Solution] [action verb] [outcome] for [audience]"
+     - Use active verbs: solves, simplifies, automates, connects
+     - Avoid generic terms: platform, solution, tool
+     - Include outcome benefit from pain point
+
+  2. **core_value_prop**: What problem it solves and for whom (2-3 sentences)
+     - First sentence: State the pain point and its impact
+     - Second sentence: Explain the solution approach
+     - Third sentence (optional): Differentiation or benefit
+
+  3. **verdict_rationale**: Go/No-Go rationale based on scores (MAXIMUM 3 sentences, prefer 2)
+     - First sentence: State 2-3 key scores and their implication
+     - Second sentence: Address any concerns or strengths
+     - Optional third sentence: Clear recommendation signal (only if needed)
+     - MUST reference specific numeric score values (e.g., "market fit of 0.82")
+     - If market_fit >= 0.75 AND technical_feasibility >= 0.7: Lean positive
+     - If any critical score < 0.6: Acknowledge concerns and require validation
+
+  **OUTPUT STRUCTURE EXAMPLE:**
+  {{
+    "tagline": "{solution_name} simplifies [pain] for {target_personas}",
+    "core_value_prop": "Pain point impact... Solution approach... Benefit.",
+    "verdict_rationale": "With market fit of 0.82 and technical feasibility of 0.75, this solution shows strong potential for the target market. The competitive advantage score of 0.68 indicates differentiation opportunities that warrant further validation."
+  }}
+
+  **CRITICAL ANTI-HALLUCINATION RULES:**
+  - DO NOT invent statistics, percentages, or market size estimates
+  - DO NOT reference timeframes ("recent", "growing", "trending") without data
+  - DO NOT mention competitors unless in provided metrics
+  - DO NOT claim user counts, revenue, or adoption rates
+  - ONLY reference scores and metrics explicitly listed above
+  - DO NOT create features or capabilities not in solution description
+
+  **Before finalizing, verify:**
+  ✓ All pain point references match EXACTLY the title above
+  ✓ All score references use actual values from above (no generic "strong" or "good")
+  ✓ No invented market claims or statistics
+  ✓ Tagline includes solution name and uses active verb

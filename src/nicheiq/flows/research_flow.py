@@ -3,31 +3,37 @@ ResearchFlow - Main orchestration flow for the 10-stage market research pipeline
 Combines Flow-based orchestration with specialized Crews for complex analysis.
 """
 
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
-import asyncio
 import json
-import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from crewai.flow.flow import Flow, listen, start
-from crewai.llm import LLM
+
+if TYPE_CHECKING:
+    from ..models.research_state import NicheContext
 from crewai_tools import SerperDevTool
 from loguru import logger
-from pydantic import ValidationError
-
-from langchain_openai import ChatOpenAI
 
 from ..config.settings import settings
 from ..crews import PainPointCrew, SEOStrategyCrew, UnifiedSolutionCrew
 from ..crews.solution_refinement_crew import SolutionRefinementCrew
-from ..models.research_state import FinalReport, ResearchState
-from ..models.keyword_data import KeywordSeedResult, KeywordValidationSummary, CrewKeywordValidationResult
+from ..models.keyword_data import CrewKeywordValidationResult
+from ..models.research_state import ResearchState
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
-from ..tools.dataforseo_tool import DataForSEOBaseClient
-from ..utils.helpers import SearchHelper, generate_competitive_queries, find_solution_by_name, ContentTokenMonitor, KeywordRelevanceValidator, KeywordSeedGenerator
+from ..utils.helpers import find_solution_by_name
+from ..utils.keyword_filtering import check_keyword_relevance
+from ..utils.score_refinement import (
+    refine_cac_organic,
+    refine_programmatic_opportunity,
+    refine_scalability_score,
+)
+from ..utils.search_helpers import SearchHelper
+from ..utils.seed_generation import SeedGenerator
+from ..utils.token_monitor import ContentTokenMonitor
+from ..utils.validation import KeywordRelevanceValidator
 from .checkpoint_manager import CheckpointManager
 
 
@@ -46,120 +52,7 @@ class ResearchFlow(Flow[ResearchState]):
     10: Final Report Generation (Flow)
     """
 
-    # Stage 8.8 - Seed Generation Prompt for LLM
-    SEED_GENERATION_PROMPT = """You are a keyword research specialist generating seed keywords for market demand validation.
-
-**YOUR TASK:**
-Generate exactly 10 high-quality seed keywords that represent different ways real users search for this solution.
-
-**SOLUTION DETAILS:**
-Solution Name: {solution_name}
-Description: {solution_description}
-Core Features: {core_features}
-Target Personas: {target_personas}
-Pain Points Addressed: {pain_points}
-Project Type: {project_type}
-Competitors: {competitors}
-
-**SEED KEYWORD REQUIREMENTS:**
-
-1. **Diversity Mandate** - Your 10 seeds MUST cover:
-   - 3-4 broad market keywords (1-2 words, high volume potential)
-     Examples: "expat insurance", "relocation service", "tax software"
-
-   - 2-3 specific solution keywords (2-3 words, mid-volume, feature/persona-specific)
-     Examples: "digital nomad insurance", "expat tax filing", "Spain visa guide"
-
-   - 2-3 problem/need-based keywords (3-5 words, intent-rich)
-     Examples: "best health insurance for expats", "how to file taxes abroad"
-
-   - 1-2 competitive/comparison keywords (if {competitors} field contains real competitors)
-     Examples: Use ACTUAL competitor names from {competitors} field:
-     - "[CompetitorName] alternative", "vs [CompetitorName]", "[CompetitorName] comparison"
-     - If competitors="SafetyWing, Cigna Global" → "SafetyWing alternative", "Cigna Global comparison"
-
-2. **Search Intent Coverage** - Include mix of:
-   - Informational: "what is...", "how to...", "best..."
-   - Navigational: "[category] directory", "[solution type] list"
-   - Transactional: "buy...", "get...", "find..."
-   - Comparison: "vs", "alternative", "better than"
-
-3. **Geographic Variations** - If solution is location-specific, include 1-2 geo-modifiers:
-   - Country-level: "expat insurance Spain", "UK visa service"
-   - City-level (for local): "Barcelona coworking space"
-   - Regional: "EU visa requirements", "Southeast Asia nomad insurance"
-
-4. **Category Extraction Mandate:**
-
-   **CRITICAL:** The solution_name field may contain an INVENTED BRAND NAME that doesn't exist yet.
-
-   **Your Task:** Extract the UNDERLYING CATEGORY, not the brand.
-
-   **How to extract category:**
-   1. Read the {solution_description}, {core_features}, and {pain_points} fields
-   2. Ask: "What EXISTING MARKET/PROBLEM does this solution address?"
-   3. Extract category terms from these fields (NOT from solution_name)
-   4. Use category keywords that people ALREADY search for
-
-   **Examples:**
-
-   **Example 1:** AI-powered recipe organizer for home cooks
-   - Solution Name: "RecipeGenius" (invented brand)
-   - Category Analysis: Addresses recipe organization and meal planning
-   - ✅ CORRECT keywords: "recipe organizer", "recipe app", "meal planning tool", "cooking app"
-   - ❌ WRONG keywords: "RecipeGenius", "RecipeGenius alternative"
-
-   **Example 2:** Global relocation platform for expats
-   - Solution Name: "ExpatEase" (invented brand)
-   - Category Analysis: Addresses expat relocation, visa, insurance, logistics
-   - ✅ CORRECT keywords: "expat relocation", "international moving", "expat services", "visa help"
-   - ❌ WRONG keywords: "ExpatEase", "ExpatEase platform"
-
-   **Example 3:** Code refactoring assistant for developers
-   - Solution Name: "RefactorHub" (invented brand)
-   - Category Analysis: Addresses code quality, refactoring automation, technical debt
-   - ✅ CORRECT keywords: "code refactoring", "refactoring tool", "developer tools", "code quality"
-   - ❌ WRONG keywords: "RefactorHub", "RefactorHub software"
-
-   **Exception:** ONLY use solution_name as a keyword if it matches an existing competitor in {competitors} field.
-
-5. **Quality Filters:**
-   ✅ DO include: Natural search language, competitor names, problem descriptions, persona labels
-   ✅ DO vary: Word count (1-5 words), specificity levels, user intents
-   ❌ DON'T include: Solution name if it's an invented brand (e.g., "ExpatEase", "NicheSignal Atlas", "RefactorHub" - these have ZERO search volume), overly generic single words ("platform", "tool", "service"), duplicate patterns
-   ❌ DON'T repeat: Same keyword with minor variations (pick the strongest version)
-
-**EDGE CASE HANDLING:**
-
-- **Novel/Invented Solution Names**: If solution_name appears to be a made-up brand (portmanteau, CamelCase, or unfamiliar term), treat it as NON-EXISTENT in search data.
-
-  **How to identify invented brands:**
-  - Portmanteaus: "ExpatEase", "RefactorHub" (blended words)
-  - CamelCase: "TravelBuddy", "CodeMentor" (mid-word capitals)
-  - Unfamiliar compound terms that aren't recognized products
-
-  **What to do:**
-  - Extract category from {solution_description} and {core_features}
-  - Use category keywords that people ALREADY search for
-
-  **Example:** "ExpatEase" (invented brand)
-  - ✅ CORRECT: "expat relocation platform", "expat services", "international moving help", "visa assistance"
-  - ❌ WRONG: "ExpatEase", "ExpatEase alternative", "ExpatEase vs [competitor]"
-
-  **Rationale:** Invented brands have ZERO search volume until they exist and are marketed. Your keywords must reflect CURRENT search behavior.
-
-- **Technical/B2B Niches**: Include technical terminology + business outcome keywords
-  Example: "API documentation tool" + "developer onboarding automation"
-
-- **Highly Specific Niches**: Balance niche terms with adjacent broader categories
-  Example: For "sous vide recipe app" → Include "sous vide recipes" + "precision cooking" + "cooking app"
-
-- **No Clear Competitors**: Skip comparison keywords, add more problem/need-based seeds
-  Example: "how to find reliable expat services" instead of "[Competitor] alternative"
-
-Now generate 10 seed keywords for the solution described above."""
-
-    def __init__(self, niche_description: str, allowed_project_types: Optional[List[str]] = None):
+    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None):
         """
         Initialize ResearchFlow with niche description.
 
@@ -234,7 +127,7 @@ Now generate 10 seed keywords for the solution described above."""
         if last_exception:
             raise last_exception
 
-    def resume_from_checkpoint(self, checkpoint_path: Optional[Path] = None) -> bool:
+    def resume_from_checkpoint(self, checkpoint_path: Path | None = None) -> bool:
         """
         Resume research flow from checkpoint.
 
@@ -449,877 +342,6 @@ Now generate 10 seed keywords for the solution described above."""
 
         return ""
 
-    # ========== STAGE 8.8 HELPER METHODS ==========
-
-    def _generate_hybrid_seeds(
-        self,
-        solution: "SolutionIdea",
-        count: int = 20
-    ) -> List[str]:
-        """
-        Generate hybrid keyword seeds combining KeywordSeedGenerator + LLM creativity.
-
-        Strategy:
-        - 10 seeds from KeywordSeedGenerator (context-aware, semantic validation)
-        - 10 seeds from LLM creative generation (diverse patterns)
-        - Combine and deduplicate
-
-        Args:
-            solution: SolutionIdea object with description, features, pain points
-            count: Target number of seeds (default: 20)
-
-        Returns:
-            List of unique seed keywords (up to count)
-
-        Raises:
-            None - gracefully degrades to LLM-only if KeywordSeedGenerator fails
-        """
-        all_seeds = []
-
-        # Method 1: KeywordSeedGenerator (context-aware with semantic validation)
-        try:
-            logger.info(f"[Stage 8.8] Generating KeywordSeedGenerator seeds for {solution.solution_name}")
-            generator = KeywordSeedGenerator()
-
-            # Extract context from flow state
-            niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
-            pain_points = self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None
-            competitive_analysis = None
-
-            # Try to get competitive analysis for this specific solution
-            if hasattr(solution, 'competitive_landscape') and solution.competitive_landscape:
-                # Wrap in CompetitiveAnalysisResult structure for the generator
-                from ..models.competitor import CompetitiveAnalysisResult, CompetitiveLandscape
-                competitive_analysis = CompetitiveAnalysisResult(
-                    solution_landscapes=[solution.competitive_landscape]
-                )
-
-            # Generate 10 seeds (6 broad + 4 targeted)
-            result = generator.generate_seeds(
-                solution=solution,
-                niche_context=niche_context,
-                pain_points=pain_points,
-                competitive_analysis=competitive_analysis,
-                num_broad_seeds=6,
-                num_targeted_seeds=4
-            )
-
-            if result and result.keywords:
-                # Extract just the keyword strings
-                generator_seeds = [kw.keyword for kw in result.keywords[:10]]
-                all_seeds.extend(generator_seeds)
-                logger.info(
-                    f"[Stage 8.8] KeywordSeedGenerator produced {len(generator_seeds)} seeds: "
-                    f"{generator_seeds[:3]}..."
-                )
-            else:
-                logger.warning("[Stage 8.8] KeywordSeedGenerator returned no results - will rely on LLM seeds")
-
-        except Exception as e:
-            logger.warning(
-                f"[Stage 8.8] KeywordSeedGenerator failed: {str(e)} - "
-                f"falling back to LLM-only seeds"
-            )
-
-        # Method 2: LLM Creative Generation (diverse patterns)
-        try:
-            logger.info(f"[Stage 8.8] Generating LLM creative seeds for {solution.solution_name}")
-            llm_seeds = self._generate_llm_seeds(solution, count=10)
-
-            if llm_seeds:
-                all_seeds.extend(llm_seeds)
-                logger.info(
-                    f"[Stage 8.8] LLM creative generation produced {len(llm_seeds)} seeds: "
-                    f"{llm_seeds[:3]}..."
-                )
-            else:
-                logger.warning("[Stage 8.8] LLM seed generation returned no results")
-
-        except Exception as e:
-            logger.error(f"[Stage 8.8] LLM seed generation failed: {str(e)}")
-
-        # Combine and deduplicate
-        unique_seeds = list(dict.fromkeys(all_seeds))  # Preserves order
-
-        # Handle fallback scenarios
-        if not unique_seeds:
-            logger.error(
-                f"[Stage 8.8] Both seed generation methods failed for {solution.solution_name} - "
-                f"using minimal fallback"
-            )
-            # Absolute fallback: basic solution name variations
-            fallback = [
-                solution.solution_name.lower(),
-                f"{solution.project_type or 'platform'} for {solution.solution_name.lower()}",
-            ]
-            unique_seeds = fallback
-
-        # Truncate or pad to target count
-        if len(unique_seeds) > count:
-            unique_seeds = unique_seeds[:count]
-            logger.info(f"[Stage 8.8] Truncated to {count} unique seeds")
-        elif len(unique_seeds) < count:
-            logger.info(
-                f"[Stage 8.8] Generated {len(unique_seeds)} unique seeds "
-                f"(target: {count}) - proceeding with available seeds"
-            )
-
-        logger.info(
-            f"[Stage 8.8] Hybrid seed generation complete: {len(unique_seeds)} unique seeds "
-            f"from {len(all_seeds)} total (including duplicates)"
-        )
-
-        return unique_seeds
-
-    def _generate_seeds_with_strategy(
-        self,
-        solution: "SolutionIdea",
-        attempt: int,
-        count: int = 20
-    ) -> List[str]:
-        """
-        Generate seed keywords using different strategies based on attempt number.
-
-        Implements adaptive pivot strategies:
-        - Attempt 1: Hybrid (KeywordSeedGenerator + LLM)
-        - Attempt 2: Competitor alternative keywords
-        - Attempt 3: Pain point problem phrases
-        - Attempt 4: Broader category + market segments
-
-        Args:
-            solution: SolutionIdea object
-            attempt: Attempt number (1-4)
-            count: Target number of seeds (default: 20)
-
-        Returns:
-            List of seed keywords
-        """
-        logger.info(f"[Stage 8.8] Generating seeds with strategy #{attempt}...")
-
-        # Strategy 1: Hybrid approach (current implementation)
-        if attempt == 1:
-            logger.debug("[Stage 8.8] Strategy: Hybrid (KeywordSeedGenerator + LLM)")
-            return self._generate_hybrid_seeds(solution, count)
-
-        # Strategy 2: Competitor alternative keywords
-        elif attempt == 2:
-            logger.debug("[Stage 8.8] Strategy: Competitor alternatives")
-            return self._generate_competitor_alternative_seeds(solution, count)
-
-        # Strategy 3: Pain point problem phrases
-        elif attempt == 3:
-            logger.debug("[Stage 8.8] Strategy: Pain point problem queries")
-            return self._generate_pain_point_seeds(solution, count)
-
-        # Strategy 4: Broader category + market segments
-        elif attempt == 4:
-            logger.debug("[Stage 8.8] Strategy: Broader category combinations")
-            return self._generate_category_broadening_seeds(solution, count)
-
-        else:
-            logger.warning(f"[Stage 8.8] Unknown attempt {attempt}, defaulting to hybrid")
-            return self._generate_hybrid_seeds(solution, count)
-
-    def _generate_competitor_alternative_seeds(
-        self,
-        solution: "SolutionIdea",
-        count: int = 20
-    ) -> List[str]:
-        """
-        Generate competitor-focused seeds using CompetitorQueryGenerator.
-
-        Strategy: Use actual competitor names + alternative/comparison modifiers.
-
-        Args:
-            solution: SolutionIdea object
-            count: Target number of seeds
-
-        Returns:
-            List of competitor-focused seed keywords
-        """
-        seeds = []
-
-        try:
-            # Get competitors from solution's competitive landscape
-            competitors = []
-            if hasattr(solution, 'competitive_landscape') and solution.competitive_landscape:
-                if (hasattr(solution.competitive_landscape, 'competitors') and
-                    solution.competitive_landscape.competitors is not None):
-                    competitors = [
-                        c.name for c in solution.competitive_landscape.competitors[:10]
-                        if c is not None and hasattr(c, 'name')
-                    ]
-
-            if not competitors:
-                logger.warning("[Strategy 2] No competitors found, using fallback")
-                # Fallback: generic alternative keywords
-                category = solution.project_type or "platform"
-                seeds = [
-                    f"{category} alternatives",
-                    f"best {category}",
-                    f"top {category}",
-                    f"{category} comparison",
-                    f"compare {category}",
-                ]
-            else:
-                # Pattern 1: Competitor alternatives (10-12 seeds)
-                alternative_modifiers = ["alternative", "vs", "compared to", "better than", "alternative to"]
-                for i, competitor in enumerate(competitors[:5]):
-                    modifier = alternative_modifiers[i % len(alternative_modifiers)]
-                    if modifier == "vs":
-                        seeds.append(f"vs {competitor}")
-                    else:
-                        seeds.append(f"{competitor} {modifier}")
-
-                # Pattern 2: Generic comparison keywords (5-8 seeds)
-                category = solution.project_type or "platform"
-                seeds.extend([
-                    f"{category} comparison",
-                    f"best {category} alternatives",
-                    f"top {category} compared",
-                    f"{competitors[0]} competitors",
-                ])
-
-            # Add solution category keywords for diversity
-            if solution.core_features:
-                for feature in solution.core_features[:5]:
-                    seeds.append(f"{feature} alternatives")
-
-            logger.debug(f"[Strategy 2] Generated {len(seeds)} competitor-alternative seeds")
-
-        except Exception as e:
-            logger.warning(f"[Strategy 2] Failed: {e}")
-            # Fallback to generic seeds
-            category = solution.project_type or "platform"
-            seeds = [f"{category} alternatives", f"best {category}", f"compare {category}"]
-
-        # Deduplicate and limit to count
-        unique_seeds = list(dict.fromkeys(seeds))
-        return unique_seeds[:count]
-
-    def _generate_pain_point_seeds(
-        self,
-        solution: "SolutionIdea",
-        count: int = 20
-    ) -> List[str]:
-        """
-        Generate problem-based seeds from pain points.
-
-        Strategy: Convert top pain points into search queries using problem language.
-
-        Args:
-            solution: SolutionIdea object
-            count: Target number of seeds
-
-        Returns:
-            List of pain point-based seed keywords
-        """
-        seeds = []
-
-        try:
-            # Get pain points from flow state
-            pain_points = None
-            if hasattr(self.state, 'pain_point_analysis') and self.state.pain_point_analysis:
-                if hasattr(self.state.pain_point_analysis, 'pain_points'):
-                    pain_points = self.state.pain_point_analysis.pain_points
-
-            if not pain_points:
-                logger.warning("[Strategy 3] No pain points found, using solution pain_points_addressed")
-                # Fallback: use solution's pain_points_addressed
-                if solution.pain_points_addressed:
-                    pain_points_text = solution.pain_points_addressed[:10]
-                else:
-                    pain_points_text = []
-            else:
-                # Extract top 10 pain points by severity
-                pain_points_sorted = sorted(
-                    [p for p in pain_points if p is not None],
-                    key=lambda p: getattr(p, 'severity_score', 0),
-                    reverse=True
-                )[:10]
-                pain_points_text = [
-                    p.title for p in pain_points_sorted
-                    if p is not None and hasattr(p, 'title') and p.title is not None
-                ]
-
-            # Convert pain points to query patterns
-            query_patterns = [
-                "how to {}",
-                "best way to {}",
-                "solve {}",
-                "{} solution",
-                "fix {}",
-                "{} help",
-                "deal with {}",
-            ]
-
-            for pain_point in pain_points_text:
-                # Clean up pain point text (remove "Problem:" prefix, etc.)
-                clean_text = pain_point.lower().strip()
-                clean_text = clean_text.replace("problem:", "").replace("issue:", "").strip()
-
-                # Generate multiple query variations
-                for pattern in query_patterns[:3]:  # Use top 3 patterns
-                    if "{}" in pattern:
-                        seeds.append(pattern.format(clean_text))
-                    else:
-                        seeds.append(f"{pattern} {clean_text}")
-
-            # Add generic problem keywords
-            category = solution.project_type or "service"
-            seeds.extend([
-                f"problems with {category}",
-                f"{category} challenges",
-                f"{category} frustrations",
-            ])
-
-            logger.debug(f"[Strategy 3] Generated {len(seeds)} pain-point seeds")
-
-        except Exception as e:
-            logger.warning(f"[Strategy 3] Failed: {e}")
-            # Fallback to generic problem seeds
-            category = solution.project_type or "service"
-            seeds = [
-                f"how to find {category}",
-                f"best {category}",
-                f"{category} help",
-            ]
-
-        # Deduplicate and limit to count
-        unique_seeds = list(dict.fromkeys(seeds))
-        return unique_seeds[:count]
-
-    def _generate_category_broadening_seeds(
-        self,
-        solution: "SolutionIdea",
-        count: int = 20
-    ) -> List[str]:
-        """
-        Generate broader category seeds using market segments.
-
-        Strategy: Move up abstraction ladder to broader industry/category terms.
-
-        Args:
-            solution: SolutionIdea object
-            count: Target number of seeds
-
-        Returns:
-            List of broader category seed keywords
-        """
-        seeds = []
-
-        try:
-            # Get niche context for market segments
-            niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
-
-            # Extract category hierarchy
-            project_type = solution.project_type or "platform"
-
-            # Broader category map
-            category_hierarchy = {
-                "saas": ["software", "tool", "platform", "system", "application"],
-                "directory": ["directory", "list", "database", "catalog", "guide"],
-                "aggregator": ["aggregator", "comparison", "search", "finder", "discovery"],
-                "marketplace": ["marketplace", "platform", "exchange", "network"],
-                "comparison-tool": ["comparison", "review", "ranking", "evaluation"],
-            }
-
-            broader_categories = category_hierarchy.get(project_type, ["platform", "service", "tool"])
-
-            # Pattern 1: Broader category terms (5-8 seeds)
-            for broad_cat in broader_categories[:5]:
-                seeds.append(broad_cat)
-                seeds.append(f"best {broad_cat}")
-
-            # Pattern 2: Market segment combinations (8-12 seeds)
-            if niche_context and hasattr(niche_context, 'market_segments'):
-                for segment in niche_context.market_segments[:4]:
-                    # Extract key segment characteristics
-                    segment_words = segment.lower().split()[:3]  # First 3 words
-                    segment_phrase = " ".join(segment_words)
-
-                    for broad_cat in broader_categories[:3]:
-                        seeds.append(f"{segment_phrase} {broad_cat}")
-
-            # Pattern 3: Industry vertical keywords (3-5 seeds)
-            if solution.target_personas:
-                for persona in solution.target_personas[:3]:
-                    persona_clean = persona.lower().split()[0]  # First word
-                    seeds.append(f"{persona_clean} {broader_categories[0]}")
-
-            logger.debug(f"[Strategy 4] Generated {len(seeds)} category-broadening seeds")
-
-        except Exception as e:
-            logger.warning(f"[Strategy 4] Failed: {e}")
-            # Fallback to ultra-generic seeds
-            seeds = [
-                "software tool",
-                "platform",
-                "service",
-                "best tool",
-                "find tool",
-            ]
-
-        # Deduplicate and limit to count
-        unique_seeds = list(dict.fromkeys(seeds))
-        return unique_seeds[:count]
-
-    def _generate_llm_seeds(self, solution: "SolutionIdea", count: int = 10) -> List[str]:
-        """
-        Generate seed keywords using LLM with structured output.
-
-        Args:
-            solution: SolutionIdea object
-            count: Number of seeds to generate (default: 10)
-
-        Returns:
-            List of seed keywords
-        """
-        try:
-            structured_llm = ChatOpenAI(
-                model=settings.openai_model_name,
-                temperature=0.7,  # Higher temp for creative keyword diversity
-                api_key=settings.openai_api_key
-            ).with_structured_output(KeywordSeedResult)
-
-            # Prepare context for prompt
-            prompt_context = {
-                "solution_name": solution.solution_name,
-                "solution_description": solution.description,
-                "core_features": ", ".join(solution.core_features[:5]) if solution.core_features else "Not specified",
-                "target_personas": ", ".join(solution.target_personas[:3]) if solution.target_personas else "General users",
-                "pain_points": "; ".join([
-                    f"{pp.title} (Severity: {pp.severity_score}/10)"
-                    for pp in self.state.pain_point_analysis.pain_points[:5]
-                ]) if self.state.pain_point_analysis and self.state.pain_point_analysis.pain_points else "Not specified",
-                "project_type": solution.project_type or "saas",
-                "competitors": "None identified"
-            }
-
-            # Add competitors if available
-            if hasattr(solution, 'competitive_landscape') and solution.competitive_landscape:
-                if hasattr(solution.competitive_landscape, 'competitors') and solution.competitive_landscape.competitors:
-                    prompt_context["competitors"] = ", ".join([
-                        comp.name for comp in solution.competitive_landscape.competitors[:3]
-                    ])
-
-            seed_prompt = self.SEED_GENERATION_PROMPT.format(**prompt_context)
-
-            result = structured_llm.invoke(seed_prompt)
-            seed_keywords = result.seeds
-
-            logger.info(f"[Stage 8.8] LLM generated {len(seed_keywords)} seeds for {solution.solution_name}")
-            return seed_keywords
-
-        except Exception as e:
-            logger.error(f"[Stage 8.8] LLM seed generation failed: {str(e)}")
-            return []
-
-    def _filter_single_word_keywords(
-        self,
-        keywords: List[Dict[str, Any]],
-        label: str
-    ) -> List[Dict[str, Any]]:
-        """
-        Filter out single-word keywords from enriched keyword list.
-
-        Single-word keywords can be used as seeds for DataForSEO expansion,
-        but should be removed from final analysis to avoid over-generic results.
-
-        Args:
-            keywords: List of keyword dictionaries with 'keyword' field
-            label: Label for logging (e.g., "Solution XYZ")
-
-        Returns:
-            Filtered list with only multi-word keywords
-        """
-        if not keywords:
-            return keywords
-
-        original_count = len(keywords)
-
-        # Filter: keep only keywords with 2+ words (split by whitespace, hyphens, slashes)
-        # This handles: "co-working" (2 words), "B2B/B2C" (2 words), "keyword phrase" (2 words)
-        filtered = [
-            kw for kw in keywords
-            if len(re.split(r'[\s\-/]+', kw.get('keyword', '').strip())) >= 2
-        ]
-
-        filtered_count = len(filtered)
-        removed_count = original_count - filtered_count
-
-        if removed_count > 0:
-            # Log some examples of removed single-word keywords
-            removed_keywords = [
-                kw.get('keyword', '') for kw in keywords
-                if len(re.split(r'[\s\-/]+', kw.get('keyword', '').strip())) < 2
-            ]
-            examples = removed_keywords[:5]  # Show first 5
-            examples_str = ", ".join(f"'{kw}'" for kw in examples)
-
-            logger.info(
-                f"[Stage 8.8] {label}: Filtered {removed_count} single-word keywords "
-                f"(kept {filtered_count} multi-word). Examples removed: {examples_str}"
-            )
-        else:
-            logger.debug(f"[Stage 8.8] {label}: No single-word keywords to filter")
-
-        return filtered
-
-    def _check_keyword_relevance(
-        self,
-        expanded_keywords: List[dict],
-        solution: "SolutionIdea",
-        validation_cache: Optional[Dict[str, tuple]] = None
-    ) -> tuple[float, List[dict], List[str]]:
-        """
-        Check if expanded keywords are relevant using 3 criteria.
-
-        Evaluates keyword quality based on:
-        1. Search volume distribution (reject if >80% have volume < 10/month)
-        2. Semantic relevance using KeywordRelevanceValidator
-        3. DataForSEO validation success rate
-
-        Args:
-            expanded_keywords: List of keyword dicts from DataForSEO expansion
-            solution: SolutionIdea object for semantic comparison
-
-        Returns:
-            Tuple of (relevance_score, good_keywords, issues):
-            - relevance_score: 0.0-1.0 overall quality score
-            - good_keywords: List of relevant keyword dicts
-            - issues: List of problem descriptions
-        """
-        if not expanded_keywords:
-            return (0.0, [], ["no_keywords_generated"])
-
-        issues = []
-        total_keywords = len(expanded_keywords)
-
-        # Criterion 1: Search volume distribution
-        low_volume_threshold = getattr(settings, 'keyword_min_volume_threshold', 10)
-        low_volume_keywords = [
-            kw for kw in expanded_keywords
-            if kw.get('search_volume', 0) < low_volume_threshold
-        ]
-        low_volume_ratio = len(low_volume_keywords) / total_keywords if total_keywords > 0 else 1.0
-
-        if low_volume_ratio > 0.8:
-            issues.append(f"low_search_volume_ratio_{low_volume_ratio:.2f}")
-            logger.debug(
-                f"[Relevance Check] {len(low_volume_keywords)}/{total_keywords} "
-                f"keywords have volume < {low_volume_threshold}"
-            )
-
-        # Criterion 2: DataForSEO validation success rate
-        valid_keywords = [
-            kw for kw in expanded_keywords
-            if kw.get('search_volume') is not None and kw.get('search_volume', 0) >= 0
-        ]
-        validation_rate = len(valid_keywords) / total_keywords if total_keywords > 0 else 0.0
-
-        if validation_rate < 0.5:
-            issues.append(f"dataforseo_validation_failed_{validation_rate:.2f}")
-            logger.debug(
-                f"[Relevance Check] Only {len(valid_keywords)}/{total_keywords} "
-                f"keywords validated by DataForSEO"
-            )
-
-        # Criterion 3: Semantic relevance using KeywordRelevanceValidator
-        try:
-            from ..utils.helpers import KeywordRelevanceValidator
-
-            validator = KeywordRelevanceValidator()
-            relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.5)
-
-            # Prepare validation context
-            niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
-            project_type = solution.project_type or "saas"
-
-            # Validate batch (limit to top 50 keywords by volume for cost efficiency)
-            keywords_to_validate = sorted(
-                expanded_keywords,
-                key=lambda x: x.get('search_volume', 0),
-                reverse=True
-            )[:50]
-
-            validated_results = validator.validate_batch(
-                keywords=keywords_to_validate,
-                solution_name=solution.solution_name,
-                solution_description=solution.description,
-                niche_description=niche_context.niche_description if niche_context else "",
-                project_type=project_type,
-                threshold=relevance_threshold,
-                validation_cache=validation_cache
-            )
-
-            # Extract relevant keywords
-            semantically_relevant = [
-                kw for kw, is_relevant, score in validated_results
-                if is_relevant
-            ]
-
-            semantic_relevance_rate = (
-                len(semantically_relevant) / len(keywords_to_validate)
-                if keywords_to_validate else 0.0
-            )
-
-            if semantic_relevance_rate < 0.4:
-                issues.append(f"semantic_mismatch_{semantic_relevance_rate:.2f}")
-                logger.debug(
-                    f"[Relevance Check] Only {len(semantically_relevant)}/{len(keywords_to_validate)} "
-                    f"keywords are semantically relevant (threshold: {relevance_threshold})"
-                )
-
-            # Identify good keywords: valid volume + semantically relevant
-            good_keywords = [
-                kw for kw in expanded_keywords
-                if (
-                    kw.get('search_volume', 0) >= low_volume_threshold and
-                    any(
-                        sk.get('keyword', '').lower() == kw.get('keyword', '').lower()
-                        for sk in semantically_relevant
-                    )
-                )
-            ]
-
-        except Exception as e:
-            logger.warning(f"[Relevance Check] Semantic validation failed: {e}")
-            # Fallback: use volume-based filtering only
-            good_keywords = [
-                kw for kw in expanded_keywords
-                if kw.get('search_volume', 0) >= low_volume_threshold
-            ]
-            semantic_relevance_rate = 0.5  # Neutral score on error
-            issues.append(f"semantic_validation_error")
-
-        # Calculate overall relevance score (weighted average)
-        # 40% volume distribution + 30% validation rate + 30% semantic relevance
-        volume_score = max(0.0, 1.0 - low_volume_ratio)
-        validation_score = validation_rate
-        semantic_score = semantic_relevance_rate
-
-        relevance_score = (
-            0.4 * volume_score +
-            0.3 * validation_score +
-            0.3 * semantic_score
-        )
-
-        logger.info(
-            f"[Relevance Check] Overall score: {relevance_score:.2f} "
-            f"(volume:{volume_score:.2f}, validation:{validation_score:.2f}, "
-            f"semantic:{semantic_score:.2f})"
-        )
-        logger.info(
-            f"[Relevance Check] Good keywords: {len(good_keywords)}/{total_keywords}, "
-            f"Issues: {', '.join(issues) if issues else 'none'}"
-        )
-
-        return (relevance_score, good_keywords, issues)
-
-    def _expand_seeds_quick(
-        self,
-        seeds: List[str],
-        target_size: int = 50
-    ) -> List[dict]:
-        """
-        Quick expansion of seeds for relevance testing.
-
-        Expands top 5 diverse seeds to 50-100 keywords for fast relevance checking.
-        Faster than full expansion while providing sufficient data for quality assessment.
-
-        Args:
-            seeds: List of seed keywords
-            target_size: Target number of expanded keywords (default: 50)
-
-        Returns:
-            List of keyword dicts from DataForSEO with search_volume, competition, etc.
-        """
-        if not seeds:
-            logger.warning("[Quick Expansion] No seeds provided")
-            return []
-
-        try:
-            # Initialize DataForSEO tool
-            dataforseo_tool = DataForSEOBaseClient()
-
-            # Select diverse seeds for expansion (avoid all same pattern)
-            # Strategy: Take every Nth seed to get variety
-            step = max(1, len(seeds) // 5)
-            diverse_seeds = [seeds[i] for i in range(0, min(len(seeds), 20), step)][:5]
-
-            logger.debug(
-                f"[Quick Expansion] Selected {len(diverse_seeds)} diverse seeds from {len(seeds)} total"
-            )
-            logger.debug(f"[Quick Expansion] Seeds: {diverse_seeds}")
-
-            # Expand keywords (DataForSEO returns ~20-50 keywords per seed)
-            expanded_keywords = dataforseo_tool.expand_keywords(
-                seed_keywords=diverse_seeds,
-                location_code=settings.target_location,
-                max_results_per_batch=min(target_size // len(diverse_seeds), 100) if diverse_seeds else 50
-            )
-
-            logger.info(
-                f"[Quick Expansion] Expanded {len(diverse_seeds)} seeds → "
-                f"{len(expanded_keywords)} keywords"
-            )
-
-            # Limit to target size (take top by search volume)
-            if len(expanded_keywords) > target_size:
-                expanded_keywords = sorted(
-                    expanded_keywords,
-                    key=lambda x: x.get('search_volume', 0),
-                    reverse=True
-                )[:target_size]
-                logger.debug(f"[Quick Expansion] Trimmed to top {target_size} by volume")
-
-            return expanded_keywords
-
-        except Exception as e:
-            logger.warning(f"[Quick Expansion] Failed: {e}")
-            return []
-
-    def _validate_seeds_with_dataforseo(self, seeds: List[str], solution_name: str) -> dict:
-        """
-        Validate seed keywords using DataForSEO keyword data.
-
-        Args:
-            seeds: List of seed keywords to validate
-            solution_name: Name of the solution (for logging)
-
-        Returns:
-            dict with validation results including validated_count, total_volume, etc.
-        """
-        try:
-            # Initialize DataForSEO tool
-            dataforseo_tool = DataForSEOBaseClient()
-
-            # Batch validate all seeds
-            keyword_data = dataforseo_tool.get_search_volume(
-                keywords=seeds,
-                location_code=settings.target_location
-            )
-
-            # Filter valid keywords (min search volume threshold)
-            min_volume = getattr(settings, 'keyword_min_search_volume', 50)
-            valid_keywords = [
-                kw for kw in keyword_data
-                if kw.get("search_volume", 0) >= min_volume
-            ]
-
-            # Apply single-word keyword filtering
-            # Note: Single-word keywords are OK as seeds, but filter from final results
-            valid_keywords = self._filter_single_word_keywords(valid_keywords, solution_name)
-
-            # Calculate metrics
-            total_volume = sum(kw.get("search_volume", 0) for kw in valid_keywords)
-            keyword_count = len(valid_keywords)
-            avg_competition = (
-                sum(kw.get("competition_index", 0) for kw in valid_keywords) / max(keyword_count, 1)
-            )
-
-            # Rank by search volume for top keywords
-            top_keywords = sorted(
-                valid_keywords,
-                key=lambda x: x.get("search_volume", 0),
-                reverse=True
-            )[:5]
-
-            # Extract geographic keywords
-            geo_keywords = []
-            geo_terms = ['spain', 'portugal', 'france', 'germany', 'uk', 'usa', 'canada', 'australia']
-            for kw in valid_keywords:
-                keyword_lower = kw.get('keyword', '').lower()
-                if any(geo in keyword_lower for geo in geo_terms):
-                    geo_keywords.append(kw)
-
-            top_geo_keywords = sorted(
-                geo_keywords,
-                key=lambda x: x.get("search_volume", 0),
-                reverse=True
-            )[:3]
-
-            # Calculate keyword demand score (hybrid volume-opportunity)
-            volume_score = keyword_count / len(seeds)  # Percentage validated
-
-            # Calculate opportunity score for each validated keyword
-            opportunity_scores = []
-            for kw in valid_keywords:
-                volume = kw.get("search_volume", 0)
-                competition = kw.get("competition_index", 0)
-
-                volume_factor = min(volume / 1000, 1.0)
-                competition_factor = 1 - (competition / 100)
-                saturation_check = 1.0 if competition <= 60 else 0.7
-
-                opp_score = volume_factor * competition_factor * saturation_check
-                opportunity_scores.append(opp_score)
-
-            avg_opportunity = sum(opportunity_scores) / max(len(opportunity_scores), 1)
-            keyword_demand_score = (0.60 * volume_score) + (0.40 * avg_opportunity)
-
-            # Determine demand signal
-            if total_volume > 5000:
-                demand_signal = "strong"
-            elif total_volume > 2000:
-                demand_signal = "moderate"
-            else:
-                demand_signal = "weak"
-
-            # Validation signals
-            validation_signals = {
-                "has_search_demand": total_volume > 1000,
-                "keyword_diversity": keyword_count >= 5,
-                "high_volume_presence": any(kw.get("search_volume", 0) > 500 for kw in valid_keywords),
-                "average_volume_per_keyword": total_volume / max(keyword_count, 1)
-            }
-
-            logger.info(
-                f"[Stage 8.8] {solution_name} validation: "
-                f"{total_volume:,} total volume, {keyword_count}/{len(seeds)} valid keywords, "
-                f"demand score: {keyword_demand_score:.2f}"
-            )
-
-            return {
-                "solution_name": solution_name,
-                "validated_count": keyword_count,
-                "total_volume": total_volume,
-                "avg_competition": avg_competition,
-                "keyword_demand_score": keyword_demand_score,
-                "top_keywords": [
-                    {
-                        "keyword": kw.get("keyword", ""),
-                        "volume": kw.get("search_volume", 0),
-                        "competition": kw.get("competition_index", 0)
-                    }
-                    for kw in top_keywords
-                ],
-                "top_geographic_keywords": [kw.get("keyword", "") for kw in top_geo_keywords],
-                "demand_signal": demand_signal,
-                "validation_signals": validation_signals
-            }
-
-        except Exception as e:
-            logger.error(f"[Stage 8.8] Validation error for {solution_name}: {str(e)}")
-            # Return minimal valid structure on error
-            return {
-                "solution_name": solution_name,
-                "validated_count": 0,
-                "total_volume": 0,
-                "avg_competition": 0.0,
-                "keyword_demand_score": 0.0,
-                "top_keywords": [],
-                "top_geographic_keywords": [],
-                "demand_signal": "weak",
-                "validation_signals": {
-                    "has_search_demand": False,
-                    "keyword_diversity": False,
-                    "high_volume_presence": False,
-                    "average_volume_per_keyword": 0.0
-                }
-            }
-
     # ========== STAGE METHODS ==========
 
     @start()
@@ -1357,7 +379,7 @@ Now generate 10 seed keywords for the solution described above."""
             # Ensure market_segments contains strings
             segments = [str(s) for s in niche_context.market_segments[:3]] if niche_context.market_segments else []
             logger.info(f"  - Market segments: {', '.join(segments)}...")
-            logger.info(f"  - Industry boundaries defined")
+            logger.info("  - Industry boundaries defined")
         except Exception as e:
             logger.error(f"Failed to generate niche context with LLM: {e}")
             logger.warning("Proceeding without structured niche context")
@@ -1367,10 +389,11 @@ Now generate 10 seed keywords for the solution described above."""
         # Checkpoint: Save niche context for resume
         self.checkpoint_mgr.save_stage("stage_1_niche_context", self.state.niche_context)
 
-    def _generate_niche_context(self, niche_input: str):
+    def _generate_niche_context(self, niche_input: str) -> "NicheContext":
         """Generate structured NicheContext using LLM with structured output."""
-        from ..models.research_state import NicheContext
         from langchain_openai import ChatOpenAI
+
+        from ..models.research_state import NicheContext
 
         prompt = f"""You are a market research analyst analyzing a niche market.
 
@@ -1412,7 +435,7 @@ Return a valid JSON object with this structure:
         ).with_structured_output(NicheContext)
 
         # Generate structured output
-        context = structured_llm.invoke(prompt)
+        context: NicheContext = structured_llm.invoke(prompt)  # type: ignore[assignment]
 
         # Add niche_input to the context
         context.niche_input = niche_input
@@ -1430,7 +453,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
 
         # Generate strategic search queries
-        from ..utils.helpers import QueryGenerator
+        from ..utils.generation import QueryGenerator
         query_gen = QueryGenerator()
 
         logger.info(f"Generating {settings.num_search_queries} strategic search queries...")
@@ -1477,7 +500,7 @@ Return a valid JSON object with this structure:
 
         # Validate relevance using cheap model (gpt-4o-mini)
         logger.info("Validating Reddit thread relevance...")
-        from ..utils.helpers import ThreadRelevanceValidator
+        from ..utils.validation import ThreadRelevanceValidator
         validator = ThreadRelevanceValidator()
         validated_reddit = validator.validate_batch(
             niche_description=self.niche_description,
@@ -1547,7 +570,7 @@ Return a valid JSON object with this structure:
 
         # Token monitoring: Estimate size of collected content
         if settings.token_monitoring_enabled:
-            monitor = ContentTokenMonitor()
+            _monitor = ContentTokenMonitor()  # Reserved for future token monitoring
 
             # Estimate Reddit content size (rough approximation)
             reddit_char_count = sum(
@@ -1710,7 +733,7 @@ Return a valid JSON object with this structure:
 
         if not high_priority and not medium_priority:
             logger.warning(
-                f"No high or medium priority pain points available - skipping solution pipeline"
+                "No high or medium priority pain points available - skipping solution pipeline"
             )
             self.state.current_stage = 9
             self.checkpoint_mgr.save_stage("stages_7_8_75_unified", {"skipped": True, "reason": "No high/medium priority pain points"})
@@ -1727,7 +750,8 @@ Return a valid JSON object with this structure:
                 pain_point_analysis=self.state.pain_point_analysis,
                 social_content=self.state.social_content,
                 allowed_project_types=self.allowed_project_types,
-                niche_context=self.state.niche_context
+                niche_context=self.state.niche_context,
+                checkpoint_mgr=self.checkpoint_mgr
             )
 
             # Execute complete pipeline (4 tasks in sequence with context chaining)
@@ -1740,7 +764,7 @@ Return a valid JSON object with this structure:
             self.state.solution_selection = solution_selection
 
             # Log results
-            logger.info(f"[OK] Solution Pipeline Complete:")
+            logger.info("[OK] Solution Pipeline Complete:")
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
             logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
@@ -1854,7 +878,7 @@ Return a valid JSON object with this structure:
 
             # Filter to only relevant keywords
             relevant_suggestions = [
-                kw_dict for kw_dict, is_relevant, score in validation_results
+                kw_dict for kw_dict, is_relevant, _score in validation_results
                 if is_relevant
             ]
 
@@ -2088,6 +1112,13 @@ Return a valid JSON object with this structure:
                 logger.warning(f"[Stage 8.8] Solution '{solution_name}' not found in idea generation")
                 continue
 
+            # Initialize seed generator for this solution
+            seed_generator = SeedGenerator(
+                state=self.state,
+                niche_context=self.state.niche_context if hasattr(self.state, 'niche_context') else None,
+                pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None
+            )
+
             # Adaptive keyword generation with pivot strategies
             # Try up to 4 attempts with different strategies until relevant keywords found
             accumulated_good_keywords = []
@@ -2096,13 +1127,13 @@ Return a valid JSON object with this structure:
             max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 4)
             relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.6)
             # Cache for keyword validation across attempts (avoids re-validating same keywords)
-            keyword_validation_cache: Dict[str, tuple] = {}
+            keyword_validation_cache: dict[str, tuple] = {}
 
             for attempt in range(1, max_attempts + 1):
                 logger.info(f"[Stage 8.8] Attempt {attempt}/{max_attempts} for {solution_name}")
 
                 # Generate seeds with current strategy
-                seeds = self._generate_seeds_with_strategy(solution, attempt, count=20)
+                seeds = seed_generator.generate_seeds_with_strategy(solution, attempt, count=20)
 
                 if not seeds:
                     logger.warning(f"[Stage 8.8] Attempt {attempt}: No seeds generated - skipping")
@@ -2111,18 +1142,20 @@ Return a valid JSON object with this structure:
                 logger.debug(f"[Stage 8.8] Attempt {attempt} seeds ({len(seeds)}): {seeds[:5]}...")
 
                 # Validate seeds with DataForSEO
-                validation_result = self._validate_seeds_with_dataforseo(seeds, solution_name)
+                validation_result = seed_generator.validate_seeds_with_dataforseo(seeds, solution_name)
 
                 # Quick expansion for relevance testing
-                expanded_keywords = self._expand_seeds_quick(
+                expanded_keywords = seed_generator.expand_seeds_quick(
                     seeds,
                     target_size=getattr(settings, 'keyword_quick_expansion_size', 50)
                 )
 
                 # Check relevance
-                relevance_score, good_keywords, issues = self._check_keyword_relevance(
+                niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
+                relevance_score, good_keywords, issues = check_keyword_relevance(
                     expanded_keywords,
                     solution,
+                    niche_context=niche_context,
                     validation_cache=keyword_validation_cache
                 )
 
@@ -2219,7 +1252,7 @@ Return a valid JSON object with this structure:
         # Re-rank solutions by adjusted score (only validated solutions)
         ranked_solutions = sorted(
             [s for s in all_scores if s.adjusted_composite_score is not None],
-            key=lambda s: s.adjusted_composite_score,
+            key=lambda s: s.adjusted_composite_score or 0.0,
             reverse=True
         )
 
@@ -2425,7 +1458,7 @@ Return a valid JSON object with this structure:
         try:
             # Resume from checkpoint if available
             if has_9_5a and self.state.stage_9_5a_expanded_keywords:
-                from ..models.keyword_data import ExpandedKeywordList
+                from ..models.seo_strategy import ExpandedKeywordList
                 logger.info("✓ Resuming from Phase 9.5a checkpoint")
                 expanded_keywords = ExpandedKeywordList(**self.state.stage_9_5a_expanded_keywords)
             else:
@@ -2438,6 +1471,7 @@ Return a valid JSON object with this structure:
             # Checkpoint 9.5a: Save expanded keywords
             self.state.stage_9_5a_expanded_keywords = expanded_keywords.model_dump(mode='json')
             self.checkpoint_mgr.save_stage("stage_9_5a_seed_expansion", self.state.stage_9_5a_expanded_keywords)
+            logger.info("✓ Phase 9.5a checkpoint saved: seed_expansion")
 
             # Phase 9.5b: Bulk validation with DataForSEO (NEW)
             logger.info("Phase 9.5b: Bulk validation of conceptual keywords with DataForSEO...")
@@ -2492,6 +1526,7 @@ Return a valid JSON object with this structure:
                     "threshold_used": min_volume
                 }
                 self.checkpoint_mgr.save_stage("stage_9_5b_bulk_validation", self.state.stage_9_5b_validation_results)
+                logger.info("✓ Phase 9.5b checkpoint saved: bulk_validation")
 
             # Absolute minimum check
             if len(quality_validated) < 5:
@@ -2528,6 +1563,7 @@ Return a valid JSON object with this structure:
                 # Checkpoint 9.5c: Save enriched keywords
                 self.state.stage_9_5c_enriched_keywords = enriched_keywords
                 self.checkpoint_mgr.save_stage("stage_9_5c_enrichment", enriched_keywords)
+                logger.info("✓ Phase 9.5c checkpoint saved: enrichment")
 
             logger.info(f"✓ Enrichment complete: {len(enriched_keywords)} keywords with search data")
 
@@ -2568,8 +1604,8 @@ Return a valid JSON object with this structure:
                         f"⚠️ Low tiering coverage: {total_tiered}/{input_count} tiered ({utilization:.1%})"
                     )
                     logger.warning(
-                        f"This suggests either: (1) Filtering was too aggressive (check STEP 0), "
-                        f"or (2) Tier 3/4 grouping was incomplete. Review key_findings for details."
+                        "This suggests either: (1) Filtering was too aggressive (check STEP 0), "
+                        "or (2) Tier 3/4 grouping was incomplete. Review key_findings for details."
                     )
                 elif utilization >= 0.6:  # 60%+ tiered (good coverage after filtering)
                     logger.info(f"✓ Good tiering coverage: {utilization:.1%} of keywords distributed across tiers")
@@ -2669,7 +1705,7 @@ Return a valid JSON object with this structure:
 
         try:
             # 1. REFINE SEO SCALABILITY SCORE
-            refined_scalability = self._refine_scalability_score(
+            refined_scalability = refine_scalability_score(
                 base_score=selected_solution.seo_scalability_score,
                 project_type=selected_solution.project_type,
                 total_volume=total_monthly_volume,
@@ -2678,14 +1714,14 @@ Return a valid JSON object with this structure:
             )
 
             # 2. REFINE CAC ORGANIC
-            refined_cac = self._refine_cac_organic(
+            refined_cac = refine_cac_organic(
                 base_cac_str=selected_solution.estimated_cac_organic,
                 tier1_keywords=tier1_keywords,
                 total_volume=total_monthly_volume
             )
 
             # 3. REFINE PROGRAMMATIC SEO OPPORTUNITY (calculates page count)
-            refined_programmatic_result = self._refine_programmatic_opportunity(
+            refined_programmatic_result = refine_programmatic_opportunity(
                 original_assessment=selected_solution.programmatic_seo_opportunity,
                 seo_report=seo_report,
                 tier1_count=tier1_count
@@ -2867,6 +1903,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
 
         from datetime import datetime
+
         from ..report.report_generator import ReportGenerator
 
         try:
@@ -2908,217 +1945,10 @@ Return a valid JSON object with this structure:
         self.report_path = str(report_filepath)
         self.raw_state_path = str(raw_filepath)
 
-    def _refine_scalability_score(
-        self,
-        base_score: float,
-        project_type: Optional[str],
-        total_volume: int,
-        tier1_count: int,
-        tier1_keywords: list
-    ) -> dict:
-        """
-        Refine SEO scalability score based on keyword data.
-
-        Args:
-            base_score: Original seo_scalability_score from Stage 7
-            project_type: Project type (directory, aggregator, saas, etc.)
-            total_volume: Total monthly search volume
-            tier1_count: Number of Tier 1 (quick win) keywords
-            tier1_keywords: List of TieredKeyword objects for Tier 1
-
-        Returns:
-            dict with 'score' (float) and 'metadata' (dict)
-        """
-        # Determine baseline volume by project type
-        baselines = settings.seo_refinement_volume_baselines
-        baseline_volume = baselines.get(project_type, 30_000)
-
-        # Calculate volume multiplier (20% range, capped)
-        volume_ratio = total_volume / baseline_volume if baseline_volume > 0 else 1.0
-        volume_multiplier = min(settings.seo_refinement_max_volume_boost, max(0.8, volume_ratio))
-
-        # Calculate Tier 1 multiplier (1% per keyword, max 20%)
-        tier1_boost = min(settings.seo_refinement_max_tier1_boost, tier1_count * 0.01)
-        tier1_multiplier = 1.0 + tier1_boost
-
-        # Calculate competition modifier from Tier 1 keywords
-        if tier1_keywords:
-            competition_scores = []
-            for kw in tier1_keywords:
-                # Parse competition string like "LOW (30)" or "MEDIUM (53)"
-                comp_str = kw.competition
-                if '(' in comp_str:
-                    try:
-                        comp_value = int(comp_str.split('(')[1].replace(')', ''))
-                        competition_scores.append(comp_value / 100.0)  # Normalize to 0-1
-                    except (ValueError, IndexError):
-                        pass
-
-            avg_competition = sum(competition_scores) / len(competition_scores) if competition_scores else 0.5
-            competition_modifier = 1.0 - avg_competition  # Lower competition = higher score
-        else:
-            competition_modifier = 0.5  # Neutral if no data
-
-        # Calculate refined score
-        refined_score = base_score * volume_multiplier * tier1_multiplier * competition_modifier
-        refined_score = min(1.0, refined_score)  # Cap at 1.0
-
-        metadata = {
-            'baseline_volume': baseline_volume,
-            'volume_multiplier': round(volume_multiplier, 3),
-            'tier1_multiplier': round(tier1_multiplier, 3),
-            'competition_modifier': round(competition_modifier, 3),
-            'change': round(refined_score - base_score, 3)
-        }
-
-        return {
-            'score': round(refined_score, 2),
-            'metadata': metadata
-        }
-
-    def _refine_cac_organic(
-        self,
-        base_cac_str: Optional[str],
-        tier1_keywords: list,
-        total_volume: int
-    ) -> dict:
-        """
-        Refine organic CAC estimate based on keyword difficulty and volume.
-
-        Args:
-            base_cac_str: Original CAC string like "$15-30 per customer"
-            tier1_keywords: List of TieredKeyword objects for Tier 1
-            total_volume: Total monthly search volume
-
-        Returns:
-            dict with 'cac_range' (str) and 'metadata' (dict)
-        """
-        if not base_cac_str:
-            return {'cac_range': 'N/A', 'metadata': {'estimated_year1_pages': 0}}
-
-        # Parse base CAC (extract midpoint)
-        import re
-        matches = re.findall(r'\$?(\d+)', base_cac_str)
-        if len(matches) >= 2:
-            base_cac = (int(matches[0]) + int(matches[1])) / 2
-        elif len(matches) == 1:
-            base_cac = int(matches[0])
-        else:
-            base_cac = 100  # Fallback
-
-        # Calculate average Tier 1 difficulty
-        if tier1_keywords:
-            competition_scores = []
-            for kw in tier1_keywords:
-                comp_str = kw.competition
-                if '(' in comp_str:
-                    try:
-                        comp_value = int(comp_str.split('(')[1].replace(')', ''))
-                        competition_scores.append(comp_value)
-                    except (ValueError, IndexError):
-                        pass
-
-            avg_difficulty = sum(competition_scores) / len(competition_scores) if competition_scores else 50
-        else:
-            avg_difficulty = 50  # Neutral
-
-        difficulty_multiplier = 1.0 + (avg_difficulty / 100)
-
-        # Calculate volume discount (economies of scale)
-        volume_discount = max(
-            settings.seo_refinement_volume_discount_floor,
-            1.0 - (total_volume / 1_000_000)
-        )
-
-        # Calculate refined CAC
-        refined_cac = base_cac * difficulty_multiplier * volume_discount
-
-        # Create range (±20%)
-        cac_low = int(refined_cac * 0.8 / 5) * 5  # Round to nearest $5
-        cac_high = int(refined_cac * 1.2 / 5) * 5
-
-        metadata = {
-            'base_cac': base_cac,
-            'difficulty_multiplier': round(difficulty_multiplier, 3),
-            'volume_discount': round(volume_discount, 3),
-            'avg_tier1_difficulty': round(avg_difficulty, 1),
-            'estimated_year1_pages': 0  # Will be updated by _refine_programmatic_opportunity
-        }
-
-        return {
-            'cac_range': f"${cac_low}-{cac_high}",
-            'metadata': metadata
-        }
-
-    def _refine_programmatic_opportunity(
-        self,
-        original_assessment: Optional[str],
-        seo_report,
-        tier1_count: int
-    ) -> dict:
-        """
-        Refine programmatic SEO opportunity with quantitative page count estimates.
-
-        Args:
-            original_assessment: Original qualitative assessment from Stage 7
-            seo_report: SEOStrategyReport from Stage 9
-            tier1_count: Number of Tier 1 keywords
-
-        Returns:
-            dict with 'assessment' (str) and 'page_count' (int)
-        """
-        # Calculate estimated page count
-        page_count = 0
-
-        # Tier 1 landing pages
-        page_count += tier1_count
-
-        # Geographic/category pages (Tier 3/4)
-        if hasattr(seo_report, 'tier_3_geographic_groups') and seo_report.tier_3_geographic_groups:
-            page_count += len(seo_report.tier_3_geographic_groups)
-
-        if hasattr(seo_report, 'tier_4_category_groups') and seo_report.tier_4_category_groups:
-            page_count += len(seo_report.tier_4_category_groups)
-
-        # Topic cluster pages (pillar + supporting)
-        if hasattr(seo_report, 'topic_clusters') and seo_report.topic_clusters:
-            posts_per_cluster = 4  # Average pillar + 3 supporting posts
-            page_count += len(seo_report.topic_clusters) * posts_per_cluster
-
-        # Keyword-based page types
-        if hasattr(seo_report, 'keyword_based_page_types') and seo_report.keyword_based_page_types:
-            for page_type in seo_report.keyword_based_page_types:
-                if hasattr(page_type, 'estimated_page_count'):
-                    page_count += page_type.estimated_page_count
-
-        # Build refined assessment
-        refined = f"""**Refined Assessment (Based on Keyword Research):**
-
-This solution can generate approximately **{page_count} indexable pages** in Year 1, comprising:
-
-- **{tier1_count} Tier 1 landing pages** targeting quick-win keywords
-"""
-
-        if hasattr(seo_report, 'tier_3_geographic_groups') and seo_report.tier_3_geographic_groups:
-            geo_count = len(seo_report.tier_3_geographic_groups)
-            refined += f"- **{geo_count} geographic pages** for regional targeting\n"
-
-        if hasattr(seo_report, 'tier_4_category_groups') and seo_report.tier_4_category_groups:
-            cat_count = len(seo_report.tier_4_category_groups)
-            refined += f"- **{cat_count} category pages** for vertical segmentation\n"
-
-        if hasattr(seo_report, 'topic_clusters') and seo_report.topic_clusters:
-            cluster_count = len(seo_report.topic_clusters)
-            cluster_pages = cluster_count * 4
-            refined += f"- **{cluster_pages} content pieces** across {cluster_count} topic clusters\n"
-
-        refined += f"\n**Total Estimated Year 1 SEO Footprint:** {page_count} pages\n\n"
-        refined += f"**Original Architectural Analysis:**\n{original_assessment or 'N/A'}"
-
-        return {
-            'assessment': refined,
-            'page_count': page_count
-        }
+    # NOTE: Score refinement methods moved to utils/score_refinement.py
+    # - refine_scalability_score
+    # - refine_cac_organic
+    # - refine_programmatic_opportunity
 
     def run_research(self) -> str:
         """

@@ -7,7 +7,6 @@ semantic relevance filtering.
 """
 
 import logging
-from typing import List, Optional
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -18,7 +17,6 @@ from ..models.keyword_data import KeywordAttemptResult
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
 
 logger = logging.getLogger(__name__)
-
 
 @CrewBase
 class KeywordValidationCrew:
@@ -39,8 +37,8 @@ class KeywordValidationCrew:
         self,
         solution: any,
         niche_context: any,
-        pain_points: Optional[any] = None,
-        competitive_analysis: Optional[any] = None,
+        pain_points: any | None = None,
+        competitive_analysis: any | None = None,
     ):
         """
         Initialize crew with solution and context data.

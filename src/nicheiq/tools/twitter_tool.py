@@ -4,10 +4,10 @@ Supports authenticated and guest sessions for scraping public data.
 """
 
 import json
-import re
-from datetime import datetime
+import os
+import time
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import List
 from urllib.parse import urlparse
 
 from crewai.tools import BaseTool
@@ -43,7 +43,7 @@ class TwitterCollectorTool(BaseTool):
             return None
 
         try:
-            with open(self._cookies_cache_path, 'r') as f:
+            with open(self._cookies_cache_path) as f:
                 cookies = json.load(f)
                 if 'ct0' in cookies and 'auth_token' in cookies:
                     logger.info(f"Loaded cached Twitter cookies from {self._cookies_cache_path}")
@@ -68,7 +68,7 @@ class TwitterCollectorTool(BaseTool):
                 for cookie in cookie_jar:
                     if cookie.name in ['ct0', 'auth_token']:
                         cookies[cookie.name] = cookie.value
-                        logger.debug(f"  Found cookie '{cookie.name}': {cookie.value[:10]}...")
+                        logger.debug(f"  Found cookie '{cookie.name}'")
             else:
                 logger.warning("Scraper session does not have cookies attribute")
                 return False
@@ -77,12 +77,12 @@ class TwitterCollectorTool(BaseTool):
                 # Ensure parent directory exists
                 self._cookies_cache_path.parent.mkdir(parents=True, exist_ok=True)
 
-                # Save cookies to file
+                # Save cookies to file with restricted permissions
                 with open(self._cookies_cache_path, 'w') as f:
                     json.dump(cookies, f, indent=2)
+                os.chmod(self._cookies_cache_path, 0o600)
 
                 logger.info(f"✓ Saved Twitter cookies to {self._cookies_cache_path}")
-                logger.debug(f"  Saved cookies: ct0={cookies['ct0'][:10]}..., auth_token={cookies['auth_token'][:10]}...")
                 return True
             else:
                 missing = []
@@ -128,7 +128,6 @@ class TwitterCollectorTool(BaseTool):
             # Strategy 2: Login with username/password and cache cookies
             if settings.twitter_username and settings.twitter_password:
                 logger.info("Attempting fresh login with username/password")
-                logger.debug(f"Twitter username: {settings.twitter_username}")
                 try:
                     self._scraper = Scraper(
                         email=settings.twitter_email,
@@ -215,6 +214,16 @@ class TwitterCollectorTool(BaseTool):
         if is_reply and 'in_reply_to_status_id_str' in legacy:
             parent_id = legacy['in_reply_to_status_id_str']
 
+        # Parse created_at with fallback
+        created_at_str = legacy.get('created_at', '')
+        if created_at_str:
+            try:
+                created_at = datetime.strptime(created_at_str, '%a %b %d %H:%M:%S %z %Y')
+            except ValueError:
+                created_at = datetime.now(timezone.utc)
+        else:
+            created_at = datetime.now(timezone.utc)
+
         return TwitterTweet(
             tweet_id=tweet_data.get('rest_id', ''),
             author_username=legacy.get('screen_name', 'unknown'),
@@ -222,9 +231,7 @@ class TwitterCollectorTool(BaseTool):
             likes=legacy.get('favorite_count', 0),
             retweets=legacy.get('retweet_count', 0),
             replies_count=legacy.get('reply_count', 0),
-            created_at=datetime.strptime(
-                legacy.get('created_at', ''), '%a %b %d %H:%M:%S %z %Y'
-            ),
+            created_at=created_at,
             url=f"https://twitter.com/{legacy.get('screen_name', 'unknown')}/status/{tweet_data.get('rest_id', '')}",
             is_reply=is_reply,
             parent_tweet_id=parent_id,
@@ -374,7 +381,7 @@ class TwitterCollectorTool(BaseTool):
             logger.error(f"Failed to collect Twitter thread {url}: {type(e).__name__}: {e}")
             raise
 
-    def collect_threads(self, urls: List[str]) -> List[TwitterThread]:
+    def collect_threads(self, urls: list[str]) -> list[TwitterThread]:
         """
         Collect multiple Twitter threads with quality filtering.
 
@@ -386,41 +393,39 @@ class TwitterCollectorTool(BaseTool):
         """
         threads = []
 
-        try:
-            for url in urls:
-                try:
-                    thread = self.collect_thread(url)
+        for i, url in enumerate(urls):
+            try:
+                # Rate limiting between requests
+                if i > 0:
+                    time.sleep(1.0)
 
-                    # Quality filtering
-                    original = thread.original_tweet
-                    if (
-                        original.likes >= settings.min_twitter_likes
-                        and original.replies_count >= settings.min_twitter_replies
-                    ):
-                        threads.append(thread)
-                        logger.info(
-                            f"✓ Thread meets quality thresholds: "
-                            f"{original.text[:50]}... (likes: {original.likes})"
-                        )
-                    else:
-                        logger.info(
-                            f"✗ Thread filtered out (likes: {original.likes}, "
-                            f"replies: {original.replies_count}): {original.text[:50]}..."
-                        )
+                thread = self.collect_thread(url)
 
-                except Exception as e:
-                    logger.error(f"Skipping thread {url} due to error: {e}")
-                    continue
+                # Quality filtering
+                original = thread.original_tweet
+                if (
+                    original.likes >= settings.min_twitter_likes
+                    and original.replies_count >= settings.min_twitter_replies
+                ):
+                    threads.append(thread)
+                    logger.info(
+                        f"✓ Thread meets quality thresholds: "
+                        f"{original.text[:50]}... (likes: {original.likes})"
+                    )
+                else:
+                    logger.info(
+                        f"✗ Thread filtered out (likes: {original.likes}, "
+                        f"replies: {original.replies_count}): {original.text[:50]}..."
+                    )
 
-            logger.info(f"Collected {len(threads)} quality Twitter threads from {len(urls)} URLs")
-            return threads
+            except Exception as e:
+                logger.error(f"Skipping thread {url} due to error: {e}")
+                continue
 
-        finally:
-            # Note: Scraper cleanup is handled by garbage collection
-            # Cannot use async cleanup in synchronous method
-            pass
+        logger.info(f"Collected {len(threads)} quality Twitter threads from {len(urls)} URLs")
+        return threads
 
-    async def _run(self, urls: str) -> str:
+    def _run(self, urls: str) -> str:
         """
         Main run method for CrewAI tool interface.
 
@@ -432,7 +437,7 @@ class TwitterCollectorTool(BaseTool):
         """
         try:
             url_list = [url.strip() for url in urls.split(',') if url.strip()]
-            threads = await self.collect_threads(url_list)
+            threads = self.collect_threads(url_list)
 
             # Convert to dict for JSON serialization
             threads_data = [thread.model_dump() for thread in threads]

@@ -3,8 +3,6 @@ IdeaGenerationCrew - Stage 7: Solution Ideation
 Multi-agent crew for generating and refining SaaS solution concepts from validated pain points.
 """
 
-from typing import List, Optional
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
@@ -12,7 +10,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.pain_point import PainPointAnalysisResult
-from ..models.solution_idea import EvaluationResult, IdeaGenerationResult, SolutionIdea
+from ..models.solution_idea import EvaluationResult, IdeaGenerationResult
 
 
 @CrewBase
@@ -31,7 +29,7 @@ class IdeaGenerationCrew:
     agents_config = "config/idea_generation_agents.yaml"
     tasks_config = "config/idea_generation_tasks.yaml"
 
-    def __init__(self, pain_point_analysis: PainPointAnalysisResult, allowed_project_types: Optional[List[str]] = None):
+    def __init__(self, pain_point_analysis: PainPointAnalysisResult, allowed_project_types: list[str | None] = None):
         """
         Initialize IdeaGenerationCrew with validated pain points.
 
@@ -497,7 +495,6 @@ class IdeaGenerationCrew:
         Returns:
             IdeaGenerationResult with enhanced solutions incorporating competitive positioning
         """
-        from ..models.competitor import CompetitiveAnalysisResult
 
         logger.info("Enhancing solutions with competitive insights...")
 

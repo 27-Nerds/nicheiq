@@ -2,11 +2,10 @@
 Reddit content collection tool using PRAW.
 """
 
-import time
-from datetime import datetime
-from typing import List, Optional
+from datetime import datetime, timezone
 
 import praw
+import prawcore
 from crewai.tools import BaseTool
 from loguru import logger
 from praw.models import MoreComments
@@ -44,7 +43,7 @@ class RedditCollectorTool(BaseTool):
             ratelimit_seconds=60,  # Automatically handle rate limits up to 60 seconds
         )
 
-    def _parse_comment(self, comment) -> tuple[Optional[RedditComment], int]:
+    def _parse_comment(self, comment) -> tuple[RedditComment | None, int]:
         """
         Recursively parse a PRAW comment and its replies into our RedditComment model.
         Filters out short comments (below min_comment_length) and low-score comments.
@@ -88,7 +87,7 @@ class RedditCollectorTool(BaseTool):
             author=str(comment.author) if comment.author else "[deleted]",
             body=comment.body,
             score=comment.score,
-            created_utc=datetime.fromtimestamp(comment.created_utc),
+            created_utc=datetime.fromtimestamp(comment.created_utc, tz=timezone.utc),
             is_submitter=comment.is_submitter,
             replies=replies,
         )
@@ -149,7 +148,7 @@ class RedditCollectorTool(BaseTool):
                 subreddit=submission.subreddit.display_name,
                 score=submission.score,
                 num_comments=substantial_comment_count,  # Use filtered count instead of submission.num_comments
-                created_utc=datetime.fromtimestamp(submission.created_utc),
+                created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
                 url=url,
                 comments=comments,
             )
@@ -161,11 +160,14 @@ class RedditCollectorTool(BaseTool):
             )
             return post
 
-        except Exception as e:
+        except (praw.exceptions.PRAWException, prawcore.exceptions.PrawcoreException) as e:
             logger.error(f"Failed to collect Reddit post {url}: {e}")
             raise
+        except ValueError as e:
+            logger.error(f"Invalid Reddit URL {url}: {e}")
+            raise
 
-    def collect_posts(self, urls: List[str]) -> List[RedditPost]:
+    def collect_posts(self, urls: list[str]) -> list[RedditPost]:
         """
         Collect multiple Reddit posts with quality filtering.
 

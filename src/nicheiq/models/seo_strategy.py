@@ -6,7 +6,7 @@ that combine into the comprehensive SEO section of the final report.
 """
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -49,7 +49,6 @@ def validate_keyword(keyword: str, field_name: str = "keyword") -> bool:
 
     return True
 
-
 class ContentType(str, Enum):
     """Type of content piece for keyword targeting."""
 
@@ -61,7 +60,6 @@ class ContentType(str, Enum):
     COMPARISON = "comparison"
     FAQ = "faq"
     DOCUMENTATION = "documentation"
-
 
 class ConceptualKeyword(BaseModel):
     """
@@ -97,7 +95,6 @@ class ConceptualKeyword(BaseModel):
             )
         return v
 
-
 class ConceptualTopicCluster(BaseModel):
     """Topic cluster for organizing keywords strategically (Phase 9.5a output)."""
 
@@ -109,7 +106,6 @@ class ConceptualTopicCluster(BaseModel):
         ..., ge=1, le=5, description="Importance for SEO strategy (1=critical, 5=nice-to-have)"
     )
 
-
 class ExpandedKeywordList(BaseModel):
     """
     Result of Phase 9.5a hybrid seed keyword generation.
@@ -120,16 +116,15 @@ class ExpandedKeywordList(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
-    keywords: List[ConceptualKeyword] = Field(
+    keywords: list[ConceptualKeyword] = Field(
         ..., description="Hybrid seed keywords (40-50 total): 70% broad seeds (1-2 words) + 30% targeted keywords (3-5 words)"
     )
-    topic_clusters: List[ConceptualTopicCluster] = Field(
+    topic_clusters: list[ConceptualTopicCluster] = Field(
         ..., description="Topic clusters for organizing keywords"
     )
     expansion_rationale: str = Field(
         ..., description="Overall strategy behind keyword expansion"
     )
-
 
 class MonthlySearchData(BaseModel):
     """Single month's search volume data from DataForSEO."""
@@ -139,7 +134,6 @@ class MonthlySearchData(BaseModel):
     year: int = Field(..., description="Year of the search data")
     month: int = Field(..., description="Month number (1-12)")
     search_volume: int = Field(..., description="Search volume for this month")
-
 
 class TieredKeyword(BaseModel):
     """
@@ -153,7 +147,7 @@ class TieredKeyword(BaseModel):
 
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Average monthly search volume from DataForSEO (single value)")
-    monthly_searches: List[MonthlySearchData] = Field(
+    monthly_searches: list[MonthlySearchData] = Field(
         default_factory=list,
         description="Historical 12-month search volume data from DataForSEO (array of {year, month, search_volume} objects). For reference only - do not sum or use for primary volume metric."
     )
@@ -184,7 +178,6 @@ class TieredKeyword(BaseModel):
         """Validate keyword and log warning if constraints not met (validation happens elsewhere)."""
         return v.strip()
 
-
 class GeographicKeywordEntry(BaseModel):
     """Individual geographic keyword entry."""
 
@@ -200,7 +193,6 @@ class GeographicKeywordEntry(BaseModel):
     def validate_keyword_constraints(cls, v: str) -> str:
         """Strip whitespace (validation happens elsewhere to allow filtering)."""
         return v.strip()
-
 
 class CategoryKeywordEntry(BaseModel):
     """Individual category keyword entry."""
@@ -226,7 +218,6 @@ class CategoryKeywordEntry(BaseModel):
             return 0.0
         return v
 
-
 class GeographicKeywordGroup(BaseModel):
     """
     Geographic market keyword group.
@@ -239,13 +230,12 @@ class GeographicKeywordGroup(BaseModel):
     region_name: str = Field(..., description="Region/country name (e.g., 'Spanish-Speaking Markets')")
     total_volume: int = Field(..., description="Combined monthly search volume")
     competition_level: str = Field(..., description="Overall competition assessment")
-    keywords: List[GeographicKeywordEntry] = Field(
+    keywords: list[GeographicKeywordEntry] = Field(
         ..., description="List of geographic keyword entries"
     )
     strategy_notes: str = Field(
         ..., description="Strategic notes for this geographic market (1-3 sentences)"
     )
-
 
 class CategoryKeywordGroup(BaseModel):
     """
@@ -258,13 +248,12 @@ class CategoryKeywordGroup(BaseModel):
 
     category_name: str = Field(..., description="Category name (e.g., 'Education Documents')")
     total_volume: int = Field(..., description="Combined monthly search volume")
-    keywords: List[CategoryKeywordEntry] = Field(
+    keywords: list[CategoryKeywordEntry] = Field(
         ..., description="List of category keyword entries"
     )
     strategy_recommendation: str = Field(
         ..., description="Strategic recommendation for this category (2-4 sentences)"
     )
-
 
 class TopicCluster(BaseModel):
     """Content pillar with grouped keywords."""
@@ -273,7 +262,7 @@ class TopicCluster(BaseModel):
 
     cluster_name: str = Field(..., description="Name of the content cluster/pillar")
     primary_keyword: str = Field(..., description="Main keyword for this cluster")
-    supporting_keywords: List[str] = Field(
+    supporting_keywords: list[str] = Field(
         ..., description="Related keywords (5-15)"
     )
     total_monthly_volume: int = Field(
@@ -297,7 +286,7 @@ class TopicCluster(BaseModel):
 
     @field_validator('supporting_keywords')
     @classmethod
-    def validate_supporting_keywords(cls, v: List[str]) -> List[str]:
+    def validate_supporting_keywords(cls, v: list[str]) -> list[str]:
         """Strip whitespace and filter out invalid keywords."""
         validated = []
         for keyword in v:
@@ -305,7 +294,6 @@ class TopicCluster(BaseModel):
             if validate_keyword(keyword, "supporting_keyword"):
                 validated.append(keyword)
         return validated
-
 
 class KeywordBasedPageType(BaseModel):
     """Page type definition derived from keyword clusters and search intent."""
@@ -321,7 +309,7 @@ class KeywordBasedPageType(BaseModel):
     target_keyword_cluster: str = Field(
         ..., description="Which keyword tier/cluster this page type targets (e.g., 'Tier 1 quick wins', 'Geographic group: Spanish markets')"
     )
-    example_keywords: List[str] = Field(
+    example_keywords: list[str] = Field(
         ..., min_length=2, max_length=5, description="2-5 example target keywords this page type addresses"
     )
     primary_intent: str = Field(
@@ -333,13 +321,12 @@ class KeywordBasedPageType(BaseModel):
     priority: str = Field(
         ..., description="Launch priority based on keyword opportunity: 'P0' (Tier 1 keywords), 'P1' (Tier 2), 'P2' (Tier 3-4)"
     )
-    required_schema: Optional[List[str]] = Field(
+    required_schema: list[Optional[str]] = Field(
         default=None, description="Schema.org types for this page type based on content and intent"
     )
     seo_optimization_notes: str = Field(
         ..., description="SEO-specific guidance: title patterns, header structure, internal linking strategy for these pages"
     )
-
 
 class SectionKeywordMapping(BaseModel):
     """Mapping of a site section to its keyword cluster."""
@@ -349,7 +336,6 @@ class SectionKeywordMapping(BaseModel):
     section_path: str = Field(..., description="URL path of the section (e.g., '/tools/', '/compare/')")
     keyword_cluster: str = Field(..., description="Keyword cluster description (e.g., 'Tier 1 problem-solving keywords')")
 
-
 class KeywordDrivenSiteArchitecture(BaseModel):
     """Site structure organized by keyword clusters and search intent patterns."""
 
@@ -358,7 +344,7 @@ class KeywordDrivenSiteArchitecture(BaseModel):
     url_hierarchy_diagram: Optional[str] = Field(
         default=None, description="ASCII/markdown hierarchy showing how keyword clusters map to site sections"
     )
-    section_keyword_mapping: Optional[List[SectionKeywordMapping]] = Field(
+    section_keyword_mapping: Optional[list[SectionKeywordMapping]] = Field(
         default=None, description="Mapping of top-level sections to keyword clusters (e.g., {'/tools/': 'Tier 1 problem-solving keywords', '/compare/': 'Competitor alternative keywords'})"
     )
     total_pages_from_keywords: Optional[int] = Field(
@@ -367,7 +353,6 @@ class KeywordDrivenSiteArchitecture(BaseModel):
     keyword_coverage_explanation: Optional[str] = Field(
         default=None, description="Explanation of how site structure ensures all high-priority keywords have dedicated landing pages (2-3 sentences)"
     )
-
 
 class UniversalSEOElements(BaseModel):
     """Universal SEO elements that appear on every page."""
@@ -399,7 +384,6 @@ class UniversalSEOElements(BaseModel):
         description="When to use index/noindex, follow/nofollow with page type examples (2 paragraphs, markdown)"
     )
 
-
 class PageTypeImplementation(BaseModel):
     """SEO implementation template for specific page type."""
 
@@ -413,7 +397,7 @@ class PageTypeImplementation(BaseModel):
         ...,
         description="URL structure pattern (e.g., '/translators/{city}', '/guides/{topic}')"
     )
-    target_keywords: List[str] = Field(
+    target_keywords: list[str] = Field(
         ...,
         description="3-5 primary and secondary keyword patterns for this page type"
     )
@@ -433,7 +417,7 @@ class PageTypeImplementation(BaseModel):
         ...,
         description="Recommended H2 sections (3-6 suggestions, markdown list)"
     )
-    schema_types: List[str] = Field(
+    schema_types: list[str] = Field(
         ...,
         description="Required schema types (e.g., ['Organization', 'Service', 'Breadcrumb', 'FAQ'])"
     )
@@ -445,7 +429,6 @@ class PageTypeImplementation(BaseModel):
         ...,
         description="Min/optimal word count, required sections, quality standards (2-3 sentences)"
     )
-
 
 class SchemaExample(BaseModel):
     """Individual schema markup code example."""
@@ -461,7 +444,6 @@ class SchemaExample(BaseModel):
         description="JSON-LD code snippet for this schema type"
     )
 
-
 class SchemaMarkupStrategy(BaseModel):
     """Schema markup implementation guide with code examples."""
 
@@ -471,7 +453,7 @@ class SchemaMarkupStrategy(BaseModel):
         ...,
         description="Benefits: rich results, voice search, AI search, CTR boost (2-3 paragraphs, markdown)"
     )
-    priority_schema_types: List[str] = Field(
+    priority_schema_types: list[str] = Field(
         ...,
         description="Ordered list of 6-8 essential schema types (Organization, Service, Person, Review, FAQ, Article, BreadcrumbList, etc.)"
     )
@@ -479,7 +461,7 @@ class SchemaMarkupStrategy(BaseModel):
         ...,
         description="JSON-LD format, placement in <head>, why JSON-LD over Microdata (2 paragraphs, markdown)"
     )
-    schema_examples: List[SchemaExample] = Field(
+    schema_examples: list[SchemaExample] = Field(
         ...,
         description="JSON-LD code snippets for each priority schema type (6-8 examples)"
     )
@@ -487,7 +469,6 @@ class SchemaMarkupStrategy(BaseModel):
         ...,
         description="Tools and process: Google Rich Results Test, Schema Validator, Search Console monitoring (2 paragraphs, markdown)"
     )
-
 
 class SEOStrategyReport(BaseModel):
     """
@@ -502,7 +483,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # METADATA
     # ========================================
-    seed_keywords_generated: Optional[List[str]] = Field(
+    seed_keywords_generated: list[Optional[str]] = Field(
         default=None,
         description="Seed keywords generated in STEP 1 before expansion (120-150 intent-based keywords)"
     )
@@ -516,14 +497,26 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # KEY FINDINGS (Executive Summary Bullets)
     # ========================================
-    key_findings: List[str] = Field(
+    key_findings: list[str] = Field(
         ..., description="3-5 bullet points highlighting key SEO findings"
+    )
+
+    # ========================================
+    # TIER 0: PREMIUM OPPORTUNITIES
+    # ========================================
+    tier_0_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Premium keywords with exceptional opportunity scores (>200)"
+    )
+    tier_0_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 0 premium keywords (1-2 paragraphs, markdown)"
     )
 
     # ========================================
     # TIER 1: IMMEDIATE IMPLEMENTATION
     # ========================================
-    tier_1_keywords: List[TieredKeyword] = Field(
+    tier_1_keywords: list[TieredKeyword] = Field(
         ..., description="High volume + low competition keywords (3-5 keywords)"
     )
     tier_1_quick_win_strategy: str = Field(
@@ -534,7 +527,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # TIER 2: HIGH VALUE KEYWORDS
     # ========================================
-    tier_2_keywords: Optional[List[TieredKeyword]] = Field(
+    tier_2_keywords: Optional[list[TieredKeyword]] = Field(
         default=None,
         description="High value keywords with medium competition (3-5 keywords)"
     )
@@ -546,7 +539,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # TIER 3: GEOGRAPHIC/NICHE OPPORTUNITIES
     # ========================================
-    tier_3_geographic_groups: Optional[List[GeographicKeywordGroup]] = Field(
+    tier_3_geographic_groups: Optional[list[GeographicKeywordGroup]] = Field(
         default=None,
         description="Geographic keyword opportunities grouped by region"
     )
@@ -554,7 +547,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # TIER 4: SPECIALIZED/CATEGORY OPPORTUNITIES
     # ========================================
-    tier_4_category_groups: Optional[List[CategoryKeywordGroup]] = Field(
+    tier_4_category_groups: Optional[list[CategoryKeywordGroup]] = Field(
         default=None,
         description="Category-based keyword groups (document types, service categories)"
     )
@@ -566,7 +559,7 @@ class SEOStrategyReport(BaseModel):
         ...,
         description="Comprehensive content strategy with numbered sections (markdown, 4-6 paragraphs)"
     )
-    topic_clusters: Optional[List[TopicCluster]] = Field(
+    topic_clusters: Optional[list[TopicCluster]] = Field(
         default=None,
         description="Content pillars/clusters (3-5 clusters)"
     )
@@ -584,7 +577,7 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="Site structure organized around keyword clusters and search intent patterns"
     )
-    keyword_based_page_types: Optional[List[KeywordBasedPageType]] = Field(
+    keyword_based_page_types: Optional[list[KeywordBasedPageType]] = Field(
         default=None,
         description="Page types derived from keyword analysis (4-8 page types covering different keyword clusters)"
     )
@@ -608,7 +601,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # METRICS & TRACKING
     # ========================================
-    key_metrics_to_track: List[str] = Field(
+    key_metrics_to_track: list[str] = Field(
         ..., description="4-6 critical KPIs (SEO Performance + Business Metrics)"
     )
 
@@ -643,10 +636,10 @@ class SEOStrategyReport(BaseModel):
         ...,
         description="Bottom line summary (1 paragraph)"
     )
-    competitive_advantages: List[str] = Field(
+    competitive_advantages: list[str] = Field(
         ..., description="2-4 key competitive advantages from SEO analysis"
     )
-    critical_success_factors: List[str] = Field(
+    critical_success_factors: list[str] = Field(
         ..., description="3-4 critical success factors"
     )
     expected_timeline: str = Field(
@@ -656,7 +649,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # NEXT STEPS
     # ========================================
-    next_steps_checklist: List[str] = Field(
+    next_steps_checklist: list[str] = Field(
         ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
     )
 
@@ -667,7 +660,7 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="Universal SEO elements for every page (title tags, meta descriptions, canonical, OG tags, robots)"
     )
-    page_type_implementations: Optional[List[PageTypeImplementation]] = Field(
+    page_type_implementations: Optional[list[PageTypeImplementation]] = Field(
         default=None,
         description="SEO templates for 4-6 key page types (homepage, location pages, profile pages, content pages)"
     )
@@ -684,11 +677,9 @@ class SEOStrategyReport(BaseModel):
             return 0
         return v
 
-
 # ========================================
 # INTERMEDIATE MODELS FOR MULTI-TASK FLOW
 # ========================================
-
 
 class KeywordAnalysisResult(BaseModel):
     """
@@ -701,29 +692,29 @@ class KeywordAnalysisResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     # Tier structure
-    tier_1_keywords: List[TieredKeyword] = Field(
+    tier_1_keywords: list[TieredKeyword] = Field(
         ..., description="High volume + low competition keywords (3-5 keywords)"
     )
     tier_1_quick_win_strategy: str = Field(
         ..., description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
     )
-    tier_2_keywords: Optional[List[TieredKeyword]] = Field(
+    tier_2_keywords: Optional[list[TieredKeyword]] = Field(
         default=None, description="High value keywords with medium competition (3-5 keywords)"
     )
     tier_2_strategy: Optional[str] = Field(
         default=None, description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, markdown)"
     )
-    tier_3_geographic_groups: Optional[List[GeographicKeywordGroup]] = Field(
+    tier_3_geographic_groups: Optional[list[GeographicKeywordGroup]] = Field(
         default=None, description="Geographic keyword opportunities grouped by region"
     )
-    tier_4_category_groups: Optional[List[CategoryKeywordGroup]] = Field(
+    tier_4_category_groups: Optional[list[CategoryKeywordGroup]] = Field(
         default=None, description="Category-based keyword groups (document types, service categories)"
     )
 
     # Metadata and findings
     total_keywords_analyzed: int = Field(..., description="Total number of keywords analyzed")
     total_monthly_volume: int = Field(..., description="Total monthly search volume across all keywords")
-    key_findings: List[str] = Field(..., description="3-5 bullet points highlighting key SEO findings")
+    key_findings: list[str] = Field(..., description="3-5 bullet points highlighting key SEO findings")
     competitive_positioning: str = Field(
         ..., description="Keyword gaps to exploit, unique positioning angles (markdown, 2-4 sections)"
     )
@@ -780,7 +771,6 @@ class KeywordAnalysisResult(BaseModel):
 
         return self
 
-
 class ContentStrategyResult(BaseModel):
     """
     Intermediate result from Task 2: Content & Technical Strategy.
@@ -795,7 +785,7 @@ class ContentStrategyResult(BaseModel):
     content_strategy: str = Field(
         ..., description="Comprehensive content strategy with numbered sections (markdown, 4-6 paragraphs)"
     )
-    topic_clusters: Optional[List[TopicCluster]] = Field(
+    topic_clusters: Optional[list[TopicCluster]] = Field(
         default=None, description="Content pillars/clusters (3-5 clusters)"
     )
 
@@ -806,10 +796,9 @@ class ContentStrategyResult(BaseModel):
     keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] = Field(
         default=None, description="Site structure organized around keyword clusters and search intent patterns"
     )
-    keyword_based_page_types: Optional[List[KeywordBasedPageType]] = Field(
+    keyword_based_page_types: Optional[list[KeywordBasedPageType]] = Field(
         default=None, description="Page types derived from keyword analysis (4-8 page types)"
     )
-
 
 class ImplementationPlanResult(BaseModel):
     """
@@ -825,13 +814,13 @@ class ImplementationPlanResult(BaseModel):
     implementation_roadmap: str = Field(
         ..., description="Phased implementation plan (markdown, 3-4 phases with timelines and targets)"
     )
-    key_metrics_to_track: List[str] = Field(
+    key_metrics_to_track: list[str] = Field(
         ..., description="4-6 critical KPIs (SEO Performance + Business Metrics)"
     )
     expected_timeline: str = Field(
         ..., description="Timeline expectations (3, 6, 12, 18 months milestones)"
     )
-    next_steps_checklist: List[str] = Field(
+    next_steps_checklist: list[str] = Field(
         ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
     )
 
@@ -842,7 +831,6 @@ class ImplementationPlanResult(BaseModel):
     budget_allocation: Optional[str] = Field(
         default=None, description="Budget recommendations with options (markdown, Option A/B/C)"
     )
-
 
 class FinalSynthesis(BaseModel):
     """
@@ -860,13 +848,12 @@ class FinalSynthesis(BaseModel):
     conclusion_bottom_line: str = Field(
         ..., description="Bottom line summary (1 paragraph)"
     )
-    competitive_advantages: List[str] = Field(
+    competitive_advantages: list[str] = Field(
         ..., description="2-4 key competitive advantages from SEO analysis"
     )
-    critical_success_factors: List[str] = Field(
+    critical_success_factors: list[str] = Field(
         ..., description="3-4 critical success factors"
     )
-
 
 class ImplementationGuide(BaseModel):
     """
@@ -881,7 +868,7 @@ class ImplementationGuide(BaseModel):
     universal_seo_elements: UniversalSEOElements = Field(
         ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"
     )
-    page_type_implementations: List[PageTypeImplementation] = Field(
+    page_type_implementations: list[PageTypeImplementation] = Field(
         ..., description="SEO templates for 4-6 key page types"
     )
     schema_markup_strategy: SchemaMarkupStrategy = Field(

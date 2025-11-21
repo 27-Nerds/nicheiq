@@ -12,34 +12,59 @@ Speed: ~2-3 seconds (vs 5-15 seconds previously)
 import json
 import re
 from datetime import datetime
-from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
+from typing import TYPE_CHECKING, Any
 
 from langchain_openai import ChatOpenAI
+
+if TYPE_CHECKING:
+    from ..models.analytics import (
+        CompetitiveAnalytics,
+        MarketAnalytics,
+        PainPointAnalytics,
+        SEOAnalytics,
+        VisualizationManifest,
+    )
+    from ..models.executive_summary import (
+        CorePainPoint,
+        ExecutiveDashboard,
+        ExecutiveNarrative,
+        GoNoGoVerdict,
+        KeyMetrics,
+    )
+    from ..models.marketing_blueprint import (
+        First30DaysPlaybook,
+        GTMBlueprint,
+        IdealCustomerProfile,
+        MarketingChannel,
+        MarketingNarrative,
+    )
+    from ..models.solution_idea import SolutionIdea, SolutionRefinement, SolutionSEORefinement
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from ..config.settings import settings
 from ..models.research_state import (
-    FinalReport,
-    ResearchState,
-    ResearchMetadata,
-    SubredditBreakdown,
     AlternativeSolution,
+    CompetitiveIntensityEntry,
     CompetitiveLandscapeMatrix,
     CompetitorMatrixEntry,
-    CompetitiveIntensityEntry,
-    EvidenceAppendix,
-    TopRedditThread,
-    PainPointEvidence,
-    QuoteSource,
-    DataInfrastructureRoadmap,
     DataInfrastructurePhase,
-    DecisionFramework,
+    DataInfrastructureRoadmap,
     DecisionCriterion,
+    DecisionFramework,
+    EvidenceAppendix,
+    FinalReport,
+    PainPointEvidence,
     PivotTrigger,
+    QuoteSource,
+    ResearchMetadata,
+    ResearchState,
+    SubredditBreakdown,
+    TopRedditThread,
 )
 from ..utils.helpers import find_solution_by_name
+from .templates import ReportTemplates
+from .utils import StateAccessor, safe_get_attr
 
 
 class ReportGenerator:
@@ -56,6 +81,7 @@ class ReportGenerator:
     Attributes:
         state: Complete research state from all previous stages
         niche_description: The niche being researched
+        accessor: StateAccessor for defensive data extraction
     """
 
     def __init__(self, state: ResearchState, niche_description: str):
@@ -68,6 +94,7 @@ class ReportGenerator:
         """
         self.state = state
         self.niche_description = niche_description
+        self.accessor = StateAccessor(state)
 
     def generate_report(self) -> FinalReport:
         """
@@ -82,9 +109,9 @@ class ReportGenerator:
             3. Add enhanced sections for data preservation
         """
         logger.info("Step 1: Building report from research data (Python)...")
-        final_report = self._generate_fallback_report()
+        final_report = self._assemble_base_report()
         logger.info(
-            f"[OK] Base report generated: {len(final_report.top_pain_points)} pain points, "
+            f"[OK] Base report assembled: {len(final_report.top_pain_points)} pain points, "
             f"{len(final_report.recommended_solutions)} solutions"
         )
 
@@ -208,75 +235,35 @@ class ReportGenerator:
     # Core Report Assembly Methods
     # ==================================================================================
 
-    def _generate_fallback_report(self) -> FinalReport:
+    def _assemble_base_report(self) -> FinalReport:
         """
-        Generate production-quality FinalReport using Python data assembly (no LLM).
+        Assemble base FinalReport using Python data assembly (primary report generation path).
 
         This method creates a complete report by directly copying and formatting data
-        from all previous stages. Can be used standalone or enhanced with LLM for
-        strategic synthesis fields.
+        from all previous stages. This is the primary report generation method (80% of work),
+        which can then be enhanced with LLM for strategic synthesis fields (20% of work).
         """
-        from datetime import datetime
 
         # Extract ALL pain points sorted by priority (severity + WTP)
-        top_pain_points = []
-        pain_points_summary = "No pain point analysis available."
-        if self.state.pain_point_analysis:
-            sorted_pps = sorted(
-                self.state.pain_point_analysis.pain_points,
-                key=lambda x: (x.severity_score + x.willingness_to_pay) / 2,
-                reverse=True,
-            )
-            # Include ALL pain points with severity/WTP scores (no arbitrary limit)
-            top_pain_points = [
-                f"{pp.title} - {pp.description} (Severity: {pp.severity_score:.1f}/10, WTP: {pp.willingness_to_pay:.1f}/10)"
-                for pp in sorted_pps
-            ]
-            # Use existing analysis_summary from Stage 6
-            pain_points_summary = self.state.pain_point_analysis.analysis_summary
+        top_pain_points = self.accessor.get_formatted_pain_points()
+        pain_points_summary = self.accessor.get_pain_points_summary()
 
         # Extract ALL recommended solutions (no limit)
-        recommended_solutions = []
-        solutions_summary = "No solution ideas generated."
-        if self.state.idea_generation:
-            # Put selected solution first, then others
-            all_solutions = [sol.solution_name for sol in self.state.idea_generation.solution_ideas]
-            if self.state.solution_selection:
-                selected_name = self.state.solution_selection.selected_solution_name
-                if selected_name in all_solutions:
-                    all_solutions.remove(selected_name)
-                    all_solutions.insert(0, selected_name)
-            recommended_solutions = all_solutions
-            # Use existing market_insights from Stage 7
-            solutions_summary = self.state.idea_generation.market_insights
+        recommended_solutions = self.accessor.get_all_solution_names(selected_first=True)
+        solutions_summary = self.accessor.get_solutions_summary()
 
         # Extract competitive summary (use existing strategic_recommendations)
-        competitive_summary = "No competitive analysis available."
-        if self.state.competitive_analysis:
-            # Use existing strategic_recommendations from Stage 8
-            competitive_summary = self.state.competitive_analysis.strategic_recommendations
+        competitive_summary = self.accessor.get_competitive_summary()
 
         # Extract solution selection (Stage 8.5)
-        selected_solution_name = "No solution selected"
-        selection_rationale = "Solution selection was not completed. Review recommended solutions and perform manual selection."
-        runner_up_solutions = []
-        selection_criteria_scores = []  # Must be list, not dict
-        recommended_focus = "To be determined after solution selection"
-
-        if self.state.solution_selection:
-            selected_solution_name = self.state.solution_selection.selected_solution_name
-            selection_rationale = self.state.solution_selection.selection_rationale
-            runner_up_solutions = self.state.solution_selection.runner_up_solutions
-            selection_criteria_scores = self.state.solution_selection.selection_criteria_scores
-            recommended_focus = self.state.solution_selection.recommended_focus
+        selected_solution_name = self.accessor.get_selected_solution_name()
+        selection_rationale = self.accessor.get_selection_rationale()
+        runner_up_solutions = self.accessor.get_runner_up_solutions()
+        selection_criteria_scores = self.accessor.get_selection_criteria_scores()
+        recommended_focus = self.accessor.get_recommended_focus()
 
         # Find selected solution details using fuzzy match helper
-        selected_solution_details = None
-        if self.state.solution_selection and self.state.idea_generation:
-            selected_solution_details = find_solution_by_name(
-                self.state.solution_selection.selected_solution_name,
-                self.state.idea_generation.solution_ideas
-            )
+        selected_solution_details = self.accessor.get_selected_solution_details()
 
         # Extract keyword validation and refinement data (Stage 8.8 and 8.85)
         keyword_validation_overview = None
@@ -289,8 +276,7 @@ class ReportGenerator:
             "data" in self.state.keyword_validation_results):
             logger.warning("Detected legacy checkpoint format for keyword_validation_results - attempting recovery")
             try:
-                import ast
-                self.state.keyword_validation_results = ast.literal_eval(
+                self.state.keyword_validation_results = json.loads(
                     self.state.keyword_validation_results["data"]
                 )
             except Exception as e:
@@ -311,15 +297,16 @@ class ReportGenerator:
                              "|----------|---------------|-------------------|--------------|-----------------|----------------|"]
 
             for result in self.state.keyword_validation_results:
-                sol_name = result.solution_name
-                validated = result.validated_count
-                total_vol = result.total_volume
-                avg_comp = result.avg_competition
-                demand_score = result.keyword_demand_score
-                demand_signal = result.demand_signal
+                # Handle both Pydantic models and dicts from checkpoint loading
+                sol_name = safe_get_attr(result, 'solution_name')
+                validated = safe_get_attr(result, 'validated_count')
+                total_vol = safe_get_attr(result, 'total_volume')
+                avg_comp = safe_get_attr(result, 'avg_competition')
+                demand_score = safe_get_attr(result, 'keyword_demand_score')
+                demand_signal = safe_get_attr(result, 'demand_signal')
 
                 # Tier 1 count estimation (top keywords)
-                top_kws = result.top_keywords
+                top_kws = safe_get_attr(result, 'top_keywords')
                 tier1_count = len([k for k in top_kws if k.get("competition", 100) < 40])
 
                 # SEO difficulty assessment
@@ -340,11 +327,15 @@ class ReportGenerator:
                     f"| {sol_name} | {validated} | {tier1_count} | {total_vol:,} | {avg_comp:.1f}% | {seo_difficulty} |"
                 )
 
+            # Helper for accessing attributes from models or dicts
+            def get_score(r):
+                return r.get('keyword_demand_score') if isinstance(r, dict) else r.keyword_demand_score
+
             overview_parts.append(
                 f"\n## Cross-Solution Comparison\n\n"
                 f"Keyword demand scores ranged from "
-                f"{min(r.keyword_demand_score for r in self.state.keyword_validation_results):.2f} to "
-                f"{max(r.keyword_demand_score for r in self.state.keyword_validation_results):.2f}. "
+                f"{min(get_score(r) for r in self.state.keyword_validation_results):.2f} to "
+                f"{max(get_score(r) for r in self.state.keyword_validation_results):.2f}. "
                 f"Validation enabled re-ranking based on actual search demand rather than architectural estimates."
             )
 
@@ -354,30 +345,39 @@ class ReportGenerator:
         # Extract content strategy preview from refinement data
         if self.state.solution_refinement:
             refinement = self.state.solution_refinement
+
             preview_parts = [
                 "## Programmatic Content Opportunities\n\n"
             ]
 
             # Geographic opportunities
-            if refinement.geographic_priorities:
+            geo_priorities = safe_get_attr(refinement, 'geographic_priorities')
+            if geo_priorities:
                 preview_parts.append(
-                    f"Geographic expansion priorities identified: {', '.join(refinement.geographic_priorities[:3])}. "
+                    f"Geographic expansion priorities identified: {', '.join(geo_priorities[:3])}. "
                     f"Create localized landing pages for each target market.\n\n"
                 )
 
             # Feature priorities for content clusters
-            if refinement.feature_priorities:
-                top_features = refinement.feature_priorities[:3]
+            feature_priorities = safe_get_attr(refinement, 'feature_priorities')
+            if feature_priorities:
+                top_features = feature_priorities[:3]
                 preview_parts.append(
-                    f"## Quick Win Content Recommendations\n\n"
-                    f"Top content clusters based on keyword support:\n"
+                    "## Quick Win Content Recommendations\n\n"
+                    "Top content clusters based on keyword support:\n"
                 )
                 for fp in top_features:
-                    preview_parts.append(f"- **{fp.feature_name}**: {fp.keyword_support} keywords, priority {fp.priority}/10\n")
+                    # Handle feature priority as dict or object
+                    if isinstance(fp, dict):
+                        preview_parts.append(f"- **{fp['feature_name']}**: {fp['keyword_support']} keywords, priority {fp['priority']}/10\n")
+                    else:
+                        preview_parts.append(f"- **{fp.feature_name}**: {fp.keyword_support} keywords, priority {fp.priority}/10\n")
 
             # Strategic insights
-            if refinement.strategic_insights:
-                preview_parts.append(f"\n{refinement.content_strategy_preview}")
+            strategic_insights = safe_get_attr(refinement, 'strategic_insights')
+            content_strategy = safe_get_attr(refinement, 'content_strategy_preview')
+            if strategic_insights:
+                preview_parts.append(f"\n{content_strategy}")
 
             content_strategy_preview = "".join(preview_parts)
 
@@ -390,72 +390,12 @@ class ReportGenerator:
                 seo_enrichment=getattr(self.state, 'seo_enrichment', None)
             )
 
-        # Generate solution_user_journey from features
-        solution_user_journey = None
-        if selected_solution_details and selected_solution_details.core_features:
-            steps = [f"{i}. {feature}" for i, feature in enumerate(selected_solution_details.core_features, 1)]
-            solution_user_journey = f"## User Journey\n\n" + "\n".join(steps)
-
-        # Generate solution_implementation_overview template
-        solution_implementation_overview = None
-        if selected_solution_details:
-            dev_time = selected_solution_details.estimated_development_time or "3-6 months"
-            tech = selected_solution_details.technical_approach or "modern web technologies"
-            solution_implementation_overview = f"""## Implementation Overview
-
-**Phase 1: MVP Development** ({dev_time})
-Build core functionality using {tech}. Focus on delivering essential features.
-
-**Phase 2: Enhancement & Scaling**
-Add advanced features, optimize performance, implement user feedback.
-
-**Phase 3: Market Expansion**
-Expand to new markets or segments based on validated learnings."""
-
-        # Generate mvp_scope_definition template
-        mvp_scope_definition = None
-        if selected_solution_details and selected_solution_details.core_features:
-            must_have = selected_solution_details.core_features[:4]
-            post_mvp = selected_solution_details.core_features[4:]
-
-            mvp_text = "## MVP Scope\n\n### Must-Have Features\n"
-            mvp_text += "\n".join([f"- {f}" for f in must_have])
-            if post_mvp:
-                mvp_text += "\n\n### Post-MVP Features\n"
-                mvp_text += "\n".join([f"- {f}" for f in post_mvp])
-            mvp_text += "\n\n### Success Criteria\n"
-            mvp_text += "- 100+ active users within 3 months\n- 60%+ weekly active users\n- First paying customer within 6 months"
-            mvp_scope_definition = mvp_text
-
-        # Generate acquisition_strategy_summary template
-        acquisition_strategy_summary = None
-        if selected_solution_details:
-            page_count = selected_solution_details.estimated_indexable_pages or 1000
-            acquisition_strategy_summary = f"""## Customer Acquisition Strategy
-
-**Content Generation Model:** The solution architecture enables programmatic generation of {page_count:,}+ indexable pages through {selected_solution_details.project_type or 'directory'} functionality.
-
-**Discovery Patterns:** Users will discover the platform through organic search queries targeting {selected_solution_details.value_proposition}.
-
-**Scaling Strategy:** Each data entity creates a unique landing page, enabling exponential growth in organic traffic as the database expands."""
-
-        # Generate estimated_cac_breakdown template
-        estimated_cac_breakdown = None
-        if selected_solution_details:
-            cac_organic = selected_solution_details.estimated_cac_organic or "N/A"
-            cac_paid = selected_solution_details.estimated_cac_paid or "N/A"
-            scalability = selected_solution_details.seo_scalability_score or 0.7
-
-            estimated_cac_breakdown = f"""## CAC Breakdown
-
-| Channel | Estimated CAC | Rationale |
-|---------|--------------|-----------|
-| Organic (SEO) | {cac_organic} | Programmatic content via {selected_solution_details.estimated_indexable_pages or 1000}+ pages |
-| Paid (SEM) | {cac_paid} | Industry benchmark for paid acquisition |
-
-**SEO Scalability:** {scalability:.1f}/10 - {"Excellent" if scalability >= 0.8 else "Good" if scalability >= 0.6 else "Moderate"} organic growth potential.
-
-**CAC Advantage:** Organic acquisition through programmatic SEO significantly reduces customer acquisition costs compared to paid channels."""
+        # Generate template-based sections using ReportTemplates
+        solution_user_journey = ReportTemplates.user_journey(selected_solution_details)
+        solution_implementation_overview = ReportTemplates.implementation_overview(selected_solution_details)
+        mvp_scope_definition = ReportTemplates.mvp_scope(selected_solution_details)
+        acquisition_strategy_summary = ReportTemplates.acquisition_strategy(selected_solution_details)
+        estimated_cac_breakdown = ReportTemplates.cac_breakdown(selected_solution_details)
 
         # Generate market_validation based on actual metrics
         total_volume = self.state.keyword_validation.overall_market_size if self.state.keyword_validation else 0
@@ -479,7 +419,7 @@ Expand to new markets or segments based on validated learnings."""
         data_sourcing_recommendations = "No data aggregation required for this solution."
         if self.state.data_source_research:
             dsr = self.state.data_source_research
-            recs = [f"## Data Sourcing Strategy\n"]
+            recs = ["## Data Sourcing Strategy\n"]
             recs.append(f"**Primary Sources:** {len(dsr.primary_data_sources)} providers identified")
             for ds in dsr.primary_data_sources[:5]:
                 recs.append(f"- **{ds.provider}**: {ds.coverage} ({ds.access_model}, {ds.cost_estimate})")
@@ -581,8 +521,8 @@ Expand to new markets or segments based on validated learnings."""
     def _merge_solution_enrichments(
         self,
         base_solution: "SolutionIdea",
-        keyword_enrichment: Optional["SolutionRefinement"],
-        seo_enrichment: Optional["SolutionSEORefinement"]
+        keyword_enrichment: "SolutionRefinement | None",
+        seo_enrichment: "SolutionSEORefinement | None"
     ) -> "SolutionIdea":
         """
         Merge base solution with enrichments from later stages.
@@ -667,7 +607,7 @@ Expand to new markets or segments based on validated learnings."""
         """
         Enhance Python-generated report with LLM for 3 strategic synthesis fields only.
 
-        Takes a complete report from _generate_fallback_report() and uses LLM to generate:
+        Takes a complete report from _assemble_base_report() and uses LLM to generate:
         1. executive_summary (4-6 sentence strategic synthesis)
         2. acquisition_strategy_summary (2-3 paragraph SEO strategy narrative)
         3. next_steps (5-8 prioritized action items)
@@ -675,7 +615,7 @@ Expand to new markets or segments based on validated learnings."""
         All other fields are preserved from base_report.
         """
         from langchain_openai import ChatOpenAI
-        from pydantic import BaseModel, Field
+        from ..utils.prompts import load_prompt
 
         # Define minimal Pydantic model for 3 fields only
         class StrategicSynthesis(BaseModel):
@@ -692,42 +632,20 @@ Expand to new markets or segments based on validated learnings."""
                 description="5-8 prioritized, specific action items for implementation"
             )
 
-        # Build minimal context prompt (~50 lines vs 245 lines)
-        prompt = f"""You are a strategic market research analyst creating final synthesis for a comprehensive market research report.
-
-**Research Context:**
-Niche: {base_report.niche}
-Selected Solution: {base_report.selected_solution_name}
-Pain Points Identified: {len(base_report.top_pain_points)}
-Market Validation: {base_report.market_validation}
-SEO Scalability: {base_report.selected_solution_details.seo_scalability_score if base_report.selected_solution_details else 'N/A'}/10
-
-**Your Task:**
-Generate ONLY these 3 strategic synthesis fields:
-
-1. **executive_summary** (4-6 sentences):
-   - Compelling narrative synthesizing the entire research
-   - Highlight the selected solution and selection rationale
-   - Key market opportunity and recommended direction
-
-2. **acquisition_strategy_summary** (2-3 paragraphs):
-   - Explain HOW the product architecture creates indexable pages
-   - What search queries users will use to discover the solution
-   - How organic acquisition will scale (programmatic SEO approach)
-
-3. **next_steps** (5-8 action items):
-   - Concrete, prioritized, sequenced actions
-   - Include validation, MVP development, SEO implementation
-   - Be specific and actionable
-
-**Key Data for Context:**
-- Selection Rationale: {base_report.selection_rationale}
-- Top 3 Pain Points: {', '.join(base_report.top_pain_points[:3])}
-- Project Type: {base_report.selected_solution_details.project_type if base_report.selected_solution_details else 'N/A'}
-- Indexable Pages: {base_report.selected_solution_details.estimated_indexable_pages if base_report.selected_solution_details else 'N/A'}
-- CAC Organic: ${base_report.selected_solution_details.estimated_cac_organic if base_report.selected_solution_details else 'N/A'}
-
-Return JSON with these 3 fields only."""
+        # Load prompt template from YAML
+        template = load_prompt("report_strategic_synthesis")
+        prompt = template.format(
+            niche=base_report.niche,
+            selected_solution_name=base_report.selected_solution_name,
+            pain_points_count=len(base_report.top_pain_points),
+            market_validation=base_report.market_validation,
+            seo_scalability=base_report.selected_solution_details.seo_scalability_score if base_report.selected_solution_details else 'N/A',
+            selection_rationale=base_report.selection_rationale,
+            top_pain_points=', '.join(base_report.top_pain_points[:3]),
+            project_type=base_report.selected_solution_details.project_type if base_report.selected_solution_details else 'N/A',
+            indexable_pages=base_report.selected_solution_details.estimated_indexable_pages if base_report.selected_solution_details else 'N/A',
+            cac_organic=base_report.selected_solution_details.estimated_cac_organic if base_report.selected_solution_details else 'N/A'
+        )
 
         try:
             logger.info("Enhancing report with LLM for strategic synthesis (3 fields)...")
@@ -759,28 +677,27 @@ Return JSON with these 3 fields only."""
     # Enhanced Section Generators (6 methods)
     # ==================================================================================
 
-    def _generate_research_metadata(self) -> Optional["ResearchMetadata"]:
+    def _generate_research_metadata(self) -> "ResearchMetadata | None":
         """
         Generate research metadata section with social content collection statistics.
 
         Returns:
             ResearchMetadata object with Reddit/Twitter stats, subreddit breakdown, and collection info
         """
-        if not self.state.social_content:
+        social_content = self.accessor.get_social_content()
+        if not social_content:
             return None
 
         try:
             # Count Reddit posts and comments
-            reddit_posts_analyzed = len(self.state.social_content.reddit_posts)
-            reddit_comments_analyzed = sum(len(post.comments) for post in self.state.social_content.reddit_posts)
+            reddit_posts_analyzed = len(social_content.reddit_posts)
+            reddit_comments_analyzed = sum(len(post.comments) for post in social_content.reddit_posts)
 
             # Count Twitter threads
-            twitter_threads_analyzed = len(self.state.social_content.twitter_threads)
+            twitter_threads_analyzed = len(social_content.twitter_threads)
 
             # Calculate subreddit breakdown (top 10)
-            subreddit_counts: Dict[str, int] = {}
-            for post in self.state.social_content.reddit_posts:
-                subreddit_counts[post.subreddit] = subreddit_counts.get(post.subreddit, 0) + 1
+            subreddit_counts = self.accessor.get_subreddit_breakdown()
 
             top_subreddits = [
                 SubredditBreakdown(name=name, post_count=count)
@@ -788,7 +705,7 @@ Return JSON with these 3 fields only."""
             ]
 
             # Calculate data size (rough estimate from JSON serialization)
-            social_content_json = self.state.social_content.model_dump_json()
+            social_content_json = social_content.model_dump_json()
             data_size_mb = len(social_content_json.encode('utf-8')) / (1024 * 1024)
 
             return ResearchMetadata(
@@ -796,38 +713,41 @@ Return JSON with these 3 fields only."""
                 reddit_comments_analyzed=reddit_comments_analyzed,
                 twitter_threads_analyzed=twitter_threads_analyzed,
                 top_subreddits=top_subreddits,
-                collection_date=self.state.social_content.collection_timestamp,
+                collection_date=social_content.collection_timestamp,
                 data_size_mb=round(data_size_mb, 2)
             )
         except Exception as e:
             logger.warning(f"Failed to generate research metadata: {e}")
             return None
 
-    def _generate_alternative_solutions(self) -> Optional[List["AlternativeSolution"]]:
+    def _generate_alternative_solutions(self) -> list["AlternativeSolution | None"]:
         """
         Generate alternative solution summaries for runner-up solutions.
 
         Returns:
             List of AlternativeSolution objects (top 2 runner-ups with full details)
         """
-        if not self.state.solution_selection or not self.state.idea_generation:
+        solution_selection = self.accessor.get_solution_selection()
+        idea_generation = self.accessor.get_idea_generation()
+
+        if not solution_selection or not idea_generation:
             return None
 
         try:
             # Get runner-up solution names
-            runner_up_names = self.state.solution_selection.runner_up_solutions or []
+            runner_up_names = self.accessor.get_runner_up_solutions()
             if not runner_up_names:
                 return None
 
             # Find full solution details from idea_generation stage
-            all_solutions = {idea.solution_name: idea for idea in self.state.idea_generation.solution_ideas}
+            all_solutions = {idea.solution_name: idea for idea in idea_generation.solution_ideas}
 
             # Build score lookup map from all_solution_scores
             score_map = {}
-            if self.state.solution_selection.all_solution_scores:
+            if solution_selection.all_solution_scores:
                 score_map = {
                     scores.solution_name: scores
-                    for scores in self.state.solution_selection.all_solution_scores
+                    for scores in solution_selection.all_solution_scores
                 }
 
             alternative_solutions = []
@@ -860,18 +780,18 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                     seo_growth = scores.seo_growth_potential_score
                 else:
                     # Fallback to solution fields if all_solution_scores not populated
-                    market_fit = solution.market_fit_score or 0.0
-                    technical_feasibility = solution.technical_feasibility_score or 0.0
-                    competitive_advantage = solution.market_fit_score or 0.7  # Use market_fit as proxy
-                    seo_growth = solution.seo_scalability_score or 0.0
+                    market_fit = solution.market_fit_score  # None if not assessed
+                    technical_feasibility = solution.technical_feasibility_score  # None if not assessed
+                    competitive_advantage = solution.market_fit_score  # Use market_fit as proxy, None if unavailable
+                    seo_growth = solution.seo_scalability_score  # None if not assessed
 
-                # Determine pivot trigger based on solution characteristics
+                # Determine pivot trigger based on solution characteristics (handle None scores)
                 pivot_trigger = f"Pivot to {runner_up_name} if: "
-                if market_fit > 0.9:
+                if market_fit is not None and market_fit > 0.9:
                     pivot_trigger += "user research reveals significantly higher demand for this specific pain point, "
-                if seo_growth > 0.85:
+                if seo_growth is not None and seo_growth > 0.85:
                     pivot_trigger += "SEO keyword volume for this solution is 2x higher than primary choice, "
-                if technical_feasibility > 0.9:
+                if technical_feasibility is not None and technical_feasibility > 0.9:
                     pivot_trigger += "faster time-to-market is critical and this solution has simpler tech requirements"
 
                 alternative_solutions.append(AlternativeSolution(
@@ -881,8 +801,8 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                     technical_feasibility_score=technical_feasibility,
                     competitive_advantage_score=competitive_advantage,
                     seo_growth_potential_score=seo_growth,
-                    key_differentiator=solution.differentiation_factors[0] if solution.differentiation_factors else "Unique market positioning",
-                    best_suited_for=solution.target_personas[0] if solution.target_personas else "Target user segment",
+                    key_differentiator=solution.differentiation_factors[0] if solution.differentiation_factors else "Key differentiator not identified",
+                    best_suited_for=solution.target_personas[0] if solution.target_personas else "Target persona not defined",
                     pivot_trigger=pivot_trigger.rstrip(", ")
                 ))
 
@@ -891,7 +811,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to generate alternative solutions: {e}")
             return None
 
-    def _generate_competitive_landscape_matrix(self) -> Optional["CompetitiveLandscapeMatrix"]:
+    def _generate_competitive_landscape_matrix(self) -> "CompetitiveLandscapeMatrix | None":
         """
         Generate cross-solution competitive analysis showing competitor overlap and patterns.
 
@@ -906,8 +826,8 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             all_solutions = [landscape.solution_name for landscape in self.state.competitive_analysis.solution_landscapes]
 
             # Build competitor overlap map
-            competitor_appearances: Dict[str, Dict[str, Any]] = {}
-            competitive_intensity_list: List[CompetitiveIntensityEntry] = []
+            competitor_appearances: dict[str, dict[str, Any]] = {}
+            competitive_intensity_list: list[CompetitiveIntensityEntry] = []
 
             for landscape in self.state.competitive_analysis.solution_landscapes:
                 # Track competitive intensity
@@ -925,7 +845,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                             competitor_appearances[competitor.name] = {
                                 "solutions": [],
                                 "type": competitor.competitor_type,
-                                "threat_level": "medium"  # default
+                                "threat_level": "Threat level not assessed"
                             }
                         competitor_appearances[competitor.name]["solutions"].append(landscape.solution_name)
 
@@ -967,7 +887,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to generate competitive landscape matrix: {e}")
             return None
 
-    def _generate_evidence_appendix(self) -> Optional["EvidenceAppendix"]:
+    def _generate_evidence_appendix(self) -> "EvidenceAppendix | None":
         """
         Generate evidence appendix with top Reddit threads and pain point quote sources.
 
@@ -999,7 +919,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             ]
 
             # Create post ID to metadata mapping
-            post_metadata: Dict[str, Dict[str, Any]] = {}
+            post_metadata: dict[str, dict[str, Any]] = {}
             for post in self.state.social_content.reddit_posts:
                 post_metadata[post.post_id] = {
                     "subreddit": post.subreddit,
@@ -1048,7 +968,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to generate evidence appendix: {e}")
             return None
 
-    def _generate_data_infrastructure_roadmap(self) -> Optional["DataInfrastructureRoadmap"]:
+    def _generate_data_infrastructure_roadmap(self) -> "DataInfrastructureRoadmap | None":
         """
         Generate 3-phase data infrastructure implementation roadmap with cost projections.
 
@@ -1110,34 +1030,10 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                         key_risks=[risk.strip() for risk in data_research.data_quality_risks[:2]] if data_research.data_quality_risks else []
                     ))
 
-            # If parsing failed, create default 3-phase structure
+            # If parsing failed, return None instead of generating fake roadmap
             if len(phases) < 3:
-                phases = [
-                    DataInfrastructurePhase(
-                        phase_number=1,
-                        phase_name="MVP",
-                        timeline="Months 1-3",
-                        data_sources=[s.provider for s in data_research.primary_data_sources[:2]],
-                        estimated_monthly_cost=data_research.estimated_monthly_cost.split(";")[0] if ";" in data_research.estimated_monthly_cost else data_research.estimated_monthly_cost.split("/")[0] if "/" in data_research.estimated_monthly_cost else data_research.estimated_monthly_cost,
-                        key_risks=[data_research.data_quality_risks[0]] if data_research.data_quality_risks else []
-                    ),
-                    DataInfrastructurePhase(
-                        phase_number=2,
-                        phase_name="Growth",
-                        timeline="Months 4-6",
-                        data_sources=[s.provider for s in data_research.primary_data_sources],
-                        estimated_monthly_cost="Scale with usage",
-                        key_risks=[data_research.data_quality_risks[1]] if len(data_research.data_quality_risks) > 1 else []
-                    ),
-                    DataInfrastructurePhase(
-                        phase_number=3,
-                        phase_name="Scale",
-                        timeline="Months 7-12",
-                        data_sources=[s.provider for s in data_research.primary_data_sources] + [s.provider for s in data_research.fallback_sources[:1]],
-                        estimated_monthly_cost="High volume - implement cost optimization",
-                        key_risks=[data_research.data_quality_risks[2]] if len(data_research.data_quality_risks) > 2 else ["Cost scaling at high volume"]
-                    )
-                ]
+                logger.warning("Failed to parse data infrastructure roadmap phases - insufficient data")
+                return None
 
             # Generate cost scaling insight
             cost_scaling_insight = f"Data infrastructure costs start at {phases[0].estimated_monthly_cost} during MVP, " \
@@ -1153,7 +1049,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to generate data infrastructure roadmap: {e}")
             return None
 
-    def _generate_decision_framework(self) -> Optional["DecisionFramework"]:
+    def _generate_decision_framework(self) -> "DecisionFramework | None":
         """
         Generate go/no-go criteria and pivot triggers for decision-making.
 
@@ -1231,12 +1127,13 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                         rationale="Market demand signal stronger for alternative approach, justifies strategic pivot"
                     ))
 
-            # Add generic pivot trigger
-            pivot_triggers.append(PivotTrigger(
-                trigger_condition="MVP validation shows <10% conversion from landing page to signup after 100+ visitors",
-                pivot_to_solution=self.state.solution_selection.runner_up_solutions[0] if self.state.solution_selection.runner_up_solutions else "Alternative approach",
-                rationale="Low conversion indicates value proposition mismatch, warrants testing alternative solution framing"
-            ))
+            # Add generic pivot trigger only if runner-up solutions exist
+            if self.state.solution_selection.runner_up_solutions:
+                pivot_triggers.append(PivotTrigger(
+                    trigger_condition="MVP validation shows <10% conversion from landing page to signup after 100+ visitors",
+                    pivot_to_solution=self.state.solution_selection.runner_up_solutions[0],
+                    rationale="Low conversion indicates value proposition mismatch, warrants testing alternative solution framing"
+                ))
 
             return DecisionFramework(
                 go_criteria=go_criteria,
@@ -1270,7 +1167,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
         return None
 
-    def _generate_executive_dashboard(self) -> Optional["ExecutiveDashboard"]:
+    def _generate_executive_dashboard(self) -> "ExecutiveDashboard | None":
         """
         Generate executive dashboard for quick decision-making.
 
@@ -1285,9 +1182,6 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             from ..models.executive_summary import (
                 ExecutiveDashboard,
                 SolutionSnapshot,
-                GoNoGoVerdict,
-                CorePainPoint,
-                KeyMetrics
             )
 
             # Extract selected solution details
@@ -1351,14 +1245,28 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
             # Compute confidence score (average of top 2 selection criteria with null safety)
             if solution_scores:
-                market_fit = solution_scores.market_fit_score or 0.0
-                competitive_advantage = solution_scores.competitive_advantage_score or 0.0
+                market_fit = solution_scores.market_fit_score
+                competitive_advantage = solution_scores.competitive_advantage_score
             else:
                 # Fallback to solution object fields
-                market_fit = selected_solution.market_fit_score or 0.7
-                competitive_advantage = selected_solution.market_fit_score or 0.7  # Fallback
+                market_fit = selected_solution.market_fit_score
+                competitive_advantage = selected_solution.market_fit_score  # Use market_fit as proxy
 
-            confidence_score = (market_fit + competitive_advantage) / 2.0
+            # Only generate dashboard if we have at least one valid score
+            if market_fit is None and competitive_advantage is None:
+                logger.warning("Cannot generate executive dashboard: scores unavailable")
+                return None
+
+            # Compute confidence using only available scores
+            if market_fit is not None and competitive_advantage is not None:
+                confidence_score = (market_fit + competitive_advantage) / 2.0
+            elif market_fit is not None:
+                confidence_score = market_fit
+            elif competitive_advantage is not None:
+                confidence_score = competitive_advantage
+            else:
+                # Should never reach here due to check above
+                confidence_score = 0.0
 
             executive_dashboard = ExecutiveDashboard(
                 recommended_solution_snapshot=solution_snapshot,
@@ -1376,7 +1284,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to generate executive dashboard: {e}")
             return None
 
-    def _compute_executive_metrics(self) -> Optional["KeyMetrics"]:
+    def _compute_executive_metrics(self) -> "KeyMetrics | None":
         """
         Compute top-line metrics for executive dashboard (Python-only).
 
@@ -1468,7 +1376,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to compute executive metrics: {e}")
             return None
 
-    def _extract_core_pain_point(self) -> Optional["CorePainPoint"]:
+    def _extract_core_pain_point(self) -> "CorePainPoint | None":
         """
         Extract the #1 pain point for executive dashboard (Python-only).
 
@@ -1493,7 +1401,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
             # Extract representative quote (use first quote if available)
             representative_quote = "No specific quote available"
-            source_platform = "User research"
+            source_platform = "Source platform unknown"
 
             if top_pp.representative_quotes and len(top_pp.representative_quotes) > 0:
                 representative_quote = top_pp.representative_quotes[0]
@@ -1524,7 +1432,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
         selected_solution,
         core_pain_point,
         key_metrics
-    ) -> Optional["ExecutiveNarrative"]:
+    ) -> "ExecutiveNarrative | None":
         """
         Generate executive narrative using LLM with structured output.
 
@@ -1543,8 +1451,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
             # Stop condition: Validate required data exists
             if not core_pain_point or not selected_solution:
-                logger.warning("Missing core_pain_point or selected_solution - using fallback")
-                return self._generate_narrative_fallback(selected_solution, core_pain_point)
+                raise ValueError("Missing core_pain_point or selected_solution - cannot generate executive narrative")
 
             # Get scores for this solution
             solution_scores = self._get_solution_scores(selected_solution.solution_name)
@@ -1552,97 +1459,51 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             # Prepare target personas string
             target_personas_str = ', '.join(selected_solution.target_personas) if selected_solution.target_personas else "target users"
 
-            # Get scores with fallback
+            # Get scores (can be None if not assessed)
             if solution_scores:
-                market_fit = solution_scores.market_fit_score or 0.0
-                competitive_advantage = solution_scores.competitive_advantage_score or 0.0
-                technical_feasibility = solution_scores.technical_feasibility_score or 0.0
-                seo_growth = solution_scores.seo_growth_potential_score or 0.0
+                market_fit = solution_scores.market_fit_score
+                competitive_advantage = solution_scores.competitive_advantage_score
+                technical_feasibility = solution_scores.technical_feasibility_score
+                seo_growth = solution_scores.seo_growth_potential_score
             else:
                 # Fallback to solution object fields where available
-                market_fit = selected_solution.market_fit_score or 0.7
-                competitive_advantage = market_fit  # Fallback
-                technical_feasibility = selected_solution.technical_feasibility_score or 0.7
-                seo_growth = selected_solution.seo_scalability_score or 0.0
+                market_fit = selected_solution.market_fit_score
+                competitive_advantage = market_fit  # Use market_fit as proxy
+                technical_feasibility = selected_solution.technical_feasibility_score
+                seo_growth = selected_solution.seo_scalability_score
+
+            # Add note to prompt if key scores are missing
+            missing_scores_note = ""
+            if market_fit is None or competitive_advantage is None:
+                missing_scores_note = " (Note: Limited scoring data available - some scores not assessed)"
 
             # Edge case handling for metrics
             zero_keywords_note = " (Limited keyword data available)" if key_metrics.total_keyword_count == 0 else ""
             zero_competitors_note = " (Emerging market with low competition)" if key_metrics.primary_competitor_count == 0 else ""
 
-            # Prepare prompt with all data
-            prompt = f'''Generate executive narrative for market research report.
-
-**Solution Context:**
-Name: {selected_solution.solution_name}
-Description: {selected_solution.description}
-Target Personas: {target_personas_str}
-Niche: {self.niche_description}
-
-**Top Pain Point:**
-Title: {core_pain_point.title}
-Severity: {core_pain_point.severity_score:.1f}/1.0
-WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
-
-**Selection Criteria Scores (0-1.0 scale):**
-- Market Fit: {market_fit:.2f}/1.0
-- Competitive Advantage: {competitive_advantage:.2f}/1.0
-- Technical Feasibility: {technical_feasibility:.2f}/1.0
-- SEO Scalability: {seo_growth:.2f}/1.0
-
-**Market Metrics:**
-- Total Keywords: {key_metrics.total_keyword_count}{zero_keywords_note}
-- Tier 1 Keywords: {key_metrics.tier1_keyword_count}
-- Primary Competitors: {key_metrics.primary_competitor_count}{zero_competitors_note}
-- High Priority Pain Points: {key_metrics.high_priority_pain_points}
-
-**MINIMUM DATA REQUIREMENTS:**
-- All scores and metrics are provided above
-- Generate narrative based ONLY on this data
-- If keyword_count == 0: Mention "limited keyword data" in verdict
-- If competitor_count == 0: Note "emerging market" status
-
-**Generate 3 fields:**
-
-1. **tagline**: One-sentence value proposition (10-15 words)
-   - Format: "[Solution] [action verb] [outcome] for [audience]"
-   - Use active verbs: solves, simplifies, automates, connects
-   - Avoid generic terms: platform, solution, tool
-   - Include outcome benefit from pain point
-
-2. **core_value_prop**: What problem it solves and for whom (2-3 sentences)
-   - First sentence: State the pain point and its impact
-   - Second sentence: Explain the solution approach
-   - Third sentence (optional): Differentiation or benefit
-
-3. **verdict_rationale**: Go/No-Go rationale based on scores (MAXIMUM 3 sentences, prefer 2)
-   - First sentence: State 2-3 key scores and their implication
-   - Second sentence: Address any concerns or strengths
-   - Optional third sentence: Clear recommendation signal (only if needed)
-   - MUST reference specific numeric score values (e.g., "market fit of 0.82")
-   - If market_fit >= 0.75 AND technical_feasibility >= 0.7: Lean positive
-   - If any critical score < 0.6: Acknowledge concerns and require validation
-
-**OUTPUT STRUCTURE EXAMPLE:**
-{{
-  "tagline": "{selected_solution.solution_name} simplifies [pain] for {target_personas_str.split(',')[0] if ',' in target_personas_str else target_personas_str}",
-  "core_value_prop": "Pain point impact... Solution approach... Benefit.",
-  "verdict_rationale": "With market fit of 0.82 and technical feasibility of 0.75, this solution shows strong potential for the target market. The competitive advantage score of 0.68 indicates differentiation opportunities that warrant further validation."
-}}
-
-**CRITICAL ANTI-HALLUCINATION RULES:**
-- DO NOT invent statistics, percentages, or market size estimates
-- DO NOT reference timeframes ("recent", "growing", "trending") without data
-- DO NOT mention competitors unless in provided metrics
-- DO NOT claim user counts, revenue, or adoption rates
-- ONLY reference scores and metrics explicitly listed above
-- DO NOT create features or capabilities not in solution description
-
-**Before finalizing, verify:**
-✓ All pain point references match EXACTLY the title above
-✓ All score references use actual values from above (no generic "strong" or "good")
-✓ No invented market claims or statistics
-✓ Tagline includes solution name and uses active verb
-'''
+            # Load prompt template from YAML
+            from ..utils.prompts import load_prompt
+            template = load_prompt("report_executive_narrative")
+            prompt = template.format(
+                solution_name=selected_solution.solution_name,
+                solution_description=selected_solution.description,
+                target_personas=target_personas_str,
+                niche_description=self.niche_description,
+                pain_point_title=core_pain_point.title,
+                pain_point_severity=f"{core_pain_point.severity_score:.1f}",
+                pain_point_wtp=f"{core_pain_point.willingness_to_pay_score:.1f}",
+                market_fit_score=f"{market_fit:.2f}" if market_fit is not None else "N/A",
+                competitive_advantage_score=f"{competitive_advantage:.2f}" if competitive_advantage is not None else "N/A",
+                technical_feasibility_score=f"{technical_feasibility:.2f}" if technical_feasibility is not None else "N/A",
+                seo_growth_score=f"{seo_growth:.2f}" if seo_growth is not None else "N/A",
+                total_keyword_count=key_metrics.total_keyword_count,
+                tier1_keyword_count=key_metrics.tier1_keyword_count,
+                competitor_count=key_metrics.primary_competitor_count,
+                high_priority_pain_points=key_metrics.high_priority_pain_points,
+                zero_keywords_note=zero_keywords_note,
+                zero_competitors_note=zero_competitors_note,
+                missing_scores_note=missing_scores_note
+            )
 
             structured_llm = ChatOpenAI(
                 model=settings.openai_model_name,
@@ -1658,12 +1519,11 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
                 logger.info("[OK] LLM executive narrative generation successful")
                 return result
             else:
-                logger.warning("LLM narrative failed validation, using fallback")
-                return self._generate_narrative_fallback(selected_solution, core_pain_point)
+                raise ValueError("LLM narrative failed validation checks - output does not meet quality standards")
 
         except Exception as e:
-            logger.warning(f"LLM narrative generation failed: {e}, using fallback")
-            return self._generate_narrative_fallback(selected_solution, core_pain_point)
+            logger.error(f"LLM narrative generation failed: {e}")
+            raise
 
     def _validate_executive_narrative(
         self,
@@ -1745,55 +1605,10 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
             logger.warning(f"Narrative validation error: {e}")
             return False
 
-    def _generate_narrative_fallback(self, selected_solution, core_pain_point) -> "ExecutiveNarrative":
-        """
-        Template-based fallback if LLM fails or validation fails (Python-only).
-
-        Returns:
-            ExecutiveNarrative using template patterns
-        """
-        from ..models.executive_summary import ExecutiveNarrative
-
-        # Template 1: Tagline (verb-based pattern)
-        verb = "solves" if "problem" in core_pain_point.title.lower() else "addresses"
-        target_audience = selected_solution.target_personas[0] if selected_solution.target_personas else "target users"
-        tagline = f"{selected_solution.solution_name} {verb} {core_pain_point.title.lower()} for {target_audience}"
-
-        # Template 2: Core value prop
-        core_value_prop = (
-            f"{target_audience} struggle with {core_pain_point.title.lower()}, "
-            f"impacting their daily operations. {selected_solution.solution_name} provides a streamlined "
-            f"solution that addresses this pain point directly through targeted features."
-        )
-
-        # Template 3: Verdict rationale (score-based)
-        avg_score = (selected_solution.market_fit_score + selected_solution.technical_feasibility_score) / 2
-        if avg_score >= 0.75:
-            verdict_signal = "Strong opportunity"
-            reasoning = "high market fit and technical feasibility scores"
-        elif avg_score >= 0.60:
-            verdict_signal = "Moderate opportunity"
-            reasoning = "acceptable scores with room for refinement"
-        else:
-            verdict_signal = "Requires validation"
-            reasoning = "lower confidence in market fit or feasibility"
-
-        verdict_rationale = (
-            f"{verdict_signal} based on market fit score of {selected_solution.market_fit_score:.2f} "
-            f"and technical feasibility of {selected_solution.technical_feasibility_score:.2f}. "
-            f"The solution shows {reasoning}."
-        )
-
-        return ExecutiveNarrative(
-            tagline=tagline[:80],  # Cap length
-            core_value_prop=core_value_prop,
-            verdict_rationale=verdict_rationale
-        )
-
     def _compute_go_no_go_verdict(
         self,
         selected_solution,
-        narrative_rationale: Optional[str] = None
+        narrative_rationale: str | None = None
     ) -> "GoNoGoVerdict":
         """
         Compute go/no-go verdict based on selection criteria scores (Python-only).
@@ -1868,7 +1683,7 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
     # Go-to-Market Blueprint Generator (Phase 2 Enhancement)
     # ==================================================================================
 
-    def _generate_gtm_blueprint(self) -> Optional["GTMBlueprint"]:
+    def _generate_gtm_blueprint(self) -> "GTMBlueprint | None":
         """
         Generate Go-to-Market blueprint for immediate execution.
 
@@ -1920,7 +1735,7 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
             logger.warning(f"Failed to generate GTM blueprint: {e}")
             return None
 
-    def _extract_ideal_customer_profile(self) -> Optional["IdealCustomerProfile"]:
+    def _extract_ideal_customer_profile(self) -> "IdealCustomerProfile | None":
         """
         Extract ICP from content categorization and pain points (Python-only).
 
@@ -1966,23 +1781,29 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
                     goals = [f"Achieve {feature.lower()}" for feature in selected_solution.core_features[:5]]
 
             if not goals:
-                goals = ["Solve their key pain points", "Improve efficiency", "Reduce costs", "Save time"]
+                goals = ["Customer goals not identified - conduct user research"]
+
+            # Build psychographics with specific data or explicit message
+            if pain_points:
+                psychographics = f"Motivated by solving {pain_points[0]}. Psychographic profile requires user research."
+            else:
+                psychographics = "Psychographic profile requires user research"
 
             return IdealCustomerProfile(
                 persona_name=primary_segment.segment_name,
                 demographics=f"{primary_segment.segment_name} segment with {primary_segment.mention_frequency.lower()} activity in {self.niche_description} discussions",
-                psychographics=f"Motivated by solving {pain_points[0] if pain_points else 'key challenges'}. Values efficiency, reliability, and ease of use.",
+                psychographics=psychographics,
                 pain_points=pain_points if pain_points else ["No specific pain points identified"],
                 goals=goals,
                 buying_triggers=f"Experiencing {pain_points[0].lower() if pain_points else 'challenges'} that impact daily operations",
-                decision_criteria="Solution effectiveness, ease of implementation, cost-effectiveness, and community support"
+                decision_criteria="Decision criteria not identified - requires customer interviews"
             )
 
         except Exception as e:
             logger.warning(f"Failed to extract ICP: {e}")
             return None
 
-    def _identify_marketing_channels(self) -> List["MarketingChannel"]:
+    def _identify_marketing_channels(self) -> list["MarketingChannel"]:
         """
         Identify top marketing channels from evidence (Python-only).
 
@@ -2048,7 +1869,7 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
             logger.warning(f"Failed to identify marketing channels: {e}")
             return []
 
-    def _generate_marketing_narrative(self, icp) -> Optional["MarketingNarrative"]:
+    def _generate_marketing_narrative(self, icp) -> "MarketingNarrative | None":
         """
         Generate marketing narrative using LLM (message + content angles).
 
@@ -2059,18 +1880,17 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
             MarketingNarrative with messaging and content ideas
         """
         try:
-            from ..models.marketing_blueprint import MarketingNarrative, ContentAngle
+            from ..models.marketing_blueprint import MarketingNarrative
 
             # Get top pain points
             top_pain_points = icp.pain_points[:3] if icp.pain_points else []
 
             # Stop condition: Insufficient pain points
             if not icp.pain_points or len(icp.pain_points) < 2:
-                logger.warning(
-                    f"Insufficient pain points ({len(icp.pain_points) if icp.pain_points else 0}) "
-                    "for marketing narrative - using template fallback"
+                pain_count = len(icp.pain_points) if icp.pain_points else 0
+                raise ValueError(
+                    f"Insufficient pain points ({pain_count}) for marketing narrative - need at least 2"
                 )
-                return self._generate_marketing_narrative_fallback(icp)
 
             # Get solution context
             selected_solution_name = "the solution"
@@ -2084,66 +1904,24 @@ WTP Score: {core_pain_point.willingness_to_pay_score:.1f}/1.0
                     selected_solution_name = selected_solution.solution_name
                     solution_description = selected_solution.description
 
-            prompt = f'''Generate marketing narrative for Go-to-Market blueprint.
+            # Load prompt template from YAML
+            from ..utils.prompts import load_prompt
+            template = load_prompt("report_marketing_narrative")
 
-**Solution Context:**
-Name: {selected_solution_name}
-Description: {solution_description}
-Niche: {self.niche_description}
+            # Format pain points and goals as lists
+            pain_points_list = '\n'.join(f"- {pp}" for pp in top_pain_points)
+            goals_list = '\n'.join(f"- {goal}" for goal in icp.goals[:3])
+            max_content_angles = min(len(top_pain_points), 5)
 
-**Ideal Customer Profile:**
-Persona: {icp.persona_name}
-Top Pain Points:
-{chr(10).join(f"- {pp}" for pp in top_pain_points)}
-
-Goals:
-{chr(10).join(f"- {goal}" for goal in icp.goals[:3])}
-
-**MINIMUM DATA REQUIREMENTS:**
-- {len(top_pain_points)} pain points provided → Generate {min(len(top_pain_points), 5)} content angles maximum
-- Each content angle must address a DIFFERENT pain point (no repeats)
-
-**Generate 3 components:**
-
-1. **core_marketing_message**: One-liner value proposition (10-15 words)
-   - Emotionally resonant
-   - Addresses top pain point
-   - Clear benefit
-   - Example format: "Stop [pain] and start [benefit] with [solution]"
-
-2. **message_framework**: Before-After-Bridge (3 sentences)
-   - Sentence 1 (Before): Describe current painful state
-   - Sentence 2 (After): Describe desired state after using solution
-   - Sentence 3 (Bridge): How solution bridges the gap
-
-3. **content_angles**: {min(len(top_pain_points), 5)} content ideas (each with title, type, pain_point_addressed, hook, key_points, target_channel)
-   - Must address specific pain points from list above
-   - Hooks must grab attention using questions, stats, bold claims, or provocative statements
-   - Key points must be actionable (3-5 bullets)
-   - Variety of content types (blog, thread, guide, video idea)
-
-**CONTENT ANGLE STRUCTURE** (populate with actual data from above):
-{{
-  "title": "How [persona] Can Stop [pain_point]",
-  "content_type": "Blog Post" | "Reddit Thread" | "Twitter Thread" | "YouTube Video" | "PDF Guide",
-  "pain_point_addressed": "[EXACT pain point from Top Pain Points list]",
-  "hook": "Are you tired of [pain]? [question/stat/bold claim]",
-  "key_points": ["Actionable point 1", "Actionable point 2", "Actionable point 3"],
-  "target_channel": "Reddit r/[community]" | "Twitter" | "Blog" | "YouTube"
-}}
-
-**Constraints:**
-- Use ONLY pain points and goals from above
-- Content must be specific to {self.niche_description} niche
-- No generic advice - tie to actual pain points
-- pain_point_addressed field MUST be exact copy from Top Pain Points list
-
-**═══ CRITICAL RULES (Verify Before Submitting) ═══**
-✗ NO invented pain points beyond the list above
-✗ NO generic marketing advice unrelated to actual pain points
-✓ Every content angle MUST reference specific pain point from input
-✓ pain_point_addressed field MUST be exact copy from Top Pain Points list
-'''
+            prompt = template.format(
+                solution_name=selected_solution_name,
+                solution_description=solution_description,
+                niche_description=self.niche_description,
+                persona_name=icp.persona_name,
+                pain_points_list=pain_points_list,
+                goals_list=goals_list,
+                max_content_angles=max_content_angles
+            )
 
             structured_llm = ChatOpenAI(
                 model=settings.openai_model_name,
@@ -2157,84 +1935,10 @@ Goals:
             return result
 
         except Exception as e:
-            logger.warning(f"LLM marketing narrative generation failed: {e}")
-            return None
+            logger.error(f"LLM marketing narrative generation failed: {e}")
+            raise
 
-    def _generate_marketing_narrative_fallback(self, icp) -> "MarketingNarrative":
-        """
-        Template-based fallback for marketing narrative (Python-only).
-
-        Args:
-            icp: IdealCustomerProfile object
-
-        Returns:
-            MarketingNarrative using templates
-        """
-        from ..models.marketing_blueprint import MarketingNarrative, ContentAngle
-
-        top_pain = icp.pain_points[0] if icp.pain_points else "common challenges"
-        top_goal = icp.goals[0] if icp.goals else "achieve better results"
-
-        # Template message
-        core_message = f"Stop struggling with {top_pain.lower()} and start {top_goal.lower()}"
-
-        # Template framework
-        message_framework = (
-            f"Right now, {icp.persona_name} faces {top_pain.lower()}, costing time and frustration. "
-            f"Imagine {top_goal.lower()} without the hassle. "
-            f"Our solution bridges this gap with a streamlined approach that just works."
-        )
-
-        # Template content angles
-        content_angles = [
-            ContentAngle(
-                title=f"How to Solve {top_pain} in {self.niche_description}",
-                content_type="Blog Post",
-                pain_point_addressed=top_pain,
-                hook=f"Struggling with {top_pain.lower()}? You're not alone.",
-                key_points=[
-                    f"Why {top_pain.lower()} happens",
-                    "Common approaches that fail",
-                    "A better solution",
-                    "Getting started"
-                ],
-                target_channel="SEO Blog"
-            ),
-            ContentAngle(
-                title=f"I spent 6 months solving {top_pain} - here's what I learned",
-                content_type="Reddit Thread",
-                pain_point_addressed=top_pain,
-                hook=f"After battling {top_pain.lower()} for months, I finally found an approach that works.",
-                key_points=[
-                    "My journey with this problem",
-                    "What didn't work",
-                    "The breakthrough moment",
-                    "Lessons learned"
-                ],
-                target_channel="Reddit"
-            ),
-            ContentAngle(
-                title=f"3 signs you're ready to solve {top_pain}",
-                content_type="Twitter Thread",
-                pain_point_addressed=top_pain,
-                hook=f"Most people ignore these warning signs about {top_pain.lower()}. Don't make that mistake.",
-                key_points=[
-                    "Warning sign #1",
-                    "Warning sign #2",
-                    "Warning sign #3",
-                    "What to do next"
-                ],
-                target_channel="Twitter"
-            )
-        ]
-
-        return MarketingNarrative(
-            core_marketing_message=core_message[:80],
-            message_framework=message_framework,
-            content_angles=content_angles
-        )
-
-    def _generate_first_30_days_playbook(self, channels: List) -> "First30DaysPlaybook":
+    def _generate_first_30_days_playbook(self, channels: list) -> "First30DaysPlaybook":
         """
         Generate 30-day action plan (Python template-based).
 
@@ -2308,15 +2012,13 @@ Goals:
     # Analytics & Visualization Generator (Phase 3 Enhancement)
     # ==================================================================================
 
-    def _generate_analytics_and_visualizations(self) -> Tuple[Optional["MarketAnalytics"], Optional["SEOAnalytics"], Optional["CompetitiveAnalytics"], Optional["PainPointAnalytics"], Optional["VisualizationManifest"]]:
+    def _generate_analytics_and_visualizations(self) -> tuple["MarketAnalytics | None", "SEOAnalytics | None", "CompetitiveAnalytics | None", "PainPointAnalytics | None", "VisualizationManifest | None"]:
         """
         Generate all analytics and visualizations (Python-only, no LLM).
 
         Returns:
             Tuple of (market_analytics, seo_analytics, competitive_analytics, pain_point_analytics, visualization_manifest)
         """
-        from pathlib import Path
-        from datetime import datetime
 
         # Compute analytics
         market_analytics = self._compute_market_analytics()
@@ -2329,7 +2031,7 @@ Goals:
 
         return (market_analytics, seo_analytics, competitive_analytics, pain_point_analytics, viz_manifest)
 
-    def _compute_market_analytics(self) -> Optional["MarketAnalytics"]:
+    def _compute_market_analytics(self) -> "MarketAnalytics | None":
         """Compute market opportunity analytics (Python-only)."""
         try:
             from ..models.analytics import MarketAnalytics
@@ -2378,8 +2080,8 @@ Goals:
             competitor_count = 0
             if self.state.competitive_analysis and self.state.solution_selection:
                 selected_landscape = next(
-                    (l for l in self.state.competitive_analysis.solution_landscapes
-                     if l.solution_name == self.state.solution_selection.selected_solution_name),
+                    (ls for ls in self.state.competitive_analysis.solution_landscapes
+                     if ls.solution_name == self.state.solution_selection.selected_solution_name),
                     None
                 )
                 if selected_landscape and selected_landscape.competitors:
@@ -2422,10 +2124,12 @@ Goals:
         Extract all keywords from all tiers, handling grouped structures.
 
         Returns:
-            tuple: (tier1_keywords, tier2_keywords, tier3_keywords, tier4_keywords,
-                   tier1_count, tier2_count, tier3_count, tier4_count)
+            tuple: (tier0_keywords, tier1_keywords, tier2_keywords, tier3_keywords, tier4_keywords,
+                   tier0_count, tier1_count, tier2_count, tier3_count, tier4_count)
         """
-        from ..models.keyword_data import EnrichedKeyword
+
+        # Tier 0: Premium keywords
+        tier0_keywords = seo_report.tier_0_keywords or []
 
         # Tier 1 and 2 are simple lists
         tier1_keywords = seo_report.tier_1_keywords or []
@@ -2444,17 +2148,19 @@ Goals:
                 tier4_keywords.extend(group.keywords)
 
         return (
+            tier0_keywords,
             tier1_keywords,
             tier2_keywords,
             tier3_keywords,
             tier4_keywords,
+            len(tier0_keywords),
             len(tier1_keywords),
             len(tier2_keywords),
             len(tier3_keywords),
             len(tier4_keywords)
         )
 
-    def _compute_seo_analytics(self) -> Optional["SEOAnalytics"]:
+    def _compute_seo_analytics(self) -> "SEOAnalytics | None":
         """Compute SEO keyword analytics (Python-only)."""
         try:
             from ..models.analytics import SEOAnalytics
@@ -2464,35 +2170,38 @@ Goals:
 
             # Extract all tier keywords using helper method
             (
+                tier0_keywords,
                 tier1_keywords,
                 tier2_keywords,
                 tier3_keywords,
                 tier4_keywords,
+                tier0_count,
                 tier1_count,
                 tier2_count,
                 tier3_count,
                 tier4_count
             ) = self._extract_all_tier_keywords(self.state.seo_strategy_report)
 
-            total = tier1_count + tier2_count + tier3_count + tier4_count
+            total = tier0_count + tier1_count + tier2_count + tier3_count + tier4_count
 
             # Calculate total search volume with defensive null handling
-            all_keywords = tier1_keywords + tier2_keywords + tier3_keywords + tier4_keywords
+            all_keywords = tier0_keywords + tier1_keywords + tier2_keywords + tier3_keywords + tier4_keywords
             total_volume = sum(kw.search_volume or 0 for kw in all_keywords)
 
             # Keyword diversity (0-1): higher if keywords are distributed across tiers
             if total == 0:
                 diversity = 0.0  # No keywords = no diversity
             else:
-                diversity = 1.0 - (max(tier1_count, tier2_count, tier3_count, tier4_count) / total)
+                diversity = 1.0 - (max(tier0_count, tier1_count, tier2_count, tier3_count, tier4_count) / total)
 
-            # High volume keywords (Tier 1 and 2 only)
+            # High volume keywords (Tier 0, 1 and 2 - premium and quick wins)
             high_volume = sum(
-                1 for kw in (tier1_keywords + tier2_keywords)
+                1 for kw in (tier0_keywords + tier1_keywords + tier2_keywords)
                 if (kw.search_volume or 0) > 1000
             )
 
             return SEOAnalytics(
+                tier0_count=tier0_count,
                 tier1_count=tier1_count,
                 tier2_count=tier2_count,
                 tier3_count=tier3_count,
@@ -2507,7 +2216,7 @@ Goals:
             logger.warning(f"Failed to compute SEO analytics: {e}")
             return None
 
-    def _compute_competitive_analytics(self) -> Optional["CompetitiveAnalytics"]:
+    def _compute_competitive_analytics(self) -> "CompetitiveAnalytics | None":
         """Compute competitive analytics (Python-only)."""
         try:
             from ..models.analytics import CompetitiveAnalytics
@@ -2516,8 +2225,8 @@ Goals:
                 return None
 
             selected_landscape = next(
-                (l for l in self.state.competitive_analysis.solution_landscapes
-                 if l.solution_name == self.state.solution_selection.selected_solution_name),
+                (ls for ls in self.state.competitive_analysis.solution_landscapes
+                 if ls.solution_name == self.state.solution_selection.selected_solution_name),
                 None
             )
             if not selected_landscape:
@@ -2548,7 +2257,7 @@ Goals:
             logger.warning(f"Failed to compute competitive analytics: {e}")
             return None
 
-    def _compute_pain_point_analytics(self) -> Optional["PainPointAnalytics"]:
+    def _compute_pain_point_analytics(self) -> "PainPointAnalytics | None":
         """Compute pain point analytics (Python-only)."""
         try:
             from ..models.analytics import PainPointAnalytics
@@ -2605,13 +2314,14 @@ Goals:
             logger.warning(f"Failed to compute pain point analytics: {e}")
             return None
 
-    def _generate_visualizations(self) -> Optional["VisualizationManifest"]:
+    def _generate_visualizations(self) -> "VisualizationManifest | None":
         """Generate all chart visualizations (Python-only)."""
         try:
+            from datetime import datetime
+            from pathlib import Path
+
             from ..models.analytics import VisualizationManifest
             from ..report.visualizations import ChartGenerator
-            from pathlib import Path
-            from datetime import datetime
 
             # Create output directory
             output_dir = Path("output/visualizations")
@@ -2648,8 +2358,8 @@ Goals:
             competitive_paths = None
             if self.state.competitive_analysis and self.state.solution_selection:
                 selected_landscape = next(
-                    (l for l in self.state.competitive_analysis.solution_landscapes
-                     if l.solution_name == self.state.solution_selection.selected_solution_name),
+                    (ls for ls in self.state.competitive_analysis.solution_landscapes
+                     if ls.solution_name == self.state.solution_selection.selected_solution_name),
                     None
                 )
                 if selected_landscape and selected_landscape.competitors:

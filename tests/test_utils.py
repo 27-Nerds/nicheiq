@@ -3,7 +3,7 @@ Tests for utility functions.
 """
 
 import pytest
-from nicheiq.utils.helpers import SearchHelper
+from nicheiq.utils.search_helpers import SearchHelper
 
 
 class TestSearchHelper:
@@ -61,18 +61,6 @@ class TestSearchHelper:
         assert urls == []
 
 
-def test_generate_competitive_queries():
-    """Test competitive query generation."""
-    from nicheiq.utils.helpers import generate_competitive_queries
-
-    solution_name = "Project Management Tool"
-    queries = generate_competitive_queries(solution_name, num_queries=5)
-
-    assert len(queries) <= 5
-    assert all(isinstance(q, str) for q in queries)
-    assert any("project management" in q.lower() for q in queries)
-
-
 # Note: QueryGenerator tests are skipped as they require OpenAI API
 # Integration tests should cover the full query generation workflow
 @pytest.mark.skip(reason="Requires OpenAI API key")
@@ -81,7 +69,7 @@ class TestQueryGenerator:
 
     def test_query_generation(self):
         """Test generating queries from niche description."""
-        from nicheiq.utils.helpers import QueryGenerator
+        from nicheiq.utils.generation import QueryGenerator
 
         generator = QueryGenerator()
         queries = generator.generate_queries(

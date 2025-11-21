@@ -5,8 +5,9 @@ Provides top-level dashboard for quick decision-making with go/no-go verdict,
 core pain point, and key opportunity metrics.
 """
 
-from typing import Optional, Literal
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SolutionSnapshot(BaseModel):
@@ -27,7 +28,6 @@ class SolutionSnapshot(BaseModel):
         description="Solution type (e.g., 'directory', 'aggregator', 'marketplace', 'tool')"
     )
 
-
 class GoNoGoVerdict(BaseModel):
     """Strategic recommendation on whether to pursue this opportunity."""
 
@@ -42,11 +42,10 @@ class GoNoGoVerdict(BaseModel):
     risk_level: Literal["Low", "Medium", "High"] = Field(
         description="Overall risk assessment"
     )
-    primary_concern: Optional[str] = Field(
+    primary_concern: str | None = Field(
         default=None,
         description="Main concern or blocker if verdict is No-Go or Conditional"
     )
-
 
 class CorePainPoint(BaseModel):
     """The single most important pain point driving this opportunity."""
@@ -72,7 +71,6 @@ class CorePainPoint(BaseModel):
     source_platform: str = Field(
         description="Where the quote came from (e.g., 'Reddit r/subreddit', 'Twitter')"
     )
-
 
 class KeyMetrics(BaseModel):
     """Top-line metrics for opportunity assessment."""
@@ -110,7 +108,6 @@ class KeyMetrics(BaseModel):
     social_evidence_threads: int = Field(
         description="Number of Reddit/Twitter threads analyzed"
     )
-
 
 class ExecutiveDashboard(BaseModel):
     """
@@ -150,7 +147,6 @@ class ExecutiveDashboard(BaseModel):
     niche_description: str = Field(
         description="One-sentence description of the target niche"
     )
-
 
 # Model for LLM-generated strategic narrative (hybrid approach)
 class ExecutiveNarrative(BaseModel):

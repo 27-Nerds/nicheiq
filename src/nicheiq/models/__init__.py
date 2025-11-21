@@ -3,9 +3,9 @@ Pydantic models for NicheIQ data structures.
 """
 
 from .competitor import (
-    Competitor,
     CompetitiveAnalysisResult,
     CompetitiveLandscape,
+    Competitor,
     CompetitorType,
     MarketSaturation,
 )

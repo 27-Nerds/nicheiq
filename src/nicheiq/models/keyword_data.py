@@ -3,7 +3,7 @@ Pydantic models for keyword research data (Stage 9).
 """
 
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -16,7 +16,6 @@ class MonthlySearchVolume(BaseModel):
     month: str = Field(..., description="Month identifier (e.g., '2025-01')")
     volume: int = Field(..., description="Search volume for this month")
 
-
 class KeywordIntent(str, Enum):
     """Type of search intent."""
 
@@ -25,14 +24,12 @@ class KeywordIntent(str, Enum):
     TRANSACTIONAL = "transactional"
     NAVIGATIONAL = "navigational"
 
-
 class OpportunityLevel(str, Enum):
     """Keyword opportunity classification."""
 
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
-
 
 class Keyword(BaseModel):
     """Represents a single keyword with its metrics."""
@@ -74,9 +71,7 @@ class Keyword(BaseModel):
     trend: Optional[str] = Field(
         default=None, description="Trend direction (rising, stable, declining)"
     )
-    monthly_searches: List[MonthlySearchVolume] = Field(
-        default_factory=list, description="Historical monthly search volumes (defaults to empty list if unavailable)"
-    )
+    # monthly_searches field removed - always empty in practice, DataForSEO doesn't populate this
 
     @field_validator('competition_index', 'cpc', mode='before')
     @classmethod
@@ -85,15 +80,6 @@ class Keyword(BaseModel):
         if v is None or v == "null":
             return 0.0
         return v
-
-    @field_validator('monthly_searches', mode='before')
-    @classmethod
-    def coerce_monthly_searches_none_to_empty_list(cls, v):
-        """Coerce None to [] for monthly_searches (DataForSEO may return null)."""
-        if v is None or v == "null":
-            return []
-        return v
-
 
 class GeographicBreakdown(BaseModel):
     """Search volume breakdown by geography."""
@@ -105,14 +91,13 @@ class GeographicBreakdown(BaseModel):
     search_volume: int = Field(..., description="Search volume in this country")
     percentage: float = Field(..., description="Percentage of total search volume")
 
-
 class KeywordCluster(BaseModel):
     """Group of related keywords."""
 
     model_config = ConfigDict(extra='forbid')
 
     cluster_name: str = Field(..., description="Name/theme of this keyword cluster")
-    keywords: List[Keyword] = Field(..., description="Keywords in this cluster")
+    keywords: list[Keyword] = Field(..., description="Keywords in this cluster")
     total_search_volume: int = Field(
         ..., description="Combined search volume for cluster"
     )
@@ -120,7 +105,6 @@ class KeywordCluster(BaseModel):
     opportunity_assessment: str = Field(
         ..., description="Assessment of opportunity for this cluster"
     )
-
 
 class KeywordResearchReport(BaseModel):
     """Complete keyword research report for a solution idea."""
@@ -146,22 +130,22 @@ class KeywordResearchReport(BaseModel):
 
     solution_idea: str = Field(..., description="Name of the solution idea")
     total_keywords_analyzed: int = Field(..., description="Total keywords analyzed")
-    high_opportunity_keywords: List[Keyword] = Field(
+    high_opportunity_keywords: list[Keyword] = Field(
         ..., description="Keywords with high opportunity"
     )
-    medium_opportunity_keywords: List[Keyword] = Field(
+    medium_opportunity_keywords: list[Keyword] = Field(
         ..., description="Keywords with medium opportunity"
     )
-    low_opportunity_keywords: List[Keyword] = Field(
+    low_opportunity_keywords: list[Keyword] = Field(
         ..., description="Keywords with low opportunity"
     )
-    keyword_clusters: List[KeywordCluster] = Field(
+    keyword_clusters: list[KeywordCluster] = Field(
         default_factory=list, description="Grouped keyword themes"
     )
-    geographic_breakdown: List[GeographicBreakdown] = Field(
+    geographic_breakdown: list[GeographicBreakdown] = Field(
         default_factory=list, description="Search volume by country"
     )
-    long_tail_opportunities: List[Keyword] = Field(
+    long_tail_opportunities: list[Keyword] = Field(
         default_factory=list, description="Long-tail keyword opportunities"
     )
     seasonal_patterns: Optional[str] = Field(
@@ -173,7 +157,6 @@ class KeywordResearchReport(BaseModel):
     demand_validation: str = Field(
         ..., description="Overall assessment of search demand"
     )
-
 
 class KeywordValidationResult(BaseModel):
     """Complete keyword validation for all solution ideas."""
@@ -191,7 +174,7 @@ class KeywordValidationResult(BaseModel):
     )
 
     niche: str = Field(..., description="The niche being analyzed")
-    reports: List[KeywordResearchReport] = Field(
+    reports: list[KeywordResearchReport] = Field(
         ..., description="Keyword reports for each solution idea"
     )
     overall_market_size: int = Field(
@@ -201,22 +184,19 @@ class KeywordValidationResult(BaseModel):
         ..., description="Overall market size assessment"
     )
 
-
 # Stage 8.8 - Quick Keyword Validation Models
-
 
 class KeywordSeedResult(BaseModel):
     """LLM-generated seed keywords for quick validation (Stage 8.8)."""
 
     model_config = ConfigDict(extra='forbid')
 
-    seeds: List[str] = Field(
+    seeds: list[str] = Field(
         ...,
         min_length=10,
         max_length=10,
         description="Exactly 10 keyword seeds covering diverse search intents and specificity levels"
     )
-
 
 class KeywordValidationSummary(BaseModel):
     """Quick validation results for a single solution (Stage 8.8)."""
@@ -260,11 +240,11 @@ class KeywordValidationSummary(BaseModel):
             "0.80-1.0: Exceptional, 0.65-0.79: Strong, 0.50-0.64: Moderate, 0.35-0.49: Weak, 0.0-0.34: Critical"
         )
     )
-    top_keywords: List[Dict] = Field(
+    top_keywords: list[dict] = Field(
         default_factory=list,
         description="Top 5 keywords by search volume with metrics (keyword, volume, competition)"
     )
-    top_geographic_keywords: List[str] = Field(
+    top_geographic_keywords: list[str] = Field(
         default_factory=list,
         description="Top 3 geographic keywords indicating regional demand"
     )
@@ -272,7 +252,7 @@ class KeywordValidationSummary(BaseModel):
         ...,
         description="Overall demand assessment: 'strong' (>5k volume), 'moderate' (2k-5k), 'weak' (<2k)"
     )
-    validation_signals: Dict = Field(
+    validation_signals: dict = Field(
         ...,
         description=(
             "Binary validation signals: has_search_demand (>1k total), "
@@ -281,9 +261,7 @@ class KeywordValidationSummary(BaseModel):
         )
     )
 
-
 # Stage 8.8 - CrewAI Agent-Based Validation Models
-
 
 class EnrichedKeyword(BaseModel):
     """Keyword with metrics from DataForSEO expansion."""
@@ -297,19 +275,17 @@ class EnrichedKeyword(BaseModel):
     tier: Optional[str] = Field(default=None, description="Keyword tier classification (quick_win, strategic_growth)")
     geography: Optional[str] = Field(default=None, description="Geographic modifier if present")
 
-
 class KeywordAttemptResult(BaseModel):
     """Result from a single keyword research strategy attempt (e.g., hybrid, competitor)."""
 
     model_config = ConfigDict(extra='forbid')
 
     strategy_name: str = Field(..., description="Strategy used (hybrid, competitor, pain_point, category)")
-    keywords: List[EnrichedKeyword] = Field(default_factory=list, description="Keywords found by this strategy")
+    keywords: list[EnrichedKeyword] = Field(default_factory=list, description="Keywords found by this strategy")
     total_keywords: int = Field(..., ge=0, description="Number of keywords found")
     avg_relevance_score: float = Field(..., ge=0.0, le=1.0, description="Average semantic relevance score")
     quality_flag: str = Field(..., description="SUCCESS if relevance ≥ 0.6 AND keywords ≥ 20, else INSUFFICIENT")
     error_log: Optional[str] = Field(default=None, description="Error details if strategy failed")
-
 
 class CrewKeywordValidationResult(BaseModel):
     """
@@ -366,11 +342,11 @@ class CrewKeywordValidationResult(BaseModel):
         le=1.0,
         description="Keyword demand multiplier for solution scoring"
     )
-    top_keywords: List[Dict] = Field(
+    top_keywords: list[dict] = Field(
         default_factory=list,
         description="Top keywords with metrics (for Stage 8.85 compatibility)"
     )
-    top_geographic_keywords: List[str] = Field(
+    top_geographic_keywords: list[str] = Field(
         default_factory=list,
         description="Geographic keywords (for Stage 8.85 compatibility)"
     )
@@ -378,7 +354,7 @@ class CrewKeywordValidationResult(BaseModel):
         ...,
         description="Demand classification: strong | moderate | weak"
     )
-    validation_signals: Dict = Field(
+    validation_signals: dict = Field(
         ...,
         description="Binary validation flags for Stage 8.85"
     )

@@ -202,18 +202,23 @@ competitive_analysis:
     **WORKFLOW (FOLLOW IN ORDER):**
 
     1. **FOR EACH SOLUTION** (iterate over all solutions from Task 1):
-       a. **Context-Aware Competitor Discovery** (Apply 6 semantic rules BEFORE searching):
+       a. **Generate Context-Aware Queries** (USE generate_competitor_queries TOOL):
 
-          **Semantic Query Validation (prevent nonsensical searches):**
+          **REQUIRED**: Use the generate_competitor_queries tool to create validated search queries.
 
-          1. **Physical Products** → Use: "directory/comparison/marketplace", NOT "software/app/tool"
-          2. **B2C Consumer** → Use: "consumer/home/personal", NOT "enterprise/teams"
-          3. **Local/Regional** → Include: city names, regions, NOT generic global terms
-          4. **Solution Type Match** → directory="listing/catalog", saas="software/platform", aggregator="comparison"
-          5. **Market Segments** → Extract keywords from {market_segments} (e.g., "affordable X for first-time buyers")
-          6. **Industry Boundaries** → ONLY search within scope from {industry_boundaries}
+          Input format: "solution_name|project_type|pain_point1, pain_point2, pain_point3"
 
-          **Search Strategy:** Generate 6-8 queries using solution's project_type + niche keywords + segment modifiers
+          Example: "ExpatEase|directory|visa complexity, language barriers, housing search"
+
+          The tool applies 6 semantic validation rules automatically:
+          1. Physical Products → directory/comparison terms
+          2. B2C Consumer → consumer/home/personal terms
+          3. Local/Regional → geographic context
+          4. Solution Type Match → appropriate terminology
+          5. Market Segments → segment-specific modifiers
+          6. Industry Boundaries → scope validation
+
+          **Execute generated queries with SerperDevTool to discover competitors.**
 
        b. **Verify with Knowledge Sources**:
           - Search for: "using", "tried", "alternative", "competitor", tool names

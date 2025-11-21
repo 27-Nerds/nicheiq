@@ -15,11 +15,11 @@ expand_keywords_conceptually:
     **Context:**
     - Niche: {niche}
     - Selected Solution: {selected_solution_name}
-    - Value Proposition: {selected_solution_value_prop}
-    - Pain Points: {selected_solution_pain_points}
-    - Target Personas: {selected_solution_personas}
-    - Core Features: {selected_solution_features}
-    - Competitive Context: {competitive_context}
+    - Value Proposition: {value_proposition}
+    - Pain Points: {top_pain_points}
+    - Target Personas: {target_personas}
+    - Core Features: {core_features}
+    - Competitive Context: {competitor_names}
 
     **RELEVANCE REMINDER:**
     All keywords generated here will be expanded by DataForSEO (Phase 9.5b) which may produce
@@ -45,15 +45,15 @@ expand_keywords_conceptually:
 
     **PART 1: Broad Seeds (70% = 28-35 keywords, 1-2 words):**
     - Type 1: Core product/service nouns from {niche}, {selected_solution_name}
-    - Type 2: Problem nouns from {selected_solution_pain_points}
-    - Type 3: Feature nouns from {selected_solution_features}
-    - Type 4: Solution types from {selected_solution_value_prop}
-    - Type 5: Broad modifiers from {selected_solution_personas}
+    - Type 2: Problem nouns from {top_pain_points}
+    - Type 3: Feature nouns from {core_features}
+    - Type 4: Solution types from {value_proposition}
+    - Type 5: Broad modifiers from {target_personas}
 
     **PART 2: Targeted Keywords (30% = 12-15 keywords, 3-5 words):**
     - Combine 2-3 broad seeds strategically
-    - Focus on high-severity pain points + competitor comparisons (from {competitive_context} only)
-    - **CRITICAL:** ONLY include competitor keywords if {competitive_context} contains actual
+    - Focus on high-severity pain points + competitor comparisons (from {competitor_names} only)
+    - **CRITICAL:** ONLY include competitor keywords if {competitor_names} contains actual
       competitor names. If missing or states "No competitive analysis available" → SKIP
       competitor keywords entirely. Better to deliver 40 solid keywords than 50 with fabricated
       competitor references.
@@ -187,29 +187,62 @@ analyze_keywords_and_tier:
 
     **Filtering Goal:** Quality over quantity - no fixed retention target. Report stats in key_findings.
 
-    1. **Select Premium Tier** → IF TIER_0_PREMIUM keywords exist: Select 2-3 (exceptional opportunities, opp_score >200)
-    2. **Select Tier 1/2** → 3-5 keywords each (Tier 1: opp_score >100, Tier 2: strategic fit)
-    3. **Group Tier 3/4** (CRITICAL - 80-90% coverage of remaining RELEVANT keywords):
+    ═══ KEYWORD UTILIZATION MANDATE ═══
+    You are analyzing {enriched_keywords_count} keywords. Your output MUST tier a MINIMUM of 80% of relevant keywords (after filtering).
 
-       a. **Tier 3 (Geographic):** Keywords with EXPLICIT location mentions (city/country names)
+    **Math Example**: If you analyze 336 keywords and filter 100 as irrelevant → you have 236 relevant keywords remaining.
+    You MUST tier at least 189 keywords (80% of 236) across Tier 0-4.
+
+    ⚠️  If your output contains <150 tiered keywords from 336 input keywords → INCOMPLETE OUTPUT.
+    ⚠️  Tier 3-4 groups should contain HUNDREDS of keywords, not dozens.
+
+    1. **Select Premium Tier** → IF TIER_0_PREMIUM keywords exist: Select ALL (exceptional opportunities, opp_score >200)
+
+    2. **Select ALL Qualifying Tier 1/2 Keywords** (NO arbitrary limits):
+       - **Tier 1**: SELECT ALL keywords with opp_score >100 (expect 10-30 keywords, NOT just 3-5)
+       - **Tier 2**: SELECT ALL keywords with opp_score 50-100 (expect 15-40 keywords, NOT just 3-5)
+       - ⚠️  DO NOT stop at 5 keywords per tier - include EVERY keyword meeting the threshold
+
+    3. **Group Tier 3/4** (CRITICAL - Tier EVERY REMAINING keyword):
+
+       **DISTRIBUTION RULE:** EVERY keyword from CSV MUST be assigned to ONE destination:
+       - FILTERED OUT (failed STEP 0 relevance check) → Count and document in key_findings
+       - TIER 0-2 (individual keywords meeting score thresholds)
+       - TIER 3 GROUPS (keywords with explicit locations)
+       - TIER 4 GROUPS (ALL remaining keywords - should be 60-80% of relevant keywords)
+
+       a. **Tier 3 (Geographic):** Keywords with EXPLICIT location mentions (city/country names IN keyword text)
           - Group by region (e.g., "European Markets"), sum volumes, note competition
           - ⚠️ NO hallucinated city names - only group if location is IN keyword text
 
-       b. **Tier 4 (Category):** ALL non-geographic keywords
-          - Create 8-15 category groups (ingredient, product type, user concern, price tier, comparison, review, misc)
-          - Each category: 20-100+ keywords for programmatic SEO
+       b. **Tier 4 (Category):** ALL remaining non-geographic keywords
+          - Create 8-15 LARGE category groups (ingredient, product type, user concern, price tier, comparison, review, misc)
+          - Each category: 20-100+ keywords for programmatic SEO (NOT 5-10 keywords)
+          - ⚠️ Your Tier 4 groups should contain HUNDREDS of keywords total
 
-       c. **Self-Check:** Did I tier 80-90% of relevant keywords? If <50%, grouping is incomplete.
+       c. **Self-Check BEFORE submitting:**
+          ```
+          Relevant keywords after filtering: [A] keywords
+          Tier 0-1-2 total count: [B]
+          Tier 3 count: [C]
+          Tier 4 count: [D]
+          Total tiered: B+C+D = [E]
+          Utilization rate: E/A = [F]%
+
+          If F < 80% → INCOMPLETE. Expand Tier 4 categories or reduce filtering strictness.
+          ```
 
     **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
     Before finalizing output, verify:
     - [ ] Completed STEP 0 relevance filtering (applied Context Match Test, Ambiguity Filter, Cross-Domain Exclusion)
-    - [ ] IF TIER_0_PREMIUM exists in CSV: Selected 2-3 (exceptional opportunities, opp_score >200)
-    - [ ] Selected 3-5 Tier 1 keywords (opportunity_score >100 OR volume >2000 + comp <30)
-    - [ ] Selected 3-5 Tier 2 keywords (strategic fit + volume >2000 + comp 30-60)
+    - [ ] IF TIER_0_PREMIUM exists in CSV: Selected ALL (exceptional opportunities, opp_score >200)
+    - [ ] Selected ALL Tier 1 keywords meeting threshold (opp_score >100) - NOT limited to 3-5
+    - [ ] Selected ALL Tier 2 keywords meeting threshold (opp_score 50-100) - NOT limited to 3-5
     - [ ] Tier 3 geographic groups ONLY contain keywords with explicit location mentions
-    - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords
+    - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords (should be 150-250+ keywords)
+    - [ ] Calculated EXACT keyword utilization: tiered_keywords / relevant_keywords ≥ 80%
+    - [ ] Tier 4 category groups average 20-100+ keywords per group (NOT 5-10)
     - [ ] key_findings includes filtering stats (e.g., "Filtered 620/1603 (39%) - strict domain filtering")
     - [ ] key_findings includes tier distribution stats (Tier 0=A, Tier 1=B, Tier 2=C, Tier 3=D, Tier 4=E)
     - [ ] Avoided fabricating search volumes (used EXACT values from CSV)
@@ -236,14 +269,19 @@ analyze_keywords_and_tier:
 
     **ANTI-PATTERNS (DON'T DO THIS):**
 
+    ❌ Tiering only 43/336 keywords (12.8% utilization) - **CRITICAL FAILURE** - This means 87% of keywords are wasted
+    ❌ Limiting Tier 1 to exactly 5 keywords when 18 qualify (opp_score >100) - Should be ALL 18
+    ❌ Creating Tier 4 groups with only 5-10 keywords each (need 20-100+ keywords per group)
+    ❌ Stopping at "created 10 category groups" without verifying they contain 80%+ of keywords
+    ❌ Filtering 87% of keywords as "irrelevant" (over-aggressive filtering - max should be 30-40%)
     ❌ Ignoring TIER_0_PREMIUM keywords (these are exceptional opportunities - ALWAYS prioritize)
     ❌ Filtering AFTER tiering (must filter FIRST in STEP 0)
     ❌ Assigning generic keywords to Tier 3 without explicit location (e.g., "international moving" vs "moving to spain")
     ❌ Rounding search volumes (387 → 400) - use EXACT values from CSV
-    ❌ Tiering <50% of relevant keywords (indicates incomplete Tier 4 grouping)
+    ❌ Treating tier count ranges (3-5) as MAXIMUMS instead of MINIMUMS/THRESHOLDS
     ❌ Creating only 3-5 Tier 4 categories when 8-15 are needed for comprehensive coverage
     ❌ Hallucinating city names for keywords (only use explicit mentions)
-    ❌ Missing filtering stats in key_findings
+    ❌ Missing utilization calculation in key_findings
     ❌ Including filtered keywords in tier counts (filtered = excluded)
 
     ═══ CRITICAL RULES (Read Last) ═══
@@ -679,14 +717,14 @@ create_implementation_guide:
       Page Type: Budget-Friendly Expat Health Insurance Guides
       Priority: high (Tier 1 keywords)
 
-      URL Pattern: /guides/budget-expat-health-insurance/{country}
+      URL Pattern: /guides/budget-expat-health-insurance/[country]
 
       Target Keywords: ["budget expat insurance", "affordable health coverage abroad", "cheap expat health plans"]
 
-      Title Formula: "{selected_solution_name} - Budget Expat Health Insurance | {country/region}"
+      Title Formula: "[selected_solution_name] - Budget Expat Health Insurance | [country/region]"
       Title Example: "ExpatEase - Budget Expat Health Insurance | Southeast Asia"
 
-      Meta Description Pattern: "Find affordable expat health insurance through {selected_solution_name}. Compare {X} budget-friendly providers, read reviews, get quotes. [CTA]"
+      Meta Description Pattern: "Find affordable expat health insurance through {selected_solution_name}. Compare [X] budget-friendly providers, read reviews, get quotes. [CTA]"
       Meta Description Example: "Find affordable expat health insurance through ExpatEase. Compare 15 budget-friendly providers in Southeast Asia, read verified reviews, get instant quotes. Start saving today." (154 chars)
 
       Schema Types: ["Organization", "ItemList", "AggregateRating"]
@@ -710,35 +748,35 @@ create_implementation_guide:
       - Schema priority: Organization, LocalBusiness, ItemList, BreadcrumbList, AggregateRating
       - Example: "Provider Profile Page"
         - Schema: Organization (business info) + LocalBusiness (location) + AggregateRating (reviews)
-        - Title: "{provider_name} - {category} in {location} | {selected_solution_name}"
+        - Title: "[provider_name] - [category] in [location] | {selected_solution_name}"
 
     - **IF solution is a marketplace/platform:**
       - Page types: Vendor/seller profiles, Product/service listings, Comparison pages, Review aggregation, Category pages
       - Schema priority: Offer, Product, Review, AggregateRating, Organization, BreadcrumbList
       - Example: "Vendor Profile Page"
         - Schema: Organization (vendor info) + Offer (services) + AggregateRating (ratings)
-        - Title: "{vendor_name} Reviews & Services | {selected_solution_name} Marketplace"
+        - Title: "[vendor_name] Reviews & Services | {selected_solution_name} Marketplace"
 
     - **IF solution is an aggregator/comparison tool:**
       - Page types: Data collection pages, Comparison/analysis tables, Trend/analytics dashboards, Report/research pages, Category pages
       - Schema priority: DataFeed, Dataset, Table, Organization, FAQPage
       - Example: "Data Comparison Page"
         - Schema: Dataset (data source) + Table (comparison matrix) + Organization (aggregator)
-        - Title: "Compare {data_type} - {timeframe} Analysis | {selected_solution_name}"
+        - Title: "Compare [data_type] - [timeframe] Analysis | {selected_solution_name}"
 
     - **IF solution is a SaaS tool or software:**
       - Page types: Feature pages, Use case pages, Comparison pages, Alternative/vs pages, Pricing pages, Integration pages
       - Schema priority: SoftwareApplication, WebApplication, Product, FAQPage, HowTo
       - Example: "Feature Page"
         - Schema: SoftwareApplication (tool) + HowTo (usage guide) + FAQPage (common questions)
-        - Title: "{feature_name} - {selected_solution_name} | {value_prop_snippet}"
+        - Title: "[feature_name] - {selected_solution_name} | [value_prop_snippet]"
 
     - **IF solution is a community/platform:**
       - Page types: Topic/discussion pages, User profile pages, Guide/resource pages, Event pages
       - Schema priority: DiscussionForumPosting, Article, Person, Event, Organization
       - Example: "Topic Discussion Page"
         - Schema: DiscussionForumPosting + Article (guides) + Organization (platform)
-        - Title: "{topic_name} Discussion | {selected_solution_name} Community"
+        - Title: "[topic_name] Discussion | {selected_solution_name} Community"
 
     **Validation Rule**: Verify your page types match the solution's actual type and needs.
     Reference {selected_solution_description}, {core_features}, and {technical_approach} to understand what type of solution this is.
@@ -746,7 +784,7 @@ create_implementation_guide:
     **ANTI-HALLUCINATION GUARDRAILS:**
 
     ✗ NEVER use placeholder syntax in final output
-      ❌ Example: "name": "[solution_name]" or "{solution_name}" in schema JSON-LD
+      ❌ Example: "name": "[solution_name]" or "\{solution_name\}" in schema JSON-LD
       ✅ Example: "name": "ExpatEase - International Relocation Directory"
 
     ✗ NEVER use bracket notation ([ ]) as placeholders in schema JSON-LD examples
@@ -794,7 +832,7 @@ create_implementation_guide:
 
     {
       "universal_seo_elements": {
-        "title_tag_formula": "string",        # Pattern using {variables}
+        "title_tag_formula": "string",        # Pattern using [variables]
         "title_tag_guidelines": "string",     # 2-3 paragraphs (markdown)
         "meta_description_guidelines": "string",  # 2-3 paragraphs (markdown)
         "canonical_url_strategy": "string",   # 2 paragraphs (markdown)
@@ -847,7 +885,7 @@ create_implementation_guide:
        - If NO → Add solution name to title_tag_example for each page type
 
     ☐ **Real Values (No Placeholders)**: Schema JSON-LD uses actual values, not bracket syntax
-       - Example check: "name": "ExpatEase", NOT "name": "[solution_name]" or "{solution_name}"
+       - Example check: "name": "ExpatEase", NOT "name": "[solution_name]" or "\{solution_name\}"
        - Test: Search schema examples for "[" character - should find ZERO placeholder matches
        - If found brackets → Replace ALL with actual context values
 

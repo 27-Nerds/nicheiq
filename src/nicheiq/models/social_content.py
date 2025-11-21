@@ -3,7 +3,6 @@ Pydantic models for social media content (Stages 4-5).
 """
 
 from datetime import datetime
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,10 +18,9 @@ class RedditComment(BaseModel):
     score: int = Field(..., description="Comment score (upvotes - downvotes)")
     created_utc: datetime = Field(..., description="Comment creation timestamp")
     is_submitter: bool = Field(default=False, description="Whether author is post submitter")
-    replies: List["RedditComment"] = Field(
+    replies: list["RedditComment"] = Field(
         default_factory=list, description="Nested reply comments"
     )
-
 
 class RedditPost(BaseModel):
     """Represents a Reddit post with comments."""
@@ -54,10 +52,9 @@ class RedditPost(BaseModel):
     num_comments: int = Field(..., description="Number of comments")
     created_utc: datetime = Field(..., description="Post creation timestamp")
     url: str = Field(..., description="Post URL")
-    comments: List[RedditComment] = Field(
+    comments: list[RedditComment] = Field(
         default_factory=list, description="Top-level comments"
     )
-
 
 class TwitterTweet(BaseModel):
     """Represents a single tweet."""
@@ -73,10 +70,9 @@ class TwitterTweet(BaseModel):
     created_at: datetime = Field(..., description="Tweet creation timestamp")
     url: str = Field(..., description="Tweet URL")
     is_reply: bool = Field(default=False, description="Whether this is a reply tweet")
-    parent_tweet_id: Optional[str] = Field(
+    parent_tweet_id: str | None = Field(
         default=None, description="Parent tweet ID if this is a reply"
     )
-
 
 class TwitterThread(BaseModel):
     """Represents a Twitter thread (original tweet + replies)."""
@@ -95,19 +91,18 @@ class TwitterThread(BaseModel):
 
     thread_id: str = Field(..., description="Thread identifier (original tweet ID)")
     original_tweet: TwitterTweet = Field(..., description="Original tweet starting the thread")
-    replies: List[TwitterTweet] = Field(default_factory=list, description="Reply tweets")
+    replies: list[TwitterTweet] = Field(default_factory=list, description="Reply tweets")
     total_engagement: int = Field(..., description="Total likes + retweets across thread")
-
 
 class SocialContentCollection(BaseModel):
     """Collection of social media content from both platforms."""
 
     model_config = ConfigDict(extra='forbid')
 
-    reddit_posts: List[RedditPost] = Field(
+    reddit_posts: list[RedditPost] = Field(
         default_factory=list, description="Collected Reddit posts"
     )
-    twitter_threads: List[TwitterThread] = Field(
+    twitter_threads: list[TwitterThread] = Field(
         default_factory=list, description="Collected Twitter threads"
     )
     total_reddit_comments: int = Field(default=0, description="Total Reddit comments collected")
@@ -115,7 +110,6 @@ class SocialContentCollection(BaseModel):
     collection_timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="When collection was performed"
     )
-
 
 # Update forward references
 RedditComment.model_rebuild()

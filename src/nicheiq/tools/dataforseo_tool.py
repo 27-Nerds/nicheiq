@@ -5,21 +5,19 @@ Provides CrewAI tools for DataForSEO Keywords Data API endpoints.
 
 import base64
 import json
-from typing import Dict, List, Any, Optional
+import re
+from typing import Any
 
 import requests
 from crewai.tools import BaseTool
 from loguru import logger
-from pydantic import Field
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..config.settings import settings
 
-
 # DataForSEO API limits per request
 MAX_KEYWORDS_SEARCH_VOLUME = 1000  # Search volume endpoint
 MAX_KEYWORDS_RELATED = 20  # Related keywords endpoint (Google)
-
 
 class DataForSEOBaseClient:
     """
@@ -44,7 +42,7 @@ class DataForSEOBaseClient:
         stop=stop_after_attempt(settings.max_retries),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    def _make_request(self, endpoint: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _make_request(self, endpoint: str, payload: list[dict[str, Any]]) -> dict[str, Any]:
         """
         Make API request to DataForSEO.
 
@@ -81,7 +79,7 @@ class DataForSEOBaseClient:
             logger.error(f"DataForSEO API request failed: {e}")
             raise
 
-    def _chunk_list(self, items: List[Any], chunk_size: int) -> List[List[Any]]:
+    def _chunk_list(self, items: list[Any], chunk_size: int) -> list[list[Any]]:
         """Split a list into chunks of specified size."""
         return [items[i:i + chunk_size] for i in range(0, len(items), chunk_size)]
 
@@ -104,8 +102,6 @@ class DataForSEOBaseClient:
         Returns:
             Sanitized keyword string (may be empty if invalid)
         """
-        import re
-
         # Remove common prefixes like "HP1:", "MP3:", "Pain Point 1:", etc.
         keyword = re.sub(r'^[A-Z]*\d+:\s*', '', keyword, flags=re.IGNORECASE)
         keyword = re.sub(r'^(pain point|hp|mp|problem)\s*\d*:\s*', '', keyword, flags=re.IGNORECASE)
@@ -126,7 +122,7 @@ class DataForSEOBaseClient:
         try:
             # Remove emojis and other 4-byte characters
             keyword = keyword.encode('latin-1', 'ignore').decode('latin-1')
-        except:
+        except Exception:
             # If encoding fails, use a more aggressive filter
             keyword = ''.join(char for char in keyword if ord(char) < 0x10000)
 
@@ -159,11 +155,11 @@ class DataForSEOBaseClient:
 
     def expand_keywords(
         self,
-        seed_keywords: List[str],
+        seed_keywords: list[str],
         location_code: int = None,
         language_code: str = None,
         max_results_per_batch: int = 600
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Expand seed keywords using DataForSEO Keywords for Keywords endpoint.
         This implements Step 9.2 of the keyword validation process.
@@ -348,10 +344,10 @@ class DataForSEOBaseClient:
 
     def get_search_volume(
         self,
-        keywords: List[str],
+        keywords: list[str],
         location_code: int = None,
         language_code: str = None
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get detailed search volume and metrics for keywords.
         This implements Step 9.3 of the keyword validation process.
@@ -506,7 +502,6 @@ class DataForSEOBaseClient:
 
         return all_metrics
 
-
 # CrewAI Tool Wrappers
 # These wrap the base client methods so agents can use them as tools
 
@@ -610,7 +605,6 @@ class DataForSEOExpandTool(BaseTool, DataForSEOBaseClient):
                 "expanded_keywords_count": 0,
                 "keywords": []
             })
-
 
 class DataForSEOSearchVolumeTool(BaseTool, DataForSEOBaseClient):
     """

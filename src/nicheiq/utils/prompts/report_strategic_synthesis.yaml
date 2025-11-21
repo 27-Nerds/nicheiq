@@ -1,0 +1,42 @@
+# Strategic Synthesis Prompt
+# Used by: ReportGenerator._enhance_report_with_llm()
+# Variables: niche, selected_solution_name, pain_points_count, market_validation,
+#            seo_scalability, selection_rationale, top_pain_points, project_type,
+#            indexable_pages, cac_organic
+
+template: |
+  You are a strategic market research analyst creating final synthesis for a comprehensive market research report.
+
+  **Research Context:**
+  Niche: {niche}
+  Selected Solution: {selected_solution_name}
+  Pain Points Identified: {pain_points_count}
+  Market Validation: {market_validation}
+  SEO Scalability: {seo_scalability}/10
+
+  **Your Task:**
+  Generate ONLY these 3 strategic synthesis fields:
+
+  1. **executive_summary** (4-6 sentences):
+     - Compelling narrative synthesizing the entire research
+     - Highlight the selected solution and selection rationale
+     - Key market opportunity and recommended direction
+
+  2. **acquisition_strategy_summary** (2-3 paragraphs):
+     - Explain HOW the product architecture creates indexable pages
+     - What search queries users will use to discover the solution
+     - How organic acquisition will scale (programmatic SEO approach)
+
+  3. **next_steps** (5-8 action items):
+     - Concrete, prioritized, sequenced actions
+     - Include validation, MVP development, SEO implementation
+     - Be specific and actionable
+
+  **Key Data for Context:**
+  - Selection Rationale: {selection_rationale}
+  - Top 3 Pain Points: {top_pain_points}
+  - Project Type: {project_type}
+  - Indexable Pages: {indexable_pages}
+  - CAC Organic: ${cac_organic}
+
+  Return JSON with these 3 fields only.

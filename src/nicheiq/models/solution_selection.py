@@ -6,7 +6,7 @@ This model represents the strategic decision of which solution to focus on for
 SEO strategy, keyword research, and implementation.
 """
 
-from typing import Dict, List, Optional
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,7 +18,7 @@ class SelectionCriteriaScore(BaseModel):
 
     criterion: str = Field(..., description="Criterion name (e.g., 'market_fit', 'technical_feasibility')")
     score: float = Field(..., description="Score value (0-1 scale)")
-
+    justification: Optional[str] = Field(default=None, description="Brief justification for the score")
 
 class SolutionScores(BaseModel):
     """Complete selection scores for a single solution."""
@@ -56,7 +56,6 @@ class SolutionScores(BaseModel):
         )
     )
 
-
 class SolutionSelection(BaseModel):
     """
     Results of solution selection process (Stage 8.5).
@@ -82,7 +81,7 @@ class SolutionSelection(BaseModel):
         )
     )
 
-    selection_criteria_scores: Optional[List[SelectionCriteriaScore]] = Field(
+    selection_criteria_scores: Optional[list[SelectionCriteriaScore]] = Field(
         default=None,
         description=(
             "Breakdown of selection criteria scores (0-1 scale) for the selected solution. "
@@ -91,7 +90,7 @@ class SolutionSelection(BaseModel):
         )
     )
 
-    all_solution_scores: Optional[List[SolutionScores]] = Field(
+    all_solution_scores: Optional[list[SolutionScores]] = Field(
         default=None,
         description=(
             "Complete scores for ALL solutions evaluated (selected + runner-ups). "
@@ -100,7 +99,7 @@ class SolutionSelection(BaseModel):
         )
     )
 
-    runner_up_solutions: Optional[List[str]] = Field(
+    runner_up_solutions: Optional[list[str]] = Field(
         default=None,
         description="Names of other viable solutions considered (in priority order)"
     )

@@ -2,7 +2,6 @@
 Pydantic models for solution ideas (Stage 7).
 """
 
-from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,31 +11,30 @@ class SEORefinementMetadata(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
-    baseline_volume_used: Optional[int] = Field(
+    baseline_volume_used: int | None = Field(
         default=None, description="Baseline search volume used for calculations"
     )
-    volume_multiplier: Optional[float] = Field(
+    volume_multiplier: float | None = Field(
         default=None, description="Multiplier applied based on actual vs baseline volume"
     )
-    tier1_multiplier: Optional[float] = Field(
+    tier1_multiplier: float | None = Field(
         default=None, description="Multiplier based on Tier 1 keyword count"
     )
-    competition_modifier: Optional[float] = Field(
+    competition_modifier: float | None = Field(
         default=None, description="Modifier based on average competition level"
     )
-    base_cac: Optional[float] = Field(
+    base_cac: float | None = Field(
         default=None, description="Base customer acquisition cost before adjustments"
     )
-    difficulty_multiplier: Optional[float] = Field(
+    difficulty_multiplier: float | None = Field(
         default=None, description="Multiplier based on keyword difficulty"
     )
-    volume_discount: Optional[float] = Field(
+    volume_discount: float | None = Field(
         default=None, description="Discount applied for high volume economies of scale"
     )
-    estimated_year1_pages: Optional[int] = Field(
+    estimated_year1_pages: int | None = Field(
         default=None, description="Estimated number of pages in first year"
     )
-
 
 class SolutionSEORefinement(BaseModel):
     """
@@ -50,31 +48,30 @@ class SolutionSEORefinement(BaseModel):
 
     solution_name: str = Field(..., description="Name of solution being refined")
 
-    seo_scalability_score_refined: Optional[float] = Field(
+    seo_scalability_score_refined: float | None = Field(
         default=None, ge=0.0, le=1.0,
         description="Refined SEO scalability score using actual keyword volume data from Stage 9"
     )
 
-    estimated_cac_organic_refined: Optional[str] = Field(
+    estimated_cac_organic_refined: str | None = Field(
         default=None,
         description="Refined organic CAC range based on keyword difficulty and volume (e.g., '$12-25')"
     )
 
-    programmatic_seo_opportunity_refined: Optional[str] = Field(
+    programmatic_seo_opportunity_refined: str | None = Field(
         default=None,
         description="Quantified programmatic SEO opportunity with page count estimates"
     )
 
-    estimated_indexable_pages: Optional[int] = Field(
+    estimated_indexable_pages: int | None = Field(
         default=None,
         description="Estimated number of indexable pages based on keyword research and content model"
     )
 
-    seo_refinement_metadata: Optional[SEORefinementMetadata] = Field(
+    seo_refinement_metadata: SEORefinementMetadata | None = Field(
         default=None,
         description="Detailed calculation metadata showing how refined scores were derived"
     )
-
 
 class SolutionEvaluation(BaseModel):
     """Evaluation scores and analysis for a single solution."""
@@ -104,26 +101,24 @@ class SolutionEvaluation(BaseModel):
         ..., ge=0.0, le=1.0,
         description="Organic acquisition potential score (0.0-1.0 scale) - effectiveness of SEO/content for customer acquisition"
     )
-    strengths: List[str] = Field(..., description="Key advantages and positive factors")
-    weaknesses: List[str] = Field(..., description="Concerns, risks, or challenges")
-    key_risks: List[str] = Field(..., description="Critical factors that could cause failure")
-
+    strengths: list[str] = Field(..., description="Key advantages and positive factors")
+    weaknesses: list[str] = Field(..., description="Concerns, risks, or challenges")
+    key_risks: list[str] = Field(..., description="Critical factors that could cause failure")
 
 class EvaluationResult(BaseModel):
     """Complete evaluation results for all solutions."""
 
     model_config = ConfigDict(extra='forbid')
 
-    evaluations: List[SolutionEvaluation] = Field(
+    evaluations: list[SolutionEvaluation] = Field(
         ..., description="Evaluation for each solution"
     )
-    ranking: List[str] = Field(
+    ranking: list[str] = Field(
         ..., description="Solution names ranked by overall opportunity"
     )
     comparative_analysis: str = Field(
         ..., description="Side-by-side comparison and recommendation"
     )
-
 
 class SolutionIdea(BaseModel):
     """Represents a micro-SaaS product concept."""
@@ -149,48 +144,48 @@ class SolutionIdea(BaseModel):
             "compared to alternatives. Not a tagline - a clear statement of what users get."
         )
     )
-    pain_points_addressed: List[str] = Field(
+    pain_points_addressed: list[str] = Field(
         ..., description="List of pain points this solution addresses"
     )
-    core_features: List[str] = Field(
+    core_features: list[str] = Field(
         ..., description="Key features for minimum viable product"
     )
-    target_personas: List[str] = Field(
+    target_personas: list[str] = Field(
         ..., description="Target user persona descriptions"
     )
-    technical_approach: Optional[str] = Field(
+    technical_approach: str | None = Field(
         default=None, description="Technical architecture and implementation approach"
     )
-    differentiation_factors: Optional[List[str]] = Field(
+    differentiation_factors: list[str | None] = Field(
         default=None, description="Unique factors that differentiate from competitors"
     )
     requires_data_aggregation: bool = Field(
         default=False,
         description="Whether product requires external data aggregation",
     )
-    data_sources: Optional[List[str]] = Field(
+    data_sources: list[str | None] = Field(
         default=None,
         description="Potential data sources if aggregation is required",
     )
-    estimated_development_time: Optional[str] = Field(
+    estimated_development_time: str | None = Field(
         default=None, description="Estimated time to build MVP"
     )
-    pricing_strategy: Optional[str] = Field(
+    pricing_strategy: str | None = Field(
         default=None, description="Detailed pricing model and monetization strategy"
     )
-    market_fit_score: Optional[float] = Field(
+    market_fit_score: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Product-market fit evaluation score (0-1)"
     )
-    technical_feasibility_score: Optional[float] = Field(
+    technical_feasibility_score: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Technical feasibility assessment score (0-1)"
     )
-    project_type: Optional[str] = Field(
+    project_type: str | None = Field(
         default=None,
         description="Project type category: saas, directory, aggregator, comparison-tool, marketplace"
     )
 
     # SEO & Organic Acquisition Fields
-    programmatic_seo_opportunity: Optional[str] = Field(
+    programmatic_seo_opportunity: str | None = Field(
         default=None,
         description=(
             "Assessment of programmatic SEO potential for this solution type. "
@@ -201,7 +196,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    content_generation_model: Optional[str] = Field(
+    content_generation_model: str | None = Field(
         default=None,
         description=(
             "Description of how this solution naturally generates SEO-friendly content. "
@@ -212,7 +207,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    organic_discovery_queries: Optional[List[str]] = Field(
+    organic_discovery_queries: list[str | None] = Field(
         default=None,
         description=(
             "5-10 example search queries where users would naturally discover this solution organically. "
@@ -221,7 +216,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    estimated_cac_organic: Optional[str] = Field(
+    estimated_cac_organic: str | None = Field(
         default=None,
         description=(
             "Estimated customer acquisition cost via organic channels (SEO, content marketing). "
@@ -232,7 +227,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    estimated_cac_paid: Optional[str] = Field(
+    estimated_cac_paid: str | None = Field(
         default=None,
         description=(
             "Estimated customer acquisition cost via paid channels (ads, PPC) for comparison. "
@@ -242,7 +237,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    seo_scalability_score: Optional[float] = Field(
+    seo_scalability_score: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
@@ -256,7 +251,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    estimated_indexable_pages: Optional[int] = Field(
+    estimated_indexable_pages: int | None = Field(
         default=None,
         description=(
             "Estimated total potential indexable pages for SEO. "
@@ -267,7 +262,7 @@ class SolutionIdea(BaseModel):
     )
 
     # Refined SEO Metrics (Stage 9.5 - Post-Keyword Discovery)
-    seo_scalability_score_refined: Optional[float] = Field(
+    seo_scalability_score_refined: float | None = Field(
         default=None,
         ge=0.0,
         le=1.0,
@@ -281,7 +276,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    estimated_cac_organic_refined: Optional[str] = Field(
+    estimated_cac_organic_refined: str | None = Field(
         default=None,
         description=(
             "Refined organic CAC estimate based on actual keyword difficulty and volume. "
@@ -292,7 +287,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    programmatic_seo_opportunity_refined: Optional[str] = Field(
+    programmatic_seo_opportunity_refined: str | None = Field(
         default=None,
         description=(
             "Refined programmatic SEO assessment with quantitative page count estimates. "
@@ -302,7 +297,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    seo_refinement_metadata: Optional[SEORefinementMetadata] = Field(
+    seo_refinement_metadata: SEORefinementMetadata | None = Field(
         default=None,
         description=(
             "Metadata about the SEO refinement process for transparency. "
@@ -313,7 +308,7 @@ class SolutionIdea(BaseModel):
     )
 
     # Keyword Validation & Refinement (Stage 8.8 and 8.85)
-    keyword_geographic_priorities: Optional[List[str]] = Field(
+    keyword_geographic_priorities: list[str | None] = Field(
         default=None,
         description=(
             "Geographic priorities identified from keyword validation data (Stage 8.8). "
@@ -324,7 +319,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    keyword_feature_priorities: Optional[List[str]] = Field(
+    keyword_feature_priorities: list[str | None] = Field(
         default=None,
         description=(
             "Feature or category priorities identified from keyword themes in Stage 8.8 validation. "
@@ -335,7 +330,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    keyword_strategic_insights: Optional[str] = Field(
+    keyword_strategic_insights: str | None = Field(
         default=None,
         description=(
             "Strategic insights derived from keyword validation data in Stage 8.8. "
@@ -347,7 +342,7 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    category_pivot_suggestion: Optional[str] = Field(
+    category_pivot_suggestion: str | None = Field(
         default=None,
         description=(
             "Category or positioning pivot suggestion based on keyword validation findings from Stage 8.8. "
@@ -358,20 +353,18 @@ class SolutionIdea(BaseModel):
         )
     )
 
-
 class IdeaGenerationResult(BaseModel):
     """Complete result of solution idea generation."""
 
     model_config = ConfigDict(extra='forbid')
 
-    solution_ideas: List[SolutionIdea] = Field(..., description="Generated solution concepts")
-    recommended_solution: Optional[str] = Field(
+    solution_ideas: list[SolutionIdea] = Field(..., description="Generated solution concepts")
+    recommended_solution: str | None = Field(
         default=None, description="Recommended solution name from the list"
     )
     market_insights: str = Field(
         ..., description="Market insights and opportunity assessment"
     )
-
 
 class SolutionEnhancement(BaseModel):
     """Enhancement data for a single solution from competitive analysis."""
@@ -379,29 +372,28 @@ class SolutionEnhancement(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     solution_name: str = Field(..., description="Solution name (must match Task 1)")
-    new_core_features: List[str] = Field(
+    new_core_features: list[str] = Field(
         default_factory=list,
         description="NEW features to add from competitive analysis (not all features)"
     )
-    new_differentiation_factors: List[str] = Field(
+    new_differentiation_factors: list[str] = Field(
         default_factory=list,
         description="NEW differentiation factors from competitive gaps (not all factors)"
     )
-    value_proposition_update: Optional[str] = Field(
+    value_proposition_update: str | None = Field(
         default=None,
         description="Updated value proposition (only if competitive analysis suggests refinement)"
     )
-    pricing_strategy_update: Optional[str] = Field(
+    pricing_strategy_update: str | None = Field(
         default=None,
         description="Refined pricing strategy (only if competitive analysis suggests changes)"
     )
-    market_fit_score_adjustment: Optional[float] = Field(
+    market_fit_score_adjustment: float | None = Field(
         default=None,
         ge=-0.1,
         le=0.1,
         description="Market fit score adjustment based on competitive insights (max ±0.1)"
     )
-
 
 class CompetitiveEnhancements(BaseModel):
     """
@@ -413,7 +405,7 @@ class CompetitiveEnhancements(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
-    solution_enhancements: List[SolutionEnhancement] = Field(
+    solution_enhancements: list[SolutionEnhancement] = Field(
         ...,
         description="Enhancements for each solution based on competitive analysis"
     )

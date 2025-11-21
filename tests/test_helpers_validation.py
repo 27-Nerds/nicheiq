@@ -11,20 +11,19 @@ Tests coverage for Phase 1 & 2 improvements:
 """
 
 import pytest
-from typing import List
 
 from nicheiq.models.pain_point import PainPoint, OpportunityLevel
 from nicheiq.models.solution_idea import SolutionIdea
-from nicheiq.utils.helpers import (
+from nicheiq.utils.helpers import find_solution_by_name
+from nicheiq.utils.pain_point_formatters import (
     format_pain_points_for_agents,
     extract_pain_points_by_priority,
-    find_solution_by_name,
 )
 
 
 # Test fixtures
 @pytest.fixture
-def sample_pain_points() -> List[PainPoint]:
+def sample_pain_points() -> list[PainPoint]:
     """Create sample pain points for testing."""
     return [
         PainPoint(
@@ -67,7 +66,7 @@ def sample_pain_points() -> List[PainPoint]:
 
 
 @pytest.fixture
-def sample_solutions() -> List[SolutionIdea]:
+def sample_solutions() -> list[SolutionIdea]:
     """Create sample solutions for testing."""
     return [
         SolutionIdea(

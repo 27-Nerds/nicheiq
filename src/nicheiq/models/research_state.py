@@ -3,28 +3,28 @@ Pydantic models for research flow state management.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from .analytics import (
-    MarketAnalytics,
-    SEOAnalytics,
     CompetitiveAnalytics,
+    MarketAnalytics,
     PainPointAnalytics,
+    SEOAnalytics,
     VisualizationManifest,
 )
 from .competitor import CompetitiveAnalysisResult
 from .data_source import DataSourceResearchResult
 from .executive_summary import ExecutiveDashboard
-from .keyword_data import KeywordValidationResult, CrewKeywordValidationResult
+from .keyword_data import CrewKeywordValidationResult, KeywordValidationResult
 from .marketing_blueprint import GTMBlueprint
 from .pain_point import ContentCategorizationReport, PainPointAnalysisResult
 from .seo_strategy import SEOStrategyReport
 from .social_content import SocialContentCollection
 from .solution_idea import IdeaGenerationResult, SolutionIdea, SolutionSEORefinement
-from .solution_selection import SolutionSelection, SelectionCriteriaScore
 from .solution_refinement import SolutionRefinement
+from .solution_selection import SelectionCriteriaScore, SolutionSelection
 
 
 class NicheContext(BaseModel):
@@ -34,9 +34,8 @@ class NicheContext(BaseModel):
 
     niche_input: str = Field(..., description="User's niche input")
     niche_description: str = Field(..., description="LLM-generated niche description")
-    market_segments: List[str] = Field(..., description="Key market segments")
+    market_segments: list[str] = Field(..., description="Key market segments")
     industry_boundaries: str = Field(..., description="Industry boundaries definition")
-
 
 class SearchQuery(BaseModel):
     """A single search query."""
@@ -49,7 +48,6 @@ class SearchQuery(BaseModel):
     )
     platform: str = Field(..., description="Target platform: reddit/twitter")
 
-
 class SearchResultItem(BaseModel):
     """A single search result with metadata for relevance validation."""
 
@@ -58,7 +56,6 @@ class SearchResultItem(BaseModel):
     url: str = Field(..., description="URL of the search result")
     title: str = Field(..., description="Title of the page/post")
     snippet: str = Field(..., description="Text snippet from search result")
-
 
 class ThreadRelevanceValidation(BaseModel):
     """Validation result for thread relevance to niche."""
@@ -69,7 +66,6 @@ class ThreadRelevanceValidation(BaseModel):
     confidence: float = Field(..., description="Confidence score 0-1")
     reason: str = Field(..., description="Brief explanation of relevance decision")
 
-
 class SubredditBreakdown(BaseModel):
     """Breakdown of posts by subreddit."""
 
@@ -77,7 +73,6 @@ class SubredditBreakdown(BaseModel):
 
     name: str = Field(..., description="Subreddit name (without r/ prefix)")
     post_count: int = Field(..., description="Number of posts from this subreddit")
-
 
 class ResearchMetadata(BaseModel):
     """Metadata about the research data collection process."""
@@ -87,12 +82,11 @@ class ResearchMetadata(BaseModel):
     reddit_posts_analyzed: int = Field(..., description="Total Reddit posts collected")
     reddit_comments_analyzed: int = Field(..., description="Total Reddit comments analyzed")
     twitter_threads_analyzed: int = Field(..., description="Total Twitter threads collected")
-    top_subreddits: List[SubredditBreakdown] = Field(
+    top_subreddits: list[SubredditBreakdown] = Field(
         ..., description="Breakdown of posts by subreddit (top 10)"
     )
     collection_date: datetime = Field(..., description="When data collection occurred")
     data_size_mb: float = Field(..., description="Total data size in megabytes")
-
 
 class AlternativeSolution(BaseModel):
     """Condensed summary of a runner-up solution for comparison."""
@@ -101,14 +95,13 @@ class AlternativeSolution(BaseModel):
 
     solution_name: str = Field(..., description="Name of the alternative solution")
     summary: str = Field(..., description="2-3 paragraph overview of the solution")
-    market_fit_score: float = Field(..., ge=0.0, le=1.0, description="Market fit score")
-    technical_feasibility_score: float = Field(..., ge=0.0, le=1.0, description="Technical feasibility")
-    competitive_advantage_score: float = Field(..., ge=0.0, le=1.0, description="Competitive advantage score")
-    seo_growth_potential_score: float = Field(..., ge=0.0, le=1.0, description="SEO scalability score")
+    market_fit_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Market fit score (None if not assessed)")
+    technical_feasibility_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Technical feasibility (None if not assessed)")
+    competitive_advantage_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Competitive advantage score (None if not assessed)")
+    seo_growth_potential_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="SEO scalability score (None if not assessed)")
     key_differentiator: str = Field(..., description="Primary unique value proposition")
     best_suited_for: str = Field(..., description="When this solution is the best choice")
     pivot_trigger: str = Field(..., description="Conditions that would justify pivoting to this solution")
-
 
 class CompetitorMatrixEntry(BaseModel):
     """Single competitor entry showing which solutions it competes against."""
@@ -116,10 +109,9 @@ class CompetitorMatrixEntry(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     competitor_name: str = Field(..., description="Name of the competitor")
-    solutions_competed: List[str] = Field(..., description="List of solution names this competitor appears in")
+    solutions_competed: list[str] = Field(..., description="List of solution names this competitor appears in")
     competitor_type: str = Field(..., description="Type: direct, partial, indirect")
     threat_level: str = Field(..., description="Overall threat level: high, medium, low")
-
 
 class CompetitiveIntensityEntry(BaseModel):
     """Competitive intensity for a single solution."""
@@ -129,23 +121,21 @@ class CompetitiveIntensityEntry(BaseModel):
     solution_name: str = Field(..., description="Name of the solution")
     intensity: str = Field(..., description="Competitive intensity: Low, Medium, or High")
 
-
 class CompetitiveLandscapeMatrix(BaseModel):
     """Cross-solution competitive analysis showing overlap and patterns."""
 
     model_config = ConfigDict(extra='forbid')
 
-    all_solutions_analyzed: List[str] = Field(..., description="Names of all solutions analyzed")
-    competitor_overlap: List[CompetitorMatrixEntry] = Field(
+    all_solutions_analyzed: list[str] = Field(..., description="Names of all solutions analyzed")
+    competitor_overlap: list[CompetitorMatrixEntry] = Field(
         ..., description="Competitors appearing in multiple solution landscapes"
     )
-    competitive_intensity_by_solution: List[CompetitiveIntensityEntry] = Field(
+    competitive_intensity_by_solution: list[CompetitiveIntensityEntry] = Field(
         ..., description="Competitive intensity for each solution analyzed"
     )
     market_insight: str = Field(
         ..., description="Strategic insight about competitive landscape patterns"
     )
-
 
 class TopRedditThread(BaseModel):
     """Summary of a high-engagement Reddit thread for evidence appendix."""
@@ -160,7 +150,6 @@ class TopRedditThread(BaseModel):
     url: str = Field(..., description="Link to Reddit post")
     key_insight: str = Field(..., description="1-sentence summary of why this thread is significant")
 
-
 class QuoteSource(BaseModel):
     """Single quote with source attribution."""
 
@@ -171,30 +160,27 @@ class QuoteSource(BaseModel):
     subreddit: str = Field(..., description="Subreddit name")
     score: str = Field(..., description="Post score/engagement")
 
-
 class PainPointEvidence(BaseModel):
     """Evidence linking pain point quotes to original Reddit posts."""
 
     model_config = ConfigDict(extra='forbid')
 
     pain_point_title: str = Field(..., description="Pain point title")
-    quotes_with_sources: List[QuoteSource] = Field(
+    quotes_with_sources: list[QuoteSource] = Field(
         ..., description="List of quotes with source attribution"
     )
-
 
 class EvidenceAppendix(BaseModel):
     """Appendix containing evidence traceability for research validation."""
 
     model_config = ConfigDict(extra='forbid')
 
-    top_reddit_threads: List[TopRedditThread] = Field(
+    top_reddit_threads: list[TopRedditThread] = Field(
         ..., description="Top 10 most engaging Reddit discussions analyzed"
     )
-    pain_point_quote_sources: List[PainPointEvidence] = Field(
+    pain_point_quote_sources: list[PainPointEvidence] = Field(
         ..., description="Traceability from pain points to original posts"
     )
-
 
 class DataInfrastructurePhase(BaseModel):
     """Single phase of data infrastructure implementation."""
@@ -204,21 +190,19 @@ class DataInfrastructurePhase(BaseModel):
     phase_number: int = Field(..., description="Phase number (1, 2, or 3)")
     phase_name: str = Field(..., description="Phase name (e.g., 'MVP', 'Growth', 'Scale')")
     timeline: str = Field(..., description="Timeline for this phase (e.g., 'Months 1-3')")
-    data_sources: List[str] = Field(..., description="Data sources to integrate in this phase")
+    data_sources: list[str] = Field(..., description="Data sources to integrate in this phase")
     estimated_monthly_cost: str = Field(..., description="Cost range for this phase (e.g., '$200-300')")
-    key_risks: List[str] = Field(..., description="Risks and mitigation strategies")
-
+    key_risks: list[str] = Field(..., description="Risks and mitigation strategies")
 
 class DataInfrastructureRoadmap(BaseModel):
     """Complete data infrastructure implementation roadmap."""
 
     model_config = ConfigDict(extra='forbid')
 
-    phases: List[DataInfrastructurePhase] = Field(..., description="3-phase implementation plan")
+    phases: list[DataInfrastructurePhase] = Field(..., description="3-phase implementation plan")
     cost_scaling_insight: str = Field(
         ..., description="Summary of how costs scale with user growth and mitigation strategies"
     )
-
 
 class DecisionCriterion(BaseModel):
     """Single go/no-go decision criterion."""
@@ -229,7 +213,6 @@ class DecisionCriterion(BaseModel):
     condition: str = Field(..., description="Condition to evaluate (e.g., 'SEO keyword volume >10k/mo')")
     rationale: str = Field(..., description="Why this criterion matters")
 
-
 class PivotTrigger(BaseModel):
     """Condition that would trigger a pivot to an alternative solution."""
 
@@ -239,16 +222,14 @@ class PivotTrigger(BaseModel):
     pivot_to_solution: str = Field(..., description="Alternative solution to pivot to")
     rationale: str = Field(..., description="Why this pivot makes sense")
 
-
 class DecisionFramework(BaseModel):
     """Framework for making go/no-go and pivot decisions."""
 
     model_config = ConfigDict(extra='forbid')
 
-    go_criteria: List[DecisionCriterion] = Field(..., description="Criteria for proceeding with selected solution")
-    no_go_criteria: List[DecisionCriterion] = Field(..., description="Criteria for stopping the project")
-    pivot_triggers: List[PivotTrigger] = Field(..., description="Conditions for pivoting to alternatives")
-
+    go_criteria: list[DecisionCriterion] = Field(..., description="Criteria for proceeding with selected solution")
+    no_go_criteria: list[DecisionCriterion] = Field(..., description="Criteria for stopping the project")
+    pivot_triggers: list[PivotTrigger] = Field(..., description="Conditions for pivoting to alternatives")
 
 class FinalReport(BaseModel):
     """Final comprehensive research report (Stage 10)."""
@@ -259,35 +240,35 @@ class FinalReport(BaseModel):
     executive_summary: str = Field(..., description="High-level executive summary")
 
     # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
-    executive_dashboard: Optional[ExecutiveDashboard] = Field(
+    executive_dashboard: ExecutiveDashboard | None = Field(
         default=None,
         description="Executive dashboard with go/no-go verdict, core pain point, and key opportunity metrics for quick decision-making"
     )
 
     # Go-to-Market Blueprint (Phase 2 Enhancement) - ACTIONABLE GTM STRATEGY
-    go_to_market_blueprint: Optional[GTMBlueprint] = Field(
+    go_to_market_blueprint: GTMBlueprint | None = Field(
         default=None,
         description="Actionable Go-to-Market strategy with ICP, marketing channels, messaging, content angles, and 30-day playbook for immediate execution"
     )
 
     # Analytics & Visualizations (Phase 3 Enhancement) - DATA-DRIVEN INSIGHTS
-    market_analytics: Optional[MarketAnalytics] = Field(
+    market_analytics: MarketAnalytics | None = Field(
         default=None,
         description="Computed market opportunity analytics: overall score, market size category, selection confidence, competitive intensity, go/no-go recommendation"
     )
-    seo_analytics: Optional[SEOAnalytics] = Field(
+    seo_analytics: SEOAnalytics | None = Field(
         default=None,
         description="SEO keyword distribution analytics: tier counts, total search volume, keyword diversity, high-volume keyword count"
     )
-    competitive_analytics: Optional[CompetitiveAnalytics] = Field(
+    competitive_analytics: CompetitiveAnalytics | None = Field(
         default=None,
         description="Competitive density analytics: competitor count, market saturation score, differentiation strength, market gaps identified"
     )
-    pain_point_analytics: Optional[PainPointAnalytics] = Field(
+    pain_point_analytics: PainPointAnalytics | None = Field(
         default=None,
         description="Pain point priority analytics: total count, high-priority count, quadrant distribution, average severity/WTP scores"
     )
-    visualization_manifest: Optional[VisualizationManifest] = Field(
+    visualization_manifest: VisualizationManifest | None = Field(
         default=None,
         description="Paths to generated visualization charts: pain point matrix, competitive landscape, keyword opportunity, implementation timeline"
     )
@@ -295,8 +276,8 @@ class FinalReport(BaseModel):
     # Solution Selection (Stage 8.5)
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
-    runner_up_solutions: Optional[List[str]] = Field(default=None, description="Other viable solutions considered")
-    selection_criteria_scores: Optional[List[SelectionCriteriaScore]] = Field(
+    runner_up_solutions: Optional[list[str]] = Field(default=None, description="Other viable solutions considered")
+    selection_criteria_scores: Optional[list[SelectionCriteriaScore]] = Field(
         default=None,
         description="Breakdown of selection criteria scores (0-1 scale): market_fit, technical_feasibility, competitive_advantage, keyword_opportunity, data_requirements"
     )
@@ -306,31 +287,31 @@ class FinalReport(BaseModel):
     )
 
     # Detailed Solution Description (NEW - addresses "WHAT" and "HOW" gaps)
-    selected_solution_details: Optional[SolutionIdea] = Field(
+    selected_solution_details: SolutionIdea | None = Field(
         default=None,
         description="Complete details of the selected solution including features, personas, technical approach, pricing strategy"
     )
-    solution_user_journey: Optional[str] = Field(
+    solution_user_journey: str | None = Field(
         default=None,
         description="Step-by-step user workflow explaining HOW users interact with the solution (5-8 numbered steps, markdown format)"
     )
-    solution_implementation_overview: Optional[str] = Field(
+    solution_implementation_overview: str | None = Field(
         default=None,
         description="High-level implementation plan with phases, timeline, dependencies (2-3 paragraphs, markdown format)"
     )
-    mvp_scope_definition: Optional[str] = Field(
+    mvp_scope_definition: str | None = Field(
         default=None,
         description="Detailed MVP scope: must-have features, post-MVP features, success criteria (markdown format with sections)"
     )
 
     # Problem Section
-    top_pain_points: List[str] = Field(..., description="Top identified pain points")
+    top_pain_points: list[str] = Field(..., description="Top identified pain points")
     pain_points_summary: str = Field(
         ..., description="Summary of pain point analysis with severity and WTP insights"
     )
 
     # Solution Section
-    recommended_solutions: List[str] = Field(
+    recommended_solutions: list[str] = Field(
         ..., description="Recommended solution ideas to pursue"
     )
     solutions_summary: str = Field(
@@ -341,7 +322,7 @@ class FinalReport(BaseModel):
     competitive_summary: str = Field(
         ..., description="Summary of competitive landscape and positioning opportunities"
     )
-    competitive_analysis: Optional[CompetitiveAnalysisResult] = Field(
+    competitive_analysis: CompetitiveAnalysisResult | None = Field(
         default=None,
         description="Detailed competitive analysis with competitor profiles, market gaps, and differentiation opportunities"
     )
@@ -350,12 +331,12 @@ class FinalReport(BaseModel):
     market_validation: str = Field(..., description="Overall market validation conclusion")
 
     # SEO Strategy (Enhanced from simple string to comprehensive report)
-    seo_strategy: Optional[SEOStrategyReport] = Field(
+    seo_strategy: SEOStrategyReport | None = Field(
         default=None, description="Comprehensive SEO strategy with tiered keywords, content plan, and roadmap"
     )
 
     # Organic Acquisition Strategy (NEW - SEO-First Focus)
-    acquisition_strategy_summary: Optional[str] = Field(
+    acquisition_strategy_summary: str | None = Field(
         default=None,
         description=(
             "Overview of customer acquisition strategy emphasizing organic channels. "
@@ -365,7 +346,7 @@ class FinalReport(BaseModel):
             "(3) scaling strategy for organic growth."
         )
     )
-    estimated_cac_breakdown: Optional[str] = Field(
+    estimated_cac_breakdown: str | None = Field(
         default=None,
         description=(
             "Customer acquisition cost breakdown comparing organic vs paid channels. "
@@ -380,7 +361,7 @@ class FinalReport(BaseModel):
     )
 
     # Keyword Validation & Refinement (Stage 8.8 and 8.85)
-    keyword_validation_overview: Optional[str] = Field(
+    keyword_validation_overview: str | None = Field(
         default=None,
         description=(
             "Executive summary of keyword validation results across top 3 solution candidates from Stage 8.8. "
@@ -392,7 +373,7 @@ class FinalReport(BaseModel):
         )
     )
 
-    solution_keyword_comparison: Optional[str] = Field(
+    solution_keyword_comparison: str | None = Field(
         default=None,
         description=(
             "Comparative keyword analysis showing how top 3 solutions differ in SEO opportunity from Stage 8.8. "
@@ -405,7 +386,7 @@ class FinalReport(BaseModel):
         )
     )
 
-    content_strategy_preview: Optional[str] = Field(
+    content_strategy_preview: str | None = Field(
         default=None,
         description=(
             "Preview of content strategy recommendations based on keyword validation insights from Stage 8.8. "
@@ -418,7 +399,7 @@ class FinalReport(BaseModel):
     )
 
     # Data Sourcing (for solutions requiring aggregation)
-    data_source_research: Optional[DataSourceResearchResult] = Field(
+    data_source_research: DataSourceResearchResult | None = Field(
         default=None,
         description="Structured data source research results with discovered APIs, providers, cost estimates, and implementation roadmap (Stage 9.75)"
     )
@@ -427,34 +408,34 @@ class FinalReport(BaseModel):
     )
 
     # Next Steps
-    next_steps: List[str] = Field(..., description="Recommended next steps")
+    next_steps: list[str] = Field(..., description="Recommended next steps")
 
     # Enhanced Report Sections (NEW - improve data preservation and traceability)
-    research_metadata: Optional[ResearchMetadata] = Field(
+    research_metadata: ResearchMetadata | None = Field(
         default=None,
         description="Metadata about data collection: Reddit/Twitter post counts, subreddit breakdown, collection date, data size"
     )
-    alternative_solutions: Optional[List[AlternativeSolution]] = Field(
+    alternative_solutions: list[AlternativeSolution] | None = Field(
         default=None,
         description="Detailed summaries of runner-up solutions with scores and pivot criteria (top 2 alternatives)"
     )
-    competitive_landscape_matrix: Optional[CompetitiveLandscapeMatrix] = Field(
+    competitive_landscape_matrix: CompetitiveLandscapeMatrix | None = Field(
         default=None,
         description="Cross-solution competitive analysis showing competitor overlap and intensity patterns"
     )
-    evidence_appendix: Optional[EvidenceAppendix] = Field(
+    evidence_appendix: EvidenceAppendix | None = Field(
         default=None,
         description="Traceability appendix: top Reddit threads analyzed and pain point quote sources with post IDs"
     )
-    data_infrastructure_roadmap: Optional[DataInfrastructureRoadmap] = Field(
+    data_infrastructure_roadmap: DataInfrastructureRoadmap | None = Field(
         default=None,
         description="3-phase data infrastructure implementation plan with cost projections and scale risks"
     )
-    decision_framework: Optional[DecisionFramework] = Field(
+    decision_framework: DecisionFramework | None = Field(
         default=None,
         description="Go/no-go criteria and pivot triggers for decision-making"
     )
-    content_categorization: Optional[ContentCategorizationReport] = Field(
+    content_categorization: ContentCategorizationReport | None = Field(
         default=None,
         description="Content categorization analysis: theme categories, user segments, and discussion quality from Stage 6 Task 1"
     )
@@ -463,8 +444,7 @@ class FinalReport(BaseModel):
     generated_at: datetime = Field(
         default_factory=datetime.utcnow, description="Report generation timestamp"
     )
-    pdf_path: Optional[str] = Field(default=None, description="Path to generated PDF report")
-
+    pdf_path: str | None = Field(default=None, description="Path to generated PDF report")
 
 class ResearchState(BaseModel):
     """Complete state for the research flow."""
@@ -494,7 +474,7 @@ class ResearchState(BaseModel):
     niche_context: Optional[NicheContext] = None
 
     # Stage 2: Query Generation
-    search_queries: List[SearchQuery] = Field(default_factory=list)
+    search_queries: list[SearchQuery] = Field(default_factory=list)
 
     # Stage 4-5: Content Collection
     social_content: Optional[SocialContentCollection] = None
@@ -512,7 +492,7 @@ class ResearchState(BaseModel):
     solution_selection: Optional[SolutionSelection] = None
 
     # Stage 8.8: Keyword Validation Results (quick validation for top 3 solutions)
-    keyword_validation_results: Optional[List['CrewKeywordValidationResult']] = Field(
+    keyword_validation_results: Optional[list[CrewKeywordValidationResult]] = Field(
         default=None,
         description="Keyword validation results for top 3 solutions from Stage 8.8"
     )
@@ -524,18 +504,18 @@ class ResearchState(BaseModel):
     )
 
     # Stage 9: Seed Keywords
-    seed_keywords: List[str] = Field(default_factory=list, description="Seed keywords for SEO research")
+    seed_keywords: list[str] = Field(default_factory=list, description="Seed keywords for SEO research")
 
     # Stage 9 Sub-Phase Checkpoints (for resume capability)
-    stage_9_5a_expanded_keywords: Optional[Dict[str, Any]] = Field(
+    stage_9_5a_expanded_keywords: Optional[dict[str, Any]] = Field(
         default=None,
         description="Phase 9.5a output: expanded keywords and topic clusters from conceptual expansion"
     )
-    stage_9_5b_validation_results: Optional[Dict[str, Any]] = Field(
+    stage_9_5b_validation_results: Optional[dict[str, Any]] = Field(
         default=None,
         description="Phase 9.5b output: DataForSEO validated keywords meeting volume threshold"
     )
-    stage_9_5c_enriched_keywords: Optional[List[Dict[str, Any]]] = Field(
+    stage_9_5c_enriched_keywords: Optional[list[dict[str, Any]]] = Field(
         default=None,
         description="Phase 9.5c output: enriched keywords with full search metrics"
     )
@@ -562,4 +542,4 @@ class ResearchState(BaseModel):
     started_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
     current_stage: int = Field(default=1, description="Current pipeline stage (1-10)")
-    errors: List[str] = Field(default_factory=list, description="Errors encountered")
+    errors: list[str] = Field(default_factory=list, description="Errors encountered")

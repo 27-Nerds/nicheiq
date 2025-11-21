@@ -4,7 +4,6 @@ Multi-agent crew for researching competitors and identifying market opportunitie
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
@@ -13,8 +12,8 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult, CompetitiveLandscape
+from ..models.social_content import SocialContentCollection
 from ..models.solution_idea import IdeaGenerationResult, SolutionIdea
-from ..models.social_content import SocialContentCollection, RedditPost, TwitterThread
 
 
 class CachedSerperDevTool(SerperDevTool):
@@ -61,7 +60,6 @@ class CachedSerperDevTool(SerperDevTool):
             "cache_size": len(self._cache)
         }
 
-
 @CrewBase
 class CompetitiveCrew:
     """
@@ -80,7 +78,8 @@ class CompetitiveCrew:
     def __init__(
         self,
         solution_ideas: IdeaGenerationResult,
-        social_content: Optional[SocialContentCollection] = None
+        social_content: SocialContentCollection | None = None,
+        niche: str = "",
     ):
         """
         Initialize CompetitiveCrew with refined solution ideas and optional social content.
@@ -88,10 +87,12 @@ class CompetitiveCrew:
         Args:
             solution_ideas: Results from IdeaGenerationCrew
             social_content: Optional social content for competitor intelligence from user discussions
+            niche: Niche description for knowledge collection isolation
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
         self.solution_ideas = solution_ideas
+        self.niche = niche
 
         # Initialize search tool for competitive research with caching
         self.search_tool = CachedSerperDevTool()
@@ -317,27 +318,40 @@ class CompetitiveCrew:
         Returns:
             Configured Crew instance with optional knowledge sources
         """
+        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.helpers import sanitize_collection_name
+
         # Return cached instance if available (prevents re-embedding in parallel mode)
         if self._crew_instance is not None:
             logger.debug("Reusing cached crew instance (avoiding duplicate embeddings)")
             return self._crew_instance
+
+        embedder_config = {
+            "provider": "openai",
+            "config": {
+                "model_name": "text-embedding-3-small"  # Cost-effective embeddings
+            }
+        }
 
         crew_config = {
             "agents": self.agents,
             "tasks": self.tasks,
             "verbose": True,
             "process_type": "sequential",
+            "embedder": embedder_config,
         }
 
-        # Add knowledge sources if available
+        # Create Knowledge with niche-specific collection name for isolation
         if self.knowledge_sources:
-            crew_config["knowledge_sources"] = self.knowledge_sources
-            crew_config["embedder"] = {
-                "provider": "openai",
-                "config": {
-                    "model": "text-embedding-3-small"  # Cost-effective embeddings
-                }
-            }
+            collection_name = sanitize_collection_name(self.niche or "default", "comp")
+            logger.info(f"Creating competitive knowledge with collection: {collection_name}")
+            knowledge = Knowledge(
+                sources=self.knowledge_sources,
+                embedder=embedder_config,
+                collection_name=collection_name,
+            )
+            knowledge.add_sources()
+            crew_config["knowledge"] = knowledge
 
         # Create and cache the crew instance
         self._crew_instance = Crew(**crew_config)
@@ -507,7 +521,7 @@ class CompetitiveCrew:
             top_opportunities = list(dict.fromkeys(all_opportunities))[:5]
 
             # Generate strategic recommendations summary
-            total_competitors = sum(len(l.competitors) for l in all_landscapes)
+            total_competitors = sum(len(ls.competitors) for ls in all_landscapes)
             strategic_recommendations = (
                 f"Analyzed {len(all_landscapes)} solution(s) across the competitive landscape. "
                 f"Total of {total_competitors} competitors identified. "

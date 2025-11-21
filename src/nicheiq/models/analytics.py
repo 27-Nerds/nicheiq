@@ -5,8 +5,9 @@ Provides computed analytics and metrics for visual dashboards and charts.
 All analytics are Python-computed from existing research data (no LLM).
 """
 
-from typing import Dict, List, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MarketAnalytics(BaseModel):
@@ -34,12 +35,15 @@ class MarketAnalytics(BaseModel):
         description="Go/Conditional/No-Go based on scores"
     )
 
-
 class SEOAnalytics(BaseModel):
     """SEO keyword distribution and opportunity metrics."""
 
     model_config = ConfigDict(extra='forbid')
 
+    tier0_count: int = Field(
+        default=0,
+        description="Number of Tier 0 (Premium) keywords with exceptional opportunity scores (>200)"
+    )
     tier1_count: int = Field(
         description="Number of Tier 1 (Quick Win) keywords"
     )
@@ -74,7 +78,6 @@ class SEOAnalytics(BaseModel):
         description="Keywords with >1000 monthly searches"
     )
 
-
 class CompetitiveAnalytics(BaseModel):
     """Competitive density and market coverage analytics."""
 
@@ -99,7 +102,6 @@ class CompetitiveAnalytics(BaseModel):
         description="Average feature count across competitors"
     )
 
-
 class PainPointAnalytics(BaseModel):
     """Pain point clustering and priority matrix data."""
 
@@ -111,7 +113,7 @@ class PainPointAnalytics(BaseModel):
     high_priority_count: int = Field(
         description="Pain points with severity >= 0.7"
     )
-    quadrant_distribution: Dict[str, int] = Field(
+    quadrant_distribution: dict[str, int] = Field(
         description="Distribution across priority quadrants"
     )
     avg_severity: float = Field(
@@ -127,7 +129,6 @@ class PainPointAnalytics(BaseModel):
     top_pain_point_title: str = Field(
         description="Title of highest priority pain point"
     )
-
 
 class VisualizationManifest(BaseModel):
     """Paths and metadata for generated visualizations."""

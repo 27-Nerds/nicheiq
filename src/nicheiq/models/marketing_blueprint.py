@@ -5,8 +5,7 @@ Provides actionable Go-to-Market strategy with ICP, marketing channels,
 messaging, and content angles for immediate execution.
 """
 
-from typing import List, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class IdealCustomerProfile(BaseModel):
@@ -23,10 +22,10 @@ class IdealCustomerProfile(BaseModel):
     psychographics: str = Field(
         description="Values, motivations, behaviors (2-3 sentences)"
     )
-    pain_points: List[str] = Field(
+    pain_points: list[str] = Field(
         description="Top 3-5 pain points this persona experiences"
     )
-    goals: List[str] = Field(
+    goals: list[str] = Field(
         description="Top 3-5 goals this persona is trying to achieve"
     )
     buying_triggers: str = Field(
@@ -35,7 +34,6 @@ class IdealCustomerProfile(BaseModel):
     decision_criteria: str = Field(
         description="What they evaluate when choosing a solution (1-2 sentences)"
     )
-
 
 class MarketingChannel(BaseModel):
     """A specific marketing channel with strategy and rationale."""
@@ -48,7 +46,7 @@ class MarketingChannel(BaseModel):
     channel_type: str = Field(
         description="Type: Social, SEO, Paid, Community, Content, Email, etc."
     )
-    target_audience_size: Optional[str] = Field(
+    target_audience_size: str | None = Field(
         default=None,
         description="Estimated audience size (e.g., '50K subreddit members', '2M monthly searches')"
     )
@@ -61,7 +59,6 @@ class MarketingChannel(BaseModel):
     priority: str = Field(
         description="Priority: High, Medium, Low"
     )
-
 
 class ContentAngle(BaseModel):
     """A specific content idea addressing pain points."""
@@ -80,35 +77,33 @@ class ContentAngle(BaseModel):
     hook: str = Field(
         description="Opening hook to grab attention (1-2 sentences)"
     )
-    key_points: List[str] = Field(
+    key_points: list[str] = Field(
         description="3-5 key points or sections to cover"
     )
     target_channel: str = Field(
         description="Where to publish this content"
     )
 
-
 class First30DaysPlaybook(BaseModel):
     """Concrete action items for the first 30 days."""
 
     model_config = ConfigDict(extra='forbid')
 
-    week_1_actions: List[str] = Field(
+    week_1_actions: list[str] = Field(
         description="3-5 specific actions for week 1"
     )
-    week_2_actions: List[str] = Field(
+    week_2_actions: list[str] = Field(
         description="3-5 specific actions for week 2"
     )
-    week_3_actions: List[str] = Field(
+    week_3_actions: list[str] = Field(
         description="3-5 specific actions for week 3"
     )
-    week_4_actions: List[str] = Field(
+    week_4_actions: list[str] = Field(
         description="3-5 specific actions for week 4"
     )
-    success_metrics: List[str] = Field(
+    success_metrics: list[str] = Field(
         description="3-5 metrics to track during first 30 days"
     )
-
 
 class GTMBlueprint(BaseModel):
     """
@@ -132,11 +127,11 @@ class GTMBlueprint(BaseModel):
         description="Before-After-Bridge framework: problem state, desired state, solution bridge (3 sentences)"
     )
 
-    recommended_channels: List[MarketingChannel] = Field(
+    recommended_channels: list[MarketingChannel] = Field(
         description="Top 2-3 marketing channels with strategy and rationale"
     )
 
-    example_content_angles: List[ContentAngle] = Field(
+    example_content_angles: list[ContentAngle] = Field(
         description="3-5 ready-to-execute content ideas addressing pain points"
     )
 
@@ -144,11 +139,10 @@ class GTMBlueprint(BaseModel):
         description="Week-by-week action plan for first month"
     )
 
-    budget_estimate: Optional[str] = Field(
+    budget_estimate: str | None = Field(
         default=None,
         description="Estimated monthly marketing budget for first 3 months (optional)"
     )
-
 
 # Model for LLM-generated marketing components (hybrid approach)
 class MarketingNarrative(BaseModel):
@@ -168,6 +162,6 @@ class MarketingNarrative(BaseModel):
         description="Before-After-Bridge framework (3 sentences)"
     )
 
-    content_angles: List[ContentAngle] = Field(
+    content_angles: list[ContentAngle] = Field(
         description="3-5 content ideas with hooks and key points"
     )

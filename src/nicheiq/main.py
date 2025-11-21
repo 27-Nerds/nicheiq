@@ -41,7 +41,6 @@ def setup_logging():
 
     logger.info("Logging configured successfully")
 
-
 def validate_environment():
     """Validate that all required environment variables are set."""
     required_vars = {
@@ -68,7 +67,6 @@ def validate_environment():
 
     logger.info("✓ All required environment variables are set")
     return True
-
 
 def run_research(
     niche_description: str,
@@ -101,7 +99,7 @@ def run_research(
 
     # Validate environment
     if not validate_environment():
-        raise EnvironmentError("Environment validation failed. Please check your .env file.")
+        raise OSError("Environment validation failed. Please check your .env file.")
 
     # Initialize research flow
     flow = ResearchFlow(niche_description=niche_description, allowed_project_types=allowed_project_types)
@@ -125,7 +123,6 @@ def run_research(
         report_path = flow.run_with_resume(auto_resume=False)
 
     return report_path
-
 
 def list_checkpoints(niche_description: str = None):
     """
@@ -167,7 +164,7 @@ def list_checkpoints(niche_description: str = None):
         metadata_file = cp / "metadata.json"
         if metadata_file.exists():
             import json
-            with open(metadata_file, "r") as f:
+            with open(metadata_file) as f:
                 metadata = json.load(f)
 
             niche = metadata.get("niche_description", "Unknown")[:60]
@@ -185,7 +182,6 @@ def list_checkpoints(niche_description: str = None):
             logger.info(f"\n📁 {cp.name} (no metadata)")
 
     logger.info("\n" + "=" * 80)
-
 
 def main():
     """
@@ -326,7 +322,7 @@ Examples:
             resume=args.resume,
             checkpoint_path=args.checkpoint
         )
-        logger.info(f"\n✓ Research completed successfully!")
+        logger.info("\n✓ Research completed successfully!")
         logger.info(f"✓ Report saved to: {report_path}")
         sys.exit(0)
 
@@ -337,7 +333,6 @@ Examples:
     except Exception as e:
         logger.exception(f"Research failed: {e}")
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()

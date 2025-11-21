@@ -3,8 +3,6 @@ DataSourceResearchCrew - Stage 9.75: Targeted Data Source Research
 Deep research on data sources, APIs, and integrations for the SELECTED solution only.
 """
 
-from typing import List, Optional
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import SerperDevTool
@@ -40,8 +38,8 @@ class DataSourceResearchCrew:
     def __init__(
         self,
         solution: SolutionIdea,
-        competitive_landscape: Optional[CompetitiveLandscape],
-        seo_strategy: Optional[SEOStrategyReport],
+        competitive_landscape: CompetitiveLandscape | None,
+        seo_strategy: SEOStrategyReport | None,
         niche_description: str
     ):
         """
