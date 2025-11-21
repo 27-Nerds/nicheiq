@@ -4,7 +4,7 @@ Helper utilities for NicheIQ.
 
 import json
 import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -15,7 +15,7 @@ from ..config.settings import settings
 if TYPE_CHECKING:
     from ..models.research_state import NicheContext
     from ..models.solution_idea import SolutionIdea
-    from ..models.pain_point import PainPointAnalysisResult
+    from ..models.pain_point import PainPoint, PainPointAnalysisResult
     from ..models.competitor import CompetitiveAnalysisResult
     from ..models.seo_strategy import ExpandedKeywordList
 
@@ -39,6 +39,69 @@ class BatchValidationResponse(BaseModel):
     results: List[ValidationResult] = Field(..., description="List of validation results, one per thread")
 
 
+def _extract_json_array_from_text(text: str) -> Optional[list]:
+    """
+    Extract first complete JSON array from text (shared utility).
+
+    Performance optimization: Try direct parsing first, then regex, then bracket matching.
+
+    Args:
+        text: Raw text containing JSON array
+
+    Returns:
+        Parsed JSON array or None if extraction fails
+    """
+    # Fast path: Try direct JSON parse if text is clean
+    text_stripped = text.strip()
+    if text_stripped.startswith('['):
+        try:
+            return json.loads(text_stripped)
+        except json.JSONDecodeError:
+            pass  # Fall through to extraction methods
+
+    # Medium path: Extract JSON with regex (handles common cases like "Here's the list: [...]")
+    json_match = re.search(r'\[.*\]', text, re.DOTALL)
+    if json_match:
+        try:
+            return json.loads(json_match.group(0))
+        except json.JSONDecodeError:
+            pass  # Fall through to bracket matching
+
+    # Slow path: Manual bracket matching for complex cases (brackets in strings, etc.)
+    start_idx = text.find('[')
+    if start_idx == -1:
+        return None
+
+    bracket_count = 0
+    in_string = False
+    escape_next = False
+
+    for i, char in enumerate(text[start_idx:], start=start_idx):
+        # Handle string literals (ignore brackets inside strings)
+        if char == '"' and not escape_next:
+            in_string = not in_string
+        elif char == '\\' and in_string:
+            escape_next = not escape_next
+            continue
+
+        if not in_string:
+            if char == '[':
+                bracket_count += 1
+            elif char == ']':
+                bracket_count -= 1
+                if bracket_count == 0:
+                    try:
+                        return json.loads(text[start_idx:i+1])
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"JSON parse failed at bracket close: {e}")
+                        return None
+
+        escape_next = False
+
+    logger.warning("No matching closing bracket found")
+    return None
+
+
 class QueryGenerator:
     """LLM-based search query generator for finding niche pain points."""
 
@@ -47,6 +110,7 @@ class QueryGenerator:
             model=settings.openai_model_name,
             temperature=0.7,
             api_key=settings.openai_api_key,
+            timeout=120,
         )
 
     def _sanitize_for_prompt(self, text: str, max_length: int = 1000) -> str:
@@ -67,48 +131,8 @@ class QueryGenerator:
         return text
 
     def _extract_json_array(self, text: str) -> Optional[list]:
-        """
-        Extract first complete JSON array from text using bracket matching.
-        Handles brackets inside string literals correctly.
-
-        Args:
-            text: Raw text containing JSON array
-
-        Returns:
-            Parsed JSON array or None if extraction fails
-        """
-        start_idx = text.find('[')
-        if start_idx == -1:
-            return None
-
-        bracket_count = 0
-        in_string = False
-        escape_next = False
-
-        for i, char in enumerate(text[start_idx:], start=start_idx):
-            # Handle string literals (ignore brackets inside strings)
-            if char == '"' and not escape_next:
-                in_string = not in_string
-            elif char == '\\' and in_string:
-                escape_next = not escape_next
-                continue
-
-            if not in_string:
-                if char == '[':
-                    bracket_count += 1
-                elif char == ']':
-                    bracket_count -= 1
-                    if bracket_count == 0:
-                        try:
-                            return json.loads(text[start_idx:i+1])
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"JSON parse failed at bracket close: {e}")
-                            return None
-
-            escape_next = False
-
-        logger.warning("No matching closing bracket found")
-        return None
+        """Extract first complete JSON array from text."""
+        return _extract_json_array_from_text(text)
 
     def generate_queries(
         self,
@@ -417,6 +441,7 @@ class CompetitorQueryGenerator:
             model=settings.openai_model_name,
             temperature=0.7,
             api_key=settings.openai_api_key,
+            timeout=120,
         )
 
     def _sanitize_for_prompt(self, text: str, max_length: int = 500) -> str:
@@ -437,48 +462,8 @@ class CompetitorQueryGenerator:
         return text
 
     def _extract_json_array(self, text: str) -> Optional[list]:
-        """
-        Extract first complete JSON array from text using bracket matching.
-        Handles brackets inside string literals correctly.
-
-        Args:
-            text: Raw text containing JSON array
-
-        Returns:
-            Parsed JSON array or None if extraction fails
-        """
-        start_idx = text.find('[')
-        if start_idx == -1:
-            return None
-
-        bracket_count = 0
-        in_string = False
-        escape_next = False
-
-        for i, char in enumerate(text[start_idx:], start=start_idx):
-            # Handle string literals (ignore brackets inside strings)
-            if char == '"' and not escape_next:
-                in_string = not in_string
-            elif char == '\\' and in_string:
-                escape_next = not escape_next
-                continue
-
-            if not in_string:
-                if char == '[':
-                    bracket_count += 1
-                elif char == ']':
-                    bracket_count -= 1
-                    if bracket_count == 0:
-                        try:
-                            return json.loads(text[start_idx:i+1])
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"JSON parse failed at bracket close: {e}")
-                            return None
-
-            escape_next = False
-
-        logger.warning("No matching closing bracket found")
-        return None
+        """Extract first complete JSON array from text."""
+        return _extract_json_array_from_text(text)
 
     def generate_competitor_queries(
         self,
@@ -815,7 +800,8 @@ class KeywordSeedGenerator:
         self.llm = ChatOpenAI(
             model=settings.openai_model_name,
             temperature=0.5,  # Balanced creativity for keyword diversity
-            api_key=settings.openai_api_key
+            api_key=settings.openai_api_key,
+            timeout=120,
         )
 
     def generate_seeds(
@@ -987,7 +973,30 @@ Before generating keywords, review these rules:
 
 Write 1 sentence confirming you'll extract categories instead of using invented brand names.
 
-Write 1-2 sentences confirming you've reviewed all 7 rules.
+**RULE 8: Domain-lock ambiguous terms with mandatory qualifiers**
+
+Polysemous terms (words with multiple meanings) MUST include domain-qualifying modifiers:
+
+**High-Risk Ambiguous Terms:**
+- "validate" → "business validation" or "idea validation" (NOT bare "validate")
+- "test" → "market testing" or "user testing" (NOT bare "test")
+- "track" → "customer tracking" or "analytics tracking" (NOT bare "track")
+- "monitor" → "performance monitoring" or "uptime monitoring" (NOT bare "monitor")
+- "discover" → "market discovery" or "pain point discovery" (NOT bare "discover")
+- "manage" → "project management" or "team management" (NOT bare "manage")
+- "optimize" → "conversion optimization" or "SEO optimization" (NOT bare "optimize")
+
+**Domain-locking examples:**
+✅ "Struggle to Validate Ideas" → "business idea validation", "startup validation tools"
+✅ "Track Customer Behavior" → "customer behavior tracking", "user analytics tracking"
+❌ "Struggle to Validate Ideas" → "validate", "validation" (expands to code validation)
+❌ "Track Behavior" → "track", "tracking" (expands to GPS tracking)
+
+**Self-Check:** If keyword is 1-2 words with action verb → Add domain qualifier
+
+Write 1 sentence confirming you'll add domain qualifiers to ambiguous terms.
+
+Write 1-2 sentences confirming you've reviewed all 8 rules.
 
 **STEP 4: PLAN TOPIC CLUSTERS**
 
@@ -1017,8 +1026,20 @@ Generate by extracting:
   * Example: "appliances", "tools", "software", "directory"
 
 - **Type 2:** Problem/need terms from pain_points_addressed (5-8 keywords)
-  * Extract core PROBLEMS without context
-  * Example: "reviews", "comparison", "pricing", "reliability"
+  * Extract core PROBLEMS with domain-qualifying context (apply RULE 8)
+  * Transform into user search queries (what would they type on Google?)
+
+  **Correct extraction patterns:**
+  ✅ "Struggle to Validate Ideas" → "business idea validation", "startup validation tools"
+  ✅ "Difficulty Finding Niches" → "niche market research", "profitable niche finder"
+  ✅ "Can't Track ROI" → "marketing ROI tracking", "campaign analytics tools"
+
+  **Incorrect patterns (avoid bare ambiguous terms):**
+  ❌ "Struggle to Validate Ideas" → "validate", "validation"
+  ❌ "Difficulty Testing Markets" → "test", "testing"
+  ❌ "Can't Track Metrics" → "track", "tracking"
+
+  **Validation:** Would this keyword return business tools (correct) or code libraries (incorrect)?
 
 - **Type 3:** Category/industry terms (5-8 keywords)
   * Broad category descriptors
@@ -1270,6 +1291,34 @@ Generate the keywords now, following STEP 1-5 process."""
         Returns:
             True if keyword appears to be a brand name
         """
+        # Whitelist common acronyms that contain mid-word capitals
+        # These are industry-standard terms, NOT brand names
+        COMMON_ACRONYMS = {
+            'SaaS', 'PaaS', 'IaaS', 'BaaS',  # Cloud service models
+            'API', 'APIs',                     # Application interfaces
+            'B2B', 'B2C', 'B2B2C',             # Business models
+            'AI', 'ML', 'LLM',                 # Artificial intelligence
+            'IoT', 'iOS', 'macOS',             # Operating systems / tech
+            'SME', 'SMB',                      # Business segments
+            'MVP', 'GTM', 'KPI',               # Business terms
+            'SEO', 'SEM', 'CRO',               # Marketing terms
+            'OAuth', 'GraphQL', 'GitHub', 'GitLab',  # Tech platforms
+            'JavaScript', 'TypeScript',        # Programming languages
+            'DevOps', 'DataOps', 'MLOps',      # Operations methodologies
+            'FinTech', 'EdTech', 'HealthTech', 'MarTech'  # Industry sectors
+        }
+
+        # Check if keyword contains any whitelisted acronym
+        for acronym in COMMON_ACRONYMS:
+            if acronym in keyword:
+                # Remove acronym from keyword and check remainder
+                keyword_without_acronym = keyword.replace(acronym, '')
+
+                # If no mid-word capitals remain after removing acronym, it's safe
+                if not re.search(r'[a-z][A-Z]', keyword_without_acronym):
+                    logger.debug(f"Brand check: '{keyword}' contains acronym '{acronym}' - ALLOWED")
+                    return False
+
         # Check for mid-word capitals (CamelCase/PascalCase)
         if re.search(r'[a-z][A-Z]', keyword):
             logger.debug(f"Brand heuristic: '{keyword}' has mid-word capitals")
@@ -1593,7 +1642,10 @@ def generate_competitive_queries(product_idea: str) -> List[str]:
     return queries
 
 
-def find_solution_by_name(solution_name: str, solution_list: list) -> Optional:
+def find_solution_by_name(
+    solution_name: str,
+    solution_list: List['SolutionIdea']
+) -> Optional['SolutionIdea']:
     """
     Find solution by name with fuzzy matching fallback.
 
@@ -1609,6 +1661,10 @@ def find_solution_by_name(solution_name: str, solution_list: list) -> Optional:
     Returns:
         Matching SolutionIdea or None if no match found
     """
+    # Validate inputs
+    if not solution_list:
+        return None
+
     # Try exact match first
     exact_match = next(
         (sol for sol in solution_list if sol.solution_name == solution_name),
@@ -1866,19 +1922,21 @@ class KeywordRelevanceValidator:
             model=settings.keyword_validation_llm,
             temperature=0,  # Deterministic for consistency
             api_key=settings.openai_api_key,
+            timeout=120,  # 2 minute timeout to prevent indefinite hangs
         )
 
-    def pre_filter_keywords(self, keywords: List[dict]) -> List[dict]:
+    def pre_filter_keywords(self, keywords: List[dict], skip_single_word_filter: bool = False) -> List[dict]:
         """
         Apply universal rule-based pre-filtering before LLM validation.
 
         Filters out:
-        1. Single-word keywords (except those in SINGLE_WORD_EXCEPTIONS)
+        1. Single-word keywords (except those in SINGLE_WORD_EXCEPTIONS) - can be skipped for seeds
         2. Very short keywords (<4 chars, except exceptions like 'api', 'seo')
         3. Keywords with special characters (emoji, symbols)
 
         Args:
             keywords: List of keyword dicts with 'keyword' key
+            skip_single_word_filter: If True, allow single-word keywords (for seed validation)
 
         Returns:
             Filtered list of keyword dicts
@@ -1890,9 +1948,11 @@ class KeywordRelevanceValidator:
             keyword = kw_dict.get('keyword', '').strip()
             keyword_lower = keyword.lower()
 
-            # Rule 1: Filter single-word keywords (except exceptions)
-            word_count = len(keyword.split())
-            if word_count == 1 and keyword_lower not in self.SINGLE_WORD_EXCEPTIONS:
+            # Rule 1: Filter single-word keywords (except exceptions or when skip flag is set)
+            # Count hyphenated parts as separate words (e.g., "micro-saas" = 2 words)
+            # Filter empty strings to handle leading/trailing hyphens correctly
+            word_count = len([w for w in re.split(r'[\s\-]+', keyword) if w])
+            if word_count == 1 and not skip_single_word_filter and keyword_lower not in self.SINGLE_WORD_EXCEPTIONS:
                 logger.debug(f"Pre-filter: Removed single-word keyword '{keyword}' (not in exceptions)")
                 removed_count += 1
                 continue
@@ -1904,8 +1964,8 @@ class KeywordRelevanceValidator:
                 continue
 
             # Rule 3: Filter keywords with special characters/emoji
-            # Allow alphanumeric, spaces, hyphens, apostrophes
-            if not re.match(r'^[a-zA-Z0-9\s\-\']+$', keyword):
+            # Allow alphanumeric, spaces, hyphens, apostrophes, ampersand (valid per DataForSEO docs)
+            if not re.match(r'^[a-zA-Z0-9\s\-\'&]+$', keyword):
                 logger.debug(f"Pre-filter: Removed keyword with special characters '{keyword}'")
                 removed_count += 1
                 continue
@@ -1928,7 +1988,9 @@ class KeywordRelevanceValidator:
         solution_description: str,
         project_type: str = "saas",
         batch_size: int = 50,
-        threshold: float = 0.5
+        threshold: float = 0.5,
+        skip_single_word_filter: bool = False,
+        validation_cache: Optional[Dict[str, tuple]] = None
     ) -> List[tuple]:
         """
         Validate keyword relevance in batches using LLM.
@@ -1943,12 +2005,14 @@ class KeywordRelevanceValidator:
             project_type: Solution type (saas/directory/aggregator/etc)
             batch_size: Number of keywords to validate per API call (default: 50)
             threshold: Minimum relevance score to consider relevant (default: 0.5)
+            skip_single_word_filter: If True, allow single-word keywords (for seed validation)
+            validation_cache: Optional dict to cache results across calls {keyword_lower: (is_relevant, score)}
 
         Returns:
             List of (keyword_dict, is_relevant, relevance_score) tuples
         """
         # Pre-filter first
-        filtered_keywords = self.pre_filter_keywords(keywords)
+        filtered_keywords = self.pre_filter_keywords(keywords, skip_single_word_filter=skip_single_word_filter)
 
         if not filtered_keywords:
             logger.warning("Pre-filter removed all keywords - returning empty result")
@@ -1956,8 +2020,33 @@ class KeywordRelevanceValidator:
 
         results = []
 
-        for i in range(0, len(filtered_keywords), batch_size):
-            batch = filtered_keywords[i:i + batch_size]
+        # Separate cached vs uncached keywords
+        uncached_keywords = []
+        if validation_cache is not None:
+            for kw_dict in filtered_keywords:
+                keyword_lower = kw_dict.get('keyword', '').strip().lower()
+                if keyword_lower in validation_cache:
+                    # Use cached result
+                    is_relevant, score = validation_cache[keyword_lower]
+                    results.append((kw_dict, is_relevant, score))
+                    logger.debug(f"Cache hit: '{keyword_lower}' -> relevant={is_relevant}, score={score}")
+                else:
+                    uncached_keywords.append(kw_dict)
+
+            if uncached_keywords:
+                logger.info(f"[Validation] Cache: {len(filtered_keywords) - len(uncached_keywords)} hits, {len(uncached_keywords)} to validate")
+        else:
+            uncached_keywords = filtered_keywords
+
+        if not uncached_keywords:
+            logger.info("[Validation] All keywords found in cache - skipping LLM validation")
+            return results
+
+        for i in range(0, len(uncached_keywords), batch_size):
+            batch = uncached_keywords[i:i + batch_size]
+            batch_num = (i // batch_size) + 1
+            total_batches = (len(uncached_keywords) + batch_size - 1) // batch_size
+            logger.info(f"[Validation] Processing batch {batch_num}/{total_batches} ({len(batch)} keywords)...")
 
             # Format batch for prompt (keyword only, with index)
             keywords_text = "\n".join([
@@ -2009,6 +2098,10 @@ class KeywordRelevanceValidator:
 
                         validated_keywords.add(keyword_lower)
 
+                        # Update cache with new result
+                        if validation_cache is not None:
+                            validation_cache[keyword_lower] = (is_relevant, validation_result.relevance_score)
+
                         # Log validation decision at DEBUG level
                         status = "RELEVANT" if is_relevant else "FILTERED"
                         logger.debug(
@@ -2022,38 +2115,239 @@ class KeywordRelevanceValidator:
                             f"(not in batch) - skipping"
                         )
 
-                # Verify all keywords were validated (fail-open for missing)
+                # Log missing keywords (wrapper will handle retry if used)
                 if len(validated_keywords) < len(batch):
                     missing_count = len(batch) - len(validated_keywords)
-                    logger.warning(
-                        f"LLM did not validate {missing_count} keywords from batch - "
-                        f"adding them as relevant (fail-open)"
+                    missing_keywords_list = [
+                        kw_dict.get('keyword')
+                        for kw_dict in batch
+                        if kw_dict.get('keyword', '').lower() not in validated_keywords
+                    ]
+                    logger.debug(
+                        f"LLM did not validate {missing_count} keywords from batch: "
+                        f"{', '.join(missing_keywords_list[:5])}"
+                        f"{'...' if len(missing_keywords_list) > 5 else ''}"
                     )
-                    # Add missing keywords as relevant
-                    for kw_dict in batch:
-                        if kw_dict.get('keyword', '').lower() not in validated_keywords:
-                            results.append((kw_dict, True, 1.0))
-                            logger.debug(
-                                f"Validation: {kw_dict.get('keyword')} -> RELEVANT "
-                                f"(default, not in LLM response)"
-                            )
 
             except Exception as e:
                 logger.warning(
-                    f"Validation batch failed: {e} - keeping all {len(batch)} keywords "
-                    f"(fail-open strategy)"
+                    f"Validation batch failed: {e} - batch will be retried if wrapper is used"
                 )
-                # On error, keep all keywords with score 1.0 (fail-open)
-                results.extend([
-                    (kw_dict, True, 1.0)
-                    for kw_dict in batch
-                ])
+                # Don't add keywords on error - let wrapper handle retry
+                # (If validate_batch called directly, batch will be lost)
 
         # Log summary
         relevant_count = sum(1 for _, is_relevant, _ in results if is_relevant)
         logger.info(
             f"[LLM Validation] {relevant_count}/{len(results)} keywords passed relevance threshold "
             f"({threshold:.1f})"
+        )
+
+        return results
+
+    def validate_batch_with_retry(
+        self,
+        keywords: List[Dict[str, Any]],
+        niche_description: str,
+        solution_name: str,
+        solution_description: str,
+        project_type: str = "saas",
+        batch_size: int = 50,
+        threshold: float = 0.5,
+        max_retries: int = 1,
+        retry_batch_size: Optional[int] = None,
+        fail_open_after_retry: bool = False
+    ) -> List[tuple]:
+        """
+        Validate keyword relevance with automatic retry for missing keywords.
+
+        This wrapper method calls validate_batch() for the initial validation attempt,
+        then retries any keywords that the LLM failed to validate. This improves
+        validation coverage from ~80-95% to >98%.
+
+        Args:
+            keywords: List of keyword dicts to validate
+            niche_description: Description of the niche
+            solution_name: Name of the solution being analyzed
+            solution_description: Description of the solution
+            project_type: Type of solution (saas, directory, marketplace, etc.)
+            batch_size: Keywords per API call for first attempt (default: 50)
+            threshold: Minimum relevance score to pass (default: 0.5)
+            max_retries: Maximum retry attempts for missing keywords (default: 1)
+            retry_batch_size: Keywords per API call for retry (default: same as batch_size)
+            fail_open_after_retry: If True, add still-missing keywords as relevant after retry;
+                                  if False, exclude them (default: False - fail-closed)
+
+        Returns:
+            List of (keyword_dict, is_relevant, relevance_score) tuples
+
+        Example:
+            >>> validator = KeywordRelevanceValidator()
+            >>> results = validator.validate_batch_with_retry(
+            ...     keywords=[{'keyword': 'saas tools'}, {'keyword': 'random phrase'}],
+            ...     niche_description="tools for indie hackers",
+            ...     solution_name="No-Code Exit Ramp",
+            ...     solution_description="Exit planning for no-code founders",
+            ...     batch_size=150,
+            ...     max_retries=1,
+            ...     retry_batch_size=50
+            ... )
+        """
+        # Guard against empty input (prevents division by zero)
+        if not keywords:
+            logger.debug("[Validation] Empty keyword list - nothing to validate")
+            return []
+
+        # Filter out keywords with None/empty keyword field
+        valid_keywords = [
+            kw for kw in keywords
+            if kw.get('keyword') and kw.get('keyword', '').strip()
+        ]
+        if len(valid_keywords) < len(keywords):
+            logger.debug(
+                f"[Validation] Filtered {len(keywords) - len(valid_keywords)} keywords with empty/None values"
+            )
+        keywords = valid_keywords
+
+        if not keywords:
+            logger.debug("[Validation] No valid keywords remaining after filtering")
+            return []
+
+        if retry_batch_size is None:
+            retry_batch_size = batch_size
+
+        # Build mapping for later use
+        input_keywords_lower = {
+            kw.get('keyword', '').strip().lower(): kw
+            for kw in keywords
+        }
+
+        # ATTEMPT 1: Initial validation
+        logger.info(f"[Validation] Starting initial validation of {len(keywords)} keywords (batch_size={batch_size})")
+
+        try:
+            results = self.validate_batch(
+                keywords=keywords,
+                niche_description=niche_description,
+                solution_name=solution_name,
+                solution_description=solution_description,
+                project_type=project_type,
+                batch_size=batch_size,
+                threshold=threshold
+            )
+        except Exception as e:
+            logger.warning(
+                f"[Validation] Initial validation failed with error: {e} - "
+                f"treating all {len(keywords)} keywords as missing for retry"
+            )
+            results = []
+
+        # Build set of validated keywords (lowercase for matching)
+        validated_keywords = {
+            kw_dict.get('keyword', '').strip().lower()
+            for kw_dict, _, _ in results
+        }
+
+        # Identify missing keywords (keywords passed in but not in results)
+        missing_keyword_keys = set(input_keywords_lower.keys()) - validated_keywords
+        missing_keywords = [input_keywords_lower[key] for key in missing_keyword_keys]
+
+        if not missing_keywords:
+            logger.info(
+                f"[Validation] Initial validation complete: 100% coverage "
+                f"({len(results)}/{len(keywords)} keywords)"
+            )
+            return results
+
+        # RETRY LOGIC
+        logger.warning(
+            f"[Validation] Initial validation incomplete: {len(missing_keywords)}/{len(keywords)} keywords missing "
+            f"({len(missing_keywords)/len(keywords)*100:.1f}%) - preparing retry"
+        )
+
+        retry_count = 0
+        remaining_missing = missing_keywords
+
+        while retry_count < max_retries and remaining_missing:
+            retry_count += 1
+
+            logger.info(
+                f"[Validation Retry {retry_count}/{max_retries}] Attempting validation of "
+                f"{len(remaining_missing)} missing keywords (batch_size={retry_batch_size})"
+            )
+
+            # Retry validation on missing keywords only
+            try:
+                retry_results = self.validate_batch(
+                    keywords=remaining_missing,
+                    niche_description=niche_description,
+                    solution_name=solution_name,
+                    solution_description=solution_description,
+                    project_type=project_type,
+                    batch_size=retry_batch_size,
+                    threshold=threshold
+                )
+            except Exception as e:
+                logger.warning(
+                    f"[Validation Retry {retry_count}] Failed with error: {e} - "
+                    f"continuing with {len(remaining_missing)} keywords still missing"
+                )
+                # Break out of retry loop on exception
+                break
+
+            # Add retry results to main results
+            retry_validated = {
+                kw_dict.get('keyword', '').strip().lower()
+                for kw_dict, _, _ in retry_results
+            }
+
+            results.extend(retry_results)
+            validated_keywords.update(retry_validated)
+
+            # Update remaining missing keywords
+            still_missing_keys = {
+                kw.get('keyword', '').strip().lower()
+                for kw in remaining_missing
+            } - retry_validated
+
+            remaining_missing = [
+                input_keywords_lower[key]
+                for key in still_missing_keys
+                if key in input_keywords_lower
+            ]
+
+            logger.info(
+                f"[Validation Retry {retry_count}] Validated {len(retry_validated)} keywords, "
+                f"{len(remaining_missing)} still missing"
+            )
+
+        # FINAL FAIL-OPEN/FAIL-CLOSED DECISION
+        if remaining_missing and fail_open_after_retry:
+            logger.warning(
+                f"[Validation] {len(remaining_missing)} keywords still missing after {retry_count} retry attempt(s) - "
+                f"adding as relevant (fail-open strategy)"
+            )
+
+            for kw_dict in remaining_missing:
+                results.append((kw_dict, True, 1.0))
+                logger.debug(
+                    f"Validation: {kw_dict.get('keyword')} -> RELEVANT "
+                    f"(fail-open after {retry_count} retry attempt(s))"
+                )
+        elif remaining_missing:
+            logger.warning(
+                f"[Validation] {len(remaining_missing)} keywords still missing after {retry_count} retry attempt(s) - "
+                f"EXCLUDING from results (fail-closed strategy)"
+            )
+
+        # SUMMARY
+        relevant_count = sum(1 for _, is_relevant, _ in results if is_relevant)
+        retry_recovered = len(missing_keywords) - len(remaining_missing) if remaining_missing else len(missing_keywords)
+
+        logger.info(
+            f"[Validation Complete] {relevant_count}/{len(results)} keywords passed relevance threshold. "
+            f"Coverage: {len(results)}/{len(keywords)} ({len(results)/len(keywords)*100:.1f}%). "
+            f"Retry recovered: {retry_recovered} keywords"
         )
 
         return results
@@ -2209,3 +2503,175 @@ Return a JSON object with a 'results' array containing exactly {batch_size} vali
 }}
 
 **CRITICAL**: Be STRICT. It's better to reject borderline keywords than pollute the keyword set with irrelevant terms. When in doubt, mark as NOT RELEVANT."""
+
+
+# ====================================================================================
+# PAIN POINT FORMATTING HELPERS
+# ====================================================================================
+
+def format_pain_points_for_agents(
+    pain_points: List,
+    format_type: str = "detailed",
+    priority_filter: Optional[str] = None,
+    sort_by: str = "severity",
+    limit: int = 10,
+    include_quotes: bool = False
+) -> str:
+    """
+    Unified pain point formatting helper for consistent data passing across crews.
+
+    Eliminates duplication between UnifiedSolutionCrew and SEOStrategyCrew while
+    ensuring all required fields are consistently included.
+
+    Args:
+        pain_points: List of PainPoint objects
+        format_type: Output format (str). Valid values:
+            - "detailed": Full context with description, metrics, quotes (UnifiedSolutionCrew)
+              Example: "**1. Title**\\n- Problem: desc\\n- Severity: 8.5 | WTP: 7.2\\n- Mentions: 42"
+            - "compact": Inline metrics only (SEOStrategyCrew, medium priority)
+              Example: "**Title** (Severity: 8.5, WTP: 7.2)"
+            - "metrics_only": Title + metrics in standardized format
+              Example: "- Title (Severity: 8.5/10, WTP: 7.2/10, Mentions: 42)"
+        priority_filter: Filter by opportunity_level (str or None). Valid values:
+            - "high": Only high-opportunity pain points
+            - "medium": Only medium-opportunity pain points
+            - "low": Only low-opportunity pain points
+            - None: All pain points (default if not specified)
+        sort_by: Sort order (str). Valid values:
+            - "severity": Sort by severity_score descending (highest first)
+            - "wtp": Sort by willingness_to_pay descending
+            - "mentions": Sort by mention_count descending
+            - "title": Sort alphabetically by title ascending
+        limit: Maximum number of pain points to include (int, default: 10)
+        include_quotes: Include representative quote (bool). Only applies to "detailed" format.
+            If True and format_type="detailed", adds quote line to output.
+
+    Returns:
+        Formatted string ready for crew kickoff inputs
+
+    Example Usage:
+        # UnifiedSolutionCrew - high priority with quotes
+        high_priority_list = format_pain_points_for_agents(
+            pain_points=pain_point_analysis.pain_points,
+            format_type="detailed",
+            priority_filter="high",
+            sort_by="severity",
+            limit=10,
+            include_quotes=True
+        )
+
+        # SEOStrategyCrew - top 10 by severity
+        top_pain_points = format_pain_points_for_agents(
+            pain_points=pain_point_analysis.pain_points,
+            format_type="metrics_only",
+            sort_by="severity",
+            limit=10
+        )
+    """
+    # Validate inputs
+    if not pain_points:
+        return ""
+
+    # Validate priority_filter
+    if priority_filter and priority_filter not in ["high", "medium", "low"]:
+        raise ValueError(
+            f"Invalid priority_filter: '{priority_filter}'. "
+            f"Must be one of: 'high', 'medium', 'low', or None"
+        )
+
+    # Validate sort_by
+    valid_sort_options = ["severity", "wtp", "mentions", "title"]
+    if sort_by not in valid_sort_options:
+        raise ValueError(
+            f"Invalid sort_by: '{sort_by}'. "
+            f"Must be one of: {valid_sort_options}"
+        )
+
+    # Filter by priority if specified
+    if priority_filter:
+        filtered = [pp for pp in pain_points if pp.opportunity_level.value == priority_filter]
+    else:
+        filtered = pain_points
+
+    # Sort
+    if sort_by == "severity":
+        filtered = sorted(filtered, key=lambda p: p.severity_score, reverse=True)
+    elif sort_by == "wtp":
+        filtered = sorted(filtered, key=lambda p: p.willingness_to_pay, reverse=True)
+    elif sort_by == "mentions":
+        filtered = sorted(filtered, key=lambda p: p.mention_count, reverse=True)
+    elif sort_by == "title":
+        filtered = sorted(filtered, key=lambda p: p.title)
+
+    # Limit
+    filtered = filtered[:limit]
+
+    # Format based on type
+    if format_type == "detailed":
+        # UnifiedSolutionCrew format: Full context with description and metrics
+        lines = []
+        for i, pp in enumerate(filtered):
+            parts = [
+                f"**{i+1}. {pp.title}**",
+                f"- Problem: {pp.description}",
+                f"- Severity: {pp.severity_score:.2f} | WTP: {pp.willingness_to_pay:.2f}",
+                f"- Mentions: {pp.mention_count}"
+            ]
+            if include_quotes and pp.representative_quotes:
+                parts.append(f"- Key Quote: \"{pp.representative_quotes[0]}\"")
+            lines.append("\n".join(parts))
+        return "\n\n".join(lines) if lines else ""
+
+    elif format_type == "compact":
+        # Medium priority format: Inline metrics
+        lines = [
+            f"**{pp.title}** (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})"
+            for pp in filtered
+        ]
+        return "\n".join(lines) if lines else ""
+
+    elif format_type == "metrics_only":
+        # SEOStrategyCrew format: Standardized metrics with /10 scale
+        lines = [
+            f"- {pp.title} (Severity: {pp.severity_score:.1f}/10, WTP: {pp.willingness_to_pay:.1f}/10, Mentions: {pp.mention_count})"
+            for pp in filtered
+        ]
+        return "\n".join(lines) if lines else ""
+
+    else:
+        raise ValueError(f"Unknown format_type: {format_type}. Must be 'detailed', 'compact', or 'metrics_only'")
+
+
+def extract_pain_points_by_priority(
+    pain_point_analysis: 'PainPointAnalysisResult'
+) -> tuple[List['PainPoint'], List['PainPoint'], List['PainPoint']]:
+    """
+    Extract pain points grouped by opportunity level.
+
+    Helper for crews that need separate high/medium/low priority lists.
+
+    Args:
+        pain_point_analysis: PainPointAnalysisResult from Stage 6
+
+    Returns:
+        Tuple of (high_priority, medium_priority, low_priority) lists
+
+    Example Usage:
+        high_priority, medium_priority, low_priority = extract_pain_points_by_priority(
+            self.pain_point_analysis
+        )
+    """
+    high_priority = [
+        pp for pp in pain_point_analysis.pain_points
+        if pp.opportunity_level.value == "high"
+    ]
+    medium_priority = [
+        pp for pp in pain_point_analysis.pain_points
+        if pp.opportunity_level.value == "medium"
+    ]
+    low_priority = [
+        pp for pp in pain_point_analysis.pain_points
+        if pp.opportunity_level.value == "low"
+    ]
+
+    return high_priority, medium_priority, low_priority

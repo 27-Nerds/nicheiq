@@ -44,41 +44,46 @@ class RedditCollectorTool(BaseTool):
             ratelimit_seconds=60,  # Automatically handle rate limits up to 60 seconds
         )
 
-    def _parse_comment(self, comment) -> Optional[RedditComment]:
+    def _parse_comment(self, comment) -> tuple[Optional[RedditComment], int]:
         """
         Recursively parse a PRAW comment and its replies into our RedditComment model.
         Filters out short comments (below min_comment_length) and low-score comments.
+
+        Performance optimization: Counts comments during parsing to avoid separate traversal.
 
         Args:
             comment: PRAW Comment object
 
         Returns:
-            RedditComment model instance with nested replies, or None if comment fails quality filters
+            Tuple of (RedditComment model or None, total_count including this comment and all replies)
+            Returns (None, 0) if comment fails quality filters
         """
         # Filter out short comments (low-value, often just "+1", "same", "lol", etc.)
         if len(comment.body) < settings.min_comment_length:
             logger.debug(f"Filtering short comment ({len(comment.body)} chars): {comment.body[:30]}...")
-            return None
+            return None, 0
 
         # Filter out low-score comments (downvoted or low-quality)
         if comment.score < settings.min_comment_score:
             logger.debug(f"Filtering low-score comment (score {comment.score}): {comment.body[:30]}...")
-            return None
+            return None, 0
 
         replies = []
+        total_reply_count = 0
 
-        # Recursively parse all replies
+        # Recursively parse all replies and count them in single pass
         if hasattr(comment, 'replies'):
             for reply in comment.replies:
                 # Skip MoreComments objects (load more links)
                 if isinstance(reply, MoreComments):
                     continue
-                parsed_reply = self._parse_comment(reply)
+                parsed_reply, reply_count = self._parse_comment(reply)
                 # Only include non-None replies (those that passed length filter)
                 if parsed_reply:
                     replies.append(parsed_reply)
+                    total_reply_count += reply_count
 
-        return RedditComment(
+        parsed_comment = RedditComment(
             comment_id=comment.id,
             author=str(comment.author) if comment.author else "[deleted]",
             body=comment.body,
@@ -88,21 +93,8 @@ class RedditCollectorTool(BaseTool):
             replies=replies,
         )
 
-    def _count_comments_recursive(self, comments: List[RedditComment]) -> int:
-        """
-        Recursively count all comments (including nested replies).
-
-        Args:
-            comments: List of RedditComment objects
-
-        Returns:
-            Total count of all comments and their nested replies
-        """
-        count = len(comments)
-        for comment in comments:
-            if comment.replies:
-                count += self._count_comments_recursive(comment.replies)
-        return count
+        # Return comment and total count (1 for this comment + all reply counts)
+        return parsed_comment, 1 + total_reply_count
 
     @retry(
         stop=stop_after_attempt(settings.max_retries),
@@ -135,18 +127,19 @@ class RedditCollectorTool(BaseTool):
             submission.comments.replace_more(limit=settings.reddit_comment_limit)
 
             # Parse all top-level comments and their replies (filtering out short comments)
+            # Count comments during parsing (single-pass optimization)
             comments = []
+            substantial_comment_count = 0
+
             for comment in submission.comments:
                 # Skip any remaining MoreComments objects
                 if isinstance(comment, MoreComments):
                     continue
-                parsed_comment = self._parse_comment(comment)
+                parsed_comment, comment_count = self._parse_comment(comment)
                 # Only include non-None comments (those that passed length filter)
                 if parsed_comment:
                     comments.append(parsed_comment)
-
-            # Count substantial comments (including nested replies)
-            substantial_comment_count = self._count_comments_recursive(comments)
+                    substantial_comment_count += comment_count
 
             post = RedditPost(
                 post_id=submission.id,

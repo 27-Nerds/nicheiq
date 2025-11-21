@@ -35,15 +35,20 @@ solution_ideation:
 
     **Project Type Constraints:** {allowed_project_types}
 
+    ## Validated User Segments
+
+    {user_segments}
+
     ═══════════════════════════════════════════════════════════════════════════
 
     **WORKFLOW (FOLLOW IN ORDER):**
 
     1. **Validate Data** → If high_priority_count = 0 AND medium_priority_count = 0, STOP and return error
-    2. **Query Knowledge Sources** → Search for additional quotes and context beyond summaries above
-    3. **Brainstorm** → Generate 3-5 diverse solution concepts (consider ALL types: directories, aggregators, SaaS, marketplaces, comparison tools)
-    4. **Evaluate** → Score each solution for technical_feasibility_score (0-1) and market_fit_score (0-1)
-    5. **Refine** → Add target_personas, detailed core_features, pricing_strategy, differentiation_factors
+    2. **Review User Segments** → Use validated segments above to inform target_personas (align personas with actual user groups)
+    3. **Query Knowledge Sources** → Search for additional quotes and context beyond summaries above
+    4. **Brainstorm** → Generate 3-5 diverse solution concepts (consider ALL types: directories, aggregators, SaaS, marketplaces, comparison tools)
+    5. **Evaluate** → Score each solution for technical_feasibility_score (0-1) and market_fit_score (0-1)
+    6. **Refine** → Add target_personas, detailed core_features, pricing_strategy, differentiation_factors
 
     **CRITICAL: Indexable Pages First Framework**
 
@@ -57,14 +62,16 @@ solution_ideation:
     | **marketplace** | 0.5-0.7 | Profiles + reviews | $80-150 | $200-400 |
     | **saas** | 0.2-0.4 | Manual blog content | $200-400 | $300-600 |
 
-    **Search Strategy for Knowledge Sources:**
+    **SEARCH STRATEGY** (Knowledge Source Queries):
 
-    You have access to pain points with ALL quotes (3-5 per pain point). Query for:
-    - Specific pain point details: Search by pain point title
-    - User frustrations: "struggling", "frustrated", "can't", "difficult"
-    - Existing workarounds: "using", "tried", "currently", "manual"
-    - Impact indicators: "hours", "time", "money", "cost", "expensive"
-    - Willingness to pay: "would pay", "need", "solution", "tool"
+    | Query Type | Purpose | Keywords |
+    |------------|---------|----------|
+    | Feature requests | Discover desired capabilities | "wish", "need", "should have", "would love", "missing feature" |
+    | Workaround detection | Find improvised solutions | "workaround", "hack", "currently using", "cobbled together", "manual process" |
+    | Payment signals | Assess willingness to pay | "worth paying", "would pay", "subscription", "expensive but", "budget for" |
+    | Competitor mentions | Identify solution patterns | "using [tool]", "switched to", "alternative to", "better than", "compared to" |
+    | Unmet needs | Surface solution opportunities | "doesn't exist", "can't find", "why isn't there", "someone should build" |
+    | Integration desires | Find feature combinations | "integrate with", "works with", "connect to", "sync between", "all-in-one" |
 
     **REQUIRED FIELDS FOR EVERY SOLUTION:**
 
@@ -74,7 +81,7 @@ solution_ideation:
        - value_proposition (one clear sentence)
        - pain_points_addressed (list specific titles from data)
        - core_features (5-7 MVP features)
-       - target_personas (2-4 persona descriptions)
+       - target_personas (2-4 persona descriptions aligned with validated user segments above)
 
     2. **Scores & Strategy:**
        - market_fit_score (0-1, based on pain point severity/mentions)
@@ -106,6 +113,40 @@ solution_ideation:
 
     Every solution MUST explicitly reference pain point titles, severity scores, or mention counts.
 
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+
+    Before finalizing output, verify:
+    - [ ] I validated data sufficiency (high OR medium priority count > 0)
+    - [ ] Generated 3-5 solution concepts (diverse project types)
+    - [ ] Each solution has ALL 25 fields populated (no null/missing fields)
+    - [ ] pain_points_addressed lists specific titles from pain point data
+    - [ ] description includes 4-6 sentence step-by-step HOW IT WORKS user journey
+    - [ ] SEO fields completed: seo_scalability_score, estimated_cac_organic/paid, organic_discovery_queries
+    - [ ] project_type selected from allowed types (saas/directory/aggregator/comparison-tool/marketplace)
+    - [ ] target_personas aligned with validated user segments from input
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **STOP CONDITIONS:**
+    ✗ High OR medium priority count = 0 → STOP immediately (insufficient data)
+      ❌ Example: Generating solutions when pain point data shows "insufficient" or count = 0
+
+    **FIELD REQUIREMENTS:**
+    ✗ Vague descriptions or missing fields → Solution will be rejected by Python validation
+      ❌ Example: "A platform that helps users" (vs detailed step-by-step user journey)
+    ✗ Missing SEO fields → Incomplete solution (Python will reject)
+      ❌ Example: Leaving seo_scalability_score, estimated_cac_organic/paid blank
+    ✗ null values in any field → Python validation error
+      ❌ Example: core_features: null (vs populated list)
+
+    **DATA ACCURACY:**
+    ✗ Invented personas not matching validated segments → Invalid output
+      ❌ Example: "Tech-savvy millennials" when user segments show "45-65 year old retirees"
+    ✗ Generic pain_points_addressed → Must use exact titles from data
+      ❌ Example: "user frustration" (vs "High International Transaction Fees" from pain point list)
+    ✗ Scores without evidence → Hallucination (must reference pain point data)
+      ❌ Example: market_fit_score: 0.9 without citing severity scores or mention counts from input
+
   expected_output: >
     IdeaGenerationResult Pydantic model with:
 
@@ -136,87 +177,43 @@ competitive_analysis:
 
     Analyze competitive landscape for ALL solutions from Task 1.
 
-    **CONTEXT from Task 1** (Automatic via CrewAI Context Chaining):
+    **HOW TO ACCESS CONTEXT:**
 
-    You have access to IdeaGenerationResult containing all solution concepts.
-    For each solution, extract: solution_name, description, core_features, target_personas, project_type.
+    Task 1 output (IdeaGenerationResult) is available in your context via CrewAI context chaining.
+
+    **CRITICAL**: Extract the following fields from EACH solution in Task 1 output:
+    - solution_name (use for competitor searches)
+    - description (understand what problem it solves)
+    - core_features (identify feature gaps vs competitors)
+    - target_personas (identify underserved segments)
+    - project_type (directory/saas/aggregator - affects competitor search strategy)
+    - value_proposition (positioning reference)
+
+    **VERIFICATION**: Count solutions from Task 1. Your output MUST contain exactly that many CompetitiveLandscape objects (one per solution).
+    If Task 1 generated 4 solutions → you analyze 4 competitive landscapes.
+    If Task 1 generated 5 solutions → you analyze 5 competitive landscapes.
 
     **CONTEXT: Niche Research Background**
-
-    **Niche Description:** {niche_description}
-
-    **Target Market Segments:**
-    {market_segments}
-
-    **Industry Boundaries:** {industry_boundaries}
+    - Niche Description: {niche_description}
+    - Target Market Segments:
+      {market_segments}
+    - Industry Boundaries: {industry_boundaries}
 
     **WORKFLOW (FOLLOW IN ORDER):**
 
     1. **FOR EACH SOLUTION** (iterate over all solutions from Task 1):
-       a. **Context-Aware Competitor Discovery** (SerperDevTool):
+       a. **Context-Aware Competitor Discovery** (Apply 6 semantic rules BEFORE searching):
 
-          **SEMANTIC VALIDATION RULES (Apply Before Searching):**
+          **Semantic Query Validation (prevent nonsensical searches):**
 
-          Before generating search queries, validate they make semantic sense for the solution's project_type:
+          1. **Physical Products** → Use: "directory/comparison/marketplace", NOT "software/app/tool"
+          2. **B2C Consumer** → Use: "consumer/home/personal", NOT "enterprise/teams"
+          3. **Local/Regional** → Include: city names, regions, NOT generic global terms
+          4. **Solution Type Match** → directory="listing/catalog", saas="software/platform", aggregator="comparison"
+          5. **Market Segments** → Extract keywords from {market_segments} (e.g., "affordable X for first-time buyers")
+          6. **Industry Boundaries** → ONLY search within scope from {industry_boundaries}
 
-          Rule 1: **Physical Products/Services → NO Software Terms**
-          - If niche involves physical products (appliances, furniture, vehicles, etc.):
-          - ✓ Use: "directory", "comparison", "review site", "marketplace"
-          - ✗ Avoid: "app", "software", "tool", "platform" (unless compound like "comparison platform")
-
-          Rule 2: **B2C Consumer Solutions → NO Enterprise Terms**
-          - If market_segments show consumer/residential focus:
-          - ✓ Use: "consumer", "home", "personal", "family"
-          - ✗ Avoid: "enterprise", "for teams", "business software"
-
-          Rule 3: **Local/Regional Services → Geographic Context**
-          - If niche is location-specific (relocation, local services):
-          - ✓ Include: city names, regions, "international", "expat"
-          - ✗ Generic global searches may miss relevant local competitors
-
-          Rule 4: **Solution Type Alignment**
-          - Match search terminology to project_type from Task 1:
-            - **directory** → "directory", "listing", "database", "catalog"
-            - **saas** → "software", "tool", "platform", "app"
-            - **aggregator** → "comparison", "aggregator", "search engine"
-            - **marketplace** → "marketplace", "platform", "exchange"
-            - **comparison-tool** → "comparison", "vs", "alternative"
-
-          Rule 5: **Leverage Market Segments for Targeted Searches**
-          - Use segment keywords from market_segments:
-          - Example: "affordable X for first-time buyers" if segment mentions budget-conscious
-          - Example: "energy-efficient X" if segment mentions eco-conscious
-
-          Rule 6: **Respect Industry Boundaries**
-          - ONLY search within scope defined in industry_boundaries
-          - If boundaries say "OUT OF SCOPE: furniture, decor" → exclude those from searches
-
-          **Example Context-Aware Queries:**
-
-          For B2C Directory (Home Appliances):
-          ✓ "best home appliance review sites"
-          ✓ "appliance comparison directories"
-          ✓ "Consumer Reports alternatives for appliances"
-          ✗ "home appliance software" (semantic mismatch)
-          ✗ "enterprise appliance solutions" (wrong audience)
-
-          For B2B SaaS (Project Management):
-          ✓ "remote team project management software"
-          ✓ "async collaboration tools for distributed teams"
-          ✓ "timezone-friendly project platforms"
-          ✗ "project management directory" (wrong solution type)
-
-          **Intelligent Search Strategy:**
-
-          Generate 6-8 context-aware queries by:
-          1. Analyzing solution's project_type, core_features, target_personas
-          2. Extracting keywords from niche_description and market_segments
-          3. Applying semantic validation rules above
-          4. Creating diverse query types:
-             - Direct competitor searches
-             - Segment-specific searches (using market_segments keywords)
-             - Problem-solution searches (from pain_points_addressed)
-             - Alternative/comparison searches
+          **Search Strategy:** Generate 6-8 queries using solution's project_type + niche keywords + segment modifiers
 
        b. **Verify with Knowledge Sources**:
           - Search for: "using", "tried", "alternative", "competitor", tool names
@@ -255,6 +252,46 @@ competitive_analysis:
     - Underserved segments (personas not targeted by competitors)
     - Integration gaps, workflow friction, poor UX
 
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+
+    Before finalizing output, verify:
+    - [ ] Generated ONE CompetitiveLandscape per solution from Task 1
+    - [ ] Applied semantic validation rules before searching (no nonsensical queries)
+    - [ ] Every competitor has verifiable source (URL or user mention from Knowledge Sources)
+    - [ ] Features/pricing are from websites (not assumed)
+    - [ ] If no competitors found via search, I reported "No competitors found via search" honestly
+    - [ ] Market gaps reference specific user complaints or missing features
+    - [ ] competitive_intensity justified by competitor count/strength
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **STOP CONDITIONS:**
+    ✗ No competitors found via search → Report "No competitors found via search" (honest reporting)
+      ❌ Example: Fabricating "CompetitorX Pro" when searches return zero results
+      ✅ Example: "No competitors found via search for [solution type]" (transparent admission)
+
+    **VERIFICATION REQUIREMENTS:**
+    ✗ Competitor without verifiable source → Invalid entry (must have URL or user mention)
+      ❌ Example: Listing "ToolX - $99/mo" without website URL or Knowledge Source user mention
+      ✅ Example: "ToolY ($149/mo) - https://tooly.com/pricing - mentioned by 3 Reddit users"
+    ✗ Features without website verification → Fabrication risk
+      ❌ Example: Assuming competitor has "AI matching" without checking their product page
+      ✅ Example: "AI-powered matching (confirmed on product page: https://...)"
+    ✗ Pricing without official source → Must mark "Pricing not publicly available"
+      ❌ Example: Guessing "$50/month" when pricing page doesn't exist
+      ✅ Example: "Pricing not publicly available (checked website 2025-01-19)"
+
+    **DATA ACCURACY:**
+    ✗ Nonsensical search queries → Semantic validation failure
+      ❌ Example: "home appliance software" for physical product directory (wrong category)
+      ✅ Example: "home appliance comparison sites" (aligned with directory solution type)
+    ✗ Wrong audience terms → Context mismatch
+      ❌ Example: "enterprise relocation platforms" for consumer expat solution
+      ✅ Example: "personal relocation services" (matches B2C target market from context)
+    ✗ Generic market gaps without evidence → Hallucination
+      ❌ Example: "Better UX needed" (vague, unsubstantiated)
+      ✅ Example: "Real-time pricing transparency - cited by 12 users in pain point analysis" (specific, verified)
+
   expected_output: >
     CompetitiveAnalysisResult Pydantic model with:
 
@@ -273,7 +310,7 @@ competitive_analysis:
 
 competitive_refinement:
   description: >
-    ═══ TASK 3: COMPETITIVE ENHANCEMENTS ═══
+    ═══ CRITICAL RULES (Read First) ═══
     ✓ Generate ONLY enhancements based on competitive analysis
     ✓ Focus on NEW features, differentiation factors, and refinements
     ✓ Python will merge with Task 1 base solutions automatically
@@ -333,6 +370,43 @@ competitive_refinement:
        - Optional updates (only if warranted)
 
     3. Write overall_competitive_insights covering all solutions
+
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+
+    Before finalizing output, verify:
+    - [ ] Generated ONE SolutionEnhancement per Task 1 solution (1:1 mapping)
+    - [ ] solution_name is EXACT character-by-character match to Task 1
+    - [ ] new_core_features are ADDITIONS (not all features - Python merges)
+    - [ ] new_differentiation_factors reference competitive gaps from Task 2
+    - [ ] Optional updates (value_proposition, pricing) only provided if competitive analysis justifies changes
+    - [ ] market_fit_score_adjustment is ±0.1 max, only if warranted
+    - [ ] overall_competitive_insights synthesizes themes across ALL solutions
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **FIELD REQUIREMENTS:**
+    ✗ Copying all features from Task 1 → Python merges automatically (only add NEW)
+      ❌ Example: new_core_features = [all 7 original features from Task 1]
+      ✅ Example: new_core_features = [2-3 NEW features from competitive gaps identified in Task 2]
+    ✗ Inexact solution_name match → Python merge will fail
+      ❌ Example: Task 1 = "RelocatePro", Task 3 = "RelocatePro Platform" (mismatch)
+      ✅ Example: Task 1 = "RelocatePro", Task 3 = "RelocatePro" (exact character-by-character match)
+
+    **DATA ACCURACY:**
+    ✗ Enhancements unrelated to competitive analysis → Invalid
+      ❌ Example: Adding "Mobile app" when Task 2 showed no mobile-related competitive gap
+      ✅ Example: Adding "Real-time pricing dashboard" when Task 2 identified pricing transparency as market gap
+    ✗ Large score adjustments without justification → Arbitrary
+      ❌ Example: market_fit_score_adjustment: -0.3 (exceeds ±0.1 limit, unjustified)
+      ✅ Example: market_fit_score_adjustment: 0.05 (competitive gap increases fit, within ±0.1 range)
+    ✗ Generic value proposition updates → Vague
+      ❌ Example: "A better platform for users" (meaningless fluff)
+      ✅ Example: "Enhanced with real-time pricing transparency and AI-powered matching" (specific competitive advantages)
+
+    **SCOPE VIOLATIONS:**
+    ✗ overall_competitive_insights not covering all solutions → Incomplete synthesis
+      ❌ Example: Insights discuss only 1 of 3 solutions (ignores 2 solutions)
+      ✅ Example: Insights synthesize competitive themes across all 3 solutions with cross-cutting patterns
 
     **EXAMPLE OUTPUT:**
 
@@ -453,15 +527,47 @@ solution_selection:
 
     This enables transparent comparison of ALL alternatives in the final report.
 
-    **QUALITY CHECKLIST:**
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
     Before finalizing selection, verify:
-    - [ ] Selection rationale references ≥5 specific data points (scores, CAC, gaps, mentions)
-    - [ ] Each criterion score justified with evidence
-    - [ ] all_solution_scores populated for ALL solutions (selected + runner-ups)
-    - [ ] Runner-up solutions identified (2nd and 3rd place)
-    - [ ] Recommended focus is actionable and specific
-    - [ ] No generic language ("strong potential", "good fit") - all claims quantified
+    - [ ] Selected ONE solution (highest composite score)
+    - [ ] Selection rationale references ≥5 specific data points (pain point severity, CAC estimates, gap count, competitive intensity)
+    - [ ] selection_criteria_scores has 4 scores for selected solution (market_fit, technical_feasibility, competitive_advantage, seo_growth_potential)
+    - [ ] all_solution_scores populated for ALL solutions (selected + runner-ups) with 7 fields each
+    - [ ] all_solution_scores DOES NOT include keyword_demand_score or adjusted_composite_score (calculated later in Stage 8.8)
+    - [ ] Composite score calculated correctly: (0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
+    - [ ] Runner-up solutions listed (2nd and 3rd place by composite score)
+    - [ ] Recommended focus is actionable (not generic "validate market")
+    - [ ] No generic language - all claims quantified with evidence
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **FIELD REQUIREMENTS:**
+    ✗ Including keyword_demand_score in all_solution_scores → Premature (Stage 8.8 calculates)
+      ❌ Example: {keyword_demand_score: 0.8, adjusted_composite_score: 0.75} in all_solution_scores
+      ✅ Example: {composite_score: 0.68, rank: 1} (only 7 required fields, no keyword_demand_score)
+    ✗ Incorrect composite score formula → Calculation error
+      ❌ Example: Equal weights (0.25 each) instead of specified weighted formula
+      ✅ Example: (0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
+
+    **DATA ACCURACY:**
+    ✗ Generic selection rationale without data → Hallucination risk
+      ❌ Example: "Strong market fit and low competition" (vague, no numbers)
+      ✅ Example: "Addresses 3 pain points (avg severity 0.82), LOW competitive intensity with 5 gaps, $20-40 organic CAC"
+    ✗ Scores without evidence → Arbitrary scoring
+      ❌ Example: competitive_advantage_score: 0.9 (no justification from Task 2 data)
+      ✅ Example: competitive_advantage_score: 0.85 (LOW intensity + 5 market gaps from Task 2)
+    ✗ Vague recommended focus → Generic fluff
+      ❌ Example: "Build MVP and validate market" (meaningless template)
+      ✅ Example: "Validate directory curation model with 50 early adopters in expat communities, focus on pricing transparency feature"
+
+    **TRANSPARENCY VIOLATIONS:**
+    ✗ Missing all_solution_scores → Incomplete comparison visibility
+      ❌ Example: Only providing scores for selected solution (hides alternatives)
+      ✅ Example: all_solution_scores populated for ALL solutions with 7 fields each (enables transparent comparison)
+    ✗ Incomplete all_solution_scores entries → Missing data
+      ❌ Example: Only 3 of 7 fields populated per solution
+      ✅ Example: All 7 fields (solution_name, 4 criterion scores, composite_score, rank) populated for every solution
 
   expected_output: >
     SolutionSelection Pydantic model with:

@@ -37,7 +37,10 @@ ResearchFlow (Main Orchestrator - research_flow.py)
     ├── Delegated to ReportGenerator class (src/nicheiq/report/report_generator.py)
     ├── Step 1: Python data assembly (80% of fields - direct copy/templates)
     ├── Step 2: Optional LLM synthesis (3 strategic fields only)
-    └── Step 3: Enhanced sections (Python: metadata, evidence, roadmaps)
+    ├── Step 3: Enhanced sections (Python: metadata, evidence, roadmaps)
+    ├── Phase 1: Executive Dashboard (go/no-go verdict, core pain point, key metrics)
+    ├── Phase 2: GTM Blueprint (ICP, marketing channels, content angles, 30-day playbook)
+    └── Phase 3: Analytics & Visualizations (market/SEO/competitive/pain point analytics + charts)
 ```
 
 ### CRITICAL: Knowledge Sources vs Inputs Pattern
@@ -387,6 +390,9 @@ output/checkpoints/checkpoint_{niche_slug}_{timestamp}/
 ├── stage_7_solutions.json
 ├── stage_8_competitive.json
 ├── stage_8_75_solution_selection.json
+├── stage_9_5a_seed_expansion.json (Phase 9.5a: conceptual keywords)
+├── stage_9_5b_bulk_validation.json (Phase 9.5b: DataForSEO validated)
+├── stage_9_5c_enrichment.json (Phase 9.5c: enriched keywords)
 ├── stage_9_seo_strategy.json
 └── stage_9_75_data_sources.json (conditional)
 ```
@@ -458,6 +464,12 @@ CHECKPOINT_AUTO_CLEANUP=true
 - `src/nicheiq/models/solution_idea.py` - Solution concepts (includes `requires_data_aggregation`)
 - `src/nicheiq/models/competitor.py` - Competitive analysis
 - `src/nicheiq/models/keyword_data.py` - Keyword research
+- `src/nicheiq/models/executive_summary.py` - Phase 1 executive dashboard models
+- `src/nicheiq/models/marketing_blueprint.py` - Phase 2 GTM strategy models
+- `src/nicheiq/models/analytics.py` - Phase 3 analytics models (market, SEO, competitive, pain point)
+
+**Report Generation:**
+- `src/nicheiq/report/visualizations.py` - Phase 3 chart generation using Plotly (PNG + JSON exports)
 
 **Tools:**
 - `src/nicheiq/tools/reddit_tool.py` - PRAW-based collector
@@ -709,7 +721,7 @@ See `FinalReport` Pydantic model in `src/nicheiq/models/research_state.py` for c
 - Data sourcing recommendations (for data aggregation solutions)
 - Next steps and action items
 
-**Enhanced Sections (Phase 3):**
+**Enhanced Sections (Original Enhancement):**
 1. **research_metadata**: Reddit/Twitter counts, subreddit breakdown, collection date
 2. **alternative_solutions**: Top 2 runner-ups with scores, differentiators, pivot triggers
 3. **competitive_landscape_matrix**: Cross-solution competitor overlap, intensity analysis
@@ -717,6 +729,16 @@ See `FinalReport` Pydantic model in `src/nicheiq/models/research_state.py` for c
 5. **data_infrastructure_roadmap**: 3-phase plan (MVP/Growth/Scale) with costs, risks, fallbacks
 6. **decision_framework**: Go/no-go/pivot criteria with rationales
 7. **content_categorization**: Theme categories, user segments, discussion quality assessment
+
+**Report Enhancements (Phase 1-3):**
+- **Phase 1 - Executive Dashboard** (Optional[ExecutiveDashboard]): Go/no-go verdict with rationale, core pain point snapshot, key opportunity metrics (keyword count, competitor count, market size), confidence score, niche summary
+- **Phase 2 - GTM Blueprint** (Optional[GTMBlueprint]): Ideal customer profile (persona, demographics, pain points, goals), core marketing message with framework, recommended channels (3-5 with budget/timeline/KPIs), content angles (5-8 examples), first 30 days playbook with weekly breakdown
+- **Phase 3 - Analytics & Visualizations** (5 Optional fields):
+  - **market_analytics** (MarketAnalytics): Overall opportunity score (0-1), market size category, selection confidence, competitive intensity, go/no-go recommendation
+  - **seo_analytics** (SEOAnalytics): Tier 1-4 keyword counts, total search volume, keyword diversity score, high-volume keyword count (>1000 searches)
+  - **competitive_analytics** (CompetitiveAnalytics): Competitor count, market saturation score (0-1), differentiation strength, market gaps identified
+  - **pain_point_analytics** (PainPointAnalytics): Total pain points, high-priority count, quadrant distribution, avg severity/WTP scores, top pain point title
+  - **visualization_manifest** (VisualizationManifest): Paths to generated charts (PNG for PDF, JSON for web) - pain point matrix (severity vs WTP scatter), keyword opportunity (tier distribution bar chart), competitive landscape (competitor type bar chart)
 
 **Data Preservation**: Enhanced sections preserve ~60-70% of checkpoint data (up from ~5-10%).
 

@@ -27,102 +27,41 @@ expand_keywords_conceptually:
     solution context above. Avoid generic terms from unrelated domains. Keywords should be
     extractable from the provided context fields, not invented from outside knowledge.
 
-    **Task: Generate 40-50 Total Keywords Using 70-30 Hybrid Strategy**
+    **CRITICAL KEYWORD GENERATION PRINCIPLES:**
 
-    ## PART 1: Broad Seeds (70% = 28-35 keywords, 1-2 words each)
+    For pre-launch products, NEVER generate keywords using the solution name (no one searches
+    for products that don't exist). Focus on INTENT-BASED keywords capturing what users search
+    when they HAVE THE PROBLEM:
+    - Problem discovery: "how to fix X", "struggling with Y"
+    - Solution seeking: "tool for Z", "best way to handle W"
+    - Competitive comparison: "[competitor] alternative", "[competitor] vs"
 
-    Extract category terms from research data using the 5-Type System:
+    **Validation Rule:** Ask "Would someone type this into Google when experiencing this pain point?"
+    If no → discard keyword.
 
-    **Type 1: Core Product/Service Terms (5-8 keywords)**
-    - Extract NOUNS from: {niche}, {selected_solution_name}, {selected_solution_value_prop}
-    - Pattern: main product/service category (1-2 words)
-    - Examples: "visa application", "relocation", "immigration" (NOT "visa application service for expats")
+    **Task: Generate 40-50 Keywords Using 70-30 Hybrid Strategy**
 
-    **Type 2: Problem/Need Terms (8-12 keywords)**
-    - Extract core PROBLEMS from: {selected_solution_pain_points}
-    - Pattern: pain point nouns without modifiers (1-2 words)
-    - Examples: "documentation", "bureaucracy", "timeline" (NOT "overwhelming documentation process")
+    Apply your 5-Type System (from backstory) to extract keywords:
 
-    **Type 3: Feature/Attribute Terms (5-8 keywords)**
-    - Extract KEY FEATURES from: {selected_solution_features}
-    - Pattern: feature nouns (1-2 words)
-    - Examples: "tracking", "checklist", "reminders" (NOT "progress tracking for applicants")
+    **PART 1: Broad Seeds (70% = 28-35 keywords, 1-2 words):**
+    - Type 1: Core product/service nouns from {niche}, {selected_solution_name}
+    - Type 2: Problem nouns from {selected_solution_pain_points}
+    - Type 3: Feature nouns from {selected_solution_features}
+    - Type 4: Solution types from {selected_solution_value_prop}
+    - Type 5: Broad modifiers from {selected_solution_personas}
 
-    **Type 4: Solution/Method Terms (3-5 keywords)**
-    - Extract solution TYPES from: {selected_solution_value_prop}
-    - Pattern: solution category (1-2 words)
-    - Examples: "service", "platform", "tool", "guide"
-
-    **Type 5: Modifier Terms (2-5 keywords)**
-    - Extract BROAD modifiers from: {selected_solution_personas}, {niche}
-    - Pattern: industry/demographic (1-2 words)
-    - Examples: "expat", "international", "business" (NOT "first-time expat families")
-
-    **Broad Seed Quality Rules:**
-    ✓ MUST be 1-2 words (3 words MAX in rare cases)
-    ✓ NO personas, scenarios, or combined concepts
-    ✓ NO questions ("how to..." is output, not input)
-    ✓ Extract NOUNS from context, don't create long phrases
-    ✓ Think "category bucket" not "specific search query"
-    ✗ NEVER 4+ words - these are outputs, not seeds!
-
-    ## PART 2: Targeted Keywords (30% = 12-15 keywords, 3-5 words each)
-
-    Strategic high-value keywords based on validated pain points:
-
-    **Selection Criteria:**
-    - Extract from HIGH-SEVERITY pain points (severity >= 7)
-    - Match high-priority features that solve top pain points
-    - Include 2-3 competitor comparison terms from {competitive_context}
+    **PART 2: Targeted Keywords (30% = 12-15 keywords, 3-5 words):**
+    - Combine 2-3 broad seeds strategically
+    - Focus on high-severity pain points + competitor comparisons (from {competitive_context} only)
+    - **CRITICAL:** ONLY include competitor keywords if {competitive_context} contains actual
+      competitor names. If missing or states "No competitive analysis available" → SKIP
+      competitor keywords entirely. Better to deliver 40 solid keywords than 50 with fabricated
+      competitor references.
     - Cover awareness → consideration → decision funnel
 
-    **Targeted Keyword Rules:**
-    ✓ 3-5 words (combines 2-3 broad seeds strategically)
-    ✓ Based on actual pain point data, not speculation
-    ✓ High commercial intent (solution-seeking, comparison)
-    ✓ Competitor names ONLY from {competitive_context} (real brands)
-    ✗ NO overly specific scenarios (e.g., "solution for problem1 and problem2 and problem3")
-    ✗ NO persona combinations (e.g., "for busy working professionals with families")
+    **PART 3: Topic Clusters (5-8 clusters):**
+    - Group keywords by major themes, strategic_importance (1-5)
 
-    ## PART 3: Topic Clusters (5-8 clusters)
-
-    Group keywords by major themes representing distinct user needs:
-    - **name**: Cluster name (2-4 words, descriptive)
-    - **description**: What this cluster covers (1 sentence)
-    - **strategic_importance**: 1-5 (1=critical, 5=nice-to-have)
-
-    Ensure all keywords map to a cluster. Broad seeds should distribute across clusters.
-
-    ## Extraction Method (Data-Driven, Niche-Agnostic):
-
-    1. **Parse {niche}**: Extract 3-5 core nouns → Type 1 seeds
-    2. **Parse {selected_solution_pain_points}**: Extract problem nouns → Type 2 seeds
-    3. **Parse {selected_solution_features}**: Extract feature nouns → Type 3 seeds
-    4. **Parse {selected_solution_value_prop}**: Extract solution types → Type 4 seeds
-    5. **Parse {selected_solution_personas}**: Extract broad demographics → Type 5 seeds
-    6. **Combine strategically**: Create 12-15 targeted keywords from high-priority combinations
-    7. **Extract competitors**: From {competitive_context}, use actual brand names only
-
-    ## Examples (Generic Pattern, NOT Skincare-Specific):
-
-    **Niche: "AI-powered project management for remote teams"**
-
-    **✅ GOOD Broad Seeds (70%):**
-    - Type 1: "project management", "workflow", "collaboration"
-    - Type 2: "productivity", "communication", "delays"
-    - Type 3: "automation", "tracking", "reporting"
-    - Type 4: "software", "platform", "tool"
-    - Type 5: "remote", "distributed", "async"
-
-    **✅ GOOD Targeted Keywords (30%):**
-    - "project management for remote teams" (3 broad seeds combined)
-    - "workflow automation software" (2 broad seeds + type)
-    - "Asana vs Monday comparison" (competitor names from competitive_context)
-
-    **❌ BAD Seeds (DON'T DO THIS):**
-    - "project management solution for remote software development teams with agile workflows" (9 words, overly specific)
-    - "best project management for startups with limited budget" (8 words, multiple modifiers)
-    - "how to improve remote team collaboration when working across timezones" (11 words, question)
 
   expected_output: >
     ExpandedKeywordList model with:
@@ -142,6 +81,13 @@ expand_keywords_conceptually:
 
     **expansion_rationale**: str (2-3 sentences explaining the hybrid strategy and expected expansion potential)
 
+    **EXPANSION GUIDANCE:**
+    Generate 40-50 seeds recognizing this is INPUT for DataForSEO's expansion (Phase 9.5b),
+    which will multiply these into 300-1000+ keywords. Track total keyword counts and document
+    expansion strategy in expansion_rationale field. Different seed categories enable thorough
+    market coverage across problem discovery, solution-seeking, competitor alternatives, and
+    long-tail variations.
+
     **Output Structure Example:**
     - 28-35 broad seeds (1-2 words) will expand to 10,000-30,000 keywords via DataForSEO
     - 12-15 targeted keywords (3-5 words) validated directly for high-intent commercial terms
@@ -156,6 +102,10 @@ analyze_keywords_and_tier:
     ✓ Every tier assignment MUST reference actual data from keywords
     ✓ Target 60-80% retention after filtering - distribute RELEVANT keywords across tiers
     ✓ Track filtered keyword count in key_findings field
+    ✓ **DATA EXTRACTION ACCURACY:** Operate as precision data extractor - character-by-character
+      copying of CSV values. NEVER round (387→400), approximate, or modify. Your accuracy
+      determines whether clients waste budget on wrong keywords. If uncertain → STOP and report
+      error rather than guessing.
 
     **Task 1: Keyword Analysis & Tiering**
 
@@ -178,9 +128,10 @@ analyze_keywords_and_tier:
     - **competition_level**: Human-readable competition (VERY_LOW/LOW/MEDIUM/HIGH/VERY_HIGH)
     - **cpc**: Cost per click in USD (float)
     - **opportunity_score**: Calculated as search_volume / competition_index (float, higher is better)
-    - **tier**: Pre-calculated tier assignment (TIER_1_QUICK_WIN/TIER_2_STRATEGIC/TIER_3_MEDIUM/TIER_4_LONG_TAIL)
+    - **tier**: Pre-calculated tier assignment (TIER_0_PREMIUM/TIER_1_QUICK_WIN/TIER_2_STRATEGIC/TIER_3_MEDIUM/TIER_4_LONG_TAIL)
 
-    **TIER DEFINITIONS (from CSV data):**
+    **TIER DEFINITIONS (from CSV data - Priority Order: 0 → 1 → 2 → 3 → 4):**
+    - **TIER_0_PREMIUM**: opportunity_score > 200 (EXCEPTIONAL - Very high volume, very low competition. Rare "unicorn" keywords.)
     - **TIER_1_QUICK_WIN**: opportunity_score > 100 (High volume, low competition)
     - **TIER_2_STRATEGIC**: opportunity_score 50-100 (Medium volume, moderate competition)
     - **TIER_3_MEDIUM**: opportunity_score 20-50 (Moderate volume)
@@ -193,9 +144,24 @@ analyze_keywords_and_tier:
     - DO NOT use SerperDevTool or web search - ALL data is in the CSV above
     - The tier column provides initial guidance, but you should apply strategic refinement based on solution context
 
+    **CSV PARSING ERROR HANDLING:**
+    If CSV parsing fails or produces unexpected data:
+    1. STOP immediately - DO NOT proceed with fabricated or assumed data
+    2. Report the specific issue: "CSV parsing error: [describe the problem - malformed row, missing column, etc.]"
+    3. Do NOT attempt to fix or work around malformed data
+    4. If CSV is empty ({enriched_keywords_count} = 0), report: "No keywords provided - cannot perform analysis"
+
     **CONTEXT:**
     - Niche: {niche}
     - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+    - Core Features (MVP):
+      {core_features}
+    - Technical Approach: {technical_approach}
+    - Known Competitors:
+      {competitor_names}
+    - Top Pain Points (with metrics):
+      {top_pain_points}
     - Topic Clusters: {topic_clusters_summary}
     - Total Keywords Available: {enriched_keywords_count}
 
@@ -203,127 +169,51 @@ analyze_keywords_and_tier:
 
     **STEP 0: RELEVANCE FILTERING (MANDATORY - Execute First):**
 
-    Before tiering keywords, FILTER OUT keywords that are NOT relevant to the niche and solution.
+    Apply 3-rule filtering to EACH keyword in CSV before tiering:
 
-    **Context from Inputs:**
-    - Niche: {niche}
-    - Solution: {selected_solution_name}
-    - Solution Description: {selected_solution_description}
+    **Rule 1 - Context Match:** Does keyword relate to {niche} + {selected_solution_description}?
+    - If keyword is about DIFFERENT domain → EXCLUDE
 
-    **Relevance Criteria (STRICTER - Apply in Order):**
+    **Rule 2 - Ambiguity Filter:** Generic terms ("comparison", "review", "filter", "tool", "platform", "user") are ONLY relevant with niche context
+    - ✓ KEEP: "skincare comparison" (niche + generic)
+    - ✗ EXCLUDE: "comparison tool" (generic only)
 
-    1. **Context Match Test (MANDATORY):**
-       - Read the full solution description above
-       - Ask: "Does this keyword relate to the SPECIFIC problem domain described?"
-       - If keyword is about a DIFFERENT product/service domain → EXCLUDE
+    **Rule 3 - Cross-Domain Exclusion:** Exclude unrelated domains unless {niche} matches:
+    - Software/Programming: "excel", "typescript", "react", "css"
+    - Electronics: "cpu", "ssd", "monitor", "benchmark"
+    - Finance: "mortgage", "credit card", "loan" (keep if finance niche)
+    - Vehicles: "car", "tire", "bike" (keep if automotive niche)
+    - Telecom: "verizon", "t-mobile" (keep if telecom niche)
 
-    2. **Ambiguity Filter (for generic terms):**
-       - Generic terms like "comparison", "review", "filter", "tool", "platform", "access", "user"
-       - These are ONLY relevant if combined with niche-specific context
-       - Examples:
-         * "skincare comparison" → KEEP (skincare + comparison)
-         * "comparison tool" → EXCLUDE (generic, no niche context)
-         * "user reviews skincare" → KEEP (niche context present)
-         * "user reviews" → EXCLUDE (generic, could be ANY product)
-         * "ingredient filter" → KEEP (if solution involves ingredients)
-         * "typescript filter" → EXCLUDE (programming, unrelated domain)
+    **Filtering Goal:** Quality over quantity - no fixed retention target. Report stats in key_findings.
 
-    3. **Cross-Domain Exclusion (MANDATORY):**
-       - If keyword clearly belongs to another domain → EXCLUDE immediately
-       - Common false positives to EXCLUDE:
-         * Software/Programming: "microsoft", "excel", "access", "typescript", "vue", "react", "css"
-         * Electronics: "cpu", "ssd", "monitor", "tv", "benchmark", "tbw"
-         * Finance: "mortgage", "credit card", "loan", "insurance" (unless niche is finance)
-         * Vehicles: "car", "tire", "chariot", "bike" (unless niche is automotive)
-         * Telecom: "verizon", "t-mobile", "phone plan" (unless niche is telecom)
+    1. **Select Premium Tier** → IF TIER_0_PREMIUM keywords exist: Select 2-3 (exceptional opportunities, opp_score >200)
+    2. **Select Tier 1/2** → 3-5 keywords each (Tier 1: opp_score >100, Tier 2: strategic fit)
+    3. **Group Tier 3/4** (CRITICAL - 80-90% coverage of remaining RELEVANT keywords):
 
-    **Filtering Process:**
-    1. For EACH keyword, apply Context Match Test - does it relate to {niche} and {selected_solution_name}?
-    2. If keyword contains only generic terms (comparison, review, filter, etc.) WITHOUT niche context → EXCLUDE
-    3. If keyword contains terms from unrelated domains (software, electronics, finance, etc.) → EXCLUDE
-    4. Only KEEP keywords that have clear connection to the niche domain described in solution description
+       a. **Tier 3 (Geographic):** Keywords with EXPLICIT location mentions (city/country names)
+          - Group by region (e.g., "European Markets"), sum volumes, note competition
+          - ⚠️ NO hallucinated city names - only group if location is IN keyword text
 
-    **NO FIXED RETENTION TARGET** - Filter based on relevance, not percentages. Quality over quantity.
+       b. **Tier 4 (Category):** ALL non-geographic keywords
+          - Create 8-15 category groups (ingredient, product type, user concern, price tier, comparison, review, misc)
+          - Each category: 20-100+ keywords for programmatic SEO
 
-    **Examples of CORRECT Filtering:**
+       c. **Self-Check:** Did I tier 80-90% of relevant keywords? If <50%, grouping is incomplete.
 
-    Niche: "premium skincare" | Solution: "ingredient comparison tool"
-    ✓ KEEP: "luxury face serum", "retinol vs vitamin c", "sensitive skin products"
-    ✓ KEEP: "skincare ingredient comparison", "moisturizer reviews" (niche context present)
-    ✗ EXCLUDE: "comparison tool", "user reviews", "filter settings" (generic, no skincare context)
-    ✗ EXCLUDE: "microsoft access", "cpu comparison", "mortgage rates" (different domains)
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
-    Niche: "expat relocation" | Solution: "visa requirement aggregator"
-    ✓ KEEP: "spain visa requirements", "expat moving checklist", "relocation services"
-    ✓ KEEP: "visa comparison", "immigration reviews" (niche context present)
-    ✗ EXCLUDE: "product comparison", "service reviews", "database access" (generic or different domain)
-
-    Niche: "SaaS project management" | Solution: "tool comparison platform"
-    ✓ KEEP: "asana vs trello", "project management software reviews", "agile tools"
-    ✓ KEEP: "saas comparison", "collaboration platform features" (niche context present)
-    ✗ EXCLUDE: "platform", "tool", "comparison" (too generic without SaaS/project context)
-    ✗ EXCLUDE: "skincare comparison", "visa requirements" (different domains)
-
-    1. **Calculate Scores** → opportunity_score for each keyword
-    2. **Rank & Select** → Top keywords per tier criteria (select 3-5 from pool for Tier 1, 3-5 from remaining pool for Tier 2)
-    3. **GROUP ALL REMAINING KEYWORDS** (CRITICAL - Maximize Coverage):
-
-       **IMPORTANT**: After selecting 3-5 keywords for Tier 1 and 3-5 for Tier 2, you should have
-       HUNDREDS of remaining relevant keywords. These MUST be organized into Tier 3/4 groups.
-
-       **Goal**: Tier 80-90% of RELEVANT keywords. Only skip keywords that are truly ambiguous or marginal.
-
-       🚨 **LOCATION CONSTRAINT FOR TIER 3:**
-       ONLY group keywords in Tier 3 that EXPLICITLY mention a location, city, or country name in the keyword text itself.
-       If a keyword does NOT contain an explicit location → assign to Tier 4 instead.
-
-       **Examples:**
-       ✓ Tier 3: "moving to spain costs", "relocation services berlin", "uk visa requirements" (explicit locations)
-       ✗ Tier 4: "international moving costs", "expat relocation guide", "moving abroad checklist" (no specific location)
-
-       a. **Geographic Tier (Tier 3) - Location-Specific Keywords Only:**
-          - Scan keywords for EXPLICIT location mentions: country names, city names, regional terms
-          - Group by geographic market (e.g., "European Markets", "Asian Markets", "North America")
-          - For each region, create GeographicKeywordGroup:
-            * region_name: Descriptive name for the geographic cluster
-            * total_volume: Sum of search volumes for all keywords in group
-            * competition_level: Average competition assessment (LOW/MEDIUM/HIGH)
-            * keywords: List of GeographicKeywordEntry with city/keyword/search_volume/competition
-            * strategy_notes: 1-3 sentences on geographic expansion approach
-          - ⚠️ CRITICAL: Do NOT hallucinate city names for keywords without explicit locations
-
-       b. **Category Tier (Tier 4) - ALL Non-Geographic Keywords:**
-          - Include: (1) Keywords with no explicit location, (2) Generic thematic keywords
-          - Scan ALL remaining keywords for category patterns
-
-          **Category Discovery Strategies:**
-          - By ingredient/component: Group keywords containing similar ingredients (e.g., "retinol", "vitamin c")
-          - By product type: Group by product categories (e.g., "serum", "moisturizer", "cleanser")
-          - By user concern: Group by problems/needs (e.g., "acne", "anti-aging", "sensitivity")
-          - By modifier: Group by price tier, brand type, quality level (e.g., "luxury", "affordable", "natural")
-          - By comparison type: Group comparison keywords (e.g., "X vs Y", "best X", "X alternatives")
-          - By review/rating focus: Group review-oriented keywords
-          - Miscellaneous: Catch-all for keywords that don't fit above categories
-
-          **Aim for comprehensive coverage**: Create 8-15 category groups to cover most relevant keywords.
-          Each category should have 20-100+ keywords for programmatic SEO potential.
-
-          - For each category, create CategoryKeywordGroup:
-            * category_name: Descriptive name for the thematic cluster
-            * total_volume: Sum of search volumes for all keywords in group
-            * keywords: List of CategoryKeywordEntry with keyword_name/search_volume/competition
-            * strategy_recommendation: 2-4 sentences on how to target this category
-
-       c. **Pre-Submission Validation (SELF-CHECK):**
-          - Count total keywords tiered: Tier 1 + Tier 2 + (sum Tier 3) + (sum Tier 4)
-          - Count filtered keywords: {enriched_keywords_count} - total_tiered
-          - Report filtering stats in key_findings
-
-          **Self-Assessment Questions:**
-          - Did I tier 80-90% of the RELEVANT keywords after filtering?
-          - Do I have at least 8-12 Tier 4 category groups covering diverse themes?
-          - Are there obvious keyword patterns I missed that should be grouped?
-          - If <50% of keywords are tiered, did I filter too aggressively?
+    Before finalizing output, verify:
+    - [ ] Completed STEP 0 relevance filtering (applied Context Match Test, Ambiguity Filter, Cross-Domain Exclusion)
+    - [ ] IF TIER_0_PREMIUM exists in CSV: Selected 2-3 (exceptional opportunities, opp_score >200)
+    - [ ] Selected 3-5 Tier 1 keywords (opportunity_score >100 OR volume >2000 + comp <30)
+    - [ ] Selected 3-5 Tier 2 keywords (strategic fit + volume >2000 + comp 30-60)
+    - [ ] Tier 3 geographic groups ONLY contain keywords with explicit location mentions
+    - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords
+    - [ ] key_findings includes filtering stats (e.g., "Filtered 620/1603 (39%) - strict domain filtering")
+    - [ ] key_findings includes tier distribution stats (Tier 0=A, Tier 1=B, Tier 2=C, Tier 3=D, Tier 4=E)
+    - [ ] Avoided fabricating search volumes (used EXACT values from CSV)
+    - [ ] Geographic keywords have city/country names in keyword text itself
 
           **Example of GOOD Distribution:**
           Input: 1,603 keywords → Filtered 620 (39%, strict filtering) → Tiered 890 relevant keywords (90%)
@@ -338,10 +228,23 @@ analyze_keywords_and_tier:
 
     | Tier | Selection Criteria | Count | Timeline | Purpose |
     |------|-------------------|-------|----------|---------|
-    | **Tier 1** | Vol >2000 + Comp <30<br>OR Vol 500-2000 + Comp <15 | 3-5 (from pool) | 0-3 mo | Quick wins |
-    | **Tier 2** | Vol >2000 + Comp 30-60<br>OR strategic fit | 3-5 (from pool) | 3-6 mo | Strategic growth |
-    | **Tier 3** | Keywords with EXPLICIT locations | ALL remaining (grouped) | 6-12 mo | Geographic expansion |
-    | **Tier 4** | Category clusters + non-location keywords | ALL remaining (grouped) | 6-12 mo | Programmatic SEO |
+    | **Tier 0** | Opp_score >200 (EXCEPTIONAL) | 2-3 (if exist) | 0-1 mo | Unicorn keywords - immediate priority |
+    | **Tier 1** | Opp_score >100<br>Vol >2000 + Comp <30<br>OR Vol 500-2000 + Comp <15 | 3-5 (from pool) | 0-3 mo | Quick wins |
+    | **Tier 2** | Opp_score 50-100<br>Vol >2000 + Comp 30-60<br>OR strategic fit | 3-5 (from pool) | 3-6 mo | Strategic growth |
+    | **Tier 3** | Opp_score 20-50<br>Keywords with EXPLICIT locations | ALL remaining (grouped) | 6-12 mo | Geographic expansion |
+    | **Tier 4** | Opp_score <20<br>Category clusters + non-location keywords | ALL remaining (grouped) | 6-12 mo | Programmatic SEO |
+
+    **ANTI-PATTERNS (DON'T DO THIS):**
+
+    ❌ Ignoring TIER_0_PREMIUM keywords (these are exceptional opportunities - ALWAYS prioritize)
+    ❌ Filtering AFTER tiering (must filter FIRST in STEP 0)
+    ❌ Assigning generic keywords to Tier 3 without explicit location (e.g., "international moving" vs "moving to spain")
+    ❌ Rounding search volumes (387 → 400) - use EXACT values from CSV
+    ❌ Tiering <50% of relevant keywords (indicates incomplete Tier 4 grouping)
+    ❌ Creating only 3-5 Tier 4 categories when 8-15 are needed for comprehensive coverage
+    ❌ Hallucinating city names for keywords (only use explicit mentions)
+    ❌ Missing filtering stats in key_findings
+    ❌ Including filtered keywords in tier counts (filtered = excluded)
 
     ═══ CRITICAL RULES (Read Last) ═══
     ✓ RELEVANT keywords MUST be distributed across tiers - filtered keywords should NOT be tiered
@@ -358,7 +261,8 @@ analyze_keywords_and_tier:
   expected_output: >
     KeywordAnalysisResult Pydantic model with ALL fields:
 
-    **Tier Structure** (with real volumes/competition):
+    **Tier Structure** (with real volumes/competition - Priority: 0 → 1 → 2 → 3 → 4):
+    - tier_0_keywords (2-3 keywords, OPTIONAL - only if TIER_0_PREMIUM exists in CSV), tier_0_strategy (if tier_0_keywords exist)
     - tier_1_keywords (3-5 keywords), tier_1_quick_win_strategy
     - tier_2_keywords (3-5 keywords, optional), tier_2_strategy (optional)
     - tier_3_geographic_groups (REQUIRED if geographic patterns exist - group remaining location-based keywords)
@@ -417,6 +321,24 @@ develop_content_technical_strategy:
     - **Page Speed** → Core Web Vitals optimization
     - **Mobile Optimization** → Mobile-first considerations
 
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+
+    Before finalizing output, verify:
+    - [ ] Content strategy has 4-6 numbered sections (prioritization, clusters, calendar, formats, conversion)
+    - [ ] topic_clusters has 3-5 pillar hubs with primary_keyword from Task 1 tiers
+    - [ ] Content calendar covers first 90 days (Tier 1 weeks 1-4, Tier 2 weeks 5-8)
+    - [ ] technical_seo_recommendations has 3-5 sections with code examples
+    - [ ] All recommendations align with Task 1 keyword tiers
+    - [ ] keyword_based_page_types has 4-8 scalable templates
+
+    **ANTI-PATTERNS (DON'T DO THIS):**
+
+    ❌ Generic content strategy without referencing Task 1 keyword data
+    ❌ Topic clusters without primary keywords from Tier 1/2
+    ❌ Vague content calendar like "Week 1-4: Write content" (vs specific Tier 1 keyword mapping)
+    ❌ Technical SEO sections without code examples (must include URL patterns, schema JSON-LD)
+    ❌ Recommending page types that don't align with solution's project_type
+
     ═══ CRITICAL RULES (Read Last) ═══
     ✗ All recommendations MUST align with Task 1 keyword tiers
 
@@ -439,6 +361,14 @@ create_implementation_plan:
     **Task 3: Implementation Planning**
 
     Apply your 3-Phase Compound SEO Roadmap using context from Tasks 1-2.
+
+    **SOLUTION CONTEXT:**
+    - Solution: {selected_solution_name}
+    - Value Proposition: {value_proposition}
+    - Target Personas:
+      {target_personas}
+    - Core Features:
+      {core_features}
 
     **CONTEXT from Tasks 1-2:**
 
@@ -609,24 +539,355 @@ create_implementation_guide:
     - implementation_method: JSON-LD format, <head> placement, why JSON-LD - 2 paragraphs
     - schema_examples: List of SchemaExample objects, each containing:
       * schema_type: The Schema.org type (e.g., "Organization", "Service", "FAQ")
-      * json_ld_code: JSON-LD code snippet for this type
+      * json_ld_code: FULLY POPULATED JSON-LD with actual values from context (NOT template variables)
 
-      Example format for Organization schema:
+      **CRITICAL SCHEMA SYNTAX CLARIFICATION:**
+
+      Your json_ld_code field MUST contain fully populated JSON with actual values from context.
+      Do NOT use placeholders like [solution_name], [url], or template variables like [variable].
+
+      **Example for Organization schema** (CORRECT - fully populated):
       ```json
       {
         "@context": "https://schema.org",
         "@type": "Organization",
-        "name": "[solution_name]",
-        "url": "https://example.com",
-        "logo": "https://example.com/logo.png"
+        "name": "ExpatEase - International Relocation Directory",
+        "description": "Curated directory connecting expats with vetted relocation service providers across 50+ countries",
+        "url": "https://expatease.com",
+        "logo": "https://expatease.com/logo.png",
+        "address": {
+          "@type": "PostalAddress",
+          "addressCountry": "DE"
+        },
+        "sameAs": [
+          "https://twitter.com/expatease",
+          "https://linkedin.com/company/expatease"
+        ]
       }
       ```
-      Provide similar examples for: Service, Person, Review, AggregateRating, FAQ, Article, BreadcrumbList
+
+      ❌ **WRONG** (has placeholders):
+      ```json
+      {
+        "@type": "Organization",
+        "name": "[solution_name]",
+        "url": "[solution_url]"
+      }
+      ```
+
+      ❌ **WRONG** (has template variables):
+      ```json
+      {
+        "@type": "Organization",
+        "name": "[selected_solution_name]",
+        "url": "[solution_url]"
+      }
+      ```
+
+      ✅ **CORRECT** (fully populated with actual values from {selected_solution_name}, {value_proposition}, {niche}):
+      - Uses actual solution name: "ExpatEase - International Relocation Directory"
+      - Uses inferred URL based on solution name: "https://expatease.com"
+      - Uses specific description from {value_proposition}
+      - Includes 5-10 properties (not just @type + name)
+
+      Provide 6-8 schema examples (Organization, Service/Product, Review, AggregateRating, FAQ, Article, BreadcrumbList, etc.)
+      ALL examples must be fully populated with actual values from context.
+
     - testing_validation: Tools and process (Google Rich Results Test, Schema Validator) - 2 paragraphs
 
-    Use {selected_solution_name}, {niche}, {topic_clusters_summary} from context for customization.
+    **KEYWORD TIER INTEGRATION (Prioritize Page Types):**
+
+    Use keyword tiers from Task 1 to prioritize page types by ranking potential:
+
+    **High Priority Page Types** (Tier 1 - Quick Win keywords):
+    - These page types should target low-competition, high-intent Tier 1 keywords
+    - Focus: Fast ranking potential, conversion-optimized pages
+    - Schema: Add trust signals (AggregateRating, Review, Offer) for competitive edge
+    - Example: If Task 1 has Tier 1 keyword "budget expat insurance" (2400 vol, low comp):
+      → Create high-priority "Budget Insurance Guides" page type targeting this keyword
+
+    **Medium Priority Page Types** (Tier 2 - Strategic Growth keywords):
+    - These page types target competitive but valuable Tier 2 keywords
+    - Focus: Comprehensive content, authority-building, long-term investment
+    - Schema: Add depth signals (FAQPage, HowTo, Article) for rich results
+    - Example: If Task 1 has Tier 2 keyword "expat health insurance comparison" (1800 vol, medium comp):
+      → Create medium-priority "Insurance Comparison Pages" page type
+
+    **Lower Priority Page Types** (Tier 3-4 keywords):
+    - These page types target informational, long-tail, or geographic Tier 3-4 keywords
+    - Focus: Content breadth, topical coverage, supporting pages
+    - Schema: Add basic structure (BreadcrumbList, Organization) for crawlability
+    - Example: If Task 1 has Tier 3 geographic keyword "expat insurance bangkok":
+      → Create lower-priority "Location-Specific Guide" page type
+
+    **Page Type Priority Mapping**:
+    For EACH page type implementation, set priority field based on keyword tier:
+    - priority: "high" → Targets Tier 1 keywords (Quick Wins)
+    - priority: "medium" → Targets Tier 2 keywords (Strategic Growth)
+    - priority: "low" → Targets Tier 3-4 keywords (Supporting content)
+
+    This helps developers and content teams understand which pages to build first.
+
+    **SOLUTION CONTEXT FOR IMPLEMENTATION:**
+    - Solution Name: {selected_solution_name}
+    - Value Proposition: {value_proposition}
+    - Target Personas:
+      {target_personas}
+    - Pricing Strategy: {pricing_strategy}
+    - Niche: {niche}
+    - Topic Clusters: {topic_clusters_summary}
+
+    Use this solution context to customize implementation examples (page titles, meta descriptions, schema examples).
     Reference keyword tiers from Task 1 when suggesting target keywords.
     Align page types with keyword_based_page_types from Task 2 if available.
+
+    **ALIGN WITH TASK 2 CONTENT STRATEGY:**
+
+    Task 2 (Content Strategy) already generated keyword_based_page_types in its output (accessible via context).
+    Your job is to ENHANCE these with SEO implementation details, NOT create new page types from scratch.
+
+    **Workflow**:
+    1. **Extract Task 2 page types**: Review keyword_based_page_types from Task 2's ContentStrategyResult context
+       - Expected count: 4-8 page types identified by content strategist
+       - Each should be tied to keyword clusters from Task 1
+
+    2. **Enhance EACH page type** from Task 2 with SEO implementation details:
+       - Title tag formula + example (with {selected_solution_name} + keyword pattern)
+       - Meta description pattern (value prop + CTA, 140-155 chars)
+       - Schema markup recommendation (both schema types list + JSON-LD example)
+       - H1/H2 structure recommendations
+       - Internal linking strategy
+       - Content structure recommendations
+
+    3. **Add supplementary page types** ONLY if Task 2 missed critical types for this solution:
+       - Check: Does the solution type require page types not in Task 2?
+       - Example: Directory needs "Location Pages" but Task 2 only has "Service Pages"
+       - Limit: Add maximum 2 additional page types beyond Task 2's list
+       - Justify: Note why each addition is necessary for the solution type
+
+    4. **Verify alignment**: Cross-check each page type against keyword tiers from Task 1
+       - Each page type should map to 2-5 keywords from Task 1's tier structure
+       - If no keyword mapping → either remove the page type or find relevant keywords from Task 1
+
+    **Example Enhancement**:
+    - **Task 2 identified**: "Budget-Friendly Expat Health Insurance Guides"
+      - Keywords: "budget expat insurance", "affordable health coverage abroad" (from Task 1 Tier 1)
+      - Target tier: Tier 1 (Quick Win keywords)
+
+    - **Your Task 5 enhancement**:
+      ```
+      Page Type: Budget-Friendly Expat Health Insurance Guides
+      Priority: high (Tier 1 keywords)
+
+      URL Pattern: /guides/budget-expat-health-insurance/{country}
+
+      Target Keywords: ["budget expat insurance", "affordable health coverage abroad", "cheap expat health plans"]
+
+      Title Formula: "{selected_solution_name} - Budget Expat Health Insurance | {country/region}"
+      Title Example: "ExpatEase - Budget Expat Health Insurance | Southeast Asia"
+
+      Meta Description Pattern: "Find affordable expat health insurance through {selected_solution_name}. Compare {X} budget-friendly providers, read reviews, get quotes. [CTA]"
+      Meta Description Example: "Find affordable expat health insurance through ExpatEase. Compare 15 budget-friendly providers in Southeast Asia, read verified reviews, get instant quotes. Start saving today." (154 chars)
+
+      Schema Types: ["Organization", "ItemList", "AggregateRating"]
+      [... detailed schema example with actual solution name ...]
+      ```
+
+    **Validation**: Before finalizing, verify:
+    - ☐ 60%+ of page types come from Task 2's keyword_based_page_types (not invented by you)
+    - ☐ Each Task 2 page type has been enhanced with comprehensive SEO implementation details
+    - ☐ Any new page types (max 2) are justified with clear reasoning for why they're needed
+
+    **ADAPT TO PROJECT TYPE (Solution-Specific Page Types):**
+
+    Based on the solution's characteristics and needs, prioritize appropriate page types and schemas.
+    Different solution types require different page structures:
+
+    **Common Patterns** (adapt to actual solution):
+
+    - **IF solution is a directory/listing platform:**
+      - Page types: Directory listing pages, Category/taxonomy pages, Location/geography pages, Provider/business profiles
+      - Schema priority: Organization, LocalBusiness, ItemList, BreadcrumbList, AggregateRating
+      - Example: "Provider Profile Page"
+        - Schema: Organization (business info) + LocalBusiness (location) + AggregateRating (reviews)
+        - Title: "{provider_name} - {category} in {location} | {selected_solution_name}"
+
+    - **IF solution is a marketplace/platform:**
+      - Page types: Vendor/seller profiles, Product/service listings, Comparison pages, Review aggregation, Category pages
+      - Schema priority: Offer, Product, Review, AggregateRating, Organization, BreadcrumbList
+      - Example: "Vendor Profile Page"
+        - Schema: Organization (vendor info) + Offer (services) + AggregateRating (ratings)
+        - Title: "{vendor_name} Reviews & Services | {selected_solution_name} Marketplace"
+
+    - **IF solution is an aggregator/comparison tool:**
+      - Page types: Data collection pages, Comparison/analysis tables, Trend/analytics dashboards, Report/research pages, Category pages
+      - Schema priority: DataFeed, Dataset, Table, Organization, FAQPage
+      - Example: "Data Comparison Page"
+        - Schema: Dataset (data source) + Table (comparison matrix) + Organization (aggregator)
+        - Title: "Compare {data_type} - {timeframe} Analysis | {selected_solution_name}"
+
+    - **IF solution is a SaaS tool or software:**
+      - Page types: Feature pages, Use case pages, Comparison pages, Alternative/vs pages, Pricing pages, Integration pages
+      - Schema priority: SoftwareApplication, WebApplication, Product, FAQPage, HowTo
+      - Example: "Feature Page"
+        - Schema: SoftwareApplication (tool) + HowTo (usage guide) + FAQPage (common questions)
+        - Title: "{feature_name} - {selected_solution_name} | {value_prop_snippet}"
+
+    - **IF solution is a community/platform:**
+      - Page types: Topic/discussion pages, User profile pages, Guide/resource pages, Event pages
+      - Schema priority: DiscussionForumPosting, Article, Person, Event, Organization
+      - Example: "Topic Discussion Page"
+        - Schema: DiscussionForumPosting + Article (guides) + Organization (platform)
+        - Title: "{topic_name} Discussion | {selected_solution_name} Community"
+
+    **Validation Rule**: Verify your page types match the solution's actual type and needs.
+    Reference {selected_solution_description}, {core_features}, and {technical_approach} to understand what type of solution this is.
+
+    **ANTI-HALLUCINATION GUARDRAILS:**
+
+    ✗ NEVER use placeholder syntax in final output
+      ❌ Example: "name": "[solution_name]" or "{solution_name}" in schema JSON-LD
+      ✅ Example: "name": "ExpatEase - International Relocation Directory"
+
+    ✗ NEVER use bracket notation ([ ]) as placeholders in schema JSON-LD examples
+      ❌ Example: "addressCountry": "[primary_country]"
+      ✅ Example: "addressCountry": "DE" (inferred from {target_personas} or {niche} context)
+
+    ✗ NEVER invent values not present in context
+      ❌ Example: Adding "24/7 customer support" feature when {core_features} doesn't mention it
+      ✅ Example: If uncertain about a value → use "To be determined" or infer from context
+
+    ✗ NEVER create generic page types - adapt to solution's actual needs
+      ❌ Example: Using "Product Pages" for a directory solution
+      ✅ Example: Using "Directory Listing Pages" for directory, "Vendor Profiles" for marketplace
+
+    ✗ NEVER ignore Task 2's keyword_based_page_types
+      ❌ Example: Creating "Generic Service Pages" when Task 2 specified "Budget Health Insurance Guides"
+      ✅ Example: "Task 2 identified 'Budget-Friendly Relocation Guides' (Tier 1: 'budget expat insurance') - implementing SEO structure for this page type"
+
+    ✗ NEVER duplicate schema types across page types without differentiation
+      ❌ Example: Using identical Organization schema for 3 different page types
+      ✅ Example: Customize each schema - Organization schema for homepage has different properties than provider profile
+
+    ✗ Use ONLY context from previous tasks and solution details
+      ❌ Example: Inventing features not in {core_features}, competitors not in {competitor_names}
+      ✅ Example: If core_features includes "multi-language support", mention it in schema "inLanguage" property
+
+    **VERIFICATION RULE**: Before submitting, replace every instance of:
+    - [placeholder] → actual value from context
+    - [variable] in examples → actual value (keep [variable] syntax only in formulas/patterns)
+    - Generic terms → specific solution details from context
+
+    **MANDATORY CUSTOMIZATION REQUIREMENTS:**
+
+    ✓ ALL title_tag_example fields MUST include {selected_solution_name} (exact match from context)
+    ✓ ALL meta_description_example fields MUST reference {value_proposition} or key solution benefits
+    ✓ ALL schema JSON-LD examples MUST use actual solution name from context
+      - Verify: "name" field = {selected_solution_name}, NOT "[solution_name]" or generic placeholder
+    ✓ Page types MUST align with solution's project type (see context variables)
+    ✓ EVERY page type implementation MUST reference at least ONE keyword from Task 1's keyword tiers
+      - Example: "Budget Relocation Guide" page → must use Tier 1/2 keywords like "budget expat health insurance"
+
+    **REQUIRED OUTPUT STRUCTURE:**
+
+    Your final output MUST follow this exact structure for the ImplementationGuide model:
+
+    {
+      "universal_seo_elements": {
+        "title_tag_formula": "string",        # Pattern using {variables}
+        "title_tag_guidelines": "string",     # 2-3 paragraphs (markdown)
+        "meta_description_guidelines": "string",  # 2-3 paragraphs (markdown)
+        "canonical_url_strategy": "string",   # 2 paragraphs (markdown)
+        "open_graph_tags": "string",          # Format examples (markdown)
+        "robots_meta_guidelines": "string"    # 2 paragraphs (markdown)
+      },
+      "page_type_implementations": [
+        {
+          "page_type": "string",                     # From Task 2 or project-type mapping
+          "priority": "high|medium|low",             # Based on keyword tier
+          "url_pattern": "string",                   # URL structure
+          "target_keywords": ["kw1", "kw2"],         # 3-5 keywords from Task 1
+          "title_tag_example": "string",             # MUST include {selected_solution_name}
+          "meta_description_example": "string",      # 140-155 chars, actual values
+          "h1_structure": "string",
+          "h2_structure": ["string"],                # 3-6 sections
+          "schema_types": ["string"],                # Required schema types
+          "internal_linking_strategy": "string",
+          "content_guidelines": "string"
+        }
+        // Repeat for 4-8 page types (60%+ should be from Task 2)
+      ],
+      "schema_markup_strategy": {
+        "why_schema_matters": "string",        # 2-3 paragraphs (markdown)
+        "priority_schema_types": ["string"],   # 6-8 essential types
+        "implementation_method": "string",     # 2 paragraphs (markdown)
+        "schema_examples": [                   # 6-8 examples
+          {
+            "schema_type": "string",
+            "json_ld_code": "json string"     # Fully populated with actual values
+          }
+        ],
+        "testing_validation": "string"         # 2 paragraphs (markdown)
+      }
+    }
+
+    **Validation**: Before submitting, verify:
+    - ☐ All 3 top-level keys present (universal_seo_elements, page_type_implementations, schema_markup_strategy)
+    - ☐ page_type_implementations array has 4-8 items
+    - ☐ Each page_type_implementation has ALL 11 required fields
+    - ☐ schema_markup_strategy has schema_examples with 6-8 items
+
+    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+
+    Before finalizing output, verify EACH page type implementation (minimum 4-8 page types):
+
+    ☐ **Solution Name Integration**: title_tag_example includes "{selected_solution_name}"
+       - Example check: Does "ExpatEase - International Relocation Directory" appear in title?
+       - Test: Search your output for "{selected_solution_name}" - should find 4+ matches in title examples
+       - If NO → Add solution name to title_tag_example for each page type
+
+    ☐ **Real Values (No Placeholders)**: Schema JSON-LD uses actual values, not bracket syntax
+       - Example check: "name": "ExpatEase", NOT "name": "[solution_name]" or "{solution_name}"
+       - Test: Search schema examples for "[" character - should find ZERO placeholder matches
+       - If found brackets → Replace ALL with actual context values
+
+    ☐ **Project-Type Alignment**: Page types make sense for this type of solution
+       - Example check: Does the solution need these specific page types?
+       - Verify: Count page types - you should have 4-8 types that are relevant
+       - If NO → Adjust page types to match solution's actual needs
+
+    ☐ **Task 2 Integration**: Referenced keyword_based_page_types from content strategy (Task 2 context)
+       - Example check: Did you enhance Task 2's page types or create duplicates?
+       - Verify: At least 60% of page types should come from Task 2's keyword_based_page_types
+       - If NO → Review Task 2 context and enhance its page types with SEO implementation details
+
+    ☐ **Feature Integration**: Referenced {core_features} in schema properties or descriptions
+       - Example check: Do schema examples or guidelines mention actual solution features?
+       - Verify: Each page type should reference at least 1 feature from {core_features} context
+       - If NO → Add relevant features to schema "description" or content_guidelines
+
+    ☐ **Persona Targeting**: title/meta examples reference {target_personas} language
+       - Example check: Do examples mention specific persona pain points or goals?
+       - Verify: Persona-specific language appears in 50%+ of title/meta examples
+       - If NO → Add persona language to title/meta examples (e.g., "for budget-conscious expats")
+
+    ☐ **Keyword Relevance**: Each page type ties to specific keywords from Task 1 keyword tiers
+       - Example check: "Budget Guide" page type → uses Tier 1 keyword "budget health insurance expat"
+       - Verify: Can you map each page type to 2-5 keywords from Task 1?
+       - If NO → Review Task 1 keyword tiers and add keyword mapping to target_keywords field
+
+    ☐ **Schema Completeness**: Each page type has schema examples with 5-10 properties (not just @type + name)
+       - Example check: Does schema have name, description, url, address, offers, aggregateRating?
+       - Verify: Count properties in each schema - should have 5-10 properties minimum
+       - If NO → Expand schema examples with relevant properties from schema.org
+
+    ☐ **Character Limits**: Title tags are 50-60 chars, meta descriptions are 140-155 chars
+       - Example check: Count characters in title_tag_example - should be 50-60 chars
+       - Example check: Count characters in meta_description_example - should be 140-155 chars
+       - If NO → Shorten or lengthen to meet SERP display requirements
+
+    CRITICAL: If ANY checkbox fails → Fix the issue BEFORE submitting. Do not proceed with incomplete validation.
+    Python will automatically validate and may retry if customization is insufficient.
 
   expected_output: >
     ImplementationGuide Pydantic model with 3 implementation fields ONLY:

@@ -15,6 +15,7 @@ Benefits over separate crews:
 - Follows CrewAI documentation best practices
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, List, Optional, Tuple
 
@@ -186,17 +187,24 @@ class UnifiedSolutionCrew:
             "subscription", "free", "paid", "trial",
         ]
 
+        # Performance optimization: Compile indicators into regex pattern
+        # Reduces O(n*m*k) to O(n*m) where k=indicator count
+        indicator_pattern = re.compile(
+            '|'.join(re.escape(indicator) for indicator in competitor_indicators),
+            re.IGNORECASE
+        )
+
         # Filter Reddit posts for competitor mentions
         filtered_reddit = []
         for post in social_content.reddit_posts:
             # Check post title and body
             content_lower = (post.title + " " + (post.selftext or "")).lower()
-            if any(indicator in content_lower for indicator in competitor_indicators):
+            if indicator_pattern.search(content_lower):
                 filtered_reddit.append(post)
             else:
                 # Check comments for competitor mentions
                 for comment in post.comments:
-                    if any(indicator in comment.body.lower() for indicator in competitor_indicators):
+                    if indicator_pattern.search(comment.body.lower()):
                         filtered_reddit.append(post)
                         break
 
@@ -204,12 +212,12 @@ class UnifiedSolutionCrew:
         filtered_twitter = []
         for thread in social_content.twitter_threads:
             content_lower = thread.root_tweet.text.lower()
-            if any(indicator in content_lower for indicator in competitor_indicators):
+            if indicator_pattern.search(content_lower):
                 filtered_twitter.append(thread)
             else:
                 # Check replies
                 for reply in thread.replies:
-                    if any(indicator in reply.text.lower() for indicator in competitor_indicators):
+                    if indicator_pattern.search(reply.text.lower()):
                         filtered_twitter.append(thread)
                         break
 
@@ -563,31 +571,29 @@ class UnifiedSolutionCrew:
             )
 
         try:
-            # Prepare pain point context
-            high_priority = [
-                pp for pp in self.pain_point_analysis.pain_points
-                if pp.opportunity_level.value == "high"
-            ]
-            medium_priority = [
-                pp for pp in self.pain_point_analysis.pain_points
-                if pp.opportunity_level.value == "medium"
-            ]
+            # Use unified formatting helpers
+            from ..utils.helpers import format_pain_points_for_agents, extract_pain_points_by_priority
 
-            # Format high-priority pain points
-            high_priority_list = "\n".join([
-                f"**{i+1}. {pp.title}**\n"
-                f"- Problem: {pp.description}\n"
-                f"- Severity: {pp.severity_score:.2f} | WTP: {pp.willingness_to_pay:.2f}\n"
-                f"- Mentions: {pp.mention_count}\n"
-                f"- Key Quote: \"{pp.representative_quotes[0] if pp.representative_quotes else 'N/A'}\""
-                for i, pp in enumerate(high_priority[:10])
-            ]) if high_priority else ""
+            # Extract pain points by priority
+            high_priority, medium_priority, low_priority = extract_pain_points_by_priority(
+                self.pain_point_analysis
+            )
 
-            # Format medium-priority pain points
-            medium_priority_list = "\n".join([
-                f"**{pp.title}** (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})"
-                for pp in medium_priority[:10]
-            ]) if medium_priority else ""
+            # Format using unified helper
+            high_priority_list = format_pain_points_for_agents(
+                pain_points=high_priority,
+                format_type="detailed",
+                sort_by="severity",
+                limit=10,
+                include_quotes=True
+            )
+
+            medium_priority_list = format_pain_points_for_agents(
+                pain_points=medium_priority,
+                format_type="compact",
+                sort_by="severity",
+                limit=10
+            )
 
             # Format niche context for task inputs
             if self.niche_context:
@@ -598,6 +604,20 @@ class UnifiedSolutionCrew:
                 market_segments_formatted = "Not provided"
                 niche_description = "Not provided"
                 industry_boundaries = "Not provided"
+
+            # Extract and format user segments from pain point analysis
+            user_segments_formatted = ""
+            if (self.pain_point_analysis.content_categorization and
+                self.pain_point_analysis.content_categorization.user_segments):
+                user_segments_formatted = "\n".join([
+                    f"**{seg.segment_name}** ({seg.mention_frequency} frequency)\n"
+                    f"  Primary concerns: {', '.join(seg.primary_concerns)}"
+                    for seg in self.pain_point_analysis.content_categorization.user_segments
+                ])
+                logger.info(f"Passing {len(self.pain_point_analysis.content_categorization.user_segments)} validated user segments to solution ideation")
+            else:
+                user_segments_formatted = "Not available"
+                logger.warning("No user segments available from pain point analysis")
 
             # Execute crew with unified pipeline
             logger.info("Executing Task 1: Solution Ideation...")
@@ -613,7 +633,8 @@ class UnifiedSolutionCrew:
                 "allowed_project_types": ', '.join(self.allowed_project_types) if self.allowed_project_types else "All types allowed",
                 "niche_description": niche_description,
                 "market_segments": market_segments_formatted,
-                "industry_boundaries": industry_boundaries
+                "industry_boundaries": industry_boundaries,
+                "user_segments": user_segments_formatted
             })
 
             # Extract final result (Task 4 output - SolutionSelection)

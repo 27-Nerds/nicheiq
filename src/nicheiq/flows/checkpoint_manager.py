@@ -6,7 +6,7 @@ and recovery from failures.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, get_origin, get_args
 import json
 import shutil
 from datetime import datetime, timedelta
@@ -87,11 +87,18 @@ class CheckpointManager:
 
             # Serialize stage data
             if hasattr(stage_data, 'model_dump'):
+                # Single Pydantic model
                 data_json = stage_data.model_dump(mode='json')
+            elif isinstance(stage_data, list):
+                # Check if list contains Pydantic models
+                if stage_data and hasattr(stage_data[0], 'model_dump'):
+                    # List of Pydantic models - serialize each one
+                    data_json = [item.model_dump(mode='json') for item in stage_data]
+                else:
+                    # List of primitives/dicts - already JSON-serializable
+                    data_json = stage_data
             elif isinstance(stage_data, dict):
                 data_json = stage_data
-            elif isinstance(stage_data, list):
-                data_json = stage_data  # Lists are JSON-serializable
             else:
                 data_json = {"data": str(stage_data)}
 
@@ -139,9 +146,17 @@ class CheckpointManager:
             metadata["completed_stages"].append(completed_stage)
         metadata["errors"] = self.state.errors.copy() if hasattr(self.state, 'errors') else []
 
-        # Save metadata
-        with open(metadata_file, "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
+        # Save metadata with atomic write (prevents corruption)
+        temp_file = metadata_file.with_suffix('.json.tmp')
+        try:
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False, default=str)
+            temp_file.replace(metadata_file)  # Atomic operation on POSIX systems
+        except Exception as e:
+            logger.warning(f"Failed to update checkpoint metadata: {e}")
+            if temp_file.exists():
+                temp_file.unlink()  # Clean up temp file on error
+            raise  # Re-raise so outer try/catch can handle
 
     def find_latest_checkpoint(self) -> Optional[Path]:
         """Find most recent checkpoint folder for current niche."""
@@ -176,6 +191,14 @@ class CheckpointManager:
                 logger.error(f"Checkpoint metadata not found: {metadata_file}")
                 return False
 
+            # Validate file is not empty (corrupted)
+            if metadata_file.stat().st_size == 0:
+                logger.error(
+                    f"Checkpoint metadata is empty (corrupted): {metadata_file}. "
+                    f"Delete checkpoint folder to start fresh or reconstruct metadata manually."
+                )
+                return False
+
             with open(metadata_file, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
 
@@ -208,6 +231,7 @@ class CheckpointManager:
         """Reconstruct ResearchState from individual stage checkpoint files."""
         # Map stage files to state attributes
         stage_mapping = {
+            "stage_1_niche_context.json": "niche_context",
             "stage_5_social_content.json": "social_content",
             "stage_6_pain_points.json": "pain_point_analysis",
             "stage_7_solutions.json": "idea_generation",
@@ -216,6 +240,10 @@ class CheckpointManager:
             "stage_8_75_solution_selection.json": "solution_selection",
             "stage_8_8_keyword_validation.json": "keyword_validation_results",  # Stage 8.8 keyword demand validation
             "stage_8_85_solution_refinement.json": "solution_refinement",  # Stage 8.85 strategic refinements
+            # Stage 9 sub-phase checkpoints (enables partial resume)
+            "stage_9_5a_seed_expansion.json": "stage_9_5a_expanded_keywords",
+            "stage_9_5b_bulk_validation.json": "stage_9_5b_validation_results",
+            "stage_9_5c_enrichment.json": "stage_9_5c_enriched_keywords",
             "stage_9_seo_strategy.json": "seo_strategy_report",
             "stage_9_5_seo_refinement.json": "seo_enrichment",  # Stage 9.5 SEO score refinement
             "stage_9_75_data_sources.json": "data_source_research",
@@ -238,24 +266,21 @@ class CheckpointManager:
 
                     # Load based on field type
                     try:
-                        # Handle legacy checkpoint format where lists were wrapped as {"data": str(...)}
-                        if (isinstance(stage_data, dict) and
-                            len(stage_data) == 1 and
-                            "data" in stage_data and
-                            isinstance(stage_data["data"], str)):
-                            try:
-                                import ast
-                                stage_data = ast.literal_eval(stage_data["data"])
-                                logger.debug(f"  Unwrapped legacy checkpoint format for {stage_file}")
-                            except (ValueError, SyntaxError) as e:
-                                logger.warning(f"  Failed to unwrap legacy checkpoint: {e}")
-
-                        # Check if it's a Pydantic model (has model_dump method)
-                        if hasattr(field_type, 'model_fields'):
+                        # Check if it's a List type
+                        if get_origin(field_type) is list:
+                            list_item_type = get_args(field_type)[0]
+                            if hasattr(list_item_type, 'model_fields'):
+                                # List of Pydantic models - convert each dict
+                                setattr(self.state, state_attr, [list_item_type(**item) for item in stage_data])
+                            else:
+                                # List of primitives - set directly
+                                setattr(self.state, state_attr, stage_data)
+                        # Check if it's a Pydantic model (has model_fields)
+                        elif hasattr(field_type, 'model_fields'):
                             # Pydantic model - instantiate with kwargs
                             setattr(self.state, state_attr, field_type(**stage_data))
                         else:
-                            # Non-Pydantic type (list, dict, etc.) - set directly
+                            # Non-Pydantic type (dict, etc.) - set directly
                             setattr(self.state, state_attr, stage_data)
                         logger.debug(f"  Loaded {stage_file} → {state_attr}")
                     except Exception as e:

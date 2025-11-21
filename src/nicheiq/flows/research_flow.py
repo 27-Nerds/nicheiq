@@ -23,7 +23,7 @@ from ..config.settings import settings
 from ..crews import PainPointCrew, SEOStrategyCrew, UnifiedSolutionCrew
 from ..crews.solution_refinement_crew import SolutionRefinementCrew
 from ..models.research_state import FinalReport, ResearchState
-from ..models.keyword_data import KeywordSeedResult, KeywordValidationSummary
+from ..models.keyword_data import KeywordSeedResult, KeywordValidationSummary, CrewKeywordValidationResult
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..tools.dataforseo_tool import DataForSEOBaseClient
@@ -969,7 +969,8 @@ Now generate 10 seed keywords for the solution described above."""
     def _check_keyword_relevance(
         self,
         expanded_keywords: List[dict],
-        solution: "SolutionIdea"
+        solution: "SolutionIdea",
+        validation_cache: Optional[Dict[str, tuple]] = None
     ) -> tuple[float, List[dict], List[str]]:
         """
         Check if expanded keywords are relevant using 3 criteria.
@@ -1048,7 +1049,8 @@ Now generate 10 seed keywords for the solution described above."""
                 solution_description=solution.description,
                 niche_description=niche_context.niche_description if niche_context else "",
                 project_type=project_type,
-                threshold=relevance_threshold
+                threshold=relevance_threshold,
+                validation_cache=validation_cache
             )
 
             # Extract relevant keywords
@@ -1362,6 +1364,9 @@ Now generate 10 seed keywords for the solution described above."""
 
         self.state.current_stage = 5
 
+        # Checkpoint: Save niche context for resume
+        self.checkpoint_mgr.save_stage("stage_1_niche_context", self.state.niche_context)
+
     def _generate_niche_context(self, niche_input: str):
         """Generate structured NicheContext using LLM with structured output."""
         from ..models.research_state import NicheContext
@@ -1635,7 +1640,9 @@ Return a valid JSON object with this structure:
         pain_point_crew = PainPointCrew(
             reddit_posts=self.state.social_content.reddit_posts,
             twitter_threads=self.state.social_content.twitter_threads,
-            niche_description=self.niche_description
+            niche_description=self.niche_description,
+            market_segments=self.state.niche_context.market_segments,
+            industry_boundaries=self.state.niche_context.industry_boundaries
         )
 
         logger.info("Running pain point analysis crew...")
@@ -1830,16 +1837,19 @@ Return a valid JSON object with this structure:
                 location_code=settings.target_location
             )
 
-            # NEW: Validate keyword relevance with LLM (pre-filter + semantic validation)
+            # NEW: Validate keyword relevance with LLM (pre-filter + semantic validation + retry)
             logger.info(f"[Round {round_num}] Validating {len(suggestions)} expanded keywords...")
-            validation_results = validator.validate_batch(
+            validation_results = validator.validate_batch_with_retry(
                 keywords=suggestions,
                 niche_description=niche_description,
                 solution_name=solution_name,
                 solution_description=solution_description,
                 project_type=project_type,
-                batch_size=50,
-                threshold=settings.keyword_relevance_threshold
+                batch_size=150,  # Initial batch size for first attempt
+                threshold=settings.keyword_relevance_threshold,
+                max_retries=1,  # Single retry attempt for missing keywords
+                retry_batch_size=50  # Smaller batches for retry (more focused LLM attention)
+                # fail_open_after_retry defaults to False (fail-closed) - filters unvalidated keywords
             )
 
             # Filter to only relevant keywords
@@ -2085,6 +2095,8 @@ Return a valid JSON object with this structure:
             best_validation_result = None
             max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 4)
             relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.6)
+            # Cache for keyword validation across attempts (avoids re-validating same keywords)
+            keyword_validation_cache: Dict[str, tuple] = {}
 
             for attempt in range(1, max_attempts + 1):
                 logger.info(f"[Stage 8.8] Attempt {attempt}/{max_attempts} for {solution_name}")
@@ -2110,7 +2122,8 @@ Return a valid JSON object with this structure:
                 # Check relevance
                 relevance_score, good_keywords, issues = self._check_keyword_relevance(
                     expanded_keywords,
-                    solution
+                    solution,
+                    validation_cache=keyword_validation_cache
                 )
 
                 # Accumulate good keywords across attempts
@@ -2155,7 +2168,10 @@ Return a valid JSON object with this structure:
                 best_validation_result["attempts_made"] = attempt
                 best_validation_result["best_relevance_score"] = best_relevance_score
                 best_validation_result["accumulated_keywords_count"] = len(accumulated_good_keywords)
-                validation_results.append(best_validation_result)
+
+                # Convert dict to Pydantic object for type safety
+                validation_obj = CrewKeywordValidationResult(**best_validation_result)
+                validation_results.append(validation_obj)
 
                 logger.info(
                     f"[Stage 8.8] Final result for {solution_name}: "
@@ -2169,7 +2185,7 @@ Return a valid JSON object with this structure:
         self.state.keyword_validation_results = validation_results
 
         # Track validated solution names
-        validated_names = set(v["solution_name"] for v in validation_results)
+        validated_names = set(v.solution_name for v in validation_results)
 
         # Clear any pre-existing keyword scores from non-validated solutions
         # (LLM in stage 8.75 may have hallucinated these optional fields)
@@ -2184,13 +2200,13 @@ Return a valid JSON object with this structure:
         for validation in validation_results:
             # Find corresponding solution score
             for solution_score in all_scores:
-                if solution_score.solution_name == validation["solution_name"]:
+                if solution_score.solution_name == validation.solution_name:
                     # Store keyword demand score
-                    solution_score.keyword_demand_score = validation["keyword_demand_score"]
+                    solution_score.keyword_demand_score = validation.keyword_demand_score
 
                     # Calculate adjusted composite score
                     base_score = solution_score.composite_score
-                    keyword_multiplier = validation["keyword_demand_score"]
+                    keyword_multiplier = validation.keyword_demand_score
                     solution_score.adjusted_composite_score = base_score * keyword_multiplier
 
                     logger.info(
@@ -2282,7 +2298,7 @@ Return a valid JSON object with this structure:
 
         # Get keyword validation for selected solution
         keyword_validation = next(
-            (v for v in self.state.keyword_validation_results if v["solution_name"] == selected_name),
+            (v for v in self.state.keyword_validation_results if v.solution_name == selected_name),
             None
         )
 
@@ -2292,10 +2308,10 @@ Return a valid JSON object with this structure:
             return
 
         # Early exit if demand is too weak
-        if keyword_validation["demand_signal"] == "weak" and keyword_validation["total_volume"] < 2000:
+        if keyword_validation.demand_signal == "weak" and keyword_validation.total_volume < 2000:
             logger.warning(
                 f"[Stage 8.85] Skipping refinement - weak demand signal "
-                f"({keyword_validation['total_volume']} monthly volume)"
+                f"({keyword_validation.total_volume} monthly volume)"
             )
             self.state.current_stage = 9
             self.checkpoint_mgr.save_stage("stage_8_85_solution_refinement", {"skipped": True, "reason": "weak_demand"})
@@ -2398,53 +2414,84 @@ Return a valid JSON object with this structure:
             niche_context=self.state.niche_context,
         )
 
+        # Check for existing sub-phase checkpoints (enables partial resume)
+        completed_stages = self.checkpoint_mgr.get_completed_stages()
+        has_9_5a = "stage_9_5a_seed_expansion" in completed_stages
+        has_9_5b = "stage_9_5b_bulk_validation" in completed_stages
+        has_9_5c = "stage_9_5c_enrichment" in completed_stages
+
         # Phase 9.5a: Conceptual keyword expansion (SEO crew)
         logger.info(f"Phase 9.5a: Conceptual keyword expansion for {selected_solution_name}...")
         try:
-            expanded_keywords = seo_crew.expand_keywords_phase_1()
+            # Resume from checkpoint if available
+            if has_9_5a and self.state.stage_9_5a_expanded_keywords:
+                from ..models.keyword_data import ExpandedKeywordList
+                logger.info("✓ Resuming from Phase 9.5a checkpoint")
+                expanded_keywords = ExpandedKeywordList(**self.state.stage_9_5a_expanded_keywords)
+            else:
+                expanded_keywords = seo_crew.expand_keywords_phase_1()
             logger.info(
                 f"✓ Conceptual expansion complete: {len(expanded_keywords.keywords)} keywords, "
                 f"{len(expanded_keywords.topic_clusters)} clusters"
             )
 
+            # Checkpoint 9.5a: Save expanded keywords
+            self.state.stage_9_5a_expanded_keywords = expanded_keywords.model_dump(mode='json')
+            self.checkpoint_mgr.save_stage("stage_9_5a_seed_expansion", self.state.stage_9_5a_expanded_keywords)
+
             # Phase 9.5b: Bulk validation with DataForSEO (NEW)
             logger.info("Phase 9.5b: Bulk validation of conceptual keywords with DataForSEO...")
 
-            # Extract keyword strings from conceptual keywords
-            conceptual_keyword_strings = [kw.keyword for kw in expanded_keywords.keywords]
-            logger.info(f"Validating {len(conceptual_keyword_strings)} conceptual keywords...")
+            # Resume from checkpoint if available
+            if has_9_5b and self.state.stage_9_5b_validation_results:
+                logger.info("✓ Resuming from Phase 9.5b checkpoint")
+                quality_validated = self.state.stage_9_5b_validation_results.get("validated_keywords", [])
+                min_volume = self.state.stage_9_5b_validation_results.get("threshold_used", 500)
+            else:
+                # Extract keyword strings from conceptual keywords
+                conceptual_keyword_strings = [kw.keyword for kw in expanded_keywords.keywords]
+                logger.info(f"Validating {len(conceptual_keyword_strings)} conceptual keywords...")
 
-            # Bulk validate using get_search_volume (handles up to 1,000 keywords)
-            validated_keywords = self.dataforseo_tool.get_search_volume(
-                keywords=conceptual_keyword_strings,
-                location_code=settings.target_location
-            )
-
-            logger.info(f"DataForSEO returned metrics for {len(validated_keywords)} keywords")
-
-            # Filter to keywords meeting minimum volume threshold
-            min_volume = settings.keyword_enrichment_min_volume  # Default: 500
-            quality_validated = [
-                kw for kw in validated_keywords
-                if kw.get('search_volume', 0) >= min_volume
-            ]
-
-            logger.info(
-                f"✓ Validation complete: {len(quality_validated)}/{len(conceptual_keyword_strings)} "
-                f"keywords have volume >= {min_volume}"
-            )
-
-            # Fallback: If too few validated keywords, lower threshold and retry filter
-            if len(quality_validated) < 20:
-                logger.warning(
-                    f"⚠️ Only {len(quality_validated)} keywords meet volume threshold. "
-                    f"Lowering to {min_volume // 5} to find more seeds..."
+                # Bulk validate using get_search_volume (handles up to 1,000 keywords)
+                validated_keywords = self.dataforseo_tool.get_search_volume(
+                    keywords=conceptual_keyword_strings,
+                    location_code=settings.target_location
                 )
+
+                logger.info(f"DataForSEO returned metrics for {len(validated_keywords)} keywords")
+
+                # Filter to keywords meeting minimum volume threshold
+                min_volume = settings.keyword_enrichment_min_volume  # Default: 500
                 quality_validated = [
                     kw for kw in validated_keywords
-                    if kw.get('search_volume', 0) >= (min_volume // 5)
+                    if kw.get('search_volume', 0) >= min_volume
                 ]
-                logger.info(f"With lowered threshold: {len(quality_validated)} validated keywords")
+
+                logger.info(
+                    f"✓ Validation complete: {len(quality_validated)}/{len(conceptual_keyword_strings)} "
+                    f"keywords have volume >= {min_volume}"
+                )
+
+                # Fallback: If too few validated keywords, lower threshold and retry filter
+                if len(quality_validated) < 20:
+                    logger.warning(
+                        f"⚠️ Only {len(quality_validated)} keywords meet volume threshold. "
+                        f"Lowering to {min_volume // 5} to find more seeds..."
+                    )
+                    quality_validated = [
+                        kw for kw in validated_keywords
+                        if kw.get('search_volume', 0) >= (min_volume // 5)
+                    ]
+                    logger.info(f"With lowered threshold: {len(quality_validated)} validated keywords")
+
+                # Checkpoint 9.5b: Save validation results
+                self.state.stage_9_5b_validation_results = {
+                    "validated_keywords": quality_validated,
+                    "original_count": len(conceptual_keyword_strings),
+                    "passed_count": len(quality_validated),
+                    "threshold_used": min_volume
+                }
+                self.checkpoint_mgr.save_stage("stage_9_5b_bulk_validation", self.state.stage_9_5b_validation_results)
 
             # Absolute minimum check
             if len(quality_validated) < 5:
@@ -2465,13 +2512,23 @@ Return a valid JSON object with this structure:
                 f"Phase 9.5c: Iterative keyword enrichment with {len(quality_validated)} "
                 f"validated seeds..."
             )
-            enriched_keywords = self._iterative_keyword_enrichment(
-                conceptual_keywords=expanded_keywords.keywords,
-                validated_seeds=quality_validated,
-                topic_clusters=expanded_keywords.topic_clusters,
-                selected_solution=selected_solution,
-                niche_context=self.state.niche_context,
-            )
+
+            # Resume from checkpoint if available
+            if has_9_5c and self.state.stage_9_5c_enriched_keywords:
+                logger.info("✓ Resuming from Phase 9.5c checkpoint")
+                enriched_keywords = self.state.stage_9_5c_enriched_keywords
+            else:
+                enriched_keywords = self._iterative_keyword_enrichment(
+                    conceptual_keywords=expanded_keywords.keywords,
+                    validated_seeds=quality_validated,
+                    topic_clusters=expanded_keywords.topic_clusters,
+                    selected_solution=selected_solution,
+                    niche_context=self.state.niche_context,
+                )
+                # Checkpoint 9.5c: Save enriched keywords
+                self.state.stage_9_5c_enriched_keywords = enriched_keywords
+                self.checkpoint_mgr.save_stage("stage_9_5c_enrichment", enriched_keywords)
+
             logger.info(f"✓ Enrichment complete: {len(enriched_keywords)} keywords with search data")
 
             # Generate comprehensive SEO strategy using 4-task multitask flow

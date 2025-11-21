@@ -7,9 +7,18 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .analytics import (
+    MarketAnalytics,
+    SEOAnalytics,
+    CompetitiveAnalytics,
+    PainPointAnalytics,
+    VisualizationManifest,
+)
 from .competitor import CompetitiveAnalysisResult
 from .data_source import DataSourceResearchResult
-from .keyword_data import KeywordValidationResult
+from .executive_summary import ExecutiveDashboard
+from .keyword_data import KeywordValidationResult, CrewKeywordValidationResult
+from .marketing_blueprint import GTMBlueprint
 from .pain_point import ContentCategorizationReport, PainPointAnalysisResult
 from .seo_strategy import SEOStrategyReport
 from .social_content import SocialContentCollection
@@ -249,6 +258,40 @@ class FinalReport(BaseModel):
     niche: str = Field(..., description="Niche analyzed")
     executive_summary: str = Field(..., description="High-level executive summary")
 
+    # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
+    executive_dashboard: Optional[ExecutiveDashboard] = Field(
+        default=None,
+        description="Executive dashboard with go/no-go verdict, core pain point, and key opportunity metrics for quick decision-making"
+    )
+
+    # Go-to-Market Blueprint (Phase 2 Enhancement) - ACTIONABLE GTM STRATEGY
+    go_to_market_blueprint: Optional[GTMBlueprint] = Field(
+        default=None,
+        description="Actionable Go-to-Market strategy with ICP, marketing channels, messaging, content angles, and 30-day playbook for immediate execution"
+    )
+
+    # Analytics & Visualizations (Phase 3 Enhancement) - DATA-DRIVEN INSIGHTS
+    market_analytics: Optional[MarketAnalytics] = Field(
+        default=None,
+        description="Computed market opportunity analytics: overall score, market size category, selection confidence, competitive intensity, go/no-go recommendation"
+    )
+    seo_analytics: Optional[SEOAnalytics] = Field(
+        default=None,
+        description="SEO keyword distribution analytics: tier counts, total search volume, keyword diversity, high-volume keyword count"
+    )
+    competitive_analytics: Optional[CompetitiveAnalytics] = Field(
+        default=None,
+        description="Competitive density analytics: competitor count, market saturation score, differentiation strength, market gaps identified"
+    )
+    pain_point_analytics: Optional[PainPointAnalytics] = Field(
+        default=None,
+        description="Pain point priority analytics: total count, high-priority count, quadrant distribution, average severity/WTP scores"
+    )
+    visualization_manifest: Optional[VisualizationManifest] = Field(
+        default=None,
+        description="Paths to generated visualization charts: pain point matrix, competitive landscape, keyword opportunity, implementation timeline"
+    )
+
     # Solution Selection (Stage 8.5)
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
@@ -469,7 +512,7 @@ class ResearchState(BaseModel):
     solution_selection: Optional[SolutionSelection] = None
 
     # Stage 8.8: Keyword Validation Results (quick validation for top 3 solutions)
-    keyword_validation_results: Optional[List[Dict[str, Any]]] = Field(
+    keyword_validation_results: Optional[List['CrewKeywordValidationResult']] = Field(
         default=None,
         description="Keyword validation results for top 3 solutions from Stage 8.8"
     )
@@ -482,6 +525,20 @@ class ResearchState(BaseModel):
 
     # Stage 9: Seed Keywords
     seed_keywords: List[str] = Field(default_factory=list, description="Seed keywords for SEO research")
+
+    # Stage 9 Sub-Phase Checkpoints (for resume capability)
+    stage_9_5a_expanded_keywords: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Phase 9.5a output: expanded keywords and topic clusters from conceptual expansion"
+    )
+    stage_9_5b_validation_results: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Phase 9.5b output: DataForSEO validated keywords meeting volume threshold"
+    )
+    stage_9_5c_enriched_keywords: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="Phase 9.5c output: enriched keywords with full search metrics"
+    )
 
     # Stage 9.5: SEO Enrichment (refined scores using keyword data from Stage 9)
     seo_enrichment: Optional[SolutionSEORefinement] = Field(

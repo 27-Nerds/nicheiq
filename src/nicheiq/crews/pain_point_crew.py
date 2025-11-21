@@ -23,6 +23,10 @@ from ..models.pain_point import (
 from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
 from ..utils.helpers import ContentTokenMonitor
 
+# Source tracking pattern for [source: ID] suffixes
+# Matches alphanumeric, dash, underscore, period (1-50 chars) for post/thread IDs
+SOURCE_TAG_PATTERN = r'[\w\-_\.]{1,50}'
+
 
 def validate_pydantic_pain_point_output(result: TaskOutput) -> Tuple[bool, Any]:
     """
@@ -81,7 +85,7 @@ class PainPointCrew:
     agents_config = "config/pain_point_agents.yaml"
     tasks_config = "config/pain_point_tasks.yaml"
 
-    def __init__(self, reddit_posts: List[RedditPost] = None, twitter_threads: List[TwitterThread] = None, niche_description: str = ""):
+    def __init__(self, reddit_posts: List[RedditPost] = None, twitter_threads: List[TwitterThread] = None, niche_description: str = "", market_segments: List[str] = None, industry_boundaries: str = ""):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -92,6 +96,8 @@ class PainPointCrew:
             reddit_posts: List of collected Reddit posts
             twitter_threads: List of collected Twitter threads
             niche_description: Description of the niche being analyzed
+            market_segments: Key market segments identified in niche validation
+            industry_boundaries: Industry boundaries definition for context
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -116,6 +122,8 @@ class PainPointCrew:
             )
 
         self.niche_description = niche_description
+        self.market_segments = market_segments or []
+        self.industry_boundaries = industry_boundaries
         self.knowledge_sources = []
 
         # Store formatted content for direct injection into first task
@@ -240,7 +248,7 @@ class PainPointCrew:
 
         return quality_threads
 
-    def _format_comments_with_replies(self, comments: List[RedditComment], depth: int = 0, max_depth: int = 3) -> str:
+    def _format_comments_with_replies(self, comments: List[RedditComment], post_id: str = "unknown", depth: int = 0, max_depth: int = 3) -> str:
         """
         Recursively format comments with their nested replies.
 
@@ -248,6 +256,7 @@ class PainPointCrew:
 
         Args:
             comments: List of RedditComment objects
+            post_id: Source post ID for tracking attribution
             depth: Current nesting depth (for indentation)
             max_depth: Maximum depth to traverse (default 3 levels)
 
@@ -261,9 +270,9 @@ class PainPointCrew:
         indent = "  " * depth  # Indentation for nested comments
 
         for comment in comments:
-            # Include full comment body (no truncation with RAG)
+            # Include full comment body with source tracking
             formatted.append(
-                f"{indent}- [{comment.score} pts] {comment.body}"
+                f"{indent}- [{comment.score} pts] {comment.body} [source: {post_id}]"
             )
 
             # Include nested replies (up to max_depth)
@@ -272,6 +281,7 @@ class PainPointCrew:
                 reply_limit = 30 if depth == 0 else (20 if depth == 1 else 10)
                 nested_content = self._format_comments_with_replies(
                     comment.replies[:reply_limit],
+                    post_id=post_id,
                     depth=depth + 1,
                     max_depth=max_depth
                 )
@@ -282,7 +292,7 @@ class PainPointCrew:
         # Filter out any empty strings before joining
         return "\n".join(str(item) for item in formatted if item)
 
-    def _format_twitter_replies(self, replies: List[TwitterTweet]) -> str:
+    def _format_twitter_replies(self, replies: List[TwitterTweet], thread_id: str = "unknown") -> str:
         """
         Format Twitter replies with comprehensive content and conversation threading.
 
@@ -290,6 +300,7 @@ class PainPointCrew:
 
         Args:
             replies: List of TwitterTweet reply objects
+            thread_id: Source thread ID for tracking attribution
 
         Returns:
             Formatted string with all reply content, grouped by conversation threads
@@ -320,9 +331,9 @@ class PainPointCrew:
         # Process all root replies (was 50)
 
         for root_reply in root_replies:
-            # Include full tweet text (no truncation with RAG)
+            # Include full tweet text with source tracking
             formatted.append(
-                f"- @{root_reply.author_username} [{root_reply.likes} likes, {root_reply.retweets} RTs]: {root_reply.text}"
+                f"- @{root_reply.author_username} [{root_reply.likes} likes, {root_reply.retweets} RTs]: {root_reply.text} [source: {thread_id}]"
             )
 
             # Add nested replies to this conversation (if any)
@@ -333,9 +344,9 @@ class PainPointCrew:
 
                 # Include top 20 nested replies per conversation (was 10)
                 for nested in nested_replies[:20]:
-                    # Include full nested tweet text (no truncation)
+                    # Include full nested tweet text with source tracking
                     formatted.append(
-                        f"  └─ @{nested.author_username} [{nested.likes} likes]: {nested.text}"
+                        f"  └─ @{nested.author_username} [{nested.likes} likes]: {nested.text} [source: {thread_id}]"
                     )
 
         # Filter out any empty strings before joining
@@ -359,12 +370,12 @@ class PainPointCrew:
 
 ### {post.title}
 
-{post.selftext}
+{post.selftext} [source: {post.post_id}]
 
 ---
 ## Discussion ({len(post.comments)} comments):
 
-{self._format_comments_with_replies(post.comments)}
+{self._format_comments_with_replies(post.comments, post_id=post.post_id)}
 """)
         return "\n\n===\n\n".join(formatted)
 
@@ -386,12 +397,12 @@ class PainPointCrew:
 
 ## Original Tweet:
 
-{thread.original_tweet.text}
+{thread.original_tweet.text} [source: {thread.thread_id}]
 
 ---
 ## Conversation ({len(thread.replies)} replies):
 
-{self._format_twitter_replies(thread.replies)}
+{self._format_twitter_replies(thread.replies, thread_id=thread.thread_id)}
 """)
         return "\n\n===\n\n".join(formatted)
 
@@ -526,6 +537,65 @@ class PainPointCrew:
             }
         )
 
+    def _extract_and_clean_sources(self, pain_points: List[UnvalidatedPainPoint]) -> List[UnvalidatedPainPoint]:
+        """
+        Extract source_post_ids from [source: ID] suffixes in quotes and clean quote text.
+
+        This implements CrewAI's recommended approach for source tracking:
+        embed source metadata within chunk content itself, then extract post-processing.
+
+        IMPORTANT: This method modifies pain_points in-place (Pydantic models are mutable).
+        Side effects:
+        - Updates pp.source_post_ids with extracted IDs
+        - Updates pp.representative_quotes with cleaned text (no [source: ID] suffixes)
+
+        Args:
+            pain_points: List of UnvalidatedPainPoint objects with quotes containing [source: ID]
+
+        Returns:
+            List of pain points with source_post_ids populated and quotes cleaned (same list, modified)
+        """
+        import re
+
+        logger.info(f"[Stage 6] Extracting source IDs from {len(pain_points)} pain points...")
+
+        for pp in pain_points:
+            sources = set()
+            cleaned_quotes = []
+
+            for quote in pp.representative_quotes:
+                # Extract [source: ID] pattern using module-level pattern constant
+                match = re.search(rf'\[source: ({SOURCE_TAG_PATTERN})\]', quote)
+                if match:
+                    sources.add(match.group(1))
+                    # Remove [source: ID] suffix from quote text
+                    cleaned_quote = re.sub(rf'\s*\[source: {SOURCE_TAG_PATTERN}\]', '', quote).strip()
+                    cleaned_quotes.append(cleaned_quote)
+                else:
+                    # Log missing source tag for debugging
+                    logger.debug(
+                        f"Quote missing [source: ID] suffix in '{pp.title[:30]}...': "
+                        f"'{quote[:50]}...'"
+                    )
+                    cleaned_quotes.append(quote)
+
+            # Update pain point with extracted sources and cleaned quotes
+            pp.source_post_ids = list(sources)
+            pp.representative_quotes = cleaned_quotes
+
+            # Log extraction results for this pain point
+            if sources:
+                logger.info(
+                    f"[Stage 6] '{pp.title[:50]}...': Extracted {len(sources)} source ID(s) "
+                    f"from {len(pp.representative_quotes)} quote(s)"
+                )
+            else:
+                logger.warning(
+                    f"[Stage 6] '{pp.title[:50]}...': No source IDs found in {len(pp.representative_quotes)} quote(s)"
+                )
+
+        return pain_points
+
     def analyze(self) -> PainPointAnalysisResult:
         """
         Execute pain point analysis workflow using knowledge sources.
@@ -625,10 +695,25 @@ class PainPointCrew:
                     model=settings.content_analysis_llm
                 )
 
+            # Format market segments for task context
+            market_segments_formatted = "\n".join([f"- {seg}" for seg in self.market_segments]) if self.market_segments else "Not specified"
+
+            # Extract research metadata
+            subreddits = list(set(post.subreddit for post in self.reddit_posts if post.subreddit))
+            subreddits_formatted = ", ".join(sorted(subreddits)) if subreddits else "N/A"
+
+            # Get collection timestamp from first post (all collected at same time)
+            collection_timestamp = "Not available"
+            if self.reddit_posts and hasattr(self.reddit_posts[0], 'created_utc'):
+                from datetime import datetime
+                collection_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
             # Hybrid approach: Pass full content for first agent (comprehensive categorization),
             # while knowledge sources remain available for subsequent agents (targeted evidence retrieval)
             crew_output = crew_instance.kickoff(inputs={
                 "niche_description": self.niche_description,
+                "market_segments": market_segments_formatted,
+                "industry_boundaries": self.industry_boundaries or "Not specified",
                 "full_reddit_content": self.formatted_reddit_content,
                 "full_twitter_content": self.formatted_twitter_content,
                 "reddit_posts_count": len(self.reddit_posts),
@@ -636,6 +721,8 @@ class PainPointCrew:
                 "total_reddit_comments": total_reddit_comments,
                 "total_twitter_replies": total_twitter_replies,
                 "total_content": len(self.reddit_posts) + len(self.twitter_threads),
+                "subreddits": subreddits_formatted,
+                "collection_timestamp": collection_timestamp,
             })
 
             # Python merge: Extract all task outputs and merge Task 2 + Task 3
@@ -647,6 +734,32 @@ class PainPointCrew:
             categorization_output = task_outputs[0].pydantic  # Task 1: ContentCategorizationReport
             extraction_output = task_outputs[1].pydantic      # Task 2: PainPointExtraction
             validation_output = task_outputs[2].pydantic      # Task 3: ValidationResult
+
+            # Extract source IDs from [source: ID] suffixes and clean quotes
+            extraction_output.extracted_pain_points = self._extract_and_clean_sources(
+                extraction_output.extracted_pain_points
+            )
+
+            # Calculate and log aggregate source tracking stats
+            pain_points_with_sources = sum(
+                1 for pp in extraction_output.extracted_pain_points
+                if pp.source_post_ids and len(pp.source_post_ids) > 0
+            )
+            total_pain_points = len(extraction_output.extracted_pain_points)
+            total_quotes = sum(len(pp.representative_quotes) for pp in extraction_output.extracted_pain_points)
+            coverage_pct = (pain_points_with_sources / total_pain_points * 100) if total_pain_points > 0 else 0
+
+            logger.info(
+                f"Source tracking: Extracted source IDs from {pain_points_with_sources}/{total_pain_points} "
+                f"pain points ({coverage_pct:.1f}% coverage, {total_quotes} total quotes)"
+            )
+
+            # Warn if source coverage is low (< 80%)
+            if coverage_pct < 80:
+                logger.warning(
+                    f"Low source attribution coverage: Only {pain_points_with_sources}/{total_pain_points} "
+                    f"pain points ({coverage_pct:.1f}%) have source IDs. Expected >80% coverage."
+                )
 
             logger.info(
                 f"Python merge: Combining {len(extraction_output.extracted_pain_points)} extracted pain points "

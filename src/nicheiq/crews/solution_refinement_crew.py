@@ -13,6 +13,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.solution_refinement import SolutionRefinement
 from ..models.solution_idea import SolutionIdea
+from ..models.keyword_data import CrewKeywordValidationResult
 
 
 @CrewBase
@@ -85,7 +86,7 @@ class SolutionRefinementCrew:
     def refine(
         self,
         selected_solution: SolutionIdea,
-        keyword_validation: dict,
+        keyword_validation: CrewKeywordValidationResult,
         composite_score: float
     ) -> Optional[SolutionRefinement]:
         """
@@ -100,11 +101,11 @@ class SolutionRefinementCrew:
             SolutionRefinement object with strategic recommendations, or None if refinement fails
         """
         # Early exit if demand signal is too weak
-        demand_signal = keyword_validation.get("demand_signal", "weak")
-        if demand_signal == "weak" and keyword_validation.get("total_volume", 0) < 2000:
+        demand_signal = keyword_validation.demand_signal
+        if demand_signal == "weak" and keyword_validation.total_volume < 2000:
             logger.warning(
                 f"Skipping refinement for {selected_solution.solution_name} - "
-                f"weak demand signal ({keyword_validation.get('total_volume', 0)} monthly volume)"
+                f"weak demand signal ({keyword_validation.total_volume} monthly volume)"
             )
             return None
 
@@ -113,25 +114,25 @@ class SolutionRefinementCrew:
         # Prepare inputs for the refinement task
         top_keywords_str = ", ".join([
             f"{kw.get('keyword', 'N/A')} ({kw.get('volume', 0)}/mo)"
-            for kw in keyword_validation.get("top_keywords", [])[:5]
+            for kw in keyword_validation.top_keywords[:5]
         ])
 
-        geo_keywords_str = ", ".join(keyword_validation.get("top_geographic_keywords", []))
+        geo_keywords_str = ", ".join(keyword_validation.top_geographic_keywords)
 
         inputs = {
             "solution_name": selected_solution.solution_name,
             "solution_description": selected_solution.description,
             "core_features": ", ".join(selected_solution.core_features[:5]) if selected_solution.core_features else "Not specified",
             "target_personas": ", ".join(selected_solution.target_personas[:3]) if selected_solution.target_personas else "General users",
-            "validated_keyword_count": keyword_validation.get("validated_count", 0),
-            "total_monthly_volume": keyword_validation.get("total_volume", 0),
-            "keyword_demand_score": keyword_validation.get("keyword_demand_score", 0.0),
+            "validated_keyword_count": keyword_validation.validated_count,
+            "total_monthly_volume": keyword_validation.total_volume,
+            "keyword_demand_score": keyword_validation.keyword_demand_score,
             "top_keywords": top_keywords_str,
             "top_geographic_keywords": geo_keywords_str,
             "demand_signal": demand_signal,
-            "avg_competition": keyword_validation.get("avg_competition", 0.0),
+            "avg_competition": keyword_validation.avg_competition,
             "composite_score": composite_score,
-            "validation_signals": keyword_validation.get("validation_signals", {})
+            "validation_signals": keyword_validation.validation_signals
         }
 
         try:

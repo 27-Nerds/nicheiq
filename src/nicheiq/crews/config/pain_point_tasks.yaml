@@ -10,10 +10,15 @@ categorize_content:
     ✓ Categories emerge from data patterns, not assumptions
     ✓ Fewer categories with evidence > many without
 
-    **NICHE CONTEXT:** {niche_description}
+    **NICHE CONTEXT:**
+    - Niche Description: {niche_description}
+    - Market Segments:
+      {market_segments}
+    - Industry Boundaries: {industry_boundaries}
 
     You are provided with ALL social media discussions below. Review this complete content to create
-    a systematic categorization of themes, problems, and user segments RELEVANT TO THE NICHE ABOVE.
+    a systematic categorization of themes, problems, and user segments RELEVANT TO THE NICHE CONTEXT ABOVE.
+    Use market segments to guide categorization - discussions should align with identified segments.
 
     **Content Summary:**
     - Reddit posts: {reddit_posts_count} posts with {total_reddit_comments} comments
@@ -35,30 +40,17 @@ categorize_content:
     ═══════════════════════════════════════════════════════════════════════════
 
 
-    **What to do:**
+    **Workflow:**
 
-    1. Review ALL the content provided above (both Reddit and Twitter sections)
-    2. Identify recurring problems, frustrations, and topics being discussed
-    3. Group discussions into 5-10 distinct theme categories based on the actual patterns
-       you discover in the discussions (categories will vary by niche - let the data guide you)
-    4. For each category, identify the user segments expressing these concerns based on
-       what you find in the discussions (segment names should match user self-descriptions)
-    5. Note the frequency and intensity of discussions in each category
+    1. Review ALL content (Reddit + Twitter sections above)
+    2. Identify 5-10 theme categories from recurring patterns (let data guide you)
+    3. For each category: user segments (from self-descriptions), frequency (High/Medium/Low based on mention count)
 
-
-    **How to approach:**
-
-    - Read through the discussions systematically to find repeated keywords, phrases, and concepts
-    - Pay attention to the language users employ—their exact words matter
-    - Look for patterns in:
-      * Problems: "frustration", "difficult", "can't", "impossible", "broken", "struggle"
-      * User identities: "I am", "as a", "we are", role-specific terms
-      * Impact statements: "time", "money", "expensive", "hours", "cost", "afford"
-      * Emotional language: "hate", "love", "annoying", "painful", "frustrated", "stressed"
-      * Workarounds: "using", "tried", "workaround", "alternative", "instead"
-    - Consider both explicit statements ("I hate that...") and implicit problems
-    - Segment by user type when you see clear distinctions in needs or contexts
-    - Use the metadata (PLATFORM, SUBREDDIT, SCORE, ENGAGEMENT) to understand context and importance
+    **Pattern Keywords:**
+    - Problems: "frustration", "difficult", "can't", "impossible", "broken", "struggle"
+    - Impact: "time", "money", "expensive", "hours", "cost", "afford"
+    - Emotional: "hate", "annoying", "painful", "frustrated", "stressed"
+    - Workarounds: "using", "tried", "workaround", "alternative"
 
 
     **Acceptance Criteria:**
@@ -69,10 +61,20 @@ categorize_content:
     - Frequency indicators (high/medium/low) assigned to each theme based on mention count
 
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
-    ✗ If <5 substantive discussions found → Return "Insufficient discussion data"
-    ✗ DO NOT use training data or niche assumptions
-    ✗ User segments MUST match self-descriptions from discussions above
-    ✗ Every quote MUST be directly copied from content above - NO paraphrasing
+
+    **STOP CONDITIONS:**
+    ✗ <5 substantive discussions found → Return "Insufficient discussion data"
+      ❌ Example: Inventing discussion themes when content is sparse
+
+    **DATA ACCURACY:**
+    ✗ Every quote MUST be directly copied from content - NO paraphrasing
+      ❌ Example: "Users experience difficulty" (paraphrased)
+      ✅ Example: "I spent 3 hours trying to figure this out" (direct quote)
+    ✗ User segments must match self-descriptions from discussions
+      ❌ Example: "consumers", "users", "small businesses" (generic)
+      ✅ Example: "Budget-conscious first-time buyers seeking affordable luxury dupes" (from discussions)
+    ✗ DO NOT use training data or niche assumptions - ONLY analyze provided content
+      ❌ Example: Creating categories based on assumptions about the niche vs actual patterns
 
   expected_output: >
     A ContentCategorizationReport object with the following structure:
@@ -110,37 +112,27 @@ categorize_content:
 
 extract_pain_points:
   description: >
+    ═══ CRITICAL RULES (Read First) ═══
+    ✓ ONLY extract pain points with ≥3 direct quotes from knowledge sources (your 3-Quote Minimum Protocol)
+    ✓ NO invented/paraphrased pain points - every problem must have explicit evidence
+    ✓ If <3 quotes found for a pain point → EXCLUDE that pain point (quality over quota)
+    ✓ Track source post IDs from [POST_ID: ...] / [THREAD_ID: ...] headers for traceability
+    ✓ If <10 validated pain points exist → acceptable (NO fabrication to reach quota)
+
     **NICHE CONTEXT:** {niche_description}
 
     Transform the categorized content into specific, actionable pain points relevant
     to the niche being analyzed.
 
-    ═══════════════════════════════════════════════════════════════════════════
-    **WORKFLOW: Use Previous Task's Categorization as Foundation**
-
-    The previous task (content researcher) has provided a comprehensive categorization
-    report. Use this as your PRIMARY structure for organizing pain points.
-
-    - Start with the categories identified in the previous task's report
-    - Focus on high and medium-frequency categories from that report
-    - When you need MORE CONTEXT about a category, query knowledge sources to find
-      additional examples, quotes, and evidence within that category
-    - Knowledge sources should ENHANCE your understanding of the existing categories,
-      not replace them with new categorization
-
-    Think of it this way: The previous task told you "these are the main themes in
-    the discussions." Your job is to dive deeper into each theme using knowledge
-    sources to extract specific, actionable pain points with evidence.
-    ═══════════════════════════════════════════════════════════════════════════
-
-
     **WORKFLOW** (Apply your 3-Quote Minimum Protocol):
 
     1. Review categorization report → identify high/medium-frequency categories
     2. For each category → extract 2-5 specific pain points with supporting evidence
-    3. Query knowledge sources → find ≥3 direct quotes per pain point
+    3. Query knowledge sources → find ≥3 direct quotes per pain point (MANDATORY)
     4. Identify severity indicators → "frustrating", "critical", "showstopper"
     5. Note current solutions/workarounds users mention
+    6. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
+    7. Validate: If <3 quotes found → EXCLUDE pain point (quality over quota)
 
     **SEARCH STRATEGY** (Knowledge Source Queries):
 
@@ -151,44 +143,66 @@ extract_pain_points:
     | Impact mentions | Business impact | "time", "expensive", "productivity", "revenue" |
     | Workarounds | Current solutions | "using", "tried", "alternative to" |
 
-    **QUALITY STANDARDS:**
-    ✓ Actionable (clear what solving means)
-    ✓ ≥3 supporting quotes from knowledge sources
-    ✓ Frequency data (mention count)
-    ✓ Specific, not vague ("manual data entry" NOT "tool is bad")
-    ✓ Exact user language (no corporate speak paraphrasing)
-    ✗ Duplicates (merge similar pain points)
-
-
-    **CRITICAL DATA ACCURACY RULES:**
-
-    - ONLY extract pain points that have explicit evidence in the knowledge sources you can query
-    - Each pain point MUST have at least 3 real user quotes - if you cannot find 3 quotes from knowledge sources, DO NOT create that pain point
-    - DO NOT invent or paraphrase pain points based on general niche knowledge or assumptions
-    - If knowledge source queries return no results for a potential pain point, that pain point does NOT exist in the collected data
-    - Every quote MUST be a direct quote from knowledge sources - do not create fictional or "example" quotes
-    - If you can only identify fewer than 10 pain points with proper evidence, that is acceptable - return what you can verify
-    - Acceptable output: Empty pain points list with explanation "Insufficient evidence in knowledge sources" if no validated pain points can be extracted
-    - DO NOT fill gaps with generic problems you think might exist in this niche
-
-
     **Acceptance Criteria:**
 
-    - Minimum 10 distinct pain points extracted
+    - Minimum 10 distinct pain points extracted (if evidence supports it)
     - Each pain point has clear problem articulation
-    - Supporting evidence includes direct user quotes from knowledge sources
+    - Supporting evidence includes ≥3 direct user quotes from knowledge sources
     - Mention frequency quantified for each
     - Source platforms identified (Reddit/Twitter)
     - Source post IDs tracked for traceability
 
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
 
-    **SOURCE TRACEABILITY:**
+    **STOP CONDITIONS:**
+    ✗ <3 quotes found for a pain point → EXCLUDE that pain point
+      ❌ Example: Creating pain point with only 1-2 quotes to reach quota
+    ✗ Knowledge source query returns no results → pain point does NOT exist in data
+      ✅ Example: Return "Insufficient evidence in knowledge sources" if <10 validated pain points
 
-    When extracting pain points, track the specific posts where each pain point was found:
-    - Each formatted post includes a [POST_ID: ...] or [THREAD_ID: ...] header
-    - When you extract a quote from a post, record that post's ID in the source_post_ids field
-    - This enables traceability from pain point → quote → original Reddit/Twitter post
-    - Example: If you find quotes in posts with [POST_ID: abc123] and [POST_ID: def456], add ["abc123", "def456"] to source_post_ids
+    **DATA ACCURACY:**
+    ✗ Every quote MUST be direct copy from knowledge sources - NO paraphrasing
+      ❌ Example: "Users experience difficulty" (paraphrased)
+      ✅ Example: "I spent 3 hours trying to figure this out" (direct quote)
+    ✗ DO NOT invent "example" quotes or use general niche knowledge
+      ❌ Example: Creating plausible-sounding quotes not from knowledge sources
+    ✗ Mention counts must be actual occurrences - NO estimates
+      ❌ Example: "~15 mentions" (estimated)
+      ✅ Example: "12 mentions" (counted from knowledge source queries)
+
+    **OUTPUT REQUIREMENTS:**
+    ✗ Pain point descriptions must use exact user language - NO corporate paraphrasing
+      ❌ Example: "Users require enhanced onboarding experiences" (corporate-speak)
+      ✅ Example: "Setup took me 3 hours and support never responded" (user language)
+    ✗ Source post IDs must be extracted from [source: ID] suffixes in quotes - NO placeholders
+      ❌ Example: ["post001", "post002"] (fabricated placeholder IDs)
+      ✅ Example: ["1a2b3c", "4d5e6f"] (extracted from [source: ...] suffixes in quote text)
+    ✗ DO NOT merge unrelated problems to reach 10 pain points quota
+      ✅ Example: If only 7 validated pain points exist with ≥3 quotes → return 7
+
+    **ANTI-HALLUCINATION GUARDRAILS:**
+    ✗ NEVER fabricate post IDs - if you cannot find [source: ID], use empty list []
+      ❌ Example: Creating sequential IDs like ["post_001", "post_002", "post_003"]
+      ❌ Example: Generating realistic-looking IDs like ["abc123xyz"] that don't exist
+      ✅ Example: Only use IDs you literally see in [source: ID] suffixes
+    ✗ NEVER paraphrase or summarize quotes - copy character-by-character
+      ❌ Example: "Many users struggle with setup" (paraphrased from multiple quotes)
+      ✅ Example: "I spent 3 hours on setup and still couldn't get it working" (exact copy)
+    ✗ If a quote does NOT have [source: ID] suffix → DO NOT include it
+      ❌ Example: Including quotes without source attribution
+      ✅ Example: Skip quotes lacking [source: ID] and find other quotes with proper attribution
+
+    **EXTRACTION CHAIN-OF-THOUGHT PROCEDURE:**
+    For EACH pain point you identify, follow this mandatory procedure:
+
+    Step 1: **Identify Pattern** - Note recurring problem from categorization
+    Step 2: **Find Evidence** - Search knowledge sources for exact quotes with [source: ID]
+    Step 3: **Verify Count** - Confirm ≥3 quotes found (if <3, EXCLUDE this pain point)
+    Step 4: **Extract Sources** - Copy [source: ID] from each quote (e.g., "quote text [source: 1a2b3c]")
+    Step 5: **Preserve Quotes** - Include full quote WITH [source: ID] suffix intact
+    Step 6: **Validate** - Check all quotes are verbatim copies with visible [source: ID] tags
+
+    CRITICAL: DO NOT remove [source: ID] suffixes yourself - Python will extract them post-processing.
 
   expected_output: >
     A PainPointExtraction object with the following structure:
@@ -205,7 +219,33 @@ extract_pain_points:
        - **representative_quotes**: 3-5 direct user quotes supporting this pain point
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to
-       - **source_post_ids**: List of post IDs where this pain point was found (e.g., ["abc123", "def456"]) - extracted from [POST_ID: ...] or [THREAD_ID: ...] headers in the formatted content
+       - **source_post_ids**: LEAVE EMPTY [] - Python extracts post-processing
+
+         CRITICAL SOURCE ATTRIBUTION REQUIREMENTS:
+
+         1. **Include [source: ID] in Quotes**: Each quote in representative_quotes MUST end with [source: post_id]
+            ✅ CORRECT: "I can't find reliable data [source: 1a2b3c]"
+            ❌ WRONG: "I can't find reliable data" (missing source suffix)
+
+         2. **Leave source_post_ids Empty**: Set source_post_ids = [] for ALL pain points
+            - Python will automatically extract IDs from [source: ...] suffixes
+            - DO NOT manually populate this field
+
+         3. **Examples of Correct Quote Format**:
+            ✅ "Setup took me 3 hours and support never responded [source: 2def456]"
+            ✅ "The pricing is confusing and changes every month [source: 8xyz789]"
+            ✅ "I hate how slow the dashboard loads, takes 30+ seconds [source: 5abc123]"
+
+         4. **Examples of INCORRECT Format** (will cause attribution failure):
+            ❌ "Setup took hours" (paraphrased, no source)
+            ❌ "Users report slow performance [source: post_001]" (fabricated placeholder ID)
+            ❌ "The tool is buggy" (missing [source: ID] suffix)
+            ❌ "Many users struggle with onboarding" (summarized, no source)
+
+         5. **Edge Cases**:
+            - If quote truly lacks [source: ID] in knowledge source → DO NOT include that quote
+            - If <3 quotes have [source: ID] → EXCLUDE entire pain point (3-quote minimum)
+            - Malformed suffixes (e.g., [source:] with no ID) → DO NOT include that quote
 
 
     **extraction_summary**: 3-4 sentences overview of pain point landscape, key patterns,
@@ -215,6 +255,32 @@ extract_pain_points:
     CRITICAL: Return structured Pydantic data, not markdown. This output will be passed directly
     to the validator for scoring. Do NOT include severity/WTP scores - those are added by the validator.
 
+    **MANDATORY PRE-SUBMISSION VERIFICATION CHECKLIST:**
+
+    Before returning your PainPointExtraction output, verify EACH pain point:
+
+    ☐ **Quotes**: All 3-5 quotes end with [source: ID] suffix
+       - Example check: Does "quote text [source: abc123]" pattern appear?
+       - If NO → Fix by finding quotes with [source: ID] or exclude pain point
+
+    ☐ **Source IDs**: source_post_ids field is empty list []
+       - Example check: Is source_post_ids = [] for this pain point?
+       - If NO → Set to [] (Python extracts post-processing)
+
+    ☐ **Verbatim Quotes**: Each quote is character-by-character copy from knowledge sources
+       - Example check: Can you find this exact quote in the formatted content above?
+       - If NO → Replace with verbatim copy or exclude pain point
+
+    ☐ **Real IDs**: [source: ID] values are actual post/thread IDs from content headers
+       - Example check: Does [POST_ID: abc123] or [THREAD_ID: abc123] appear in formatted content?
+       - If NO → This is a hallucinated ID, exclude this quote
+
+    ☐ **Minimum Count**: Pain point has ≥3 quotes with [source: ID] suffixes
+       - Example check: Count quotes, verify all have [source: ID]
+       - If NO → Exclude entire pain point (below minimum threshold)
+
+    STOP: If ANY checkbox fails → Fix the issue or exclude that pain point before submitting.
+
 validate_pain_points:
   description: >
     ═══ TASK 3: VALIDATION & SCORING ═══
@@ -223,6 +289,13 @@ validate_pain_points:
     ✓ DO NOT copy pain point fields—only generate scores
 
     **NICHE CONTEXT:** {niche_description}
+
+    **RESEARCH METADATA:**
+    - Data Sources: {reddit_posts_count} Reddit posts from r/{subreddits}, {twitter_threads_count} Twitter threads
+    - Total Engagement: {total_reddit_comments} Reddit comments, {total_twitter_replies} Twitter replies
+    - Collection Date: {collection_timestamp}
+
+    Use this metadata for context when scoring pain points. More diverse subreddit sources and higher engagement counts indicate stronger validation signals.
 
     **HOW TO ACCESS CONTEXT:**
 
@@ -271,6 +344,30 @@ validate_pain_points:
     - You MUST score EXACTLY the pain points from Task 2—no more, no fewer
     - DO NOT add new pain points, merge, split, or remove pain points
     - Use exact pain_point_title from Task 2 for matching
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **DATA ACCURACY:**
+    ✗ Scores MUST be based on evidence from knowledge sources - NO assumptions
+      ❌ Example: Scoring without querying knowledge sources (using assumptions about severity)
+    ✗ Every severity score ≥0.5 requires ≥1 quote showing strong emotional language/business impact
+      ❌ Example: Assigning 0.9 severity without quotes showing "critical", "nightmare", "can't work"
+    ✗ Every WTP score ≥0.5 requires ≥1 quote mentioning money/budget/cost/pricing
+      ❌ Example: Assigning high WTP scores without any money/budget mentions in discussions
+    ✗ If evidence is insufficient → assign 0.0 with "Insufficient evidence" note
+      ✅ Example: "severity_score: 0.0 - Insufficient evidence in knowledge sources"
+
+    **OUTPUT REQUIREMENTS:**
+    ✗ pain_point_scores count MUST EXACTLY match Task 2 extraction count (1:1 mapping)
+      ❌ Example: Adding/removing/merging pain points (violates 1:1 constraint)
+    ✗ pain_point_title must be EXACT character-by-character match to Task 2
+      ❌ Example: Slightly modifying title (must be exact match for Python merging)
+    ✗ Discriminate scores - NOT all 0.8-0.9
+      ❌ Example: Rounding all scores to 0.8-0.9 without differentiation
+      ✅ Example: Range from 0.2 to 0.95 based on actual evidence strength
+    ✗ Scoring rationale must reference specific quotes
+      ❌ Example: "This seems important" (generic)
+      ✅ Example: "3 users mentioned $X budget allocation for solutions"
 
   expected_output: >
     ValidationResult Pydantic model with scoring data ONLY:
