@@ -126,15 +126,6 @@ class ExpandedKeywordList(BaseModel):
         ..., description="Overall strategy behind keyword expansion"
     )
 
-class MonthlySearchData(BaseModel):
-    """Single month's search volume data from DataForSEO."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    year: int = Field(..., description="Year of the search data")
-    month: int = Field(..., description="Month number (1-12)")
-    search_volume: int = Field(..., description="Search volume for this month")
-
 class TieredKeyword(BaseModel):
     """
     Individual keyword with targeting strategy for report tables.
@@ -147,10 +138,6 @@ class TieredKeyword(BaseModel):
 
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Average monthly search volume from DataForSEO (single value)")
-    monthly_searches: list[MonthlySearchData] = Field(
-        default_factory=list,
-        description="Historical 12-month search volume data from DataForSEO (array of {year, month, search_volume} objects). For reference only - do not sum or use for primary volume metric."
-    )
     competition: str = Field(
         ..., description="Competition level (e.g., 'LOW (30)', 'MEDIUM (53)', 'VERY LOW (5)')"
     )
@@ -163,14 +150,6 @@ class TieredKeyword(BaseModel):
     intent: Optional[str] = Field(
         default=None, description="Search intent (e.g., 'High conversion intent', 'Informational')"
     )
-
-    @field_validator('monthly_searches', mode='before')
-    @classmethod
-    def coerce_monthly_searches_none_to_empty_list(cls, v):
-        """Coerce None to [] for monthly_searches (DataForSEO may return null)."""
-        if v is None or v == "null":
-            return []
-        return v
 
     @field_validator('keyword')
     @classmethod

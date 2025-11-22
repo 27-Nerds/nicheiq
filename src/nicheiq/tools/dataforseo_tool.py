@@ -279,7 +279,6 @@ class DataForSEOBaseClient:
                 # - search_volume: null → skip keyword (not useful without volume data)
                 # - competition_index: null → default to 0 (represents "no competition data")
                 # - cpc: null → default to 0 (represents "no cost data")
-                # - monthly_searches: null → default to [] (represents "no historical data")
                 for item in result_data:
                     # Parse response according to docs
                     search_volume = item.get("search_volume")
@@ -462,7 +461,6 @@ class DataForSEOBaseClient:
                 # - search_volume: null → skip keyword (not useful without volume data)
                 # - competition_index: null → default to 0 (represents "no competition data")
                 # - cpc: null → default to 0 (represents "no cost data")
-                # - monthly_searches: null → default to [] (represents "no historical data")
                 result_count = 0
                 for item in result_data:
                     search_volume = item.get("search_volume")
@@ -486,7 +484,6 @@ class DataForSEOBaseClient:
                         "competition": competition_float,
                         "competition_index": competition_index,
                         "cpc": item.get("cpc") or 0,  # Coalesce None to 0
-                        "monthly_searches": item.get("monthly_searches", []),
                     })
                     result_count += 1
 
@@ -629,7 +626,6 @@ class DataForSEOSearchVolumeTool(BaseTool, DataForSEOBaseClient):
     - search_volume: Average monthly searches
     - competition: Competition level (0.0-1.0)
     - cpc: Cost per click in USD
-    - monthly_searches: Month-by-month search volume data (last 12 months)
 
     The tool automatically:
     - Sanitizes keywords

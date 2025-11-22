@@ -204,33 +204,6 @@ class DataInfrastructureRoadmap(BaseModel):
         ..., description="Summary of how costs scale with user growth and mitigation strategies"
     )
 
-class DecisionCriterion(BaseModel):
-    """Single go/no-go decision criterion."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    criterion_type: str = Field(..., description="Type: 'go' or 'no-go'")
-    condition: str = Field(..., description="Condition to evaluate (e.g., 'SEO keyword volume >10k/mo')")
-    rationale: str = Field(..., description="Why this criterion matters")
-
-class PivotTrigger(BaseModel):
-    """Condition that would trigger a pivot to an alternative solution."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    trigger_condition: str = Field(..., description="Condition triggering pivot")
-    pivot_to_solution: str = Field(..., description="Alternative solution to pivot to")
-    rationale: str = Field(..., description="Why this pivot makes sense")
-
-class DecisionFramework(BaseModel):
-    """Framework for making go/no-go and pivot decisions."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    go_criteria: list[DecisionCriterion] = Field(..., description="Criteria for proceeding with selected solution")
-    no_go_criteria: list[DecisionCriterion] = Field(..., description="Criteria for stopping the project")
-    pivot_triggers: list[PivotTrigger] = Field(..., description="Conditions for pivoting to alternatives")
-
 class FinalReport(BaseModel):
     """Final comprehensive research report (Stage 10)."""
 
@@ -240,35 +213,35 @@ class FinalReport(BaseModel):
     executive_summary: str = Field(..., description="High-level executive summary")
 
     # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
-    executive_dashboard: ExecutiveDashboard | None = Field(
+    executive_dashboard: Optional[ExecutiveDashboard] = Field(
         default=None,
         description="Executive dashboard with go/no-go verdict, core pain point, and key opportunity metrics for quick decision-making"
     )
 
     # Go-to-Market Blueprint (Phase 2 Enhancement) - ACTIONABLE GTM STRATEGY
-    go_to_market_blueprint: GTMBlueprint | None = Field(
+    go_to_market_blueprint: Optional[GTMBlueprint] = Field(
         default=None,
         description="Actionable Go-to-Market strategy with ICP, marketing channels, messaging, content angles, and 30-day playbook for immediate execution"
     )
 
     # Analytics & Visualizations (Phase 3 Enhancement) - DATA-DRIVEN INSIGHTS
-    market_analytics: MarketAnalytics | None = Field(
+    market_analytics: Optional[MarketAnalytics] = Field(
         default=None,
         description="Computed market opportunity analytics: overall score, market size category, selection confidence, competitive intensity, go/no-go recommendation"
     )
-    seo_analytics: SEOAnalytics | None = Field(
+    seo_analytics: Optional[SEOAnalytics] = Field(
         default=None,
         description="SEO keyword distribution analytics: tier counts, total search volume, keyword diversity, high-volume keyword count"
     )
-    competitive_analytics: CompetitiveAnalytics | None = Field(
+    competitive_analytics: Optional[CompetitiveAnalytics] = Field(
         default=None,
         description="Competitive density analytics: competitor count, market saturation score, differentiation strength, market gaps identified"
     )
-    pain_point_analytics: PainPointAnalytics | None = Field(
+    pain_point_analytics: Optional[PainPointAnalytics] = Field(
         default=None,
         description="Pain point priority analytics: total count, high-priority count, quadrant distribution, average severity/WTP scores"
     )
-    visualization_manifest: VisualizationManifest | None = Field(
+    visualization_manifest: Optional[VisualizationManifest] = Field(
         default=None,
         description="Paths to generated visualization charts: pain point matrix, competitive landscape, keyword opportunity, implementation timeline"
     )
@@ -287,19 +260,19 @@ class FinalReport(BaseModel):
     )
 
     # Detailed Solution Description (NEW - addresses "WHAT" and "HOW" gaps)
-    selected_solution_details: SolutionIdea | None = Field(
+    selected_solution_details: Optional[SolutionIdea] = Field(
         default=None,
         description="Complete details of the selected solution including features, personas, technical approach, pricing strategy"
     )
-    solution_user_journey: str | None = Field(
+    solution_user_journey: Optional[str] = Field(
         default=None,
         description="Step-by-step user workflow explaining HOW users interact with the solution (5-8 numbered steps, markdown format)"
     )
-    solution_implementation_overview: str | None = Field(
+    solution_implementation_overview: Optional[str] = Field(
         default=None,
         description="High-level implementation plan with phases, timeline, dependencies (2-3 paragraphs, markdown format)"
     )
-    mvp_scope_definition: str | None = Field(
+    mvp_scope_definition: Optional[str] = Field(
         default=None,
         description="Detailed MVP scope: must-have features, post-MVP features, success criteria (markdown format with sections)"
     )
@@ -322,7 +295,7 @@ class FinalReport(BaseModel):
     competitive_summary: str = Field(
         ..., description="Summary of competitive landscape and positioning opportunities"
     )
-    competitive_analysis: CompetitiveAnalysisResult | None = Field(
+    competitive_analysis: Optional[CompetitiveAnalysisResult] = Field(
         default=None,
         description="Detailed competitive analysis with competitor profiles, market gaps, and differentiation opportunities"
     )
@@ -331,12 +304,12 @@ class FinalReport(BaseModel):
     market_validation: str = Field(..., description="Overall market validation conclusion")
 
     # SEO Strategy (Enhanced from simple string to comprehensive report)
-    seo_strategy: SEOStrategyReport | None = Field(
+    seo_strategy: Optional[SEOStrategyReport] = Field(
         default=None, description="Comprehensive SEO strategy with tiered keywords, content plan, and roadmap"
     )
 
     # Organic Acquisition Strategy (NEW - SEO-First Focus)
-    acquisition_strategy_summary: str | None = Field(
+    acquisition_strategy_summary: Optional[str] = Field(
         default=None,
         description=(
             "Overview of customer acquisition strategy emphasizing organic channels. "
@@ -346,7 +319,7 @@ class FinalReport(BaseModel):
             "(3) scaling strategy for organic growth."
         )
     )
-    estimated_cac_breakdown: str | None = Field(
+    estimated_cac_breakdown: Optional[str] = Field(
         default=None,
         description=(
             "Customer acquisition cost breakdown comparing organic vs paid channels. "
@@ -361,7 +334,7 @@ class FinalReport(BaseModel):
     )
 
     # Keyword Validation & Refinement (Stage 8.8 and 8.85)
-    keyword_validation_overview: str | None = Field(
+    keyword_validation_overview: Optional[str] = Field(
         default=None,
         description=(
             "Executive summary of keyword validation results across top 3 solution candidates from Stage 8.8. "
@@ -373,7 +346,7 @@ class FinalReport(BaseModel):
         )
     )
 
-    solution_keyword_comparison: str | None = Field(
+    solution_keyword_comparison: Optional[str] = Field(
         default=None,
         description=(
             "Comparative keyword analysis showing how top 3 solutions differ in SEO opportunity from Stage 8.8. "
@@ -386,7 +359,7 @@ class FinalReport(BaseModel):
         )
     )
 
-    content_strategy_preview: str | None = Field(
+    content_strategy_preview: Optional[str] = Field(
         default=None,
         description=(
             "Preview of content strategy recommendations based on keyword validation insights from Stage 8.8. "
@@ -399,7 +372,7 @@ class FinalReport(BaseModel):
     )
 
     # Data Sourcing (for solutions requiring aggregation)
-    data_source_research: DataSourceResearchResult | None = Field(
+    data_source_research: Optional[DataSourceResearchResult] = Field(
         default=None,
         description="Structured data source research results with discovered APIs, providers, cost estimates, and implementation roadmap (Stage 9.75)"
     )
@@ -411,31 +384,27 @@ class FinalReport(BaseModel):
     next_steps: list[str] = Field(..., description="Recommended next steps")
 
     # Enhanced Report Sections (NEW - improve data preservation and traceability)
-    research_metadata: ResearchMetadata | None = Field(
+    research_metadata: Optional[ResearchMetadata] = Field(
         default=None,
         description="Metadata about data collection: Reddit/Twitter post counts, subreddit breakdown, collection date, data size"
     )
-    alternative_solutions: list[AlternativeSolution] | None = Field(
+    alternative_solutions: Optional[list[AlternativeSolution]] = Field(
         default=None,
         description="Detailed summaries of runner-up solutions with scores and pivot criteria (top 2 alternatives)"
     )
-    competitive_landscape_matrix: CompetitiveLandscapeMatrix | None = Field(
+    competitive_landscape_matrix: Optional[CompetitiveLandscapeMatrix] = Field(
         default=None,
         description="Cross-solution competitive analysis showing competitor overlap and intensity patterns"
     )
-    evidence_appendix: EvidenceAppendix | None = Field(
+    evidence_appendix: Optional[EvidenceAppendix] = Field(
         default=None,
         description="Traceability appendix: top Reddit threads analyzed and pain point quote sources with post IDs"
     )
-    data_infrastructure_roadmap: DataInfrastructureRoadmap | None = Field(
+    data_infrastructure_roadmap: Optional[DataInfrastructureRoadmap] = Field(
         default=None,
         description="3-phase data infrastructure implementation plan with cost projections and scale risks"
     )
-    decision_framework: DecisionFramework | None = Field(
-        default=None,
-        description="Go/no-go criteria and pivot triggers for decision-making"
-    )
-    content_categorization: ContentCategorizationReport | None = Field(
+    content_categorization: Optional[ContentCategorizationReport] = Field(
         default=None,
         description="Content categorization analysis: theme categories, user segments, and discussion quality from Stage 6 Task 1"
     )
@@ -444,7 +413,7 @@ class FinalReport(BaseModel):
     generated_at: datetime = Field(
         default_factory=datetime.utcnow, description="Report generation timestamp"
     )
-    pdf_path: str | None = Field(default=None, description="Path to generated PDF report")
+    pdf_path: Optional[str] = Field(default=None, description="Path to generated PDF report")
 
 class ResearchState(BaseModel):
     """Complete state for the research flow."""

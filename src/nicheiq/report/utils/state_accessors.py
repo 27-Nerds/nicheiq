@@ -113,6 +113,47 @@ class StateAccessor:
             for pp in sorted_pps
         ]
 
+    def get_solution_pain_points(self, solution: "SolutionIdea") -> list:
+        """
+        Get pain points specific to a solution, sorted by priority.
+
+        Matches pain point titles from solution.pain_points_addressed against
+        the full PainPoint objects to get detailed scores and metadata.
+
+        Args:
+            solution: SolutionIdea with pain_points_addressed field
+
+        Returns:
+            List of top 3 PainPoint objects for this solution, sorted by priority.
+            Falls back to top 3 overall pain points if no matches found.
+        """
+        if not self.state.pain_point_analysis:
+            return []
+
+        # Get all pain points
+        all_pain_points = self.state.pain_point_analysis.pain_points
+
+        # Filter to solution-specific pain points
+        if solution.pain_points_addressed:
+            solution_pain_points = [
+                pp for pp in all_pain_points
+                if pp.title in solution.pain_points_addressed
+            ]
+        else:
+            solution_pain_points = []
+
+        # If we found solution-specific pain points, sort and return top 3
+        if solution_pain_points:
+            sorted_pps = sorted(
+                solution_pain_points,
+                key=lambda x: (x.severity_score + x.willingness_to_pay) / 2,
+                reverse=True,
+            )
+            return sorted_pps[:3]
+
+        # Fallback: return top 3 overall pain points
+        return self.get_sorted_pain_points()[:3]
+
     def get_pain_points_summary(self) -> str:
         """
         Get pain points analysis summary.
@@ -249,8 +290,8 @@ class StateAccessor:
 
     def get_reddit_posts_count(self) -> int:
         """Get count of Reddit posts collected."""
-        if self.state.social_content and self.state.social_content.reddit_threads:
-            return len(self.state.social_content.reddit_threads)
+        if self.state.social_content and self.state.social_content.reddit_posts:
+            return len(self.state.social_content.reddit_posts)
         return 0
 
     def get_twitter_threads_count(self) -> int:
@@ -267,9 +308,9 @@ class StateAccessor:
             Dict mapping subreddit name to post count
         """
         breakdown = {}
-        if self.state.social_content and self.state.social_content.reddit_threads:
-            for thread in self.state.social_content.reddit_threads:
-                subreddit = thread.subreddit
+        if self.state.social_content and self.state.social_content.reddit_posts:
+            for post in self.state.social_content.reddit_posts:
+                subreddit = post.subreddit
                 breakdown[subreddit] = breakdown.get(subreddit, 0) + 1
         return breakdown
 
@@ -297,6 +338,111 @@ class StateAccessor:
         if self.has_keyword_validation():
             return self.state.keyword_validation.overall_market_size
         return 0
+
+    def get_tier_keyword_counts(self) -> dict[str, int]:
+        """
+        Get keyword counts for all SEO tiers.
+
+        Returns:
+            Dict with keys: tier_0, tier_1, tier_2, tier_3, tier_4, total
+        """
+        if not self.state.seo_strategy_report:
+            return {
+                "tier_0": 0,
+                "tier_1": 0,
+                "tier_2": 0,
+                "tier_3": 0,
+                "tier_4": 0,
+                "total": 0,
+            }
+
+        seo = self.state.seo_strategy_report
+
+        # Tier 0, 1, 2 are simple lists
+        tier0_count = len(seo.tier_0_keywords) if seo.tier_0_keywords else 0
+        tier1_count = len(seo.tier_1_keywords) if seo.tier_1_keywords else 0
+        tier2_count = len(seo.tier_2_keywords) if seo.tier_2_keywords else 0
+
+        # Tier 3: Count keywords in geographic groups
+        tier3_count = 0
+        if seo.tier_3_geographic_groups:
+            for group in seo.tier_3_geographic_groups:
+                tier3_count += len(group.keywords)
+
+        # Tier 4: Count keywords in category groups
+        tier4_count = 0
+        if seo.tier_4_category_groups:
+            for group in seo.tier_4_category_groups:
+                tier4_count += len(group.keywords)
+
+        total_count = tier0_count + tier1_count + tier2_count + tier3_count + tier4_count
+
+        return {
+            "tier_0": tier0_count,
+            "tier_1": tier1_count,
+            "tier_2": tier2_count,
+            "tier_3": tier3_count,
+            "tier_4": tier4_count,
+            "total": total_count,
+        }
+
+    def get_total_keyword_search_volume(self) -> int:
+        """
+        Get total search volume across all SEO keywords.
+
+        Returns:
+            Sum of search volumes from all tiers
+        """
+        if not self.state.seo_strategy_report:
+            return 0
+
+        total_volume = 0
+        seo = self.state.seo_strategy_report
+
+        # Sum tier 0, 1, 2
+        for kw in (seo.tier_0_keywords or []):
+            total_volume += kw.search_volume or 0
+        for kw in (seo.tier_1_keywords or []):
+            total_volume += kw.search_volume or 0
+        for kw in (seo.tier_2_keywords or []):
+            total_volume += kw.search_volume or 0
+
+        # Sum tier 3 geographic groups
+        if seo.tier_3_geographic_groups:
+            for group in seo.tier_3_geographic_groups:
+                for kw in group.keywords:
+                    total_volume += kw.search_volume or 0
+
+        # Sum tier 4 category groups
+        if seo.tier_4_category_groups:
+            for group in seo.tier_4_category_groups:
+                for kw in group.keywords:
+                    total_volume += kw.search_volume or 0
+
+        return total_volume
+
+    # ==================================================================================
+    # Competitive Analysis Access Methods
+    # ==================================================================================
+
+    def get_selected_landscape(self):
+        """
+        Get competitive landscape for the selected solution.
+
+        Finds the CompetitiveLandscape matching the selected solution name
+        from Stage 8 competitive analysis.
+
+        Returns:
+            CompetitiveLandscape object for selected solution, or None if not found
+        """
+        if not self.state.competitive_analysis or not self.state.solution_selection:
+            return None
+
+        return next(
+            (landscape for landscape in self.state.competitive_analysis.solution_landscapes
+             if landscape.solution_name == self.state.solution_selection.selected_solution_name),
+            None
+        )
 
     # ==================================================================================
     # Utility Methods

@@ -7,10 +7,10 @@ Generates strategic search queries using context-aware prompting.
 import json
 from typing import TYPE_CHECKING
 
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ...config.settings import settings
+from ..llm_service import LLMService
 from ..parsing.json_extractor import extract_json_array_from_text
 from ..prompts import get_prompt
 
@@ -21,12 +21,7 @@ class QueryGenerator:
     """LLM-based search query generator for finding niche pain points."""
 
     def __init__(self):
-        self.llm = ChatOpenAI(
-            model=settings.openai_model_name,
-            temperature=0.7,
-            api_key=settings.openai_api_key,
-            timeout=120,
-        )
+        pass  # No longer need to initialize LLM instance
 
     def _sanitize_for_prompt(self, text: str, max_length: int = 1000) -> str:
         """
@@ -120,10 +115,13 @@ Industry Boundaries: [Not provided - use general heuristics]
             logger.debug(prompt)
             logger.debug("=" * 80)
 
-            response = self.llm.invoke(prompt)
-
-            # Extract JSON from response
-            content = response.content
+            # Use centralized LLM service for plain text invocation
+            content = LLMService.invoke_plain(
+                prompt=prompt,
+                temperature=0.7,
+                timeout=120,
+                model_name=settings.openai_model_name
+            )
 
             # Log the raw response at DEBUG level
             logger.debug("=" * 80)

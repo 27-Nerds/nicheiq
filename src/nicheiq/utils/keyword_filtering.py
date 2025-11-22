@@ -101,7 +101,7 @@ def check_keyword_relevance(
     low_volume_threshold = getattr(settings, 'keyword_min_volume_threshold', 10)
     low_volume_keywords = [
         kw for kw in expanded_keywords
-        if kw.get('search_volume', 0) < low_volume_threshold
+        if (kw.get('search_volume') or 0) < low_volume_threshold
     ]
     low_volume_ratio = len(low_volume_keywords) / total_keywords if total_keywords > 0 else 1.0
 
@@ -139,7 +139,7 @@ def check_keyword_relevance(
         # Validate batch (limit to top 50 keywords by volume for cost efficiency)
         keywords_to_validate = sorted(
             expanded_keywords,
-            key=lambda x: x.get('search_volume', 0),
+            key=lambda x: x.get('search_volume') or 0,
             reverse=True
         )[:50]
 
@@ -177,7 +177,7 @@ def check_keyword_relevance(
         good_keywords = [
             kw for kw in expanded_keywords
             if (
-                kw.get('search_volume', 0) >= low_volume_threshold and
+                (kw.get('search_volume') or 0) >= low_volume_threshold and
                 kw.get('keyword', '').lower() in relevant_keywords_set
             )
         ]
@@ -187,7 +187,7 @@ def check_keyword_relevance(
         # Fallback: use volume-based filtering only
         good_keywords = [
             kw for kw in expanded_keywords
-            if kw.get('search_volume', 0) >= low_volume_threshold
+            if (kw.get('search_volume') or 0) >= low_volume_threshold
         ]
         semantic_relevance_rate = 0.5  # Neutral score on error
         issues.append("semantic_validation_error")

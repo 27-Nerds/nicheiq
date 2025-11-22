@@ -5,6 +5,8 @@ Provides actionable Go-to-Market strategy with ICP, marketing channels,
 messaging, and content angles for immediate execution.
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -46,7 +48,7 @@ class MarketingChannel(BaseModel):
     channel_type: str = Field(
         description="Type: Social, SEO, Paid, Community, Content, Email, etc."
     )
-    target_audience_size: str | None = Field(
+    target_audience_size: Optional[str] = Field(
         default=None,
         description="Estimated audience size (e.g., '50K subreddit members', '2M monthly searches')"
     )
@@ -139,7 +141,7 @@ class GTMBlueprint(BaseModel):
         description="Week-by-week action plan for first month"
     )
 
-    budget_estimate: str | None = Field(
+    budget_estimate: Optional[str] = Field(
         default=None,
         description="Estimated monthly marketing budget for first 3 months (optional)"
     )

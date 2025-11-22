@@ -14,8 +14,6 @@ import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from langchain_openai import ChatOpenAI
-
 if TYPE_CHECKING:
     from ..models.analytics import (
         CompetitiveAnalytics,
@@ -50,12 +48,9 @@ from ..models.research_state import (
     CompetitorMatrixEntry,
     DataInfrastructurePhase,
     DataInfrastructureRoadmap,
-    DecisionCriterion,
-    DecisionFramework,
     EvidenceAppendix,
     FinalReport,
     PainPointEvidence,
-    PivotTrigger,
     QuoteSource,
     ResearchMetadata,
     ResearchState,
@@ -64,7 +59,8 @@ from ..models.research_state import (
 )
 from ..utils.helpers import find_solution_by_name
 from .templates import ReportTemplates
-from .utils import StateAccessor, safe_get_attr
+from ..utils.llm_service import LLMService
+from .utils import ScoreAccessor, StateAccessor, safe_get_attr
 
 
 class ReportGenerator:
@@ -80,21 +76,20 @@ class ReportGenerator:
 
     Attributes:
         state: Complete research state from all previous stages
-        niche_description: The niche being researched
         accessor: StateAccessor for defensive data extraction
+        score_accessor: ScoreAccessor for score extraction with fallbacks
     """
 
-    def __init__(self, state: ResearchState, niche_description: str):
+    def __init__(self, state: ResearchState):
         """
         Initialize report generator.
 
         Args:
             state: Complete ResearchState containing all stage results
-            niche_description: The niche being analyzed
         """
         self.state = state
-        self.niche_description = niche_description
         self.accessor = StateAccessor(state)
+        self.score_accessor = ScoreAccessor(state.solution_selection)
 
     def generate_report(self) -> FinalReport:
         """
@@ -208,15 +203,6 @@ class ReportGenerator:
             logger.info(
                 f"[OK] Data infrastructure roadmap generated: "
                 f"{len(final_report.data_infrastructure_roadmap.phases)}-phase implementation plan"
-            )
-
-        final_report.decision_framework = self._generate_decision_framework()
-        if final_report.decision_framework:
-            logger.info(
-                f"[OK] Decision framework generated: "
-                f"{len(final_report.decision_framework.go_criteria)} go criteria, "
-                f"{len(final_report.decision_framework.no_go_criteria)} no-go criteria, "
-                f"{len(final_report.decision_framework.pivot_triggers)} pivot triggers"
             )
 
         # Content categorization from Stage 6 Task 1
@@ -455,8 +441,8 @@ class ReportGenerator:
         # Build comprehensive final report with all fields
         return FinalReport(
             # Basic info
-            niche=self.niche_description,
-            executive_summary=f"Market research completed for {self.niche_description}. "
+            niche=self.state.niche_context.niche_description,
+            executive_summary=f"Market research completed for {self.state.niche_context.niche_description}. "
             f"Identified {len(top_pain_points)} validated pain points and "
             f"{len(recommended_solutions)} solution concepts. "
             f"Selected solution: {selected_solution_name}.",
@@ -614,7 +600,6 @@ class ReportGenerator:
 
         All other fields are preserved from base_report.
         """
-        from langchain_openai import ChatOpenAI
         from ..utils.prompts import load_prompt
 
         # Define minimal Pydantic model for 3 fields only
@@ -650,15 +635,12 @@ class ReportGenerator:
         try:
             logger.info("Enhancing report with LLM for strategic synthesis (3 fields)...")
 
-            # Use minimal LLM call for 3 fields (GPT-4o, temp 0.7 for strategic creativity)
-            structured_llm = ChatOpenAI(
-                model=settings.openai_model_name,
-                temperature=0.7,
-                api_key=settings.openai_api_key,
-                timeout=120,
-            ).with_structured_output(StrategicSynthesis)
-
-            synthesis = structured_llm.invoke(prompt)
+            # Use LLMService for structured output (temp 0.7 for strategic creativity)
+            synthesis = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=StrategicSynthesis,
+                temperature=0.7
+            )
 
             # Update only the 3 strategic fields, preserve everything else
             base_report.executive_summary = synthesis.executive_summary
@@ -970,10 +952,12 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
     def _generate_data_infrastructure_roadmap(self) -> "DataInfrastructureRoadmap | None":
         """
-        Generate 3-phase data infrastructure implementation roadmap with cost projections.
+        Generate data infrastructure roadmap from structured implementation_phases.
+
+        Only processes structured data. Returns None if unavailable or incomplete.
 
         Returns:
-            DataInfrastructureRoadmap with phased implementation plan and cost scaling insight
+            DataInfrastructureRoadmap with 3 phases, or None if data unavailable
         """
         if not self.state.data_source_research:
             return None
@@ -981,191 +965,46 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
         try:
             data_research = self.state.data_source_research
 
-            # Extract implementation roadmap phases from existing data
-            phases = []
-
-            # NEW: Use structured implementation_phases if available
-            if data_research.implementation_phases:
-                phases = [
-                    DataInfrastructurePhase(
-                        phase_number=phase.phase_number,
-                        phase_name=phase.phase_name,
-                        timeline=phase.timeline,
-                        data_sources=phase.data_sources,
-                        estimated_monthly_cost=phase.estimated_monthly_cost,
-                        key_risks=phase.fallback_strategies[:3] if phase.fallback_strategies else []
-                    )
-                    for phase in data_research.implementation_phases
-                ]
-            # FALLBACK: Parse implementation roadmap text if available
-            elif data_research.implementation_roadmap:
-                roadmap_text = data_research.implementation_roadmap
-                # Extract phases from formatted text (simple parsing)
-                phase_texts = roadmap_text.split("Phase ")
-                for i, phase_text in enumerate(phase_texts[1:], start=1):  # Skip first empty split
-                    lines = phase_text.strip().split("\n")
-                    phase_name_line = lines[0] if lines else f"Phase {i}"
-
-                    # Extract phase name (e.g., "1 (Months 1-3): Launch MVP..." -> "MVP")
-                    if ":" in phase_name_line:
-                        phase_name_full = phase_name_line.split(":", 1)[1].strip()
-                        phase_name = phase_name_full.split()[0] if phase_name_full else f"Phase {i}"
-                        timeline_match = phase_name_line.split("(")[1].split(")")[0] if "(" in phase_name_line else f"Months {i*3-2}-{i*3}"
-                    else:
-                        phase_name = f"Phase {i}"
-                        timeline_match = f"Months {i*3-2}-{i*3}"
-
-                    # Extract data sources mentioned in phase text
-                    data_sources = []
-                    for source in data_research.primary_data_sources[:3]:  # Top 3 sources
-                        if source.provider.lower() in phase_text.lower():
-                            data_sources.append(source.provider)
-
-                    phases.append(DataInfrastructurePhase(
-                        phase_number=i,
-                        phase_name=phase_name if phase_name != f"Phase {i}" else ["MVP", "Growth", "Scale"][i-1] if i <= 3 else f"Phase {i}",
-                        timeline=timeline_match,
-                        data_sources=data_sources if data_sources else [s.provider for s in data_research.primary_data_sources[:2]],
-                        estimated_monthly_cost=data_research.estimated_monthly_cost.split(";")[i-1].strip() if ";" in data_research.estimated_monthly_cost else data_research.estimated_monthly_cost,
-                        key_risks=[risk.strip() for risk in data_research.data_quality_risks[:2]] if data_research.data_quality_risks else []
-                    ))
-
-            # If parsing failed, return None instead of generating fake roadmap
-            if len(phases) < 3:
-                logger.warning("Failed to parse data infrastructure roadmap phases - insufficient data")
+            # Only use structured implementation_phases
+            if not data_research.implementation_phases or len(data_research.implementation_phases) < 3:
+                logger.debug("Structured implementation_phases unavailable or incomplete")
                 return None
 
-            # Generate cost scaling insight
-            cost_scaling_insight = f"Data infrastructure costs start at {phases[0].estimated_monthly_cost} during MVP, " \
-                                   f"scaling with user growth. {data_research.data_quality_risks[0] if data_research.data_quality_risks else 'Monitor API rate limits and implement fallback strategies'} " \
-                                   f"Critical mitigation: Implement tiered data source strategy with free/low-cost sources for baseline features, " \
-                                   f"premium APIs for advanced personalization. Monitor unit economics to prevent cost spiral at scale."
+            # Transform structured phases directly
+            phases = [
+                DataInfrastructurePhase(
+                    phase_number=phase.phase_number,
+                    phase_name=phase.phase_name,
+                    timeline=phase.timeline,
+                    data_sources=phase.data_sources,
+                    estimated_monthly_cost=phase.estimated_monthly_cost,
+                    key_risks=phase.fallback_strategies[:3] if phase.fallback_strategies else []
+                )
+                for phase in data_research.implementation_phases[:3]
+            ]
+
+            # Generate cost scaling insight from data
+            first_cost = phases[0].estimated_monthly_cost
+            primary_risk = data_research.data_quality_risks[0] if data_research.data_quality_risks else "Monitor API rate limits and implement fallback strategies"
+
+            cost_scaling_insight = (
+                f"Data infrastructure costs start at {first_cost} during MVP, scaling with user growth. "
+                f"{primary_risk}. "
+                f"Critical mitigation: Implement tiered data source strategy with free/low-cost sources for baseline features, "
+                f"premium APIs for advanced personalization."
+            )
 
             return DataInfrastructureRoadmap(
-                phases=phases[:3],  # Ensure exactly 3 phases
+                phases=phases,
                 cost_scaling_insight=cost_scaling_insight
             )
         except Exception as e:
             logger.warning(f"Failed to generate data infrastructure roadmap: {e}")
             return None
 
-    def _generate_decision_framework(self) -> "DecisionFramework | None":
-        """
-        Generate go/no-go criteria and pivot triggers for decision-making.
-
-        Returns:
-            DecisionFramework with actionable criteria based on research findings
-        """
-        if not self.state.pain_point_analysis or not self.state.solution_selection:
-            return None
-
-        try:
-            # Generate go criteria based on research findings
-            go_criteria = [
-                DecisionCriterion(
-                    criterion_type="go",
-                    condition="Validate 3+ high-severity pain points (severity >0.7) from Reddit threads with score >20",
-                    rationale="Confirms real user demand with social validation signals"
-                ),
-                DecisionCriterion(
-                    criterion_type="go",
-                    condition="At least 2 identified competitors have <$10M funding or are bootstrapped",
-                    rationale="Indicates beatable competitive landscape without dominant well-funded players"
-                ),
-            ]
-
-            # Add SEO-related go criterion if available
-            if self.state.seo_strategy_report:
-                go_criteria.append(DecisionCriterion(
-                    criterion_type="go",
-                    condition="Top 10 target keywords show >10k monthly combined search volume with competition <60",
-                    rationale="Validates organic acquisition channel viability and CAC estimates"
-                ))
-
-            # Add data sourcing go criterion if applicable
-            if self.state.data_source_research:
-                go_criteria.append(DecisionCriterion(
-                    criterion_type="go",
-                    condition="Secure 2+ core data sources with confirmed API access or free tier availability",
-                    rationale="De-risks technical feasibility and MVP launch timeline"
-                ))
-
-            # Generate no-go criteria
-            no_go_criteria = [
-                DecisionCriterion(
-                    criterion_type="no-go",
-                    condition="Pain point validation shows <5 discussions total or <10 total mentions across all pain points",
-                    rationale="Insufficient market signal indicates weak demand or poor niche-market fit"
-                ),
-                DecisionCriterion(
-                    criterion_type="no-go",
-                    condition="Competitive analysis reveals 3+ direct competitors with >$50M funding each",
-                    rationale="Over-saturated market with well-capitalized incumbents makes differentiation extremely difficult"
-                ),
-                DecisionCriterion(
-                    criterion_type="no-go",
-                    condition="SEO keyword research shows <5k monthly search volume for top 10 keywords combined",
-                    rationale="Insufficient organic demand makes customer acquisition cost prohibitively high"
-                ),
-            ]
-
-            # Add data sourcing no-go criterion if applicable
-            if self.state.data_source_research:
-                no_go_criteria.append(DecisionCriterion(
-                    criterion_type="no-go",
-                    condition="Data source costs exceed $5k/month at 10k users, breaking unit economics",
-                    rationale="Unsustainable cost structure prevents profitable scaling"
-                ))
-
-            # Generate pivot triggers based on alternative solutions
-            pivot_triggers = []
-            if self.state.solution_selection.runner_up_solutions:
-                for runner_up_name in self.state.solution_selection.runner_up_solutions[:2]:
-                    pivot_triggers.append(PivotTrigger(
-                        trigger_condition=f"User interviews reveal {runner_up_name} pain points are 2x more frequently mentioned than selected solution pain points",
-                        pivot_to_solution=runner_up_name,
-                        rationale="Market demand signal stronger for alternative approach, justifies strategic pivot"
-                    ))
-
-            # Add generic pivot trigger only if runner-up solutions exist
-            if self.state.solution_selection.runner_up_solutions:
-                pivot_triggers.append(PivotTrigger(
-                    trigger_condition="MVP validation shows <10% conversion from landing page to signup after 100+ visitors",
-                    pivot_to_solution=self.state.solution_selection.runner_up_solutions[0],
-                    rationale="Low conversion indicates value proposition mismatch, warrants testing alternative solution framing"
-                ))
-
-            return DecisionFramework(
-                go_criteria=go_criteria,
-                no_go_criteria=no_go_criteria,
-                pivot_triggers=pivot_triggers
-            )
-        except Exception as e:
-            logger.warning(f"Failed to generate decision framework: {e}")
-            return None
-
     # ==================================================================================
     # Executive Dashboard Generator (Phase 1 Enhancement)
     # ==================================================================================
-
-    def _get_solution_scores(self, solution_name: str):
-        """
-        Get selection scores for a solution from all_solution_scores.
-
-        Args:
-            solution_name: Name of the solution to look up
-
-        Returns:
-            SolutionScores if found, None otherwise
-        """
-        if not self.state.solution_selection or not self.state.solution_selection.all_solution_scores:
-            return None
-
-        for scores in self.state.solution_selection.all_solution_scores:
-            if scores.solution_name == solution_name:
-                return scores
-
-        return None
 
     def _generate_executive_dashboard(self) -> "ExecutiveDashboard | None":
         """
@@ -1195,20 +1034,6 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             if not selected_solution:
                 logger.warning("No selected solution found - cannot generate executive dashboard")
                 return None
-
-            # Get selection scores for this solution
-            solution_scores = self._get_solution_scores(selected_solution.solution_name)
-            if solution_scores:
-                logger.debug(
-                    f"Found scores for {selected_solution.solution_name}: "
-                    f"market_fit={solution_scores.market_fit_score:.2f}, "
-                    f"competitive_advantage={solution_scores.competitive_advantage_score:.2f}"
-                )
-            else:
-                logger.warning(
-                    f"No scores found in all_solution_scores for {selected_solution.solution_name}, "
-                    "using fallback values from solution object"
-                )
 
             # Step 1: Compute metrics (Python - 60% of work)
             key_metrics = self._compute_executive_metrics()
@@ -1243,30 +1068,11 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                 narrative_rationale=narrative.verdict_rationale if narrative else None
             )
 
-            # Compute confidence score (average of top 2 selection criteria with null safety)
-            if solution_scores:
-                market_fit = solution_scores.market_fit_score
-                competitive_advantage = solution_scores.competitive_advantage_score
-            else:
-                # Fallback to solution object fields
-                market_fit = selected_solution.market_fit_score
-                competitive_advantage = selected_solution.market_fit_score  # Use market_fit as proxy
-
-            # Only generate dashboard if we have at least one valid score
-            if market_fit is None and competitive_advantage is None:
-                logger.warning("Cannot generate executive dashboard: scores unavailable")
-                return None
-
-            # Compute confidence using only available scores
-            if market_fit is not None and competitive_advantage is not None:
-                confidence_score = (market_fit + competitive_advantage) / 2.0
-            elif market_fit is not None:
-                confidence_score = market_fit
-            elif competitive_advantage is not None:
-                confidence_score = competitive_advantage
-            else:
-                # Should never reach here due to check above
-                confidence_score = 0.0
+            # Compute confidence score using ScoreAccessor
+            confidence_score = (
+                self.score_accessor.get_market_fit(selected_solution) +
+                self.score_accessor.get_competitive_advantage(selected_solution)
+            ) / 2.0
 
             executive_dashboard = ExecutiveDashboard(
                 recommended_solution_snapshot=solution_snapshot,
@@ -1274,7 +1080,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                 core_pain_point=core_pain_point,
                 key_metrics=key_metrics,
                 confidence_score=confidence_score,
-                niche_description=self.niche_description
+                niche_description=self.state.niche_context.niche_description
             )
 
             logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, confidence {confidence_score:.2f}")
@@ -1300,32 +1106,12 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             tier2_keyword_count = 0
             total_keyword_count = 0
 
-            if self.state.seo_strategy_report:
-                # Count keywords from all tiers
-                for kw in self.state.seo_strategy_report.tier_1_keywords:
-                    total_keyword_count += 1
-                    total_keyword_search_volume += kw.search_volume
-                    tier1_keyword_count += 1
-
-                for kw in self.state.seo_strategy_report.tier_2_keywords:
-                    total_keyword_count += 1
-                    total_keyword_search_volume += kw.search_volume
-                    tier2_keyword_count += 1
-
-                # Count tier 3 & 4 for total (don't track separately)
-                # Tier 3: Geographic groups
-                if self.state.seo_strategy_report.tier_3_geographic_groups:
-                    for group in self.state.seo_strategy_report.tier_3_geographic_groups:
-                        for kw in group.keywords:
-                            total_keyword_count += 1
-                            total_keyword_search_volume += kw.search_volume
-
-                # Tier 4: Category groups
-                if self.state.seo_strategy_report.tier_4_category_groups:
-                    for group in self.state.seo_strategy_report.tier_4_category_groups:
-                        for kw in group.keywords:
-                            total_keyword_count += 1
-                            total_keyword_search_volume += kw.search_volume
+            # Get keyword counts and volumes using accessor
+            tier_counts = self.accessor.get_tier_keyword_counts()
+            total_keyword_count = tier_counts["total"]
+            tier1_keyword_count = tier_counts["tier_1"]
+            tier2_keyword_count = tier_counts["tier_2"]
+            total_keyword_search_volume = self.accessor.get_total_keyword_search_volume()
 
             # Pain point metrics
             high_priority_pain_points = 0
@@ -1344,15 +1130,9 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
             # Competitor count from selected solution's competitive analysis
             primary_competitor_count = 0
-            if self.state.competitive_analysis and self.state.solution_selection:
-                # Find landscape for selected solution
-                selected_landscape = next(
-                    (landscape for landscape in self.state.competitive_analysis.solution_landscapes
-                     if landscape.solution_name == self.state.solution_selection.selected_solution_name),
-                    None
-                )
-                if selected_landscape and selected_landscape.competitors:
-                    primary_competitor_count = len(selected_landscape.competitors)
+            selected_landscape = self.accessor.get_selected_landscape()
+            if selected_landscape and selected_landscape.competitors:
+                primary_competitor_count = len(selected_landscape.competitors)
 
             # Social evidence metrics
             social_evidence_threads = 0
@@ -1453,29 +1233,21 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             if not core_pain_point or not selected_solution:
                 raise ValueError("Missing core_pain_point or selected_solution - cannot generate executive narrative")
 
-            # Get scores for this solution
-            solution_scores = self._get_solution_scores(selected_solution.solution_name)
-
             # Prepare target personas string
             target_personas_str = ', '.join(selected_solution.target_personas) if selected_solution.target_personas else "target users"
 
-            # Get scores (can be None if not assessed)
-            if solution_scores:
-                market_fit = solution_scores.market_fit_score
-                competitive_advantage = solution_scores.competitive_advantage_score
-                technical_feasibility = solution_scores.technical_feasibility_score
-                seo_growth = solution_scores.seo_growth_potential_score
-            else:
-                # Fallback to solution object fields where available
-                market_fit = selected_solution.market_fit_score
-                competitive_advantage = market_fit  # Use market_fit as proxy
-                technical_feasibility = selected_solution.technical_feasibility_score
-                seo_growth = selected_solution.seo_scalability_score
+            # Get scores using ScoreAccessor (returns defaults for None values)
+            scores = self.score_accessor.get_all_scores(selected_solution)
+            market_fit = scores["market_fit"]
+            competitive_advantage = scores["competitive_advantage"]
+            technical_feasibility = scores["technical_feasibility"]
+            seo_growth = scores["seo_growth"]
 
-            # Add note to prompt if key scores are missing
+            # Add note to prompt if using fallback defaults
             missing_scores_note = ""
-            if market_fit is None or competitive_advantage is None:
-                missing_scores_note = " (Note: Limited scoring data available - some scores not assessed)"
+            solution_scores = self.score_accessor.get_scores(selected_solution.solution_name)
+            if not solution_scores:
+                missing_scores_note = " (Note: Limited scoring data available - using fallback values)"
 
             # Edge case handling for metrics
             zero_keywords_note = " (Limited keyword data available)" if key_metrics.total_keyword_count == 0 else ""
@@ -1488,7 +1260,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                 solution_name=selected_solution.solution_name,
                 solution_description=selected_solution.description,
                 target_personas=target_personas_str,
-                niche_description=self.niche_description,
+                niche_description=self.state.niche_context.niche_description,
                 pain_point_title=core_pain_point.title,
                 pain_point_severity=f"{core_pain_point.severity_score:.1f}",
                 pain_point_wtp=f"{core_pain_point.willingness_to_pay_score:.1f}",
@@ -1505,14 +1277,12 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                 missing_scores_note=missing_scores_note
             )
 
-            structured_llm = ChatOpenAI(
-                model=settings.openai_model_name,
-                temperature=0.5,  # Balanced creativity + constraint adherence
-                api_key=settings.openai_api_key,
-                timeout=120,
-            ).with_structured_output(ExecutiveNarrative)
-
-            result = structured_llm.invoke(prompt)
+            # Use LLMService for structured output
+            result = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=ExecutiveNarrative,
+                temperature=0.5
+            )
 
             # Validate output
             if self._validate_executive_narrative(result, selected_solution, core_pain_point):
@@ -1624,21 +1394,11 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
         """
         from ..models.executive_summary import GoNoGoVerdict
 
-        # Get scores from SolutionSelection (has competitive_advantage_score)
-        solution_scores = self._get_solution_scores(selected_solution.solution_name)
-
-        # Score-based decision logic with fallbacks
-        if solution_scores:
-            market_fit = solution_scores.market_fit_score or 0.5
-            competitive_adv = solution_scores.competitive_advantage_score or 0.5
-            tech_feasibility = solution_scores.technical_feasibility_score or 0.5
-            seo_potential = solution_scores.seo_growth_potential_score or 0.5
-        else:
-            # Fallback to SolutionIdea fields
-            market_fit = selected_solution.market_fit_score or 0.5
-            competitive_adv = market_fit  # Use market_fit as proxy
-            tech_feasibility = selected_solution.technical_feasibility_score or 0.5
-            seo_potential = selected_solution.seo_scalability_score or 0.5
+        # Get scores using ScoreAccessor with fallbacks
+        market_fit = self.score_accessor.get_market_fit(selected_solution)
+        competitive_adv = self.score_accessor.get_competitive_advantage(selected_solution)
+        tech_feasibility = self.score_accessor.get_technical_feasibility(selected_solution)
+        seo_potential = self.score_accessor.get_seo_growth(selected_solution)
 
         # Compute verdict
         avg_score = (market_fit + competitive_adv + tech_feasibility + seo_potential) / 4
@@ -1715,8 +1475,16 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
                 logger.warning("Failed to generate marketing narrative, using fallback")
                 narrative = self._generate_marketing_narrative_fallback(icp=icp)
 
-            # Step 4: Generate 30-day playbook (Python - 20%)
-            playbook = self._generate_first_30_days_playbook(channels=channels)
+            # Step 4: Generate 30-day playbook (LLM - 20%)
+            selected_solution = self.accessor.get_selected_solution_details()
+            if not selected_solution:
+                logger.warning("No selected solution found - cannot generate 30-day playbook")
+                return None
+            playbook = self._generate_first_30_days_playbook(
+                channels=channels,
+                icp=icp,
+                selected_solution=selected_solution
+            )
 
             gtm_blueprint = GTMBlueprint(
                 ideal_customer_profile=icp,
@@ -1791,7 +1559,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
             return IdealCustomerProfile(
                 persona_name=primary_segment.segment_name,
-                demographics=f"{primary_segment.segment_name} segment with {primary_segment.mention_frequency.lower()} activity in {self.niche_description} discussions",
+                demographics=f"{primary_segment.segment_name} segment with {primary_segment.mention_frequency.lower()} activity in {self.state.niche_context.niche_description} discussions",
                 psychographics=psychographics,
                 pain_points=pain_points if pain_points else ["No specific pain points identified"],
                 goals=goals,
@@ -1916,21 +1684,19 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             prompt = template.format(
                 solution_name=selected_solution_name,
                 solution_description=solution_description,
-                niche_description=self.niche_description,
+                niche_description=self.state.niche_context.niche_description,
                 persona_name=icp.persona_name,
                 pain_points_list=pain_points_list,
                 goals_list=goals_list,
                 max_content_angles=max_content_angles
             )
 
-            structured_llm = ChatOpenAI(
-                model=settings.openai_model_name,
-                temperature=0.6,  # Balanced creativity + constraint adherence
-                api_key=settings.openai_api_key,
-                timeout=120,
-            ).with_structured_output(MarketingNarrative)
-
-            result = structured_llm.invoke(prompt)
+            # Use LLMService for structured output
+            result = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=MarketingNarrative,
+                temperature=0.6
+            )
             logger.info("[OK] LLM marketing narrative generation successful")
             return result
 
@@ -1938,75 +1704,160 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.error(f"LLM marketing narrative generation failed: {e}")
             raise
 
-    def _generate_first_30_days_playbook(self, channels: list) -> "First30DaysPlaybook":
+    def _format_pain_points_for_prompt(self, pain_points: list) -> str:
         """
-        Generate 30-day action plan (Python template-based).
+        Format pain points for 30-day playbook prompt.
+
+        Args:
+            pain_points: List of PainPoint objects
+
+        Returns:
+            Formatted string with numbered pain points and scores
+        """
+        if not pain_points:
+            return "No pain points identified - conduct user research"
+
+        formatted = []
+        for i, pp in enumerate(pain_points, 1):
+            formatted.append(
+                f"{i}. **{pp.title}**\n"
+                f"   - Description: {pp.description}\n"
+                f"   - Severity: {pp.severity_score:.1f}/10\n"
+                f"   - Willingness to Pay: {pp.willingness_to_pay:.1f}/10\n"
+                f"   - Priority Score: {(pp.severity_score + pp.willingness_to_pay) / 2:.1f}/10"
+            )
+
+        return "\n\n".join(formatted)
+
+    def _format_channels_for_prompt(self, channels: list) -> str:
+        """
+        Format marketing channels for 30-day playbook prompt.
 
         Args:
             channels: List of MarketingChannel objects
 
         Returns:
+            Formatted string with channel names, types, and rationale
+        """
+        if not channels:
+            return "No marketing channels identified - requires channel strategy research"
+
+        formatted = []
+        for i, ch in enumerate(channels, 1):
+            formatted.append(
+                f"{i}. **{ch.channel_name}** ({ch.channel_type})\n"
+                f"   - Priority: {ch.priority}\n"
+                f"   - Rationale: {ch.rationale}\n"
+                f"   - Strategy: {ch.strategy}"
+            )
+
+        return "\n\n".join(formatted)
+
+    def _format_icp_for_prompt(self, icp: "IdealCustomerProfile") -> str:
+        """
+        Format ICP for 30-day playbook prompt.
+
+        Args:
+            icp: IdealCustomerProfile object
+
+        Returns:
+            Formatted string with persona, demographics, pain points, and goals
+        """
+        if not icp:
+            return "Ideal customer profile not defined - requires customer research"
+
+        formatted = []
+        formatted.append(f"**Persona:** {icp.persona_name}")
+
+        if icp.demographics:
+            formatted.append(f"\n**Demographics:** {icp.demographics}")
+
+        if icp.pain_points:
+            pain_points_str = "; ".join(icp.pain_points[:5])
+            formatted.append(f"\n**Pain Points:** {pain_points_str}")
+
+        if icp.goals:
+            goals_str = "; ".join(icp.goals[:5])
+            formatted.append(f"\n**Goals:** {goals_str}")
+
+        if icp.psychographics:
+            formatted.append(f"\n**Psychographics:** {icp.psychographics}")
+
+        if icp.buying_triggers:
+            formatted.append(f"\n**Buying Triggers:** {icp.buying_triggers}")
+
+        if icp.decision_criteria:
+            formatted.append(f"\n**Decision Criteria:** {icp.decision_criteria}")
+
+        return "".join(formatted)
+
+    def _generate_first_30_days_playbook(self, channels: list, icp: "IdealCustomerProfile", selected_solution: "SolutionIdea") -> "First30DaysPlaybook":
+        """
+        Generate 30-day action plan using LLM with solution-specific pain points.
+
+        Args:
+            channels: List of MarketingChannel objects
+            icp: Ideal customer profile
+            selected_solution: Selected solution with pain_points_addressed
+
+        Returns:
             First30DaysPlaybook with week-by-week actions
         """
         from ..models.marketing_blueprint import First30DaysPlaybook
+        from ..utils.prompts import load_prompt
 
-        has_seo = any(ch.channel_type == "SEO" for ch in channels)
-        has_reddit = any("reddit" in ch.channel_name.lower() for ch in channels)
-        has_twitter = any("twitter" in ch.channel_name.lower() or "x" in ch.channel_name.lower() for ch in channels)
+        # Get solution-specific pain points
+        top_pain_points = self.accessor.get_solution_pain_points(selected_solution)
 
-        week_1 = [
-            "Set up analytics and tracking (Google Analytics, goal funnels)",
-            "Create landing page with core marketing message",
-            "Set up email capture and welcome sequence"
-        ]
-        if has_reddit:
-            week_1.append("Create Reddit account, join target subreddits, observe discussions")
-        if has_twitter:
-            week_1.append("Set up Twitter profile optimized for ICP")
+        # Format data for prompt
+        pain_points_list = self._format_pain_points_for_prompt(top_pain_points)
+        channels_summary = self._format_channels_for_prompt(channels)
+        icp_summary = self._format_icp_for_prompt(icp)
 
-        week_2 = [
-            "Publish first piece of educational content addressing top pain point",
-            "Share content in relevant communities (value-first approach)"
-        ]
-        if has_seo:
-            week_2.append("Publish SEO-optimized blog post targeting Tier 1 keyword")
-        if has_reddit:
-            week_2.append("Make first helpful Reddit comments on pain point discussions")
-        if has_twitter:
-            week_2.append("Publish first Twitter thread sharing solution insights")
+        # Get keyword and competitive data
+        total_keyword_count = 0
+        tier0_keyword_count = 0
+        tier1_keyword_count = 0
+        if self.state.seo_strategy_report:
+            total_keyword_count = self.state.seo_strategy_report.total_keywords_analyzed or 0
+            tier0_keyword_count = len(self.state.seo_strategy_report.tier_0_keywords) if self.state.seo_strategy_report.tier_0_keywords else 0
+            tier1_keyword_count = len(self.state.seo_strategy_report.tier_1_keywords) if self.state.seo_strategy_report.tier_1_keywords else 0
 
-        week_3 = [
-            "Engage with 20+ people experiencing target pain points",
-            "Conduct 5 customer discovery interviews",
-            "Publish second piece of content based on feedback"
-        ]
-        if has_seo:
-            week_3.append("Set up schema markup and submit sitemap to Google")
-        week_3.append("Start building email list with lead magnet")
+        competitor_count = 0
+        if self.state.competitive_analysis:
+            competitor_count = len(self.state.competitive_analysis.solution_landscapes)
 
-        week_4 = [
-            "Analyze engagement metrics from first 3 weeks",
-            "Double down on highest-performing channel",
-            "Publish case study or success story content",
-            "Set up retargeting pixel for future paid campaigns",
-            "Plan content calendar for next 30 days"
-        ]
-
-        success_metrics = [
-            "Landing page visitors: 100-500",
-            "Email subscribers: 10-50",
-            "Meaningful conversations with ICP: 10-20",
-            "Content pieces published: 3-5",
-            "Early adopter signups: 5-15"
-        ]
-
-        return First30DaysPlaybook(
-            week_1_actions=week_1,
-            week_2_actions=week_2,
-            week_3_actions=week_3,
-            week_4_actions=week_4,
-            success_metrics=success_metrics
+        # Load template and generate prompt
+        template = load_prompt("report_first_30_days_playbook")
+        prompt = template.format(
+            solution_name=selected_solution.solution_name,
+            solution_description=selected_solution.description,
+            value_proposition=selected_solution.value_proposition,
+            technical_approach=selected_solution.technical_approach or "Technical approach not specified",
+            project_type=selected_solution.project_type or "Project type not specified",
+            estimated_development_time=selected_solution.estimated_development_time or "Development timeline not estimated",
+            niche=self.state.niche_context.niche_description,
+            top_pain_points_list=pain_points_list,
+            icp_summary=icp_summary,
+            channels_summary=channels_summary,
+            total_keyword_count=total_keyword_count,
+            tier0_keyword_count=tier0_keyword_count,
+            tier1_keyword_count=tier1_keyword_count,
+            competitor_count=competitor_count
         )
+
+        # Use LLMService for structured output
+        try:
+            playbook = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=First30DaysPlaybook,
+                temperature=0.6
+            )
+            logger.info("Successfully generated 30-day playbook via LLM")
+            return playbook
+        except Exception as e:
+            logger.error(f"Failed to generate 30-day playbook: {e}")
+            raise
 
     # ==================================================================================
     # Analytics & Visualization Generator (Phase 3 Enhancement)
@@ -2046,26 +1897,13 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             if not selected_solution:
                 return None
 
-            # Get scores from SolutionSelection (has competitive_advantage_score)
-            solution_scores = self._get_solution_scores(selected_solution.solution_name)
-
-            # Compute overall opportunity score
-            if solution_scores:
-                overall_score = (
-                    (solution_scores.market_fit_score or 0.5) +
-                    (solution_scores.competitive_advantage_score or 0.5) +
-                    (solution_scores.technical_feasibility_score or 0.5) +
-                    (solution_scores.seo_growth_potential_score or 0.5)
-                ) / 4
-            else:
-                # Fallback to SolutionIdea fields
-                market_fit = selected_solution.market_fit_score or 0.5
-                overall_score = (
-                    market_fit +
-                    market_fit +  # Use market_fit as proxy for competitive advantage
-                    (selected_solution.technical_feasibility_score or 0.5) +
-                    (selected_solution.seo_scalability_score or 0.5)
-                ) / 4
+            # Compute overall opportunity score using ScoreAccessor
+            overall_score = (
+                self.score_accessor.get_market_fit(selected_solution) +
+                self.score_accessor.get_competitive_advantage(selected_solution) +
+                self.score_accessor.get_technical_feasibility(selected_solution) +
+                self.score_accessor.get_seo_growth(selected_solution)
+            ) / 4
 
             # Market size from keyword volume
             market_size_category = "Small"
@@ -2078,14 +1916,9 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
 
             # Competitive intensity
             competitor_count = 0
-            if self.state.competitive_analysis and self.state.solution_selection:
-                selected_landscape = next(
-                    (ls for ls in self.state.competitive_analysis.solution_landscapes
-                     if ls.solution_name == self.state.solution_selection.selected_solution_name),
-                    None
-                )
-                if selected_landscape and selected_landscape.competitors:
-                    competitor_count = len(selected_landscape.competitors)
+            selected_landscape = self.accessor.get_selected_landscape()
+            if selected_landscape and selected_landscape.competitors:
+                competitor_count = len(selected_landscape.competitors)
 
             competitive_intensity = "Low" if competitor_count < 3 else "Medium" if competitor_count < 8 else "High"
 
@@ -2097,15 +1930,11 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             else:
                 recommendation = "No-Go"
 
-            # Calculate selection confidence using available scores
-            if solution_scores:
-                market_fit = solution_scores.market_fit_score or 0.5
-                competitive_adv = solution_scores.competitive_advantage_score or 0.5
-            else:
-                market_fit = selected_solution.market_fit_score or 0.5
-                competitive_adv = market_fit  # Use market_fit as proxy
-
-            selection_confidence = (market_fit + competitive_adv) / 2
+            # Calculate selection confidence using ScoreAccessor
+            selection_confidence = (
+                self.score_accessor.get_market_fit(selected_solution) +
+                self.score_accessor.get_competitive_advantage(selected_solution)
+            ) / 2
 
             return MarketAnalytics(
                 overall_opportunity_score=overall_score,
@@ -2168,25 +1997,23 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             if not self.state.seo_strategy_report:
                 return None
 
-            # Extract all tier keywords using helper method
+            # Get tier counts using accessor
+            counts = self.accessor.get_tier_keyword_counts()
+            total = counts["total"]
+            total_volume = self.accessor.get_total_keyword_search_volume()
+
+            # Extract keyword lists for high-volume calculation
             (
                 tier0_keywords,
                 tier1_keywords,
                 tier2_keywords,
-                tier3_keywords,
-                tier4_keywords,
+                _, _,  # Don't need tier 3 & 4 lists
                 tier0_count,
                 tier1_count,
                 tier2_count,
                 tier3_count,
                 tier4_count
             ) = self._extract_all_tier_keywords(self.state.seo_strategy_report)
-
-            total = tier0_count + tier1_count + tier2_count + tier3_count + tier4_count
-
-            # Calculate total search volume with defensive null handling
-            all_keywords = tier0_keywords + tier1_keywords + tier2_keywords + tier3_keywords + tier4_keywords
-            total_volume = sum(kw.search_volume or 0 for kw in all_keywords)
 
             # Keyword diversity (0-1): higher if keywords are distributed across tiers
             if total == 0:
@@ -2224,11 +2051,7 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             if not self.state.competitive_analysis or not self.state.solution_selection:
                 return None
 
-            selected_landscape = next(
-                (ls for ls in self.state.competitive_analysis.solution_landscapes
-                 if ls.solution_name == self.state.solution_selection.selected_solution_name),
-                None
-            )
+            selected_landscape = self.accessor.get_selected_landscape()
             if not selected_landscape:
                 return None
 
@@ -2337,35 +2160,24 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             # Generate keyword opportunity chart
             keyword_paths = None
             if self.state.seo_strategy_report:
-                # Extract tier counts using helper method
-                (
-                    _, _, _, _,  # Don't need keyword lists here
-                    tier1_count,
-                    tier2_count,
-                    tier3_count,
-                    tier4_count
-                ) = self._extract_all_tier_keywords(self.state.seo_strategy_report)
-
+                # Get tier counts using accessor
+                counts = self.accessor.get_tier_keyword_counts()
                 tier_counts = {
-                    "Tier 1": tier1_count,
-                    "Tier 2": tier2_count,
-                    "Tier 3": tier3_count,
-                    "Tier 4": tier4_count
+                    "Tier 0": counts["tier_0"],
+                    "Tier 1": counts["tier_1"],
+                    "Tier 2": counts["tier_2"],
+                    "Tier 3": counts["tier_3"],
+                    "Tier 4": counts["tier_4"]
                 }
                 keyword_paths = generator.generate_keyword_opportunity_chart(tier_counts)
 
             # Generate competitive landscape
             competitive_paths = None
-            if self.state.competitive_analysis and self.state.solution_selection:
-                selected_landscape = next(
-                    (ls for ls in self.state.competitive_analysis.solution_landscapes
-                     if ls.solution_name == self.state.solution_selection.selected_solution_name),
-                    None
+            selected_landscape = self.accessor.get_selected_landscape()
+            if selected_landscape and selected_landscape.competitors:
+                competitive_paths = generator.generate_competitive_landscape(
+                    selected_landscape.competitors
                 )
-                if selected_landscape and selected_landscape.competitors:
-                    competitive_paths = generator.generate_competitive_landscape(
-                        selected_landscape.competitors
-                    )
 
             return VisualizationManifest(
                 pain_point_matrix_path=pain_point_paths[0] if pain_point_paths else None,
@@ -2379,24 +2191,3 @@ It differentiates through {solution.differentiation_factors[0] if solution.diffe
             logger.warning(f"Failed to generate visualizations: {e}")
             return None
 
-    # ==================================================================================
-    # Output Helpers
-    # ==================================================================================
-
-    def _display_executive_summary(self, report: FinalReport):
-        """Display formatted executive summary to console."""
-        logger.info("\n" + "=" * 80)
-        logger.info("RESEARCH COMPLETE - FINAL REPORT")
-        logger.info("=" * 80)
-        logger.info(f"\nNiche: {report.niche}\n")
-        logger.info("EXECUTIVE SUMMARY:")
-        logger.info(report.executive_summary)
-        logger.info(f"\n{'=' * 80}")
-        logger.info("TOP PAIN POINTS:")
-        for i, pp in enumerate(report.top_pain_points, 1):
-            logger.info(f"  {i}. {pp}")
-        logger.info(f"\n{'=' * 80}")
-        logger.info("RECOMMENDED SOLUTIONS:")
-        for i, sol in enumerate(report.recommended_solutions, 1):
-            logger.info(f"  {i}. {sol}")
-        logger.info(f"\n{'=' * 80}\n")

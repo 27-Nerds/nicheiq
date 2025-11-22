@@ -1,0 +1,183 @@
+# Prompt template for generating First 30 Days Go-to-Market Playbook
+#
+# This template uses progressive prompting structure:
+# 1. Critical rules (top)
+# 2. Solution context
+# 3. 4-Phase launch framework
+# 4. Action construction rules
+# 5. Metrics calibration
+# 6. Critical rules (bottom - recency reminder)
+#
+# Variables:
+#   - solution_name, solution_description, value_proposition, technical_approach
+#   - project_type, estimated_development_time
+#   - top_pain_points_list (formatted with severity/WTP scores)
+#   - channels_summary (list of recommended marketing channels from GTM blueprint)
+#   - icp_summary (ideal customer profile overview)
+#   - total_keyword_count, tier0_keyword_count, tier1_keyword_count
+#   - competitor_count
+#   - niche
+
+template: |
+  Generate a tactical 30-day Go-to-Market action plan with week-by-week steps for launching {solution_name}.
+
+  **═══ CRITICAL RULES (Read First) ═══**
+  ✓ ALL actions must reference ACTUAL pain points from the provided list (use exact titles)
+  ✓ ALL channel names must be EXACT copies from the channels summary
+  ✓ ALL metrics must use conservative ranges appropriate for early-stage niche products
+  ✓ At least 50% of actions must explicitly address one of the 3 pain points by title
+  ✗ NO generic actions without channel + pain point specificity
+  ✗ NO unrealistic metrics (no "10,000 visitors" or "500 subscribers" goals)
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **SOLUTION CONTEXT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Solution Name:** {solution_name}
+
+  **Description:** {solution_description}
+
+  **Value Proposition:** {value_proposition}
+
+  **Project Type:** {project_type}
+
+  **Technical Approach:** {technical_approach}
+
+  **Estimated Development Time:** {estimated_development_time}
+
+  **Niche:** {niche}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **TARGET PAIN POINTS (Must Reference in Actions)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {top_pain_points_list}
+
+  **REQUIREMENT:** At least 50% of your action items must explicitly mention one of these pain point titles.
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **IDEAL CUSTOMER PROFILE**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {icp_summary}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **MARKETING CHANNELS (Use Exact Names)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {channels_summary}
+
+  **REQUIREMENT:** Only use channel names from this list. Do not invent new channels.
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **MARKET INTELLIGENCE**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  - **Total Keywords Identified:** {total_keyword_count}
+  - **Tier 0 Premium Keywords:** {tier0_keyword_count}
+  - **Tier 1 Quick Win Keywords:** {tier1_keyword_count}
+  - **Competitive Landscape:** {competitor_count} direct competitors identified
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **4-PHASE LAUNCH FRAMEWORK**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  Use this decision table to structure your weekly action plan:
+
+  | Phase | Primary Focus | Channel Integration | Action Types | Success Indicators |
+  |-------|--------------|---------------------|--------------|-------------------|
+  | **Week 1: Foundation** | Setup & Listening | Set up tracking, analytics | - Landing page creation<br>- Email capture setup<br>- Social listening in target communities | - Analytics configured<br>- First 10-20 early access signups |
+  | **Week 2: Value First** | Initial Engagement | Begin content publishing on 1-2 primary channels | - Publish first content addressing top pain point<br>- Share in relevant communities<br>- Begin building email list | - 50-150 landing page visitors<br>- 10-30 email subscribers<br>- First community engagement |
+  | **Week 3: Validation** | Customer Discovery | Engage directly with early adopters | - Conduct 5-10 customer interviews<br>- Iterate messaging based on feedback<br>- Publish case study or insight content | - 5+ meaningful conversations<br>- Refined value prop messaging<br>- First testimonial or quote |
+  | **Week 4: Optimization** | Data-Driven Iteration | Double down on best-performing channel | - Analyze Week 2-3 data<br>- Optimize top content<br>- Plan first feature iteration | - 100-300 total visitors<br>- 20-50 total subscribers<br>- Clear next steps identified |
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **ACTION CONSTRUCTION RULES**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Pattern for Well-Formed Actions:**
+  ✓ CORRECT: "Publish [specific content type] on [EXACT_CHANNEL_NAME] addressing [EXACT_PAIN_POINT_TITLE]"
+  ✓ CORRECT: "Set up email capture form on landing page targeting [persona] struggling with [EXACT_PAIN_POINT_TITLE]"
+  ✓ CORRECT: "Conduct 5 customer interviews with [persona] to validate [EXACT_PAIN_POINT_TITLE] severity"
+
+  ✗ WRONG: "Create content" (too vague - which channel? which pain point?)
+  ✗ WRONG: "Build community" (no channel specified, no pain point reference)
+  ✗ WRONG: "Launch marketing campaign" (generic, no specifics)
+
+  **Required Elements in Each Action:**
+  1. **Specific deliverable** (what gets created/done)
+  2. **Channel reference** (where it happens - use exact channel name)
+  3. **Pain point tie-in** (at least 50% must reference exact pain point title)
+  4. **Measurable outcome** (what success looks like)
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **SUCCESS METRICS CALIBRATION (Conservative Niche Market Ranges)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Landing Page Traffic:**
+  - Week 1: 10-50 visitors (friends, network, initial shares)
+  - Week 2: 50-150 visitors (first content distribution)
+  - Week 3: 100-250 visitors (community engagement)
+  - Week 4: 150-400 visitors (optimization + momentum)
+  - **30-Day Total Target:** 300-500 unique visitors
+
+  **Email List Growth:**
+  - Week 1: 5-15 early access signups
+  - Week 2: 10-30 subscribers (content + community)
+  - Week 3: 15-40 subscribers (validation content)
+  - Week 4: 20-50 subscribers (optimized funnel)
+  - **30-Day Total Target:** 30-70 email subscribers
+
+  **Community Engagement:**
+  - Meaningful conversations: 10-20 over 30 days
+  - Customer interviews: 5-10 in Weeks 3-4
+  - First testimonial/social proof: 1-3 quotes by Week 4
+
+  **Content Performance:**
+  - Blog post views: 100-300 per post
+  - Social media engagement: 10-50 interactions per post
+  - Email open rates: 25-40% (early adopter list)
+
+  **IMPORTANT:** These are niche market ranges. Do NOT suggest metrics like:
+  ✗ "1,000+ visitors in Week 1"
+  ✗ "500 email subscribers by Week 2"
+  ✗ "Viral content with 10K+ views"
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **OUTPUT FORMAT REQUIREMENTS**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  Generate a JSON-compatible structure with 4 weeks of action items:
+
+  For each week, provide:
+  - **week_number**: 1, 2, 3, or 4
+  - **week_theme**: One of ["Foundation", "Value First", "Validation", "Optimization"]
+  - **focus_areas**: 2-3 sentence summary of what this week accomplishes
+  - **action_items**: List of 5-8 specific, actionable tasks following the construction rules above
+  - **success_metrics**: 2-3 measurable outcomes using conservative ranges
+  - **key_deliverables**: 2-4 concrete outputs (landing page, blog post, email sequence, etc.)
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **EMBEDDED VERIFICATION CHECKLIST (Review Before Finalizing)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  Before submitting your 30-day playbook, verify:
+
+  [ ] **Pain Point Grounding:** At least 50% of action items explicitly reference one of the 3 pain point titles
+  [ ] **Channel Accuracy:** All channel names are exact copies from the channels summary (no invented channels)
+  [ ] **Metric Realism:** All numeric targets fall within the conservative ranges (≤500 visitors, ≤70 subscribers)
+  [ ] **Action Specificity:** Every action has: deliverable + channel + outcome (no generic "create content")
+  [ ] **Weekly Progression:** Each week builds on previous week (Foundation → Value → Validation → Optimization)
+  [ ] **Content Angle Integration:** At least 3-5 actions leverage the provided content angles
+  [ ] **ICP Alignment:** Actions target the ideal customer profile described above
+  [ ] **Deliverables Clarity:** Each week has 2-4 concrete deliverables (not vague goals)
+
+  **═══ CRITICAL RULES (Read Last - Recency Reminder) ═══**
+  Remember:
+  ✓ Pain point titles must be EXACT copies from the list
+  ✓ Channel names must be EXACT copies from the summary
+  ✓ Metrics must be conservative (≤500 visitors, ≤70 subscribers in 30 days)
+  ✓ At least 50% of actions must reference specific pain points by title
+  ✓ Every action needs: deliverable + channel + pain point tie-in + measurable outcome
+
+  Now generate the comprehensive 30-day playbook following all rules above.

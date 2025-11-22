@@ -24,6 +24,7 @@ class TestPainPointModel:
             representative_quotes=["I waste so much time on this", "Need automation ASAP"],
             source_platforms=["reddit", "twitter"],
             categories=["workflow inefficiency"],
+            opportunity_level=OpportunityLevel.HIGH,
         )
 
         assert pain_point.title == "Manual data entry is time-consuming"
@@ -57,6 +58,7 @@ class TestPainPointModel:
                 representative_quotes=["quote"],
                 source_platforms=["reddit"],
                 categories=["category1"],
+                opportunity_level=OpportunityLevel.HIGH,
             ),
             PainPoint(
                 title="Problem 2",
@@ -67,10 +69,12 @@ class TestPainPointModel:
                 representative_quotes=["quote"],
                 source_platforms=["twitter"],
                 categories=["category2"],
+                opportunity_level=OpportunityLevel.MEDIUM,
             ),
         ]
 
         result = PainPointAnalysisResult(
+            niche="test niche",
             pain_points=pain_points,
             total_mentions=15,
             top_categories=["category1", "category2"],

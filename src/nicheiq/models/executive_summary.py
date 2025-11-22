@@ -5,7 +5,7 @@ Provides top-level dashboard for quick decision-making with go/no-go verdict,
 core pain point, and key opportunity metrics.
 """
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -42,7 +42,7 @@ class GoNoGoVerdict(BaseModel):
     risk_level: Literal["Low", "Medium", "High"] = Field(
         description="Overall risk assessment"
     )
-    primary_concern: str | None = Field(
+    primary_concern: Optional[str] = Field(
         default=None,
         description="Main concern or blocker if verdict is No-Go or Conditional"
     )

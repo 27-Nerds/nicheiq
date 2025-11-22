@@ -2,6 +2,8 @@
 Pydantic models for solution refinement based on keyword insights (Stage 8.85).
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -33,7 +35,7 @@ class SolutionRefinement(BaseModel):
         )
     )
 
-    category_pivot_recommendation: str | None = Field(
+    category_pivot_recommendation: Optional[str] = Field(
         default=None,
         description=(
             "Suggested category/vertical pivot if keyword analysis reveals better positioning opportunity. "

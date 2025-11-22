@@ -423,9 +423,10 @@ CHECKPOINT_AUTO_CLEANUP=true
 
 **Crews:**
 - `src/nicheiq/crews/pain_point_crew.py` - Social analysis with Knowledge Sources
-- `src/nicheiq/crews/idea_generation_crew.py` - Solution ideation
-- `src/nicheiq/crews/competitive_crew.py` - Competitive research
+- `src/nicheiq/crews/unified_solution_crew.py` - Unified solution pipeline (ideation + competitive + selection)
+- `src/nicheiq/crews/solution_refinement_crew.py` - Solution refinement using keyword insights
 - `src/nicheiq/crews/seo_strategy_crew.py` - SEO strategy with direct CSV input
+- `src/nicheiq/crews/data_source_crew.py` - Data source research (conditional)
 
 **Stage 9 SEO Workflow Details:**
 1. **Phase 9.5a** (SEO Crew): Generate 40-50 seed keywords via LLM
@@ -694,6 +695,46 @@ TOKEN_SOFT_CAP=400000               # If enabled, log critical warning at 400K
 - Stage 6 (PainPointCrew): Task 1 input monitoring
 
 **Benefits**: Cost visibility, early warnings for large collections, no failures, configurable thresholds.
+
+### 12. Pydantic Optional List Fields (CrewAI Schema Parser Bug)
+
+**Problem**: Using `list[str | None]` with `default=None` causes CrewAI's PydanticSchemaParser to crash with `AttributeError: 'types.UnionType' object has no attribute '__name__'`.
+
+**Root Cause**:
+- The type `list[str | None]` means "a list containing strings OR Nones"
+- But `default=None` means the field itself is None (not a list)
+- This is semantically incorrect and triggers a bug in CrewAI's schema introspection
+- When CrewAI tries to generate schema instructions, it encounters the nested Union type and attempts to call `.__name__` on a `types.UnionType` object
+
+**Solution**: Use `Optional[list[str]]` instead, which means "None OR a list of strings":
+
+```python
+from typing import Optional
+from pydantic import BaseModel, Field
+
+# ❌ WRONG - Causes CrewAI schema parser crash
+keyword_priorities: list[str | None] = Field(
+    default=None,
+    description="List of priorities"
+)
+
+# ✅ CORRECT - Semantically accurate and works with CrewAI
+keyword_priorities: Optional[list[str]] = Field(
+    default=None,
+    description="List of priorities"
+)
+```
+
+**When This Occurs**:
+- Pydantic models used as `output_pydantic` in CrewAI tasks
+- Fields that are optional lists (should be None or a list, not a list of Nones)
+- Any nested Union type annotation in Pydantic models processed by CrewAI
+
+**Fixed Locations**:
+- `src/nicheiq/models/solution_idea.py`: 5 fields (lines 159, 166, 210, 311, 322)
+- `src/nicheiq/models/pain_point.py`: 4 fields (lines 29, 32, 160, 163)
+
+**Important**: Always use `Optional[list[T]]` for optional list fields, never `list[T | None]` with `default=None`.
 
 ## Output Structure
 

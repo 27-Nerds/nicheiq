@@ -10,11 +10,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from langchain_openai import ChatOpenAI
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...config.settings import settings
+from ..llm_service import LLMService
 from ..prompts import get_prompt
 
 
@@ -88,13 +88,7 @@ class KeywordRelevanceValidator:
 
     def __init__(self):
         """Initialize keyword relevance validator."""
-        # Use configured model for validation (default: gpt-4o-mini)
-        self.llm = ChatOpenAI(
-            model=settings.keyword_validation_llm,
-            temperature=0,  # Deterministic for consistency
-            api_key=settings.openai_api_key,
-            timeout=120,  # 2 minute timeout to prevent indefinite hangs
-        )
+        pass  # No longer need to initialize LLM instance
 
     def pre_filter_keywords(self, keywords: list[dict], skip_single_word_filter: bool = False) -> list[dict]:
         """
@@ -235,9 +229,14 @@ class KeywordRelevanceValidator:
             )
 
             try:
-                # Use structured output with Pydantic model for consistent parsing
-                structured_llm = self.llm.with_structured_output(KeywordBatchValidation)
-                response = structured_llm.invoke(prompt)
+                # Use centralized LLM service for structured output
+                response = LLMService.invoke_structured(
+                    prompt=prompt,
+                    output_model=KeywordBatchValidation,
+                    temperature=0,  # Deterministic for consistency
+                    timeout=120,  # 2 minute timeout to prevent indefinite hangs
+                    model_name=settings.keyword_validation_llm
+                )
 
                 # Build keyword-to-index mapping for accurate matching
                 keyword_to_idx = {

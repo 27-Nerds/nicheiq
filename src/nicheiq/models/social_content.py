@@ -3,6 +3,7 @@ Pydantic models for social media content (Stages 4-5).
 """
 
 from datetime import datetime
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -70,7 +71,7 @@ class TwitterTweet(BaseModel):
     created_at: datetime = Field(..., description="Tweet creation timestamp")
     url: str = Field(..., description="Tweet URL")
     is_reply: bool = Field(default=False, description="Whether this is a reply tweet")
-    parent_tweet_id: str | None = Field(
+    parent_tweet_id: Optional[str] = Field(
         default=None, description="Parent tweet ID if this is a reply"
     )
 

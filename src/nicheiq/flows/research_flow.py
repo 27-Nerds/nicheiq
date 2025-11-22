@@ -391,9 +391,8 @@ class ResearchFlow(Flow[ResearchState]):
 
     def _generate_niche_context(self, niche_input: str) -> "NicheContext":
         """Generate structured NicheContext using LLM with structured output."""
-        from langchain_openai import ChatOpenAI
-
         from ..models.research_state import NicheContext
+        from ..utils.llm_service import LLMService
 
         prompt = f"""You are a market research analyst analyzing a niche market.
 
@@ -426,16 +425,15 @@ Return a valid JSON object with this structure:
   "industry_boundaries": "..."
 }}"""
 
-        # Use LangChain's ChatOpenAI directly for structured outputs
+        # Use centralized LLM service for structured output
         # Moderate temperature (0.5) for balanced understanding + structured strategy
-        structured_llm = ChatOpenAI(
-            model=settings.openai_model_name,
+        context: NicheContext = LLMService.invoke_structured(
+            prompt=prompt,
+            output_model=NicheContext,
             temperature=0.5,
-            api_key=settings.openai_api_key
-        ).with_structured_output(NicheContext)
-
-        # Generate structured output
-        context: NicheContext = structured_llm.invoke(prompt)  # type: ignore[assignment]
+            timeout=120,
+            model_name=settings.openai_model_name
+        )
 
         # Add niche_input to the context
         context.niche_input = niche_input
@@ -1908,7 +1906,7 @@ Return a valid JSON object with this structure:
 
         try:
             # Delegate to ReportGenerator for all report generation logic
-            report_generator = ReportGenerator(self.state, self.niche_description)
+            report_generator = ReportGenerator(self.state)
             final_report = report_generator.generate_report()
 
             self.state.final_report = final_report
@@ -1936,10 +1934,6 @@ Return a valid JSON object with this structure:
         with open(raw_filepath, "w", encoding="utf-8") as f:
             json.dump(self.state.model_dump(), f, indent=2, ensure_ascii=False, default=str)
         logger.info(f"[OK] Raw research state saved to: {raw_filepath}")
-
-        # Display executive summary
-        from ..report.report_generator import ReportGenerator
-        report_generator._display_executive_summary(final_report)
 
         # Store report paths
         self.report_path = str(report_filepath)

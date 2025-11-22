@@ -40,10 +40,12 @@ NicheIQ is an autonomous AI-powered market research agent that analyzes social m
 1. **Stage 1-4**: Niche Input & Validation
 2. **Stage 5**: Search & Discover (SerperDevTool)
 3. **Stage 6**: Pain Point Analysis (PainPointCrew)
-4. **Stage 7**: Solution Ideation (IdeaGenerationCrew)
-5. **Stage 8**: Competitive Analysis (CompetitiveCrew)
-6. **Stage 9**: Keyword Validation (DataForSEOTool)
-7. **Stage 10**: Final Report Generation
+4. **Stage 7-8.75**: Unified Solution Development (UnifiedSolutionCrew)
+   - Solution ideation, competitive analysis, refinement, and selection
+5. **Stage 8.8-8.85**: Keyword Validation & Solution Refinement
+6. **Stage 9**: SEO Strategy (SEOStrategyCrew)
+7. **Stage 9.75**: Data Source Research (conditional)
+8. **Stage 10**: Final Report Generation
 
 ## Installation
 

@@ -47,7 +47,6 @@ class Keyword(BaseModel):
                 "search_intent": "commercial",
                 "opportunity_level": "high",
                 "trend": "rising",
-                "monthly_searches": {"2025-01": 280, "2025-02": 310, "2025-03": 320},
             }
         }
     )

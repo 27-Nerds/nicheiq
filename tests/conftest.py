@@ -4,6 +4,9 @@ Pytest configuration and shared fixtures.
 
 import pytest
 from datetime import datetime
+from unittest.mock import Mock, patch
+from pydantic import BaseModel, Field
+
 from nicheiq.models.pain_point import PainPoint, PainPointAnalysisResult, OpportunityLevel
 from nicheiq.models.social_content import RedditPost, RedditComment, TwitterTweet, TwitterThread
 
@@ -113,6 +116,49 @@ def sample_pain_point_analysis():
         top_categories=["workflow", "integration"],
         analysis_summary="Identified 2 key pain points with strong market signals",
     )
+
+
+# LLM Testing Fixtures
+class TestLLMModel(BaseModel):
+    """Simple Pydantic model for LLM testing."""
+    text: str = Field(..., description="Test text field")
+    count: int = Field(..., description="Test count field")
+
+
+@pytest.fixture
+def mock_chat_openai():
+    """Mock ChatOpenAI for LLM testing."""
+    with patch('nicheiq.utils.llm_service.ChatOpenAI') as mock:
+        # Mock for invoke_structured
+        mock_structured_result = TestLLMModel(text="test response", count=42)
+        mock_structured_llm = Mock()
+        mock_structured_llm.invoke.return_value = mock_structured_result
+        mock.return_value.with_structured_output.return_value = mock_structured_llm
+
+        # Mock for invoke_plain
+        mock_plain_result = Mock()
+        mock_plain_result.content = "test plain response"
+        mock.return_value.invoke.return_value = mock_plain_result
+
+        yield mock
+
+
+@pytest.fixture
+def mock_llm_logger():
+    """Mock logger for LLM testing."""
+    with patch('nicheiq.utils.llm_service.logger') as mock:
+        yield mock
+
+
+@pytest.fixture
+def mock_llm_settings():
+    """Mock settings for LLM testing."""
+    with patch('nicheiq.utils.llm_service.settings') as mock:
+        mock.openai_model_name = "gpt-4o"
+        mock.openai_api_key = "sk-test-key-12345"
+        mock.thread_validation_llm = "gpt-4o-mini"
+        mock.keyword_validation_llm = "gpt-4o-mini"
+        yield mock
 
 
 # Pytest configuration

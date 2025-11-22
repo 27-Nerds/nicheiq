@@ -2,6 +2,8 @@
 Pydantic models for pain point analysis (Stage 6).
 """
 
+from typing import Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .keyword_data import OpportunityLevel
@@ -26,10 +28,10 @@ class UnvalidatedPainPoint(BaseModel):
     representative_quotes: list[str] = Field(
         ..., description="Real user quotes representing this pain point"
     )
-    source_platforms: list[str | None] = Field(
+    source_platforms: Optional[list[str]] = Field(
         default=None, description="Platforms where this pain was found (Reddit, Twitter)"
     )
-    categories: list[str | None] = Field(
+    categories: Optional[list[str]] = Field(
         default=None, description="Categories this pain point belongs to"
     )
     source_post_ids: list[str] = Field(
@@ -117,7 +119,7 @@ class PainPointScoring(BaseModel):
     opportunity_level: OpportunityLevel = Field(
         ..., description="Overall opportunity level (high/medium/low)"
     )
-    scoring_rationale: str | None = Field(
+    scoring_rationale: Optional[str] = Field(
         default=None, description="Brief explanation of why these scores were assigned"
     )
 
@@ -157,10 +159,10 @@ class PainPoint(BaseModel):
     representative_quotes: list[str] = Field(
         ..., description="Real user quotes representing this pain point"
     )
-    source_platforms: list[str | None] = Field(
+    source_platforms: Optional[list[str]] = Field(
         default=None, description="Platforms where this pain was found (Reddit, Twitter)"
     )
-    categories: list[str | None] = Field(
+    categories: Optional[list[str]] = Field(
         default=None, description="Categories this pain point belongs to"
     )
     source_post_ids: list[str] = Field(
@@ -186,7 +188,7 @@ class PainPointAnalysisResult(BaseModel):
         ..., description="Top categories of pain points identified"
     )
     analysis_summary: str = Field(..., description="Executive summary of pain point analysis")
-    content_categorization: ContentCategorizationReport | None = Field(
+    content_categorization: Optional[ContentCategorizationReport] = Field(
         default=None,
         description="Detailed content categorization from Task 1 (themes, segments, quality)"
     )

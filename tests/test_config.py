@@ -25,15 +25,15 @@ def test_settings_field_types():
 def test_search_configuration_defaults():
     """Test search configuration defaults."""
     assert Settings.model_fields["max_search_results"].default == 20
-    assert Settings.model_fields["min_reddit_upvotes"].default == 5
-    assert Settings.model_fields["min_reddit_comments"].default == 3
-    assert Settings.model_fields["min_twitter_likes"].default == 5
-    assert Settings.model_fields["min_twitter_replies"].default == 3
+    assert Settings.model_fields["min_reddit_upvotes"].default == 10
+    assert Settings.model_fields["min_reddit_comments"].default == 5
+    assert Settings.model_fields["min_twitter_likes"].default == 10
+    assert Settings.model_fields["min_twitter_replies"].default == 5
 
 
 def test_keyword_configuration_defaults():
     """Test keyword research defaults."""
     assert Settings.model_fields["keyword_min_search_volume"].default == 50
     assert Settings.model_fields["keyword_max_competition"].default == 0.7
-    assert Settings.model_fields["target_location"].default == 2840  # United States
-    assert Settings.model_fields["target_language"].default == "en"
+    assert Settings.model_fields["target_location"].default is None  # Global data if not specified
+    assert Settings.model_fields["target_language"].default is None  # Default language if not specified

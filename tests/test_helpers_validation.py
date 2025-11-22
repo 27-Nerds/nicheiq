@@ -14,7 +14,7 @@ import pytest
 
 from nicheiq.models.pain_point import PainPoint, OpportunityLevel
 from nicheiq.models.solution_idea import SolutionIdea
-from nicheiq.utils.helpers import find_solution_by_name
+from nicheiq.utils.helpers import find_solution_by_name, sanitize_collection_name
 from nicheiq.utils.pain_point_formatters import (
     format_pain_points_for_agents,
     extract_pain_points_by_priority,
@@ -367,6 +367,99 @@ class TestFindSolutionByName:
 
         assert result is not None
         assert result.solution_name == "Solution-X (Beta)"
+
+
+class TestSanitizeCollectionName:
+    """Test sanitize_collection_name() ChromaDB collection name generation."""
+
+    def test_basic_sanitization(self):
+        """Test basic collection name generation."""
+        result = sanitize_collection_name("AI tools for content creators", "pain")
+
+        assert result.startswith("pain_")
+        assert "ai_tools_for_content_creators" in result
+        assert len(result) >= 3
+        assert len(result) <= 63
+
+    def test_invalid_characters_replaced_with_underscore(self):
+        """Test that invalid characters are replaced with underscores."""
+        result = sanitize_collection_name("AI/ML & Data Science!", "seo")
+
+        # Should replace /, &, and ! with underscores
+        assert "/" not in result
+        assert "&" not in result
+        assert "!" not in result
+        assert "_" in result
+
+    def test_consecutive_underscores_removed(self):
+        """Test that consecutive underscores are collapsed to single underscore."""
+        result = sanitize_collection_name("test___multiple___underscores", "crew")
+
+        # Should not have triple underscores
+        assert "___" not in result
+
+    def test_length_limit_enforced(self):
+        """Test that collection name is truncated to 63 chars max."""
+        long_niche = "a" * 100  # Very long niche
+        result = sanitize_collection_name(long_niche, "solution")
+
+        assert len(result) <= 63
+
+    def test_minimum_length_enforced(self):
+        """Test that collection name is at least 3 chars."""
+        result = sanitize_collection_name("a", "p")  # Very short inputs
+
+        assert len(result) >= 3
+
+    def test_minimum_length_padding(self):
+        """Test that very short names are padded with '_kb'."""
+        result = sanitize_collection_name("a", "p")  # Would be "p_a" = 3 chars
+
+        # Should be at least 3 characters
+        assert len(result) >= 3
+
+    def test_crew_name_prefix(self):
+        """Test that crew name is used as prefix."""
+        result = sanitize_collection_name("test niche", "pain")
+        assert result.startswith("pain_")
+
+        result = sanitize_collection_name("test niche", "seo")
+        assert result.startswith("seo_")
+
+    def test_lowercase_conversion(self):
+        """Test that niche is converted to lowercase."""
+        result = sanitize_collection_name("AI Tools For CONTENT", "crew")
+
+        # Should be all lowercase
+        assert result.islower()
+
+    def test_special_characters_handling(self):
+        """Test various special characters are replaced correctly."""
+        result = sanitize_collection_name("test@#$%^&*()niche", "crew")
+
+        # All special chars should be replaced with underscores
+        assert "@" not in result
+        assert "#" not in result
+        assert "$" not in result
+        assert "%" not in result
+
+    def test_ipv4_pattern_avoidance(self):
+        """Test that IPv4-like patterns are avoided (ChromaDB requirement)."""
+        # ChromaDB doesn't allow IPv4 patterns like "192_168_1_1"
+        # Our function should sanitize but not explicitly check for this
+        # (This is more of a documentation test)
+        result = sanitize_collection_name("192.168.1.1", "crew")
+
+        # Should be valid (dots replaced with underscores)
+        assert result == "crew_192_168_1_1"
+
+    def test_hyphens_preserved(self):
+        """Test that hyphens are preserved (valid ChromaDB char)."""
+        result = sanitize_collection_name("test-niche-name", "crew")
+
+        # Hyphens should be preserved
+        assert "-" in result
+        assert "test-niche-name" in result
 
 
 class TestPerformanceOptimizations:

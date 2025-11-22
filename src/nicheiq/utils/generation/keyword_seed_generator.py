@@ -8,10 +8,10 @@ reasoning and semantic validation.
 import re
 from typing import TYPE_CHECKING
 
-from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ...config.settings import settings
+from ..llm_service import LLMService
 from ..prompts import get_prompt
 
 if TYPE_CHECKING:
@@ -45,12 +45,7 @@ class KeywordSeedGenerator:
 
     def __init__(self):
         """Initialize the keyword seed generator."""
-        self.llm = ChatOpenAI(
-            model=settings.openai_model_name,
-            temperature=0.5,  # Balanced creativity for keyword diversity
-            api_key=settings.openai_api_key,
-            timeout=120,
-        )
+        pass  # No longer need to initialize LLM instance
 
     def generate_seeds(
         self,
@@ -124,9 +119,14 @@ class KeywordSeedGenerator:
             # Import here to avoid circular dependency
             from ...models.seo_strategy import ExpandedKeywordList
 
-            # Use structured output for type-safe Pydantic response
-            structured_llm = self.llm.with_structured_output(ExpandedKeywordList)
-            result = structured_llm.invoke(prompt)
+            # Use centralized LLM service for structured output
+            result = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=ExpandedKeywordList,
+                temperature=0.5,  # Balanced creativity for keyword diversity
+                timeout=120,
+                model_name=settings.openai_model_name
+            )
 
             # Validate output
             if not result or not result.keywords:

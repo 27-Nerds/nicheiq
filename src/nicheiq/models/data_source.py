@@ -159,7 +159,7 @@ class DataImplementationPlan(BaseModel):
         ...,
         description="3-phase structured roadmap (MVP/Growth/Scale) with goals, milestones, costs, and fallbacks"
     )
-    data_partnerships_needed: list[DataPartnership] | None = Field(
+    data_partnerships_needed: Optional[list[DataPartnership]] = Field(
         default=None,
         description="Data partnerships or alternative collection methods required"
     )
@@ -190,19 +190,19 @@ class DataSourceResearchResult(BaseModel):
         ...,
         description="Primary data sources (HIGH priority, best coverage/access)"
     )
-    fallback_sources: list[DataSource] | None = Field(
+    fallback_sources: Optional[list[DataSource]] = Field(
         default=None,
         description="Backup data sources if primary options fail or are restricted"
     )
-    source_evaluation: SourceEvaluationReport | None = Field(
+    source_evaluation: Optional[SourceEvaluationReport] = Field(
         default=None,
         description="Detailed evaluation from Task 2 (priorities, quality matrix, risks)"
     )
-    implementation_phases: list[RoadmapPhase] | None = Field(
+    implementation_phases: Optional[list[RoadmapPhase]] = Field(
         default=None,
         description="3-phase structured roadmap with goals, milestones, costs, and fallbacks"
     )
-    data_partnerships_needed: list[DataPartnership] | None = Field(
+    data_partnerships_needed: Optional[list[DataPartnership]] = Field(
         default=None,
         description="Data partnerships or alternative collection methods required"
     )

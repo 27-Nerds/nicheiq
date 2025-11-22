@@ -6,11 +6,11 @@ Validates search result threads for relevance to a niche.
 
 from typing import TYPE_CHECKING
 
-from langchain_openai import ChatOpenAI
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from ...config.settings import settings
+from ..llm_service import LLMService
 from ..prompts import get_prompt
 
 if TYPE_CHECKING:
@@ -43,12 +43,7 @@ class ThreadRelevanceValidator:
     """
 
     def __init__(self):
-        # Use configured model for validation (default: gpt-4o-mini)
-        self.llm = ChatOpenAI(
-            model=settings.thread_validation_llm,
-            temperature=0,  # Deterministic for consistency
-            api_key=settings.openai_api_key,
-        )
+        pass  # No longer need to initialize LLM instance
 
     def validate_batch(
         self,
@@ -87,9 +82,14 @@ class ThreadRelevanceValidator:
             )
 
             try:
-                # Use structured output with Pydantic model for consistent parsing
-                structured_llm = self.llm.with_structured_output(BatchValidationResponse)
-                response = structured_llm.invoke(prompt)
+                # Use centralized LLM service for structured output
+                response = LLMService.invoke_structured(
+                    prompt=prompt,
+                    output_model=BatchValidationResponse,
+                    temperature=0,  # Deterministic for consistency
+                    timeout=120,
+                    model_name=settings.thread_validation_llm
+                )
 
                 # Track which threads were validated
                 validated_indices = set()
