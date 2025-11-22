@@ -496,14 +496,15 @@ Return a valid JSON object with this structure:
 
         logger.info(f"[OK] Found {len(unique_reddit_results)} unique Reddit results from {len(self.state.search_queries)} queries")
 
-        # Validate relevance using cheap model (gpt-4o-mini)
+        # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
         logger.info("Validating Reddit thread relevance...")
         from ..utils.validation import ThreadRelevanceValidator
         validator = ThreadRelevanceValidator()
-        validated_reddit = validator.validate_batch(
+        validated_reddit = validator.validate_batch_parallel(
             niche_description=self.niche_description,
             search_results=unique_reddit_results,
             batch_size=10
+            # max_workers defaults to settings.thread_validation_max_workers (2)
         )
 
         # Filter to relevant results only
@@ -540,12 +541,13 @@ Return a valid JSON object with this structure:
 
             logger.info(f"[OK] Found {len(unique_twitter_results)} unique Twitter results from {len(self.state.search_queries)} queries")
 
-            # Validate relevance using cheap model (gpt-4o-mini)
+            # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
             logger.info("Validating Twitter thread relevance...")
-            validated_twitter = validator.validate_batch(
+            validated_twitter = validator.validate_batch_parallel(
                 niche_description=self.niche_description,
                 search_results=unique_twitter_results,
                 batch_size=10
+                # max_workers defaults to settings.thread_validation_max_workers (2)
             )
 
             # Filter to relevant results only
@@ -859,19 +861,17 @@ Return a valid JSON object with this structure:
                 location_code=settings.target_location
             )
 
-            # NEW: Validate keyword relevance with LLM (pre-filter + semantic validation + retry)
+            # NEW: Validate keyword relevance with LLM (pre-filter + semantic validation + parallel processing)
             logger.info(f"[Round {round_num}] Validating {len(suggestions)} expanded keywords...")
-            validation_results = validator.validate_batch_with_retry(
+            validation_results = validator.validate_batch_parallel(
                 keywords=suggestions,
                 niche_description=niche_description,
                 solution_name=solution_name,
                 solution_description=solution_description,
                 project_type=project_type,
-                batch_size=150,  # Initial batch size for first attempt
-                threshold=settings.keyword_relevance_threshold,
-                max_retries=1,  # Single retry attempt for missing keywords
-                retry_batch_size=50  # Smaller batches for retry (more focused LLM attention)
-                # fail_open_after_retry defaults to False (fail-closed) - filters unvalidated keywords
+                batch_size=settings.keyword_validation_batch_size,
+                threshold=settings.keyword_relevance_threshold
+                # max_workers defaults to settings.keyword_validation_max_workers (3)
             )
 
             # Filter to only relevant keywords

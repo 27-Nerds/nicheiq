@@ -7,6 +7,7 @@ Two-stage filtering:
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ...config.settings import settings
 from ..llm_service import LLMService
 from ..prompts import get_prompt
+from .thread_safe_cache import ThreadSafeValidationCache
 
 
 def _load_keyword_exceptions(filename: str) -> set:
@@ -554,3 +556,220 @@ class KeywordRelevanceValidator:
             keywords_text=keywords_text,
             batch_size=batch_size
         )
+
+    def validate_batch_parallel(
+        self,
+        keywords: list[dict[str, Any]],
+        niche_description: str,
+        solution_name: str,
+        solution_description: str,
+        project_type: str = "saas",
+        batch_size: int = 50,
+        threshold: float = 0.5,
+        max_workers: int | None = None,
+        skip_single_word_filter: bool = False,
+        validation_cache: dict[str, tuple | None] = None
+    ) -> list[tuple]:
+        """
+        Validate keyword relevance in parallel using ThreadPoolExecutor.
+
+        Splits keywords into chunks and processes them concurrently. Uses thread-safe
+        cache to prevent race conditions. Falls back to sequential processing if
+        parallel validation is disabled or max_workers=1.
+
+        Args:
+            keywords: List of keyword dicts to validate
+            niche_description: Description of the niche
+            solution_name: Name of the solution
+            solution_description: Description of the solution
+            project_type: Solution type (saas/directory/aggregator/etc)
+            batch_size: Keywords per API call within each worker
+            threshold: Minimum relevance score to pass
+            max_workers: Number of parallel workers (default: from settings)
+            skip_single_word_filter: If True, allow single-word keywords
+            validation_cache: Optional dict to cache results across calls
+
+        Returns:
+            List of (keyword_dict, is_relevant, relevance_score) tuples
+
+        Example:
+            >>> validator = KeywordRelevanceValidator()
+            >>> results = validator.validate_batch_parallel(
+            ...     keywords=[{'keyword': 'saas tools'}, {'keyword': 'random'}],
+            ...     niche_description="tools for indie hackers",
+            ...     solution_name="No-Code Exit Ramp",
+            ...     solution_description="Exit planning for no-code founders",
+            ...     max_workers=3
+            ... )
+        """
+        # Use settings default if not specified
+        if max_workers is None:
+            max_workers = settings.keyword_validation_max_workers
+
+        # Check if parallel validation is disabled
+        if not settings.validation_parallel_enabled or max_workers == 1:
+            logger.debug("[Parallel Validation] Disabled or max_workers=1 - using sequential")
+            return self.validate_batch(
+                keywords=keywords,
+                niche_description=niche_description,
+                solution_name=solution_name,
+                solution_description=solution_description,
+                project_type=project_type,
+                batch_size=batch_size,
+                threshold=threshold,
+                skip_single_word_filter=skip_single_word_filter,
+                validation_cache=validation_cache
+            )
+
+        # Guard against empty input
+        if not keywords:
+            logger.debug("[Parallel Validation] Empty keyword list")
+            return []
+
+        # Filter out keywords with None/empty keyword field
+        valid_keywords = [
+            kw for kw in keywords
+            if kw.get('keyword') and kw.get('keyword', '').strip()
+        ]
+        if len(valid_keywords) < len(keywords):
+            logger.debug(
+                f"[Parallel Validation] Filtered {len(keywords) - len(valid_keywords)} "
+                f"keywords with empty/None values"
+            )
+        keywords = valid_keywords
+
+        if not keywords:
+            logger.debug("[Parallel Validation] No valid keywords remaining")
+            return []
+
+        # Wrap cache in thread-safe wrapper if provided
+        thread_safe_cache = None
+        if validation_cache is not None:
+            thread_safe_cache = ThreadSafeValidationCache(validation_cache)
+
+        # Calculate chunk size: distribute keywords evenly across workers
+        # Each chunk will be processed by one worker
+        chunk_size = max(len(keywords) // max_workers, batch_size)
+        chunks = [keywords[i:i + chunk_size] for i in range(0, len(keywords), chunk_size)]
+
+        logger.info(
+            f"[Parallel Validation] Processing {len(keywords)} keywords with {max_workers} workers "
+            f"({len(chunks)} chunks, ~{chunk_size} keywords/chunk)"
+        )
+
+        all_results = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all chunks
+            future_to_chunk = {
+                executor.submit(
+                    self._validate_chunk_worker,
+                    chunk,
+                    chunk_num,
+                    niche_description,
+                    solution_name,
+                    solution_description,
+                    project_type,
+                    batch_size,
+                    threshold,
+                    skip_single_word_filter,
+                    thread_safe_cache
+                ): chunk_num
+                for chunk_num, chunk in enumerate(chunks, 1)
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_chunk):
+                chunk_num = future_to_chunk[future]
+                try:
+                    results = future.result(timeout=300)  # 5 minute timeout per chunk
+                    all_results.extend(results)
+                    logger.info(
+                        f"[Parallel Validation] Chunk {chunk_num}/{len(chunks)} complete "
+                        f"({len(results)} results)"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"[Parallel Validation] Chunk {chunk_num}/{len(chunks)} failed: {e}"
+                    )
+                    # Continue processing other chunks
+
+        # Update original cache with results from thread-safe cache
+        if validation_cache is not None and thread_safe_cache is not None:
+            validation_cache.update(thread_safe_cache.get_all())
+
+        # Log summary
+        relevant_count = sum(1 for _, is_relevant, _ in all_results if is_relevant)
+        logger.info(
+            f"[Parallel Validation Complete] {relevant_count}/{len(all_results)} keywords passed. "
+            f"Coverage: {len(all_results)}/{len(keywords)} "
+            f"({len(all_results)/len(keywords)*100:.1f}%)"
+        )
+
+        return all_results
+
+    def _validate_chunk_worker(
+        self,
+        chunk: list[dict],
+        chunk_num: int,
+        niche_description: str,
+        solution_name: str,
+        solution_description: str,
+        project_type: str,
+        batch_size: int,
+        threshold: float,
+        skip_single_word_filter: bool,
+        thread_safe_cache: ThreadSafeValidationCache | None
+    ) -> list[tuple]:
+        """
+        Worker method for parallel validation of a keyword chunk.
+
+        Called by validate_batch_parallel via ThreadPoolExecutor. Processes one chunk
+        using the existing validate_batch logic with thread-safe cache access.
+
+        Args:
+            chunk: Subset of keywords to validate
+            chunk_num: Chunk identifier for logging
+            niche_description: Niche description
+            solution_name: Solution name
+            solution_description: Solution description
+            project_type: Solution type
+            batch_size: Keywords per API call
+            threshold: Relevance threshold
+            skip_single_word_filter: Allow single-word keywords
+            thread_safe_cache: Thread-safe cache wrapper
+
+        Returns:
+            List of (keyword_dict, is_relevant, relevance_score) tuples
+        """
+        logger.debug(f"[Worker {chunk_num}] Starting validation of {len(chunk)} keywords")
+
+        # Convert thread-safe cache to dict for validate_batch compatibility
+        cache_dict = thread_safe_cache.get_all() if thread_safe_cache else None
+
+        try:
+            # Use existing validate_batch logic
+            results = self.validate_batch(
+                keywords=chunk,
+                niche_description=niche_description,
+                solution_name=solution_name,
+                solution_description=solution_description,
+                project_type=project_type,
+                batch_size=batch_size,
+                threshold=threshold,
+                skip_single_word_filter=skip_single_word_filter,
+                validation_cache=cache_dict  # Pass cache for this chunk
+            )
+
+            # Update thread-safe cache with new results
+            if thread_safe_cache and cache_dict:
+                for keyword_lower, value in cache_dict.items():
+                    if keyword_lower not in thread_safe_cache:
+                        thread_safe_cache.set(keyword_lower, value)
+
+            logger.debug(f"[Worker {chunk_num}] Complete - validated {len(results)} keywords")
+            return results
+
+        except Exception as e:
+            logger.error(f"[Worker {chunk_num}] Failed: {e}")
+            return []  # Return empty list on error

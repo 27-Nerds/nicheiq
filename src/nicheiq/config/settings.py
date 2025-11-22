@@ -183,6 +183,24 @@ class Settings(BaseSettings):
         description="Minimum percentage of topic clusters that must have keywords (0.0-1.0)"
     )
 
+    # Parallel Validation Settings
+    validation_parallel_enabled: bool = Field(
+        default=True,
+        description="Enable parallel batch processing for validation tasks (keyword and thread validation)"
+    )
+    keyword_validation_max_workers: int = Field(
+        default=3,
+        description="Maximum parallel workers for keyword validation (Stage 9.5c). Recommended: 3-5 for balance of speed and API limits"
+    )
+    keyword_validation_batch_size: int = Field(
+        default=50,
+        description="Number of keywords per API call within each parallel worker (Stage 9.5c). Recommended: 50-150"
+    )
+    thread_validation_max_workers: int = Field(
+        default=2,
+        description="Maximum parallel workers for thread validation (Stage 5). Recommended: 2-3 for smaller batch volumes"
+    )
+
     # Token Monitoring Configuration (Soft Caps for Cost Control)
     token_monitoring_enabled: bool = Field(
         default=True,
@@ -285,6 +303,82 @@ class Settings(BaseSettings):
     checkpoint_auto_cleanup: bool = Field(
         default=True,
         description="Automatically cleanup old checkpoints on startup"
+    )
+
+    # Report Generation Validation Thresholds
+    # Market Validation Levels
+    market_validation_strong_volume: int = Field(
+        default=100_000,
+        description="Minimum total search volume for STRONG market validation level"
+    )
+    market_validation_strong_pain_points: int = Field(
+        default=10,
+        description="Minimum pain point count for STRONG market validation level"
+    )
+    market_validation_moderate_volume: int = Field(
+        default=30_000,
+        description="Minimum total search volume for MODERATE market validation level"
+    )
+    market_validation_moderate_pain_points: int = Field(
+        default=5,
+        description="Minimum pain point count for MODERATE market validation level"
+    )
+
+    # Go/No-Go Verdict Thresholds
+    verdict_go_avg_score: float = Field(
+        default=0.75,
+        ge=0.0,
+        le=1.0,
+        description="Minimum average score (all 4 scores) for Go verdict"
+    )
+    verdict_go_min_individual_score: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum individual score (market_fit, tech_feasibility) for Go verdict"
+    )
+    verdict_conditional_avg_score: float = Field(
+        default=0.60,
+        ge=0.0,
+        le=1.0,
+        description="Minimum average score for Conditional verdict"
+    )
+    verdict_conditional_min_individual_score: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        description="Minimum individual score for Conditional verdict"
+    )
+
+    # Pain Point & Competitive Thresholds
+    pain_point_high_priority_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum severity score for high-priority pain point classification"
+    )
+    competitive_intensity_low_threshold: int = Field(
+        default=3,
+        description="Maximum competitor count for 'Low' competitive intensity classification"
+    )
+    competitive_intensity_high_threshold: int = Field(
+        default=8,
+        description="Minimum competitor count for 'High' competitive intensity classification"
+    )
+
+    # Report Formatting Thresholds
+    report_max_quote_length: int = Field(
+        default=200,
+        gt=0,
+        description="Maximum character length for pain point quotes in evidence appendix (0 = unlimited)"
+    )
+
+    # Score Accessor Defaults
+    score_accessor_default_fallback: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Default score value when score data is missing (used by ScoreAccessor)"
     )
 
     def __init__(self, **kwargs):

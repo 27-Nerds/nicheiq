@@ -70,7 +70,16 @@ class ScoreAccessor:
         scores = self.get_scores(solution.solution_name)
         if scores and scores.market_fit_score is not None:
             return scores.market_fit_score
-        return solution.market_fit_score if solution.market_fit_score is not None else default
+
+        # Phase 1.3: Add logging when using fallbacks
+        if solution.market_fit_score is not None:
+            return solution.market_fit_score
+
+        logger.warning(
+            f"[ScoreAccessor] No market_fit_score found for '{solution.solution_name}' "
+            f"- using default {default}. This may indicate data quality issues."
+        )
+        return default
 
     def get_competitive_advantage(
         self,
@@ -92,6 +101,12 @@ class ScoreAccessor:
         scores = self.get_scores(solution.solution_name)
         if scores and scores.competitive_advantage_score is not None:
             return scores.competitive_advantage_score
+
+        # Phase 1.3: Log fallback to market_fit proxy
+        logger.debug(
+            f"[ScoreAccessor] No competitive_advantage_score for '{solution.solution_name}' "
+            f"- using market_fit as proxy"
+        )
         # Fallback: use market_fit as proxy (established pattern in codebase)
         return self.get_market_fit(solution, default)
 
@@ -138,6 +153,23 @@ class ScoreAccessor:
         if scores and scores.seo_growth_potential_score is not None:
             return scores.seo_growth_potential_score
         return solution.seo_scalability_score if solution.seo_scalability_score is not None else default
+
+    def get_confidence_score(self, solution: "SolutionIdea") -> float:
+        """
+        Get selection confidence score (average of market_fit and competitive_advantage).
+
+        This metric combines market validation with competitive positioning to assess
+        confidence in the solution selection.
+
+        Args:
+            solution: SolutionIdea object
+
+        Returns:
+            Confidence score (0.0-1.0)
+        """
+        market_fit = self.get_market_fit(solution)
+        competitive_advantage = self.get_competitive_advantage(solution)
+        return (market_fit + competitive_advantage) / 2
 
     def get_all_scores(self, solution: "SolutionIdea") -> dict[str, float]:
         """

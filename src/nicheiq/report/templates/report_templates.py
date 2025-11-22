@@ -76,8 +76,9 @@ Expand to new markets or segments based on validated learnings."""
         if not solution or not solution.core_features:
             return None
 
-        must_have = solution.core_features[:4]
-        post_mvp = solution.core_features[4:]
+        # Phase 1.4: Show all features as MVP (removed arbitrary 4-feature split)
+        must_have = solution.core_features
+        post_mvp = []  # All features considered MVP-critical
 
         mvp_text = "## MVP Scope\n\n### Must-Have Features\n"
         mvp_text += "\n".join([f"- {f}" for f in must_have])

@@ -43,111 +43,46 @@ ResearchFlow (Main Orchestrator - research_flow.py)
     └── Phase 3: Analytics & Visualizations (market/SEO/competitive/pain point analytics + charts)
 ```
 
-### CRITICAL: Knowledge Sources vs Inputs Pattern
+### Data Passing Patterns
 
-**When to use Knowledge Sources (RAG):**
-- Large unstructured data (400+ items: social media discussions)
-- Content where agents need semantic search capability
-- Data that agents query selectively during reasoning
-- Examples: PainPointCrew, UnifiedSolutionCrew (pain points + competitors), SEOStrategyCrew (pain points + competitors for seed generation ONLY)
-- Note: SEOStrategyCrew uses direct CSV input for keyword data (not RAG) - see Pattern #8 below
+**Knowledge Sources (RAG)** - Use for large unstructured data (400+ items)
 
-**When to use Traditional Inputs:**
-- Structured, pre-processed data
-- Small metadata (counts, settings, summaries)
-- Data that must be explicitly included in every task
-- Examples: Metadata fields across all crews
+- Social media discussions, pain points, competitor analysis
+- Typical chunk sizes: 2000/300 (Reddit), 1500/200 (Twitter)
 
-**When to use Context Chaining (CrewAI Best Practice):**
-- Passing complete Pydantic objects between sequential tasks
-- Automatic field preservation (no manual formatting)
-- Use `output_pydantic` + `context=[previous_task]` pattern
-- Examples: UnifiedSolutionCrew (4 tasks), SEOStrategyCrew (5 tasks)
+**Traditional Inputs** - Use for structured metadata
 
-**Implementation Notes:**
-- See crew files for specific chunk sizes. Typical: 2000 chars, 300 overlap for Reddit; 1500 chars, 200 overlap for Twitter
-- Context chaining preserves ALL 25+ SolutionIdea fields automatically
-- Keywords passed as CSV to SEO crew (2x more token-efficient than JSON, full visibility)
+- Small data: counts, settings, summaries
+- Must be explicitly included in every task
+
+**Context Chaining** - Use for Pydantic object passing
+
+- Pattern: `output_pydantic` + `context=[previous_task]`
+- Preserves all fields automatically (e.g., 25+ SolutionIdea fields)
+
+**CSV Input** - Use for structured tabular data
+
+- Keyword metrics (2x more token-efficient than JSON)
+- See Pattern #5 for implementation
 
 ### CrewAI Configuration Files
 
-Each crew has dedicated configuration files following the pattern `{crew_name}_agents.yaml` and `{crew_name}_tasks.yaml`:
-
-- **Agents config**: Defines agent personas (role, goal, backstory)
-- **Tasks config**: Defines task instructions - some use direct inputs, others use knowledge sources
-
-**Example**: PainPointCrew uses `pain_point_agents.yaml` and `pain_point_tasks.yaml`
-
-When modifying tasks that use knowledge sources, include search strategy instructions:
-```yaml
-description: >
-  **Search Strategy for Knowledge Sources:**
-  - Search for problems: "frustration", "difficult", "can't"
-  - Search for solutions: "using", "tried", "alternative to"
-```
+Crews use `{crew_name}_agents.yaml` (personas) and `{crew_name}_tasks.yaml` (instructions). When using Knowledge Sources, add search strategy instructions in task descriptions (see [docs/PATTERNS.md](docs/PATTERNS.md)).
 
 ## Common Development Commands
 
-```bash
-# Installation
-uv venv && source .venv/bin/activate
-uv pip install -e .
+See [README.md](README.md) for complete installation, usage, testing, and development instructions.
 
-# Run research
-python -m nicheiq.main --niche "AI tools for content creators"
-python -m nicheiq.main --niche "Your niche" --output ./custom_output --log-level DEBUG
-python -m nicheiq.main --niche "expat relocation" --project-types directory,aggregator
-
-# Checkpoint/Resume
-python -m nicheiq.main --niche "AI tools" --resume
-python -m nicheiq.main --list-checkpoints
-python -m nicheiq.main --niche "AI tools" --no-checkpoint
-
-# Testing & Quality
-pytest --cov=src/nicheiq --cov-report=term-missing
-black src/ tests/ && ruff check src/ tests/
-
-# Validation
-python check_setup.py
-python validate_report.py output/final_report_*.json output/research_state_raw_*.json
-```
+**Quick reference:**
+- Installation: `uv venv && source .venv/bin/activate && uv pip install -e .`
+- Run research: `python -m nicheiq.main --niche "Your niche"`
+- Checkpoint resume: `python -m nicheiq.main --niche "Your niche" --resume`
+- Run tests: `pytest` (unit: `pytest tests/unit/`, integration: `pytest tests/integration/`)
+- Validation: `python check_setup.py` (pre-run), `python validate_report.py` (post-run)
 
 ## Key Technical Patterns
 
-### 1. Async Flow Execution
-
-**Problem**: Twitter-api-client uses `asyncio.run()` internally, causing nested event loop errors.
-**Solution**: Use thread executor:
-
-```python
-import asyncio
-
-async def stage_5_search_and_discover(self):
-    loop = asyncio.get_event_loop()
-    twitter_threads = await loop.run_in_executor(
-        None,
-        lambda: asyncio.run(self.twitter_tool.collect_threads(twitter_urls))
-    )
-```
-
-### 2. LLM Structured Output
-
-**Problem**: CrewAI's LLM wrapper doesn't support `response_format` parameter.
-**Solution**: Use LangChain directly for structured Pydantic output:
-
-```python
-from langchain_openai import ChatOpenAI
-
-structured_llm = ChatOpenAI(
-    model=settings.openai_model_name,
-    temperature=0.7,
-    api_key=settings.openai_api_key
-).with_structured_output(YourPydanticModel)
-
-result = structured_llm.invoke(prompt)
-```
-
-### 3. CrewAI Context Chaining
+### 1. CrewAI Context Chaining
 
 **Problem**: Manual text formatting between stages causes field loss.
 **Solution**: Use `output_pydantic` + `context=[previous_task]`:
@@ -173,7 +108,7 @@ def task_2_enhance_data(self) -> Task:
 
 **Benefits**: Automatic field preservation, no manual JSON formatting, type safety.
 
-### 4. Guardrails for Field Validation
+### 2. Guardrails for Field Validation
 
 **Problem**: Agents may drop solutions or nullify fields during refinement.
 **Solution**: Add guardrail functions that validate task output:
@@ -204,390 +139,134 @@ def competitive_refinement_task(self) -> Task:
     )
 ```
 
-### 5. Knowledge Sources for Large Datasets
+### 3. Knowledge Sources for Large Datasets
 
-**Problem**: Passing 446+ keywords as text causes prompt size issues.
-**Solution**: Use Knowledge Sources (RAG) for datasets >400 items:
+Use RAG for datasets >400 items. Add search strategy instructions in task YAML. See [docs/PATTERNS.md](docs/PATTERNS.md) for detailed patterns and examples.
 
-```python
-from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
+### 4. Parallel Crew Execution
 
-keyword_content = self._format_keywords_for_knowledge(enriched_keywords)
-# Format: [TIER 1 - QUICK WIN] ... [TIER 2 - STRATEGIC GROWTH] ...
+Use `ThreadPoolExecutor` with conservative `max_workers=2` for API rate limiting. See [docs/PATTERNS.md](docs/PATTERNS.md#parallel-execution-patterns) for implementation patterns.
 
-keyword_knowledge = StringKnowledgeSource(
-    content=keyword_content,
-    chunk_size=2000,
-    chunk_overlap=200
-)
+### 5. CSV Input for Structured Data
 
-crew = Crew(
-    agents=[self.keyword_strategist()],
-    tasks=[self.analyze_keywords_task()],
-    knowledge_sources=[keyword_knowledge],
-    embedder={"provider": "openai", "config": {"model": "text-embedding-3-small"}}
-)
-```
+Use CSV format for structured tabular data (keywords, metrics) - 2x more token-efficient than JSON.
 
-**Task description** should include search strategy:
-```yaml
-description: >
-  **Search Strategy:**
-  - High-priority: Search "TIER 1", "quick win", "low competition"
-  - Strategic: Search "TIER 2", "strategic growth"
-  - Geographic: Search country/city names
-```
+**When to use**:
+- CSV: Structured schema, full visibility needed, 150-500 items (keywords, pricing)
+- RAG: Unstructured narrative, 1000+ items, semantic search needed (discussions, articles)
 
-**Benefits**: Scales to 1000+ keywords, semantic search, efficient RAG retrieval, cost-effective.
+### 6. Stage 10 Hybrid Report Generation
 
-### 6. Parallel Crew Execution
+Hybrid approach: Python data assembly (80%) + minimal LLM for strategic synthesis (20%).
 
-```python
-def analyze_competition(self, parallel: bool = True, max_workers: int = 2):
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        future_to_solution = {
-            executor.submit(self._analyze_single_solution, idea, i, total): idea
-            for i, idea in enumerate(self.solution_ideas.solution_ideas, 1)
-        }
-        for future in as_completed(future_to_solution):
-            landscape = future.result()
-            all_landscapes.append(landscape)
-```
+**Implementation**:
+- Step 1: Python generates 27 fields (direct copy + templates)
+- Step 2: LLM enhances 3 strategic fields (executive_summary, acquisition_strategy_summary, next_steps)
+- Step 3: Python adds 7 enhanced sections (metadata, evidence, roadmaps)
 
-Conservative `max_workers=2` to respect API rate limits.
-
-### 7. Template Variable Parsing
-
-**Problem**: CrewAI parses ALL `{variable}` patterns as template variables. Using curly braces in examples causes KeyError.
-
-**Solution**: Use square brackets `[ ]` or angle brackets `< >` for examples:
-
-```yaml
-# ✅ CORRECT
-description: >
-  Search for competitors using: "[solution name] competitors"
-  Example search: "[keyword] alternatives"
-
-# ❌ WRONG - causes KeyError
-description: >
-  Search for: "{solution_name} competitors"
-```
-
-**When {curly braces} ARE needed**: Only when variable is provided in `crew.kickoff(inputs={...})`.
-
-**Rule of Thumb**: If it's instructional text, example syntax, or refers to data from context/previous tasks → use `[ ]` not `{ }`.
-
-### 8. SEO Crew Direct CSV Input Strategy
-
-**Problem**: Passing 150+ enriched keywords via Knowledge Sources (RAG) caused incomplete data visibility and retrieval uncertainty.
-
-**Solution**: Use direct CSV input in task context for structured keyword data.
-
-```python
-# Format keywords as CSV (2x more efficient than JSON)
-def _format_keywords_as_csv(self, keywords: List[EnrichedKeyword]) -> str:
-    """Convert enriched keywords to CSV format for agent consumption."""
-    rows = ["keyword,search_volume,competition,cpc,tier,geography"]
-    for kw in keywords:
-        rows.append(f"{kw.keyword},{kw.search_volume},{kw.competition},"
-                   f"{kw.cpc},{kw.tier},{kw.geography}")
-    return "\n".join(rows)
-
-# Pass directly in task inputs (full visibility)
-keywords_csv = self._format_keywords_as_csv(enriched_keywords)
-
-crew_output = self.crew().kickoff(inputs={
-    "keywords_csv": keywords_csv,
-    "total_keyword_count": len(enriched_keywords),
-    # ... other inputs
-})
-```
-
-**Benefits**:
-- Complete data visibility in task context (100% of keywords visible to agent)
-- 2x more token-efficient than JSON format
-- Industry best practice for structured tabular data
-- Eliminates RAG retrieval uncertainty and semantic search limitations
-- Agents can see exact volume/competition/CPC metrics for strategic decisions
-
-**When CSV is better than RAG**:
-- Structured data with consistent schema (keywords, pricing tables, metrics)
-- Data that needs complete visibility (no sampling/retrieval needed)
-- Moderate dataset sizes (150-500 items where full context fits in prompt)
-
-**When RAG is still better**:
-- Unstructured narrative content (social media discussions, articles)
-- Large datasets (1000+ items where selective retrieval is required)
-- Content requiring semantic search (finding themes, sentiment patterns)
-
-**Note**: SEOStrategyCrew still uses Knowledge Sources for pain points and competitive intelligence (unstructured data), but switches to CSV for keyword data (structured metrics).
-
-### 9. Stage 10 Hybrid Report Generation
-
-**Problem**: Previous approach used 245-line LLM prompt to generate entire report, causing high cost ($0.10-0.30), slow speed (5-15s), and hallucination risk on data fields.
-
-**Solution**: Hybrid approach - Python data assembly (80%) + minimal LLM for strategic synthesis (20%).
-
-```python
-def stage_10_generate_report(self):
-    """Generate report using hybrid approach."""
-
-    # Step 1: Python data assembly (80% of fields)
-    final_report = self._generate_fallback_report()
-    # Includes:
-    # - ALL pain points (no arbitrary limits)
-    # - Direct copies: selection rationale, runner-ups, scores
-    # - Templates: user journey, MVP scope, CAC breakdown
-    # - Existing summaries: pain_points_summary, solutions_summary, competitive_summary
-
-    # Step 2: Optional LLM enhancement (3 strategic fields only)
-    final_report = self._enhance_report_with_llm(final_report)
-    # LLM generates ONLY:
-    # - executive_summary (4-6 sentences)
-    # - acquisition_strategy_summary (2-3 paragraphs)
-    # - next_steps (5-8 action items)
-
-    # Step 3: Enhanced sections (Python-based)
-    final_report.research_metadata = self._generate_research_metadata()
-    final_report.alternative_solutions = self._generate_alternative_solutions()
-    # ... other enhanced sections
-```
-
-**Benefits**:
-- **Cost**: 85% reduction ($0.10-0.30 → $0.02-0.05)
-- **Speed**: 5x faster (10s → 2s)
-- **Quality**: Same or better (zero hallucination on data fields)
-- **Reliability**: Python fallback always succeeds if LLM fails
-- **Data Preservation**: ALL pain points and solutions included (no arbitrary limits)
-
-**Field Breakdown**:
-- **Direct Copy** (11 fields): `selected_solution_name`, `selection_rationale`, `runner_up_solutions`, `selection_criteria_scores`, `recommended_focus`, `selected_solution_details`, `top_pain_points`, `recommended_solutions`, `competitive_analysis`, `seo_strategy`, `data_source_research`
-- **Templates** (9 fields): `solution_user_journey`, `solution_implementation_overview`, `mvp_scope_definition`, `market_validation`, `pain_points_summary`, `solutions_summary`, `competitive_summary`, `data_sourcing_recommendations`, `estimated_cac_breakdown`
-- **LLM** (3 fields): `executive_summary`, `acquisition_strategy_summary`, `next_steps`
-- **Python Enhanced Sections** (7 fields): `research_metadata`, `alternative_solutions`, `competitive_landscape_matrix`, `evidence_appendix`, `data_infrastructure_roadmap`, `decision_framework`, `content_categorization`
-
-**When to use Python-only** (skip LLM enhancement):
-- Development/testing to save costs
-- Network issues or API unavailable
-- When template-based summaries are sufficient
-
-**Implementation Details**:
-- `_generate_fallback_report()`: Now production-quality (not just fallback)
-- `_enhance_report_with_llm()`: Minimal ~35-line inline prompt vs previous 245 lines
-- Uses shared utility: `find_solution_by_name()` from utils/helpers.py
-- No arbitrary limits: ALL pain points, ALL solutions included
-
-## Checkpoint & Resume System
-
-Folder-based checkpoint system to recover from failures and avoid wasting API costs.
-
-**Structure:**
-```
-output/checkpoints/checkpoint_{niche_slug}_{timestamp}/
-├── metadata.json
-├── stage_5_social_content.json
-├── stage_6_pain_points.json
-├── stage_7_solutions.json
-├── stage_8_competitive.json
-├── stage_8_75_solution_selection.json
-├── stage_9_5a_seed_expansion.json (Phase 9.5a: conceptual keywords)
-├── stage_9_5b_bulk_validation.json (Phase 9.5b: DataForSEO validated)
-├── stage_9_5c_enrichment.json (Phase 9.5c: enriched keywords)
-├── stage_9_seo_strategy.json
-└── stage_9_75_data_sources.json (conditional)
-```
-
-**Usage:**
-```bash
-python -m nicheiq.main --niche "AI tools" --resume  # Auto-resume
-python -m nicheiq.main --list-checkpoints  # List all
-python -m nicheiq.main --niche "AI tools" --checkpoint ./output/checkpoints/checkpoint_ai_tools_20250110_143052
-```
-
-**Configuration (.env):**
-```bash
-CHECKPOINT_ENABLED=true
-CHECKPOINT_MAX_AGE_DAYS=7
-CHECKPOINT_AUTO_CLEANUP=true
-```
-
-**Benefits**: Cost savings ($0.50-$2.00 per failed run), time savings (5-15 min), debugging aid.
-
-**Troubleshooting**: Enable `CHECKPOINT_ENABLED=true`, use `--list-checkpoints` to verify available checkpoints.
+**Benefits**: 85% cost reduction ($0.10-0.30 → $0.02-0.05), 5x faster, zero hallucination on data fields
 
 ## Important File Locations
 
 **Core Pipeline:**
+
 - `src/nicheiq/flows/research_flow.py` - Main 10-stage orchestrator
 - `src/nicheiq/report/report_generator.py` - Stage 10 report generation (hybrid Python + LLM)
 
 **Crews:**
+
 - `src/nicheiq/crews/pain_point_crew.py` - Social analysis with Knowledge Sources
 - `src/nicheiq/crews/unified_solution_crew.py` - Unified solution pipeline (ideation + competitive + selection)
 - `src/nicheiq/crews/solution_refinement_crew.py` - Solution refinement using keyword insights
 - `src/nicheiq/crews/seo_strategy_crew.py` - SEO strategy with direct CSV input
 - `src/nicheiq/crews/data_source_crew.py` - Data source research (conditional)
 
-**Stage 9 SEO Workflow Details:**
-1. **Phase 9.5a** (SEO Crew): Generate 40-50 seed keywords via LLM
-   - 70% broad market keywords (e.g., "expat health insurance")
-   - 30% targeted pain point keywords (from social discussions)
-   - Uses Knowledge Sources for pain points + competitors (RAG)
-2. **Phase 9.5b** (Flow): Bulk validate seeds with DataForSEO
-   - Filter by minimum search volume threshold
-   - Remove invalid or low-volume seeds
-3. **Phase 9.5c** (Flow): Expand validated seeds
-   - DataForSEO expansion (up to 1000 keywords per seed)
-   - Enrichment with volume, competition, CPC metrics
-   - Tier classification (Tier 1: Quick Win, Tier 2: Strategic Growth)
-4. **Tasks 1-5** (SEO Crew): Analyze and strategize with CSV input
-   - Task 1: Keyword Analysis & Tiering
-   - Task 2: Content & Technical Strategy
-   - Task 3: Implementation Planning
-   - Task 4: Final SEO Strategy Synthesis
-   - **Task 5: Implementation Guide** (adds 3 new fields)
-     - Universal SEO strategy (cross-cutting best practices)
-     - Page templates by content type (detailed implementation specs)
-     - Schema markup strategy (JSON-LD examples, priority types)
-     - Preserves ALL 26 fields from Task 4 → Total: 29 fields in SEOStrategyReport
-5. **Stage 9.5** (Flow, conditional): Refine SEO scores in selected solution
-   - Only if SEO_REFINEMENT_ENABLED=True
-   - Updates solution's SEO difficulty/opportunity scores using keyword data
+**Stage 9 SEO Workflow**:
 
-**Configuration:**
-- `src/nicheiq/crews/config/{crew_name}_agents.yaml` - Agent definitions (dedicated per crew)
-- `src/nicheiq/crews/config/{crew_name}_tasks.yaml` - Task specs with search strategies (dedicated per crew)
-- `src/nicheiq/config/settings.py` - Centralized settings
+1. **9.5a**: LLM generates 40-50 seeds (70% broad market, 30% pain-driven)
+2. **9.5b**: DataForSEO bulk validation (filter by volume threshold)
+3. **9.5c**: Expand to 150+ keywords, enrich with metrics, tier classification
+4. **Tasks 1-5**: SEO strategy (keyword analysis → content/technical → implementation → synthesis → templates/schema)
+5. **9.75** (optional): Refine SEO scores if `SEO_REFINEMENT_ENABLED=true`
 
-**Data Models:**
-- `src/nicheiq/models/research_state.py` - Flow state and final report
-- `src/nicheiq/models/pain_point.py` - Pain point analysis
-- `src/nicheiq/models/solution_idea.py` - Solution concepts (includes `requires_data_aggregation`)
-- `src/nicheiq/models/competitor.py` - Competitive analysis
-- `src/nicheiq/models/keyword_data.py` - Keyword research
-- `src/nicheiq/models/executive_summary.py` - Phase 1 executive dashboard models
-- `src/nicheiq/models/marketing_blueprint.py` - Phase 2 GTM strategy models
-- `src/nicheiq/models/analytics.py` - Phase 3 analytics models (market, SEO, competitive, pain point)
+**Key Files**:
 
-**Report Generation:**
-- `src/nicheiq/report/visualizations.py` - Phase 3 chart generation using Plotly (PNG + JSON exports)
-
-**Tools:**
-- `src/nicheiq/tools/reddit_tool.py` - PRAW-based collector
-- `src/nicheiq/tools/twitter_tool.py` - twitter-api-client wrapper
-- `src/nicheiq/tools/dataforseo_tool.py` - Keyword research with batching
+- Config: `src/nicheiq/config/settings.py`, `src/nicheiq/crews/config/*_agents.yaml`, `*_tasks.yaml`
+- Models: `research_state.py`, `pain_point.py`, `solution_idea.py`, `keyword_data.py`, `analytics.py`
+- Tools: `reddit_tool.py`, `twitter_tool.py`, `dataforseo_tool.py`
+- Reports: `report_generator.py`, `visualizations.py`
 
 ## API Keys & Environment
 
 **Required:**
+
 - `OPENAI_API_KEY` - GPT-4o for agent reasoning
-- `CHROMA_OPENAI_API_KEY` - **CRITICAL** for CrewAI knowledge sources (RAG). Set to same value as `OPENAI_API_KEY`
+- `CHROMA_OPENAI_API_KEY` - **CRITICAL** for CrewAI knowledge sources (RAG). ChromaDB's default environment variable for OpenAI embeddings. Set to same value as `OPENAI_API_KEY`
 - `SERPER_API_KEY` - Google search
 - `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET` - PRAW
 - `DATAFORSEO_LOGIN`, `DATAFORSEO_PASSWORD` - Keyword research
 
 **Optional:**
+
 - `TWITTER_USERNAME`, `TWITTER_PASSWORD`, `TWITTER_EMAIL` - Authenticated scraping (guest mode fallback)
 - `CREWAI_API_KEY` - CrewAI+ features
 
 **Note**: Without `CHROMA_OPENAI_API_KEY`, knowledge sources fail silently with "Failed to init knowledge" warnings.
 
-## Advanced Configuration
+## Configuration
 
-**Multi-Model Strategy** (cost vs quality optimization):
-- `OPENAI_MODEL_NAME` (gpt-4o): General agent reasoning
-- `FUNCTION_CALLING_LLM` (gpt-4o-mini): Tool calls
-- `CONTENT_ANALYSIS_LLM` (gpt-4o): Content categorization
-- `THREAD_VALIDATION_LLM` (gpt-4o-mini): Relevance filtering
-- `BRAINSTORM_LLM` (gpt-4o): Solution ideation
+See [ENV_REFERENCE.md](ENV_REFERENCE.md) for complete configuration options.
 
-**Other Settings:**
-- `ENABLE_TWITTER` (bool): Set False to skip Twitter
-- `REDDIT_COMMENT_LIMIT` (int): Controls depth (None=all, 32=balanced, 0=top-level)
-- `SEO_REFINEMENT_ENABLED` (bool): Toggle Stage 9.5
-- `KEYWORD_ENRICHMENT_TARGET_COUNT` (int): Target keyword count (default: 150)
+### Multi-Model Cost Optimization Strategy
+
+NicheIQ uses 6 specialized models to optimize cost vs quality (60-90% savings):
+
+**High-Reasoning Tasks** (use `gpt-4o`):
+- `OPENAI_MODEL_NAME` - Default agent reasoning
+- `CONTENT_ANALYSIS_LLM` - Social media categorization
+- `BRAINSTORM_LLM` - Solution ideation
+
+**Simple Tasks** (use `gpt-4o-mini` or `gpt-4.1-nano`):
+- `FUNCTION_CALLING_LLM=gpt-4o-mini` - Tool calls (60% cost reduction)
+- `THREAD_VALIDATION_LLM=gpt-4o-mini` - Relevance filtering (60% reduction)
+- `KEYWORD_VALIDATION_LLM=gpt-4.1-nano` - Keyword checks (90% reduction)
+- `KEYWORD_RESEARCH_LLM=gpt-4o-mini` - SEO analysis (60% reduction)
+
+**Cost Impact**: Multi-model strategy (default) saves ~$1.35 per run vs all gpt-4o ($2.20 → $0.85)
+
+See [ENV_REFERENCE.md#specialized-model-configuration-advanced](ENV_REFERENCE.md#specialized-model-configuration-advanced) for detailed guidance.
+
+### Common Settings
+
+- `ENABLE_TWITTER=false` - Skip Twitter collection
+- `REDDIT_COMMENT_LIMIT=32` - Balance depth vs cost (None=all, 0=top-level)
+- `CHECKPOINT_ENABLED=true` - Enable resume capability
+- `TOKEN_MONITORING_ENABLED=true` - Track token usage
 
 ## When Modifying Crews
 
 ### Data Passing Validation Checklist
 
-**CRITICAL**: Always verify input data is properly passed to agents to avoid blind operation or hallucinations.
+**CRITICAL**: Verify all inputs are properly passed to avoid hallucinations.
 
-**Pre-Flight Checklist:**
 1. List all inputs in `crew.kickoff(inputs={...})`
-2. Find crew's task config file (`{crew_name}_tasks.yaml` in `src/nicheiq/crews/config/`)
-3. Verify placeholders: For each input key, ensure `{key}` appears in task description
-4. Log input sizes for debugging
-5. Validate outputs contain expected data, not hallucinations
+2. Ensure `{key}` placeholder exists in task YAML for each input
+3. Log input sizes for debugging
+4. Validate outputs contain actual data (not placeholders)
 
-**Common Data Passing Patterns:**
-
-**Pattern 1: Direct Injection** (metadata, counts, names)
-```python
-inputs = {"solution_name": "ExpatEase", "niche": "expat relocation"}
-```
-```yaml
-description: >
-  Analyze {solution_name} in the {niche} niche.
-```
-
-**Pattern 2: Formatted Strings** (keyword lists, pain points)
-```python
-formatted = "\n".join([f"**{p.title}** (Severity: {p.score}/10)" for p in pain_points])
-inputs = {"high_priority_list": formatted}
-```
-```yaml
-description: >
-  Generate solutions for pain points:
-  {high_priority_list}
-```
-
-**Pattern 3: Knowledge Sources** (large/unstructured data >400 items)
-```python
-knowledge_source = StringKnowledgeSource(content=formatted_content, chunk_size=2000)
-crew = Crew(..., knowledge_sources=[knowledge_source])
-```
-```yaml
-description: >
-  **Search Strategy:**
-  - Search for "frustrated", "difficult"
-```
-
-**Anti-Pattern to Avoid:**
-❌ Passing data without placeholder in task description
-```python
-crew.kickoff(inputs={"keywords": data})  # Data passed
-```
-```yaml
-description: >
-  Analyze keywords.  # NO {keywords} placeholder - agent never sees data!
-```
+See [docs/PATTERNS.md](docs/PATTERNS.md) for detailed patterns and examples.
 
 ### Adding New Crews
 
-1. Extend `@CrewBase` class
-2. Define agents with `@agent` decorator
-3. Define tasks with `@task` decorator (use `context=` for dependencies)
-4. Define crew assembly with `@crew` decorator
-5. **Apply Data Passing Checklist** (verify all inputs properly injected)
-6. Update `research_flow.py` to integrate new stage
+See [docs/PATTERNS.md#adding-new-crews](docs/PATTERNS.md#adding-new-crews) for step-by-step guide.
 
-**Modifying knowledge sources:**
-- Adjust `chunk_size`/`chunk_overlap` based on content
-- Add search strategy instructions to task descriptions
-- Test semantic search quality
+**Key Steps**:
+1. Extend `@CrewBase`, define agents/tasks with decorators
+2. Apply Data Passing Checklist
+3. Add explicit field guidance in YAML (CrewAI doesn't auto-inject Pydantic descriptions)
+4. Update `research_flow.py` to integrate
 
-**Using output_pydantic:**
-CrewAI doesn't auto-inject Pydantic `Field(description=...)` (GitHub #1338). **Workaround**:
-1. Add explicit field guidance in task YAML `expected_output`
-2. For context chaining, add extraction instructions:
-   ```yaml
-   description: >
-     **HOW TO ACCESS CONTEXT:**
-     Extract from previous task: field_a, field_b (PRESERVE exactly)
-     Your output must contain ACTUAL VALUES from context.
-   ```
-3. See `PROMPT_OPTIMIZATION_BEST_PRACTICES.md` Section 5.3 for detailed patterns
+See [PROMPT_OPTIMIZATION_BEST_PRACTICES.md](PROMPT_OPTIMIZATION_BEST_PRACTICES.md) for advanced patterns.
 
 ## CrewAI Best Practices
 
@@ -626,186 +305,29 @@ CrewAI doesn't auto-inject Pydantic `Field(description=...)` (GitHub #1338). **W
 - Knowledge Sources: https://docs.crewai.com/en/concepts/knowledge
 - Flow State: https://docs.crewai.com/en/guides/flows/mastering-flow-state
 
-### 10. Context-Aware Query/Keyword Generation
-
-**Problem**: Template-driven query generation produces nonsensical results (e.g., "apps for home appliances").
-**Solution**: Use context-aware generators with NicheContext (market_segments, industry_boundaries).
-
-```python
-from nicheiq.utils.helpers import KeywordSeedGenerator
-
-generator = KeywordSeedGenerator()
-result = generator.generate_seeds(
-    solution=selected_solution,
-    niche_context=niche_context,
-    pain_points=pain_points,
-    competitive_analysis=competitive_analysis
-)
-# Returns 40-50 keywords with semantic validation and market segment integration
-```
-
-**Available Generators**:
-- `QueryGenerator` - Social media search queries
-- `CompetitorQueryGenerator` - Competitor search with solution-type awareness
-- `KeywordSeedGenerator` - SEO seed keywords (used in Stage 9.5a)
-
-**Key Features**: Chain-of-thought analysis, 6 semantic validation rules, input sanitization, market segment extraction as keyword modifiers.
-
-**Benefits**: Eliminates nonsensical patterns, leverages full niche context, generates solution-type-appropriate terminology.
-
-### 11. Token Monitoring & Soft Caps
-
-**Problem**: Large social media collections can approach context limits with extended models (1M tokens), causing unexpected costs.
-**Solution**: Monitor token usage with soft caps for cost visibility without hard failures.
-
-```python
-from nicheiq.utils.helpers import ContentTokenMonitor
-
-monitor = ContentTokenMonitor()
-
-# Log content stats with cost estimate
-token_count = monitor.log_content_stats(
-    content=formatted_content,
-    label="Stage 6 - Reddit content",
-    model="gpt-4o"
-)
-# Logs: "Stage 6 - Reddit content: 112,430 tokens (~$0.28), 11.2% of 1M context"
-
-# Check soft caps (warns but doesn't fail)
-monitor.check_soft_cap(tokens=token_count, label="Stage 6", model="gpt-4o")
-```
-
-**Configuration** (.env):
-```bash
-TOKEN_MONITORING_ENABLED=true
-TOKEN_WARNING_THRESHOLD=200000      # Log warning at 200K tokens
-TOKEN_SOFT_CAP_ENABLED=false        # Disabled by default
-TOKEN_SOFT_CAP=400000               # If enabled, log critical warning at 400K
-```
-
-**Features**:
-- Accurate token counting via tiktoken
-- Cost estimation for GPT-4/GPT-4o models
-- Warning thresholds (always enabled)
-- Optional soft caps (log critical warning when exceeded)
-- No pipeline failures - monitoring only
-
-**Usage Locations**:
-- Stage 5 (ResearchFlow): Collection size monitoring
-- Stage 6 (PainPointCrew): Task 1 input monitoring
-
-**Benefits**: Cost visibility, early warnings for large collections, no failures, configurable thresholds.
-
-### 12. Pydantic Optional List Fields (CrewAI Schema Parser Bug)
-
-**Problem**: Using `list[str | None]` with `default=None` causes CrewAI's PydanticSchemaParser to crash with `AttributeError: 'types.UnionType' object has no attribute '__name__'`.
-
-**Root Cause**:
-- The type `list[str | None]` means "a list containing strings OR Nones"
-- But `default=None` means the field itself is None (not a list)
-- This is semantically incorrect and triggers a bug in CrewAI's schema introspection
-- When CrewAI tries to generate schema instructions, it encounters the nested Union type and attempts to call `.__name__` on a `types.UnionType` object
-
-**Solution**: Use `Optional[list[str]]` instead, which means "None OR a list of strings":
-
-```python
-from typing import Optional
-from pydantic import BaseModel, Field
-
-# ❌ WRONG - Causes CrewAI schema parser crash
-keyword_priorities: list[str | None] = Field(
-    default=None,
-    description="List of priorities"
-)
-
-# ✅ CORRECT - Semantically accurate and works with CrewAI
-keyword_priorities: Optional[list[str]] = Field(
-    default=None,
-    description="List of priorities"
-)
-```
-
-**When This Occurs**:
-- Pydantic models used as `output_pydantic` in CrewAI tasks
-- Fields that are optional lists (should be None or a list, not a list of Nones)
-- Any nested Union type annotation in Pydantic models processed by CrewAI
-
-**Fixed Locations**:
-- `src/nicheiq/models/solution_idea.py`: 5 fields (lines 159, 166, 210, 311, 322)
-- `src/nicheiq/models/pain_point.py`: 4 fields (lines 29, 32, 160, 163)
-
-**Important**: Always use `Optional[list[T]]` for optional list fields, never `list[T | None]` with `default=None`.
-
 ## Output Structure
 
 ```
 output/
-├── final_report_YYYYMMDD_HHMMSS.json
-├── research_state_raw_YYYYMMDD_HHMMSS.json
-├── checkpoints/checkpoint_{niche}_{timestamp}/
-└── logs/nicheiq_YYYY-MM-DD.log
+├── final_report_YYYYMMDD_HHMMSS.json     # Complete research report
+├── research_state_raw_YYYYMMDD_HHMMSS.json  # Raw state data
+├── checkpoints/checkpoint_{niche}_{timestamp}/  # Resume capability
+└── logs/nicheiq_YYYY-MM-DD.log           # Execution logs
 ```
 
-### Final Report Structure
+**Final Report** (see `FinalReport` in `research_state.py`):
 
-See `FinalReport` Pydantic model in `src/nicheiq/models/research_state.py` for complete schema.
+- Core: Niche validation, selected solution, pain points, competitive analysis, SEO strategy
+- Enhanced: Research metadata, alternatives, evidence appendix, decision framework
+- Analytics: Executive dashboard, GTM blueprint, visualizations (charts + metrics)
 
-**Core Sections:**
-- Niche description and validation
-- Selected solution details (full SolutionIdea object)
-- Solution selection rationale and criteria scores
-- Runner-up solution names
-- Pain points with severity/WTP scores
-- Solution recommendations
-- Competitive analysis (for selected solution)
-- SEO strategy (if Stage 9 completed)
-- Data sourcing recommendations (for data aggregation solutions)
-- Next steps and action items
+## See Also
 
-**Enhanced Sections (Original Enhancement):**
-1. **research_metadata**: Reddit/Twitter counts, subreddit breakdown, collection date
-2. **alternative_solutions**: Top 2 runner-ups with scores, differentiators, pivot triggers
-3. **competitive_landscape_matrix**: Cross-solution competitor overlap, intensity analysis
-4. **evidence_appendix**: Top 10 Reddit threads, pain point quote sources with post IDs
-5. **data_infrastructure_roadmap**: 3-phase plan (MVP/Growth/Scale) with costs, risks, fallbacks
-6. **decision_framework**: Go/no-go/pivot criteria with rationales
-7. **content_categorization**: Theme categories, user segments, discussion quality assessment
+For additional documentation, see the [docs/](docs/README.md) directory:
 
-**Report Enhancements (Phase 1-3):**
-- **Phase 1 - Executive Dashboard** (Optional[ExecutiveDashboard]): Go/no-go verdict with rationale, core pain point snapshot, key opportunity metrics (keyword count, competitor count, market size), confidence score, niche summary
-- **Phase 2 - GTM Blueprint** (Optional[GTMBlueprint]): Ideal customer profile (persona, demographics, pain points, goals), core marketing message with framework, recommended channels (3-5 with budget/timeline/KPIs), content angles (5-8 examples), first 30 days playbook with weekly breakdown
-- **Phase 3 - Analytics & Visualizations** (5 Optional fields):
-  - **market_analytics** (MarketAnalytics): Overall opportunity score (0-1), market size category, selection confidence, competitive intensity, go/no-go recommendation
-  - **seo_analytics** (SEOAnalytics): Tier 1-4 keyword counts, total search volume, keyword diversity score, high-volume keyword count (>1000 searches)
-  - **competitive_analytics** (CompetitiveAnalytics): Competitor count, market saturation score (0-1), differentiation strength, market gaps identified
-  - **pain_point_analytics** (PainPointAnalytics): Total pain points, high-priority count, quadrant distribution, avg severity/WTP scores, top pain point title
-  - **visualization_manifest** (VisualizationManifest): Paths to generated charts (PNG for PDF, JSON for web) - pain point matrix (severity vs WTP scatter), keyword opportunity (tier distribution bar chart), competitive landscape (competitor type bar chart)
-
-**Data Preservation**: Enhanced sections preserve ~60-70% of checkpoint data (up from ~5-10%).
-
-## Debugging Tips
-
-```bash
-python -m nicheiq.main --niche "..." --log-level DEBUG
-```
-
-**Common Issues:**
-- "Failed to init knowledge" → Missing `CHROMA_OPENAI_API_KEY`
-- No embeddings created → Verify `CHROMA_OPENAI_API_KEY` is set
-- Nested event loop → Handled by thread executor pattern
-- DataForSEO insufficient credits → Reduce `KEYWORD_MIN_SEARCH_VOLUME`
-
-**Report validation:**
-```bash
-python validate_report.py output/final_report_*.json output/research_state_raw_*.json
-```
-Checks for hallucinations, score rounding, CAC accuracy, page count accuracy.
-
-## Performance Expectations
-
-- **Duration**: 5-15 minutes per niche
-- **Cost**: $0.50-$2.20 per research run
-  - OpenAI (GPT-4o): $0.50-$2.00
-  - Serper: $0.01-$0.05
-  - DataForSEO: $0.01-$0.10
-  - Reddit/Twitter: Free
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Deep technical architecture, design philosophy, and data flows
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Bug fixes, known issues, and debugging strategies
+- **[docs/FEATURES.md](docs/FEATURES.md)** - Advanced features (checkpoints, token monitoring, multi-model strategy)
+- **[docs/PATTERNS.md](docs/PATTERNS.md)** - Reusable code patterns and templates
+- **[PROMPT_OPTIMIZATION_BEST_PRACTICES.md](PROMPT_OPTIMIZATION_BEST_PRACTICES.md)** - Prompt engineering guidelines
+- **[ENV_REFERENCE.md](ENV_REFERENCE.md)** - Complete environment variable reference

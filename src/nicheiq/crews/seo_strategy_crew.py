@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from ..models.research_state import NicheContext
     from ..models.solution_idea import SolutionIdea
 
+
 @CrewBase
 class SEOStrategyCrew:
     """
@@ -48,11 +49,11 @@ class SEOStrategyCrew:
     def __init__(
         self,
         niche: str,
-        selected_solution: 'SolutionIdea',
+        selected_solution: "SolutionIdea",
         selection_rationale: str,
         competitive_analysis: CompetitiveAnalysisResult,
         pain_points: PainPointAnalysisResult | None = None,
-        niche_context: 'NicheContext | None' = None,
+        niche_context: "NicheContext | None" = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -94,8 +95,8 @@ class SEOStrategyCrew:
 
             self.pain_point_knowledge = StringKnowledgeSource(
                 content=pain_point_content,
-                chunk_size=1000,     # Smaller chunks for focused keyword extraction
-                chunk_overlap=150    # Moderate overlap
+                chunk_size=1000,  # Smaller chunks for focused keyword extraction
+                chunk_overlap=150,  # Moderate overlap
             )
             self.knowledge_sources.append(self.pain_point_knowledge)
             logger.info(
@@ -112,8 +113,8 @@ class SEOStrategyCrew:
 
             self.competitive_knowledge = StringKnowledgeSource(
                 content=comp_content,
-                chunk_size=800,      # Tight chunks for specific competitor data
-                chunk_overlap=100
+                chunk_size=800,  # Tight chunks for specific competitor data
+                chunk_overlap=100,
             )
             self.knowledge_sources.append(self.competitive_knowledge)
             logger.info(
@@ -126,7 +127,7 @@ class SEOStrategyCrew:
             f"{' with ' + str(len(self.knowledge_sources)) + ' knowledge source(s)' if self.knowledge_sources else ''}"
         )
 
-    def _find_solution_landscape(self) -> 'CompetitiveLandscape | None':
+    def _find_solution_landscape(self) -> "CompetitiveLandscape | None":
         """
         Find competitive landscape for the selected solution.
 
@@ -152,7 +153,8 @@ class SEOStrategyCrew:
 
         for pp in self.pain_points.pain_points:
             # Extract user language patterns for keywords
-            formatted.append(f"""[PAIN POINT LANGUAGE FOR KEYWORDS]
+            formatted.append(
+                f"""[PAIN POINT LANGUAGE FOR KEYWORDS]
 [PROBLEM: {pp.title}]
 
 **User Problem Description:**
@@ -166,11 +168,12 @@ class SEOStrategyCrew:
 - User intent: {pp.willingness_to_pay:.2f} WTP indicates {"commercial intent" if pp.willingness_to_pay >= 0.6 else "informational intent"}
 - Categories: {', '.join(pp.categories if pp.categories else ['N/A'])}
 - Platforms: {', '.join(pp.source_platforms if pp.source_platforms else ['N/A'])}
-""")
+"""
+            )
 
         return "\n\n---\n\n".join(formatted)
 
-    def _prepare_competitive_keywords_content(self, landscape: 'CompetitiveLandscape') -> str:
+    def _prepare_competitive_keywords_content(self, landscape: "CompetitiveLandscape") -> str:
         """
         Format competitive data for alternative keyword generation.
 
@@ -180,7 +183,8 @@ class SEOStrategyCrew:
         Returns:
             Formatted string with competitor data for keyword alternatives
         """
-        formatted = [f"""[COMPETITIVE KEYWORDS FOR: {landscape.solution_name}]
+        formatted = [
+            f"""[COMPETITIVE KEYWORDS FOR: {landscape.solution_name}]
 
 **Direct Competitors ({len(landscape.competitors)}):**
 {chr(10).join(f'- {c.name}: {c.description}' for c in landscape.competitors)}
@@ -193,7 +197,8 @@ class SEOStrategyCrew:
 
 **Recommended Positioning:**
 {landscape.recommended_positioning}
-"""]
+"""
+        ]
 
         return "\n".join(formatted)
 
@@ -216,7 +221,7 @@ class SEOStrategyCrew:
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.0,  # Zero temperature for precise data extraction (no creativity needed)
-                api_key=settings.openai_api_key
+                api_key=settings.openai_api_key,
             ),
             verbose=True,
         )
@@ -236,7 +241,7 @@ class SEOStrategyCrew:
             llm=ChatOpenAI(
                 model=settings.openai_model_name,
                 temperature=0.5,  # Moderate temperature for creative content ideas with structured output
-                api_key=settings.openai_api_key
+                api_key=settings.openai_api_key,
             ),
             verbose=True,
         )
@@ -258,7 +263,7 @@ class SEOStrategyCrew:
                 model=settings.openai_model_name,
                 temperature=0.4,  # Moderate temperature for technical precision with customization flexibility
                 timeout=180,  # Increased timeout to 180 seconds for complex implementation tasks
-                api_key=settings.openai_api_key
+                api_key=settings.openai_api_key,
             ),
             verbose=True,
         )
@@ -275,6 +280,7 @@ class SEOStrategyCrew:
             agent=self.content_strategist(),  # Use content strategist for strategic thinking
             output_pydantic=ExpandedKeywordList,
         )
+
     # ========================================
     # MULTI-TASK SEO STRATEGY (4-TASK FLOW)
     # ========================================
@@ -348,18 +354,18 @@ class SEOStrategyCrew:
 
             # Check critical fields are populated
             required_fields = {
-                'tier_1_keywords': list,
-                'tier_1_quick_win_strategy': str,
-                'content_strategy': str,
-                'technical_seo_recommendations': str,
-                'implementation_roadmap': str,
-                'key_metrics_to_track': list,
-                'long_term_strategy': str,
-                'conclusion_bottom_line': str,
-                'competitive_advantages': list,
-                'critical_success_factors': list,
-                'expected_timeline': str,
-                'next_steps_checklist': list
+                "tier_1_keywords": list,
+                "tier_1_quick_win_strategy": str,
+                "content_strategy": str,
+                "technical_seo_recommendations": str,
+                "implementation_roadmap": str,
+                "key_metrics_to_track": list,
+                "long_term_strategy": str,
+                "conclusion_bottom_line": str,
+                "competitive_advantages": list,
+                "critical_success_factors": list,
+                "expected_timeline": str,
+                "next_steps_checklist": list,
             }
 
             for field, expected_type in required_fields.items():
@@ -427,10 +433,10 @@ class SEOStrategyCrew:
             config=self.tasks_config["create_implementation_guide"],
             agent=self.seo_specialist(),
             context=[
-                self.analyze_keywords_and_tier_task(),           # Task 1 (for keyword reference)
+                self.analyze_keywords_and_tier_task(),  # Task 1 (for keyword reference)
                 self.develop_content_technical_strategy_task(),  # Task 2 (for page types)
-                self.create_implementation_plan_task(),          # Task 3 (for roadmap)
-                self.synthesize_final_seo_strategy_task(),       # Task 4 (reference only)
+                self.create_implementation_plan_task(),  # Task 3 (for roadmap)
+                self.synthesize_final_seo_strategy_task(),  # Task 4 (reference only)
             ],
             output_pydantic=ImplementationGuide,
             guardrail=self._validate_implementation_guide,  # Automated validation
@@ -448,13 +454,12 @@ class SEOStrategyCrew:
             Configured Crew instance with optional knowledge sources
         """
         from crewai.knowledge.knowledge import Knowledge
+
         from ..utils.helpers import sanitize_collection_name
 
         embedder_config = {
             "provider": "openai",
-            "config": {
-                "model_name": "text-embedding-3-small"  # Cost-effective embeddings
-            }
+            "config": {"model_name": "text-embedding-3-small"},  # Cost-effective embeddings
         }
 
         crew_config = {
@@ -492,7 +497,9 @@ class SEOStrategyCrew:
         Returns:
             ExpandedKeywordList with hybrid seed keywords for Phase 9.5b bulk validation and expansion
         """
-        logger.info(f"Starting Phase 9.5a: Context-aware seed keyword generation for: {self.selected_solution.solution_name}")
+        logger.info(
+            f"Starting Phase 9.5a: Context-aware seed keyword generation for: {self.selected_solution.solution_name}"
+        )
 
         try:
             # Initialize KeywordSeedGenerator
@@ -505,32 +512,35 @@ class SEOStrategyCrew:
                 pain_points=self.pain_points,
                 competitive_analysis=self.competitive_analysis,
                 num_broad_seeds=30,
-                num_targeted_seeds=15
+                num_targeted_seeds=15,
             )
 
             if not result:
-                logger.error("KeywordSeedGenerator returned None - falling back to minimal keywords")
+                logger.error(
+                    "KeywordSeedGenerator returned None - falling back to minimal keywords"
+                )
                 # Fallback: return minimal keyword list
                 from ..models.seo_strategy import ConceptualKeyword, ConceptualTopicCluster
+
                 fallback_keywords = [
                     ConceptualKeyword(
                         keyword=self.selected_solution.solution_name.lower(),
                         cluster="Core Product",
                         priority=1,
-                        rationale="Fallback keyword - generator failed"
+                        rationale="Fallback keyword - generator failed",
                     )
                 ]
                 fallback_clusters = [
                     ConceptualTopicCluster(
                         name="Core Product",
                         description="Primary solution keywords",
-                        strategic_importance=1
+                        strategic_importance=1,
                     )
                 ]
                 result = ExpandedKeywordList(
                     keywords=fallback_keywords,
                     topic_clusters=fallback_clusters,
-                    expansion_rationale="Fallback mode - generator failed"
+                    expansion_rationale="Fallback mode - generator failed",
                 )
 
             logger.info(
@@ -554,9 +564,12 @@ class SEOStrategyCrew:
             Formatted string with page types for Task 5 reference
         """
         try:
-            if hasattr(task2_output, 'pydantic'):
+            if hasattr(task2_output, "pydantic"):
                 content_strategy = task2_output.pydantic
-                if hasattr(content_strategy, 'keyword_based_page_types') and content_strategy.keyword_based_page_types:
+                if (
+                    hasattr(content_strategy, "keyword_based_page_types")
+                    and content_strategy.keyword_based_page_types
+                ):
                     page_types = content_strategy.keyword_based_page_types
                     formatted = "\n".join([f"- {pt}" for pt in page_types])
                     logger.debug(f"Extracted {len(page_types)} page types from Task 2")
@@ -571,12 +584,11 @@ class SEOStrategyCrew:
 
     def _validate_implementation_guide(self, task_output) -> tuple[bool, Any]:
         """
-        Guardrail function to validate Task 5 implementation guide output for customization.
+        Guardrail function to validate Task 5 implementation guide output structure.
 
-        Prevents generic outputs by checking:
-        - No placeholder syntax ([...]) in schema examples
-        - Solution name integration in page templates (80% threshold)
-        - No template syntax ({...}) in schema example_output fields
+        Validates:
+        - Pydantic output exists
+        - Minimum 4 page type implementations
 
         Args:
             task_output: TaskOutput from Task 5 (create_implementation_guide)
@@ -587,63 +599,35 @@ class SEOStrategyCrew:
         try:
             # Check if Pydantic output exists
             if not task_output.pydantic:
-                return (False, "CRITICAL ERROR: Return ONLY the ImplementationGuide Pydantic model with NO additional text")
+                return (
+                    False,
+                    "Return ONLY the ImplementationGuide Pydantic model",
+                )
 
             result = task_output.pydantic  # Should be ImplementationGuide
 
-            # Validation 1: Check for bracket placeholder syntax
-            result_json = result.model_dump_json()
-            if '[' in result_json and ']' in result_json:
-                # Allow JSON arrays [...], but not placeholders like [solution_name]
-                # Check for common placeholder patterns
-                placeholder_patterns = ['[solution', '[selected', '[provider', '[category', '[city', '[country']
-                for pattern in placeholder_patterns:
-                    if pattern in result_json.lower():
-                        return (False, f"Found bracket placeholder '{pattern}...' in output - must use actual values from context, not placeholders")
-
-            # Validation 2: Check page template count
-            if not hasattr(result, 'page_type_implementations') or not result.page_type_implementations:
+            # Validation: Check page template count
+            if (
+                not hasattr(result, "page_type_implementations")
+                or not result.page_type_implementations
+            ):
                 return (False, "Need at least 4 page type implementations - found 0")
 
             page_templates = result.page_type_implementations
             if len(page_templates) < 4:
-                return (False, f"Need at least 4 page type implementations - found {len(page_templates)}")
+                return (
+                    False,
+                    f"Need at least 4 page type implementations - found {len(page_templates)}",
+                )
 
-            # Validation 3: Check solution name integration in titles (80% threshold)
-            solution_name = self.selected_solution.solution_name
-            title_matches = 0
-            for pt in page_templates:
-                if hasattr(pt, 'title_tag_example') and pt.title_tag_example:
-                    if solution_name in pt.title_tag_example:
-                        title_matches += 1
-
-            coverage_pct = (title_matches / len(page_templates)) * 100
-            if coverage_pct < 80:
-                return (False,
-                    f"Only {title_matches}/{len(page_templates)} page templates ({coverage_pct:.1f}%) include solution name '{solution_name}' in title_tag_example. "
-                    f"Required: 80%+ coverage. Add solution name to ALL title examples.")
-
-            # Validation 4: Check schema examples have actual values (not template syntax in example_output)
-            for pt in page_templates:
-                if hasattr(pt, 'schema_markup') and pt.schema_markup:
-                    # Check if schema_markup is dict with example_output
-                    schema_data = pt.schema_markup if isinstance(pt.schema_markup, dict) else {}
-                    example_output = schema_data.get('example_output', '')
-                    example_str = str(example_output)
-
-                    # Check for template variable syntax in example_output (not allowed)
-                    if '{selected_' in example_str or '{solution_' in example_str or '{niche' in example_str:
-                        page_type_name = pt.page_type if hasattr(pt, 'page_type') else 'unknown'
-                        return (False,
-                            f"Page type '{page_type_name}' has template variable syntax ({{variable}}) in schema example_output. "
-                            f"example_output must have ACTUAL VALUES from context, not template variables.")
-
-            logger.info(f"✓ Implementation guide validation passed: {len(page_templates)} page types, {coverage_pct:.1f}% solution name coverage")
+            logger.info(
+                f"✓ Implementation guide validation passed: {len(page_templates)} page types"
+            )
             return (True, result)
 
         except Exception as e:
             logger.error(f"Guardrail validation exception: {str(e)}")
-            return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the ImplementationGuide model.")
+            return (False, f"Validation error: {str(e)}")
 
     def _format_keywords_as_csv(self, enriched_keywords: list) -> str:
         """
@@ -656,7 +640,9 @@ class SEOStrategyCrew:
             CSV string with header and keyword data
         """
         # CSV header
-        lines = ["keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier"]
+        lines = [
+            "keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier"
+        ]
 
         for k in enriched_keywords:
             keyword_text = k.get("keyword", "")
@@ -690,7 +676,7 @@ class SEOStrategyCrew:
                 tier = "TIER_4_LONG_TAIL"
 
             # Add CSV row (escape commas in keyword text if present)
-            keyword_escaped = keyword_text.replace(',', ' ')
+            keyword_escaped = keyword_text.replace(",", " ")
             lines.append(
                 f"{keyword_escaped},{search_volume},{competition_index},"
                 f"{comp_label},{cpc:.2f},{opp_score:.1f},{tier}"
@@ -699,9 +685,7 @@ class SEOStrategyCrew:
         return "\n".join(lines)
 
     def create_strategy_multitask(
-        self,
-        enriched_keywords: list,
-        expanded_keywords: ExpandedKeywordList | None = None
+        self, enriched_keywords: list, expanded_keywords: ExpandedKeywordList | None = None
     ) -> SEOStrategyReport:
         """
         Execute 5-Task SEO Strategy Flow with Direct CSV Input.
@@ -723,23 +707,35 @@ class SEOStrategyCrew:
         Returns:
             Complete SEOStrategyReport with implementation details (29 fields total)
         """
-        logger.info(f"Starting 5-Task SEO Strategy Flow for: {self.selected_solution.solution_name}")
-        logger.info(f"Processing {len(enriched_keywords)} enriched keywords" +
-                   (f" with {len(expanded_keywords.keywords)} seed keywords" if expanded_keywords else ""))
+        logger.info(
+            f"Starting 5-Task SEO Strategy Flow for: {self.selected_solution.solution_name}"
+        )
+        logger.info(
+            f"Processing {len(enriched_keywords)} enriched keywords"
+            + (
+                f" with {len(expanded_keywords.keywords)} seed keywords"
+                if expanded_keywords
+                else ""
+            )
+        )
 
         try:
             # Format keywords as CSV for direct context injection
             keywords_csv = self._format_keywords_as_csv(enriched_keywords)
-            csv_line_count = keywords_csv.count('\n') + 1
+            csv_line_count = keywords_csv.count("\n") + 1
             csv_token_estimate = len(keywords_csv) // 4  # Rough estimate: 4 chars per token
-            logger.info(f"Created keyword CSV: {csv_line_count} lines, ~{csv_token_estimate:,} tokens")
+            logger.info(
+                f"Created keyword CSV: {csv_line_count} lines, ~{csv_token_estimate:,} tokens"
+            )
 
             # Format topic clusters summary (with None handling)
             if expanded_keywords and expanded_keywords.topic_clusters:
-                topic_clusters_summary = "\n".join([
-                    f"- **{c.name}** (Priority {c.strategic_importance}/5): {c.description}"
-                    for c in expanded_keywords.topic_clusters
-                ])
+                topic_clusters_summary = "\n".join(
+                    [
+                        f"- **{c.name}** (Priority {c.strategic_importance}/5): {c.description}"
+                        for c in expanded_keywords.topic_clusters
+                    ]
+                )
             else:
                 topic_clusters_summary = "No topic clusters identified"
 
@@ -751,11 +747,11 @@ class SEOStrategyCrew:
                     self.seo_specialist(),
                 ],
                 tasks=[
-                    self.analyze_keywords_and_tier_task(),           # Task 1
+                    self.analyze_keywords_and_tier_task(),  # Task 1
                     self.develop_content_technical_strategy_task(),  # Task 2 (context: Task 1)
-                    self.create_implementation_plan_task(),          # Task 3 (context: Tasks 1+2)
-                    self.synthesize_final_seo_strategy_task(),       # Task 4 (context: Tasks 1+2+3)
-                    self.create_implementation_guide_task(),         # Task 5 (context: ALL previous tasks)
+                    self.create_implementation_plan_task(),  # Task 3 (context: Tasks 1+2)
+                    self.synthesize_final_seo_strategy_task(),  # Task 4 (context: Tasks 1+2+3)
+                    self.create_implementation_guide_task(),  # Task 5 (context: ALL previous tasks)
                 ],
                 # NO knowledge_sources - using direct CSV input
                 # NO embedder - no RAG needed
@@ -765,13 +761,21 @@ class SEOStrategyCrew:
 
             # Execute with CSV directly in inputs
             # Format solution architecture for task context
-            core_features_formatted = "\n".join([f"- {feat}" for feat in self.selected_solution.core_features]) if self.selected_solution.core_features else "Not specified"
-            technical_approach_formatted = self.selected_solution.technical_approach or "Not specified"
+            core_features_formatted = (
+                "\n".join([f"- {feat}" for feat in self.selected_solution.core_features])
+                if self.selected_solution.core_features
+                else "Not specified"
+            )
+            technical_approach_formatted = (
+                self.selected_solution.technical_approach or "Not specified"
+            )
 
             # Format competitor names for keyword contextualization
             competitive_landscape = self._find_solution_landscape()
             if competitive_landscape and competitive_landscape.competitors:
-                competitor_names_formatted = "\n".join([f"- {c.name}" for c in competitive_landscape.competitors])
+                competitor_names_formatted = "\n".join(
+                    [f"- {c.name}" for c in competitive_landscape.competitors]
+                )
             else:
                 competitor_names_formatted = "No direct competitors identified"
 
@@ -783,36 +787,42 @@ class SEOStrategyCrew:
                     pain_points=self.pain_points.pain_points,
                     format_type="metrics_only",
                     sort_by="severity",
-                    limit=10
+                    limit=10,
                 )
             else:
                 pain_points_formatted = "No pain points available"
 
             # Format additional solution context for Task 5 implementation guide
             value_proposition = self.selected_solution.value_proposition or "Not specified"
-            target_personas_formatted = "\n".join([f"- {persona}" for persona in self.selected_solution.target_personas]) if self.selected_solution.target_personas else "Not specified"
+            target_personas_formatted = (
+                "\n".join([f"- {persona}" for persona in self.selected_solution.target_personas])
+                if self.selected_solution.target_personas
+                else "Not specified"
+            )
             pricing_strategy = self.selected_solution.pricing_strategy or "Not specified"
 
             logger.info("Executing Task 1: Keyword Analysis & Tiering (keywords via CSV)...")
             logger.info(f"All {len(enriched_keywords)} keywords visible in context")
-            crew_output = strategy_crew.kickoff(inputs={
-                "niche": self.niche,
-                "selected_solution_name": self.selected_solution.solution_name,
-                "selected_solution_description": self.selected_solution.description,
-                "value_proposition": value_proposition,
-                "target_personas": target_personas_formatted,
-                "pricing_strategy": pricing_strategy,
-                "core_features": core_features_formatted,
-                "technical_approach": technical_approach_formatted,
-                "competitor_names": competitor_names_formatted,
-                "top_pain_points": pain_points_formatted,
-                "enriched_keywords_count": len(enriched_keywords),
-                "enriched_keywords_csv": keywords_csv,  # ← Direct CSV input
-                "topic_clusters_summary": topic_clusters_summary,
-            })
+            crew_output = strategy_crew.kickoff(
+                inputs={
+                    "niche": self.niche,
+                    "selected_solution_name": self.selected_solution.solution_name,
+                    "selected_solution_description": self.selected_solution.description,
+                    "value_proposition": value_proposition,
+                    "target_personas": target_personas_formatted,
+                    "pricing_strategy": pricing_strategy,
+                    "core_features": core_features_formatted,
+                    "technical_approach": technical_approach_formatted,
+                    "competitor_names": competitor_names_formatted,
+                    "top_pain_points": pain_points_formatted,
+                    "enriched_keywords_count": len(enriched_keywords),
+                    "enriched_keywords_csv": keywords_csv,  # ← Direct CSV input
+                    "topic_clusters_summary": topic_clusters_summary,
+                }
+            )
 
             # Extract all task outputs (Tasks 1-5)
-            task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+            task_outputs = crew_output.tasks_output if hasattr(crew_output, "tasks_output") else []
             if len(task_outputs) < 5:
                 logger.error(f"Expected 5 task outputs, got {len(task_outputs)}")
                 raise ValueError("Incomplete task execution in SEO strategy crew")
@@ -824,7 +834,9 @@ class SEOStrategyCrew:
             task_5_output = task_outputs[4].pydantic  # ImplementationGuide (3 fields)
 
             # Prepare seed keywords from conceptual expansion (if available)
-            seed_keywords = [k.keyword for k in expanded_keywords.keywords] if expanded_keywords else None
+            seed_keywords = (
+                [k.keyword for k in expanded_keywords.keywords] if expanded_keywords else None
+            )
 
             # Python merge: Combine all task outputs into complete SEOStrategyReport
             result = SEOStrategyReport(

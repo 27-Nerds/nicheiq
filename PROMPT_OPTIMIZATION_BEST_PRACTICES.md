@@ -1,20 +1,6 @@
 # Prompt Optimization Best Practices (2024-2025)
 
-**Last Updated:** 2025-01-09
 **Based on:** OpenAI GPT-4.1 Prompting Guide, Anthropic Claude Documentation, CrewAI Production Guidance, and 2024-2025 Academic Research
-
----
-
-## Executive Summary
-
-This document outlines validated best practices for optimizing LLM prompts, specifically for CrewAI agent systems. These practices achieved **Grade A** prompt engineering quality with 30-40% token reduction while improving cognitive load, anti-hallucination compliance, and output consistency.
-
-**Key Results:**
-- 33% overall character reduction across 24 components
-- $0.15-$0.40 cost savings per research run
-- 15-25% faster response times
-- 50-60% cognitive load reduction through visual hierarchy
-- Zero fabricated data (anti-pattern eliminated)
 
 ---
 
@@ -25,11 +11,13 @@ This document outlines validated best practices for optimizing LLM prompts, spec
 **Principle:** Modern LLMs (GPT-4o, Claude Sonnet 4.5) perform better with concise, structured prompts than verbose tutorials.
 
 **Evidence:**
+
 - Target 30-50% reduction through restructuring, NOT information loss
 - Remove tutorial-style explanations ("how to search", "what to look for")
 - Trust agent expertise established in backstory
 
 **Implementation:**
+
 ```yaml
 # ❌ ANTI-PATTERN (Verbose Tutorial)
 Your systematic approach: you NEVER assume an API exists. You search for
@@ -47,6 +35,7 @@ product pivots by discovering data sources that didn't exist or cost $10k+/month
 ```
 
 **Metrics:**
+
 - Original: 434 characters (26 lines)
 - Optimized: 260 characters (4 lines)
 - Reduction: 40%
@@ -58,10 +47,12 @@ product pivots by discovering data sources that didn't exist or cost $10k+/month
 **Principle:** For long context, place critical instructions at BOTH beginning (priming) and end (recency bias).
 
 **Evidence:**
+
 - OpenAI GPT-4.1 Guide: "For long context, place instructions at both beginning and end"
 - Research shows 57% accuracy improvement with proper placement
 
 **Implementation:**
+
 ```yaml
 description: >
   ═══ CRITICAL RULES (Read First) ═══
@@ -78,6 +69,7 @@ description: >
 ```
 
 **Visual Markers:**
+
 - `═══` for section delimiters (high visibility)
 - `✓` for requirements (positive framing)
 - `✗` for prohibitions (clear boundaries)
@@ -89,11 +81,13 @@ description: >
 **Principle:** Name methodologies to create reusable, memorable references throughout the system.
 
 **Evidence:**
+
 - Named frameworks (RTF, RACE, A.P.E, CARE) are documented as effective
 - Provides "structured methodology for crafting effective prompts"
 - Enables cross-referencing in tasks: "Apply your 3-Tier Verification Protocol"
 
 **Implementation:**
+
 ```yaml
 # Agent Backstory
 backstory: >
@@ -111,6 +105,7 @@ description: >
 ```
 
 **Proven Framework Names:**
+
 - "3-Quote Minimum Protocol" (pain point validation)
 - "3-Tier Verification Protocol" (data source discovery)
 - "5D Data Quality Matrix" (data evaluation: Coverage, Freshness, Quality, Cost, Reliability)
@@ -125,11 +120,13 @@ description: >
 **Principle:** Use qualitative expertise descriptors, NEVER fabricate statistics.
 
 **Evidence:**
+
 - Anthropic: "Always validate critical information"
 - Anti-hallucination research (2024): Fabricated stats violate core principles
 - Creating credibility risk if LLMs recognize fabrication
 
 **Implementation:**
+
 ```yaml
 # 🚨 CRITICAL ANTI-PATTERN (Fabricated Numbers)
 You've guided 23 product launches by distinguishing genuine user needs from
@@ -143,12 +140,14 @@ predict market success by focusing on evidence-backed demand signals.
 ```
 
 **Safe Qualitative Terms:**
+
 - "dozens of", "numerous", "multiple"
 - "extensive experience", "comprehensive portfolio"
 - "consistently", "proven track record"
 - Real, verifiable facts: "8 years", "across tech companies"
 
 **Why Fabrication Fails:**
+
 1. **Credibility Risk**: LLMs may recognize fake statistics
 2. **Hallucination Modeling**: Demonstrates hallucination in our own prompts
 3. **Audit Trail**: Users inspecting prompts see unprofessional fabrication
@@ -161,10 +160,12 @@ predict market success by focusing on evidence-backed demand signals.
 **Principle:** Use markdown tables for structured rules, scoring rubrics, and decision logic.
 
 **Evidence:**
+
 - OpenAI recommends markdown tables as top delimiter choice
 - Tables reduce cognitive load and improve parseability
 
 **Implementation:**
+
 ```yaml
 # ❌ ANTI-PATTERN (Prose Rubric)
 Severity Score (0.0-1.0):
@@ -192,6 +193,7 @@ Willingness to Pay (0.0-1.0):
 ```
 
 **Metrics:**
+
 - Original: 16 lines (prose format)
 - Optimized: 5 rows (table format)
 - Reduction: 69%
@@ -204,12 +206,14 @@ Willingness to Pay (0.0-1.0):
 **Principle:** Use markdown structure, headings, bullets, and visual markers to reduce cognitive load.
 
 **Evidence:**
+
 - OpenAI: "Markdown performs best" with heading hierarchy
 - Visual structure reduces cognitive load by 60%+ (2024 research)
 
 **Implementation Patterns:**
 
 **Section Delimiters:**
+
 ```yaml
 ═══════ COMPLETE REDDIT DISCUSSIONS ═══════
 [content]
@@ -219,6 +223,7 @@ Willingness to Pay (0.0-1.0):
 ```
 
 **Workflow Steps:**
+
 ```yaml
 **CATEGORIZATION WORKFLOW**:
 
@@ -230,6 +235,7 @@ Willingness to Pay (0.0-1.0):
 ```
 
 **Keyword Tables:**
+
 ```yaml
 **Signal Keywords** (patterns to scan for):
 | Type | Keywords |
@@ -240,6 +246,7 @@ Willingness to Pay (0.0-1.0):
 ```
 
 **Visual Markers:**
+
 - `═══` for major section dividers
 - `✓` for positive requirements
 - `✗` for prohibitions
@@ -256,10 +263,12 @@ Willingness to Pay (0.0-1.0):
 **Principle:** Require explicit evidence from verifiable sources for every claim.
 
 **Evidence:**
+
 - Chain-of-Verification reduces hallucinations by up to 96% when combined with other techniques
 - "According to..." prompting improves factual accuracy
 
 **Implementation:**
+
 ```yaml
 # Agent Backstory
 VERIFICATION STANDARD: Every pain point requires ≥3 direct user quotes from
@@ -282,6 +291,7 @@ rather than assumptions.
 ```
 
 **Key Components:**
+
 1. **Minimum Evidence Thresholds**: "≥3 quotes", "at least one direct quote"
 2. **Stop Conditions**: "No quotes = no pain point", "Insufficient evidence"
 3. **Explicit Source Requirements**: "from knowledge sources", "through queries"
@@ -294,11 +304,13 @@ rather than assumptions.
 **Principle:** For data extraction tasks, demand character-by-character copying with zero tolerance for modification.
 
 **Evidence:**
+
 - Temperature 0.0 for deterministic data extraction
 - JSON schema constrained generation
 - Explicit examples of correct vs. incorrect extraction
 
 **Implementation:**
+
 ```yaml
 **STEP 3: Extract Keywords with ZERO-TOLERANCE Data Accuracy**
 
@@ -329,6 +341,7 @@ Your job is character-by-character copying of API values - NEVER modify, round, 
 ```
 
 **Temperature Settings:**
+
 ```python
 # Data extraction tasks
 llm=ChatOpenAI(
@@ -350,6 +363,7 @@ llm=ChatOpenAI(
 **Principle:** Define exact phrasing for when data doesn't exist rather than allowing fabrication.
 
 **Implementation:**
+
 ```yaml
 # Data Source Discovery
 REPORTING RULE: "No public API found - alternatives: [scraping/partnerships/manual]"
@@ -371,6 +385,7 @@ If DataForSEO returned < 10 keywords with valid search_volume:
 ```
 
 **Pattern:**
+
 1. Define minimum threshold (5 discussions, 10 keywords, etc.)
 2. Provide exact error message to return
 3. Explicitly prohibit gap-filling behavior
@@ -383,6 +398,7 @@ If DataForSEO returned < 10 keywords with valid search_volume:
 ### 3.1 Standard Backstory Structure ✅
 
 **Template:**
+
 ```yaml
 backstory: >
   [Years] + [Domain/Companies] + [Named Framework/Methodology] + [Qualitative Track Record].
@@ -391,6 +407,7 @@ backstory: >
 ```
 
 **Example:**
+
 ```yaml
 backstory: >
   With 10 years in product management across B2B and consumer markets, you've
@@ -406,6 +423,7 @@ backstory: >
 ```
 
 **Components:**
+
 1. **Credentials**: "With 10 years in product management" (real or realistic)
 2. **Named Methodology**: "3-Quote Minimum Protocol" (creates reusable reference)
 3. **Origin Story**: "emerged after seeing teams waste resources" (builds credibility)
@@ -418,11 +436,13 @@ backstory: >
 ### 3.2 Backstory Length Guidelines ✅
 
 **Optimal Ranges:**
+
 - **Research Agents**: 180-280 characters (focus on verification protocols)
 - **Analysis Agents**: 160-220 characters (focus on frameworks/methodologies)
 - **Strategy Agents**: 190-260 characters (focus on track record and principles)
 
 **What to Include:**
+
 - ✅ Years of experience (establishes expertise)
 - ✅ Named framework/methodology (creates cross-reference)
 - ✅ Qualitative track record ("dozens", "numerous", "multiple")
@@ -430,6 +450,7 @@ backstory: >
 - ✅ Critical verification/quality standards
 
 **What to Exclude:**
+
 - ❌ Tutorial content ("you look for...", "you search for...")
 - ❌ Fabricated statistics (23 launches, 78% accuracy)
 - ❌ Generic phrases ("unique background", "rare perspective")
@@ -443,6 +464,7 @@ backstory: >
 **Principle:** Frame expertise through concrete experiences, not skill lists.
 
 **Implementation:**
+
 ```yaml
 # ❌ ANTI-PATTERN (Skill List)
 You have expertise in data engineering, API integration, web scraping, data
@@ -458,6 +480,7 @@ data sources that didn't exist or cost $10k+/month.
 ```
 
 **Formula:**
+
 1. **Context**: Where expertise was gained ("8 years building data pipelines")
 2. **Problem**: What challenge led to framework ("most valuable data isn't available")
 3. **Solution**: Named methodology developed ("3-Tier Verification Protocol")
@@ -472,6 +495,7 @@ data sources that didn't exist or cost $10k+/month.
 **Principle:** Organize tasks with clear sections: What → How → Quality Standards → Critical Rules
 
 **Template:**
+
 ```yaml
 task_name:
   description: >
@@ -498,6 +522,7 @@ task_name:
 ```
 
 **Metrics:**
+
 - Sections should be scannable at a glance
 - Workflow: 4-7 numbered steps maximum
 - Critical rules: 3-5 items per placement
@@ -510,6 +535,7 @@ task_name:
 **Principle:** Replace paragraph explanations with numbered lists or workflow diagrams.
 
 **Implementation:**
+
 ```yaml
 # ❌ ANTI-PATTERN (Paragraph Format - 31 lines)
 Read through the discussions systematically to find repeated keywords, phrases,
@@ -544,6 +570,7 @@ understand context and importance.
 **Principle:** Reference agent methodologies instead of re-explaining in tasks.
 
 **Implementation:**
+
 ```yaml
 # Agent Definition
 data_source_researcher:
@@ -565,12 +592,14 @@ discover_data_sources:
 ```
 
 **Benefits:**
+
 - Reduces task length by 30-40%
 - Creates consistent methodology across agent and task
 - Reinforces framework name recognition
 - Enables easier updates (change framework once in agent definition)
 
 **Monitoring:**
+
 - Track whether agents actually follow the referenced protocol
 - If agents skip steps, revert to explicit enumeration in tasks
 - Success criteria: Agents must complete all protocol steps in order
@@ -584,6 +613,7 @@ discover_data_sources:
 **Principle:** Reference the Pydantic model structure instead of repeating field descriptions.
 
 **Implementation:**
+
 ```yaml
 # ❌ ANTI-PATTERN (Repetitive Field Descriptions)
 expected_output: >
@@ -624,6 +654,7 @@ expected_output: >
 **Principle:** Provide one complete example, then use "[Repeat]" for additional instances.
 
 **Implementation:**
+
 ```yaml
 # ❌ ANTI-PATTERN (6x Repetition)
 ### Category 1: [Category Name from actual discussions]
@@ -666,6 +697,7 @@ expected_output: >
 **Context:** CrewAI's `output_pydantic` parameter enables validation but has a known limitation.
 
 **The Problem:**
+
 - CrewAI does NOT automatically inject Pydantic `Field(description=...)` into LLM prompts
 - Documented in GitHub Issue #1338 (marked "not planned")
 - Result: LLM sees basic schema structure (`{"solution_ideas": List[SolutionIdea]}`) but not field-level guidance
@@ -727,6 +759,7 @@ description: >
 ```
 
 **Why This Works:**
+
 - LLM receives clear guidance on what to populate in each field
 - Examples show populated data (not abstract schema)
 - Reduces "schema confusion" errors
@@ -737,6 +770,7 @@ description: >
 **Example from codebase:** See `src/nicheiq/crews/config/unified_solution_tasks.yaml` - competitive_refinement task demonstrates all 3 patterns.
 
 **References:**
+
 - CrewAI GitHub Issue #1338: "Pydantic model schema not added to system prompt"
 - CrewAI GitHub Issue #2188: Feature request for improved pydantic_output using field descriptions
 
@@ -747,17 +781,20 @@ description: >
 ### 6.1 Fabricated Quantification 🚨 CRITICAL
 
 **Anti-Pattern:**
+
 ```yaml
 You've guided 23 product launches with 78% accuracy predicting market success.
 ```
 
 **Why It's Harmful:**
+
 - Violates anti-hallucination principles
 - Creates credibility risk
 - Models the behavior we're trying to prevent
 - Unprofessional if users inspect prompts
 
 **Fix:**
+
 ```yaml
 You've guided dozens of successful product launches, consistently predicting
 market success by focusing on evidence-backed demand signals.
@@ -768,6 +805,7 @@ market success by focusing on evidence-backed demand signals.
 ### 6.2 Tutorial Overload 🚨
 
 **Anti-Pattern:**
+
 ```yaml
 Read through the discussions systematically to find repeated keywords. Pay
 attention to the language users employ. Look for patterns in: problems, user
@@ -778,12 +816,14 @@ clear distinctions. Use the metadata to understand context.
 ```
 
 **Why It's Harmful:**
+
 - Excessive cognitive load
 - Wastes tokens on obvious instructions
 - Undermines agent expertise
 - Reduces clarity through verbosity
 
 **Fix:**
+
 ```yaml
 **Signal Keywords**: Scan for problems, identity, impact, emotion, workarounds (see table)
 [5-row table with keywords]
@@ -794,6 +834,7 @@ clear distinctions. Use the metadata to understand context.
 ### 6.3 Redundant Field Management 🚨
 
 **Anti-Pattern:**
+
 ```yaml
 **a) technical_feasibility_score (float 0.0-1.0) - REQUIRED:**
 - Extract from EvaluationResult context
@@ -812,12 +853,14 @@ clear distinctions. Use the metadata to understand context.
 ```
 
 **Why It's Harmful:**
+
 - Excessive hand-holding
 - Wastes 90 lines on simple field preservation
 - Undermines agent intelligence
 - Poor scannability
 
 **Fix:**
+
 ```yaml
 **FIELD HANDLING REQUIREMENTS** (from EvaluationResult context):
 
@@ -837,18 +880,21 @@ All fields mandatory (no null values). Extract from context, don't recalculate.
 ### 6.4 Generic Backstories 🚨
 
 **Anti-Pattern:**
+
 ```yaml
 Your unique background spans software engineering and business strategy, giving
 you rare dual perspective. You've seen brilliant ideas fail due to poor analysis.
 ```
 
 **Why It's Harmful:**
+
 - Vague, unmemorable
 - No named methodology
 - No specific framework or philosophy
 - Generic "unique background" phrasing
 
 **Fix:**
+
 ```yaml
 With 8 years building products plus 5 years consulting, you developed the
 "Product-Market Fit Assessment Framework" after analyzing dozens of failed
@@ -861,6 +907,7 @@ technical barriers, market timing issues, competitive moats.
 ### 6.5 Missing Stop Conditions 🚨
 
 **Anti-Pattern:**
+
 ```yaml
 Extract pain points from the discussions. Each pain point should have supporting
 quotes and mention frequency.
@@ -868,11 +915,13 @@ quotes and mention frequency.
 ```
 
 **Why It's Harmful:**
+
 - Encourages fabrication when data is sparse
 - No explicit "acceptable to fail" message
 - Agents may invent to meet expectations
 
 **Fix:**
+
 ```yaml
 Extract pain points from discussions. Each requires ≥3 supporting quotes.
 
@@ -888,24 +937,28 @@ Better to report limited findings honestly than fabricate pain points.
 ### 7.1 Task-Specific Temperature Guidelines ✅
 
 **Data Extraction (0.0):**
+
 ```python
 # Keyword research, API data extraction, structured parsing
 llm=ChatOpenAI(temperature=0.0)  # Deterministic, zero creativity
 ```
 
 **Research & Analysis (0.2-0.3):**
+
 ```python
 # Pain point analysis, competitive research, data quality evaluation
 llm=ChatOpenAI(temperature=0.2)  # Low temperature for consistent analysis
 ```
 
 **Strategy & Ideation (0.7):**
+
 ```python
 # Solution ideation, creative brainstorming, strategic recommendations
 llm=ChatOpenAI(temperature=0.7)  # Higher temperature for creativity
 ```
 
 **Content Creation (0.3-0.5):**
+
 ```python
 # Content strategy, SEO roadmaps, reports
 llm=ChatOpenAI(temperature=0.4)  # Moderate for structured creativity
@@ -920,24 +973,28 @@ llm=ChatOpenAI(temperature=0.4)  # Moderate for structured creativity
 Before deploying optimized prompts, verify:
 
 **Structure:**
+
 - [ ] Critical rules placed at top AND bottom
 - [ ] Visual hierarchy with headers, bullets, tables
 - [ ] Workflow in numbered steps (4-7 maximum)
 - [ ] Expected output references Pydantic model
 
 **Content:**
+
 - [ ] Named framework/methodology in agent backstory
 - [ ] Qualitative expertise (no fabricated numbers)
 - [ ] Stop conditions for insufficient data
 - [ ] Evidence requirements explicit (≥3 quotes, verifiable sources)
 
 **Anti-Hallucination:**
+
 - [ ] Verification standards clearly stated
 - [ ] Explicit reporting rules for missing data
 - [ ] Character-by-character copying rules for data extraction
 - [ ] Acceptable failure conditions defined
 
 **Optimization:**
+
 - [ ] Removed tutorial content
 - [ ] Converted prose to tables where appropriate
 - [ ] Referenced agent protocols instead of re-explaining
@@ -948,6 +1005,7 @@ Before deploying optimized prompts, verify:
 ### 8.2 A/B Testing Protocol ✅
 
 **Test Setup:**
+
 1. Run same niche through original vs. optimized prompts
 2. Compare outputs on:
    - Pain point count and quality (quote evidence)
@@ -956,192 +1014,18 @@ Before deploying optimized prompts, verify:
    - Keyword research accuracy (no fabricated volumes)
 
 **Success Criteria:**
+
 - Output quality: Same or better (no degradation)
 - Token usage: 25-35% reduction
 - Execution time: 15-25% faster
 - Hallucination rate: Same or lower (zero fabricated data)
 
 **Monitoring:**
+
 - Agent reasoning logs (verbose=True)
 - Pain point evidence quality (3+ quotes per point)
 - Framework adherence (agents follow named protocols)
 - Stop condition usage (proper "Insufficient data" responses)
-
----
-
-## Part 9: Implementation Patterns
-
-### 9.1 Phase 2 Completed Optimizations ✅
-
-**Files Modified:**
-- `src/nicheiq/crews/config/tasks.yaml`
-- `src/nicheiq/crews/config/agents.yaml`
-- `src/nicheiq/crews/config/data_source_agents.yaml`
-- `src/nicheiq/crews/config/data_source_tasks.yaml`
-
-**Components Optimized (13 total):**
-
-1. **categorize_content** task (52% reduction)
-   - Critical rules to top/bottom
-   - Workflow to numbered list
-   - Signal keywords to table
-   - Template consolidation
-
-2. **pain_point_analyst** agent (35% reduction)
-   - Named "3-Quote Minimum Protocol"
-   - Qualitative track record
-   - Removed workflow duplication
-
-3. **pain_point_validator** agent (16% reduction)
-   - Named "Evidence-Based Scoring Framework"
-   - Removed tutorial content
-
-4. **validate_pain_points** task (71% in scoring section)
-   - Scoring rubric to decision table
-   - Workflow condensation
-
-5. **refine_solutions** task (45% reduction)
-   - 90-line constraint block → 6-line table
-   - Solution-type patterns condensed
-
-6. **solution_evaluator** agent (20% reduction)
-   - Named "Product-Market Fit Assessment Framework"
-   - Qualitative track record
-
-7. **competitive_analyst** agent (25% reduction)
-   - Named "Jobs-to-be-Done Gap Analysis"
-   - Tightened messaging
-
-8. **competitive_researcher** agent (19% reduction)
-   - Minor tightening
-   - Preserved verification culture
-
-9. **data_source_researcher** agent (40% reduction)
-   - Named "3-Tier Verification Protocol"
-   - Qualitative track record
-
-10. **data_quality_analyst** agent (42% reduction)
-    - Named "5D Data Quality Matrix"
-    - Removed tutorial examples
-
-11. **discover_data_sources** task (36% reduction)
-    - Referenced agent's protocol
-    - Removed prescriptive strategy
-
-**Total Reduction:** 5,200 characters (40% average)
-
----
-
-### 9.2 Reusable Optimization Templates
-
-**Agent Backstory Template:**
-```yaml
-agent_name:
-  role: "[Specific Role] with [Key Expertise Area]"
-  goal: >
-    [2-3 sentences: What they do, key dimensions they assess, output quality standard]
-  backstory: >
-    With [X years] in [domain/companies], you developed the "[Named Framework/Methodology]"
-    after [problem/challenge encountered]. You've [qualitative achievement description] by
-    [key differentiating approach]. Your [output type] consistently [quality metric/outcome]
-    by focusing on [core principle].
-
-    [VERIFICATION/QUALITY STANDARD]: [Explicit rules with boundaries]. [Stop condition].
-    [Core philosophy statement].
-```
-
-**Task Description Template:**
-```yaml
-task_name:
-  description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ [Top constraint 1]
-    ✓ [Top constraint 2]
-    ✓ [Top constraint 3]
-
-    **CONTEXT:**
-    - [Variable 1]: {input_1}
-    - [Variable 2]: {input_2}
-
-    **YOUR TASK:** [1-2 sentence objective]
-
-    **WORKFLOW** (Apply your [Named Framework]):
-    1. [Step 1] → [Outcome]
-    2. [Step 2] → [Outcome]
-    3. [Step 3] → [Outcome]
-    4. [Step 4] → [Outcome]
-
-    **QUALITY STANDARDS:**
-    - [Standard 1 with threshold]
-    - [Standard 2 with evidence requirement]
-    - [Standard 3 with success criteria]
-
-    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
-    ✗ [Top prohibition 1]
-    ✗ [Top prohibition 2]
-
-  expected_output: >
-    [PydanticModel] with ALL required fields:
-
-    - [field_1]: [Constraint or requirement]
-    - [field_2]: [Constraint or requirement]
-
-    CRITICAL: [Key validation rule or 1:1 mapping requirement]
-```
-
----
-
-## Part 10: Cost & Performance Impact
-
-### 10.1 Token Reduction Economics ✅
-
-**Per Research Run:**
-- Original prompt tokens: ~15,000-20,000
-- Optimized prompt tokens: ~10,000-13,000
-- Reduction: 33% (5,000-7,000 tokens saved)
-
-**Cost Savings (GPT-4o pricing):**
-- Input tokens: $0.0025 per 1K
-- Saved per run: 5K tokens × $0.0025 = $0.0125
-- With completions: ~$0.15-$0.40 per run total savings
-
-**Volume Impact:**
-- 100 research runs: $15-$40 saved
-- 1,000 research runs: $150-$400 saved
-- Annual (10K runs): $1,500-$4,000 saved
-
----
-
-### 10.2 Latency Improvements ✅
-
-**Response Time:**
-- Shorter prompts: 15-25% faster responses
-- Better structure: Reduces agent "thinking" time
-- Decision tables: Faster rule lookup vs. paragraph scanning
-
-**Development Speed:**
-- Clearer prompts: Fewer iterations to correct behavior
-- Named frameworks: Easier debugging (reference protocol name)
-- Consistent structure: Faster for new agents to understand
-
----
-
-### 10.3 Quality Metrics ✅
-
-**Cognitive Load Reduction:**
-- Visual hierarchy: 50-60% easier to scan
-- Decision tables: 70% faster to parse scoring rules
-- Critical rules placement: 57% accuracy improvement
-
-**Anti-Hallucination:**
-- Zero fabricated data (was: risk from fake statistics)
-- Explicit stop conditions: Better "Insufficient data" compliance
-- Evidence requirements: Stronger quote-backing verification
-
-**Maintainability:**
-- Named frameworks: Single point of update (agent backstory)
-- Consistent structure: Easier to train new developers
-- Clear templates: Faster to add new agents/tasks
 
 ---
 
@@ -1150,16 +1034,19 @@ task_name:
 ### 11.1 Primary Sources
 
 **OpenAI GPT-4.1 Prompting Guide (2024):**
+
 - Critical rules placement (top + bottom): "For long context, place instructions at both beginning and end"
 - Markdown formatting: "Markdown performs best" with heading hierarchy
 - Table usage: Recommended as top delimiter choice
 
 **Anthropic Claude Documentation (2024):**
+
 - Direct quote extraction: Anti-hallucination through evidence-backing
 - XML/Markdown structure: Clear semantic boundaries
 - System prompts with roles: Persona-based design
 
 **CrewAI Production Guidance (2024):**
+
 - Prompt transparency: Understanding default injections
 - Cost optimization: Token reduction without quality loss
 - Avoiding vague prompts: Business-logic specificity
@@ -1167,16 +1054,19 @@ task_name:
 ### 11.2 Academic Research
 
 **Chain-of-Verification (CoVe) - 2024:**
+
 - Reduces hallucinations by up to 96% when combined
 - "According to..." prompting improves factual accuracy
 - Multi-step verification prevents fabrication
 
 **Cognitive Load Reduction - 2024:**
+
 - Visual structure reduces load by 60%+
 - Table format improves parseability
 - Progressive prompting enhances comprehension
 
 **Temperature Settings - 2024:**
+
 - 0.0 for deterministic data extraction
 - 0.2-0.3 for consistent analysis
 - 0.7+ for creative ideation
@@ -1188,16 +1078,19 @@ task_name:
 ### 12.1 Areas Requiring Monitoring ✅
 
 **Agent Protocol References:**
+
 - **Risk**: Agents may not recall named protocols from backstory when executing tasks
 - **Monitoring**: Track whether agents complete all steps in "3-Tier Verification Protocol"
 - **Fallback**: If agents skip steps, revert to explicit enumeration in task descriptions
 
 **Decision Table Complexity:**
+
 - **Risk**: Complex conditional logic may be harder to parse in table vs. prose
 - **Monitoring**: Validate scoring consistency across runs
 - **Threshold**: Current simple 3-column tables are safe; avoid 5+ column tables
 
 **Visual Markers (═══, ✓, ✗):**
+
 - **Uncertainty**: Whether LLMs parse Unicode symbols semantically or ignore them
 - **Assumption**: Even if ignored, placement (top/bottom) provides functional benefit
 - **Status**: Low risk, primarily human readability enhancement
@@ -1207,16 +1100,19 @@ task_name:
 ### 12.2 Unresolved Best Practices ✅
 
 **1. Optimal Protocol Reference vs. Explicit Steps Balance**
+
 - Named frameworks documented as effective
 - Unclear ideal ratio of reference vs. enumeration
 - Current approach: Define in backstory + reference in tasks (hybrid)
 
 **2. Quantitative vs. Qualitative Expertise Claims**
+
 - Fabrication clearly harmful
 - Unclear if REAL quantified achievements (if available) would improve performance
 - Current approach: Qualitative descriptors to avoid fabrication risk
 
 **3. LLM Parsing of Visual Markers**
+
 - Markdown structure proven effective
 - Unclear whether `═══`, `✓`, `✗` provide functional vs. cosmetic value
 - Current approach: Use for human readability + structural placement
@@ -1234,15 +1130,10 @@ These best practices represent validated, production-ready patterns for LLM prom
 5. **Maintainability**: Consistent templates, named methodologies, clear standards
 
 **Implementation Status:**
+
 - Phase 2: 6 components (40% avg reduction) ✅
 - Phase 3 Batch 1: 4 components (35% avg reduction) ✅
 - Phase 3 Batch 2: 3 components (22% avg reduction) ✅
 - **Total: 13/24 components optimized (54% complete)**
 
 **Validation:** All optimizations align with OpenAI GPT-4.1 Guide, Anthropic Claude Docs, and 2024-2025 academic research on prompt engineering, anti-hallucination patterns, and cognitive load reduction.
-
----
-
-**Document Version:** 1.0
-**Last Updated:** 2025-01-09
-**Next Review:** After Phase 3 completion and A/B testing validation

@@ -42,10 +42,13 @@ NicheIQ is an autonomous AI-powered market research agent that analyzes social m
 3. **Stage 6**: Pain Point Analysis (PainPointCrew)
 4. **Stage 7-8.75**: Unified Solution Development (UnifiedSolutionCrew)
    - Solution ideation, competitive analysis, refinement, and selection
-5. **Stage 8.8-8.85**: Keyword Validation & Solution Refinement
-6. **Stage 9**: SEO Strategy (SEOStrategyCrew)
-7. **Stage 9.75**: Data Source Research (conditional)
-8. **Stage 10**: Final Report Generation
+5. **Stage 8.8**: Keyword Demand Validation (Flow - quick validation for top 3 solutions)
+6. **Stage 8.85**: Solution Refinement (SolutionRefinementCrew - strategic recommendations)
+7. **Stage 9**: SEO Strategy (SEOStrategyCrew)
+   - Phase 9.5a-c: Seed generation, bulk validation, enrichment
+   - Tasks 1-5: Analysis, strategy, implementation guide
+8. **Stage 9.75**: Data Source Research (conditional, for data aggregation solutions)
+9. **Stage 10**: Final Report Generation (Hybrid Python + LLM)
 
 ## Installation
 
@@ -81,6 +84,54 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e .
 ```
+
+## Testing & Validation
+
+### Pre-Run Validation
+
+Before running research, validate your environment setup:
+
+```bash
+python check_setup.py
+```
+
+This checks Python version, dependencies, API keys, and permissions.
+
+### Run Tests
+
+```bash
+# All tests (unit + integration)
+pytest
+
+# Fast unit tests only (no API calls)
+pytest tests/unit/
+
+# Integration tests (may make API calls)
+pytest tests/integration/
+
+# With coverage report
+pytest --cov=src/nicheiq --cov-report=term-missing
+```
+
+**Test Organization:**
+- `tests/unit/` - Fast tests, no external dependencies
+- `tests/integration/` - End-to-end tests, may use APIs
+
+### Post-Run Validation
+
+After generating a report, validate for hallucinations and data integrity:
+
+```bash
+python validate_report.py output/final_report_*.json output/research_state_raw_*.json
+```
+
+**Checks:**
+- Pain point accuracy
+- Score precision (no rounding)
+- CAC value integrity
+- Competition intensity labels
+
+See [docs/TESTING.md](docs/TESTING.md) for comprehensive testing guide.
 
 ## Configuration
 
@@ -255,14 +306,25 @@ nicheiq/
 │   │   ├── twitter_tool.py      # Twitter scraping
 │   │   └── dataforseo_tool.py   # Keyword research
 │   ├── utils/                    # Helper utilities
-│   │   └── helpers.py           # Query generation, search helpers
+│   │   ├── helpers.py           # Query generation, search helpers
+│   │   └── prompts/             # Reusable prompt templates
 │   ├── crews/                    # Specialized agent crews
-│   │   ├── config/
-│   │   │   ├── agents.yaml      # Agent definitions
-│   │   │   └── tasks.yaml       # Task specifications
-│   │   ├── pain_point_crew.py   # Stage 6: Pain point analysis
-│   │   ├── idea_generation_crew.py  # Stage 7: Solution ideation
-│   │   └── competitive_crew.py  # Stage 8: Competitive analysis
+│   │   ├── config/              # YAML configurations (per crew)
+│   │   │   ├── pain_point_agents.yaml
+│   │   │   ├── pain_point_tasks.yaml
+│   │   │   ├── unified_solution_agents.yaml
+│   │   │   ├── unified_solution_tasks.yaml
+│   │   │   ├── seo_strategy_agents.yaml
+│   │   │   ├── seo_strategy_tasks.yaml
+│   │   │   ├── solution_refinement_agents.yaml
+│   │   │   ├── solution_refinement_tasks.yaml
+│   │   │   ├── data_source_agents.yaml
+│   │   │   └── data_source_tasks.yaml
+│   │   ├── pain_point_crew.py          # Stage 6: Pain point analysis
+│   │   ├── unified_solution_crew.py    # Stages 7-8.75: Ideation + competitive + selection
+│   │   ├── seo_strategy_crew.py        # Stage 9: SEO strategy
+│   │   ├── solution_refinement_crew.py # Stage 8.85: Solution refinement
+│   │   └── data_source_crew.py         # Stage 9.75: Data source research (conditional)
 │   ├── flows/
 │   │   └── research_flow.py     # Main 10-stage pipeline
 │   └── main.py                   # CLI entry point
@@ -314,9 +376,13 @@ KEYWORD_MAX_COMPETITION=0.5    # Lower = easier to rank
 
 ### Modify Agent Behavior
 
-Edit `src/nicheiq/crews/config/agents.yaml` to customize agent roles, goals, and backstories.
+Each crew has its own pair of YAML configuration files following the pattern `{crew_name}_agents.yaml` and `{crew_name}_tasks.yaml`.
 
-Edit `src/nicheiq/crews/config/tasks.yaml` to modify task descriptions and expected outputs.
+**Examples:**
+- Edit `src/nicheiq/crews/config/pain_point_agents.yaml` - Customize pain point analysis agent personas
+- Edit `src/nicheiq/crews/config/seo_strategy_tasks.yaml` - Modify SEO strategy task descriptions
+
+**Available crews:** pain_point, unified_solution, seo_strategy, solution_refinement, data_source
 
 ### Target Different Markets
 

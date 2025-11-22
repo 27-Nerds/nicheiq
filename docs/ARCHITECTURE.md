@@ -1,0 +1,510 @@
+# NicheIQ Architecture
+
+Deep technical architecture documentation for developers and contributors.
+
+## Table of Contents
+- [Design Philosophy](#design-philosophy)
+- [10-Stage Pipeline](#10-stage-pipeline)
+- [Structured Output Strategy](#structured-output-strategy)
+- [Data Passing Architecture](#data-passing-architecture)
+- [Multi-Agent Design Patterns](#multi-agent-design-patterns)
+- [Cost Optimization](#cost-optimization)
+
+---
+
+## Design Philosophy
+
+### Hybrid Flow + Multi-Task Crews
+
+NicheIQ uses a hybrid architecture combining CrewAI Flows (orchestration) with specialized multi-agent Crews (execution).
+
+**Why This Pattern?**
+
+1. **Flow for Orchestration**: Sequential stage management, state persistence, conditional logic
+2. **Crews for Execution**: Parallel agent collaboration, task dependencies, knowledge sharing
+3. **Best of Both**: Clean separation between "what to do" (Flow) and "how to do it" (Crews)
+
+**Alternatives Considered**:
+- Pure Flow (rejected: no multi-agent collaboration)
+- Pure Crew (rejected: harder to manage complex pipelines)
+- Separate scripts (rejected: no state management)
+
+**Trade-offs**:
+- ✅ Clear responsibility boundaries
+- ✅ Easy to debug individual stages
+- ✅ Flexible conditional execution
+- ❌ More complex setup than single-pattern approach
+- ❌ Need to manage state between Flow and Crews
+
+---
+
+## 10-Stage Pipeline
+
+### Stage 1-4: Niche Validation (Flow Methods)
+
+**Responsibility**: Validate niche has market potential
+
+**Implementation**: Simple Flow methods (no agents needed)
+
+**Data Flow**:
+```
+User Input → Niche Description
+           → Market Segments Extraction
+           → Industry Boundaries Definition
+           → Project Types Selection
+           → NicheContext Object
+```
+
+**Key Decision**: Why no agents here? Niche validation is deterministic string processing, doesn't need LLM reasoning.
+
+---
+
+### Stage 5: Search & Discover (Flow + Tools)
+
+**Responsibility**: Collect social media discussions
+
+**Components**:
+1. **QueryGenerator**: Creates search queries from niche context
+2. **SerperDevTool**: Google search for Reddit/Twitter URLs
+3. **ThreadRelevanceValidator**: Filters irrelevant URLs before scraping
+4. **Reddit Tool (PRAW)**: Collects threads and comments
+5. **Twitter Tool**: Collects tweets (optional)
+
+**Data Flow**:
+```
+NicheContext → QueryGenerator → Search Queries
+            → SerperDev → URLs
+            → ThreadRelevanceValidator → Filtered URLs
+            → PRAW/Twitter → Social Content
+```
+
+**Key Decisions**:
+- Pre-filter URLs to reduce API costs (ThreadRelevanceValidator)
+- Async execution with thread executor for Twitter (see TROUBLESHOOTING.md)
+- Configurable comment depth (REDDIT_COMMENT_LIMIT)
+
+---
+
+### Stage 6: Pain Point Analysis (PainPointCrew)
+
+**Responsibility**: Extract and validate pain points from social discussions
+
+**Agent**: Pain Point Analyst
+
+**Task Flow**:
+1. Extract pain points (with severity/WTP scoring)
+2. Validate and deduplicate
+
+**Knowledge Sources Strategy**:
+- **What**: 400+ social media posts/comments formatted as RAG chunks
+- **Why**: Too large for direct prompt injection, need semantic search
+- **Chunk Size**: 2000 chars (Reddit), 1500 chars (Twitter)
+- **Chunk Overlap**: 300/200 chars for context preservation
+
+**Output**: PainPointAnalysisResult with scored, validated pain points
+
+---
+
+### Stages 7-8.75: Solution Pipeline (UnifiedSolutionCrew)
+
+**Responsibility**: Generate, analyze, and select SaaS solutions
+
+**4-Task Sequential Pipeline**:
+
+1. **Solution Ideation**: Brainstorm 3-5 solution concepts
+2. **Competitive Analysis**: Research existing competitors
+3. **Competitive Refinement**: Enhance solutions with competitive insights
+4. **Solution Selection**: Score and select best solution
+
+**Context Chaining Pattern**:
+```python
+@task
+def task_1_ideation(self) -> Task:
+    return Task(
+        output_pydantic=IdeaGenerationResult,
+        # ...
+    )
+
+@task
+def task_2_competitive(self) -> Task:
+    return Task(
+        context=[self.task_1_ideation()],  # Auto-passes Pydantic object
+        output_pydantic=CompetitiveAnalysisResult,
+        # ...
+    )
+```
+
+**Benefits**: Automatic field preservation, no manual JSON formatting, type safety
+
+**Guardrails**: Validation functions prevent field loss during refinement
+
+---
+
+### Stage 9: SEO Strategy (SEOStrategyCrew)
+
+**Responsibility**: Keyword research and SEO planning
+
+**5-Task Sequential Pipeline**:
+
+**Phase 9.5a-c** (Flow-managed):
+- 9.5a: Generate 40-50 seed keywords (LLM)
+- 9.5b: Bulk validate with DataForSEO API
+- 9.5c: Expand and enrich (DataForSEO → 150+ keywords)
+
+**Tasks 1-5** (Crew-managed):
+1. Keyword Analysis & Tiering
+2. Content & Technical Strategy
+3. Implementation Planning
+4. Final SEO Strategy Synthesis
+5. Implementation Guide (templates, schema)
+
+**CSV Input Strategy**:
+- Keywords passed as CSV (not JSON or RAG)
+- 2x more token-efficient than JSON
+- Complete visibility (all 150 keywords in prompt)
+- Industry best practice for structured tabular data
+
+**When to use CSV vs RAG**:
+- CSV: Structured metrics (keywords, pricing), moderate size (150-500 items)
+- RAG: Unstructured narrative (pain points), large size (400+ items)
+
+---
+
+### Stage 10: Report Generation (Hybrid Python + LLM)
+
+**Responsibility**: Assemble final research report
+
+**Hybrid Approach**:
+
+1. **Python Data Assembly** (80% of fields):
+   - Direct copies from state
+   - Template-based sections
+   - Programmatic calculations
+
+2. **LLM Enhancement** (20% - 3 fields only):
+   - executive_summary
+   - acquisition_strategy_summary
+   - next_steps
+
+3. **Python Enhanced Sections**:
+   - Research metadata
+   - Competitive landscape matrix
+   - Evidence appendix
+   - Data infrastructure roadmap
+
+**Why Hybrid?**
+- **Cost**: 85% reduction ($0.10-0.30 → $0.02-0.05)
+- **Speed**: 5x faster (10s → 2s)
+- **Quality**: Zero hallucination on data fields
+- **Reliability**: Python fallback always succeeds
+
+**Alternative Rejected**: Pure LLM generation (245-line prompt, high cost, slow, hallucination risk)
+
+---
+
+## Structured Output Strategy
+
+### LLM Structured Output Pattern
+
+**Problem**: CrewAI's LLM wrapper doesn't support `response_format` parameter for structured output.
+
+**Solution**: Use LangChain directly for Pydantic-constrained generation:
+
+```python
+from langchain_openai import ChatOpenAI
+
+structured_llm = ChatOpenAI(
+    model=settings.openai_model_name,
+    temperature=0.7,
+    api_key=settings.openai_api_key
+).with_structured_output(YourPydanticModel)
+
+result = structured_llm.invoke(prompt)
+```
+
+**When to Use**:
+- Generating structured data outside of CrewAI tasks
+- Need guaranteed Pydantic compliance
+- Report generation LLM enhancement
+
+**When NOT to Use**:
+- CrewAI tasks (use `output_pydantic` parameter instead)
+- Simple string outputs
+- Tool calling scenarios
+
+---
+
+## Validation Strategy
+
+### Philosophy
+
+**Core Principle**: Trust the LLM for style, validate only for data integrity.
+
+This approach eliminates ~85% of false validation failures by focusing on what matters: data correctness, not stylistic preferences.
+
+### Validation Boundaries
+
+| Layer | Validates | Examples |
+|-------|-----------|----------|
+| **Data Generation (Stages 1-9)** | Data quality, completeness, schemas | Keyword volume > 50, score 0.0-1.0 |
+| **Report Generation (Stage 10)** | Data integrity, cross-stage consistency | Referenced scores exist, no null refs |
+
+### What We Validate
+
+✅ **Data integrity**: Score references in verdicts, no hallucinated metrics
+✅ **Schema compliance**: Pydantic handles automatically
+✅ **Safety checks**: None/NaN validation, division by zero
+
+### What We DON'T Validate
+
+❌ **Style preferences**: Word counts, sentence counts (trust the prompt)
+❌ **Vocabulary whitelists**: LLM understands "active voice" without enforcement
+❌ **Arbitrary limits**: Character counts, feature splits (no business value)
+
+### Key Validations
+
+**Location**: `src/nicheiq/report/report_generator.py`
+
+1. **Executive narrative** (see `_validate_executive_narrative()` method)
+   - Verdict must reference actual scores (prevents hallucinations)
+   - Uses word-boundary regex to prevent false positives (e.g., "score" in "underscore")
+
+2. **None/NaN checks** (see sanity checks in `_generate_base_report()`)
+   - Scores validated before calculations (prevents crashes)
+   - Logs warnings when using default fallbacks
+
+3. **Score fallbacks** (see `src/nicheiq/report/utils/score_accessor.py`)
+   - Logged when using defaults (data quality visibility)
+   - Default: 0.5 (configurable via `SCORE_ACCESSOR_DEFAULT_FALLBACK`)
+
+### Configuration
+
+**Location**: `src/nicheiq/config/settings.py:308-382`
+
+All validation thresholds are:
+- Centralized in Settings class
+- Configurable via environment variables
+- Type-safe with Pydantic validation (ge/le constraints)
+- Self-documenting with Field descriptions
+
+**Example - Configuring Verdict Thresholds**:
+
+```bash
+# More conservative (stricter Go verdict)
+VERDICT_GO_AVG_SCORE=0.80
+VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.75
+
+# More lenient (easier Go verdict for exploratory research)
+VERDICT_GO_AVG_SCORE=0.65
+VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.60
+```
+
+**See Also**:
+- [ENV_REFERENCE.md](../ENV_REFERENCE.md#report-generation--validation) - Complete configuration reference
+
+---
+
+## Data Passing Architecture
+
+### Three Patterns for Data Transfer
+
+#### 1. Traditional Inputs (Metadata)
+
+**Use For**: Small, structured, pre-processed data that must be explicitly included
+
+**Example**:
+```python
+crew.kickoff(inputs={
+    "niche": "expat relocation",
+    "solution_name": "ExpatEase",
+    "total_keywords": 150
+})
+```
+
+**Task Config**:
+```yaml
+description: >
+  Analyze {solution_name} in the {niche} niche.
+  Total keywords available: {total_keywords}
+```
+
+#### 2. Knowledge Sources (RAG)
+
+**Use For**: Large unstructured data (400+ items) requiring semantic search
+
+**Example**:
+```python
+from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
+
+content = format_social_discussions(discussions)  # 446 items
+knowledge = StringKnowledgeSource(
+    content=content,
+    chunk_size=2000,
+    chunk_overlap=300
+)
+
+crew = Crew(
+    agents=[analyst],
+    tasks=[extract_pain_points],
+    knowledge_sources=[knowledge],
+    embedder={"provider": "openai", "config": {"model": "text-embedding-3-small"}}
+)
+```
+
+**Task Config**:
+```yaml
+description: >
+  **Search Strategy:**
+  - Search for "frustrated", "difficult", "can't"
+  - Extract pain points with severity indicators
+```
+
+#### 3. Context Chaining (CrewAI Best Practice)
+
+**Use For**: Passing complete Pydantic objects between sequential tasks
+
+**Example**:
+```python
+@task
+def generate_data(self) -> Task:
+    return Task(
+        output_pydantic=MyDataModel,
+        # ...
+    )
+
+@task
+def enhance_data(self) -> Task:
+    return Task(
+        context=[self.generate_data()],  # Automatic Pydantic passing
+        output_pydantic=MyEnhancedDataModel,
+        # ...
+    )
+```
+
+**Benefits**:
+- Preserves ALL fields automatically (no manual formatting)
+- Type safety with Pydantic models
+- No JSON serialization/deserialization needed
+
+### Decision Framework
+
+| Data Type | Size | Structure | Pattern |
+|-----------|------|-----------|---------|
+| Metadata | Any | Structured | Traditional Inputs |
+| Social discussions | 400+ | Unstructured | Knowledge Sources (RAG) |
+| Agent outputs | Any | Pydantic | Context Chaining |
+| Keywords | 150-500 | Tabular | CSV in Traditional Inputs |
+| Competitors | 10-50 | Structured | Knowledge Sources |
+
+---
+
+## Multi-Agent Design Patterns
+
+### Crew Composition Strategy
+
+**Single-Agent Crews** (PainPointCrew):
+- Use for focused, specialized tasks
+- One expert perspective sufficient
+- Faster execution
+
+**Multi-Agent Crews** (UnifiedSolutionCrew):
+- Use for complex, multi-perspective tasks
+- Different agents for different subtasks
+- Agent specialization (ideation vs analysis vs selection)
+
+### Task Dependencies
+
+**Sequential Tasks** (UnifiedSolutionCrew):
+```python
+[Task 1: Ideation] → [Task 2: Competitive] → [Task 3: Refinement] → [Task 4: Selection]
+```
+
+**Benefits**:
+- Clear data flow
+- Context builds progressively
+- Easy to debug/checkpoint
+
+**Parallel Tasks** (avoided in this project):
+- Harder to manage state
+- Risk of data inconsistency
+- Mainly useful for independent analyses
+
+### Agent Specialization
+
+**Specialist Pattern**:
+```yaml
+# pain_point_agents.yaml
+pain_point_analyst:
+  role: Pain Point Analyst specializing in social media sentiment
+  goal: Extract validated user pain points from discussions
+  backstory: Expert at identifying patterns in unstructured feedback
+```
+
+**Benefits**:
+- Clear role definition
+- Focused expertise
+- Better prompt engineering
+
+---
+
+## Cost Optimization
+
+### Multi-Model Strategy
+
+Different models for different cognitive loads:
+
+| Use Case | Model | Rationale |
+|----------|-------|-----------|
+| Agent reasoning | gpt-4o | High quality needed |
+| Function calling | gpt-4o-mini | Simple tool use |
+| Content analysis | gpt-4o | Nuanced understanding |
+| Thread validation | gpt-4o-mini | Binary decision |
+| Solution ideation | gpt-4o | Creative thinking |
+
+**Configuration**:
+```bash
+OPENAI_MODEL_NAME=gpt-4o            # Default agent model
+FUNCTION_CALLING_LLM=gpt-4o-mini    # Tool calls
+CONTENT_ANALYSIS_LLM=gpt-4o         # Categorization
+THREAD_VALIDATION_LLM=gpt-4o-mini   # Relevance filter
+BRAINSTORM_LLM=gpt-4o               # Ideation
+```
+
+### Batching Strategies
+
+**DataForSEO Batching**:
+- API accepts up to 1000 keywords per request
+- Automatic batching in `DataForSEOExpandTool`
+- Reduces API calls from 150 → 1
+
+**Parallel Crew Execution**:
+```python
+with ThreadPoolExecutor(max_workers=2) as executor:  # Conservative for API limits
+    futures = [executor.submit(crew.kickoff, ...) for ...]
+```
+
+### Token Monitoring
+
+**ContentTokenMonitor**:
+- Tracks token usage across stages
+- Warns at configurable thresholds
+- Soft caps prevent runaway costs
+- No hard failures (monitoring only)
+
+**Configuration**:
+```bash
+TOKEN_MONITORING_ENABLED=true
+TOKEN_WARNING_THRESHOLD=200000      # Warning at 200K tokens
+TOKEN_SOFT_CAP_ENABLED=false        # Optional hard cap
+TOKEN_SOFT_CAP=400000               # If enabled
+```
+
+---
+
+## See Also
+
+- [CLAUDE.md](../CLAUDE.md) - Core patterns and best practices
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Bug fixes and debugging
+- [FEATURES.md](FEATURES.md) - Feature documentation
+- [PATTERNS.md](PATTERNS.md) - Code recipes and templates
+- [README.md](../README.md) - Project overview

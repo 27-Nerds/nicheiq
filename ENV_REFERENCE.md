@@ -86,6 +86,55 @@ OPENAI_MODEL_NAME=gpt-4o
 #   - gpt-3.5-turbo: Cheapest, lower quality
 ```
 
+### Specialized Model Configuration (Advanced)
+
+NicheIQ uses a multi-model strategy to optimize cost vs quality by assigning different models to different cognitive tasks. This can reduce costs by 60-90% while maintaining output quality.
+
+```bash
+# Default model for general agent reasoning (complex analysis, ideation)
+OPENAI_MODEL_NAME=gpt-4o
+
+# Tool Calling & Structured Outputs (60% cost reduction)
+FUNCTION_CALLING_LLM=gpt-4o-mini
+# Used for: Tool execution, structured data extraction
+# Why mini: Simple tool calls don't need advanced reasoning
+
+# Content Analysis & Categorization
+CONTENT_ANALYSIS_LLM=gpt-4o
+# Used for: Social media content categorization, sentiment analysis
+# Why gpt-4o: Nuanced understanding of discussions required
+
+# Thread Relevance Filtering (60% cost reduction)
+THREAD_VALIDATION_LLM=gpt-4o-mini
+# Used for: Binary decisions (relevant/irrelevant URLs)
+# Why mini: Simple yes/no decisions
+
+# Creative Ideation & Brainstorming
+BRAINSTORM_LLM=gpt-4o
+# Used for: Solution generation, strategic thinking
+# Why gpt-4o: Complex reasoning and creativity required
+
+# Keyword Relevance Validation (90% cost reduction)
+KEYWORD_VALIDATION_LLM=gpt-4.1-nano
+# Used for: Quick keyword relevance checks
+# Why nano: Ultra-fast, simple validation task
+
+# Keyword Research & Analysis (60% cost reduction)
+KEYWORD_RESEARCH_LLM=gpt-4o-mini
+# Used for: SEO keyword analysis and tier classification
+# Why mini: Structured analysis, good with metrics
+```
+
+**Cost Impact Example** (expat relocation niche):
+- All gpt-4o: ~$2.20 per run
+- Multi-model (default): ~$0.85 per run (60% savings)
+- Aggressive (more mini): ~$0.30 per run (85% savings)
+
+**When to Override**:
+- Budget-conscious: Use more `gpt-4o-mini` for non-critical tasks
+- Quality-focused: Use `gpt-4o` everywhere if output quality issues observed
+- Testing: Use `gpt-3.5-turbo` for rapid iteration (not recommended for production)
+
 ---
 
 ## Search Configuration
@@ -208,6 +257,157 @@ REPORTS_DIR=./output/reports
 # Specific directory for JSON reports
 # Can be same as OUTPUT_DIR
 ```
+
+---
+
+## Performance Optimization
+
+### Parallel Validation
+
+NicheIQ can process validation tasks in parallel for faster execution. This applies to:
+- **Keyword validation** (Stage 9.5c): Validating 150-500+ keywords for relevance
+- **Thread validation** (Stage 5): Validating Reddit/Twitter search results
+
+```bash
+# Enable/disable parallel validation (default: true)
+VALIDATION_PARALLEL_ENABLED=true
+
+# Keyword validation workers (default: 3)
+# Recommended: 3-5 for balance of speed and API limits
+# Stage 9.5c processes 150-500+ keywords
+KEYWORD_VALIDATION_MAX_WORKERS=3
+
+# Keywords per API call within each parallel worker (default: 50)
+# Recommended: 50-150
+# Lower values = more API calls but better LLM attention
+# Higher values = fewer API calls but may reduce accuracy
+KEYWORD_VALIDATION_BATCH_SIZE=50
+
+# Thread validation workers (default: 2)
+# Recommended: 2-3 for smaller batch volumes
+# Stage 5 processes 20-100 search results
+THREAD_VALIDATION_MAX_WORKERS=2
+```
+
+**Performance Impact:**
+- **3x faster validation** (45-90s → 15-30s savings per run)
+- **No cost increase** (same API calls, just concurrent)
+- **API rate limits respected** (conservative worker counts)
+
+**When to adjust:**
+- **Increase workers (4-5)**: OpenAI Tier 2+ accounts with higher rate limits
+- **Decrease workers (1-2)**: Tier 1 accounts or debugging
+- **Disable parallel (`VALIDATION_PARALLEL_ENABLED=false`)**: Troubleshooting or sequential debugging
+
+**Note:** Setting `max_workers=1` or disabling parallel validation will fall back to sequential processing with no functionality changes.
+
+---
+
+## Report Generation & Validation
+
+### Validation Thresholds
+
+These settings control the validation and scoring logic in Stage 10 (Final Report Generation). All thresholds are configurable to allow tuning for different market conditions or business requirements.
+
+#### Market Validation Levels
+
+```bash
+# Minimum search volume for STRONG market validation
+MARKET_VALIDATION_STRONG_VOLUME=100000
+# Default: 100,000
+# Higher values = more conservative validation
+
+# Minimum pain point count for STRONG market validation
+MARKET_VALIDATION_STRONG_PAIN_POINTS=10
+# Default: 10
+# Requires at least this many identified pain points
+
+# Minimum search volume for MODERATE market validation
+MARKET_VALIDATION_MODERATE_VOLUME=30000
+# Default: 30,000
+# Lower threshold than STRONG
+
+# Minimum pain point count for MODERATE market validation
+MARKET_VALIDATION_MODERATE_PAIN_POINTS=5
+# Default: 5
+# Lower threshold than STRONG
+```
+
+#### Go/No-Go Verdict Thresholds
+
+These control the automated go/no-go decision in the executive dashboard:
+
+```bash
+# Minimum average score (all 4 dimensions) for "Go" verdict
+VERDICT_GO_AVG_SCORE=0.75
+# Default: 0.75 (range: 0.0-1.0)
+# All scores: market_fit, competitive_advantage, technical_feasibility, seo_potential
+
+# Minimum individual score for "Go" verdict
+VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.7
+# Default: 0.7 (range: 0.0-1.0)
+# Applies to market_fit and technical_feasibility (most critical)
+
+# Minimum average score for "Conditional" verdict
+VERDICT_CONDITIONAL_AVG_SCORE=0.60
+# Default: 0.60 (range: 0.0-1.0)
+# Conditional = proceed with caution
+
+# Minimum individual score for "Conditional" verdict
+VERDICT_CONDITIONAL_MIN_INDIVIDUAL_SCORE=0.55
+# Default: 0.55 (range: 0.0-1.0)
+# Below this = "No-Go" verdict
+```
+
+**Understanding Verdicts:**
+- **Go**: All key metrics exceed thresholds - strong opportunity
+- **Conditional**: Promising but has weaknesses - proceed with risk mitigation
+- **No-Go**: Scores below thresholds - high risk or poor fit
+
+#### Pain Point & Competitive Thresholds
+
+```bash
+# Minimum severity score for "high priority" pain point classification
+PAIN_POINT_HIGH_PRIORITY_THRESHOLD=0.7
+# Default: 0.7 (range: 0.0-1.0)
+# Used in pain point analytics and prioritization
+
+# Maximum competitor count for "Low" competitive intensity
+COMPETITIVE_INTENSITY_LOW_THRESHOLD=3
+# Default: 3 competitors
+# < 3 competitors = Low competition
+
+# Minimum competitor count for "High" competitive intensity
+COMPETITIVE_INTENSITY_HIGH_THRESHOLD=8
+# Default: 8 competitors
+# >= 8 competitors = High competition
+# Between low and high = Medium competition
+```
+
+#### Report Formatting
+
+```bash
+# Maximum character length for pain point quotes in evidence appendix
+REPORT_MAX_QUOTE_LENGTH=200
+# Default: 200 characters
+# Quotes are truncated at word boundaries for readability
+```
+
+#### Score Defaults
+
+```bash
+# Default score when score data is missing (ScoreAccessor fallback)
+SCORE_ACCESSOR_DEFAULT_FALLBACK=0.5
+# Default: 0.5 (range: 0.0-1.0)
+# A warning is logged whenever this default is used
+# Lower = more conservative, higher = more optimistic
+```
+
+**When to adjust these settings:**
+- **Market validation**: Adjust volume thresholds based on niche size (B2B vs B2C)
+- **Verdict thresholds**: More conservative (0.80+) for high-risk markets, less conservative (0.65) for exploratory research
+- **Competitive thresholds**: Adjust based on industry norms (SaaS vs physical products)
+- **Default fallback**: Set to 0.0 for conservative estimates, 0.7 for optimistic
 
 ---
 

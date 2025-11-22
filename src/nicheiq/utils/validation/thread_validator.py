@@ -4,6 +4,7 @@ Thread relevance validation using LLM.
 Validates search result threads for relevance to a niche.
 """
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -140,3 +141,142 @@ class ThreadRelevanceValidator:
                 results.extend([(result, True) for result in batch])
 
         return results
+
+    def validate_batch_parallel(
+        self,
+        niche_description: str,
+        search_results: list['SearchResultItem'],
+        batch_size: int = 10,
+        max_workers: int | None = None
+    ) -> list[tuple['SearchResultItem', bool]]:
+        """
+        Validate multiple search results in parallel using ThreadPoolExecutor.
+
+        Splits search results into chunks and processes them concurrently.
+        Falls back to sequential processing if parallel validation is disabled
+        or max_workers=1.
+
+        Args:
+            niche_description: Description of the niche to validate against
+            search_results: List of SearchResultItem objects to validate
+            batch_size: Number of results to validate per API call within each worker
+            max_workers: Number of parallel workers (default: from settings)
+
+        Returns:
+            List of (SearchResultItem, is_relevant) tuples
+
+        Example:
+            >>> validator = ThreadRelevanceValidator()
+            >>> results = validator.validate_batch_parallel(
+            ...     niche_description="tools for indie hackers",
+            ...     search_results=[...],
+            ...     max_workers=2
+            ... )
+        """
+        # Use settings default if not specified
+        if max_workers is None:
+            max_workers = settings.thread_validation_max_workers
+
+        # Check if parallel validation is disabled
+        if not settings.validation_parallel_enabled or max_workers == 1:
+            logger.debug("[Parallel Thread Validation] Disabled or max_workers=1 - using sequential")
+            return self.validate_batch(
+                niche_description=niche_description,
+                search_results=search_results,
+                batch_size=batch_size
+            )
+
+        # Guard against empty input
+        if not search_results:
+            logger.debug("[Parallel Thread Validation] Empty search results")
+            return []
+
+        # Calculate chunk size: distribute search results evenly across workers
+        chunk_size = max(len(search_results) // max_workers, batch_size)
+        chunks = [search_results[i:i + chunk_size] for i in range(0, len(search_results), chunk_size)]
+
+        logger.info(
+            f"[Parallel Thread Validation] Processing {len(search_results)} threads with {max_workers} workers "
+            f"({len(chunks)} chunks, ~{chunk_size} threads/chunk)"
+        )
+
+        all_results = []
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all chunks
+            future_to_chunk = {
+                executor.submit(
+                    self._validate_chunk_worker,
+                    chunk,
+                    chunk_num,
+                    niche_description,
+                    batch_size
+                ): chunk_num
+                for chunk_num, chunk in enumerate(chunks, 1)
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_chunk):
+                chunk_num = future_to_chunk[future]
+                try:
+                    results = future.result(timeout=300)  # 5 minute timeout per chunk
+                    all_results.extend(results)
+                    logger.info(
+                        f"[Parallel Thread Validation] Chunk {chunk_num}/{len(chunks)} complete "
+                        f"({len(results)} results)"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"[Parallel Thread Validation] Chunk {chunk_num}/{len(chunks)} failed: {e}"
+                    )
+                    # Continue processing other chunks
+
+        # Log summary
+        relevant_count = sum(1 for _, is_relevant in all_results if is_relevant)
+        logger.info(
+            f"[Parallel Thread Validation Complete] {relevant_count}/{len(all_results)} threads relevant. "
+            f"Coverage: {len(all_results)}/{len(search_results)} "
+            f"({len(all_results)/len(search_results)*100:.1f}%)"
+        )
+
+        return all_results
+
+    def _validate_chunk_worker(
+        self,
+        chunk: list['SearchResultItem'],
+        chunk_num: int,
+        niche_description: str,
+        batch_size: int
+    ) -> list[tuple['SearchResultItem', bool]]:
+        """
+        Worker method for parallel validation of a search result chunk.
+
+        Called by validate_batch_parallel via ThreadPoolExecutor. Processes one chunk
+        using the existing validate_batch logic.
+
+        Args:
+            chunk: Subset of search results to validate
+            chunk_num: Chunk identifier for logging
+            niche_description: Niche description
+            batch_size: Threads per API call
+
+        Returns:
+            List of (SearchResultItem, is_relevant) tuples
+        """
+        logger.debug(f"[Thread Worker {chunk_num}] Starting validation of {len(chunk)} threads")
+
+        try:
+            # Use existing validate_batch logic
+            results = self.validate_batch(
+                niche_description=niche_description,
+                search_results=chunk,
+                batch_size=batch_size
+            )
+
+            logger.debug(f"[Thread Worker {chunk_num}] Complete - validated {len(results)} threads")
+            return results
+
+        except Exception as e:
+            logger.error(f"[Thread Worker {chunk_num}] Failed: {e}")
+            # Fail-open: return all threads as relevant on error
+            return [(result, True) for result in chunk]

@@ -444,6 +444,18 @@ class StateAccessor:
             None
         )
 
+    def get_competitor_count(self) -> int:
+        """
+        Get number of competitors for the selected solution.
+
+        Returns:
+            Count of competitors from selected landscape, or 0 if not found
+        """
+        landscape = self.get_selected_landscape()
+        if landscape and landscape.competitors:
+            return len(landscape.competitors)
+        return 0
+
     # ==================================================================================
     # Utility Methods
     # ==================================================================================
@@ -470,3 +482,159 @@ class StateAccessor:
             'social': self.state.social_content,
         }
         return mapping.get(stage_name) is not None
+
+    # ==================================================================================
+    # Keyword Validation Access Methods
+    # ==================================================================================
+
+    def get_keyword_validation_overview(self) -> str | None:
+        """
+        Generate keyword validation methodology overview and findings.
+
+        Handles legacy checkpoint recovery and generates overview text.
+
+        Returns:
+            Formatted markdown overview or None if no validation data
+        """
+        import json
+        from loguru import logger
+        from .model_helpers import safe_get_attr
+
+        # Defensive: Handle malformed keyword_validation_results from old checkpoints
+        if (self.state.keyword_validation_results and
+            isinstance(self.state.keyword_validation_results, dict) and
+            "data" in self.state.keyword_validation_results):
+            logger.warning("Detected legacy checkpoint format for keyword_validation_results - attempting recovery")
+            try:
+                self.state.keyword_validation_results = json.loads(
+                    self.state.keyword_validation_results["data"]
+                )
+            except Exception as e:
+                logger.error(f"Failed to recover keyword_validation_results: {e}")
+                self.state.keyword_validation_results = None
+
+        if not self.state.keyword_validation_results:
+            return None
+
+        validation_count = len(self.state.keyword_validation_results)
+        overview_parts = [
+            f"## Keyword Validation Methodology\n\n"
+            f"Validated top {validation_count} solution candidates using hybrid seed generation "
+            f"(10 programmatic + 10 LLM seeds per solution) with DataForSEO keyword data API.\n\n"
+            f"## Key Findings by Solution\n\n"
+        ]
+
+        for result in self.state.keyword_validation_results:
+            sol_name = safe_get_attr(result, 'solution_name')
+            validated = safe_get_attr(result, 'validated_count')
+            total_vol = safe_get_attr(result, 'total_volume')
+            demand_score = safe_get_attr(result, 'keyword_demand_score')
+            demand_signal = safe_get_attr(result, 'demand_signal')
+
+            overview_parts.append(
+                f"**{sol_name}**: {validated}/20 keywords validated, "
+                f"{total_vol:,} total monthly volume, "
+                f"demand score: {demand_score:.2f} ({demand_signal})\n"
+            )
+
+        # Helper for accessing attributes from models or dicts
+        def get_score(r):
+            return r.get('keyword_demand_score') if isinstance(r, dict) else r.keyword_demand_score
+
+        overview_parts.append(
+            f"\n## Cross-Solution Comparison\n\n"
+            f"Keyword demand scores ranged from "
+            f"{min(get_score(r) for r in self.state.keyword_validation_results):.2f} to "
+            f"{max(get_score(r) for r in self.state.keyword_validation_results):.2f}. "
+            f"Validation enabled re-ranking based on actual search demand rather than architectural estimates."
+        )
+
+        return "\n".join(overview_parts)
+
+    def get_keyword_validation_comparison(self) -> str | None:
+        """
+        Generate keyword validation comparison table.
+
+        Returns:
+            Formatted markdown table or None if no validation data
+        """
+        from .model_helpers import safe_get_attr
+
+        if not self.state.keyword_validation_results:
+            return None
+
+        comparison_rows = [
+            "| Solution | Total Keywords | Tier 0 Premium | Tier 1 Quick Wins | Total Volume | Avg Competition | SEO Difficulty |",
+            "|----------|---------------|----------------|-------------------|--------------|-----------------|----------------|"
+        ]
+
+        for result in self.state.keyword_validation_results:
+            sol_name = safe_get_attr(result, 'solution_name')
+            validated = safe_get_attr(result, 'validated_count')
+            total_vol = safe_get_attr(result, 'total_volume')
+            avg_comp = safe_get_attr(result, 'avg_competition')
+
+            # Tier 0 and Tier 1 count estimation from top keywords
+            top_kws = safe_get_attr(result, 'top_keywords')
+            tier0_count = len([k for k in top_kws if k.get("competition", 100) < 20 and k.get("search_volume", 0) > 1000])
+            tier1_count = len([k for k in top_kws if 20 <= k.get("competition", 100) < 40])
+
+            # SEO difficulty assessment
+            if avg_comp < 40:
+                seo_difficulty = "Low"
+            elif avg_comp < 60:
+                seo_difficulty = "Medium"
+            else:
+                seo_difficulty = "High"
+
+            comparison_rows.append(
+                f"| {sol_name} | {validated} | {tier0_count} | {tier1_count} | {total_vol:,} | {avg_comp:.1f}% | {seo_difficulty} |"
+            )
+
+        return "\n".join(comparison_rows)
+
+    def get_content_strategy_preview(self) -> str | None:
+        """
+        Generate content strategy preview from refinement data.
+
+        Returns:
+            Formatted markdown preview or None if no refinement data
+        """
+        from .model_helpers import safe_get_attr
+
+        if not self.state.solution_refinement:
+            return None
+
+        refinement = self.state.solution_refinement
+        preview_parts = ["## Programmatic Content Opportunities\n\n"]
+
+        # Geographic opportunities
+        geo_priorities = safe_get_attr(refinement, 'geographic_priorities')
+        if geo_priorities:
+            preview_parts.append(
+                f"Geographic expansion priorities identified: {', '.join(geo_priorities[:3])}. "
+                f"Create localized landing pages for each target market.\n\n"
+            )
+
+        # Feature priorities for content clusters
+        feature_priorities = safe_get_attr(refinement, 'feature_priorities')
+        if feature_priorities:
+            top_features = feature_priorities[:3]
+            preview_parts.append(
+                "## Quick Win Content Recommendations\n\n"
+                "Top content clusters based on keyword support:\n"
+            )
+            for fp in top_features:
+                # Handle feature priority as dict or object
+                if isinstance(fp, dict):
+                    preview_parts.append(f"- **{fp['feature_name']}**: {fp['keyword_support']} keywords, priority {fp['priority']}/10\n")
+                else:
+                    preview_parts.append(f"- **{fp.feature_name}**: {fp.keyword_support} keywords, priority {fp.priority}/10\n")
+
+        # Strategic insights
+        strategic_insights = safe_get_attr(refinement, 'strategic_insights')
+        content_strategy = safe_get_attr(refinement, 'content_strategy_preview')
+        if strategic_insights:
+            preview_parts.append(f"\n{content_strategy}")
+
+        return "".join(preview_parts)
