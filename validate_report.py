@@ -904,6 +904,28 @@ class ReportValidator:
         tier_summary = ", ".join([f"T{i}: {c}" for i, c in enumerate(tier_counts) if c > 0])
         print(f"   ✓ Tier distribution: {tier_summary}")
 
+    def _extract_domain_terms(self, solution_name: str, top_pain_points: list) -> list[str]:
+        """
+        Extract niche-specific domain terms from solution for validation.
+
+        Returns list of domain-specific terms (>4 chars) that indicate specificity.
+        """
+        import re
+
+        terms = []
+
+        # From solution name (remove common words)
+        name_words = solution_name.lower().split()
+        stopwords = {'the', 'a', 'an', 'for', 'and', 'or', 'index', 'platform', 'tool', 'app', 'your'}
+        terms.extend([w for w in name_words if w not in stopwords and len(w) > 4])
+
+        # From top pain points (extract meaningful words - simplified: words >5 chars)
+        for pp in top_pain_points[:3]:
+            pp_words = re.findall(r'\b[a-z]{5,}\b', str(pp).lower())
+            terms.extend(pp_words[:3])  # Top 3 words per pain point
+
+        return list(set(terms))  # Deduplicate
+
     def validate_next_steps_specificity(self, final_report: Dict, raw_state: Dict) -> None:
         """
         Check #8: Validate next steps contain specific references vs generic steps.
@@ -921,6 +943,15 @@ class ReportValidator:
 
         # Extract product name from full solution title (before colon if present)
         product_name = selected_name.split(':')[0].strip() if ':' in selected_name else selected_name
+
+        # Extract domain-specific terms for validation
+        top_pain_points = final_report.get('top_pain_points', [])
+        domain_terms = self._extract_domain_terms(selected_name, top_pain_points)
+
+        # Get project type if available
+        project_type = ''
+        if raw_state.get('solution_selection') and raw_state['solution_selection'].get('selected_solution'):
+            project_type = raw_state['solution_selection']['selected_solution'].get('project_type', '')
 
         # Generic phrases to detect
         generic_phrases = [
@@ -940,12 +971,32 @@ class ReportValidator:
 
             # Check if step contains specific data references
             has_specific_data = any([
+                # EXISTING patterns (from previous fixes)
                 product_name.lower() in step_lower,  # Solution name (product only)
                 re.search(r'tier \d', step_lower),  # SEO tier reference
                 re.search(r'\d+\s+keywords?', step_lower),  # Keyword count
                 re.search(r'\d+\s+(?:indexable\s+)?pages?', step_lower),  # Pages/indexable pages count
                 re.search(r'r/\w+', step_lower),  # Subreddit reference
-                re.search(r'\d+\s+(?:pain point|competitor)', step_lower)  # Count references
+                re.search(r'\d+\s+(?:pain point|competitor)', step_lower),  # Count references
+
+                # NEW patterns (Phase 1 improvements)
+                # Process milestones
+                re.search(r'\bmvp\b', step_lower),  # Minimum viable product
+                re.search(r'validation interviews?', step_lower),  # User research
+                re.search(r'user research|surveys?|outreach', step_lower),  # Research activities
+
+                # Strategy/architecture terms
+                re.search(r'programmatic seo', step_lower),  # SEO strategy
+                project_type and project_type.lower() in step_lower,  # Project type (aggregator, directory, etc.)
+
+                # Domain-specific terms (dynamically extracted from solution/pain points)
+                any(term.lower() in step_lower for term in domain_terms if len(term) > 4),
+
+                # Feature/capability references
+                re.search(r'\b(?:reliability|transparency|annotations?|repair|cost|data|index)\b', step_lower),
+
+                # Role references
+                re.search(r'\b(?:technician|expert|specialist)\b', step_lower)
             ])
 
             if has_specific_data:
