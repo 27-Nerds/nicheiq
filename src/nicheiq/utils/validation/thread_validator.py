@@ -5,6 +5,7 @@ Validates search result threads for relevance to a niche.
 """
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -41,10 +42,49 @@ class ThreadRelevanceValidator:
 
     Model can be configured via THREAD_VALIDATION_LLM in .env
     (defaults to gpt-4o-mini for cost efficiency).
+
+    Features LRU caching to avoid re-validating identical threads.
     """
 
     def __init__(self):
         pass  # No longer need to initialize LLM instance
+
+    @staticmethod
+    @lru_cache(maxsize=1000)
+    def _cached_validation(
+        niche_description: str,
+        threads_text: str,
+        batch_size: int
+    ) -> BatchValidationResponse:
+        """
+        Cached LLM validation call to avoid duplicate API requests.
+
+        Uses LRU cache with maxsize=1000 to cache validation results.
+        Cache key is (niche_description, threads_text, batch_size).
+
+        Args:
+            niche_description: Description of the niche
+            threads_text: Formatted thread text for validation
+            batch_size: Number of threads in batch
+
+        Returns:
+            BatchValidationResponse from LLM
+        """
+        prompt = get_prompt(
+            "thread_validation",
+            niche_description=niche_description,
+            threads_text=threads_text,
+            batch_size=batch_size
+        )
+
+        # Use centralized LLM service for structured output
+        return LLMService.invoke_structured(
+            prompt=prompt,
+            output_model=BatchValidationResponse,
+            temperature=0,  # Deterministic for consistency
+            timeout=120,
+            model_name=settings.thread_validation_llm
+        )
 
     def validate_batch(
         self,
@@ -75,21 +115,12 @@ class ThreadRelevanceValidator:
                 for idx, result in enumerate(batch)
             ])
 
-            prompt = get_prompt(
-                "thread_validation",
-                niche_description=niche_description,
-                threads_text=threads_text,
-                batch_size=len(batch)
-            )
-
             try:
-                # Use centralized LLM service for structured output
-                response = LLMService.invoke_structured(
-                    prompt=prompt,
-                    output_model=BatchValidationResponse,
-                    temperature=0,  # Deterministic for consistency
-                    timeout=120,
-                    model_name=settings.thread_validation_llm
+                # Use cached validation call to avoid duplicate API requests
+                response = self._cached_validation(
+                    niche_description=niche_description,
+                    threads_text=threads_text,
+                    batch_size=len(batch)
                 )
 
                 # Track which threads were validated

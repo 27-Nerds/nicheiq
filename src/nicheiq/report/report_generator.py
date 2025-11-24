@@ -273,6 +273,18 @@ class ReportGenerator:
         acquisition_strategy_summary = ReportTemplates.acquisition_strategy(selected_solution_details)
         estimated_cac_breakdown = ReportTemplates.cac_breakdown(selected_solution_details)
 
+        # Extract pricing strategy (Stage 8.7)
+        pricing_strategy = self.state.pricing_strategy if hasattr(self.state, 'pricing_strategy') else None
+
+        # Extract audience mapping (Stage 6.5)
+        audience_mapping = self.state.audience_mapping if hasattr(self.state, 'audience_mapping') else None
+
+        # Extract market sizing (Stage 8.6)
+        market_sizing = self.state.market_sizing if hasattr(self.state, 'market_sizing') else None
+
+        # Extract trend longevity (Stage 9.2)
+        trend_longevity = self.state.trend_longevity if hasattr(self.state, 'trend_longevity') else None
+
         # Generate market_validation based on actual metrics
         total_volume = self.state.keyword_validation.overall_market_size if self.state.keyword_validation else 0
         pain_point_count = len(self.state.pain_point_analysis.pain_points) if self.state.pain_point_analysis else 0
@@ -352,9 +364,21 @@ class ReportGenerator:
             solution_implementation_overview=solution_implementation_overview,
             mvp_scope_definition=mvp_scope_definition,
 
+            # Pricing strategy (Stage 8.7)
+            pricing_strategy=pricing_strategy,
+
+            # Market sizing (Stage 8.6)
+            market_sizing=market_sizing,
+
+            # Trend longevity (Stage 9.2)
+            trend_longevity=trend_longevity,
+
             # Pain points (ALL pain points, no limit)
             top_pain_points=top_pain_points if top_pain_points else ["No pain points identified"],
             pain_points_summary=pain_points_summary,
+
+            # Audience mapping (Stage 6.5)
+            audience_mapping=audience_mapping,
 
             # Solutions (ALL solutions, selected first)
             recommended_solutions=recommended_solutions if recommended_solutions else ["No solutions generated"],

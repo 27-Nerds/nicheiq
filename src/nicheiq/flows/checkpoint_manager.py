@@ -16,6 +16,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..models.research_state import ResearchState
+from ..utils.validation import CheckpointValidator
 
 
 class CheckpointManager:
@@ -48,6 +49,7 @@ class CheckpointManager:
         self.state = state
         self.allowed_project_types = allowed_project_types
         self.checkpoint_folder: Path | None = None
+        self.validator = CheckpointValidator()
 
     def _get_niche_slug(self) -> str:
         """Generate filesystem-safe slug from niche description."""
@@ -99,7 +101,13 @@ class CheckpointManager:
                     # List of primitives/dicts - already JSON-serializable
                     data_json = stage_data
             elif isinstance(stage_data, dict):
-                data_json = stage_data
+                # Dict - need to serialize any Pydantic models in values
+                data_json = {}
+                for key, value in stage_data.items():
+                    if hasattr(value, 'model_dump'):
+                        data_json[key] = value.model_dump(mode='json')
+                    else:
+                        data_json[key] = value
             else:
                 data_json = {"data": str(stage_data)}
 
@@ -186,22 +194,11 @@ class CheckpointManager:
             True if successful, False otherwise
         """
         try:
-            # Load metadata
+            # Load and validate metadata using validator
             metadata_file = folder_path / "metadata.json"
-            if not metadata_file.exists():
-                logger.error(f"Checkpoint metadata not found: {metadata_file}")
+            is_valid, metadata = self.validator.validate_metadata_file(metadata_file)
+            if not is_valid:
                 return False
-
-            # Validate file is not empty (corrupted)
-            if metadata_file.stat().st_size == 0:
-                logger.error(
-                    f"Checkpoint metadata is empty (corrupted): {metadata_file}. "
-                    f"Delete checkpoint folder to start fresh or reconstruct metadata manually."
-                )
-                return False
-
-            with open(metadata_file, encoding="utf-8") as f:
-                metadata = json.load(f)
 
             # Validate niche matches
             if metadata["niche_description"] != self.niche_description:
@@ -235,15 +232,19 @@ class CheckpointManager:
             "stage_1_niche_context.json": "niche_context",
             "stage_5_social_content.json": "social_content",
             "stage_6_pain_points.json": "pain_point_analysis",
+            "stage_6_5_audience_mapping.json": "audience_mapping",  # Stage 6.5 audience segmentation
             # Task-level checkpoints for Stages 7-8.75 unified pipeline
             "stage_7_1_ideation.json": "idea_generation",
             "stage_7_2_competitive.json": "competitive_analysis",
-            # stage_7_3_refinement.json contains CompetitiveEnhancements (merged into idea_generation)
+            # NOTE: stage_7_3_refinement.json (CompetitiveEnhancements) is saved for debugging/audit
+            # but NOT loaded on resume - data is merged into idea_generation by unified_solution_crew
             # Legacy stage files (for backward compatibility)
             "stage_7_solutions.json": "idea_generation",
             "stage_8_competitive.json": "competitive_analysis",
             "stage_8_5_refinement.json": "idea_generation",  # Stage 8.5 updates idea_generation with competitive insights
             "stage_8_75_solution_selection.json": "solution_selection",
+            "stage_8_7_pricing_validation.json": "pricing_strategy",  # Stage 8.7 pricing strategy validation
+            "stage_8_6_market_sizing.json": "market_sizing",  # Stage 8.6 market sizing and validation
             "stage_8_8_keyword_validation.json": "keyword_validation_results",  # Stage 8.8 keyword demand validation
             "stage_8_85_solution_refinement.json": "solution_refinement",  # Stage 8.85 strategic refinements
             # Stage 9 sub-phase checkpoints (enables partial resume)
@@ -251,6 +252,7 @@ class CheckpointManager:
             "stage_9_5b_bulk_validation.json": "stage_9_5b_validation_results",
             "stage_9_5c_enrichment.json": "stage_9_5c_enriched_keywords",
             "stage_9_seo_strategy.json": "seo_strategy_report",
+            "stage_9_2_trend_longevity.json": "trend_longevity",  # Stage 9.2 trend longevity analysis
             "stage_9_5_seo_refinement.json": "seo_enrichment",  # Stage 9.5 SEO score refinement
             "stage_9_75_data_sources.json": "data_source_research",
         }
@@ -259,6 +261,11 @@ class CheckpointManager:
         for stage_file, state_attr in stage_mapping.items():
             file_path = folder_path / stage_file
             if file_path.exists():
+                # Validate stage file before loading
+                if not self.validator.validate_stage_file(file_path):
+                    logger.warning(f"Skipping corrupted stage file: {stage_file}")
+                    continue
+
                 with open(file_path, encoding="utf-8") as f:
                     stage_data = json.load(f)
 

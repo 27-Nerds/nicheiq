@@ -197,8 +197,8 @@ class Settings(BaseSettings):
         description="Number of keywords per API call within each parallel worker (Stage 9.5c). Recommended: 50-150"
     )
     thread_validation_max_workers: int = Field(
-        default=2,
-        description="Maximum parallel workers for thread validation (Stage 5). Recommended: 2-3 for smaller batch volumes"
+        default=4,
+        description="Maximum parallel workers for thread validation (Stage 5). Recommended: 3-5 for balanced throughput"
     )
 
     # Token Monitoring Configuration (Soft Caps for Cost Control)
@@ -257,6 +257,26 @@ class Settings(BaseSettings):
         description="LLM temperature for keyword research crew (0.7 recommended for creative tasks with constraints)"
     )
 
+    # Stage 9.5c: Keyword Enrichment Quality Gates
+    keyword_enrichment_min_coverage: float = Field(
+        default=0.30,
+        ge=0.0,
+        le=1.0,
+        description="Minimum coverage rate for keyword enrichment (validated/total). Default 0.30 = warn if <30% pass validation"
+    )
+    keyword_enrichment_target_coverage: float = Field(
+        default=0.60,
+        ge=0.0,
+        le=1.0,
+        description="Target coverage rate for keyword enrichment. Default 0.60 = celebrate if ≥60% pass validation"
+    )
+    keyword_tiering_min_coverage: float = Field(
+        default=0.30,
+        ge=0.0,
+        le=1.0,
+        description="Minimum tiering coverage (tiered_keywords/enriched_keywords). Warn if below this threshold"
+    )
+
     @field_validator('keyword_validation_top_pain_points', 'keyword_validation_top_competitors')
     @classmethod
     def validate_positive_count(cls, v):
@@ -271,6 +291,14 @@ class Settings(BaseSettings):
         """Validate that temperature is in valid range for LLMs."""
         if not 0.0 <= v <= 2.0:
             raise ValueError("Temperature must be between 0.0 and 2.0")
+        return v
+
+    @field_validator('keyword_enrichment_min_coverage', 'keyword_enrichment_target_coverage', 'keyword_tiering_min_coverage')
+    @classmethod
+    def validate_coverage_percentage(cls, v):
+        """Validate coverage percentages are between 0 and 1."""
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("Coverage must be between 0.0 and 1.0")
         return v
 
     # Stage 8.85: Solution Refinement Configuration

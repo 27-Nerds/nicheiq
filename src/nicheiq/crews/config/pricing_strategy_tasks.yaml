@@ -1,0 +1,172 @@
+pricing_strategy_analysis:
+  description: >
+    **CRITICAL RULES:**
+    1. MANDATORY: All pricing fields (starter_price, pro_price, arpu, ltv) must be specific dollar amounts, NOT ranges
+    2. MANDATORY: LTV/CAC ratio must be ≥2:1 (viable business model requirement)
+    3. MANDATORY: Pricing must NOT exceed pain point WTP scores
+    4. MANDATORY: Include ALL fields in PricingStrategyResult - no null values except enterprise_price and free_tier_features
+
+
+    Analyze competitor pricing, pain point willingness-to-pay scores, and solution positioning
+    to determine the optimal pricing strategy for **{solution_name}** in the {niche_description} market.
+
+
+    **SOLUTION CONTEXT:**
+
+    **Solution:** {solution_name}
+
+    **Description:** {solution_description}
+
+    **Features:**
+    {solution_features}
+
+    **Market Fit Score:** {market_fit_score}/1.0
+    **Differentiation Score:** {differentiation_score}/1.0
+
+
+    **COMPETITOR PRICING BENCHMARKS:**
+    {competitor_pricing}
+
+
+    **PAIN POINT WILLINGNESS-TO-PAY (WTP) SCORES:**
+    {wtp_scores}
+
+
+    **YOUR TASK:**
+
+    Conduct comprehensive pricing analysis following these steps:
+
+    ### 1. Competitive Pricing Analysis
+    - Analyze competitor pricing tiers and models
+    - Identify median pricing for similar solutions
+    - Determine pricing distribution (low/mid/high segments)
+    - Identify pricing gaps and opportunities
+
+    ### 2. Value-Based Pricing Calculation
+    - Map solution features to pain points addressed
+    - Correlate pain point severity and WTP scores to pricing
+    - Calculate value-weighted pricing recommendation
+    - Justify pricing based on differentiation score
+
+    ### 3. Pricing Model Recommendation
+    - Evaluate best pricing model: Freemium, Pure Subscription, Hybrid, or One-time
+    - Consider market standards and customer acquisition strategy
+    - Recommend tier structure (Free/Starter/Pro/Enterprise)
+    - Define features per tier to drive upgrades
+
+    ### 4. Unit Economics Validation
+    - Estimate ARPU (Average Revenue Per User) based on tier mix
+    - Calculate LTV estimate (12-30 month retention scenarios)
+    - Estimate organic CAC from market_fit_score (higher fit = lower CAC)
+    - Validate LTV/CAC ratio is healthy (target 3:1 minimum)
+
+    ### 5. Competitive Positioning
+    - Position pricing relative to competitors (premium/value/discount)
+    - Quantify value proposition delta (e.g., "15% more features at 20% lower price")
+    - Determine confidence level (High/Medium/Low) based on data quality
+
+    ### 6. WTP Validation
+    - Validate recommended pricing against pain point WTP scores
+    - Ensure pricing aligns with customer willingness to pay
+    - Flag any discrepancies between market pricing and WTP data
+
+
+    **PRICING GUIDELINES:**
+
+    **Starter Tier:**
+    - Price 15-25% below market median for customer acquisition
+    - Include core features that solve primary pain points
+    - Designed for individual users or small teams
+
+    **Pro Tier:**
+    - Price at or slightly below market median
+    - Include advanced features and integrations
+    - Target professional users and growing teams
+    - Should represent 40-60% of revenue mix
+
+    **Enterprise Tier (if applicable):**
+    - Premium pricing (2-4x Pro tier)
+    - Includes white-label, custom integrations, SLA
+    - For large organizations with specific requirements
+
+    **ARPU Estimation:**
+    - Assume 60% Starter, 35% Pro, 5% Enterprise mix for new SaaS
+    - Calculate: (Starter × 0.6) + (Pro × 0.35) + (Enterprise × 0.05)
+
+    **LTV Calculation:**
+    - Conservative: 12 months retention × ARPU
+    - Optimistic: 30 months retention × ARPU
+    - Express as range: "$XXX - $XXX"
+
+    **CAC Estimation:**
+    - Organic/SEO-focused: $15-30 (market_fit_score > 0.75)
+    - Mixed: $30-60 (market_fit_score 0.60-0.75)
+    - Paid-heavy: $60-120 (market_fit_score < 0.60)
+
+    **LTV/CAC Ratio:**
+    - Excellent: 10:1 or higher
+    - Good: 3:1 to 10:1
+    - Acceptable: 2:1 to 3:1
+    - Poor: Below 2:1 (reconsider pricing or acquisition strategy)
+
+
+    **EXPECTED OUTPUT FORMAT:**
+
+    You MUST provide ALL required fields in the PricingStrategyResult model:
+
+    - **solution_name:** {solution_name}
+    - **recommended_starter_price:** e.g., "$19/month"
+    - **recommended_pro_price:** e.g., "$49/month"
+    - **recommended_enterprise_price:** e.g., "$199/month" or null if not applicable
+    - **pricing_model:** "Freemium", "Subscription", "Hybrid", or "One-time"
+    - **pricing_rationale:** 2-3 sentences explaining why this pricing strategy
+    - **free_tier_features:** Array of features (if freemium) or null
+    - **starter_tier_features:** Array of 3-5 core features
+    - **pro_tier_features:** Array of 5-8 advanced features
+    - **estimated_arpu:** e.g., "$32/month"
+    - **estimated_ltv:** e.g., "$384 - $960 (12-30mo retention)"
+    - **ltv_to_cac_ratio:** e.g., "12:1 to 48:1"
+    - **price_vs_competitors:** e.g., "10% below median"
+    - **value_proposition_delta:** e.g., "15% more features at 20% lower price"
+    - **pricing_confidence:** "High", "Medium", or "Low"
+    - **wtp_validation:** 1-2 sentences on how WTP scores support this pricing
+    - **market_segment_pricing:** Dict of segment-specific pricing or null
+
+
+    **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
+
+    - Competitor pricing data shows <3 competitors OR all prices marked "unknown"
+    - Pain point WTP scores show all WTP values <0.3 (indicates very low monetization potential)
+    - Solution has market_fit_score <0.40 AND differentiation_score <0.40 (unpriceable solution)
+
+    If any stop condition is met, return pricing_confidence="Low" and flag the issue in pricing_rationale.
+
+
+    **CRITICAL REQUIREMENTS:**
+
+    1. **Be specific with numbers:** Use exact dollar amounts, not ranges in price fields
+    2. **Justify with data:** Reference competitor pricing and WTP scores in rationale
+    3. **Ensure viability:** LTV/CAC ratio must be at least 2:1, preferably 3:1+
+    4. **Consider market standards:** Don't deviate drastically from competitor norms without strong justification
+    5. **Validate against WTP:** Ensure pricing doesn't exceed customer willingness to pay
+    6. **Feature tier logic:** Higher tiers should include ALL lower tier features plus additional ones
+
+
+    Provide your comprehensive pricing strategy analysis in the exact PricingStrategyResult format.
+
+
+    **CRITICAL RULES (REMINDER - RECENCY BIAS):**
+    - All prices must be exact dollar amounts (e.g., "$19/month" NOT "$15-25/month")
+    - LTV/CAC ratio ≥2:1 is MANDATORY
+    - Pricing must align with WTP scores (never exceed customer willingness-to-pay)
+    - Include ALL required fields in PricingStrategyResult
+
+  expected_output: >
+    A complete PricingStrategyResult object with all required fields populated:
+    - Recommended pricing tiers (Starter, Pro, Enterprise)
+    - Pricing model (Freemium/Subscription/Hybrid/One-time)
+    - Feature allocation across tiers
+    - Unit economics (ARPU, LTV, LTV/CAC ratio)
+    - Competitive positioning analysis
+    - WTP validation
+    - High confidence pricing strategy backed by competitor benchmarks and pain point data

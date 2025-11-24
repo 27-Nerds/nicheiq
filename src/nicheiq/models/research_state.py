@@ -277,10 +277,34 @@ class FinalReport(BaseModel):
         description="Detailed MVP scope: must-have features, post-MVP features, success criteria (markdown format with sections)"
     )
 
+    # Pricing Strategy (Stage 8.7)
+    pricing_strategy: Optional['PricingStrategyResult'] = Field(
+        default=None,
+        description="Validated pricing strategy with recommended tiers, ARPU, LTV estimates, competitive positioning, and WTP validation from Stage 8.7"
+    )
+
+    # Market Sizing & Validation (Stage 8.6)
+    market_sizing: Optional['MarketSizingResult'] = Field(
+        default=None,
+        description="Market sizing analysis with TAM/SAM/SOM estimates, validation signals, growth potential, and viability assessment from Stage 8.6"
+    )
+
+    # Trend Longevity Analysis (Stage 9.2)
+    trend_longevity: Optional['TrendLongevityResult'] = Field(
+        default=None,
+        description="Trend longevity and market momentum analysis from Stage 9.2"
+    )
+
     # Problem Section
     top_pain_points: list[str] = Field(..., description="Top identified pain points")
     pain_points_summary: str = Field(
         ..., description="Summary of pain point analysis with severity and WTP insights"
+    )
+
+    # Audience & Market Intelligence (Stage 6.5)
+    audience_mapping: Optional['AudienceMappingResult'] = Field(
+        default=None,
+        description="Audience segmentation analysis with target segments, influencers, common vocabulary, and recommended marketing channels from Stage 6.5"
     )
 
     # Solution Section
@@ -415,6 +439,220 @@ class FinalReport(BaseModel):
     )
     pdf_path: Optional[str] = Field(default=None, description="Path to generated PDF report")
 
+
+# Stage 8.7: Pricing Strategy Validation
+class PricingStrategyResult(BaseModel):
+    """Pricing strategy validation result from Stage 8.7."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Name of the solution being priced")
+
+    # Recommended Pricing
+    recommended_starter_price: str = Field(..., description="Starter tier price (e.g., '$19/month')")
+    recommended_pro_price: str = Field(..., description="Pro tier price (e.g., '$49/month')")
+    recommended_enterprise_price: Optional[str] = Field(
+        default=None, description="Enterprise tier price if applicable"
+    )
+
+    pricing_model: str = Field(
+        ..., description="Pricing model: 'Freemium', 'Subscription', 'Hybrid', 'One-time'"
+    )
+    pricing_rationale: str = Field(..., description="Why this pricing strategy was chosen")
+
+    # Feature Tiers
+    free_tier_features: Optional[list[str]] = Field(
+        default=None, description="Features included in free tier (if freemium)"
+    )
+    starter_tier_features: list[str] = Field(..., description="Features in starter tier")
+    pro_tier_features: list[str] = Field(..., description="Features in pro tier")
+
+    # Economics
+    estimated_arpu: str = Field(..., description="Estimated average revenue per user (e.g., '$32/month')")
+    estimated_ltv: str = Field(
+        ..., description="Estimated lifetime value range (e.g., '$384 - $960 (12-30mo retention)')"
+    )
+    ltv_to_cac_ratio: str = Field(
+        ..., description="LTV to CAC ratio estimate (e.g., '12:1 to 48:1')"
+    )
+
+    # Competitive Positioning
+    price_vs_competitors: str = Field(
+        ..., description="Pricing relative to competitors (e.g., '10% below median')"
+    )
+    value_proposition_delta: str = Field(
+        ..., description="Value proposition compared to competitors (e.g., '15% more features at 20% lower price')"
+    )
+    pricing_confidence: str = Field(
+        ..., description="Confidence level: 'High', 'Medium', 'Low'"
+    )
+
+    # Validation
+    wtp_validation: str = Field(
+        ..., description="How pain point willingness-to-pay scores support this pricing"
+    )
+    market_segment_pricing: Optional[dict[str, str]] = Field(
+        default=None, description="Different pricing for different market segments if applicable"
+    )
+
+
+# Stage 6.5: Audience & Influence Mapping
+class AudienceSegment(BaseModel):
+    """Individual audience segment with characteristics."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    segment_name: str = Field(..., description="Name of audience segment (e.g., 'Solo Founders', 'Marketing Managers')")
+    size_estimate: str = Field(..., description="Estimated size: 'Large', 'Medium', 'Small'")
+    pain_point_alignment: list[str] = Field(..., description="Top 3 pain points this segment experiences")
+    motivation_drivers: list[str] = Field(..., description="Key motivations and goals (3-5 items)")
+    expertise_level: str = Field(..., description="Technical/domain expertise: 'Beginner', 'Intermediate', 'Advanced'")
+    budget_sensitivity: str = Field(..., description="Price sensitivity: 'High', 'Medium', 'Low'")
+    discovery_channels: list[str] = Field(..., description="Where they discover solutions (Reddit, Twitter, Google, communities)")
+    influencers_followed: Optional[list[str]] = Field(default=None, description="Key influencers or communities they follow")
+
+
+class InfluencerProfile(BaseModel):
+    """Influencer or community leader in the niche."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = Field(..., description="Username or community name")
+    platform: str = Field(..., description="Platform: 'Reddit', 'Twitter', 'YouTube', etc.")
+    follower_estimate: Optional[str] = Field(default=None, description="Follower/subscriber count estimate")
+    relevance_score: float = Field(..., description="Relevance to niche (0-1 scale)")
+    content_focus: str = Field(..., description="Primary content focus/topics")
+    engagement_level: str = Field(..., description="'High', 'Medium', 'Low' based on discussion activity")
+    outreach_priority: str = Field(..., description="'High', 'Medium', 'Low' for partnership/outreach")
+
+
+class AudienceMappingResult(BaseModel):
+    """Complete audience mapping analysis result from Stage 6.5."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Audience Segments
+    audience_segments: list[AudienceSegment] = Field(..., description="3-5 distinct audience segments identified")
+    primary_target_segment: str = Field(..., description="Recommended primary target segment name")
+    segment_prioritization_rationale: str = Field(..., description="Why this segment should be targeted first (2-3 sentences)")
+
+    # Influencers & Communities
+    key_influencers: list[InfluencerProfile] = Field(..., description="Top 5-10 influencers/communities in the niche")
+    community_hubs: list[str] = Field(..., description="Key online communities/forums (subreddits, Discord servers, forums)")
+
+    # Content & Messaging Insights
+    common_vocabulary: list[str] = Field(..., description="10-15 terms/phrases frequently used by audience")
+    content_preferences: str = Field(..., description="Preferred content types and formats (e.g., tutorials, comparisons, case studies)")
+    messaging_frameworks: list[str] = Field(..., description="3-5 messaging angles that resonate (e.g., 'save time', 'increase revenue')")
+
+    # Competitive Intelligence
+    tools_currently_used: list[str] = Field(..., description="Current tools/solutions audience mentions using")
+    frustrations_with_existing: list[str] = Field(..., description="Top frustrations with current solutions")
+
+    # Acquisition Strategy Implications
+    recommended_channels: list[str] = Field(..., description="Top 3-5 marketing channels for this audience")
+    content_strategy_direction: str = Field(..., description="High-level content strategy recommendation (2-3 sentences)")
+    early_adopter_tactics: Optional[str] = Field(default=None, description="Tactics to acquire first 100 users")
+
+
+# Stage 8.6: Market Sizing & Validation
+class MarketSegmentSizing(BaseModel):
+    """Market size breakdown for a specific segment."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    segment_name: str = Field(..., description="Market segment name (e.g., 'Small SaaS Companies', 'Solo Developers')")
+    tam_estimate: str = Field(..., description="Total Addressable Market size (e.g., '$500M', '2M users')")
+    sam_estimate: str = Field(..., description="Serviceable Available Market size (e.g., '$150M', '600K users')")
+    som_estimate: str = Field(..., description="Serviceable Obtainable Market (Year 1-3) (e.g., '$5M', '20K users')")
+    sizing_methodology: str = Field(..., description="How this estimate was calculated (top-down, bottom-up, keyword-based)")
+    confidence_level: str = Field(..., description="Estimate confidence: 'High', 'Medium', 'Low'")
+
+
+class MarketSizingResult(BaseModel):
+    """Complete market sizing and validation analysis from Stage 8.6."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Overall Market Sizing (TAM/SAM/SOM)
+    total_addressable_market: str = Field(..., description="TAM estimate across all segments (e.g., '$2.5B', '10M users')")
+    serviceable_available_market: str = Field(..., description="SAM estimate for solution's reach (e.g., '$800M', '3M users')")
+    serviceable_obtainable_market_y1: str = Field(..., description="SOM Year 1 realistic capture (e.g., '$2M', '8K users')")
+    serviceable_obtainable_market_y3: str = Field(..., description="SOM Year 3 growth target (e.g., '$15M', '50K users')")
+
+    # Market Sizing Methodology
+    primary_methodology: str = Field(..., description="Primary calculation method: 'Top-Down', 'Bottom-Up', 'Keyword-Based', 'Hybrid'")
+    methodology_explanation: str = Field(..., description="2-3 sentences explaining how market size was calculated")
+    data_sources_used: list[str] = Field(..., description="Data sources: keyword volumes, industry reports, pain point frequency, competitor analysis")
+
+    # Segment Breakdown (optional granular view)
+    segment_sizing: Optional[list[MarketSegmentSizing]] = Field(
+        default=None,
+        description="Granular TAM/SAM/SOM breakdown by market segment if applicable"
+    )
+
+    # Market Validation Signals
+    keyword_demand_signal: str = Field(..., description="Total monthly search volume across all keywords (e.g., '2.5M searches/month')")
+    pain_point_frequency: str = Field(..., description="Discussion frequency of pain points (e.g., '5,000+ mentions across 200 threads')")
+    competitor_market_presence: str = Field(..., description="Number of active competitors indicating market validation (e.g., '15+ active SaaS competitors')")
+
+    # Growth Potential
+    market_growth_rate: Optional[str] = Field(default=None, description="Estimated annual market growth rate (e.g., '15-20% CAGR')")
+    growth_drivers: list[str] = Field(..., description="3-5 factors driving market growth (trends, technology adoption, regulatory changes)")
+
+    # Market Risk Assessment
+    market_saturation_level: str = Field(..., description="'Low' (<5 competitors), 'Medium' (5-15), 'High' (15+)")
+    market_timing_assessment: str = Field(..., description="'Early' (emerging), 'Growth' (expanding), 'Mature' (saturated)")
+    risk_factors: list[str] = Field(..., description="3-5 key market risks (saturation, regulatory, technology shifts)")
+
+    # Viability Conclusion
+    market_viability_verdict: str = Field(..., description="'Strong', 'Moderate', 'Weak' - overall market attractiveness")
+    viability_rationale: str = Field(..., description="2-3 sentences justifying the viability verdict with specific metrics")
+    recommended_entry_strategy: str = Field(..., description="Market entry recommendation: 'Aggressive Growth', 'Measured Expansion', 'Niche Focus', 'Reconsider'")
+
+
+class TrendLongevityResult(BaseModel):
+    """Trend longevity and market momentum analysis from Stage 9.2."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Overall Trend Assessment
+    trend_direction: str = Field(..., description="'Growing', 'Stable', 'Declining' - overall market trend direction")
+    trend_confidence: str = Field(..., description="'High', 'Medium', 'Low' - confidence in trend assessment based on data quality")
+    momentum_score: float = Field(..., description="0.0-1.0 score indicating market momentum (0=declining, 0.5=stable, 1.0=strong growth)")
+
+    # Keyword Trend Analysis
+    keyword_volume_trend: str = Field(..., description="Search volume trend: 'Increasing', 'Stable', 'Decreasing'")
+    volume_growth_rate: Optional[str] = Field(default=None, description="Estimated YoY growth rate (e.g., '+25% YoY', '-10% YoY', 'Stable')")
+    trend_duration: Optional[str] = Field(default=None, description="How long trend has been active (e.g., '2+ years growth', '6 months spike', 'Emerging')")
+
+    # Discussion Momentum (Social Signals)
+    discussion_frequency_trend: str = Field(..., description="Social discussion trend: 'Increasing', 'Stable', 'Decreasing'")
+    discussion_recency: str = Field(..., description="'Recent' (<6 months), 'Moderate' (6-12 months), 'Dated' (12+ months)")
+    community_growth_indicators: list[str] = Field(..., description="3-5 signals of community growth or decline (new subreddits, forum activity, etc.)")
+
+    # Competitive Momentum
+    new_entrants_trend: str = Field(..., description="'Increasing' (many new competitors), 'Stable', 'Consolidating' (exits/acquisitions)")
+    competitive_activity_level: str = Field(..., description="'High' (active launches), 'Moderate', 'Low' (stagnant market)")
+
+    # Seasonality & Patterns
+    seasonal_pattern: Optional[str] = Field(default=None, description="Seasonal behavior: 'Strong Seasonal', 'Mild Seasonal', 'Year-Round', 'Unknown'")
+    peak_periods: Optional[list[str]] = Field(default=None, description="Peak months/quarters if seasonal (e.g., ['Q4', 'November-December'])")
+
+    # Longevity Assessment
+    market_maturity: str = Field(..., description="'Emerging' (<2 years), 'Growth' (2-5 years), 'Mature' (5+ years)")
+    longevity_verdict: str = Field(..., description="'Sustainable', 'Risky', 'Fad' - long-term viability assessment")
+    longevity_rationale: str = Field(..., description="2-3 sentences explaining longevity verdict with specific trend data")
+
+    # Risk Factors
+    trend_reversal_risks: list[str] = Field(..., description="3-5 factors that could reverse positive trends (tech shifts, regulation, etc.)")
+    timing_recommendation: str = Field(..., description="'Enter Now', 'Monitor & Wait', 'Missed Window' - timing advice based on trends")
+
+    # Supporting Data Summary
+    data_sources_analyzed: list[str] = Field(..., description="Data sources used: keyword trends, discussion activity, competitive intel")
+    analysis_timeframe: str = Field(..., description="Timeframe analyzed (e.g., '12 months', '6 months', '24 months')")
+
+
 class ResearchState(BaseModel):
     """Complete state for the research flow."""
 
@@ -447,9 +685,33 @@ class ResearchState(BaseModel):
 
     # Stage 4-5: Content Collection
     social_content: Optional[SocialContentCollection] = None
+    social_content_quality_tier: Optional[str] = Field(
+        default=None,
+        description="Quality tier from Stage 5 validation: EXCELLENT, GOOD, MINIMAL, or INSUFFICIENT"
+    )
+    social_content_metrics: Optional[dict[str, int]] = Field(
+        default=None,
+        description="Social content collection metrics (sources, interactions, engagement)"
+    )
 
     # Stage 6: Pain Point Analysis
     pain_point_analysis: Optional[PainPointAnalysisResult] = None
+    pain_point_quality_tier: Optional[str] = Field(
+        default=None,
+        description="Quality tier from Stage 6 validation: GOLD, SILVER, BRONZE, or INSUFFICIENT"
+    )
+    pain_point_confidence_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score (0-1) for pain point analysis quality"
+    )
+
+    # Stage 6.5: Audience & Influence Mapping
+    audience_mapping: Optional[AudienceMappingResult] = Field(
+        default=None,
+        description="Audience segmentation and influencer mapping from Stage 6.5"
+    )
 
     # Stage 7: Idea Generation
     idea_generation: Optional[IdeaGenerationResult] = None
@@ -470,6 +732,24 @@ class ResearchState(BaseModel):
     solution_refinement: Optional[SolutionRefinement] = Field(
         default=None,
         description="Strategic refinement recommendations from Stage 8.85"
+    )
+
+    # Stage 8.7: Pricing Strategy Validation
+    pricing_strategy: Optional[PricingStrategyResult] = Field(
+        default=None,
+        description="Pricing strategy validation result from Stage 8.7"
+    )
+
+    # Stage 8.6: Market Sizing & Validation
+    market_sizing: Optional[MarketSizingResult] = Field(
+        default=None,
+        description="Market sizing analysis with TAM/SAM/SOM estimates and viability assessment from Stage 8.6"
+    )
+
+    # Stage 9.2: Trend Longevity Analysis
+    trend_longevity: Optional[TrendLongevityResult] = Field(
+        default=None,
+        description="Trend longevity and market momentum analysis from Stage 9.2"
     )
 
     # Stage 9: Seed Keywords

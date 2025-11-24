@@ -1,0 +1,187 @@
+audience_mapping_analysis:
+  description: >
+    **CRITICAL RULES:**
+    1. MANDATORY: Identify 3-5 DISTINCT audience segments (not generic demographics)
+    2. MANDATORY: Each segment must have different pain points, budget sensitivity, or discovery channels
+    3. MANDATORY: Include 5-10 actual influencers/communities with specific names (not generic categories)
+    4. MANDATORY: Extract 10-15 terms/phrases from ACTUAL user discussions (not assumptions)
+
+
+    Analyze social media discussions and pain point data to identify distinct audience segments,
+    key influencers, common vocabulary, and optimal marketing channels for the {niche_description} market.
+
+
+    **DATA SOURCES:**
+
+    **Reddit Insights:**
+    {reddit_insights}
+
+    **Twitter Insights:**
+    {twitter_insights}
+
+    **Pain Points Context:**
+    {pain_points_context}
+
+    **Total Discussions Analyzed:** {total_discussions}
+
+
+    **YOUR TASK:**
+
+    Conduct comprehensive audience segmentation and influence mapping following these steps:
+
+    ### 1. Audience Segmentation Analysis
+    - Analyze discussion patterns to identify 3-5 distinct user groups
+    - For EACH segment, define:
+      - Segment name (specific, not generic - e.g., "Technical Solo Founders" not "Entrepreneurs")
+      - Size estimate (Large/Medium/Small based on discussion frequency)
+      - Top 3 pain points this segment experiences (reference pain_points_context)
+      - 3-5 key motivation drivers (what they want to achieve)
+      - Expertise level (Beginner/Intermediate/Advanced)
+      - Budget sensitivity (High/Medium/Low - infer from discussions)
+      - Discovery channels (where they find solutions - Reddit, Twitter, Google, forums, etc.)
+      - Optional: Influencers or communities they follow
+
+    - Ensure segments are DIFFERENTIATED (different pain points OR budgets OR channels)
+    - Avoid generic segments like "small business owners" - be specific
+
+    ### 2. Influencer & Community Mapping
+    - Identify 5-10 key influencers, thought leaders, or community hubs:
+      - Use ACTUAL usernames, subreddit names, Twitter accounts mentioned in discussions
+      - Platform (Reddit, Twitter, YouTube, blog, podcast)
+      - Follower estimate (if available from context)
+      - Relevance score (0-1) based on how often they're mentioned/engaged
+      - Content focus (what topics they cover)
+      - Engagement level (High/Medium/Low - based on discussion activity)
+      - Outreach priority (High/Medium/Low for partnership potential)
+
+    - List 5-10 community hubs (subreddits, Discord servers, forums, Slack groups mentioned)
+
+    ### 3. Vocabulary & Messaging Analysis
+    - Extract 10-15 terms/phrases that the audience ACTUALLY uses (from discussions)
+    - Identify preferred content types (tutorials, case studies, comparisons, tool reviews)
+    - Define 3-5 messaging frameworks that resonate (e.g., "save time", "automate X", "avoid Y")
+    - Base this on ACTUAL language patterns, not assumptions
+
+    ### 4. Competitive Intelligence Extraction
+    - List 5-10 tools/solutions users mention they currently use
+    - Identify top 5 frustrations with existing solutions (from discussions)
+
+    ### 5. Acquisition Strategy Implications
+    - Recommend top 3-5 marketing channels for this audience (based on discovery patterns)
+    - Provide high-level content strategy direction (2-3 sentences)
+    - Optional: Suggest tactics to acquire first 100 users
+
+
+    **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
+
+    - Total discussions analyzed <20 (insufficient data for segmentation)
+    - All discussions from single subreddit/source (too narrow for diverse segments)
+    - No influencers or communities mentioned in discussions (no social proof channels)
+
+    If any stop condition is met:
+    - Return low-confidence output with segment_prioritization_rationale: "Low confidence - [specify which condition triggered]"
+    - Provide best-effort segmentation based on available data
+    - Flag limitations explicitly in content_strategy_direction
+
+
+    **SEGMENTATION GUIDELINES:**
+
+    **Segment Differentiation:**
+    - Good: "Solo Technical Founders (low budget, high expertise, seek open-source)"
+    - Bad: "Entrepreneurs" (too generic, no differentiation)
+
+    **Segment Size Estimation:**
+    - Large: 40%+ of discussions, dominant group
+    - Medium: 20-40% of discussions
+    - Small: 5-20% of discussions (niche but valuable)
+
+    **Influencer Prioritization:**
+    - High: Frequently mentioned, high engagement, niche-specific
+    - Medium: Occasionally mentioned, moderate reach
+    - Low: Mentioned once, broader audience
+
+    **Primary Target Selection:**
+    - Prioritize segments with:
+      1. High willingness to pay (Medium/Low budget sensitivity)
+      2. Clear discovery channels (easy to reach)
+      3. Strong pain point alignment
+      4. Medium-Large size (viable market)
+
+
+    **EXPECTED OUTPUT FORMAT:**
+
+    You MUST provide ALL required fields in the AudienceMappingResult model:
+
+    - **audience_segments:** List of 3-5 AudienceSegment objects, each with:
+      - segment_name, size_estimate, pain_point_alignment (3 items)
+      - motivation_drivers (3-5 items), expertise_level, budget_sensitivity
+      - discovery_channels (list), influencers_followed (optional list)
+
+    - **primary_target_segment:** Name of recommended primary segment to target first
+
+    - **segment_prioritization_rationale:** 2-3 sentences explaining why this segment is the best starting point
+
+    - **key_influencers:** List of 5-10 InfluencerProfile objects with:
+      - name (ACTUAL username/account from discussions)
+      - platform, follower_estimate (format: "10K", "100K", "1M" OR null if unknown)
+      - relevance_score (0.0-1.0 with 2 decimal places, e.g., 0.85)
+      - content_focus, engagement_level, outreach_priority
+
+    - **community_hubs:** List of 5-10 community names (e.g., "r/SaaS", "Indie Hackers", "Startup School Discord")
+
+    **Measurement Formats:**
+    - **size_estimate:** "Large" (40%+ discussions), "Medium" (20-40%), "Small" (5-20%)
+    - **follower_estimate:** "10K", "100K", "1M" format OR null if not mentioned
+    - **relevance_score:** 0.0-1.0 scale with 2 decimal places (e.g., 0.85, not 0.8 or 0.850)
+    - **expertise_level:** "Beginner", "Intermediate", or "Advanced" only
+    - **budget_sensitivity:** "High", "Medium", or "Low" only
+    - **engagement_level:** "High", "Medium", or "Low" only
+    - **outreach_priority:** "High", "Medium", or "Low" only
+
+    - **common_vocabulary:** List of 10-15 actual terms/phrases from discussions
+
+    - **content_preferences:** Preferred content types and formats (1-2 sentences)
+
+    - **messaging_frameworks:** List of 3-5 messaging angles (e.g., "10x faster", "zero setup", "privacy-first")
+
+    - **tools_currently_used:** List of 5-10 existing tools mentioned
+
+    - **frustrations_with_existing:** List of top 5 frustrations
+
+    - **recommended_channels:** List of top 3-5 marketing channels
+
+    - **content_strategy_direction:** High-level strategy (2-3 sentences)
+
+    - **early_adopter_tactics:** Optional tactics for first 100 users
+
+
+    **CRITICAL REQUIREMENTS:**
+
+    1. **Use ACTUAL data:** All vocabulary, influencers, and tools must come from discussions (not assumptions)
+    2. **Differentiate segments:** Each segment must have distinct characteristics (not just size variations)
+    3. **Be specific:** Avoid generic terms like "entrepreneurs", "small business", "users"
+    4. **Validate with data:** Reference discussion counts, mention frequency, engagement patterns
+    5. **Prioritize actionability:** Focus on segments that can be reached and acquired
+
+
+    Provide your comprehensive audience mapping analysis in the exact AudienceMappingResult format.
+
+
+    **CRITICAL RULES (REMINDER - RECENCY BIAS):**
+    - 3-5 distinct segments with different pain points, budgets, OR discovery channels
+    - 5-10 actual influencers/communities with specific names (not categories)
+    - 10-15 terms/phrases from ACTUAL discussions (not assumed language)
+    - Primary target must balance size, pain alignment, budget, and reachability
+
+  expected_output: >
+    A complete AudienceMappingResult object with all required fields populated:
+    - 3-5 distinct audience segments with full characteristics
+    - Primary target segment with prioritization rationale
+    - 5-10 key influencers with platform and engagement data
+    - 5-10 community hubs identified
+    - 10-15 actual terms from user vocabulary
+    - Content preferences and messaging frameworks
+    - Tools used and frustrations identified
+    - Top 3-5 recommended marketing channels
+    - Actionable content strategy and early adopter tactics
+    - High confidence segmentation backed by discussion analysis

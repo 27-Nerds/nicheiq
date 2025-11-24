@@ -2,13 +2,16 @@
 Pytest configuration and shared fixtures.
 """
 
+import json
 import pytest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import Mock, patch
 from pydantic import BaseModel, Field
 
 from nicheiq.models.pain_point import PainPoint, PainPointAnalysisResult, OpportunityLevel
 from nicheiq.models.social_content import RedditPost, RedditComment, TwitterTweet, TwitterThread
+from nicheiq.models.research_state import ResearchState
 
 
 @pytest.fixture
@@ -159,6 +162,116 @@ def mock_llm_settings():
         mock.thread_validation_llm = "gpt-4o-mini"
         mock.keyword_validation_llm = "gpt-4o-mini"
         yield mock
+
+
+# Checkpoint Testing Fixtures
+@pytest.fixture
+def checkpoint_temp_dir(tmp_path):
+    """Create temporary checkpoint directory structure."""
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    return checkpoint_dir
+
+
+@pytest.fixture
+def valid_checkpoint_metadata():
+    """Fixture providing valid checkpoint metadata."""
+    return {
+        "niche_description": "AI-powered productivity tools for remote teams",
+        "allowed_project_types": None,
+        "started_at": "2025-01-15T10:30:00",
+        "current_stage": 6,
+        "completed_stages": ["stage_5_social_content", "stage_6_pain_points"],
+        "errors": [],
+        "last_checkpoint_at": "2025-01-15T11:00:00",
+        "environment": {"python_version": "3.11.0"}
+    }
+
+
+@pytest.fixture
+def invalid_metadata_missing_fields():
+    """Checkpoint metadata missing required fields."""
+    return {
+        "niche_description": "Test niche",
+        # Missing: started_at, current_stage
+    }
+
+
+@pytest.fixture
+def invalid_metadata_wrong_types():
+    """Checkpoint metadata with incorrect field types."""
+    return {
+        "niche_description": 12345,  # Should be string
+        "started_at": "2025-01-15T10:30:00",
+        "current_stage": "invalid",  # Should be numeric
+    }
+
+
+@pytest.fixture
+def invalid_metadata_out_of_range():
+    """Checkpoint metadata with out-of-range stage."""
+    return {
+        "niche_description": "Test niche",
+        "started_at": "2025-01-15T10:30:00",
+        "current_stage": 99,  # Out of valid range (1-10)
+    }
+
+
+@pytest.fixture
+def valid_stage_data_dict():
+    """Valid stage data as dictionary."""
+    return {
+        "pain_points": [
+            {
+                "title": "Manual data entry",
+                "description": "Time-consuming process",
+                "mention_count": 25,
+                "severity_score": 0.85
+            }
+        ],
+        "total_mentions": 25
+    }
+
+
+@pytest.fixture
+def valid_stage_data_list():
+    """Valid stage data as list."""
+    return [
+        {"keyword": "productivity tool", "volume": 5000, "difficulty": 0.45},
+        {"keyword": "remote collaboration", "volume": 3200, "difficulty": 0.55}
+    ]
+
+
+@pytest.fixture
+def sample_research_state():
+    """Fixture providing a sample ResearchState."""
+    return ResearchState()
+
+
+@pytest.fixture
+def populated_checkpoint_folder(checkpoint_temp_dir, valid_checkpoint_metadata, valid_stage_data_dict):
+    """Create a fully populated checkpoint folder."""
+    niche_slug = "ai_powered_productivity_tools"
+    checkpoint_folder = checkpoint_temp_dir / f"checkpoint_{niche_slug}_20250115_103000"
+    checkpoint_folder.mkdir()
+
+    # Write metadata
+    metadata_file = checkpoint_folder / "metadata.json"
+    with open(metadata_file, "w", encoding="utf-8") as f:
+        json.dump(valid_checkpoint_metadata, f, indent=2)
+
+    # Write stage files
+    stage_files = {
+        "stage_5_social_content.json": {"posts": [], "tweets": []},
+        "stage_6_pain_points.json": valid_stage_data_dict
+    }
+
+    for filename, data in stage_files.items():
+        stage_file = checkpoint_folder / filename
+        with open(stage_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
+    return checkpoint_folder
 
 
 # Pytest configuration

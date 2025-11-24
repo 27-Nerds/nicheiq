@@ -1,0 +1,266 @@
+market_sizing_analysis:
+  description: >
+    **CRITICAL RULES:**
+    1. MANDATORY: Calculate TAM/SAM/SOM estimates (not TBD or placeholder values)
+    2. MANDATORY: TAM > SAM > SOM (Year 1) - validate hierarchy (3-2-1 Rule: TAM >3x SAM, SAM >2x SOM Y1)
+    3. MANDATORY: Explain methodology (keyword-based, top-down, bottom-up, or hybrid)
+    4. MANDATORY: Assess market viability as "Strong", "Moderate", or "Weak" with specific justification
+
+
+    Calculate TAM/SAM/SOM market size estimates and validate market attractiveness for the
+    {solution_name} solution in the {niche_description} market.
+
+
+    **SOLUTION CONTEXT:**
+
+    **Solution Name:** {solution_name}
+
+    **Solution Description:**
+    {solution_description}
+
+    **Solution Details:**
+    {solution_context}
+
+
+    **DATA SOURCES FOR MARKET SIZING:**
+
+    **Keyword Demand Signals (Search Volume = Market Demand):**
+    {keyword_demand_signals}
+
+    **Total Monthly Search Volume:** {total_keyword_volume:,} searches
+    **Validated Keywords:** {validated_keyword_count}
+
+    **Pain Point Signals (Discussion Frequency = Problem Validation):**
+    {pain_point_signals}
+
+    **Total Pain Points Identified:** {pain_point_count}
+
+    **Competitive Landscape (Market Validation & Saturation):**
+    {competitive_signals}
+
+    **Total Competitors Identified:** {competitor_count}
+
+
+    **YOUR TASK:**
+
+    Conduct comprehensive market sizing and validation analysis following these steps:
+
+    ### 1. Market Sizing Calculation (TAM/SAM/SOM)
+
+    Calculate market size estimates using the Triangle Validation Method:
+
+    **A. Keyword-Based Sizing (Primary Method for Digital Markets):**
+    - Use total monthly search volume ({total_keyword_volume}) as demand signal
+    - Estimate market value: Monthly volume × avg customer value × 12 months
+    - Provide TAM estimate with calculation shown
+
+    **B. Top-Down Analysis (Secondary Validation):**
+    - If industry data available from competitive analysis, use total market size
+    - Segment by geography, company size, or persona
+    - Provide SAM estimate based on addressable segment
+
+    **C. Bottom-Up Validation (Sanity Check):**
+    - Validate using pain point frequency ({pain_point_count} pain points identified)
+    - Cross-check against competitor count ({competitor_count} competitors)
+    - Adjust estimates if discussion volume doesn't support keyword projections
+
+    **D. Calculate TAM/SAM/SOM:**
+    - **TAM (Total Addressable Market):** Maximum market size across all segments
+      - Format: "$XXM" (millions) or "$X.XB" (billions) for values under/over $1B
+      - Examples: "$150M", "$2.5B", "10M users"
+      - Calculation: "2.5M monthly searches × $60 avg LTV × 12 = $1.8B TAM"
+
+    - **SAM (Serviceable Available Market):** Portion your solution can serve (typically 30-60% of TAM)
+      - Consider: Geographic limitations, solution capabilities, target personas
+      - Format: "$XXM" with % of TAM shown
+      - Examples: "$630M", "$50M", "3M users"
+      - Calculation: "$1.8B TAM × 35% (small businesses only) = $630M SAM"
+
+    - **SOM Year 1 (Serviceable Obtainable Market):** Realistic Year 1 capture (0.5-2% of SAM)
+      - Consider: First-year constraints, customer acquisition channels, competition
+      - Format: "$XXM" or "$XXK" for smaller values
+      - Examples: "$6.3M", "$500K", "8K users"
+      - Calculation: "$630M SAM × 1% (conservative first year) = $6.3M SOM Y1"
+
+    - **SOM Year 3 (Growth Target):** Growth trajectory with PMF (5-10% of SAM)
+      - Consider: Product maturity, market penetration, scaling capabilities
+      - Format: "$XXM" for growth values
+      - Examples: "$50M", "$15M", "50K users"
+      - Calculation: "$630M SAM × 8% (scaling phase) = $50M SOM Y3"
+
+    **CRITICAL**: Ensure TAM > SAM > SOM (Y1) hierarchy. Apply "3-2-1 Rule": TAM should be >3x SAM, SAM should be >2x SOM Y1.
+
+    ### 2. Methodology Documentation
+
+    - **primary_methodology:** Choose one: "Top-Down", "Bottom-Up", "Keyword-Based", "Hybrid"
+    - **methodology_explanation:** 2-3 sentences explaining calculation approach and why it's appropriate
+    - **data_sources_used:** List all sources: keyword volumes, industry reports, pain point frequency, competitor counts
+
+    ### 3. Market Validation Signals
+
+    Extract validation signals from provided data:
+
+    - **keyword_demand_signal:** Total monthly search volume from {total_keyword_volume}
+      - Format: "2.5M searches/month" or "250K searches/month"
+      - Interpretation: >100K = strong demand, 20K-100K = moderate, <20K = weak
+
+    - **pain_point_frequency:** Discussion volume from {pain_point_count} pain points
+      - Format: "5,000+ mentions across 200 threads" or "500 mentions in 50 discussions"
+      - Interpretation: >1000 mentions = strong validation, 200-1000 = moderate, <200 = weak
+
+    - **competitor_market_presence:** Competitor count from {competitor_count}
+      - Format: "15+ active SaaS competitors" or "5 established players"
+      - Interpretation: Market validation indicator
+
+    ### 4. Growth Potential Assessment
+
+    - **market_growth_rate:** Estimate annual growth (Optional - use null if no data)
+      - Format: "15-20% CAGR" or "8-12% annually"
+      - Base on: Keyword trend data, competitive analysis insights, industry context
+
+    - **growth_drivers:** List 3-5 factors driving market expansion
+      - Examples: "Remote work adoption", "AI/ML technology maturity", "Privacy regulations (GDPR)"
+      - Use ACTUAL signals from keyword trends or pain point themes
+
+    ### 5. Market Risk Assessment
+
+    - **market_saturation_level:** Classify based on competitor count:
+      - "Low" (<5 competitors): Blue ocean opportunity
+      - "Medium" (5-15 competitors): Validated but competitive
+      - "High" (15+ competitors): Saturated, differentiation critical
+
+    - **market_timing_assessment:** Assess market maturity:
+      - "Early" (emerging): <3 years old, high risk/reward
+      - "Growth" (expanding): 3-7 years, optimal entry
+      - "Mature" (saturated): 7+ years, innovation required
+
+    - **risk_factors:** List 3-5 key market risks
+      - Examples: "High saturation (20+ competitors)", "Regulatory uncertainty", "Technology shift to AI-native"
+      - Use ACTUAL risks from competitive analysis or pain point patterns
+
+    ### 6. Viability Conclusion & Entry Strategy
+
+    Apply the "STRIVE Viability Rule" - count how many criteria are met (4+ = Strong, 2-3 = Moderate, 0-1 = Weak):
+
+    ✅ **Searchable** (100K+ monthly keyword volume)
+    ✅ **Talked About** (50+ pain point mentions)
+    ✅ **Rivalry** (5-15 competitors, not 0 or 20+)
+    ✅ **Income Potential** (SAM >$50M)
+    ✅ **Velocity** (10%+ annual growth rate)
+    ✅ **Enterable** (Clear acquisition channels)
+
+    - **market_viability_verdict:** "Strong", "Moderate", or "Weak"
+      - Strong: 4+ STRIVE criteria met, TAM >$500M, SAM >$100M, low-medium saturation
+      - Moderate: 2-3 STRIVE criteria met, SAM $20-100M, medium saturation
+      - Weak: 0-1 STRIVE criteria met, SAM <$20M, or high saturation (15+ competitors)
+
+    - **viability_rationale:** 2-3 sentences justifying verdict with SPECIFIC metrics
+      - Example: "Strong viability: 2.5M monthly searches (Searchable), $630M SAM (Income Potential), 12 competitors (Rivalry), 15% CAGR (Velocity). Market is in growth phase with clear demand signals and room for differentiation."
+
+    - **recommended_entry_strategy:** Choose one:
+      - "Aggressive Growth" (Strong market, low saturation, clear demand)
+      - "Measured Expansion" (Moderate market, medium saturation, validate PMF first)
+      - "Niche Focus" (Saturated market, differentiate with micro-niche)
+      - "Reconsider" (Weak signals, high saturation, low TAM/SAM)
+
+
+    **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
+
+    - Keyword demand <5K monthly searches (insufficient demand signal)
+    - Pain point count <10 (insufficient problem validation)
+    - No competitor data AND no keyword data (cannot triangulate estimates)
+
+    If any stop condition is met:
+    - Set market_viability_verdict: "Weak"
+    - Set viability_rationale: "Insufficient data - [specify which condition triggered]"
+    - Provide conservative estimates based on available data
+    - Set recommended_entry_strategy: "Reconsider"
+    - Flag all estimates as "Low" confidence in data_sources_used
+
+
+    **MARKET SIZING GUIDELINES:**
+
+    **TAM/SAM/SOM Hierarchy Validation:**
+    - Good: TAM $500M → SAM $150M (30%) → SOM Y1 $3M (2%) ✅ Meets 3-2-1 Rule
+    - Bad: TAM $100M → SAM $90M (90%) → SOM Y1 $50M (55%) ❌ Unrealistic addressability
+
+    **Methodology Selection:**
+    - Keyword-Based: Best for digital products with strong search intent (SaaS, tools, info products)
+    - Top-Down: Best when industry reports available (enterprise, regulated markets)
+    - Bottom-Up: Best for niche markets with limited data (new categories)
+    - Hybrid: Combine multiple methods for validation (recommended when possible)
+
+    **Conservative Bias:**
+    - When uncertain, choose LOWER estimate (builds investor trust)
+    - Provide ranges when confidence is medium: "$50-80M SAM" vs "$65M SAM"
+    - Explain assumptions explicitly in methodology_explanation
+
+    **SOM Growth Rates:**
+    - Year 1: 0.5-2% of SAM (conservative, proving PMF)
+    - Year 3: 5-10% of SAM (scaling with proven model)
+    - Aggressive: Only if low saturation + strong demand signals
+
+
+    **EXPECTED OUTPUT FORMAT:**
+
+    You MUST provide ALL required fields in the MarketSizingResult model:
+
+    - **total_addressable_market:** TAM estimate (e.g., "$2.5B", "10M users") - NOT "TBD"
+    - **serviceable_available_market:** SAM estimate (e.g., "$800M", "3M users") - NOT "TBD"
+    - **serviceable_obtainable_market_y1:** SOM Year 1 (e.g., "$2M", "8K users") - NOT "TBD"
+    - **serviceable_obtainable_market_y3:** SOM Year 3 (e.g., "$15M", "50K users") - NOT "TBD"
+
+    - **primary_methodology:** "Top-Down", "Bottom-Up", "Keyword-Based", or "Hybrid"
+    - **methodology_explanation:** 2-3 sentences with calculation approach
+    - **data_sources_used:** List of sources (keyword volumes, industry reports, pain point frequency, competitor analysis)
+
+    - **keyword_demand_signal:** "2.5M searches/month" format
+    - **pain_point_frequency:** "5,000+ mentions across 200 threads" format
+    - **competitor_market_presence:** "15+ active SaaS competitors" format
+
+    - **market_growth_rate:** "15-20% CAGR" or null if no data (Optional)
+    - **growth_drivers:** List of 3-5 factors (ACTUAL signals from data)
+
+    - **market_saturation_level:** "Low", "Medium", or "High" ONLY
+    - **market_timing_assessment:** "Early", "Growth", or "Mature" ONLY
+    - **risk_factors:** List of 3-5 specific risks from data
+
+    - **market_viability_verdict:** "Strong", "Moderate", or "Weak" ONLY
+    - **viability_rationale:** 2-3 sentences with SPECIFIC metrics from STRIVE criteria
+    - **recommended_entry_strategy:** "Aggressive Growth", "Measured Expansion", "Niche Focus", or "Reconsider"
+
+
+    **CRITICAL REQUIREMENTS:**
+
+    1. **Use ACTUAL data:** All estimates must be based on provided keyword volumes, pain point counts, competitor analysis
+    2. **Show calculations:** Explain how TAM/SAM/SOM were derived (not just final numbers)
+    3. **Validate hierarchy:** Ensure TAM > SAM > SOM (Y3) > SOM (Y1) - SOM Y3 must be HIGHER than SOM Y1 (growth over time)
+    4. **Conservative bias:** When uncertain, choose lower estimate (investor trust)
+    5. **Actionable verdict:** Viability verdict must match data (don't say "Strong" if SAM <$20M or 20+ competitors)
+
+
+    Provide your comprehensive market sizing analysis in the exact MarketSizingResult format.
+
+
+    **CRITICAL RULES (REMINDER - RECENCY BIAS):**
+    - TAM/SAM/SOM estimates with NO "TBD" or placeholders (format: "$XXM" like "$150M", "$2.5B")
+    - TAM > SAM > SOM (Y3) > SOM (Y1) hierarchy validation (3-2-1 Rule: TAM >3x SAM, SAM >2x SOM Y1)
+    - Methodology explanation with calculation details showing formula used
+    - market_viability_verdict: "Strong"/"Moderate"/"Weak" ONLY (matching STRIVE criteria count: 4+ = Strong, 2-3 = Moderate, 0-1 = Weak)
+    - market_saturation_level: "Low"/"Medium"/"High" ONLY (no custom values)
+    - market_timing_assessment: "Early"/"Growth"/"Mature" ONLY (no custom values)
+    - primary_methodology: "Top-Down"/"Bottom-Up"/"Keyword-Based"/"Hybrid" ONLY
+    - Entry strategy matching viability (Strong → Aggressive Growth, Moderate → Measured Expansion, Weak → Reconsider)
+
+  expected_output: >
+    A complete MarketSizingResult object with all required fields populated:
+    - TAM/SAM/SOM estimates in dollar or user format (e.g., "$500M", "2M users")
+    - Methodology explanation with calculation approach and data sources
+    - Market validation signals (keyword demand, pain frequency, competitor presence)
+    - Growth potential assessment with drivers and growth rate estimate
+    - Risk assessment with saturation level, timing, and specific risk factors
+    - Market viability verdict ("Strong"/"Moderate"/"Weak") with 2-3 sentence rationale
+    - Recommended entry strategy ("Aggressive Growth"/"Measured Expansion"/"Niche Focus"/"Reconsider")
+    - All estimates based on ACTUAL data from keyword volumes, pain points, and competitive analysis
+    - Conservative bias applied when uncertainty exists
+    - Transparent calculations that satisfy technical due diligence
