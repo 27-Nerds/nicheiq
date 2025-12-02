@@ -32,13 +32,17 @@ from .social_content import (
     TwitterThread,
     TwitterTweet,
 )
-from .solution_idea import IdeaGenerationResult, SolutionIdea
+from .solution_idea import BaseSolutionIdea, IdeaGenerationResult, SolutionIdea
+from .solution_refinement import SolutionRefinement
+from .solution_selection import SolutionSelection
+from .seo_strategy import SEOStrategyReport
 
 __all__ = [
     # Pain Points
     "PainPoint",
     "PainPointAnalysisResult",
     # Solution Ideas
+    "BaseSolutionIdea",
     "SolutionIdea",
     "IdeaGenerationResult",
     # Competitors
@@ -66,4 +70,9 @@ __all__ = [
     "SearchQuery",
     "FinalReport",
     "ResearchState",
+    # Solution Refinement & Selection
+    "SolutionRefinement",
+    "SolutionSelection",
+    # SEO Strategy
+    "SEOStrategyReport",
 ]

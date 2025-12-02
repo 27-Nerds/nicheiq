@@ -306,6 +306,7 @@ class DataForSEOBaseClient:
                                 "competition": competition_float,
                                 "competition_index": competition_index,
                                 "cpc": item.get("cpc") or 0,  # Coalesce None to 0
+                                "monthly_searches": item.get("monthly_searches", []),  # 12-month historical data
                             })
 
                 # Limit batch results to prevent keyword bloat
@@ -484,6 +485,7 @@ class DataForSEOBaseClient:
                         "competition": competition_float,
                         "competition_index": competition_index,
                         "cpc": item.get("cpc") or 0,  # Coalesce None to 0
+                        "monthly_searches": item.get("monthly_searches", []),  # 12-month historical data
                     })
                     result_count += 1
 

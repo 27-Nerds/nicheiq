@@ -5,6 +5,8 @@ Calculates TAM/SAM/SOM (Total/Serviceable/Obtainable Market) estimates and valid
 market attractiveness using keyword demand, pain point frequency, and competitive analysis.
 """
 
+from typing import Any
+
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
@@ -76,7 +78,7 @@ class MarketSizingCrew:
             guardrail=self._validate_market_sizing_output,
         )
 
-    def _validate_market_sizing_output(self, task_output) -> tuple:
+    def _validate_market_sizing_output(self, task_output) -> tuple[bool, Any]:
         """
         Validate market sizing output meets CRITICAL RULES.
 
@@ -212,7 +214,7 @@ class MarketSizingCrew:
             MarketSizingResult with TAM/SAM/SOM estimates and viability verdict, or None if analysis fails
         """
         logger.info("[Stage 8.6] Starting Market Sizing & Validation...")
-        logger.info(f"  Solution: {selected_solution.idea_name}")
+        logger.info(f"  Solution: {selected_solution.solution_name}")
 
         # Extract keyword demand signals
         keyword_signals = self._format_keyword_signals(keyword_validation)
@@ -228,7 +230,7 @@ class MarketSizingCrew:
 
         # Prepare inputs for market sizing task
         inputs = {
-            "solution_name": selected_solution.idea_name,
+            "solution_name": selected_solution.solution_name,
             "solution_description": selected_solution.description,
             "solution_context": solution_context,
             "niche_description": niche_description,
@@ -238,7 +240,7 @@ class MarketSizingCrew:
             "total_keyword_volume": keyword_validation.total_volume if keyword_validation else 0,
             "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
             "pain_point_count": len(pain_point_analysis.pain_points) if pain_point_analysis else 0,
-            "competitor_count": len(competitive_analysis.key_competitors) if competitive_analysis and competitive_analysis.key_competitors else 0,
+            "competitor_count": sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes) if competitive_analysis and competitive_analysis.solution_landscapes else 0,
         }
 
         try:
@@ -297,25 +299,38 @@ class MarketSizingCrew:
         if pain_point_analysis.pain_points:
             signals.append("\n**Top Pain Points:**")
             for pp in pain_point_analysis.pain_points[:5]:
-                signals.append(f"- {pp.pain_point_title} (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay_score:.2f})")
+                signals.append(f"- {pp.title} (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})")
 
         return "\n".join(signals)
 
     def _format_competitive_signals(self, competitive_analysis: CompetitiveAnalysisResult | None) -> str:
         """Format competitive landscape for market saturation assessment."""
-        if not competitive_analysis or not competitive_analysis.key_competitors:
+        if not competitive_analysis or not competitive_analysis.solution_landscapes:
             return "No competitive analysis data available."
 
         signals = []
-        signals.append(f"**Total Competitors Identified:** {len(competitive_analysis.key_competitors)}")
 
-        if competitive_analysis.market_gaps:
-            signals.append(f"\n**Market Gaps:** {len(competitive_analysis.market_gaps)} opportunities identified")
+        # Count total competitors across all solution landscapes
+        total_competitors = sum(
+            len(landscape.competitors or [])
+            for landscape in competitive_analysis.solution_landscapes
+        )
+        signals.append(f"**Total Competitors Identified:** {total_competitors}")
 
-        if competitive_analysis.key_competitors:
+        # Count market gaps across all landscapes
+        total_gaps = sum(
+            len(landscape.market_gaps)
+            for landscape in competitive_analysis.solution_landscapes
+        )
+        if total_gaps > 0:
+            signals.append(f"\n**Market Gaps:** {total_gaps} opportunities identified")
+
+        # Sample competitors from first landscape
+        first_landscape = competitive_analysis.solution_landscapes[0]
+        if first_landscape.competitors:
             signals.append("\n**Sample Competitors:**")
-            for comp in competitive_analysis.key_competitors[:5]:
-                signals.append(f"- {comp.competitor_name}")
+            for comp in first_landscape.competitors[:5]:
+                signals.append(f"- {comp.name}")
 
         return "\n".join(signals)
 
@@ -323,7 +338,6 @@ class MarketSizingCrew:
         """Format solution details for market sizing context."""
         context = []
         context.append(f"**Market Fit Score:** {solution.market_fit_score:.2f}")
-        context.append(f"**Differentiation Score:** {solution.differentiation_score:.2f}")
 
         if solution.target_personas:
             context.append(f"\n**Target Personas:** {', '.join(solution.target_personas[:3])}")

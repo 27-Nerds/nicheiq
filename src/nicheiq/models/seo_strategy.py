@@ -300,7 +300,7 @@ class KeywordBasedPageType(BaseModel):
     priority: str = Field(
         ..., description="Launch priority based on keyword opportunity: 'P0' (Tier 1 keywords), 'P1' (Tier 2), 'P2' (Tier 3-4)"
     )
-    required_schema: list[Optional[str]] = Field(
+    required_schema: Optional[list[str]] = Field(
         default=None, description="Schema.org types for this page type based on content and intent"
     )
     seo_optimization_notes: str = Field(
@@ -462,7 +462,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # METADATA
     # ========================================
-    seed_keywords_generated: list[Optional[str]] = Field(
+    seed_keywords_generated: Optional[list[str]] = Field(
         default=None,
         description="Seed keywords generated in STEP 1 before expansion (120-150 intent-based keywords)"
     )
@@ -670,6 +670,16 @@ class KeywordAnalysisResult(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
+    # Tier 0: Premium opportunities (opp_score > 200)
+    tier_0_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Premium keywords with exceptional opportunity scores (>200). Select ALL keywords meeting this threshold."
+    )
+    tier_0_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 0 premium keywords (1-2 paragraphs, markdown)"
+    )
+
     # Tier structure
     tier_1_keywords: list[TieredKeyword] = Field(
         ..., description="High volume + low competition keywords (3-5 keywords)"
@@ -711,10 +721,13 @@ class KeywordAnalysisResult(BaseModel):
         """
         Validate that keywords are reasonably distributed across tiers.
 
-        If total_keywords_analyzed is significantly higher than keywords actually
-        tiered, log a warning about potential keyword loss.
+        Logs tiered warnings for visibility (no pipeline failure):
+        - ERROR: <50% utilization (critical keyword loss)
+        - WARNING: <70% utilization (below target)
+        - INFO: >=70% utilization (success)
         """
-        tier_1_count = len(self.tier_1_keywords)
+        tier_0_count = len(self.tier_0_keywords) if self.tier_0_keywords else 0
+        tier_1_count = len(self.tier_1_keywords) if self.tier_1_keywords else 0
         tier_2_count = len(self.tier_2_keywords) if self.tier_2_keywords else 0
 
         tier_3_count = 0
@@ -727,25 +740,31 @@ class KeywordAnalysisResult(BaseModel):
             for group in self.tier_4_category_groups:
                 tier_4_count += len(group.keywords)
 
-        total_tiered = tier_1_count + tier_2_count + tier_3_count + tier_4_count
+        total_tiered = tier_0_count + tier_1_count + tier_2_count + tier_3_count + tier_4_count
 
-        # Warn if <70% of keywords are accounted for
-        if self.total_keywords_analyzed > 20:  # Only validate for substantial keyword sets
+        # Tiered logging levels for visibility (no pipeline failure)
+        if self.total_keywords_analyzed > 50:
             keyword_utilization = total_tiered / self.total_keywords_analyzed
-            if keyword_utilization < 0.7:
+            tier_breakdown = (
+                f"[T0: {tier_0_count}, T1: {tier_1_count}, T2: {tier_2_count}, "
+                f"T3: {tier_3_count}, T4: {tier_4_count}]"
+            )
+
+            if keyword_utilization < 0.5:
+                logger.error(
+                    f"⚠️ CRITICAL KEYWORD LOSS: Only {keyword_utilization:.1%} utilization "
+                    f"({total_tiered}/{self.total_keywords_analyzed} keywords tiered). "
+                    f"Task 1 filtering was too aggressive - expand Tier 4 categories. {tier_breakdown}"
+                )
+            elif keyword_utilization < 0.7:
                 logger.warning(
-                    f"⚠️  Keyword utilization low: {total_tiered}/{self.total_keywords_analyzed} "
-                    f"({keyword_utilization:.1%}) keywords tiered. "
-                    f"{self.total_keywords_analyzed - total_tiered} keywords may be unutilized. "
-                    f"[Tier 1: {tier_1_count}, Tier 2: {tier_2_count}, "
-                    f"Tier 3: {tier_3_count}, Tier 4: {tier_4_count}]"
+                    f"⚠️ Keyword utilization low: {total_tiered}/{self.total_keywords_analyzed} "
+                    f"({keyword_utilization:.1%}). Consider expanding Tier 4 categories. {tier_breakdown}"
                 )
             else:
                 logger.info(
-                    f"✅ Keyword utilization: {total_tiered}/{self.total_keywords_analyzed} "
-                    f"({keyword_utilization:.1%}) keywords tiered. "
-                    f"[Tier 1: {tier_1_count}, Tier 2: {tier_2_count}, "
-                    f"Tier 3: {tier_3_count}, Tier 4: {tier_4_count}]"
+                    f"✅ Keyword utilization: {keyword_utilization:.1%} "
+                    f"({total_tiered}/{self.total_keywords_analyzed} keywords tiered). {tier_breakdown}"
                 )
 
         return self

@@ -11,6 +11,7 @@ refine_solution_strategy:
     - Core Features: {core_features}
     - Target Personas: {target_personas}
     - Original Composite Score: {composite_score}
+    - Project Type Constraints: {allowed_project_types}
 
     **KEYWORD VALIDATION DATA:**
     - Validated Keywords: {validated_keyword_count}/20 ({validated_keyword_count} seeds had real search volume)
@@ -171,3 +172,24 @@ refine_solution_strategy:
       "High avg competition (68) despite moderate total volume (12k/mo) warns market is competitive - product differentiation and unique positioning critical for ranking",
       "Geographic concentration: 65% volume in just 3 countries (Spain, Germany, UK) enables focused go-to-market vs dispersed strategy - dominate these markets before expanding"
     ]
+
+    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **FIELD REQUIREMENTS:**
+    ✗ Empty geographic_priorities → Guardrail will reject (must have at least 1 market)
+    ✗ Empty feature_priorities → Guardrail will reject (must have 1-10 features)
+    ✗ strategic_insights with <3 items → Guardrail will reject (minimum 3 insights)
+    ✗ content_strategy_preview <100 chars → Guardrail will reject (must be substantive)
+
+    **DATA ACCURACY:**
+    ✗ Inventing keywords not in input → Hallucination (only cite provided data)
+      ❌ Example: "Keywords show strong demand for mobile apps" (when no mobile keywords in input)
+      ✅ Example: "Keywords show strong demand for 'expat tax services' (1,200 volume)" (cites actual input)
+    ✗ Generic insights without data → Vague and unhelpful
+      ❌ Example: "Focus on SEO and quality content" (generic advice)
+      ✅ Example: "Long-tail keywords (15 of 18 are 3+ words) indicate educational content gap" (data-backed)
+
+    **CATEGORY PIVOT:**
+    ✗ Recommending pivot without >40% keyword evidence → Unjustified
+      ❌ Example: "Consider pivoting to B2B" when 2 of 20 keywords mention business
+      ✅ Example: category_pivot_recommendation = null (no clear signal)

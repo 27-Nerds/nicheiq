@@ -3,6 +3,8 @@ SolutionRefinementCrew - Stage 8.85: Solution Refinement Based on Keyword Insigh
 Single-agent crew for strategic refinement of selected solution using keyword validation data.
 """
 
+from typing import Any
+
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
@@ -66,7 +68,57 @@ class SolutionRefinementCrew:
             config=self.tasks_config["refine_solution_strategy"],
             agent=self.strategic_advisor(),
             output_pydantic=SolutionRefinement,
+            guardrail=self._validate_refinement_output,
         )
+
+    def _validate_refinement_output(self, task_output) -> tuple[bool, Any]:
+        """
+        Validate solution refinement output meets CRITICAL RULES.
+
+        Checks:
+        - geographic_priorities has at least 1 item
+        - feature_priorities has 1-10 items (model enforces, but double-check)
+        - strategic_insights has 3-8 items (model enforces, but double-check)
+        - content_strategy_preview is substantive (>100 chars)
+
+        Returns:
+            (True, result) if validation passes, (False, error_message) if fails
+        """
+        try:
+            result = task_output.pydantic
+            if result is None:
+                return (False, "Solution refinement returned None pydantic output")
+
+            # Validate geographic_priorities
+            if not result.geographic_priorities or len(result.geographic_priorities) == 0:
+                return (False, "geographic_priorities cannot be empty - must have at least 1 market")
+
+            # Validate feature_priorities bounds
+            if len(result.feature_priorities) < 1:
+                return (False, "feature_priorities must have at least 1 entry")
+            if len(result.feature_priorities) > 10:
+                return (False, f"feature_priorities exceeds max 10, got {len(result.feature_priorities)}")
+
+            # Validate strategic_insights bounds
+            if len(result.strategic_insights) < 3:
+                return (False, f"strategic_insights must have at least 3 entries, got {len(result.strategic_insights)}")
+            if len(result.strategic_insights) > 8:
+                return (False, f"strategic_insights exceeds max 8, got {len(result.strategic_insights)}")
+
+            # Validate content_strategy_preview is substantive
+            if len(result.content_strategy_preview) < 100:
+                return (False, f"content_strategy_preview too short ({len(result.content_strategy_preview)} chars). Must be substantive (100+ chars).")
+
+            logger.info(
+                f"✓ Refinement guardrail passed: "
+                f"{len(result.geographic_priorities)} geo priorities, "
+                f"{len(result.feature_priorities)} feature priorities, "
+                f"{len(result.strategic_insights)} insights"
+            )
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Refinement validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:
@@ -85,7 +137,8 @@ class SolutionRefinementCrew:
         self,
         selected_solution: SolutionIdea,
         keyword_validation: CrewKeywordValidationResult,
-        composite_score: float
+        composite_score: float,
+        allowed_project_types: list[str] | None = None
     ) -> SolutionRefinement | None:
         """
         Execute refinement crew to generate strategic recommendations.
@@ -94,6 +147,7 @@ class SolutionRefinementCrew:
             selected_solution: The selected solution from Stage 8.75/8.8
             keyword_validation: Validation results with validated_count, total_volume, etc.
             composite_score: Original composite score from Stage 8.75
+            allowed_project_types: Optional project type constraints from user
 
         Returns:
             SolutionRefinement object with strategic recommendations, or None if refinement fails
@@ -130,7 +184,8 @@ class SolutionRefinementCrew:
             "demand_signal": demand_signal,
             "avg_competition": keyword_validation.avg_competition,
             "composite_score": composite_score,
-            "validation_signals": keyword_validation.validation_signals
+            "validation_signals": keyword_validation.validation_signals,
+            "allowed_project_types": ', '.join(allowed_project_types) if allowed_project_types else "All types allowed"
         }
 
         try:

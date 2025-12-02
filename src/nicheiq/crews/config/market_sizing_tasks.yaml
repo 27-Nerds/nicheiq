@@ -27,6 +27,13 @@ market_sizing_analysis:
     **Keyword Demand Signals (Search Volume = Market Demand):**
     {keyword_demand_signals}
 
+    **INPUT DATA STRUCTURE for keyword_demand_signals:**
+    - validated_count: int (number of keywords with measurable search volume, e.g., 45)
+    - total_volume: int (combined monthly search volume, e.g., 125000)
+    - avg_competition: float 0-100 (DataForSEO competition index, e.g., 42.3)
+    - demand_signal: "strong" (>5k/mo) | "moderate" (2k-5k/mo) | "weak" (<2k/mo)
+    - top_keywords: list of keyword strings sorted by volume
+
     **Total Monthly Search Volume:** {total_keyword_volume:,} searches
     **Validated Keywords:** {validated_keyword_count}
 
@@ -157,7 +164,17 @@ market_sizing_analysis:
     - **viability_rationale:** 2-3 sentences justifying verdict with SPECIFIC metrics
       - Example: "Strong viability: 2.5M monthly searches (Searchable), $630M SAM (Income Potential), 12 competitors (Rivalry), 15% CAGR (Velocity). Market is in growth phase with clear demand signals and room for differentiation."
 
-    - **recommended_entry_strategy:** Choose one:
+    - **recommended_entry_strategy:** Choose one based on viability:
+
+      **VIABILITY → ENTRY STRATEGY MAPPING:**
+      | Viability Verdict | Entry Strategy     | Rationale |
+      |-------------------|--------------------|-----------|
+      | Strong            | Aggressive Growth  | Rapid scaling, first-mover advantage |
+      | Moderate          | Measured Expansion | Validated milestones, controlled growth |
+      | Weak              | Niche Focus        | Differentiate in micro-niche if viable |
+      | Insufficient Data | Reconsider         | Defer until more data gathered |
+
+      Strategy Definitions:
       - "Aggressive Growth" (Strong market, low saturation, clear demand)
       - "Measured Expansion" (Moderate market, medium saturation, validate PMF first)
       - "Niche Focus" (Saturated market, differentiate with micro-niche)

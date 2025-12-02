@@ -3,13 +3,6 @@
 
 categorize_content:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ ONLY analyze content provided below - NO invented quotes/segments
-    ✓ Need ≥5 substantive discussions → else report "Insufficient discussion data"
-    ✓ Every quote MUST be direct copy from content - NO paraphrasing
-    ✓ Categories emerge from data patterns, not assumptions
-    ✓ Fewer categories with evidence > many without
-
     **NICHE CONTEXT:**
     - Niche Description: {niche_description}
     - Market Segments:
@@ -63,8 +56,13 @@ categorize_content:
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
 
     **STOP CONDITIONS:**
-    ✗ <5 substantive discussions found → Return "Insufficient discussion data"
+    ✗ <5 substantive discussions found → STOP immediately
       ❌ Example: Inventing discussion themes when content is sparse
+
+    If STOP condition is met, return ContentCategorizationReport with:
+      - executive_summary: "Insufficient discussion data (fewer than 5 substantive discussions found)"
+      - theme_categories: [] (empty list)
+      - user_segments: [] (empty list)
 
     **DATA ACCURACY:**
     ✗ Every quote MUST be directly copied from content - NO paraphrasing
@@ -112,13 +110,6 @@ categorize_content:
 
 extract_pain_points:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ ONLY extract pain points with ≥3 direct quotes from knowledge sources (your 3-Quote Minimum Protocol)
-    ✓ NO invented/paraphrased pain points - every problem must have explicit evidence
-    ✓ If <3 quotes found for a pain point → EXCLUDE that pain point (quality over quota)
-    ✓ Track source post IDs from [POST_ID: ...] / [THREAD_ID: ...] headers for traceability
-    ✓ If <10 validated pain points exist → acceptable (NO fabrication to reach quota)
-
     **NICHE CONTEXT:** {niche_description}
 
     Transform the categorized content into specific, actionable pain points relevant
@@ -213,73 +204,29 @@ extract_pain_points:
 
     **extracted_pain_points**: List of UnvalidatedPainPoint objects (10-20 pain points), each containing:
        - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
-       - **description**: 2-3 sentence clear articulation of the specific problem in user language,
-         including user context and current solutions mentioned
+       - **description**: 2-3 sentence clear articulation of the specific problem in user language
        - **mention_count**: Number of times this problem appeared across discussions
-       - **representative_quotes**: 3-5 direct user quotes supporting this pain point
+       - **representative_quotes**: 3-5 direct user quotes (MUST include [source: ID] suffix)
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to
-       - **source_post_ids**: LEAVE EMPTY [] - Python extracts post-processing
+       - **source_post_ids**: ALWAYS set to [] (Python extracts automatically)
 
-         CRITICAL SOURCE ATTRIBUTION REQUIREMENTS:
+    **SOURCE ATTRIBUTION (3 RULES):**
+    1. Every quote MUST end with [source: POST_ID] - copy exactly from content
+    2. Set source_post_ids = [] for ALL pain points (Python extracts automatically)
+    3. If quote has no visible [source: ID] suffix → exclude that quote
 
-         1. **Include [source: ID] in Quotes**: Each quote in representative_quotes MUST end with [source: post_id]
-            ✅ CORRECT: "I can't find reliable data [source: 1a2b3c]"
-            ❌ WRONG: "I can't find reliable data" (missing source suffix)
+    EXAMPLE (correct format):
+      representative_quotes: [
+        "I spent 3 hours on setup and still couldn't get it working [source: abc123]",
+        "The pricing changes every month without warning [source: def456]",
+        "Support never responded to my ticket after 2 weeks [source: ghi789]"
+      ],
+      source_post_ids: []
 
-         2. **Leave source_post_ids Empty**: Set source_post_ids = [] for ALL pain points
-            - Python will automatically extract IDs from [source: ...] suffixes
-            - DO NOT manually populate this field
+    **extraction_summary**: 3-4 sentences overview of pain point landscape and key patterns
 
-         3. **Examples of Correct Quote Format**:
-            ✅ "Setup took me 3 hours and support never responded [source: 2def456]"
-            ✅ "The pricing is confusing and changes every month [source: 8xyz789]"
-            ✅ "I hate how slow the dashboard loads, takes 30+ seconds [source: 5abc123]"
-
-         4. **Examples of INCORRECT Format** (will cause attribution failure):
-            ❌ "Setup took hours" (paraphrased, no source)
-            ❌ "Users report slow performance [source: post_001]" (fabricated placeholder ID)
-            ❌ "The tool is buggy" (missing [source: ID] suffix)
-            ❌ "Many users struggle with onboarding" (summarized, no source)
-
-         5. **Edge Cases**:
-            - If quote truly lacks [source: ID] in knowledge source → DO NOT include that quote
-            - If <3 quotes have [source: ID] → EXCLUDE entire pain point (3-quote minimum)
-            - Malformed suffixes (e.g., [source:] with no ID) → DO NOT include that quote
-
-
-    **extraction_summary**: 3-4 sentences overview of pain point landscape, key patterns,
-       priority problem areas, and pain point categories
-
-
-    CRITICAL: Return structured Pydantic data, not markdown. This output will be passed directly
-    to the validator for scoring. Do NOT include severity/WTP scores - those are added by the validator.
-
-    **MANDATORY PRE-SUBMISSION VERIFICATION CHECKLIST:**
-
-    Before returning your PainPointExtraction output, verify EACH pain point:
-
-    ☐ **Quotes**: All 3-5 quotes end with [source: ID] suffix
-       - Example check: Does "quote text [source: abc123]" pattern appear?
-       - If NO → Fix by finding quotes with [source: ID] or exclude pain point
-
-    ☐ **Source IDs**: source_post_ids field is empty list []
-       - Example check: Is source_post_ids = [] for this pain point?
-       - If NO → Set to [] (Python extracts post-processing)
-
-    ☐ **Verbatim Quotes**: Each quote is character-by-character copy from knowledge sources
-       - Example check: Can you find this exact quote in the formatted content above?
-       - If NO → Replace with verbatim copy or exclude pain point
-
-    ☐ **Real IDs**: [source: ID] values are actual post/thread IDs from content headers
-       - Example check: Does [POST_ID: abc123] or [THREAD_ID: abc123] appear in formatted content?
-       - If NO → This is a hallucinated ID, exclude this quote
-
-    ☐ **Minimum Count**: Pain point has ≥3 quotes with [source: ID] suffixes
-       - Example check: Count quotes, verify all have [source: ID]
-       - If NO → Exclude entire pain point (below minimum threshold)
-
-    STOP: If ANY checkbox fails → Fix the issue or exclude that pain point before submitting.
+    CRITICAL: Return structured Pydantic data. Minimum 3 quotes per pain point, all with [source: ID].
 
 validate_pain_points:
   description: >

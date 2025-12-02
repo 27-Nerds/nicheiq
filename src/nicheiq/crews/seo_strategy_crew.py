@@ -54,6 +54,7 @@ class SEOStrategyCrew:
         competitive_analysis: CompetitiveAnalysisResult,
         pain_points: PainPointAnalysisResult | None = None,
         niche_context: "NicheContext | None" = None,
+        allowed_project_types: list[str] | None = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -70,6 +71,7 @@ class SEOStrategyCrew:
             competitive_analysis: Competitive landscape from Stage 8
             pain_points: Optional pain point analysis from Stage 6
             niche_context: Optional niche context with market_segments and industry_boundaries
+            allowed_project_types: Optional project type constraints from user
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -79,6 +81,7 @@ class SEOStrategyCrew:
         self.competitive_analysis = competitive_analysis
         self.pain_points = pain_points
         self.niche_context = niche_context
+        self.allowed_project_types = allowed_project_types
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -285,6 +288,57 @@ class SEOStrategyCrew:
     # MULTI-TASK SEO STRATEGY (4-TASK FLOW)
     # ========================================
 
+    def _validate_keyword_analysis_output(self, task_output) -> tuple[bool, Any]:
+        """
+        Guardrail to validate KeywordAnalysisResult output structure.
+
+        Catches common LLM output errors:
+        1. JSON Schema wrapper instead of data (properties, required, additionalProperties)
+        2. Missing required fields (tier_1_keywords, tier_1_quick_win_strategy)
+        3. Empty tier_1_keywords list
+
+        Returns:
+            tuple[bool, Any]: (True, result) if valid, (False, error_message) if validation fails
+        """
+        try:
+            # Check for JSON Schema wrapper pattern in raw output
+            raw = task_output.raw if hasattr(task_output, 'raw') else str(task_output)
+            if '"additionalProperties"' in raw or ('"properties"' in raw and '"required"' in raw):
+                return (
+                    False,
+                    "Output appears to be a JSON Schema definition, not data. "
+                    "Return field values directly at the root level: "
+                    '{"tier_0_keywords": [...], "tier_1_keywords": [...], ...} '
+                    "Do NOT wrap in 'properties' or include 'additionalProperties', 'required', 'type' keys."
+                )
+
+            result = task_output.pydantic
+
+            # Validate required fields
+            if not result.tier_1_keywords:
+                return (False, "tier_1_keywords is required but missing or empty")
+
+            if not result.tier_1_quick_win_strategy or len(result.tier_1_quick_win_strategy.strip()) == 0:
+                return (False, "tier_1_quick_win_strategy is required but missing or empty")
+
+            if not result.key_findings or len(result.key_findings) == 0:
+                return (False, "key_findings is required but missing or empty")
+
+            # Log success with tier distribution
+            tier_0_count = len(result.tier_0_keywords) if result.tier_0_keywords else 0
+            tier_1_count = len(result.tier_1_keywords)
+            tier_2_count = len(result.tier_2_keywords) if result.tier_2_keywords else 0
+
+            logger.info(
+                f"[OK] Keyword analysis validation passed: "
+                f"Tier 0={tier_0_count}, Tier 1={tier_1_count}, Tier 2={tier_2_count}, "
+                f"analyzed={result.total_keywords_analyzed}"
+            )
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Validation error: {str(e)}")
+
     @task
     def analyze_keywords_and_tier_task(self) -> Task:
         """
@@ -298,6 +352,8 @@ class SEOStrategyCrew:
             config=self.tasks_config["analyze_keywords_and_tier"],
             agent=self.keyword_strategist(),
             output_pydantic=KeywordAnalysisResult,
+            guardrail=self._validate_keyword_analysis_output,
+            guardrail_max_retries=3,
         )
 
     @task
@@ -412,7 +468,52 @@ class SEOStrategyCrew:
                 self.create_implementation_plan_task(),  # Task 3 (reference)
             ],
             output_pydantic=FinalSynthesis,
+            guardrail=self._validate_final_synthesis,
         )
+
+    def _validate_final_synthesis(self, task_output) -> tuple[bool, Any]:
+        """
+        Guardrail for synthesize_final_seo_strategy_task.
+
+        Validates all 4 synthesis fields are populated:
+        - long_term_strategy
+        - conclusion_bottom_line
+        - competitive_advantages
+        - critical_success_factors
+
+        Returns:
+            tuple[bool, Any]: (success, result_or_error)
+        """
+        try:
+            result = task_output.pydantic
+            if result is None:
+                return (False, "Final synthesis returned None pydantic output")
+
+            # Validate long_term_strategy
+            if not result.long_term_strategy or len(result.long_term_strategy.strip()) < 50:
+                return (False, f"long_term_strategy too short (must be 50+ chars)")
+
+            # Validate conclusion_bottom_line
+            if not result.conclusion_bottom_line or len(result.conclusion_bottom_line.strip()) < 50:
+                return (False, f"conclusion_bottom_line too short (must be 50+ chars)")
+
+            # Validate competitive_advantages
+            if not result.competitive_advantages or len(result.competitive_advantages) < 2:
+                return (False, f"competitive_advantages must have at least 2 items, got {len(result.competitive_advantages) if result.competitive_advantages else 0}")
+
+            # Validate critical_success_factors
+            if not result.critical_success_factors or len(result.critical_success_factors) < 3:
+                return (False, f"critical_success_factors must have at least 3 items, got {len(result.critical_success_factors) if result.critical_success_factors else 0}")
+
+            logger.info(
+                f"✓ Final synthesis guardrail passed: "
+                f"{len(result.competitive_advantages)} advantages, "
+                f"{len(result.critical_success_factors)} success factors"
+            )
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Final synthesis validation error: {str(e)}")
 
     @task
     def create_implementation_guide_task(self) -> Task:
@@ -629,6 +730,78 @@ class SEOStrategyCrew:
             logger.error(f"Guardrail validation exception: {str(e)}")
             return (False, f"Validation error: {str(e)}")
 
+    def _calculate_trend_metrics(self, monthly_searches: list[dict]) -> dict:
+        """
+        Calculate trend metrics from 12-month historical search data.
+
+        Analyzes monthly_searches data from DataForSEO to determine:
+        - trend_direction: rising/stable/declining based on recent vs older volumes
+        - trend_score: -1.0 to 1.0 representing percentage change (capped)
+        - seasonality_index: 0.0 to 1.0 (coefficient of variation)
+        - is_evergreen: True if low seasonality and not declining
+
+        Args:
+            monthly_searches: List of dicts with year, month, search_volume
+
+        Returns:
+            Dict with trend_direction, trend_score, seasonality_index, is_evergreen
+        """
+        if not monthly_searches or len(monthly_searches) < 2:
+            return {
+                "trend_direction": "unknown",
+                "trend_score": 0.0,
+                "seasonality_index": 0.0,
+                "is_evergreen": False
+            }
+
+        # Sort by date (newest first)
+        sorted_data = sorted(
+            monthly_searches,
+            key=lambda x: (x.get("year", 0), x.get("month", 0)),
+            reverse=True
+        )
+
+        volumes = [m.get("search_volume", 0) for m in sorted_data]
+
+        # Trend direction: Compare recent 3 months vs older 3 months
+        recent_avg = sum(volumes[:3]) / 3 if len(volumes) >= 3 else sum(volumes) / len(volumes)
+        older_avg = sum(volumes[-3:]) / 3 if len(volumes) >= 3 else sum(volumes) / len(volumes)
+
+        if older_avg > 0:
+            trend_pct = ((recent_avg - older_avg) / older_avg) * 100
+        else:
+            trend_pct = 0
+
+        # Trend direction thresholds
+        if trend_pct > 15:
+            trend_direction = "rising"
+        elif trend_pct < -15:
+            trend_direction = "declining"
+        else:
+            trend_direction = "stable"
+
+        # Trend score: -1.0 to 1.0 (capped)
+        trend_score = max(-1.0, min(1.0, trend_pct / 100))
+
+        # Seasonality: coefficient of variation (std/mean)
+        mean_vol = sum(volumes) / len(volumes) if volumes else 0
+        if mean_vol > 0:
+            variance = sum((v - mean_vol) ** 2 for v in volumes) / len(volumes)
+            std_dev = variance ** 0.5
+            seasonality_index = min(1.0, std_dev / mean_vol)
+        else:
+            seasonality_index = 0.0
+
+        # Evergreen: Low seasonality + stable/rising trend
+        is_evergreen = seasonality_index < 0.3 and trend_direction != "declining"
+
+        return {
+            "trend_direction": trend_direction,
+            "trend_score": round(trend_score, 2),
+            "seasonality_index": round(seasonality_index, 2),
+            "is_evergreen": is_evergreen
+        }
+
     def _format_keywords_as_csv(self, enriched_keywords: list) -> str:
         """
         Format keywords as CSV for direct context injection.
@@ -636,12 +809,18 @@ class SEOStrategyCrew:
         CSV is 2x more token-efficient than JSON for tabular data and provides
         complete keyword visibility to agents without requiring RAG queries.
 
+        Includes trend analysis from monthly_searches data:
+        - trend_direction: rising/stable/declining
+        - trend_score: -1.0 to 1.0
+        - seasonality_index: 0.0 to 1.0
+        - is_evergreen: True/False
+
         Returns:
-            CSV string with header and keyword data
+            CSV string with header and keyword data (11 columns)
         """
-        # CSV header
+        # CSV header with trend columns
         lines = [
-            "keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier"
+            "keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier,trend_direction,trend_score,seasonality,is_evergreen"
         ]
 
         for k in enriched_keywords:
@@ -675,11 +854,17 @@ class SEOStrategyCrew:
             else:
                 tier = "TIER_4_LONG_TAIL"
 
+            # Calculate trend metrics from monthly_searches
+            monthly_searches = k.get("monthly_searches", [])
+            trend_metrics = self._calculate_trend_metrics(monthly_searches)
+
             # Add CSV row (escape commas in keyword text if present)
             keyword_escaped = keyword_text.replace(",", " ")
             lines.append(
                 f"{keyword_escaped},{search_volume},{competition_index},"
-                f"{comp_label},{cpc:.2f},{opp_score:.1f},{tier}"
+                f"{comp_label},{cpc:.2f},{opp_score:.1f},{tier},"
+                f"{trend_metrics['trend_direction']},{trend_metrics['trend_score']},"
+                f"{trend_metrics['seasonality_index']},{trend_metrics['is_evergreen']}"
             )
 
         return "\n".join(lines)
@@ -818,20 +1003,128 @@ class SEOStrategyCrew:
                     "enriched_keywords_count": len(enriched_keywords),
                     "enriched_keywords_csv": keywords_csv,  # ← Direct CSV input
                     "topic_clusters_summary": topic_clusters_summary,
+                    "allowed_project_types": ', '.join(self.allowed_project_types) if self.allowed_project_types else "All types allowed",
                 }
             )
 
             # Extract all task outputs (Tasks 1-5)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, "tasks_output") else []
             if len(task_outputs) < 5:
-                logger.error(f"Expected 5 task outputs, got {len(task_outputs)}")
-                raise ValueError("Incomplete task execution in SEO strategy crew")
+                raise ValueError(
+                    f"Expected 5 task outputs, got {len(task_outputs)}. "
+                    "Pipeline may have failed mid-execution."
+                )
 
+            # Extract and validate each task's pydantic output
             task_1_output = task_outputs[0].pydantic  # KeywordAnalysisResult (10 fields)
+            if task_1_output is None:
+                raise ValueError(
+                    "Task 1 (Keyword Analysis) returned None pydantic output. "
+                    "Check KeywordAnalysisResult schema and agent prompt."
+                )
+
+            # Deduplicate tier keywords to prevent duplicates in final report
+            for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+                tier_list = getattr(task_1_output, tier_attr, None)
+                if tier_list:
+                    seen = set()
+                    deduped = []
+                    for kw in tier_list:
+                        kw_key = kw.keyword.lower().strip()
+                        if kw_key not in seen:
+                            deduped.append(kw)
+                            seen.add(kw_key)
+                    if len(deduped) < len(tier_list):
+                        logger.warning(f"⚠️ Removed {len(tier_list) - len(deduped)} duplicate keywords from {tier_attr}")
+                        setattr(task_1_output, tier_attr, deduped)
+
+            # ═══ GUARDRAIL: Log tier keyword selection for visibility ═══
+            # Count TIER_0_PREMIUM keywords from input (opp_score > 200)
+            tier0_in_csv = 0
+            for kw in enriched_keywords:
+                sv = kw.get("search_volume", 0) or 0
+                ci = kw.get("competition_index", 1) or 1
+                opp = sv / max(ci, 1)
+                if opp > 200:
+                    tier0_in_csv += 1
+
+            tier0_selected = len(task_1_output.tier_0_keywords or [])
+
+            if tier0_in_csv > 0:
+                if tier0_selected < tier0_in_csv:
+                    logger.warning(
+                        f"⚠️ TIER 0 LOSS: Only {tier0_selected}/{tier0_in_csv} premium keywords selected "
+                        f"(opp_score >200 - should ALL be selected)"
+                    )
+                else:
+                    logger.info(f"✅ Tier 0 keywords: {tier0_selected}/{tier0_in_csv} selected")
+            elif tier0_selected > 0:
+                logger.info(f"✅ Tier 0 keywords: {tier0_selected} (agent identified premium opportunities)")
+
+            # Log Tier 4 category count and keyword distribution
+            tier_4_groups = task_1_output.tier_4_category_groups or []
+            tier_4_cat_count = len(tier_4_groups)
+            tier_4_kw_count = sum(len(g.keywords) for g in tier_4_groups) if tier_4_groups else 0
+
+            if tier_4_cat_count < 6:
+                logger.warning(
+                    f"⚠️ TIER 4 UNDER-CREATION: Only {tier_4_cat_count} categories "
+                    f"(expected 6-15). {tier_4_kw_count} keywords in Tier 4."
+                )
+            else:
+                logger.info(f"✅ Tier 4 categories: {tier_4_cat_count} with {tier_4_kw_count} keywords")
+
+            # Log total utilization
+            total_tiered = (
+                len(task_1_output.tier_0_keywords or []) +
+                len(task_1_output.tier_1_keywords or []) +
+                len(task_1_output.tier_2_keywords or []) +
+                sum(len(g.keywords) for g in (task_1_output.tier_3_geographic_groups or [])) +
+                tier_4_kw_count
+            )
+            analyzed = task_1_output.total_keywords_analyzed or 1
+            utilization = total_tiered / analyzed
+
+            if utilization < 0.5:
+                logger.error(
+                    f"⚠️ CRITICAL KEYWORD LOSS: Only {utilization:.1%} of keywords tiered "
+                    f"({total_tiered}/{analyzed}). Task 1 filtering was too aggressive."
+                )
+            elif utilization < 0.7:
+                logger.warning(
+                    f"⚠️ Keyword utilization below target: {utilization:.1%} "
+                    f"({total_tiered}/{analyzed})"
+                )
+            else:
+                logger.info(f"✅ Task 1 keyword utilization: {utilization:.1%} ({total_tiered}/{analyzed})")
+
             task_2_output = task_outputs[1].pydantic  # ContentStrategyResult (5 fields)
+            if task_2_output is None:
+                raise ValueError(
+                    "Task 2 (Content Strategy) returned None pydantic output. "
+                    "Check ContentStrategyResult schema and agent prompt."
+                )
+
             task_3_output = task_outputs[2].pydantic  # ImplementationPlanResult (6 fields)
+            if task_3_output is None:
+                raise ValueError(
+                    "Task 3 (Implementation Plan) returned None pydantic output. "
+                    "Check ImplementationPlanResult schema and agent prompt."
+                )
+
             task_4_output = task_outputs[3].pydantic  # FinalSynthesis (4 fields)
+            if task_4_output is None:
+                raise ValueError(
+                    "Task 4 (Final Synthesis) returned None pydantic output. "
+                    "Check FinalSynthesis schema and agent prompt."
+                )
+
             task_5_output = task_outputs[4].pydantic  # ImplementationGuide (3 fields)
+            if task_5_output is None:
+                raise ValueError(
+                    "Task 5 (Implementation Guide) returned None pydantic output. "
+                    "Check ImplementationGuide schema and agent prompt."
+                )
 
             # Prepare seed keywords from conceptual expansion (if available)
             seed_keywords = (

@@ -22,9 +22,9 @@ if TYPE_CHECKING:
     from ...models.research_state import ResearchState
     from ...models.seo_strategy import SEOStrategyReport
     from ...models.solution_idea import IdeaGenerationResult, SolutionIdea
-    from ...models.solution_refinement import SolutionRefinementResult
-    from ...models.solution_selection import SolutionSelectionResult
-    from ...models.social_content import SocialContentResult
+    from ...models.solution_refinement import SolutionRefinement
+    from ...models.solution_selection import SolutionSelection
+    from ...models.social_content import SocialContentCollection
 
 
 class StateAccessor:

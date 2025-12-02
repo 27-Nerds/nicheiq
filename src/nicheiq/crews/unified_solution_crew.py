@@ -475,7 +475,43 @@ class UnifiedSolutionCrew:
             agent=self.solution_refiner(),
             context=[self.solution_ideation_task(), self.competitive_analysis_task()],
             output_pydantic=CompetitiveEnhancements,
+            guardrail=self._validate_enhancements_output,
         )
+
+    def _validate_enhancements_output(self, task_output) -> tuple[bool, Any]:
+        """
+        Guardrail for competitive_refinement_task to ensure valid enhancement output.
+
+        Validates:
+        - Pydantic output exists
+        - solution_enhancements list is populated
+        - Each enhancement has required fields
+
+        Returns:
+            tuple[bool, Any]: (success, result_or_error)
+        """
+        try:
+            result = task_output.pydantic
+            if result is None:
+                return (False, "Competitive refinement returned None pydantic output")
+
+            if not isinstance(result, CompetitiveEnhancements):
+                return (False, f"Invalid output type: expected CompetitiveEnhancements, got {type(result)}")
+
+            # Validate solution_enhancements exists and has entries
+            if not result.solution_enhancements:
+                return (False, "solution_enhancements list cannot be empty - must have at least 1 enhancement")
+
+            # Validate each enhancement has required solution_name
+            for i, enh in enumerate(result.solution_enhancements):
+                if not enh.solution_name or enh.solution_name.strip() == "":
+                    return (False, f"Enhancement {i} missing solution_name")
+
+            logger.info(f"✓ Enhancements guardrail passed: {len(result.solution_enhancements)} solution enhancements")
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Enhancement validation error: {str(e)}")
 
     @task
     def solution_selection_task(self) -> Task:
@@ -712,14 +748,38 @@ class UnifiedSolutionCrew:
 
             # Extract final result (Task 4 output - SolutionSelection)
             solution_selection = crew_output.pydantic
+            if solution_selection is None:
+                raise ValueError(
+                    "Task 4 (Solution Selection) returned None pydantic output. "
+                    "Check task configuration and agent prompt."
+                )
 
             # Access intermediate task outputs (CrewAI provides access via crew_output.tasks_outputs)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
+            if len(task_outputs) < 4:
+                raise ValueError(
+                    f"Expected 4 task outputs, got {len(task_outputs)}. "
+                    "Pipeline may have failed mid-execution."
+                )
 
-            # Extract Task 1 (base solutions), Task 2 (competitive analysis), Task 3 (enhancements)
-            base_solutions = task_outputs[0].pydantic if len(task_outputs) > 0 else None  # IdeaGenerationResult
-            competitive_analysis = task_outputs[1].pydantic if len(task_outputs) > 1 else None  # CompetitiveAnalysisResult
-            enhancements = task_outputs[2].pydantic if len(task_outputs) > 2 else None  # CompetitiveEnhancements
+            # Extract Task 1 (base solutions) - REQUIRED
+            base_solutions = task_outputs[0].pydantic
+            if base_solutions is None:
+                raise ValueError(
+                    "Task 1 (Solution Ideation) returned None pydantic output. "
+                    "Check IdeaGenerationResult schema and agent prompt."
+                )
+
+            # Extract Task 2 (competitive analysis) - REQUIRED
+            competitive_analysis = task_outputs[1].pydantic
+            if competitive_analysis is None:
+                raise ValueError(
+                    "Task 2 (Competitive Analysis) returned None pydantic output. "
+                    "Check CompetitiveAnalysisResult schema and agent prompt."
+                )
+
+            # Extract Task 3 (enhancements) - OPTIONAL (can be None if no enhancements generated)
+            enhancements = task_outputs[2].pydantic  # CompetitiveEnhancements or None
 
             # Save task-level checkpoints for resume capability
             if self.checkpoint_mgr:

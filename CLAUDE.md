@@ -18,21 +18,28 @@ ResearchFlow (Main Orchestrator - research_flow.py)
 │   - ThreadRelevanceValidator filters before scraping
 │   - Reddit (PRAW) + Twitter collection
 ├── Stage 6: PainPointCrew (Knowledge Sources + RAG)
-├── Stages 7-8.75: UnifiedSolutionCrew (Context Chaining + Guardrails)
-│   ├── Task 1: Solution Ideation (brainstorm + evaluate + refine)
-│   ├── Task 2: Competitive Analysis (research + gap analysis)
-│   ├── Task 3: Competitive Refinement (enhance with insights)
-│   └── Task 4: Solution Selection (strategic scoring)
+├── Stage 6.5: AudienceMappingCrew (Audience analysis)
+├── Stage 7: UnifiedSolutionCrew (Context Chaining + Guardrails)
+│   ├── Task 7.1: Solution Ideation (brainstorm + evaluate + refine)
+│   ├── Task 7.2: Competitive Analysis (research + gap analysis)
+│   ├── Task 7.3: Competitive Refinement (enhance with insights)
+│   └── Task 7.4: Solution Selection (strategic scoring)
+├── Stage 8: PricingStrategyCrew (Pricing validation)
+├── Stage 8.5: KeywordValidationCrew (Keyword demand validation)
+├── Stage 8.6: MarketSizingCrew (TAM/SAM/SOM calculation, uses keyword data)
+├── Stage 8.7: SolutionRefinementCrew (Strategic refinements)
 ├── Stage 9: SEOStrategyCrew (Direct CSV Input for keywords)
-│   ├── Phase 9.5a: Conceptual keyword expansion (SEO crew seed generation)
-│   ├── Phase 9.5b: Bulk validation with DataForSEO
+│   ├── Phase 9.1a: Conceptual keyword expansion (SEO crew seed generation)
+│   ├── Phase 9.1b: Bulk validation with DataForSEO
+│   ├── Phase 9.1c: Iterative enrichment with trend data
 │   ├── Task 1: Keyword Analysis & Tiering (CSV-based)
 │   ├── Task 2: Content & Technical Strategy
 │   ├── Task 3: Implementation Planning
 │   ├── Task 4: Final SEO Strategy Synthesis
 │   └── Task 5: Implementation Guide (Universal SEO, Templates, Schema)
-│   - Stage 9.5 (conditional): SEO score refinement if SEO_REFINEMENT_ENABLED=True
-│   - Stage 9.75 (conditional): Data sources if requires_data_aggregation=True
+├── Stage 9.5: TrendLongevityCrew (Market momentum analysis)
+├── Stage 9.6 (conditional): SEO score refinement if SEO_REFINEMENT_ENABLED=True
+├── Stage 9.7 (conditional): DataSourceCrew if requires_data_aggregation=True
 └── Stage 10: Final report generation (Hybrid: Python + LLM)
     ├── Delegated to ReportGenerator class (src/nicheiq/report/report_generator.py)
     ├── Step 1: Python data assembly (80% of fields - direct copy/templates)

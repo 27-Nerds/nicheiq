@@ -3,6 +3,7 @@ PainPointCrew - Stage 6: Pain Point Analysis
 Multi-agent crew for analyzing social discussions and extracting validated pain points.
 """
 
+from difflib import SequenceMatcher
 from typing import Any
 
 from crewai import Agent, Crew, Task
@@ -25,6 +26,46 @@ from ..utils.token_monitor import ContentTokenMonitor
 # Source tracking pattern for [source: ID] suffixes
 # Matches alphanumeric, dash, underscore, period (1-50 chars) for post/thread IDs
 SOURCE_TAG_PATTERN = r'[\w\-_\.]{1,50}'
+
+# Fuzzy matching threshold for pain point title matching (0.0-1.0)
+# 0.85 = 85% similarity required to consider a match
+FUZZY_MATCH_THRESHOLD = 0.85
+
+
+def fuzzy_find_matching_score(title: str, scores: list, threshold: float = FUZZY_MATCH_THRESHOLD):
+    """
+    Find a matching score using fuzzy string matching.
+
+    Args:
+        title: The pain point title to match
+        scores: List of PainPointScoring objects with pain_point_title attribute
+        threshold: Minimum similarity ratio to consider a match (0.0-1.0)
+
+    Returns:
+        Tuple of (matching_score, similarity_ratio) or (None, 0.0) if no match
+    """
+    best_match = None
+    best_ratio = 0.0
+    title_normalized = title.lower().strip()
+
+    for score in scores:
+        score_title_normalized = score.pain_point_title.lower().strip()
+
+        # First try exact match (case-insensitive)
+        if title_normalized == score_title_normalized:
+            return (score, 1.0)
+
+        # Then try fuzzy match
+        ratio = SequenceMatcher(None, title_normalized, score_title_normalized).ratio()
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_match = score
+
+    if best_ratio >= threshold:
+        return (best_match, best_ratio)
+
+    return (None, best_ratio)
+
 
 def validate_pydantic_pain_point_output(result: TaskOutput) -> tuple[bool, Any]:
     """
@@ -785,15 +826,32 @@ class PainPointCrew:
             unmatched_scores = []
 
             for unvalidated in extraction_output.extracted_pain_points:
-                # Find matching score by title
-                matching_score = next(
-                    (score for score in validation_output.pain_point_scores
-                     if score.pain_point_title == unvalidated.title),
-                    None
+                # Find matching score by title (using fuzzy matching)
+                matching_score, match_ratio = fuzzy_find_matching_score(
+                    unvalidated.title,
+                    validation_output.pain_point_scores
                 )
 
                 if matching_score:
+                    # Log fuzzy match details if not exact
+                    if match_ratio < 1.0:
+                        logger.debug(
+                            f"Fuzzy matched '{unvalidated.title}' → '{matching_score.pain_point_title}' "
+                            f"(similarity: {match_ratio:.2%})"
+                        )
+
                     # Merge unvalidated pain point + validation scores
+                    # Safety check: Warn if spreading would overwrite fields with explicit kwargs
+                    # This catches future schema changes where UnvalidatedPainPoint adds score fields
+                    unvalidated_fields = set(unvalidated.model_dump().keys())
+                    explicit_fields = {'severity_score', 'willingness_to_pay', 'opportunity_level'}
+                    overlapping = unvalidated_fields & explicit_fields
+                    if overlapping:
+                        logger.warning(
+                            f"Field overlap detected in PainPoint merge: {overlapping}. "
+                            f"Validation scores will overwrite values from UnvalidatedPainPoint."
+                        )
+
                     final_pain_points.append(PainPoint(
                         **unvalidated.model_dump(),  # All original fields
                         severity_score=matching_score.severity_score,
@@ -801,7 +859,10 @@ class PainPointCrew:
                         opportunity_level=matching_score.opportunity_level,
                     ))
                 else:
-                    logger.warning(f"No validation score found for pain point: '{unvalidated.title}' - skipping")
+                    logger.warning(
+                        f"No validation score found for pain point: '{unvalidated.title}' "
+                        f"(best match similarity: {match_ratio:.2%}, threshold: {FUZZY_MATCH_THRESHOLD:.0%}) - skipping"
+                    )
                     unmatched_scores.append(unvalidated.title)
 
             # Validate merge completeness

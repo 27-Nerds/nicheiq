@@ -3,6 +3,8 @@ DataSourceResearchCrew - Stage 9.75: Targeted Data Source Research
 Deep research on data sources, APIs, and integrations for the SELECTED solution only.
 """
 
+from typing import Any
+
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import SerperDevTool
@@ -125,7 +127,47 @@ class DataSourceResearchCrew:
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task()],
             output_pydantic=SourceEvaluationReport,
+            guardrail=self._validate_evaluation_output,
         )
+
+    def _validate_evaluation_output(self, task_output) -> tuple[bool, Any]:
+        """
+        Validate source evaluation output meets CRITICAL RULES.
+
+        Checks:
+        - At least 1 high priority source is identified
+        - All sources have valid URLs
+        - Quality metrics are populated
+
+        Returns:
+            (True, result) if validation passes, (False, error_message) if fails
+        """
+        try:
+            result = task_output.pydantic
+            if result is None:
+                return (False, "Source evaluation returned None pydantic output")
+
+            # Validate at least 1 high priority source
+            if not result.high_priority_sources or len(result.high_priority_sources) == 0:
+                return (False, "Must identify at least 1 high priority data source")
+
+            # Validate all high priority sources have URLs
+            for src in result.high_priority_sources:
+                if not src.url or not src.url.startswith("http"):
+                    return (False, f"High priority source '{src.provider}' missing valid URL")
+                if not src.quality_metrics:
+                    return (False, f"High priority source '{src.provider}' missing quality_metrics")
+
+            logger.info(
+                f"✓ Evaluation guardrail passed: "
+                f"{len(result.high_priority_sources)} HIGH, "
+                f"{len(result.medium_priority_sources)} MEDIUM, "
+                f"{len(result.low_priority_sources)} LOW priority sources"
+            )
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Evaluation validation error: {str(e)}")
 
     @task
     def create_data_roadmap_task(self) -> Task:
@@ -138,7 +180,47 @@ class DataSourceResearchCrew:
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task(), self.evaluate_data_sources_task()],
             output_pydantic=DataImplementationPlan,
+            guardrail=self._validate_implementation_output,
         )
+
+    def _validate_implementation_output(self, task_output) -> tuple[bool, Any]:
+        """
+        Validate implementation plan output meets CRITICAL RULES.
+
+        Checks:
+        - At least 1 implementation phase is defined
+        - Implementation roadmap is substantive
+        - Cost estimate is provided
+
+        Returns:
+            (True, result) if validation passes, (False, error_message) if fails
+        """
+        try:
+            result = task_output.pydantic
+            if result is None:
+                return (False, "Implementation plan returned None pydantic output")
+
+            # Validate at least 1 implementation phase
+            if not result.implementation_phases or len(result.implementation_phases) == 0:
+                return (False, "Must define at least 1 implementation phase")
+
+            # Validate implementation roadmap is substantive
+            if not result.implementation_roadmap or len(result.implementation_roadmap) < 50:
+                return (False, "implementation_roadmap must be substantive (50+ chars)")
+
+            # Validate cost estimate is provided
+            if not result.estimated_monthly_cost:
+                return (False, "estimated_monthly_cost is required")
+
+            logger.info(
+                f"✓ Implementation guardrail passed: "
+                f"{len(result.implementation_phases)} phases, "
+                f"cost estimate: {result.estimated_monthly_cost}"
+            )
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Implementation validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:
@@ -186,12 +268,27 @@ class DataSourceResearchCrew:
             # Python merge: Extract all task outputs and merge Task 2 + Task 3
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
             if len(task_outputs) < 3:
-                logger.error(f"Expected 3 task outputs, got {len(task_outputs)}")
-                raise ValueError("Incomplete task execution in data source crew")
+                raise ValueError(
+                    f"Expected 3 task outputs, got {len(task_outputs)}. "
+                    "Pipeline may have failed mid-execution."
+                )
 
             # Task 1: discover_data_sources (string output, not used)
-            evaluation_output = task_outputs[1].pydantic  # Task 2: SourceEvaluationReport
-            implementation_output = task_outputs[2].pydantic  # Task 3: DataImplementationPlan
+            # Task 2: SourceEvaluationReport - REQUIRED
+            evaluation_output = task_outputs[1].pydantic
+            if evaluation_output is None:
+                raise ValueError(
+                    "Task 2 (Evaluate Data Sources) returned None pydantic output. "
+                    "Check SourceEvaluationReport schema and agent prompt."
+                )
+
+            # Task 3: DataImplementationPlan - REQUIRED
+            implementation_output = task_outputs[2].pydantic
+            if implementation_output is None:
+                raise ValueError(
+                    "Task 3 (Create Data Roadmap) returned None pydantic output. "
+                    "Check DataImplementationPlan schema and agent prompt."
+                )
 
             logger.info(
                 f"Python merge: Combining evaluation ({len(evaluation_output.high_priority_sources)} HIGH priority sources) "

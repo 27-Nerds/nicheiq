@@ -223,10 +223,16 @@ class Settings(BaseSettings):
         description="Log estimated API costs for token usage"
     )
 
+    # Solution Validation Configuration
+    top_solutions_for_validation: int = Field(
+        default=3,
+        description="Number of top solutions to validate with pricing, keywords, and competitive analysis"
+    )
+
     # Stage 8.8: Keyword Validation Configuration
     keyword_validation_enabled: bool = Field(
         default=True,
-        description="Enable keyword demand validation for top 3 solutions before final selection"
+        description="Enable keyword demand validation for top N solutions before final selection"
     )
     keyword_min_search_volume: int = Field(
         default=50,

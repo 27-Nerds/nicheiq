@@ -64,9 +64,9 @@ class SEOAnalytics(BaseModel):
     total_search_volume: int = Field(
         description="Total monthly search volume"
     )
-    avg_competition: Optional[str] = Field(
+    avg_competition: Optional[float] = Field(
         default=None,
-        description="Average competition level across keywords"
+        description="Average competition level across keywords (0-100 scale)"
     )
     keyword_diversity_score: float = Field(
         ge=0.0,
@@ -97,7 +97,7 @@ class CompetitiveAnalytics(BaseModel):
     market_gaps_identified: int = Field(
         description="Number of market gaps identified"
     )
-    avg_competitor_features: Optional[int] = Field(
+    avg_competitor_features: Optional[float] = Field(
         default=None,
         description="Average feature count across competitors"
     )

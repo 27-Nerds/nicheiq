@@ -6,6 +6,8 @@ market timing, trend sustainability, and longevity. Determines if the market is
 growing, stable, or declining, and whether now is the right time to enter.
 """
 
+from typing import Any
+
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
@@ -78,7 +80,7 @@ class TrendLongevityCrew:
             guardrail=self._validate_trend_output,
         )
 
-    def _validate_trend_output(self, task_output) -> tuple:
+    def _validate_trend_output(self, task_output) -> tuple[bool, Any]:
         """
         Validate trend longevity output meets CRITICAL RULES.
 
@@ -136,11 +138,11 @@ class TrendLongevityCrew:
             if result.market_maturity not in valid_maturity:
                 return (False, f"Market maturity must be one of: {valid_maturity}, got '{result.market_maturity}'")
 
-            # Validate momentum score aligns with trend direction
+            # Validate momentum score aligns with trend direction (FAIL instead of warn)
             if result.trend_direction == "Growing" and result.momentum_score < 0.6:
-                logger.warning(f"[Guardrail] Growing trend should have momentum_score >=0.6, got {result.momentum_score}")
+                return (False, f"Inconsistent: trend_direction='Growing' requires momentum_score >= 0.6, got {result.momentum_score}. Either lower momentum_score or change trend_direction to 'Stable'.")
             elif result.trend_direction == "Declining" and result.momentum_score > 0.4:
-                logger.warning(f"[Guardrail] Declining trend should have momentum_score <=0.4, got {result.momentum_score}")
+                return (False, f"Inconsistent: trend_direction='Declining' requires momentum_score <= 0.4, got {result.momentum_score}. Either raise momentum_score or change trend_direction to 'Stable'.")
 
             return (True, result)
         except Exception as e:
@@ -165,26 +167,37 @@ class TrendLongevityCrew:
         social_content: SocialContentCollection,
         pain_point_analysis: PainPointAnalysisResult,
         competitive_analysis: CompetitiveAnalysisResult,
-        niche_description: str
+        niche_description: str,
+        enriched_keywords_trends: dict | None = None,
+        top_enriched_keywords: list[dict] | None = None
     ) -> TrendLongevityResult | None:
         """
         Execute trend longevity crew to analyze market momentum and timing.
 
         Args:
-            keyword_validation: Keyword validation data from Stage 8.8 (search volumes)
+            keyword_validation: Keyword validation data from Stage 8.5 (search volumes)
             social_content: Social media discussions from Stage 5 (discussion trends)
             pain_point_analysis: Pain point data from Stage 6 (problem validation recency)
             competitive_analysis: Competitive landscape from Stage 7-8.75 (new entrants)
             niche_description: Niche description for context
+            enriched_keywords_trends: Aggregated trend data from Stage 9.5c monthly_searches
+                Contains: trend_distribution, rising_volume_pct, top_seasonal_keywords,
+                top_evergreen_keywords, market_momentum
+            top_enriched_keywords: Top 20 keywords with their 12-month monthly_searches arrays
+                for per-keyword trend analysis
 
         Returns:
             TrendLongevityResult with trend analysis and timing recommendation, or None if analysis fails
         """
-        logger.info("[Stage 9.2] Starting Trend Longevity Analysis...")
+        logger.info("[Stage 9.5] Starting Trend Longevity Analysis...")
         logger.info(f"  Niche: {niche_description}")
 
-        # Extract keyword trend signals
-        keyword_signals = self._format_keyword_trends(keyword_validation)
+        # Extract keyword trend signals (now enhanced with actual 12-month trend data)
+        keyword_signals = self._format_keyword_trends(keyword_validation, enriched_keywords_trends)
+
+        # Add per-keyword monthly trends if available
+        if top_enriched_keywords:
+            keyword_signals += self._format_keyword_monthly_trends(top_enriched_keywords)
 
         # Extract social discussion trends
         discussion_signals = self._format_discussion_trends(social_content, pain_point_analysis)
@@ -201,12 +214,12 @@ class TrendLongevityCrew:
             "total_keyword_volume": keyword_validation.total_volume if keyword_validation else 0,
             "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
             "discussion_count": (
-                len(social_content.reddit_threads) + len(social_content.twitter_posts)
+                len(social_content.reddit_posts) + len(social_content.twitter_threads)
                 if social_content else 0
             ),
             "competitor_count": (
-                len(competitive_analysis.key_competitors)
-                if competitive_analysis and competitive_analysis.key_competitors else 0
+                sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes)
+                if competitive_analysis and competitive_analysis.solution_landscapes else 0
             ),
         }
 
@@ -230,8 +243,12 @@ class TrendLongevityCrew:
             logger.error(f"[Stage 9.2] Trend analysis error: {str(e)}")
             return None
 
-    def _format_keyword_trends(self, keyword_validation: CrewKeywordValidationResult | None) -> str:
-        """Format keyword trend signals for analysis."""
+    def _format_keyword_trends(
+        self,
+        keyword_validation: CrewKeywordValidationResult | None,
+        enriched_keywords_trends: dict | None = None
+    ) -> str:
+        """Format keyword trend signals for analysis with actual 12-month data."""
         if not keyword_validation:
             return "No keyword validation data available."
 
@@ -247,8 +264,50 @@ class TrendLongevityCrew:
                 volume = kw.get('volume', 0)
                 signals.append(f"- {keyword_text}: {volume:,}/month")
 
-        # Note: We don't have historical trend data yet, but this provides current baseline
-        signals.append("\n**Note:** Trend direction must be inferred from current volumes, discussion recency, and competitive activity.")
+        # Add ACTUAL 12-month trend data if available
+        if enriched_keywords_trends:
+            signals.append("\n" + "=" * 50)
+            signals.append("**ACTUAL 12-MONTH TREND DATA (from DataForSEO):**")
+            signals.append("=" * 50)
+
+            # Trend distribution (calculated from monthly_searches)
+            trend_dist = enriched_keywords_trends.get("trend_distribution", {})
+            if trend_dist:
+                total_kw = sum(trend_dist.values())
+                signals.append(f"\n**Keyword Trend Distribution ({total_kw} keywords analyzed):**")
+                signals.append(f"- Rising keywords: {trend_dist.get('rising', 0)} ({trend_dist.get('rising', 0)/max(total_kw, 1)*100:.0f}%)")
+                signals.append(f"- Stable keywords: {trend_dist.get('stable', 0)} ({trend_dist.get('stable', 0)/max(total_kw, 1)*100:.0f}%)")
+                signals.append(f"- Declining keywords: {trend_dist.get('declining', 0)} ({trend_dist.get('declining', 0)/max(total_kw, 1)*100:.0f}%)")
+                signals.append(f"- Unknown trend: {trend_dist.get('unknown', 0)}")
+
+            # Market momentum (derived from trend distribution)
+            market_momentum = enriched_keywords_trends.get("market_momentum", "Unknown")
+            signals.append(f"\n**Market Momentum (data-derived):** {market_momentum}")
+
+            # Rising volume percentage
+            rising_vol_pct = enriched_keywords_trends.get("rising_volume_pct", 0)
+            signals.append(f"**Volume in Rising Keywords:** {rising_vol_pct:.1f}% of total search volume")
+
+            # Evergreen keywords (low seasonality + not declining)
+            evergreen = enriched_keywords_trends.get("top_evergreen_keywords", [])
+            if evergreen:
+                signals.append(f"\n**Evergreen Keywords (low seasonality, stable/rising):**")
+                for kw in evergreen[:5]:
+                    signals.append(f"- {kw}")
+
+            # Seasonal keywords (high seasonality)
+            seasonal = enriched_keywords_trends.get("top_seasonal_keywords", [])
+            if seasonal:
+                signals.append(f"\n**Seasonal Keywords (high volume variation):**")
+                for kw in seasonal[:5]:
+                    signals.append(f"- {kw}")
+
+            signals.append("\n**IMPORTANT:** Use the above ACTUAL trend data to inform your trend_direction and momentum_score.")
+            signals.append("This data is calculated from 12 months of historical search volumes, NOT inferred.")
+
+        else:
+            # Fallback: No actual trend data available
+            signals.append("\n**Note:** No 12-month historical data available. Trend direction must be inferred from current volumes, discussion recency, and competitive activity.")
 
         return "\n".join(signals)
 
@@ -270,10 +329,10 @@ class TrendLongevityCrew:
 
         # Analyze discussion recency from timestamps
         if social_content.reddit_posts:
-            from datetime import datetime, timedelta
+            from datetime import datetime, timedelta, timezone
 
             signals.append("\n**Discussion Recency (Reddit sample with timestamps):**")
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             for post in social_content.reddit_posts[:5]:
                 title = getattr(post, 'title', 'Untitled')[:60]
@@ -304,19 +363,70 @@ class TrendLongevityCrew:
 
     def _format_competitive_momentum(self, competitive_analysis: CompetitiveAnalysisResult | None) -> str:
         """Format competitive momentum signals for analysis."""
-        if not competitive_analysis or not competitive_analysis.key_competitors:
+        if not competitive_analysis or not competitive_analysis.solution_landscapes:
             return "No competitive analysis data available."
 
         signals = []
-        signals.append(f"**Total Competitors:** {len(competitive_analysis.key_competitors)}")
 
-        if competitive_analysis.market_gaps:
-            signals.append(f"\n**Market Gaps Identified:** {len(competitive_analysis.market_gaps)}")
+        # Count total competitors across all solution landscapes
+        total_competitors = sum(
+            len(landscape.competitors or [])
+            for landscape in competitive_analysis.solution_landscapes
+        )
+        signals.append(f"**Total Competitors:** {total_competitors}")
+
+        # Count market gaps across all landscapes
+        total_gaps = sum(
+            len(landscape.market_gaps)
+            for landscape in competitive_analysis.solution_landscapes
+        )
+        if total_gaps > 0:
+            signals.append(f"\n**Market Gaps Identified:** {total_gaps}")
             signals.append("(Indicates room for new entrants)")
 
-        if competitive_analysis.key_competitors:
+        # Sample competitors from first landscape
+        first_landscape = competitive_analysis.solution_landscapes[0]
+        if first_landscape.competitors:
             signals.append("\n**Sample Competitors (for maturity assessment):**")
-            for comp in competitive_analysis.key_competitors[:5]:
-                signals.append(f"- {comp.competitor_name}")
+            for comp in first_landscape.competitors[:5]:
+                signals.append(f"- {comp.name}")
+
+        return "\n".join(signals)
+
+    def _format_keyword_monthly_trends(self, top_enriched_keywords: list[dict] | None) -> str:
+        """Format per-keyword monthly search trends for detailed analysis."""
+        if not top_enriched_keywords:
+            return ""
+
+        signals = []
+        signals.append("\n\n**Individual Keyword 12-Month Trends (Top 10):**")
+
+        for kw in top_enriched_keywords[:10]:
+            keyword = kw.get('keyword', 'N/A')
+            volume = kw.get('search_volume', 0)
+            monthly = kw.get('monthly_searches', [])
+
+            # Format monthly trend as sparkline-style summary
+            if monthly and len(monthly) >= 2:
+                # Compare first 3 months vs last 3 months to determine trend
+                first_3_avg = (
+                    sum(m.get('search_volume', 0) for m in monthly[:3]) / 3
+                    if len(monthly) >= 3 else monthly[0].get('search_volume', 0)
+                )
+                last_3_avg = (
+                    sum(m.get('search_volume', 0) for m in monthly[-3:]) / 3
+                    if len(monthly) >= 3 else monthly[-1].get('search_volume', 0)
+                )
+
+                if last_3_avg > first_3_avg * 1.1:
+                    trend_arrow = "↑ Rising"
+                elif last_3_avg < first_3_avg * 0.9:
+                    trend_arrow = "↓ Declining"
+                else:
+                    trend_arrow = "→ Stable"
+
+                signals.append(f"- {keyword}: {volume:,}/mo ({trend_arrow})")
+            else:
+                signals.append(f"- {keyword}: {volume:,}/mo")
 
         return "\n".join(signals)

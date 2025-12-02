@@ -182,6 +182,14 @@ class TestKeywordSeedGeneratorIntegration:
 class TestValidatorsIntegration:
     """Verify validators use LLMService correctly."""
 
+    @pytest.fixture(autouse=True)
+    def clear_thread_validator_cache(self):
+        """Clear the LRU cache before each test to prevent cache interference."""
+        from nicheiq.utils.validation.thread_validator import ThreadRelevanceValidator
+        ThreadRelevanceValidator._cached_validation.cache_clear()
+        yield
+        ThreadRelevanceValidator._cached_validation.cache_clear()
+
     @patch('nicheiq.utils.validation.thread_validator.LLMService.invoke_structured')
     def test_thread_validator_uses_llm_service(self, mock_invoke_structured):
         """Verify ThreadRelevanceValidator uses LLMService."""

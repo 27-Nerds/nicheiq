@@ -54,10 +54,12 @@ class Keyword(BaseModel):
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Monthly search volume")
     competition: float = Field(..., ge=0.0, le=1.0, description="Competition level (0-1)")
-    competition_index: float = Field(
-        default=0.0, description="Competition index score (defaults to 0 if unavailable)"
+    competition_index: Optional[float] = Field(
+        default=None, description="Competition index score (None = data unavailable from source)"
     )
-    cpc: float = Field(default=0.0, description="Cost per click in USD (defaults to 0 if unavailable)")
+    cpc: Optional[float] = Field(
+        default=None, description="Cost per click in USD (None = data unavailable from source)"
+    )
     keyword_difficulty: Optional[float] = Field(
         default=None, ge=0.0, le=100.0, description="Keyword difficulty score (0-100)"
     )
@@ -70,14 +72,18 @@ class Keyword(BaseModel):
     trend: Optional[str] = Field(
         default=None, description="Trend direction (rising, stable, declining)"
     )
-    # monthly_searches field removed - always empty in practice, DataForSEO doesn't populate this
+    # Note: monthly_searches is preserved in raw dict format during pipeline stages
+    # (12-month historical data from DataForSEO), but not typed in this model yet
 
     @field_validator('competition_index', 'cpc', mode='before')
     @classmethod
-    def coerce_numeric_none_to_zero(cls, v):
-        """Coerce None to 0 for numeric fields (DataForSEO may return null)."""
-        if v is None or v == "null":
-            return 0.0
+    def coerce_null_string_to_none(cls, v):
+        """Convert 'null' string to None (DataForSEO may return literal 'null' string).
+
+        Note: None is preserved as None to distinguish 'no data available' from '0'.
+        """
+        if v == "null":
+            return None
         return v
 
 class GeographicBreakdown(BaseModel):
@@ -100,7 +106,10 @@ class KeywordCluster(BaseModel):
     total_search_volume: int = Field(
         ..., description="Combined search volume for cluster"
     )
-    avg_competition: float = Field(..., description="Average competition across cluster")
+    avg_competition: float = Field(
+        ..., ge=0.0, le=1.0,
+        description="Average competition level across cluster (0-1 scale, derived from Keyword.competition)"
+    )
     opportunity_assessment: str = Field(
         ..., description="Assessment of opportunity for this cluster"
     )
@@ -228,7 +237,8 @@ class KeywordValidationSummary(BaseModel):
     )
     total_volume: int = Field(..., ge=0, description="Total monthly search volume across validated keywords")
     avg_competition: float = Field(
-        ..., ge=0.0, le=100.0, description="Average competition index across validated keywords"
+        ..., ge=0.0, le=100.0,
+        description="Average competition index across validated keywords (0-100 scale from DataForSEO)"
     )
     keyword_demand_score: float = Field(
         ...,

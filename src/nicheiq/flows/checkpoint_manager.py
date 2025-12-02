@@ -229,32 +229,31 @@ class CheckpointManager:
         """Reconstruct ResearchState from individual stage checkpoint files."""
         # Map stage files to state attributes
         stage_mapping = {
+            # Stage 1-6.5: Initial stages
             "stage_1_niche_context.json": "niche_context",
             "stage_5_social_content.json": "social_content",
             "stage_6_pain_points.json": "pain_point_analysis",
-            "stage_6_5_audience_mapping.json": "audience_mapping",  # Stage 6.5 audience segmentation
-            # Task-level checkpoints for Stages 7-8.75 unified pipeline
+            "stage_6_5_audience_mapping.json": "audience_mapping",
+            # Stage 7: Unified solution pipeline (4 internal tasks)
             "stage_7_1_ideation.json": "idea_generation",
             "stage_7_2_competitive.json": "competitive_analysis",
-            # NOTE: stage_7_3_refinement.json (CompetitiveEnhancements) is saved for debugging/audit
-            # but NOT loaded on resume - data is merged into idea_generation by unified_solution_crew
-            # Legacy stage files (for backward compatibility)
-            "stage_7_solutions.json": "idea_generation",
-            "stage_8_competitive.json": "competitive_analysis",
-            "stage_8_5_refinement.json": "idea_generation",  # Stage 8.5 updates idea_generation with competitive insights
-            "stage_8_75_solution_selection.json": "solution_selection",
-            "stage_8_7_pricing_validation.json": "pricing_strategy",  # Stage 8.7 pricing strategy validation
-            "stage_8_6_market_sizing.json": "market_sizing",  # Stage 8.6 market sizing and validation
-            "stage_8_8_keyword_validation.json": "keyword_validation_results",  # Stage 8.8 keyword demand validation
-            "stage_8_85_solution_refinement.json": "solution_refinement",  # Stage 8.85 strategic refinements
-            # Stage 9 sub-phase checkpoints (enables partial resume)
+            "stage_7_3_refinement.json": "idea_generation",
+            "stage_7_4_selection.json": "solution_selection",
+            # Stage 8-8.7: Post-solution validation stages
+            "stage_8_pricing_validation.json": "pricing_strategies",
+            "stage_8_5_keyword_validation.json": "keyword_validation_results",
+            "stage_8_5_keyword_validation_partial.json": "keyword_validation_results",
+            "stage_8_6_market_sizing.json": "market_sizing",
+            "stage_8_7_solution_refinement.json": "solution_refinement",
+            # Stage 9: SEO strategy (internal phases 9.5a/b/c)
             "stage_9_5a_seed_expansion.json": "stage_9_5a_expanded_keywords",
             "stage_9_5b_bulk_validation.json": "stage_9_5b_validation_results",
             "stage_9_5c_enrichment.json": "stage_9_5c_enriched_keywords",
             "stage_9_seo_strategy.json": "seo_strategy_report",
-            "stage_9_2_trend_longevity.json": "trend_longevity",  # Stage 9.2 trend longevity analysis
-            "stage_9_5_seo_refinement.json": "seo_enrichment",  # Stage 9.5 SEO score refinement
-            "stage_9_75_data_sources.json": "data_source_research",
+            # Stage 9.5-9.7: Post-SEO stages
+            "stage_9_5_trend_longevity.json": "trend_longevity",
+            "stage_9_6_seo_refinement.json": "seo_enrichment",
+            "stage_9_7_data_sources.json": "data_source_research",
         }
 
         # Load each stage file if it exists
@@ -268,6 +267,12 @@ class CheckpointManager:
 
                 with open(file_path, encoding="utf-8") as f:
                     stage_data = json.load(f)
+
+                # Check if this is a "skipped" marker - don't try to load as Pydantic model
+                if isinstance(stage_data, dict) and stage_data.get("skipped") is True:
+                    skip_reason = stage_data.get("reason", "unknown")
+                    logger.info(f"  ⏭ Skipping {stage_file} (was skipped: {skip_reason})")
+                    continue
 
                 # Get the Pydantic model class for this attribute
                 field_info = ResearchState.model_fields.get(state_attr)
@@ -287,6 +292,12 @@ class CheckpointManager:
                         if get_origin(field_type) is list:
                             list_item_type = get_args(field_type)[0]
                             if hasattr(list_item_type, 'model_fields'):
+                                # Backward compatibility: if stage_data is a dict (old single-object format),
+                                # wrap it in a list for migration to new list format
+                                if isinstance(stage_data, dict):
+                                    logger.info(f"  ↑ Migrating old single-object format to list for {state_attr}")
+                                    stage_data = [stage_data]
+
                                 # List of Pydantic models - convert each dict
                                 logger.debug(f"  Reconstructing list of {list_item_type.__name__} for {state_attr}")
                                 reconstructed = [list_item_type(**item) for item in stage_data]
@@ -322,6 +333,10 @@ class CheckpointManager:
 
         if metadata.get("started_at"):
             self.state.started_at = datetime.fromisoformat(metadata["started_at"])
+
+        # Restore allowed_project_types from checkpoint metadata
+        if metadata.get("allowed_project_types"):
+            self.state.allowed_project_types = metadata["allowed_project_types"]
 
     def get_completed_stages(self, folder_path: Path | None = None) -> list[str]:
         """Get list of completed stage identifiers from checkpoint folder."""

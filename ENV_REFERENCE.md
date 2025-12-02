@@ -135,6 +135,19 @@ KEYWORD_RESEARCH_LLM=gpt-4o-mini
 - Quality-focused: Use `gpt-4o` everywhere if output quality issues observed
 - Testing: Use `gpt-3.5-turbo` for rapid iteration (not recommended for production)
 
+### Solution Validation
+
+```bash
+TOP_SOLUTIONS_FOR_VALIDATION=3
+# Number of top-ranked solutions to validate in Stage 8 (Pricing) and Stage 8.5 (Keyword Validation)
+# Use cases:
+#   - 1: Fastest, only validates the top solution
+#   - 3: Balanced (recommended), validates top 3 solutions
+#   - 5: Thorough, validates all generated solutions
+# Higher values increase API costs but provide pricing/keyword data for more solutions
+# Useful when Stage 8.5 re-ranking might change the winner
+```
+
 ---
 
 ## Search Configuration

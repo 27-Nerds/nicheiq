@@ -271,6 +271,140 @@ class ResearchFlow(Flow[ResearchState]):
             logger.warning(f"Error checking prerequisites for stage {stage_num}: {e}")
             return False
 
+    def _calculate_trend_metrics(self, monthly_searches: list[dict]) -> dict:
+        """
+        Calculate trend metrics from 12-month historical search data.
+
+        Args:
+            monthly_searches: List of dicts with year, month, search_volume
+
+        Returns:
+            Dict with trend_direction, trend_score, seasonality_index, is_evergreen
+        """
+        if not monthly_searches or len(monthly_searches) < 2:
+            return {
+                "trend_direction": "unknown",
+                "trend_score": 0.0,
+                "seasonality_index": 0.0,
+                "is_evergreen": False
+            }
+
+        # Sort by date (newest first)
+        sorted_data = sorted(
+            monthly_searches,
+            key=lambda x: (x.get("year", 0), x.get("month", 0)),
+            reverse=True
+        )
+
+        volumes = [m.get("search_volume", 0) for m in sorted_data]
+
+        # Trend direction: Compare recent 3 months vs older 3 months
+        recent_avg = sum(volumes[:3]) / 3 if len(volumes) >= 3 else sum(volumes) / len(volumes)
+        older_avg = sum(volumes[-3:]) / 3 if len(volumes) >= 3 else sum(volumes) / len(volumes)
+
+        if older_avg > 0:
+            trend_pct = ((recent_avg - older_avg) / older_avg) * 100
+        else:
+            trend_pct = 0
+
+        # Trend direction thresholds
+        if trend_pct > 15:
+            trend_direction = "rising"
+        elif trend_pct < -15:
+            trend_direction = "declining"
+        else:
+            trend_direction = "stable"
+
+        # Trend score: -1.0 to 1.0 (capped)
+        trend_score = max(-1.0, min(1.0, trend_pct / 100))
+
+        # Seasonality: coefficient of variation (std/mean)
+        mean_vol = sum(volumes) / len(volumes) if volumes else 0
+        if mean_vol > 0:
+            variance = sum((v - mean_vol) ** 2 for v in volumes) / len(volumes)
+            std_dev = variance ** 0.5
+            seasonality_index = min(1.0, std_dev / mean_vol)
+        else:
+            seasonality_index = 0.0
+
+        # Evergreen: Low seasonality + stable/rising trend
+        is_evergreen = seasonality_index < 0.3 and trend_direction != "declining"
+
+        return {
+            "trend_direction": trend_direction,
+            "trend_score": round(trend_score, 2),
+            "seasonality_index": round(seasonality_index, 2),
+            "is_evergreen": is_evergreen
+        }
+
+    def _aggregate_keyword_trends(self) -> dict | None:
+        """
+        Aggregate per-keyword trends into market-level summary for Stage 9.5.
+
+        Uses enriched keywords from Stage 9.5c to calculate:
+        - Distribution of rising/stable/declining keywords
+        - Percentage of search volume from rising keywords
+        - Lists of seasonal and evergreen keywords
+        - Overall market momentum assessment
+
+        Returns:
+            Dict with trend_distribution, rising_volume_pct, seasonal/evergreen keywords,
+            market_momentum, or None if no enriched keywords available
+        """
+        enriched_keywords = self.state.stage_9_5c_enriched_keywords
+        if not enriched_keywords:
+            logger.debug("[_aggregate_keyword_trends] No enriched keywords available")
+            return None
+
+        trends = {"rising": 0, "stable": 0, "declining": 0, "unknown": 0}
+        total_volume = 0
+        rising_volume = 0
+        seasonal_keywords = []
+        evergreen_keywords = []
+
+        for kw in enriched_keywords:
+            monthly_searches = kw.get("monthly_searches", [])
+            metrics = self._calculate_trend_metrics(monthly_searches)
+            trends[metrics["trend_direction"]] += 1
+            vol = kw.get("search_volume", 0)
+            total_volume += vol
+
+            if metrics["trend_direction"] == "rising":
+                rising_volume += vol
+            if metrics["seasonality_index"] > 0.3:
+                seasonal_keywords.append({
+                    "keyword": kw.get("keyword", ""),
+                    "seasonality": metrics["seasonality_index"]
+                })
+            if metrics["is_evergreen"]:
+                evergreen_keywords.append({
+                    "keyword": kw.get("keyword", ""),
+                    "volume": vol
+                })
+
+        # Sort by relevance (seasonality for seasonal, volume for evergreen)
+        seasonal_keywords.sort(key=lambda x: x["seasonality"], reverse=True)
+        evergreen_keywords.sort(key=lambda x: x["volume"], reverse=True)
+
+        # Determine market momentum
+        if trends["rising"] > trends["declining"] * 1.5:
+            market_momentum = "Growing"
+        elif trends["declining"] > trends["rising"] * 1.5:
+            market_momentum = "Declining"
+        else:
+            market_momentum = "Stable"
+
+        return {
+            "trend_distribution": trends,
+            "rising_volume_pct": (rising_volume / total_volume * 100) if total_volume else 0,
+            "total_keywords_analyzed": len(enriched_keywords),
+            "top_seasonal_keywords": [kw["keyword"] for kw in seasonal_keywords[:5]],
+            "top_evergreen_keywords": [kw["keyword"] for kw in evergreen_keywords[:10]],
+            "evergreen_count": len(evergreen_keywords),
+            "seasonal_count": len(seasonal_keywords),
+            "market_momentum": market_momentum
+        }
+
     def _validate_pain_point_quality(self, analysis) -> tuple[str, float]:
         """
         Validate pain point analysis quality and return tier classification.
@@ -425,81 +559,108 @@ class ResearchFlow(Flow[ResearchState]):
                 logger.info("Skipping Stage 6.5 (Audience Mapping) - already completed")
 
             # Stages 7-8.75 now handled by unified solution pipeline
-            if current <= 7 and self._validate_stage_prerequisites(7):
-                logger.info("Executing Unified Solution Pipeline (Stages 7-8.75)...")
-                self.stages_7_through_8_75_unified_solution_pipeline()
-            elif current <= 7:
-                logger.info("Skipping Stages 7-8.75 (Unified Solution Pipeline) - prerequisites not met")
-                # Skip all solution stages if prerequisites not met
-                self.state.current_stage = 9
-
-            # Stage 8.7: Only run if not already completed (listener stage)
-            if current <= 8.7 and "stage_8_7_pricing_validation" not in completed_stages:
-                if self._validate_stage_prerequisites(8.7):
-                    self.stage_8_7_pricing_validation()
+            if "stage_7_4_selection" not in completed_stages:
+                if self._validate_stage_prerequisites(7):
+                    logger.info("Executing Unified Solution Pipeline (Stages 7-8.75)...")
+                    self.stage_7_unified_solution_pipeline()
                 else:
-                    logger.info("Skipping Stage 8.7 (Pricing Validation) - prerequisites not met")
-            elif "stage_8_7_pricing_validation" in completed_stages:
-                logger.info("Skipping Stage 8.7 (Pricing Validation) - already completed")
+                    logger.info("Skipping Stages 7-8.75 (Unified Solution Pipeline) - prerequisites not met")
+                    # Skip all solution stages if prerequisites not met
+                    self.state.current_stage = 9
+            else:
+                logger.info("Skipping Stages 7-8.75 (Unified Solution Pipeline) - already completed")
 
-            # Stage 8.6: Only run if not already completed (listener stage)
-            if current <= 8.6 and "stage_8_6_market_sizing" not in completed_stages:
-                if self._validate_stage_prerequisites(8.6):
-                    self.stage_8_6_market_sizing()
+            # Stage 8: Only run if not already completed (listener stage)
+            # NOTE: Don't use `current <= 8` check because Stage 8 sets current_stage = 8.5
+            # before Stage 8.5 runs. Use checkpoint status as the primary check.
+            if "stage_8_pricing_validation" not in completed_stages:
+                # Only run if Stage 7 (unified pipeline) has completed
+                if "stage_7_4_selection" in completed_stages:
+                    if self._validate_stage_prerequisites(8):
+                        self.stage_8_pricing_validation()
+                        # Refresh completed_stages so subsequent stages see this checkpoint
+                        completed_stages = self.checkpoint_mgr.get_completed_stages()
+                    else:
+                        logger.info("Skipping Stage 8 (Pricing Validation) - prerequisites not met")
                 else:
-                    logger.info("Skipping Stage 8.6 (Market Sizing) - prerequisites not met")
-            elif "stage_8_6_market_sizing" in completed_stages:
+                    logger.info("Skipping Stage 8 (Pricing Validation) - awaiting Stage 7")
+            else:
+                logger.info("Skipping Stage 8 (Pricing Validation) - already completed")
+
+            # Stage 8.5: Keyword Validation (runs after Stage 8)
+            # NOTE: Don't use `current <= 8.5` check because Stage 8 already set current_stage = 8.5.
+            # Stage 8.5 executes AFTER 8 via @listen, so use checkpoint status.
+            if "stage_8_5_keyword_validation" not in completed_stages:
+                # Only run if Stage 8 has completed (8.5 listens to 8)
+                if "stage_8_pricing_validation" in completed_stages:
+                    if self._validate_stage_prerequisites(8.5):
+                        self.stage_8_5_keyword_validation()
+                        # Refresh completed_stages so subsequent stages see this checkpoint
+                        completed_stages = self.checkpoint_mgr.get_completed_stages()
+                    else:
+                        logger.info("Skipping Stage 8.5 (Keyword Validation) - prerequisites not met")
+                else:
+                    logger.info("Skipping Stage 8.5 (Keyword Validation) - awaiting Stage 8")
+            else:
+                logger.info("Skipping Stage 8.5 (Keyword Validation) - already completed")
+
+            # Stage 8.6: Market Sizing (runs after Stage 8.5, now has keyword data)
+            if "stage_8_6_market_sizing" not in completed_stages:
+                # Only run if Stage 8.5 has completed
+                if "stage_8_5_keyword_validation" in completed_stages:
+                    if self._validate_stage_prerequisites(8.6):
+                        self.stage_8_6_market_sizing()
+                        # Refresh completed_stages so subsequent stages see this checkpoint
+                        completed_stages = self.checkpoint_mgr.get_completed_stages()
+                    else:
+                        logger.info("Skipping Stage 8.6 (Market Sizing) - prerequisites not met")
+                else:
+                    logger.info("Skipping Stage 8.6 (Market Sizing) - awaiting Stage 8.5")
+            else:
                 logger.info("Skipping Stage 8.6 (Market Sizing) - already completed")
 
-            # Stage 8.8: Only run if not already completed
-            if current <= 8.8 and "stage_8_8_keyword_validation" not in completed_stages:
-                if self._validate_stage_prerequisites(8.8):
-                    self.stage_8_8_keyword_validation()
+            # Stage 8.7: Only run if not already completed
+            if current <= 8.7 and "stage_8_7_solution_refinement" not in completed_stages:
+                if self._validate_stage_prerequisites(8.7):
+                    self.stage_8_7_solution_refinement()
+                    # Refresh completed_stages so subsequent stages see this checkpoint
+                    completed_stages = self.checkpoint_mgr.get_completed_stages()
                 else:
-                    logger.info("Skipping Stage 8.8 (Keyword Validation) - prerequisites not met")
-            elif "stage_8_8_keyword_validation" in completed_stages:
-                logger.info("Skipping Stage 8.8 (Keyword Validation) - already completed")
-
-            # Stage 8.85: Only run if not already completed
-            if current <= 8.85 and "stage_8_85_solution_refinement" not in completed_stages:
-                if self._validate_stage_prerequisites(8.85):
-                    self.stage_8_85_solution_refinement()
-                else:
-                    logger.info("Skipping Stage 8.85 (Solution Refinement) - prerequisites not met")
-            elif "stage_8_85_solution_refinement" in completed_stages:
-                logger.info("Skipping Stage 8.85 (Solution Refinement) - already completed")
+                    logger.info("Skipping Stage 8.7 (Solution Refinement) - prerequisites not met")
+            elif "stage_8_7_solution_refinement" in completed_stages:
+                logger.info("Skipping Stage 8.7 (Solution Refinement) - already completed")
 
             if current <= 9 and self._validate_stage_prerequisites(9):
                 self.stage_9_generate_seo_strategy()
             elif current <= 9:
                 logger.info("Skipping Stage 9 (SEO Strategy) - prerequisites not met")
 
-            # Stage 9.2: Only run if not already completed (listener stage)
-            if current <= 9.2 and "stage_9_2_trend_longevity" not in completed_stages:
-                if self._validate_stage_prerequisites(9.2):
-                    self.stage_9_2_trend_longevity()
-                else:
-                    logger.info("Skipping Stage 9.2 (Trend Longevity) - prerequisites not met")
-            elif "stage_9_2_trend_longevity" in completed_stages:
-                logger.info("Skipping Stage 9.2 (Trend Longevity) - already completed")
-
             # Stage 9.5: Only run if not already completed (listener stage)
-            if current <= 9.5 and "stage_9_5_seo_refinement" not in completed_stages:
+            if current <= 9.5 and "stage_9_5_trend_longevity" not in completed_stages:
                 if self._validate_stage_prerequisites(9.5):
-                    self.stage_9_5_refine_seo_scores()
+                    self.stage_9_5_trend_longevity()
                 else:
-                    logger.info("Skipping Stage 9.5 (SEO Refinement) - prerequisites not met")
-            elif "stage_9_5_seo_refinement" in completed_stages:
-                logger.info("Skipping Stage 9.5 (SEO Refinement) - already completed")
+                    logger.info("Skipping Stage 9.5 (Trend Longevity) - prerequisites not met")
+            elif "stage_9_5_trend_longevity" in completed_stages:
+                logger.info("Skipping Stage 9.5 (Trend Longevity) - already completed")
 
-            # Stage 9.75: Only run if not already completed (listener stage)
-            if current <= 9.75 and "stage_9_75_data_sources" not in completed_stages:
-                if self._validate_stage_prerequisites(9.75):
-                    self.stage_9_75_research_data_sources()
+            # Stage 9.6: Only run if not already completed (listener stage)
+            if current <= 9.6 and "stage_9_6_seo_refinement" not in completed_stages:
+                if self._validate_stage_prerequisites(9.6):
+                    self.stage_9_6_refine_seo_scores()
                 else:
-                    logger.info("Skipping Stage 9.75 (Data Source Research) - prerequisites not met")
-            elif "stage_9_75_data_sources" in completed_stages:
-                logger.info("Skipping Stage 9.75 (Data Source Research) - already completed")
+                    logger.info("Skipping Stage 9.6 (SEO Refinement) - prerequisites not met")
+            elif "stage_9_6_seo_refinement" in completed_stages:
+                logger.info("Skipping Stage 9.6 (SEO Refinement) - already completed")
+
+            # Stage 9.7: Only run if not already completed (listener stage)
+            if current <= 9.7 and "stage_9_7_data_sources" not in completed_stages:
+                if self._validate_stage_prerequisites(9.7):
+                    self.stage_9_7_research_data_sources()
+                else:
+                    logger.info("Skipping Stage 9.7 (Data Source Research) - prerequisites not met")
+            elif "stage_9_7_data_sources" in completed_stages:
+                logger.info("Skipping Stage 9.7 (Data Source Research) - already completed")
 
             if current <= 10:
                 self.stage_10_generate_report()
@@ -544,6 +705,11 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info(f"[OK] Niche validated: {niche[:100]}...")
         logger.info(f"[OK] Target location: {settings.target_location}")
         logger.info(f"[OK] Target language: {settings.target_language}")
+
+        # Store user constraints in state for persistence
+        self.state.allowed_project_types = self.allowed_project_types
+        if self.allowed_project_types:
+            logger.info(f"[OK] Project type constraints: {', '.join(self.allowed_project_types)}")
 
         # Generate structured NicheContext using LLM
         logger.info("\nGenerating structured niche context...")
@@ -867,6 +1033,18 @@ Return a valid JSON object with this structure:
 
         logger.info(f"Content quality check: {total_discussions} discussions with {total_engagement} comments/replies")
 
+        # Validate required state fields exist before proceeding
+        if not self.state.social_content:
+            raise ValueError(
+                "Stage 6 requires social_content from Stage 5. "
+                "Ensure Stage 5 completed successfully before running Stage 6."
+            )
+        if not self.state.niche_context:
+            raise ValueError(
+                "Stage 6 requires niche_context from Stage 1. "
+                "Ensure Stage 1 completed successfully before running Stage 6."
+            )
+
         # Initialize and run PainPointCrew
         pain_point_crew = PainPointCrew(
             reddit_posts=self.state.social_content.reddit_posts,
@@ -951,10 +1129,13 @@ Return a valid JSON object with this structure:
 
         logger.info(f"[Stage 6.5] Analyzing audience segments for: {self.niche_description}")
 
-        audience_crew = AudienceMappingCrew()
+        audience_crew = AudienceMappingCrew(
+            reddit_posts=self.state.social_content.reddit_posts if self.state.social_content else [],
+            twitter_threads=self.state.social_content.twitter_threads if self.state.social_content else [],
+            niche_description=self.niche_description
+        )
 
         audience_result = audience_crew.analyze(
-            social_content=self.state.social_content,
             pain_point_analysis=self.state.pain_point_analysis,
             niche_description=self.niche_description
         )
@@ -980,15 +1161,15 @@ Return a valid JSON object with this structure:
         logger.info(f"  Recommended Channels: {', '.join(audience_result.recommended_channels[:3])}")
 
     @listen(stage_6_5_audience_mapping)
-    def stages_7_through_8_75_unified_solution_pipeline(self):
+    def stage_7_unified_solution_pipeline(self):
         """
-        Stages 7-8.75: Unified Solution Pipeline (CrewAI Best Practice)
+        Stage 7: Unified Solution Pipeline (CrewAI Best Practice)
 
         Consolidates stages using UnifiedSolutionCrew with context chaining:
-        - Stage 7: Solution Ideation (brainstorm + evaluate + refine)
-        - Stage 8: Competitive Analysis (research + gap analysis)
-        - Stage 8.5: Competitive Refinement (enhance with insights)
-        - Stage 8.75: Solution Selection (strategic scoring and selection)
+        - Task 7.1: Solution Ideation (brainstorm + evaluate + refine)
+        - Task 7.2: Competitive Analysis (research + gap analysis)
+        - Task 7.3: Competitive Refinement (enhance with insights)
+        - Task 7.4: Solution Selection (strategic scoring and selection)
 
         Benefits:
         - Automatic field preservation via output_pydantic + context
@@ -1004,7 +1185,7 @@ Return a valid JSON object with this structure:
         if not self.state.pain_point_analysis or not self.state.pain_point_analysis.pain_points:
             logger.warning("No pain points available. Skipping solution pipeline.")
             self.state.current_stage = 9
-            self.checkpoint_mgr.save_stage("stages_7_8_75_unified", {"skipped": True, "reason": "No pain points available"})
+            self.checkpoint_mgr.save_stage("stage_7_skipped", {"skipped": True, "reason": "No pain points available"})
             return
 
         # ANTI-HALLUCINATION CHECK: Verify pain point quality
@@ -1022,7 +1203,7 @@ Return a valid JSON object with this structure:
                 "No high or medium priority pain points available - skipping solution pipeline"
             )
             self.state.current_stage = 9
-            self.checkpoint_mgr.save_stage("stages_7_8_75_unified", {"skipped": True, "reason": "No high/medium priority pain points"})
+            self.checkpoint_mgr.save_stage("stage_7_skipped", {"skipped": True, "reason": "No high/medium priority pain points"})
             return
 
         logger.info(
@@ -1058,11 +1239,11 @@ Return a valid JSON object with this structure:
             # Update stage (continue to keyword validation)
             self.state.current_stage = 8.8
 
-            # Checkpoints: Save all intermediate outputs
-            self.checkpoint_mgr.save_stage("stage_7_solutions", self.state.idea_generation)
-            self.checkpoint_mgr.save_stage("stage_8_competitive", self.state.competitive_analysis)
-            self.checkpoint_mgr.save_stage("stage_8_5_refinement", self.state.idea_generation)
-            self.checkpoint_mgr.save_stage("stage_8_75_solution_selection", self.state.solution_selection)
+            # Checkpoints: Save all intermediate outputs (Stage 7 internal tasks)
+            self.checkpoint_mgr.save_stage("stage_7_1_ideation", self.state.idea_generation)
+            self.checkpoint_mgr.save_stage("stage_7_2_competitive", self.state.competitive_analysis)
+            self.checkpoint_mgr.save_stage("stage_7_3_refinement", self.state.idea_generation)
+            self.checkpoint_mgr.save_stage("stage_7_4_selection", self.state.solution_selection)
 
         except Exception as e:
             logger.error(f"Unified solution pipeline failed: {e}")
@@ -1122,6 +1303,8 @@ Return a valid JSON object with this structure:
         # Initialize with pre-validated keywords
         all_enriched = validated_seeds.copy()
         seeds_used = set()
+        # Track enriched keyword strings for deduplication across rounds
+        enriched_keyword_strings = {kw['keyword'].lower() for kw in all_enriched}
         max_rounds = settings.keyword_enrichment_max_rounds
 
         logger.info(f"Starting with {len(all_enriched)} pre-validated keywords from bulk validation")
@@ -1172,7 +1355,16 @@ Return a valid JSON object with this structure:
             )
 
             # Merge and deduplicate (only relevant keywords)
-            all_enriched.extend(relevant_suggestions)
+            # Filter out keywords we already have (case-insensitive)
+            new_keywords = [
+                kw for kw in relevant_suggestions
+                if kw['keyword'].lower() not in enriched_keyword_strings
+            ]
+            duplicates_filtered = len(relevant_suggestions) - len(new_keywords)
+            if duplicates_filtered > 0:
+                logger.info(f"[Round {round_num}] Filtered {duplicates_filtered} duplicate keywords")
+            all_enriched.extend(new_keywords)
+            enriched_keyword_strings.update(kw['keyword'].lower() for kw in new_keywords)
             seeds_used.update(next_seeds)
 
             # Check if we have enough
@@ -1341,222 +1533,178 @@ Return a valid JSON object with this structure:
         coverage = len(clusters_with_keywords) / len(topic_clusters)
         return coverage
 
-    @listen(stages_7_through_8_75_unified_solution_pipeline)
-    def stage_8_7_pricing_validation(self):
+    @listen(stage_7_unified_solution_pipeline)
+    def stage_8_pricing_validation(self):
         """
-        Stage 8.7: Pricing Strategy Validation
+        Stage 8: Pricing Strategy Validation for Top N Solutions
 
-        Validates monetization strategy by determining optimal pricing based on:
+        Validates monetization strategy for top N solutions (like keyword validation)
+        so any potential winner has pricing data after re-ranking in Stage 8.6.
+
+        Analyzes:
         - Competitor pricing benchmarks from competitive analysis
         - Pain point willingness-to-pay (WTP) scores
-        - Selected solution features and positioning
+        - Solution features and positioning
         """
         logger.info("=" * 80)
-        logger.info("STAGE 8.7: Pricing Strategy Validation")
+        logger.info("STAGE 8: Pricing Strategy Validation")
         logger.info("=" * 80)
 
-        # Check if we have solution selection
+        # Check if we have solution selection with scores
         if not self.state.solution_selection:
-            logger.warning("[Stage 8.7] No solution selected - skipping pricing validation")
-            self.state.current_stage = 8.8
+            logger.warning("[Stage 8] No solution selected - skipping pricing validation")
+            self.state.current_stage = 8.5
             return
 
         # Check if we have pain point analysis
         if not self.state.pain_point_analysis:
-            logger.warning("[Stage 8.7] No pain point analysis - skipping pricing validation")
-            self.state.current_stage = 8.8
+            logger.warning("[Stage 8] No pain point analysis - skipping pricing validation")
+            self.state.current_stage = 8.5
             return
 
         # Check if we have competitive analysis
         if not self.state.competitive_analysis:
-            logger.warning("[Stage 8.7] No competitive analysis - skipping pricing validation")
-            self.state.current_stage = 8.8
+            logger.warning("[Stage 8] No competitive analysis - skipping pricing validation")
+            self.state.current_stage = 8.5
             return
 
-        # Get selected solution
-        selected_name = self.state.solution_selection.selected_solution_name
-        selected_solution = find_solution_by_name(
-            selected_name,
-            self.state.idea_generation.solution_ideas
-        )
-
-        if not selected_solution:
-            logger.error(f"[Stage 8.7] Selected solution '{selected_name}' not found")
-            self.state.current_stage = 8.8
+        # Check if we have idea generation
+        if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
+            logger.warning("[Stage 8] No solution ideas - skipping pricing validation")
+            self.state.current_stage = 8.5
             return
 
-        # Initialize and run pricing strategy crew
+        # Get top N solutions from all_solution_scores (like keyword validation)
+        all_scores = self.state.solution_selection.all_solution_scores
+        if not all_scores or len(all_scores) < 1:
+            logger.warning("[Stage 8] No solution scores available - skipping")
+            self.state.current_stage = 8.5
+            return
+
+        # Sort by composite score and take top N (configurable)
+        top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
+
+        logger.info(f"[Stage 8] Analyzing pricing for top {len(top_n_scores)} solutions")
+
+        # Resume support: track already validated solutions
+        pricing_results = []
+        already_validated = set()
+        if self.state.pricing_strategies:
+            pricing_results = list(self.state.pricing_strategies)
+            already_validated = {p.solution_name for p in pricing_results}
+            if already_validated:
+                logger.info(f"[Stage 8] Resuming - {len(already_validated)} solutions already validated: {already_validated}")
+
+        # Initialize pricing crew once
         from ..crews import PricingStrategyCrew
-
-        logger.info(f"[Stage 8.7] Analyzing pricing strategy for: {selected_name}")
-
         pricing_crew = PricingStrategyCrew()
 
-        pricing_result = pricing_crew.analyze(
-            selected_solution=selected_solution,
-            pain_point_analysis=self.state.pain_point_analysis,
-            competitive_analysis=self.state.competitive_analysis,
-            niche_description=self.niche_description
-        )
+        # Loop through each solution
+        for idx, solution_score in enumerate(top_n_scores, 1):
+            solution_name = solution_score.solution_name
 
-        # Check if analysis succeeded
-        if not pricing_result:
-            logger.warning("[Stage 8.7] Pricing analysis failed - continuing without pricing data")
-            self.state.current_stage = 8.8
-            return
+            # Skip if already validated (resume support)
+            if solution_name in already_validated:
+                logger.info(f"[Stage 8] ({idx}/{len(top_n_scores)}) Skipping {solution_name} - already validated")
+                continue
 
-        # Store result
-        self.state.pricing_strategy = pricing_result
-        self.state.current_stage = 8.8
+            logger.info(f"[Stage 8] ({idx}/{len(top_n_scores)}) Analyzing pricing: {solution_name}")
 
-        # Save checkpoint
-        self.checkpoint_mgr.save_stage("stage_8_7_pricing_validation", pricing_result)
-
-        logger.info("[Stage 8.7] Pricing Strategy Validation Complete")
-        logger.info(f"  Recommended Pricing: Starter {pricing_result.recommended_starter_price}, Pro {pricing_result.recommended_pro_price}")
-        logger.info(f"  Estimated ARPU: {pricing_result.estimated_arpu}")
-        logger.info(f"  LTV/CAC Ratio: {pricing_result.ltv_to_cac_ratio}")
-
-    @listen(stage_8_7_pricing_validation)
-    def stage_8_6_market_sizing(self):
-        """
-        Stage 8.6: Market Sizing & Validation
-
-        Calculates TAM/SAM/SOM estimates and validates market attractiveness using:
-        - Keyword search volumes (demand signals)
-        - Pain point frequency (problem validation)
-        - Competitive landscape (market saturation)
-        - Selected solution positioning
-        """
-        logger.info("=" * 80)
-        logger.info("STAGE 8.6: Market Sizing & Validation")
-        logger.info("=" * 80)
-
-        # Check if we have solution selection
-        if not self.state.solution_selection:
-            logger.warning("[Stage 8.6] No solution selected - skipping market sizing")
-            self.state.current_stage = 8.8
-            return
-
-        # Check if we have pain point analysis
-        if not self.state.pain_point_analysis:
-            logger.warning("[Stage 8.6] No pain point analysis - skipping market sizing")
-            self.state.current_stage = 8.8
-            return
-
-        # Check if we have competitive analysis
-        if not self.state.competitive_analysis:
-            logger.warning("[Stage 8.6] No competitive analysis - skipping market sizing")
-            self.state.current_stage = 8.8
-            return
-
-        # Get selected solution
-        selected_name = self.state.solution_selection.selected_solution_name
-        selected_solution = find_solution_by_name(
-            selected_name,
-            self.state.idea_generation.solution_ideas
-        )
-
-        if not selected_solution:
-            logger.error(f"[Stage 8.6] Selected solution '{selected_name}' not found")
-            self.state.current_stage = 8.8
-            return
-
-        # Initialize and run market sizing crew
-        from ..crews import MarketSizingCrew
-
-        logger.info(f"[Stage 8.6] Calculating TAM/SAM/SOM for: {selected_name}")
-
-        market_sizing_crew = MarketSizingCrew()
-
-        # Get keyword validation for selected solution if available (optional - Stage 8.8 may not have run yet)
-        keyword_validation = None
-        if hasattr(self.state, 'keyword_validation_results') and self.state.keyword_validation_results:
-            # Find keyword validation for the selected solution
-            keyword_validation = next(
-                (v for v in self.state.keyword_validation_results if v.solution_name == selected_name),
-                None
+            # Find full solution object
+            solution = find_solution_by_name(
+                solution_name,
+                self.state.idea_generation.solution_ideas
             )
-            if keyword_validation:
-                logger.info(f"[Stage 8.6] Using keyword validation data for {selected_name}")
+
+            if not solution:
+                logger.warning(f"[Stage 8] Solution '{solution_name}' not found in idea generation")
+                continue
+
+            # Run pricing analysis
+            pricing_result = pricing_crew.analyze(
+                selected_solution=solution,
+                pain_point_analysis=self.state.pain_point_analysis,
+                competitive_analysis=self.state.competitive_analysis,
+                niche_description=self.niche_description,
+                allowed_project_types=self.state.allowed_project_types
+            )
+
+            if pricing_result:
+                pricing_results.append(pricing_result)
+                logger.info(f"[Stage 8] ✓ {solution_name}: Starter {pricing_result.recommended_starter_price}, Pro {pricing_result.recommended_pro_price}")
+
+                # Save incremental checkpoint after each successful analysis
+                self.state.pricing_strategies = pricing_results
+                self.checkpoint_mgr.save_stage(
+                    "stage_8_pricing_validation",
+                    [p.model_dump() for p in pricing_results]
+                )
             else:
-                logger.info(f"[Stage 8.6] No keyword validation data found for {selected_name} - will use pain point and competitive data only")
-        else:
-            logger.info("[Stage 8.6] Keyword validation not yet available - will calculate market size from pain points and competitive analysis")
+                logger.warning(f"[Stage 8] ✗ {solution_name}: Pricing analysis failed")
 
-        market_sizing_result = market_sizing_crew.analyze(
-            selected_solution=selected_solution,
-            keyword_validation=keyword_validation,
-            pain_point_analysis=self.state.pain_point_analysis,
-            competitive_analysis=self.state.competitive_analysis,
-            niche_description=self.niche_description
-        )
+        # Store final results
+        self.state.pricing_strategies = pricing_results
+        self.state.current_stage = 8.5
 
-        # Check if analysis succeeded
-        if not market_sizing_result:
-            logger.warning("[Stage 8.6] Market sizing failed - continuing without market sizing data")
-            self.state.current_stage = 8.8
-            return
+        logger.info(f"[Stage 8] Pricing Strategy Validation Complete - {len(pricing_results)}/{len(top_n_scores)} solutions analyzed")
 
-        # Store result
-        self.state.market_sizing = market_sizing_result
-        self.state.current_stage = 8.8
-
-        # Save checkpoint
-        self.checkpoint_mgr.save_stage("stage_8_6_market_sizing", market_sizing_result)
-
-        logger.info("[Stage 8.6] Market Sizing Complete")
-        logger.info(f"  TAM: {market_sizing_result.total_addressable_market}")
-        logger.info(f"  SAM: {market_sizing_result.serviceable_available_market}")
-        logger.info(f"  SOM (Y1): {market_sizing_result.serviceable_obtainable_market_y1}")
-        logger.info(f"  SOM (Y3): {market_sizing_result.serviceable_obtainable_market_y3}")
-        logger.info(f"  Viability: {market_sizing_result.market_viability_verdict}")
-        logger.info(f"  Entry Strategy: {market_sizing_result.recommended_entry_strategy}")
-
-    @listen(stage_8_6_market_sizing)
-    def stage_8_8_keyword_validation(self):
+    @listen(stage_8_pricing_validation)
+    def stage_8_5_keyword_validation(self):
         """
-        Stage 8.8: Quick Keyword Validation for Top 3 Solutions
+        Stage 8.5: Quick Keyword Validation for Top N Solutions
 
-        Validates keyword demand for top 3 solutions using hybrid seed generation
+        Validates keyword demand for top N solutions using hybrid seed generation
         (10 programmatic + 10 LLM seeds) to inform final selection decision.
 
         Adjusts composite scores based on actual market search behavior.
         """
         logger.info("=" * 80)
-        logger.info("STAGE 8.8: Keyword Demand Validation")
+        logger.info("STAGE 8.5: Keyword Demand Validation")
         logger.info("=" * 80)
 
         # Check if feature is enabled
         if not getattr(settings, 'keyword_validation_enabled', True):
-            logger.info("[Stage 8.8] Keyword validation disabled - skipping")
-            self.state.current_stage = 8.85
+            logger.info("[Stage 8.5] Keyword validation disabled - skipping")
+            self.state.current_stage = 8.6
             return
 
         # Check if we have solution selection
         if not self.state.solution_selection:
-            logger.warning("[Stage 8.8] No solution selected - skipping keyword validation")
-            self.state.current_stage = 8.85
+            logger.warning("[Stage 8.5] No solution selected - skipping keyword validation")
+            self.state.current_stage = 8.6
             return
 
-        # Get top 3 solutions from all_solution_scores
+        # Get top N solutions from all_solution_scores (configurable)
         all_scores = self.state.solution_selection.all_solution_scores
         if not all_scores or len(all_scores) < 1:
-            logger.warning("[Stage 8.8] No solution scores available - skipping")
-            self.state.current_stage = 8.85
+            logger.warning("[Stage 8.5] No solution scores available - skipping")
+            self.state.current_stage = 8.6
             return
 
-        # Sort by composite score and take top 3
-        top_3_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:3]
+        # Sort by composite score and take top N (configurable)
+        top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
 
-        logger.info(f"[Stage 8.8] Validating keyword demand for top {len(top_3_scores)} solutions")
+        logger.info(f"[Stage 8.5] Validating keyword demand for top {len(top_n_scores)} solutions")
 
-        # Validate keywords for each solution
+        # Resume support: Load existing validation results if available
+        # This allows incremental processing - skip solutions already validated
         validation_results = []
+        already_validated = set()
+        if self.state.keyword_validation_results:
+            validation_results = list(self.state.keyword_validation_results)
+            already_validated = {v.solution_name for v in validation_results}
+            if already_validated:
+                logger.info(f"[Stage 8.5] Resuming - {len(already_validated)} solutions already validated: {already_validated}")
 
-        for idx, solution_score in enumerate(top_3_scores, 1):
+        for idx, solution_score in enumerate(top_n_scores, 1):
             solution_name = solution_score.solution_name
-            logger.info(f"[Stage 8.8] ({idx}/{len(top_3_scores)}) Validating: {solution_name}")
+
+            # Skip if already validated (resume support)
+            if solution_name in already_validated:
+                logger.info(f"[Stage 8.5] ({idx}/{len(top_n_scores)}) Skipping {solution_name} - already validated")
+                continue
+
+            logger.info(f"[Stage 8.5] ({idx}/{len(top_n_scores)}) Validating: {solution_name}")
 
             # Find the full solution object
             solution = find_solution_by_name(
@@ -1565,7 +1713,7 @@ Return a valid JSON object with this structure:
             )
 
             if not solution:
-                logger.warning(f"[Stage 8.8] Solution '{solution_name}' not found in idea generation")
+                logger.warning(f"[Stage 8.5] Solution '{solution_name}' not found in idea generation")
                 continue
 
             # Initialize seed generator for this solution
@@ -1578,6 +1726,7 @@ Return a valid JSON object with this structure:
             # Adaptive keyword generation with pivot strategies
             # Try up to 4 attempts with different strategies until relevant keywords found
             accumulated_good_keywords = []
+            accumulated_keyword_strings = set()  # Track for deduplication across attempts
             best_relevance_score = 0.0
             best_validation_result = None
             max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 4)
@@ -1586,16 +1735,16 @@ Return a valid JSON object with this structure:
             keyword_validation_cache: dict[str, tuple] = {}
 
             for attempt in range(1, max_attempts + 1):
-                logger.info(f"[Stage 8.8] Attempt {attempt}/{max_attempts} for {solution_name}")
+                logger.info(f"[Stage 8.5] Attempt {attempt}/{max_attempts} for {solution_name}")
 
                 # Generate seeds with current strategy
                 seeds = seed_generator.generate_seeds_with_strategy(solution, attempt, count=20)
 
                 if not seeds:
-                    logger.warning(f"[Stage 8.8] Attempt {attempt}: No seeds generated - skipping")
+                    logger.warning(f"[Stage 8.5] Attempt {attempt}: No seeds generated - skipping")
                     continue
 
-                logger.debug(f"[Stage 8.8] Attempt {attempt} seeds ({len(seeds)}): {seeds[:5]}...")
+                logger.debug(f"[Stage 8.5] Attempt {attempt} seeds ({len(seeds)}): {seeds[:5]}...")
 
                 # Validate seeds with DataForSEO
                 validation_result = seed_generator.validate_seeds_with_dataforseo(seeds, solution_name)
@@ -1615,12 +1764,20 @@ Return a valid JSON object with this structure:
                     validation_cache=keyword_validation_cache
                 )
 
-                # Accumulate good keywords across attempts
+                # Accumulate good keywords across attempts (with deduplication)
                 if good_keywords:
-                    accumulated_good_keywords.extend(good_keywords)
+                    # Filter duplicates from this attempt (case-insensitive)
+                    new_good = [
+                        kw for kw in good_keywords
+                        if kw.get('keyword', '').lower() not in accumulated_keyword_strings
+                    ]
+                    duplicates_filtered = len(good_keywords) - len(new_good)
+                    accumulated_good_keywords.extend(new_good)
+                    accumulated_keyword_strings.update(kw.get('keyword', '').lower() for kw in new_good)
                     logger.info(
-                        f"[Stage 8.8] Attempt {attempt}: Found {len(good_keywords)} good keywords "
-                        f"(total accumulated: {len(accumulated_good_keywords)})"
+                        f"[Stage 8.5] Attempt {attempt}: Found {len(new_good)} unique good keywords "
+                        f"({duplicates_filtered} duplicates filtered), "
+                        f"total accumulated: {len(accumulated_good_keywords)}"
                     )
 
                 # Track best result
@@ -1628,26 +1785,26 @@ Return a valid JSON object with this structure:
                     best_relevance_score = relevance_score
                     best_validation_result = validation_result
                     logger.info(
-                        f"[Stage 8.8] Attempt {attempt}: New best relevance score: {relevance_score:.2f}"
+                        f"[Stage 8.5] Attempt {attempt}: New best relevance score: {relevance_score:.2f}"
                     )
 
                 # Check if we have good enough keywords
                 if relevance_score >= relevance_threshold:
                     logger.info(
-                        f"[Stage 8.8] Attempt {attempt}: SUCCESS - relevance {relevance_score:.2f} "
+                        f"[Stage 8.5] Attempt {attempt}: SUCCESS - relevance {relevance_score:.2f} "
                         f">= threshold {relevance_threshold:.2f}"
                     )
                     break
                 else:
                     logger.warning(
-                        f"[Stage 8.8] Attempt {attempt}: PIVOT needed - relevance {relevance_score:.2f} "
+                        f"[Stage 8.5] Attempt {attempt}: PIVOT needed - relevance {relevance_score:.2f} "
                         f"< threshold {relevance_threshold:.2f}. Issues: {', '.join(issues)}"
                     )
 
                     # If this is the last attempt, accept what we have
                     if attempt == max_attempts:
                         logger.warning(
-                            f"[Stage 8.8] Max attempts reached - proceeding with best result "
+                            f"[Stage 8.5] Max attempts reached - proceeding with best result "
                             f"(relevance: {best_relevance_score:.2f})"
                         )
 
@@ -1663,12 +1820,21 @@ Return a valid JSON object with this structure:
                 validation_results.append(validation_obj)
 
                 logger.info(
-                    f"[Stage 8.8] Final result for {solution_name}: "
+                    f"[Stage 8.5] Final result for {solution_name}: "
                     f"{attempt} attempts, relevance={best_relevance_score:.2f}, "
                     f"{len(accumulated_good_keywords)} good keywords accumulated"
                 )
+
+                # Incremental save: Update state and checkpoint after each solution
+                # This ensures we don't lose progress if pipeline crashes mid-loop
+                self.state.keyword_validation_results = validation_results
+                self.checkpoint_mgr.save_stage(
+                    "stage_8_5_keyword_validation_partial",
+                    [v.model_dump() for v in validation_results]
+                )
+                logger.debug(f"[Stage 8.5] Incremental checkpoint saved ({len(validation_results)} solutions)")
             else:
-                logger.error(f"[Stage 8.8] All attempts failed for {solution_name} - no validation result")
+                logger.error(f"[Stage 8.5] All attempts failed for {solution_name} - no validation result")
 
         # Store validation results in state
         self.state.keyword_validation_results = validation_results
@@ -1684,7 +1850,7 @@ Return a valid JSON object with this structure:
                 # NOTE: We don't nullify keyword_demand_score/adjusted_composite_score
                 # This allows alternative solutions to retain their data for comparison
                 logger.debug(
-                    f"[Stage 8.8] {solution_score.solution_name} not in top-3 validation set - "
+                    f"[Stage 8.5] {solution_score.solution_name} not in top-3 validation set - "
                     f"preserving existing scores (composite: {solution_score.composite_score:.2f})"
                 )
                 # If the solution had no keyword scores, set to base composite score
@@ -1692,7 +1858,7 @@ Return a valid JSON object with this structure:
                     solution_score.adjusted_composite_score = solution_score.composite_score
 
         # Re-score solutions using keyword demand
-        logger.info("[Stage 8.8] Re-scoring solutions with keyword demand data")
+        logger.info("[Stage 8.5] Re-scoring solutions with keyword demand data")
 
         for validation in validation_results:
             # Find corresponding solution score
@@ -1707,15 +1873,17 @@ Return a valid JSON object with this structure:
                     solution_score.adjusted_composite_score = base_score * keyword_multiplier
 
                     logger.info(
-                        f"[Stage 8.8] {solution_score.solution_name}: "
+                        f"[Stage 8.5] {solution_score.solution_name}: "
                         f"base={base_score:.2f}, keyword_demand={keyword_multiplier:.2f}, "
                         f"adjusted={solution_score.adjusted_composite_score:.2f}"
                     )
                     break
 
-        # Re-rank solutions by adjusted score (only validated solutions)
+        # Re-rank solutions by adjusted score (ONLY validated solutions)
+        # Bug fix: Previously included non-validated solutions which kept raw composite_score
+        # as adjusted_composite_score, giving them unfair advantage over validated ones
         ranked_solutions = sorted(
-            [s for s in all_scores if s.adjusted_composite_score is not None],
+            [s for s in all_scores if s.solution_name in validated_names],
             key=lambda s: s.adjusted_composite_score or 0.0,
             reverse=True
         )
@@ -1726,7 +1894,7 @@ Return a valid JSON object with this structure:
 
             if new_winner != original_winner:
                 logger.warning(
-                    f"[Stage 8.8] Winner changed after keyword validation: "
+                    f"[Stage 8.5] Winner changed after keyword validation: "
                     f"{original_winner} → {new_winner}"
                 )
                 self.state.solution_selection.selected_solution_name = new_winner
@@ -1740,18 +1908,131 @@ Return a valid JSON object with this structure:
                     f"for {original_winner})."
                 )
             else:
-                logger.info(f"[Stage 8.8] Winner confirmed by keyword validation: {new_winner}")
+                logger.info(f"[Stage 8.5] Winner confirmed by keyword validation: {new_winner}")
 
         # Update stage and checkpoint
-        self.state.current_stage = 8.85
-        self.checkpoint_mgr.save_stage("stage_8_8_keyword_validation", validation_results)
+        self.state.current_stage = 8.6
 
-        logger.info(f"[Stage 8.8] Keyword validation complete - {len(validation_results)} solutions validated")
+        # Save keyword validation results
+        self.checkpoint_mgr.save_stage("stage_8_5_keyword_validation", validation_results)
 
-    @listen(stage_8_8_keyword_validation)
-    def stage_8_85_solution_refinement(self):
+        # FIX: Also save modified solution_selection to checkpoint (mutations happened above)
+        # This ensures winner changes and rationale updates survive resume
+        if self.state.solution_selection:
+            self.checkpoint_mgr.save_stage(
+                "stage_7_4_selection",
+                self.state.solution_selection.model_dump()
+            )
+            logger.debug("[Stage 8.5] Updated solution_selection checkpoint after keyword re-ranking")
+
+        logger.info(f"[Stage 8.5] Keyword validation complete - {len(validation_results)} solutions validated")
+
+    @listen(stage_8_5_keyword_validation)
+    def stage_8_6_market_sizing(self):
         """
-        Stage 8.85: Solution Refinement Using Keyword Insights
+        Stage 8.6: Market Sizing & Validation
+
+        Calculates TAM/SAM/SOM estimates and validates market attractiveness using:
+        - Keyword search volumes (demand signals from Stage 8.5)
+        - Pain point frequency (problem validation)
+        - Competitive landscape (market saturation)
+        - Selected solution positioning
+        """
+        logger.info("=" * 80)
+        logger.info("STAGE 8.6: Market Sizing & Validation")
+        logger.info("=" * 80)
+
+        # Check if we have solution selection
+        if not self.state.solution_selection:
+            logger.warning("[Stage 8.6] No solution selected - skipping market sizing")
+            self.state.current_stage = 8.7
+            return
+
+        # Check if we have pain point analysis
+        if not self.state.pain_point_analysis:
+            logger.warning("[Stage 8.6] No pain point analysis - skipping market sizing")
+            self.state.current_stage = 8.7
+            return
+
+        # Check if we have competitive analysis
+        if not self.state.competitive_analysis:
+            logger.warning("[Stage 8.6] No competitive analysis - skipping market sizing")
+            self.state.current_stage = 8.7
+            return
+
+        # Check if we have idea generation
+        if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
+            logger.warning("[Stage 8.6] No solution ideas - skipping market sizing")
+            self.state.current_stage = 8.7
+            return
+
+        # Get selected solution
+        selected_name = self.state.solution_selection.selected_solution_name
+        selected_solution = find_solution_by_name(
+            selected_name,
+            self.state.idea_generation.solution_ideas
+        )
+
+        if not selected_solution:
+            logger.error(f"[Stage 8.6] Selected solution '{selected_name}' not found")
+            self.state.current_stage = 8.7
+            return
+
+        # Initialize and run market sizing crew
+        from ..crews import MarketSizingCrew
+
+        logger.info(f"[Stage 8.6] Calculating TAM/SAM/SOM for: {selected_name}")
+
+        market_sizing_crew = MarketSizingCrew()
+
+        # Get keyword validation for selected solution (Stage 8.5 runs before this)
+        keyword_validation = None
+        if hasattr(self.state, 'keyword_validation_results') and self.state.keyword_validation_results:
+            # Find keyword validation for the selected solution
+            keyword_validation = next(
+                (v for v in self.state.keyword_validation_results if v.solution_name == selected_name),
+                None
+            )
+            if keyword_validation:
+                logger.info(f"[Stage 8.6] Using keyword validation data for {selected_name}")
+            else:
+                logger.info(f"[Stage 8.6] No keyword validation data found for {selected_name} - will use pain point and competitive data only")
+        else:
+            logger.info("[Stage 8.6] Keyword validation data not available - will calculate market size from pain points and competitive analysis")
+
+        market_sizing_result = market_sizing_crew.analyze(
+            selected_solution=selected_solution,
+            keyword_validation=keyword_validation,
+            pain_point_analysis=self.state.pain_point_analysis,
+            competitive_analysis=self.state.competitive_analysis,
+            niche_description=self.niche_description
+        )
+
+        # Check if analysis succeeded
+        if not market_sizing_result:
+            logger.warning("[Stage 8.6] Market sizing failed - continuing without market sizing data")
+            self.state.current_stage = 8.7
+            return
+
+        # Store result
+        self.state.market_sizing = market_sizing_result
+        self.state.current_stage = 8.7
+
+        # Save checkpoint
+        self.checkpoint_mgr.save_stage("stage_8_6_market_sizing", market_sizing_result)
+
+        logger.info("[Stage 8.6] Market Sizing Complete")
+        logger.info(f"  TAM: {market_sizing_result.total_addressable_market}")
+        logger.info(f"  SAM: {market_sizing_result.serviceable_available_market}")
+        logger.info(f"  SOM (Y1): {market_sizing_result.serviceable_obtainable_market_y1}")
+        logger.info(f"  SOM (Y3): {market_sizing_result.serviceable_obtainable_market_y3}")
+        logger.info(f"  Viability: {market_sizing_result.market_viability_verdict}")
+        logger.info(f"  Entry Strategy: {market_sizing_result.recommended_entry_strategy}")
+
+    @listen(stage_8_6_market_sizing)
+    def stage_8_7_solution_refinement(self):
+        """
+        Stage 8.7: Solution Refinement Using Keyword Insights
 
         Generates strategic recommendations for selected solution based on keyword validation:
         - Geographic market priorities
@@ -1760,24 +2041,24 @@ Return a valid JSON object with this structure:
         - Content strategy direction
         """
         logger.info("=" * 80)
-        logger.info("STAGE 8.85: Solution Refinement")
+        logger.info("STAGE 8.7: Solution Refinement")
         logger.info("=" * 80)
 
         # Check if feature is enabled
         if not getattr(settings, 'solution_refinement_enabled', True):
-            logger.info("[Stage 8.85] Solution refinement disabled - skipping")
+            logger.info("[Stage 8.7] Solution refinement disabled - skipping")
             self.state.current_stage = 9
             return
 
         # Check if we have solution selection
         if not self.state.solution_selection:
-            logger.warning("[Stage 8.85] No solution selected - skipping refinement")
+            logger.warning("[Stage 8.7] No solution selected - skipping refinement")
             self.state.current_stage = 9
             return
 
         # Check if we have keyword validation results
         if not self.state.keyword_validation_results:
-            logger.warning("[Stage 8.85] No keyword validation results - skipping refinement")
+            logger.warning("[Stage 8.7] No keyword validation results - skipping refinement")
             self.state.current_stage = 9
             return
 
@@ -1789,7 +2070,7 @@ Return a valid JSON object with this structure:
         )
 
         if not selected_solution:
-            logger.error(f"[Stage 8.85] Selected solution '{selected_name}' not found")
+            logger.error(f"[Stage 8.7] Selected solution '{selected_name}' not found")
             self.state.current_stage = 9
             return
 
@@ -1800,18 +2081,18 @@ Return a valid JSON object with this structure:
         )
 
         if not keyword_validation:
-            logger.warning(f"[Stage 8.85] No keyword validation found for {selected_name}")
+            logger.warning(f"[Stage 8.7] No keyword validation found for {selected_name}")
             self.state.current_stage = 9
             return
 
         # Early exit if demand is too weak
         if keyword_validation.demand_signal == "weak" and keyword_validation.total_volume < 2000:
             logger.warning(
-                f"[Stage 8.85] Skipping refinement - weak demand signal "
+                f"[Stage 8.7] Skipping refinement - weak demand signal "
                 f"({keyword_validation.total_volume} monthly volume)"
             )
             self.state.current_stage = 9
-            self.checkpoint_mgr.save_stage("stage_8_85_solution_refinement", {"skipped": True, "reason": "weak_demand"})
+            self.checkpoint_mgr.save_stage("stage_8_7_solution_refinement", {"skipped": True, "reason": "weak_demand"})
             return
 
         # Get composite score for context
@@ -1822,13 +2103,14 @@ Return a valid JSON object with this structure:
         )
 
         # Initialize and run refinement crew
-        logger.info(f"[Stage 8.85] Refining strategy for: {selected_name}")
+        logger.info(f"[Stage 8.7] Refining strategy for: {selected_name}")
         refinement_crew = SolutionRefinementCrew()
 
         refinement = refinement_crew.refine(
             selected_solution=selected_solution,
             keyword_validation=keyword_validation,
-            composite_score=composite_score
+            composite_score=composite_score,
+            allowed_project_types=self.state.allowed_project_types
         )
 
         if refinement:
@@ -1836,23 +2118,23 @@ Return a valid JSON object with this structure:
             self.state.solution_refinement = refinement
 
             logger.info(
-                f"[Stage 8.85] Refinement complete:\n"
+                f"[Stage 8.7] Refinement complete:\n"
                 f"  - Geographic priorities: {', '.join(refinement.geographic_priorities[:3])}\n"
                 f"  - Category pivot: {refinement.category_pivot_recommendation or 'None'}\n"
                 f"  - Feature priorities: {len(refinement.feature_priorities)} recommendations\n"
                 f"  - Strategic insights: {len(refinement.strategic_insights)} insights"
             )
 
-            # Save to checkpoint
-            self.checkpoint_mgr.save_stage("stage_8_85_solution_refinement", refinement.model_dump())
+            # Update stage first, then checkpoint (Pattern A - safer for resume)
+            self.state.current_stage = 9
+            self.checkpoint_mgr.save_stage("stage_8_7_solution_refinement", refinement.model_dump())
         else:
-            logger.warning("[Stage 8.85] Refinement failed - proceeding without refinement data")
-            self.checkpoint_mgr.save_stage("stage_8_85_solution_refinement", {"skipped": True, "reason": "refinement_failed"})
+            logger.warning("[Stage 8.7] Refinement failed - proceeding without refinement data")
+            # Update stage first, then checkpoint (Pattern A - safer for resume)
+            self.state.current_stage = 9
+            self.checkpoint_mgr.save_stage("stage_8_7_solution_refinement", {"skipped": True, "reason": "refinement_failed"})
 
-        # Update stage
-        self.state.current_stage = 9
-
-    @listen(stage_8_85_solution_refinement)
+    @listen(stage_8_7_solution_refinement)
     def stage_9_generate_seo_strategy(self):
         """
         Stage 9: Integrated Keyword Research + SEO Strategy Development
@@ -1909,6 +2191,7 @@ Return a valid JSON object with this structure:
             competitive_analysis=self.state.competitive_analysis,
             pain_points=self.state.pain_point_analysis,
             niche_context=self.state.niche_context,
+            allowed_project_types=self.state.allowed_project_types,
         )
 
         # Check for existing sub-phase checkpoints (enables partial resume)
@@ -1920,11 +2203,18 @@ Return a valid JSON object with this structure:
         # Phase 9.5a: Conceptual keyword expansion (SEO crew)
         logger.info(f"Phase 9.5a: Conceptual keyword expansion for {selected_solution_name}...")
         try:
-            # Resume from checkpoint if available
+            # Resume from checkpoint if available (with validation)
             if has_9_5a and self.state.stage_9_5a_expanded_keywords:
                 from ..models.seo_strategy import ExpandedKeywordList
-                logger.info("✓ Resuming from Phase 9.5a checkpoint")
-                expanded_keywords = ExpandedKeywordList(**self.state.stage_9_5a_expanded_keywords)
+                try:
+                    expanded_keywords = ExpandedKeywordList(**self.state.stage_9_5a_expanded_keywords)
+                    # Validate restored data has required content
+                    if not expanded_keywords.keywords or len(expanded_keywords.keywords) < 5:
+                        raise ValueError(f"Restored 9.5a checkpoint has insufficient keywords ({len(expanded_keywords.keywords) if expanded_keywords.keywords else 0})")
+                    logger.info(f"✓ Resuming from Phase 9.5a checkpoint ({len(expanded_keywords.keywords)} keywords)")
+                except Exception as e:
+                    logger.warning(f"⚠️ Phase 9.5a checkpoint invalid: {e}. Re-running expansion...")
+                    expanded_keywords = seo_crew.expand_keywords_phase_1()
             else:
                 expanded_keywords = seo_crew.expand_keywords_phase_1()
             logger.info(
@@ -1940,12 +2230,19 @@ Return a valid JSON object with this structure:
             # Phase 9.5b: Bulk validation with DataForSEO (NEW)
             logger.info("Phase 9.5b: Bulk validation of conceptual keywords with DataForSEO...")
 
-            # Resume from checkpoint if available
+            # Resume from checkpoint if available (with validation)
+            resume_9_5b = False
             if has_9_5b and self.state.stage_9_5b_validation_results:
-                logger.info("✓ Resuming from Phase 9.5b checkpoint")
                 quality_validated = self.state.stage_9_5b_validation_results.get("validated_keywords", [])
                 min_volume = self.state.stage_9_5b_validation_results.get("threshold_used", 500)
-            else:
+                # Validate restored data
+                if quality_validated and len(quality_validated) >= 1:
+                    logger.info(f"✓ Resuming from Phase 9.5b checkpoint ({len(quality_validated)} validated keywords)")
+                    resume_9_5b = True
+                else:
+                    logger.warning("⚠️ Phase 9.5b checkpoint has no validated keywords. Re-running validation...")
+
+            if not resume_9_5b:
                 # Extract keyword strings from conceptual keywords
                 conceptual_keyword_strings = [kw.keyword for kw in expanded_keywords.keywords]
                 logger.info(f"Validating {len(conceptual_keyword_strings)} conceptual keywords...")
@@ -2012,11 +2309,18 @@ Return a valid JSON object with this structure:
                 f"validated seeds..."
             )
 
-            # Resume from checkpoint if available
+            # Resume from checkpoint if available (with validation)
+            resume_9_5c = False
             if has_9_5c and self.state.stage_9_5c_enriched_keywords:
-                logger.info("✓ Resuming from Phase 9.5c checkpoint")
                 enriched_keywords = self.state.stage_9_5c_enriched_keywords
-            else:
+                # Validate restored data has sufficient keywords
+                if enriched_keywords and len(enriched_keywords) >= 5:
+                    logger.info(f"✓ Resuming from Phase 9.5c checkpoint ({len(enriched_keywords)} enriched keywords)")
+                    resume_9_5c = True
+                else:
+                    logger.warning(f"⚠️ Phase 9.5c checkpoint has insufficient keywords ({len(enriched_keywords) if enriched_keywords else 0}). Re-running enrichment...")
+
+            if not resume_9_5c:
                 enriched_keywords = self._iterative_keyword_enrichment(
                     conceptual_keywords=expanded_keywords.keywords,
                     validated_seeds=quality_validated,
@@ -2139,9 +2443,9 @@ Return a valid JSON object with this structure:
             self.checkpoint_mgr.save_stage("stage_9_seo_strategy", self.state.seo_strategy_report)
 
     @listen(stage_9_generate_seo_strategy)
-    def stage_9_2_trend_longevity(self):
+    def stage_9_5_trend_longevity(self):
         """
-        Stage 9.2: Trend Longevity & Market Momentum Analysis
+        Stage 9.5: Trend Longevity & Market Momentum Analysis
 
         Analyzes keyword trends, discussion activity, and competitive momentum to assess:
         - Market timing (Growing, Stable, Declining)
@@ -2149,25 +2453,62 @@ Return a valid JSON object with this structure:
         - Optimal entry timing (Enter Now, Monitor & Wait, Missed Window)
         """
         logger.info("=" * 80)
-        logger.info("STAGE 9.2: Trend Longevity & Market Momentum Analysis")
+        logger.info("STAGE 9.5: Trend Longevity & Market Momentum Analysis")
         logger.info("=" * 80)
 
-        # Check if we have required data
+        # Aggregate keyword trends from enriched keywords
+        trend_summary = self._aggregate_keyword_trends()
+        if trend_summary:
+            logger.info(f"[Stage 9.5] Keyword trend summary: {trend_summary['trend_distribution']}")
+            logger.info(f"[Stage 9.5] Market momentum: {trend_summary['market_momentum']}")
+            logger.info(f"[Stage 9.5] Rising volume %: {trend_summary['rising_volume_pct']:.1f}%")
+
+        # Check if we have required data - create fallback if missing
+        def _create_minimal_trend_fallback(reason: str) -> "TrendLongevityResult":
+            """Create minimal fallback trend result when full analysis cannot run."""
+            from ..models.research_state import TrendLongevityResult
+            logger.warning(f"[Stage 9.5] ⚠️ Creating minimal trend analysis due to: {reason}")
+            return TrendLongevityResult(
+                trend_direction="Unknown",
+                trend_confidence="Low",
+                momentum_score=0.5,  # Neutral
+                keyword_volume_trend="Unknown",
+                volume_growth_rate="Insufficient data",
+                trend_duration="Unknown",
+                discussion_frequency_trend="Unknown",
+                discussion_recency="Unknown",
+                community_growth_indicators=["Trend analysis unavailable - insufficient data"],
+                new_entrants_trend="Unknown",
+                competitive_activity_level="Unknown",
+                seasonal_pattern="Unknown",
+                peak_periods=None,
+                market_maturity="Unknown",
+                longevity_verdict="Unknown",
+                longevity_rationale=f"Trend analysis could not be completed: {reason}. Manual market research recommended.",
+                trend_reversal_risks=["Data insufficient for trend analysis"],
+                timing_recommendation="Monitor & Wait",
+                data_sources_analyzed=["Limited - fallback mode"],
+                analysis_timeframe="N/A"
+            )
+
         if not self.state.keyword_validation_results:
-            logger.warning("[Stage 9.2] No keyword validation data - skipping trend analysis")
-            self.state.current_stage = 9.5
+            logger.warning("[Stage 9.5] No keyword validation data - creating fallback trend analysis")
+            self.state.trend_longevity = _create_minimal_trend_fallback("Missing keyword validation data")
+            self.state.current_stage = 9.6
             return
 
         if not self.state.social_content:
-            logger.warning("[Stage 9.2] No social content - skipping trend analysis")
-            self.state.current_stage = 9.5
+            logger.warning("[Stage 9.5] No social content - creating fallback trend analysis")
+            self.state.trend_longevity = _create_minimal_trend_fallback("Missing social content data")
+            self.state.current_stage = 9.6
             return
 
         # Get selected solution's keyword validation
         selected_name = self.state.solution_selection.selected_solution_name if self.state.solution_selection else None
         if not selected_name:
-            logger.warning("[Stage 9.2] No solution selected - skipping trend analysis")
-            self.state.current_stage = 9.5
+            logger.warning("[Stage 9.5] No solution selected - creating fallback trend analysis")
+            self.state.trend_longevity = _create_minimal_trend_fallback("No solution selected")
+            self.state.current_stage = 9.6
             return
 
         # Find keyword validation for selected solution
@@ -2177,14 +2518,27 @@ Return a valid JSON object with this structure:
         )
 
         if not keyword_validation:
-            logger.warning(f"[Stage 9.2] No keyword validation for {selected_name} - skipping trend analysis")
-            self.state.current_stage = 9.5
+            logger.warning(f"[Stage 9.5] No keyword validation for {selected_name} - creating fallback trend analysis")
+            self.state.trend_longevity = _create_minimal_trend_fallback(f"No keyword validation for {selected_name}")
+            self.state.current_stage = 9.6
             return
 
         # Initialize and run trend longevity crew
         from ..crews import TrendLongevityCrew
 
-        logger.info(f"[Stage 9.2] Analyzing market trends for: {self.niche_description}")
+        logger.info(f"[Stage 9.5] Analyzing market trends for: {self.niche_description}")
+
+        # Get top enriched keywords with monthly trend data for detailed analysis
+        top_enriched_keywords = None
+        if self.state.stage_9_5c_enriched_keywords:
+            # Pass top 20 keywords sorted by volume (with their monthly_searches)
+            sorted_keywords = sorted(
+                self.state.stage_9_5c_enriched_keywords,
+                key=lambda x: x.get('search_volume', 0),
+                reverse=True
+            )[:20]
+            top_enriched_keywords = sorted_keywords
+            logger.info(f"[Stage 9.5] Passing {len(top_enriched_keywords)} enriched keywords with monthly trends")
 
         trend_crew = TrendLongevityCrew()
 
@@ -2193,33 +2547,35 @@ Return a valid JSON object with this structure:
             social_content=self.state.social_content,
             pain_point_analysis=self.state.pain_point_analysis,
             competitive_analysis=self.state.competitive_analysis,
-            niche_description=self.niche_description
+            niche_description=self.niche_description,
+            enriched_keywords_trends=trend_summary,  # Aggregated 12-month trend summary
+            top_enriched_keywords=top_enriched_keywords  # Per-keyword monthly trend data
         )
 
         # Check if analysis succeeded
         if not trend_result:
-            logger.warning("[Stage 9.2] Trend analysis failed - continuing without trend data")
-            self.state.current_stage = 9.5
+            logger.warning("[Stage 9.5] Trend analysis failed - continuing without trend data")
+            self.state.current_stage = 9.6
             return
 
         # Store result
         self.state.trend_longevity = trend_result
-        self.state.current_stage = 9.5
+        self.state.current_stage = 9.6
 
         # Save checkpoint
-        self.checkpoint_mgr.save_stage("stage_9_2_trend_longevity", trend_result)
+        self.checkpoint_mgr.save_stage("stage_9_5_trend_longevity", trend_result)
 
-        logger.info("[Stage 9.2] Trend Longevity Analysis Complete")
+        logger.info("[Stage 9.5] Trend Longevity Analysis Complete")
         logger.info(f"  Trend Direction: {trend_result.trend_direction}")
         logger.info(f"  Momentum Score: {trend_result.momentum_score:.2f}")
         logger.info(f"  Longevity Verdict: {trend_result.longevity_verdict}")
         logger.info(f"  Market Maturity: {trend_result.market_maturity}")
         logger.info(f"  Timing Recommendation: {trend_result.timing_recommendation}")
 
-    @listen(stage_9_2_trend_longevity)
-    def stage_9_5_refine_seo_scores(self):
+    @listen(stage_9_5_trend_longevity)
+    def stage_9_6_refine_seo_scores(self):
         """
-        Stage 9.5: Refine SEO Scores Based on Actual Keyword Data
+        Stage 9.6: Refine SEO Scores Based on Actual Keyword Data
 
         Updates the selected solution's SEO metrics using real keyword data discovered
         in Stage 9. Provides market-validated adjustments to architectural estimates.
@@ -2232,21 +2588,28 @@ Return a valid JSON object with this structure:
         Original estimates are preserved in base fields for comparison.
         """
         logger.info("=" * 80)
-        logger.info("STAGE 9.5: Refine SEO Scores with Keyword Data")
+        logger.info("STAGE 9.6: Refine SEO Scores with Keyword Data")
         logger.info("=" * 80)
 
         # Check if refinement is enabled
         if not settings.seo_refinement_enabled:
-            logger.info("SEO refinement disabled - skipping Stage 9.5")
-            self.state.current_stage = 9.75
-            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": "SEO refinement disabled in settings"})
+            logger.info("SEO refinement disabled - skipping Stage 9.6")
+            self.state.current_stage = 9.7
+            self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", {"skipped": True, "reason": "SEO refinement disabled in settings"})
             return
 
         # Skip if no SEO strategy or no solution selection
         if not self.state.seo_strategy_report or not self.state.solution_selection:
             logger.info("No SEO strategy or solution selection - skipping refinement")
-            self.state.current_stage = 9.75
-            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": "No SEO strategy or solution selection"})
+            self.state.current_stage = 9.7
+            self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", {"skipped": True, "reason": "No SEO strategy or solution selection"})
+            return
+
+        # Skip if no idea generation
+        if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
+            logger.info("No solution ideas available - skipping refinement")
+            self.state.current_stage = 9.7
+            self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", {"skipped": True, "reason": "No solution ideas"})
             return
 
         # Get selected solution
@@ -2259,15 +2622,15 @@ Return a valid JSON object with this structure:
 
         if not selected_solution:
             logger.warning(f"Selected solution '{selected_solution_name}' not found - skipping refinement")
-            self.state.current_stage = 9.75
-            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
+            self.state.current_stage = 9.7
+            self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
         # Check if solution has SEO fields to refine
         if selected_solution.seo_scalability_score is None:
             logger.info("Solution has no SEO scores to refine - skipping")
-            self.state.current_stage = 9.75
-            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", {"skipped": True, "reason": "Solution has no SEO scores to refine"})
+            self.state.current_stage = 9.7
+            self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", {"skipped": True, "reason": "Solution has no SEO scores to refine"})
             return
 
         logger.info(f"Refining SEO scores for: {selected_solution_name}")
@@ -2358,26 +2721,27 @@ Return a valid JSON object with this structure:
                 f"  Programmatic Pages: {refined_cac['metadata'].get('estimated_year1_pages', 'N/A')} estimated"
             )
 
-            # Save checkpoint
-            self.checkpoint_mgr.save_stage("stage_9_5_seo_refinement", self.state.seo_enrichment)
+            # Update stage first, then checkpoint (Pattern A - safer for resume)
+            self.state.current_stage = 9.7
+            self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", self.state.seo_enrichment)
 
         except Exception as e:
             logger.error(f"SEO refinement failed: {e}")
             logger.warning("Continuing with original estimates")
+            # Still update stage even on failure (Pattern A - safer for resume)
+            self.state.current_stage = 9.7
 
-        self.state.current_stage = 9.75
-
-    @listen(stage_9_5_refine_seo_scores)
-    def stage_9_75_research_data_sources(self):
+    @listen(stage_9_6_refine_seo_scores)
+    def stage_9_7_research_data_sources(self):
         """
-        Stage 9.75: Targeted Data Source Research
+        Stage 9.7: Targeted Data Source Research
 
         For the SELECTED solution ONLY (if requires_data_aggregation), conduct deep
         research on data sources using search tools. Informed by SEO priorities and
         competitive insights.
         """
         logger.info("=" * 80)
-        logger.info("STAGE 9.75: Data Source Research")
+        logger.info("STAGE 9.7: Data Source Research")
         logger.info("=" * 80)
 
         # Check if we have solution selection
@@ -2385,7 +2749,7 @@ Return a valid JSON object with this structure:
             logger.info("No solution selected - skipping data source research")
             self.state.data_source_research = None
             self.state.current_stage = 10
-            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", {"skipped": True, "reason": "No solution selected"})
+            self.checkpoint_mgr.save_stage("stage_9_7_data_sources", {"skipped": True, "reason": "No solution selected"})
             return
 
         # Get the selected solution (with fuzzy matching fallback)
@@ -2402,7 +2766,7 @@ Return a valid JSON object with this structure:
             )
             self.state.data_source_research = None
             self.state.current_stage = 10
-            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
+            self.checkpoint_mgr.save_stage("stage_9_7_data_sources", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
         # Only run if solution requires data aggregation
@@ -2413,7 +2777,7 @@ Return a valid JSON object with this structure:
             )
             self.state.data_source_research = None
             self.state.current_stage = 10
-            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", {"skipped": True, "reason": "Solution doesn't require data aggregation"})
+            self.checkpoint_mgr.save_stage("stage_9_7_data_sources", {"skipped": True, "reason": "Solution doesn't require data aggregation"})
             return
 
         logger.info(
@@ -2466,9 +2830,9 @@ Return a valid JSON object with this structure:
 
         # Checkpoint: Save data source research
         if self.state.data_source_research:
-            self.checkpoint_mgr.save_stage("stage_9_75_data_sources", self.state.data_source_research)
+            self.checkpoint_mgr.save_stage("stage_9_7_data_sources", self.state.data_source_research)
 
-    @listen(stage_9_75_research_data_sources)
+    @listen(stage_9_7_research_data_sources)
     def stage_10_generate_report(self):
         """
         Stage 10: Final Report Generation

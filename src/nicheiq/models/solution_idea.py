@@ -122,8 +122,18 @@ class EvaluationResult(BaseModel):
         ..., description="Side-by-side comparison and recommendation"
     )
 
-class SolutionIdea(BaseModel):
-    """Represents a micro-SaaS product concept."""
+
+class BaseSolutionIdea(BaseModel):
+    """
+    Solution idea as output by Stage 7 (UnifiedSolutionCrew).
+
+    Contains ONLY the fields that Stage 7 should populate. Does NOT include:
+    - Stage 8.85 keyword refinement fields (keyword_geographic_priorities, etc.)
+    - Stage 9.5 SEO refinement fields (seo_scalability_score_refined, etc.)
+
+    Those fields are added via Python merging in report_generator._merge_solution_enrichments()
+    using separate output models (SolutionRefinement, SolutionSEORefinement).
+    """
 
     model_config = ConfigDict(extra='forbid')
 
@@ -186,7 +196,7 @@ class SolutionIdea(BaseModel):
         description="Project type category: saas, directory, aggregator, comparison-tool, marketplace"
     )
 
-    # SEO & Organic Acquisition Fields
+    # SEO & Organic Acquisition Fields (Stage 7 estimates - before keyword research)
     programmatic_seo_opportunity: Optional[str] = Field(
         default=None,
         description=(
@@ -263,53 +273,21 @@ class SolutionIdea(BaseModel):
         )
     )
 
-    # Refined SEO Metrics (Stage 9.5 - Post-Keyword Discovery)
-    seo_scalability_score_refined: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description=(
-            "Refined SEO scalability score based on actual keyword data from Stage 9. "
-            "Adjusts the architectural estimate using: "
-            "(1) total keyword volume vs baseline, "
-            "(2) Tier 1 quick win count, "
-            "(3) average competition level. "
-            "Compare to seo_scalability_score to see impact of market reality."
-        )
-    )
 
-    estimated_cac_organic_refined: Optional[str] = Field(
-        default=None,
-        description=(
-            "Refined organic CAC estimate based on actual keyword difficulty and volume. "
-            "Format: '$X-Y per customer' with adjusted range. "
-            "Factors in: (1) Tier 1 keyword competition levels, "
-            "(2) total market volume for economies of scale. "
-            "Compare to estimated_cac_organic to see refinement."
-        )
-    )
+class SolutionIdea(BaseSolutionIdea):
+    """
+    Full solution idea with all enrichments from Stage 7, 8.85, and 9.5.
 
-    programmatic_seo_opportunity_refined: Optional[str] = Field(
-        default=None,
-        description=(
-            "Refined programmatic SEO assessment with quantitative page count estimates. "
-            "Based on discovered keyword opportunities: Tier 1 landing pages, "
-            "topic clusters, geographic/category variations. "
-            "Includes both the calculated page potential and the original qualitative assessment."
-        )
-    )
+    Extends BaseSolutionIdea with fields populated by later pipeline stages:
+    - Stage 8.85: Keyword refinement fields (from SolutionRefinement)
+    - Stage 9.5: SEO refinement fields (from SolutionSEORefinement)
 
-    seo_refinement_metadata: Optional[SEORefinementMetadata] = Field(
-        default=None,
-        description=(
-            "Metadata about the SEO refinement process for transparency. "
-            "Includes: baseline_volume_used, volume_multiplier, tier1_multiplier, "
-            "competition_modifier, base_cac, difficulty_multiplier, volume_discount, "
-            "estimated_year1_pages. Useful for debugging and understanding score changes."
-        )
-    )
+    Used in final reports after merging. NOT used as LLM output model in Stage 7.
+    The report_generator._merge_solution_enrichments() creates SolutionIdea instances
+    by combining BaseSolutionIdea with SolutionRefinement and SolutionSEORefinement.
+    """
 
-    # Keyword Validation & Refinement (Stage 8.8 and 8.85)
+    # Stage 8.85: Keyword Validation & Refinement (from SolutionRefinement)
     keyword_geographic_priorities: Optional[list[str]] = Field(
         default=None,
         description=(
@@ -355,12 +333,65 @@ class SolutionIdea(BaseModel):
         )
     )
 
+    # Stage 9.5: Refined SEO Metrics (from SolutionSEORefinement)
+    seo_scalability_score_refined: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Refined SEO scalability score based on actual keyword data from Stage 9. "
+            "Adjusts the architectural estimate using: "
+            "(1) total keyword volume vs baseline, "
+            "(2) Tier 1 quick win count, "
+            "(3) average competition level. "
+            "Compare to seo_scalability_score to see impact of market reality."
+        )
+    )
+
+    estimated_cac_organic_refined: Optional[str] = Field(
+        default=None,
+        description=(
+            "Refined organic CAC estimate based on actual keyword difficulty and volume. "
+            "Format: '$X-Y per customer' with adjusted range. "
+            "Factors in: (1) Tier 1 keyword competition levels, "
+            "(2) total market volume for economies of scale. "
+            "Compare to estimated_cac_organic to see refinement."
+        )
+    )
+
+    programmatic_seo_opportunity_refined: Optional[str] = Field(
+        default=None,
+        description=(
+            "Refined programmatic SEO assessment with quantitative page count estimates. "
+            "Based on discovered keyword opportunities: Tier 1 landing pages, "
+            "topic clusters, geographic/category variations. "
+            "Includes both the calculated page potential and the original qualitative assessment."
+        )
+    )
+
+    seo_refinement_metadata: Optional[SEORefinementMetadata] = Field(
+        default=None,
+        description=(
+            "Metadata about the SEO refinement process for transparency. "
+            "Includes: baseline_volume_used, volume_multiplier, tier1_multiplier, "
+            "competition_modifier, base_cac, difficulty_multiplier, volume_discount, "
+            "estimated_year1_pages. Useful for debugging and understanding score changes."
+        )
+    )
+
+
 class IdeaGenerationResult(BaseModel):
-    """Complete result of solution idea generation."""
+    """
+    Complete result of solution idea generation (Stage 7).
+
+    Uses BaseSolutionIdea (NOT SolutionIdea) to ensure LLM only outputs
+    Stage 7 fields. Enrichment fields from Stage 8.85 and 9.5 are added
+    later via Python merging in report_generator._merge_solution_enrichments().
+    """
 
     model_config = ConfigDict(extra='forbid')
 
-    solution_ideas: list[SolutionIdea] = Field(..., description="Generated solution concepts")
+    solution_ideas: list[BaseSolutionIdea] = Field(..., description="Generated solution concepts")
     recommended_solution: Optional[str] = Field(
         default=None, description="Recommended solution name from the list"
     )

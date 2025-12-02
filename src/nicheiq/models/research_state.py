@@ -277,10 +277,10 @@ class FinalReport(BaseModel):
         description="Detailed MVP scope: must-have features, post-MVP features, success criteria (markdown format with sections)"
     )
 
-    # Pricing Strategy (Stage 8.7)
+    # Pricing Strategy for selected solution (extracted from pricing_strategies in ResearchState)
     pricing_strategy: Optional['PricingStrategyResult'] = Field(
         default=None,
-        description="Validated pricing strategy with recommended tiers, ARPU, LTV estimates, competitive positioning, and WTP validation from Stage 8.7"
+        description="Pricing strategy for the selected solution with recommended tiers, ARPU, LTV estimates"
     )
 
     # Market Sizing & Validation (Stage 8.6)
@@ -357,11 +357,11 @@ class FinalReport(BaseModel):
         )
     )
 
-    # Keyword Validation & Refinement (Stage 8.8 and 8.85)
+    # Keyword Validation & Refinement (Stage 8.5 and 8.7)
     keyword_validation_overview: Optional[str] = Field(
         default=None,
         description=(
-            "Executive summary of keyword validation results across top 3 solution candidates from Stage 8.8. "
+            "Executive summary of keyword validation results across top N solution candidates from Stage 8.5. "
             "Format: 2-3 paragraphs covering: "
             "(1) Validation methodology and data sources (e.g., DataForSEO metrics), "
             "(2) Key findings per solution with quantitative metrics (total keywords, Tier 1 count, avg search volume), "
@@ -373,7 +373,7 @@ class FinalReport(BaseModel):
     solution_keyword_comparison: Optional[str] = Field(
         default=None,
         description=(
-            "Comparative keyword analysis showing how top 3 solutions differ in SEO opportunity from Stage 8.8. "
+            "Comparative keyword analysis showing how top N solutions differ in SEO opportunity from Stage 8.5. "
             "Format: Markdown table or structured comparison with: "
             "(1) Solution name and total validated keywords, "
             "(2) Tier 1 quick wins count and average competition level, "
@@ -386,7 +386,7 @@ class FinalReport(BaseModel):
     content_strategy_preview: Optional[str] = Field(
         default=None,
         description=(
-            "Preview of content strategy recommendations based on keyword validation insights from Stage 8.8. "
+            "Preview of content strategy recommendations based on keyword validation insights from Stage 8.5. "
             "Format: 2-3 paragraphs outlining: "
             "(1) Programmatic content opportunities identified (page templates, topic clusters), "
             "(2) Geographic or categorical expansion priorities from keyword data, "
@@ -680,6 +680,12 @@ class ResearchState(BaseModel):
     # Stage 1: Niche Analysis
     niche_context: Optional[NicheContext] = None
 
+    # User constraints
+    allowed_project_types: Optional[list[str]] = Field(
+        default=None,
+        description="User-specified project type constraints: saas, directory, aggregator, comparison-tool, marketplace"
+    )
+
     # Stage 2: Query Generation
     search_queries: list[SearchQuery] = Field(default_factory=list)
 
@@ -719,25 +725,25 @@ class ResearchState(BaseModel):
     # Stage 8: Competitive Analysis
     competitive_analysis: Optional[CompetitiveAnalysisResult] = None
 
-    # Stage 8.5: Solution Selection
+    # Stage 7.4: Solution Selection
     solution_selection: Optional[SolutionSelection] = None
 
-    # Stage 8.8: Keyword Validation Results (quick validation for top 3 solutions)
+    # Stage 8.5: Keyword Validation Results (quick validation for top N solutions)
     keyword_validation_results: Optional[list[CrewKeywordValidationResult]] = Field(
         default=None,
-        description="Keyword validation results for top 3 solutions from Stage 8.8"
+        description="Keyword validation results for top N solutions from Stage 8.5"
     )
 
-    # Stage 8.85: Solution Refinement (strategic recommendations based on keyword insights)
+    # Stage 8.7: Solution Refinement (strategic recommendations based on keyword insights)
     solution_refinement: Optional[SolutionRefinement] = Field(
         default=None,
-        description="Strategic refinement recommendations from Stage 8.85"
+        description="Strategic refinement recommendations from Stage 8.7"
     )
 
-    # Stage 8.7: Pricing Strategy Validation
-    pricing_strategy: Optional[PricingStrategyResult] = Field(
+    # Stage 8: Pricing Strategy Validation (for top N solutions)
+    pricing_strategies: Optional[list[PricingStrategyResult]] = Field(
         default=None,
-        description="Pricing strategy validation result from Stage 8.7"
+        description="Pricing strategies for top N solutions from Stage 8"
     )
 
     # Stage 8.6: Market Sizing & Validation

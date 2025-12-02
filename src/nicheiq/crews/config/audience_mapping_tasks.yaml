@@ -11,18 +11,46 @@ audience_mapping_analysis:
     key influencers, common vocabulary, and optimal marketing channels for the {niche_description} market.
 
 
-    **DATA SOURCES:**
+    **DATA SOURCES (Knowledge Sources - Semantic Search Available):**
 
-    **Reddit Insights:**
-    {reddit_insights}
+    You have access to FULL discussion content via knowledge sources. Use semantic search queries to find:
+    - ACTUAL usernames (u/username, @username patterns)
+    - ACTUAL vocabulary and phrases users type
+    - ACTUAL tools, products, and solutions mentioned
+    - Community hubs and influencers referenced
 
-    **Twitter Insights:**
-    {twitter_insights}
+    **Content Summary:**
+    - Reddit: {reddit_posts_count} posts with {total_reddit_comments} comments
+    - Twitter: {twitter_threads_count} threads with {total_twitter_replies} replies
+    - Total Discussions: {total_discussions}
 
-    **Pain Points Context:**
-    {pain_points_context}
+    **Subreddit Distribution:**
+    {subreddit_distribution}
 
-    **Total Discussions Analyzed:** {total_discussions}
+    **Pain Points Context (from Stage 6):**
+    {pain_points_summary}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **SEARCH STRATEGY** (Knowledge Source Queries):
+
+    | Query Type | Purpose | Example Keywords |
+    |------------|---------|------------------|
+    | Username patterns | Find actual influencers | "u/", "@", "username", "posted by" |
+    | Tool mentions | Discover current solutions | "using", "tried", "recommend", "switched to" |
+    | Vocabulary extraction | Find authentic language | Problem-specific terms, jargon, slang |
+    | Community references | Find hubs | "r/", "subreddit", "discord", "slack", "community" |
+    | Segment indicators | Identify user types | "as a", "I'm a", "working as", "my role" |
+    | Budget signals | Assess willingness to pay | "budget", "price", "cost", "pay for", "subscription" |
+    | Frustration language | Validate pain points | "hate", "annoying", "frustrating", "can't stand" |
+
+    **HOW TO USE KNOWLEDGE SOURCES:**
+    1. Query with specific keywords (e.g., "using" + tool category to find current solutions)
+    2. Extract EXACT usernames, tool names, vocabulary from returned chunks
+    3. Note [source: ID] tags for traceability
+    4. Cross-reference multiple queries to validate findings
+
+    ═══════════════════════════════════════════════════════════════════════════
 
 
     **YOUR TASK:**

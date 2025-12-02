@@ -3,16 +3,6 @@
 
 solution_ideation:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Generate 3-5 solution concepts from validated pain points ONLY
-    ✓ Use Knowledge Sources to query additional user quotes and evidence
-    ✓ Every solution MUST reference specific pain points by title
-    ✓ Required: detailed HOW IT WORKS description (4-6 sentences)
-    ✓ Required: project_type field (saas/directory/aggregator/comparison-tool/marketplace)
-    ✓ Required: 6 SEO fields for every solution
-    ✗ NEVER generate solutions without validated pain points
-    ✗ If high_priority_count = 0 AND medium_priority_count = 0 → STOP
-
     **TASK 1: Solution Ideation (Brainstorm + Evaluate + Refine)**
 
     Generate 3-5 comprehensive solution proposals addressing validated pain points.
@@ -131,6 +121,11 @@ solution_ideation:
     ✗ High OR medium priority count = 0 → STOP immediately (insufficient data)
       ❌ Example: Generating solutions when pain point data shows "insufficient" or count = 0
 
+    If STOP condition is met, return IdeaGenerationResult with:
+      - solution_ideas: [] (empty list)
+      - recommended_solution: null
+      - market_insights: "Insufficient validated pain points to generate solutions. High/medium priority pain point count = 0."
+
     **FIELD REQUIREMENTS:**
     ✗ Vague descriptions or missing fields → Solution will be rejected by Python validation
       ❌ Example: "A platform that helps users" (vs detailed step-by-step user journey)
@@ -157,6 +152,31 @@ solution_ideation:
     - Data: requires_data_aggregation, data_sources (if applicable)
     - SEO (6 fields): programmatic_seo_opportunity, content_generation_model, organic_discovery_queries, estimated_cac_organic, estimated_cac_paid, seo_scalability_score
 
+    **COMPLETE EXAMPLE (all 25 fields):**
+    {
+      "solution_name": "ExpatCostCompass",
+      "description": "HOW IT WORKS: Users select their destination country and city, then receive a comprehensive cost-of-living breakdown with real-time pricing data. The platform aggregates rental costs, utilities, groceries, transportation, and healthcare expenses from 50+ verified sources. Users can compare costs across multiple cities side-by-side and filter by lifestyle preferences (budget/mid-range/premium). The comparison engine generates personalized monthly budget estimates based on user-selected spending categories.",
+      "value_proposition": "Make informed relocation decisions with real-time cost comparisons across 200+ cities worldwide",
+      "pain_points_addressed": ["High International Transaction Fees", "Confusing Healthcare Systems", "Unreliable Cost of Living Data"],
+      "core_features": ["Real-time cost aggregation from 50+ sources", "City-to-city comparison tool", "Lifestyle-adjusted budget calculator", "Local healthcare cost guide", "Banking/remittance fee comparisons", "Interactive cost breakdown charts"],
+      "target_personas": ["Remote workers (25-40) evaluating international moves", "Expat families comparing school/healthcare costs", "Digital nomads optimizing for cost arbitrage"],
+      "market_fit_score": 0.82,
+      "technical_feasibility_score": 0.75,
+      "technical_approach": "Data aggregation layer using APIs (Numbeo, Expatistan) + custom scrapers. PostgreSQL for structured cost data, Redis for caching. React frontend with D3.js visualizations. Estimated 6-week MVP with basic comparison functionality.",
+      "estimated_development_time": "3-4 months",
+      "pricing_strategy": "Freemium model - free basic comparisons, $9.99/mo for detailed reports and historical trends, $29.99/mo for API access",
+      "differentiation_factors": ["Real-time data vs static reports", "50+ data sources vs single-source competitors", "Lifestyle-adjusted calculations"],
+      "project_type": "aggregator",
+      "requires_data_aggregation": true,
+      "data_sources": ["Numbeo API", "Expatistan", "Local rental aggregators", "Government statistics portals"],
+      "programmatic_seo_opportunity": "High - 10,000+ pages Year 1 (200 cities × 50 cost categories)",
+      "content_generation_model": "Data-driven: automated city pages from aggregated cost data",
+      "organic_discovery_queries": ["cost of living [city]", "[city A] vs [city B] cost comparison", "how much to live in [city]", "expat budget [city]", "[city] rent prices 2025"],
+      "estimated_cac_organic": "$25-45",
+      "estimated_cac_paid": "$180-280",
+      "seo_scalability_score": 0.85
+    }
+
     **recommended_solution** (Optional[str]): Initially null (will be set in Task 4)
 
     **market_insights** (str): 4-6 sentences summarizing opportunity landscape
@@ -165,14 +185,6 @@ solution_ideation:
 
 competitive_analysis:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Use search tools to discover competitors - verify everything
-    ✓ Query Knowledge Sources for user-mentioned competitors
-    ✓ ONLY report verifiable competitors (no invented names/features/pricing)
-    ✓ If no competitors found → "No competitors found via search" (honest reporting)
-    ✗ NEVER fabricate competitor names, features, or pricing
-    ✗ Every competitor requires verifiable source (search result/user mention)
-
     **TASK 2: Competitive Analysis (Research + Gap Analysis)**
 
     Analyze competitive landscape for ALL solutions from Task 1.
@@ -315,13 +327,6 @@ competitive_analysis:
 
 competitive_refinement:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Generate ONLY enhancements based on competitive analysis
-    ✓ Focus on NEW features, differentiation factors, and refinements
-    ✓ Python will merge with Task 1 base solutions automatically
-    ✗ DO NOT copy or preserve fields from Task 1 - that's handled by Python
-    ✗ DO NOT output complete SolutionIdea objects - ONLY enhancements
-
     **TASK 3: Competitive Refinement (Generate Enhancements)**
 
     Generate competitive enhancements for solutions from Task 1 based on insights from Task 2.
@@ -452,14 +457,6 @@ competitive_refinement:
 
 solution_selection:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Select ONE solution from Task 3 output
-    ✓ Score each solution across 4 criteria (0-1 scale)
-    ✓ Selection rationale MUST reference specific data (scores, gaps, CAC, mentions)
-    ✓ Provide runner-up solutions as alternative pivots
-    ✗ NEVER use generic justifications ("strong market fit") - quantify with evidence
-    ✗ If insufficient data for confident selection → report "Insufficient evidence"
-
     **TASK 4: Solution Selection (Strategic Decision)**
 
     Select ONE solution from Task 3 based on comprehensive scoring.

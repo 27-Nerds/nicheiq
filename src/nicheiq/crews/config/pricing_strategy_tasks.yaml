@@ -21,7 +21,8 @@ pricing_strategy_analysis:
     {solution_features}
 
     **Market Fit Score:** {market_fit_score}/1.0
-    **Differentiation Score:** {differentiation_score}/1.0
+
+    **Project Type Constraints:** {allowed_project_types}
 
 
     **COMPETITOR PRICING BENCHMARKS:**
@@ -65,10 +66,28 @@ pricing_strategy_analysis:
     - Quantify value proposition delta (e.g., "15% more features at 20% lower price")
     - Determine confidence level (High/Medium/Low) based on data quality
 
-    ### 6. WTP Validation
+    ### 6. WTP Validation (CRITICAL)
     - Validate recommended pricing against pain point WTP scores
-    - Ensure pricing aligns with customer willingness to pay
+    - Use the WTP-to-Price Translation Guide below
     - Flag any discrepancies between market pricing and WTP data
+
+    **WTP-to-Price Translation Guide:**
+
+    | Average WTP Score | Price Tolerance | Pricing Strategy |
+    |-------------------|-----------------|------------------|
+    | 0.70 - 1.00 | Premium (+20-40% vs median) | Users actively seek solutions, price less sensitive |
+    | 0.50 - 0.69 | Market Rate (±10% of median) | Standard pricing, feature differentiation drives value |
+    | 0.30 - 0.49 | Discount (-20-40% vs median) | Price-sensitive users, freemium with aggressive upsell |
+    | 0.00 - 0.29 | Free/Near-Free | Unlikely to monetize directly, ad-supported or data play |
+
+    **VALIDATION RULE:** If recommended_starter_price exceeds the WTP-implied ceiling, REDUCE price or JUSTIFY premium positioning.
+
+    **Example WTP Calculation:**
+    - Competitor median: $29/month
+    - Average WTP score: 0.55 (Market Rate tolerance)
+    - Implied price range: $26-32/month (±10% of median)
+    - Starter recommendation: $19/month ✓ (below range = acquisition-friendly)
+    - Pro recommendation: $49/month ⚠ (above range, needs strong differentiation justification)
 
 
     **PRICING GUIDELINES:**
@@ -137,7 +156,7 @@ pricing_strategy_analysis:
 
     - Competitor pricing data shows <3 competitors OR all prices marked "unknown"
     - Pain point WTP scores show all WTP values <0.3 (indicates very low monetization potential)
-    - Solution has market_fit_score <0.40 AND differentiation_score <0.40 (unpriceable solution)
+    - Solution has market_fit_score <0.40 (unpriceable solution)
 
     If any stop condition is met, return pricing_confidence="Low" and flag the issue in pricing_rationale.
 

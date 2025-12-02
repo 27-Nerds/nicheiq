@@ -7,6 +7,8 @@ Validates monetization strategy by determining optimal pricing based on:
 - Selected solution features and positioning
 """
 
+from typing import Any
+
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
@@ -71,7 +73,56 @@ class PricingStrategyCrew:
             config=self.tasks_config["pricing_strategy_analysis"],
             agent=self.pricing_analyst(),
             output_pydantic=PricingStrategyResult,
+            guardrail=self._validate_pricing_output,
         )
+
+    def _validate_pricing_output(self, task_output) -> tuple[bool, Any]:
+        """
+        Validate pricing strategy output meets CRITICAL RULES.
+
+        Checks:
+        - Pricing model is valid
+        - Pricing confidence is valid
+        - Price strings contain dollar sign
+        - Feature tiers are populated
+
+        Returns:
+            (True, result) if validation passes, (False, error_message) if fails
+        """
+        try:
+            result = task_output.pydantic
+            if result is None:
+                return (False, "Pricing analysis returned None pydantic output")
+
+            # Validate pricing model
+            valid_models = ["Freemium", "Subscription", "Hybrid", "One-time"]
+            if result.pricing_model not in valid_models:
+                return (False, f"Invalid pricing_model: '{result.pricing_model}'. Must be one of: {valid_models}")
+
+            # Validate pricing confidence
+            valid_confidence = ["High", "Medium", "Low"]
+            if result.pricing_confidence not in valid_confidence:
+                return (False, f"Invalid pricing_confidence: '{result.pricing_confidence}'. Must be one of: {valid_confidence}")
+
+            # Validate price strings contain dollar sign (basic format check)
+            if "$" not in result.recommended_starter_price:
+                return (False, f"recommended_starter_price missing $ symbol: '{result.recommended_starter_price}'")
+            if "$" not in result.recommended_pro_price:
+                return (False, f"recommended_pro_price missing $ symbol: '{result.recommended_pro_price}'")
+            if "$" not in result.estimated_arpu:
+                return (False, f"estimated_arpu missing $ symbol: '{result.estimated_arpu}'")
+
+            # Validate feature tiers are populated
+            if not result.starter_tier_features or len(result.starter_tier_features) == 0:
+                return (False, "starter_tier_features cannot be empty")
+            if not result.pro_tier_features or len(result.pro_tier_features) == 0:
+                return (False, "pro_tier_features cannot be empty")
+
+            logger.info(f"✓ Pricing guardrail passed: {result.pricing_model} model, {result.pricing_confidence} confidence")
+            return (True, result)
+
+        except Exception as e:
+            return (False, f"Pricing validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:
@@ -86,33 +137,54 @@ class PricingStrategyCrew:
             verbose=True,
         )
 
-    def _extract_competitor_pricing(self, competitive_analysis) -> str:
+    def _extract_competitor_pricing(self, competitive_analysis, selected_solution_name: str = None) -> str:
         """
         Extract competitor pricing information from competitive analysis.
+
+        Args:
+            competitive_analysis: CompetitiveAnalysisResult with solution_landscapes
+            selected_solution_name: Name of selected solution to find its landscape
 
         Returns:
             Formatted string with competitor pricing data
         """
-        if not competitive_analysis or not competitive_analysis.key_competitors:
+        if not competitive_analysis or not competitive_analysis.solution_landscapes:
+            return "No competitor pricing data available."
+
+        # Find the landscape for the selected solution
+        landscape = None
+        for l in competitive_analysis.solution_landscapes:
+            if selected_solution_name and l.solution_name == selected_solution_name:
+                landscape = l
+                break
+
+        # Fallback to first landscape if not found
+        if not landscape:
+            landscape = competitive_analysis.solution_landscapes[0]
+
+        if not landscape.competitors:
+            # Use pricing_insights from landscape if available
+            if landscape.pricing_insights:
+                return f"**Pricing Insights:**\n{landscape.pricing_insights}"
             return "No competitor pricing data available."
 
         pricing_info = []
-        for competitor in competitive_analysis.key_competitors[:10]:  # Top 10
-            pricing_str = f"- {competitor.competitor_name}"
+        for competitor in landscape.competitors[:10]:  # Top 10
+            pricing_str = f"- {competitor.name}"
 
-            # Add positioning
-            if hasattr(competitor, 'positioning') and competitor.positioning:
-                pricing_str += f" ({competitor.positioning})"
+            # Add description
+            if competitor.description:
+                pricing_str += f" ({competitor.description[:50]}...)" if len(competitor.description) > 50 else f" ({competitor.description})"
 
             # Add pricing if available
-            if hasattr(competitor, 'pricing_model') and competitor.pricing_model:
+            if competitor.pricing_model:
                 pricing_str += f": {competitor.pricing_model}"
 
-            # Add estimated pricing tiers
-            if hasattr(competitor, 'estimated_pricing') and competitor.estimated_pricing:
-                pricing_str += f" - {competitor.estimated_pricing}"
-
             pricing_info.append(pricing_str)
+
+        # Add pricing insights from landscape
+        if landscape.pricing_insights:
+            pricing_info.append(f"\n**Pricing Insights:**\n{landscape.pricing_insights}")
 
         if not pricing_info:
             return "Competitors identified but pricing data not available."
@@ -131,13 +203,13 @@ class PricingStrategyCrew:
 
         wtp_info = []
         for pain_point in pain_point_analysis.pain_points[:10]:  # Top 10
-            wtp_str = f"- {pain_point.pain_point_title}"
+            wtp_str = f"- {pain_point.title}"
 
             if hasattr(pain_point, 'severity_score'):
                 wtp_str += f" (Severity: {pain_point.severity_score:.2f})"
 
-            if hasattr(pain_point, 'willingness_to_pay_score'):
-                wtp_str += f" - WTP Score: {pain_point.willingness_to_pay_score:.2f}"
+            if hasattr(pain_point, 'willingness_to_pay'):
+                wtp_str += f" - WTP Score: {pain_point.willingness_to_pay:.2f}"
 
             wtp_info.append(wtp_str)
 
@@ -179,7 +251,8 @@ class PricingStrategyCrew:
         selected_solution,
         pain_point_analysis,
         competitive_analysis,
-        niche_description: str
+        niche_description: str,
+        allowed_project_types: list[str] | None = None
     ) -> PricingStrategyResult | None:
         """
         Execute pricing strategy crew to generate pricing recommendations.
@@ -189,29 +262,30 @@ class PricingStrategyCrew:
             pain_point_analysis: Pain point analysis from Stage 6 (PainPointAnalysisResult)
             competitive_analysis: Competitive analysis from Stage 8 (CompetitiveAnalysisResult)
             niche_description: Niche description for context
+            allowed_project_types: Optional project type constraints from user
 
         Returns:
             PricingStrategyResult with recommended pricing strategy, or None if analysis fails
         """
         logger.info("[Stage 8.7] Starting Pricing Strategy Validation...")
-        logger.info(f"  Solution: {selected_solution.idea_name}")
+        logger.info(f"  Solution: {selected_solution.solution_name}")
         logger.info(f"  Analyzing competitor pricing and WTP scores...")
 
         # Extract data for task inputs
-        competitor_pricing = self._extract_competitor_pricing(competitive_analysis)
+        competitor_pricing = self._extract_competitor_pricing(competitive_analysis, selected_solution.solution_name)
         wtp_scores = self._extract_wtp_scores(pain_point_analysis)
         solution_features = self._format_solution_features(selected_solution)
 
         # Prepare inputs for the pricing analysis task
         inputs = {
-            "solution_name": selected_solution.idea_name,
+            "solution_name": selected_solution.solution_name,
             "solution_description": selected_solution.description,
             "solution_features": solution_features,
             "competitor_pricing": competitor_pricing,
             "wtp_scores": wtp_scores,
             "niche_description": niche_description,
             "market_fit_score": f"{selected_solution.market_fit_score:.2f}",
-            "differentiation_score": f"{selected_solution.differentiation_score:.2f}"
+            "allowed_project_types": ', '.join(allowed_project_types) if allowed_project_types else "All types allowed"
         }
 
         try:

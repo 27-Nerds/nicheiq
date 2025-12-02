@@ -20,6 +20,7 @@ expand_keywords_conceptually:
     - Target Personas: {target_personas}
     - Core Features: {core_features}
     - Competitive Context: {competitor_names}
+    - Project Type Constraints: {allowed_project_types}
 
     **RELEVANCE REMINDER:**
     All keywords generated here will be expanded by DataForSEO (Phase 9.5b) which may produce
@@ -95,18 +96,6 @@ expand_keywords_conceptually:
 
 analyze_keywords_and_tier:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Use ONLY enriched keyword data provided - NO fabricated volumes
-    ✓ STEP 0 (Relevance Filtering) is MANDATORY - filter irrelevant keywords first
-    ✓ Calculate opportunity_score = search_volume / competition_index
-    ✓ Every tier assignment MUST reference actual data from keywords
-    ✓ Target 60-80% retention after filtering - distribute RELEVANT keywords across tiers
-    ✓ Track filtered keyword count in key_findings field
-    ✓ **DATA EXTRACTION ACCURACY:** Operate as precision data extractor - character-by-character
-      copying of CSV values. NEVER round (387→400), approximate, or modify. Your accuracy
-      determines whether clients waste budget on wrong keywords. If uncertain → STOP and report
-      error rather than guessing.
-
     **Task 1: Keyword Analysis & Tiering**
 
     Apply your Intent-First Tiering Methodology to {enriched_keywords_count} pre-enriched keywords.
@@ -129,6 +118,16 @@ analyze_keywords_and_tier:
     - **cpc**: Cost per click in USD (float)
     - **opportunity_score**: Calculated as search_volume / competition_index (float, higher is better)
     - **tier**: Pre-calculated tier assignment (TIER_0_PREMIUM/TIER_1_QUICK_WIN/TIER_2_STRATEGIC/TIER_3_MEDIUM/TIER_4_LONG_TAIL)
+    - **trend_direction**: Search volume trend (rising/stable/declining/unknown) - based on 12-month historical data
+    - **trend_score**: Trend strength from -1.0 (declining) to 1.0 (rising)
+    - **seasonality**: Seasonality index 0.0-1.0 (0=stable year-round, 1=highly seasonal)
+    - **is_evergreen**: True if low seasonality AND not declining - indicates sustainable traffic opportunity
+
+    **TREND-AWARE PRIORITIZATION:**
+    - Prioritize **rising** keywords for growth opportunities
+    - Prefer **is_evergreen=True** keywords for sustainable traffic foundation
+    - Avoid investing heavily in **declining** keywords unless strategically necessary
+    - Note **seasonal** keywords (seasonality > 0.3) for content timing recommendations
 
     **TIER DEFINITIONS (from CSV data - Priority Order: 0 → 1 → 2 → 3 → 4):**
     - **TIER_0_PREMIUM**: opportunity_score > 200 (EXCEPTIONAL - Very high volume, very low competition. Rare "unicorn" keywords.)
@@ -185,7 +184,11 @@ analyze_keywords_and_tier:
     - Vehicles: "car", "tire", "bike" (keep if automotive niche)
     - Telecom: "verizon", "t-mobile" (keep if telecom niche)
 
-    **Filtering Goal:** Quality over quantity - no fixed retention target. Report stats in key_findings.
+    **FILTERING GUIDANCE (IMPORTANT):**
+    - Target: Filter 20-30% as truly irrelevant (NOT 40-50%)
+    - When in doubt about relevance → INCLUDE the keyword in Tier 4
+    - Over-filtering is WORSE than under-filtering (keywords can be refined later)
+    - Report filtering stats in key_findings
 
     ═══ KEYWORD UTILIZATION MANDATE ═══
     You are analyzing {enriched_keywords_count} keywords. Your output MUST tier a MINIMUM of 80% of relevant keywords (after filtering).
@@ -215,10 +218,16 @@ analyze_keywords_and_tier:
           - Group by region (e.g., "European Markets"), sum volumes, note competition
           - ⚠️ NO hallucinated city names - only group if location is IN keyword text
 
-       b. **Tier 4 (Category):** ALL remaining non-geographic keywords
-          - Create 8-15 LARGE category groups (ingredient, product type, user concern, price tier, comparison, review, misc)
-          - Each category: 20-100+ keywords for programmatic SEO (NOT 5-10 keywords)
-          - ⚠️ Your Tier 4 groups should contain HUNDREDS of keywords total
+       b. **Tier 4 (Category) - CRITICAL - Most Keywords Go Here:**
+          - MINIMUM: 6 category groups (aim for 8-15)
+          - MINIMUM: 15 keywords per category group (aim for 20-100+)
+          - If you have 150+ remaining keywords → create 10+ categories
+          - Category themes: ingredient, product type, user concern, price tier, comparison, review, misc
+
+          ❌ CRITICAL FAILURE: Tier 4 has <6 categories
+          ❌ CRITICAL FAILURE: Tier 4 categories average <15 keywords each
+          ✅ SUCCESS: Tier 4 has 8-15 categories with 20-100 keywords each
+          ⚠️ Your Tier 4 groups should contain HUNDREDS of keywords total
 
        c. **Self-Check BEFORE submitting:**
           ```
@@ -240,9 +249,10 @@ analyze_keywords_and_tier:
     - [ ] Selected ALL Tier 1 keywords meeting threshold (opp_score >100) - NOT limited to 3-5
     - [ ] Selected ALL Tier 2 keywords meeting threshold (opp_score 50-100) - NOT limited to 3-5
     - [ ] Tier 3 geographic groups ONLY contain keywords with explicit location mentions
+    - [ ] Tier 4 has MINIMUM 6 category groups (aim for 8-15)
     - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords (should be 150-250+ keywords)
+    - [ ] Tier 4 category groups average 15+ keywords per group (aim for 20-100+)
     - [ ] Calculated EXACT keyword utilization: tiered_keywords / relevant_keywords ≥ 80%
-    - [ ] Tier 4 category groups average 20-100+ keywords per group (NOT 5-10)
     - [ ] key_findings includes filtering stats (e.g., "Filtered 620/1603 (39%) - strict domain filtering")
     - [ ] key_findings includes tier distribution stats (Tier 0=A, Tier 1=B, Tier 2=C, Tier 3=D, Tier 4=E)
     - [ ] Avoided fabricating search volumes (used EXACT values from CSV)
@@ -297,41 +307,117 @@ analyze_keywords_and_tier:
     ✗ If you're only tiering <50% of keywords, either filtering was too strict OR grouping was incomplete
 
   expected_output: >
-    KeywordAnalysisResult Pydantic model with ALL fields:
+    **OUTPUT FORMAT: Return JSON data with actual values (NOT a schema definition)**
 
-    **Tier Structure** (with real volumes/competition - Priority: 0 → 1 → 2 → 3 → 4):
-    - tier_0_keywords (2-3 keywords, OPTIONAL - only if TIER_0_PREMIUM exists in CSV), tier_0_strategy (if tier_0_keywords exist)
-    - tier_1_keywords (3-5 keywords), tier_1_quick_win_strategy
-    - tier_2_keywords (3-5 keywords, optional), tier_2_strategy (optional)
-    - tier_3_geographic_groups (REQUIRED if geographic patterns exist - group remaining location-based keywords)
-    - tier_4_category_groups (REQUIRED if category patterns exist - group remaining thematic keywords)
+    Your response must be a JSON object containing ACTUAL KEYWORD DATA from the CSV analysis.
+
+    **IMPORTANT DISTINCTION:**
+
+    ✅ **CORRECT** - Return populated JSON with real data:
+    ```json
+    {
+      "tier_0_keywords": [
+        {
+          "keyword": "budget expat health insurance",
+          "search_volume": 2400,
+          "competition": "LOW (18)",
+          "opportunity_score": 133,
+          "strategy": "Target with landing page + comparison tool",
+          "intent": "High commercial intent - price-conscious buyers"
+        }
+      ],
+      "tier_0_strategy": "These exceptional keywords combine high volume...",
+      "tier_1_keywords": [...],
+      "tier_1_quick_win_strategy": "Focus on low-competition opportunities...",
+      "total_keywords_analyzed": 336,
+      "total_monthly_volume": 145000,
+      "key_findings": [
+        "Filtered 100/336 (30%) as irrelevant domain keywords",
+        "Tiered 236 keywords (70% coverage): T0=2, T1=15, T2=18, T3=45, T4=156"
+      ],
+      "competitive_positioning": "## Keyword Gaps\n\nCompetitors focus on..."
+    }
+    ```
+
+    ❌ **WRONG** - Do NOT return a schema definition with metadata:
+    ```json
+    {
+      "type": "object",
+      "properties": {
+        "tier_1_keywords": {"type": "array", "items": {...}},
+        "tier_1_quick_win_strategy": {"type": "string"}
+      },
+      "required": ["tier_1_keywords", "tier_1_quick_win_strategy"],
+      "additionalProperties": false
+    }
+    ```
+
+    **Pre-Submission Check:** Before returning your response, verify:
+    - Does "tier_1_keywords" contain actual keyword strings (not {"type": "array"})?
+    - Does "search_volume" contain numbers like 2400 (not {"type": "integer"})?
+    - Are "properties", "required", "additionalProperties" keys ABSENT from your JSON?
+
+    If you see any schema metadata keys → you're returning the wrong format. Return DATA, not a schema.
+
+    ---
+
+    **REQUIRED FIELDS AND STRUCTURE:**
+
+    **Tier Structure** (Priority: 0 → 1 → 2 → 3 → 4):
+    - tier_0_keywords: ALL keywords with opp_score >200 (OPTIONAL - only if TIER_0_PREMIUM exists)
+    - tier_0_strategy: Strategy for tier 0 (if tier_0_keywords exist)
+    - tier_1_keywords: 3-5 keywords (REQUIRED)
+    - tier_1_quick_win_strategy: Strategy narrative (REQUIRED)
+    - tier_2_keywords: 3-5 keywords (optional)
+    - tier_2_strategy: Strategy narrative (optional)
+    - tier_3_geographic_groups: Group remaining location-based keywords (if geographic patterns exist)
+    - tier_4_category_groups: Group remaining thematic keywords (if category patterns exist)
+
+    **IMPORTANT FIELD NAMES:**
+    - In tier_0/1/2: Each keyword object uses "keyword" (not "keyword_name")
+    - In tier_4_category_groups.keywords: Each entry uses "keyword_name" (not "keyword")
 
     **CRITICAL:** After STEP 0 filtering, distribute RELEVANT keywords across tiers.
-    Target: 80-90% of relevant keywords tiered (NO fixed filtering percentage - adapt to domain match quality).
+    Target: 80-90% of relevant keywords tiered.
 
     **Metadata**:
     - total_keywords_analyzed, total_monthly_volume
     - key_findings (3-5 bullets MUST include:
-      * Filtering stats: "Filtered X/Y (Z%) - [reason: strict domain filtering / lenient for niche match]"
-      * Tier distribution: "Tiered A keywords (B% of relevant): Tier 1=C, Tier 2=D, Tier 3=E, Tier 4=F"
+      * Filtering stats: "Filtered X/Y (Z%) - [reason]"
+      * Tier distribution: "Tiered A keywords (B% of relevant): Tier 0=X, Tier 1=C, Tier 2=D, Tier 3=E, Tier 4=F"
       * Coverage assessment: "Overall coverage: (filtered + tiered) / total = G%"
       * Category insights: "Created H Tier 4 categories covering [themes]")
     - competitive_positioning (markdown, 2-4 sections)
 
     MUST use exact enriched keyword data - no fabrication.
 
+    ---
+
+    **FINAL VALIDATION BEFORE SUBMISSION:**
+
+    Run this mental checklist on your JSON response:
+    1. ✓ Does tier_1_keywords[0].keyword = "actual keyword string" (NOT a type definition)?
+    2. ✓ Does tier_1_keywords[0].search_volume = 2400 (a NUMBER, NOT {"type": "integer"})?
+    3. ✓ Is the root level {"tier_0_keywords": [...], "tier_1_keywords": [...]...}?
+    4. ✗ Are keys like "properties", "required", "type", "additionalProperties" ABSENT?
+
+    If ANY check fails → Your response is in SCHEMA FORMAT (wrong). Convert to DATA FORMAT (correct) before submitting.
+
 develop_content_technical_strategy:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Build on KeywordAnalysisResult from Task 1
-    ✓ Content strategy MUST align with keyword tiers
-    ✓ Technical recommendations MUST include code examples
-
     **Task 2: Content & Technical Strategy**
 
-    **CONTEXT from Task 1:**
+    **HOW TO ACCESS CONTEXT (IMPORTANT):**
 
-    Access to KeywordAnalysisResult with tier structure, volumes, competitive positioning.
+    Task 1 output (KeywordAnalysisResult) is available in your context via CrewAI context chaining.
+    Extract and use the following fields from Task 1:
+    - tier_1_keywords, tier_2_keywords (for content prioritization)
+    - tier_3_geographic_groups, tier_4_category_groups (for programmatic templates)
+    - total_monthly_volume, total_keywords_analyzed (for scale assessment)
+    - competitive_positioning (for differentiation angles)
+    - key_findings (for insights to build upon)
+
+    **DO NOT fabricate keyword data** - use ONLY what Task 1 provided.
 
     **CONTENT STRATEGY** (4-6 numbered sections, markdown):
 
@@ -391,11 +477,6 @@ develop_content_technical_strategy:
 
 create_implementation_plan:
   description: >
-    ═══ CRITICAL RULES (Read First) ═══
-    ✓ Build on KeywordAnalysisResult + ContentStrategyResult
-    ✓ Timeline projections MUST be realistic (SEO compounds over 6-12 mo)
-    ✓ Metrics MUST be specific and measurable
-
     **Task 3: Implementation Planning**
 
     Apply your 3-Phase Compound SEO Roadmap using context from Tasks 1-2.
@@ -408,10 +489,23 @@ create_implementation_plan:
     - Core Features:
       {core_features}
 
-    **CONTEXT from Tasks 1-2:**
+    **HOW TO ACCESS CONTEXT (IMPORTANT):**
 
-    - Tier structure with volumes (Task 1)
-    - Content strategy and technical recommendations (Task 2)
+    Tasks 1-2 outputs are available in your context via CrewAI context chaining.
+
+    **From Task 1 (KeywordAnalysisResult):**
+    - tier_1_keywords, tier_2_keywords (for Phase 1-2 content targets)
+    - tier_3_geographic_groups, tier_4_category_groups (for Phase 3 scaling)
+    - total_monthly_volume (for traffic projection baseline)
+    - key_findings (for risk assessment)
+
+    **From Task 2 (ContentStrategyResult):**
+    - content_strategy (for deliverable planning)
+    - topic_clusters (for content architecture phases)
+    - technical_seo_recommendations (for technical milestones)
+    - keyword_based_page_types (for programmatic SEO phases)
+
+    **DO NOT fabricate metrics** - base all projections on Task 1-2 data.
 
     **PHASED ROADMAP** (markdown table):
 
