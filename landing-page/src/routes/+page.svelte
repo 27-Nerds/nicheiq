@@ -4,7 +4,7 @@
 		HowItWorks,
 		SampleReport,
 		WhoItsFor,
-		WhyNotChatGPT,
+		BusinessIntelligence,
 		ComparisonTable,
 		Credibility,
 		Pricing,
@@ -40,8 +40,8 @@
 	<!-- 4. Help visitors self-identify -->
 	<WhoItsFor />
 
-	<!-- 5. Address main objection -->
-	<WhyNotChatGPT />
+	<!-- 5. Business Intelligence - Market Sizing, Pricing, Risk -->
+	<BusinessIntelligence />
 
 	<!-- 6. Position against alternatives -->
 	<ComparisonTable />
