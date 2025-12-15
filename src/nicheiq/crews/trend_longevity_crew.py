@@ -225,7 +225,9 @@ class TrendLongevityCrew:
 
         try:
             # Execute crew
-            result = self.crew().kickoff(inputs=inputs)
+            crew_instance = self.crew()
+            self._last_crew = crew_instance  # Store for usage_metrics access
+            result = crew_instance.kickoff(inputs=inputs)
 
             if result and result.pydantic:
                 trend_result = result.pydantic
@@ -430,3 +432,15 @@ class TrendLongevityCrew:
                 signals.append(f"- {keyword}: {volume:,}/mo")
 
         return "\n".join(signals)
+
+    @property
+    def usage_metrics(self) -> dict | None:
+        """
+        Get usage metrics from the last crew execution.
+
+        Returns:
+            CrewAI UsageMetrics object or None if no execution yet
+        """
+        if hasattr(self, '_last_crew') and self._last_crew:
+            return self._last_crew.usage_metrics
+        return None

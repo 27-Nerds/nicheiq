@@ -40,7 +40,8 @@ class SeedGenerator:
         self,
         state: "ResearchState",
         niche_context: "NicheContext | None" = None,
-        pain_point_analysis: "PainPointAnalysisResult | None" = None
+        pain_point_analysis: "PainPointAnalysisResult | None" = None,
+        audience_vocabulary: list[str] | None = None
     ):
         """
         Initialize SeedGenerator with research state context.
@@ -49,10 +50,12 @@ class SeedGenerator:
             state: ResearchState object with flow state
             niche_context: Optional NicheContext (extracted from state if not provided)
             pain_point_analysis: Optional PainPointAnalysisResult (extracted from state if not provided)
+            audience_vocabulary: Optional list of audience terms from Stage 6.5
         """
         self.state = state
         self.niche_context = niche_context or getattr(state, 'niche_context', None)
         self.pain_point_analysis = pain_point_analysis or getattr(state, 'pain_point_analysis', None)
+        self.audience_vocabulary = audience_vocabulary
 
     def generate_hybrid_seeds(
         self,
@@ -97,6 +100,7 @@ class SeedGenerator:
                 niche_context=self.niche_context,
                 pain_points=self.pain_point_analysis,
                 competitive_analysis=competitive_analysis,
+                audience_vocabulary=self.audience_vocabulary,
                 num_broad_seeds=6,
                 num_targeted_seeds=4
             )

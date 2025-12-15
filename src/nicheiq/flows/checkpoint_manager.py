@@ -234,15 +234,21 @@ class CheckpointManager:
             "stage_5_social_content.json": "social_content",
             "stage_6_pain_points.json": "pain_point_analysis",
             "stage_6_5_audience_mapping.json": "audience_mapping",
-            # Stage 7: Unified solution pipeline (4 internal tasks)
-            "stage_7_1_ideation.json": "idea_generation",
-            "stage_7_2_competitive.json": "competitive_analysis",
+            # Stage 7: Unified solution pipeline (6 tasks - divergent-convergent architecture)
+            # Tasks 1-2: Intermediate outputs (for debugging, not loaded to state)
+            "stage_7_1_divergent.json": None,  # RawConceptList - debug only
+            "stage_7_2_filtered.json": None,   # FilteredConceptList - debug only
+            # Tasks 3-6: Essential outputs (loaded to state for resume)
             "stage_7_3_refinement.json": "idea_generation",
-            "stage_7_4_selection.json": "solution_selection",
+            "stage_7_4_competitive.json": "competitive_analysis",
+            "stage_7_5_enhancements.json": None,  # CompetitiveEnhancements - debug only
+            "stage_7_6_selection.json": "solution_selection",
             # Stage 8-8.7: Post-solution validation stages
             "stage_8_pricing_validation.json": "pricing_strategies",
             "stage_8_5_keyword_validation.json": "keyword_validation_results",
             "stage_8_5_keyword_validation_partial.json": "keyword_validation_results",
+            "stage_8_55_traffic_monetization.json": "traffic_monetization_results",
+            "stage_8_55_traffic_monetization_partial.json": "traffic_monetization_results",
             "stage_8_6_market_sizing.json": "market_sizing",
             "stage_8_7_solution_refinement.json": "solution_refinement",
             # Stage 9: SEO strategy (internal phases 9.5a/b/c)
@@ -260,6 +266,11 @@ class CheckpointManager:
         for stage_file, state_attr in stage_mapping.items():
             file_path = folder_path / stage_file
             if file_path.exists():
+                # Skip debug-only checkpoints (mapped to None)
+                if state_attr is None:
+                    logger.debug(f"  ⏭ Skipping {stage_file} (debug checkpoint, not loaded to state)")
+                    continue
+
                 # Validate stage file before loading
                 if not self.validator.validate_stage_file(file_path):
                     logger.warning(f"Skipping corrupted stage file: {stage_file}")

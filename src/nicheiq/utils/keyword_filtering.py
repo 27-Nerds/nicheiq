@@ -69,21 +69,24 @@ def check_keyword_relevance(
     expanded_keywords: list[dict],
     solution: "SolutionIdea",
     niche_context: "NicheContext | None" = None,
-    validation_cache: dict[str, tuple | None] = None
+    validation_cache: dict[str, tuple | None] = None,
+    audience_vocabulary: list[str] | None = None
 ) -> tuple[float, list[dict], list[str]]:
     """
-    Check if expanded keywords are relevant using 3 criteria.
+    Check if expanded keywords are relevant using 4 criteria.
 
     Evaluates keyword quality based on:
     1. Search volume distribution (reject if >80% have volume < 10/month)
-    2. Semantic relevance using KeywordRelevanceValidator
-    3. DataForSEO validation success rate
+    2. DataForSEO validation success rate
+    3. Semantic relevance using KeywordRelevanceValidator
+    4. Audience vocabulary alignment (checks if keywords contain terms from Stage 6.5)
 
     Args:
         expanded_keywords: List of keyword dicts from DataForSEO expansion
         solution: SolutionIdea object for semantic comparison
         niche_context: Optional NicheContext for semantic validation
         validation_cache: Optional cache dict for validation results
+        audience_vocabulary: Optional list of audience terms from Stage 6.5
 
     Returns:
         Tuple of (relevance_score, good_keywords, issues):
@@ -192,22 +195,42 @@ def check_keyword_relevance(
         semantic_relevance_rate = 0.5  # Neutral score on error
         issues.append("semantic_validation_error")
 
+    # Criterion 4: Audience vocabulary alignment (15% weight)
+    # Checks if keywords contain terms from actual audience discussions (Stage 6.5)
+    if audience_vocabulary and expanded_keywords:
+        audience_vocab_lower = {term.lower() for term in audience_vocabulary}
+        audience_match_count = sum(
+            1 for kw in expanded_keywords
+            if any(term in kw.get('keyword', '').lower() for term in audience_vocab_lower)
+        )
+        audience_score = audience_match_count / len(expanded_keywords)
+
+        if audience_score < 0.2:
+            issues.append(f"low_audience_alignment_{audience_score:.2f}")
+            logger.debug(
+                f"[Relevance Check] Only {audience_match_count}/{len(expanded_keywords)} "
+                f"keywords contain audience vocabulary terms"
+            )
+    else:
+        audience_score = 0.5  # Neutral score if no audience data available
+
     # Calculate overall relevance score (weighted average)
-    # 40% volume distribution + 30% validation rate + 30% semantic relevance
+    # 35% volume + 25% validation + 25% semantic + 15% audience
     volume_score = max(0.0, 1.0 - low_volume_ratio)
     validation_score = validation_rate
     semantic_score = semantic_relevance_rate
 
     relevance_score = (
-        0.4 * volume_score +
-        0.3 * validation_score +
-        0.3 * semantic_score
+        0.35 * volume_score +
+        0.25 * validation_score +
+        0.25 * semantic_score +
+        0.15 * audience_score
     )
 
     logger.info(
         f"[Relevance Check] Overall score: {relevance_score:.2f} "
         f"(volume:{volume_score:.2f}, validation:{validation_score:.2f}, "
-        f"semantic:{semantic_score:.2f})"
+        f"semantic:{semantic_score:.2f}, audience:{audience_score:.2f})"
     )
     logger.info(
         f"[Relevance Check] Good keywords: {len(good_keywords)}/{total_keywords}, "

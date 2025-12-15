@@ -1,0 +1,159 @@
+# Traffic Monetization Crew - Task Configuration
+# Stage 8.55: For directories, aggregators, and comparison tools
+
+traffic_monetization_analysis:
+  description: >
+    Analyze traffic monetization strategy for: **{solution_name}**
+
+    **Solution Type:** {project_type} (traffic-focused, not subscription SaaS)
+    **Solution Description:** {solution_description}
+    **Niche:** {niche_description}
+
+    ## Available Data for Traffic Estimation
+
+    **Keyword Validation Results:**
+    {keyword_data}
+
+    **Competitor Landscape:**
+    {competitor_analysis}
+
+    ## Your Analysis Framework
+
+    ### Step 1: Estimate Traffic Potential
+
+    Use keyword search volumes to estimate achievable monthly pageviews:
+    ```
+    Total monthly search volume from keywords → Apply 3-5% CTR → Monthly organic visitors
+    Add 20-30% for direct/referral → Total monthly pageviews
+    ```
+
+    Consider:
+    - Search volume concentration (head vs long-tail keywords)
+    - Competition difficulty (can this site realistically rank?)
+    - Content depth required (pages per keyword cluster)
+    - Time to rank (6-12 months for new domains)
+
+    ### Step 2: Determine Viable Monetization Channels
+
+    **Traffic Thresholds by Ad Network:**
+    | Network | Min Traffic | Typical RPM |
+    |---------|-------------|-------------|
+    | Google AdSense | Any | $1-5 |
+    | Ezoic | 10,000/month | $5-15 |
+    | Mediavine | 50,000/month | $15-30 |
+    | AdThrive | 100,000/month | $20-40 |
+    | Affiliate | Any (intent matters) | Varies |
+    | Sponsored Listings | B2B relevant | $50-500/mo |
+    | Lead Gen | B2B service niches | $10-100/lead |
+
+    **Niche CPM Benchmarks:**
+    | Vertical | Typical CPM |
+    |----------|-------------|
+    | Finance/Insurance | $15-40 |
+    | Legal | $10-25 |
+    | Health | $8-20 |
+    | Technology/SaaS | $5-15 |
+    | Lifestyle/Beauty | $3-10 |
+    | Entertainment | $2-5 |
+    | General | $2-8 |
+
+    Match the niche to appropriate CPM range.
+
+    ### Step 3: Affiliate Program Analysis
+
+    For aggregators/comparison sites, affiliate revenue often exceeds ad revenue.
+
+    Consider:
+    - What products/services does this niche involve?
+    - What's the typical order value?
+    - Available affiliate programs and commission rates
+    - Purchase intent of the traffic (informational vs transactional)
+
+    **Common Affiliate Commission Rates:**
+    - Amazon Associates: 1-10% (category dependent)
+    - Software/SaaS referrals: 20-50% recurring
+    - Financial products: $50-200 per signup
+    - Travel: 3-8% of booking
+    - Insurance leads: $20-100 per quote
+    - Hosting/domains: $50-200 per signup
+
+    ### Step 4: B2B Monetization (if applicable)
+
+    If the directory lists businesses/services:
+    - Sponsored listings: $50-500/month
+    - Featured placements: $100-1000/month
+    - Lead generation: $15-100 per qualified lead
+    - Premium verified badges: $25-100/month
+
+    ### Step 5: Revenue Projection
+
+    Calculate monthly revenue range:
+    ```
+    Ad Revenue = (Monthly Pageviews × CPM) / 1000
+    Affiliate Revenue = Pageviews × Click Rate × Conversion Rate × Avg Order × Commission
+    B2B Revenue = # Listings × Monthly Fee
+    ```
+
+    **Example (50,000 pageviews/month, beauty niche):**
+    - Ads: 50,000 × $5 CPM / 1000 = $250
+    - Affiliate: 50,000 × 3% CTR × 2% conversion × $40 × 8% = $48
+    - Total: ~$300/month passive
+
+    Provide conservative (Year 1) and optimistic (Year 2+) projections.
+
+    ### Step 6: Scaling Strategy
+
+    How revenue scales with traffic growth:
+    - At 100k pageviews → Mediavine eligible → 2-3x RPM increase
+    - At 500k pageviews → Premium ad deals → 4-5x revenue potential
+    - Affiliate optimization → 50-100% uplift through A/B testing
+    - B2B sponsored tier → adds predictable recurring revenue
+
+    ### Step 7: SaaS Alternative Assessment
+
+    Briefly assess whether a SaaS/subscription model could also work:
+    - Does the niche have recurring usage patterns?
+    - Would users pay for premium features?
+    - Is traffic monetization the better path for this specific solution?
+
+  expected_output: >
+    A comprehensive TrafficMonetizationResult with ALL required fields:
+
+    1. **Traffic Projections**: Realistic monthly pageview estimates (Year 1) based on keyword data
+       - estimated_monthly_pageviews: Range (e.g., "15,000 - 30,000")
+       - traffic_source_breakdown: Dict showing organic/direct/referral percentages
+
+    2. **Ad Revenue Analysis**:
+       - estimated_cpm_rate: Niche-appropriate CPM with explanation (e.g., "$5-10 CPM (technology niche)")
+       - estimated_monthly_ad_revenue: Range (e.g., "$75 - $300")
+       - recommended_ad_networks: List based on traffic tier (e.g., ["Google AdSense"])
+
+    3. **Affiliate Revenue Analysis**:
+       - affiliate_commission_rate: Typical rates for niche (e.g., "5-15%")
+       - estimated_affiliate_ctr: Click-through rate estimate (e.g., "2-4% of pageviews")
+       - estimated_monthly_affiliate_revenue: Range (e.g., "$50 - $200")
+       - recommended_affiliate_programs: List of 3-5 relevant programs
+
+    4. **B2B Options** (if applicable):
+       - sponsored_listing_price: Suggested price (e.g., "$99/month")
+       - premium_placement_price: Featured placement price (e.g., "$249/month")
+       - lead_gen_price_per_lead: If B2B service niche (e.g., "$25-50")
+
+    5. **Total Revenue Projection**:
+       - estimated_monthly_revenue_range: Combined total (e.g., "$200 - $700")
+       - estimated_annual_revenue_range: Annualized (e.g., "$2,400 - $8,400")
+       - break_even_traffic_threshold: Min traffic to cover costs (e.g., "10,000 monthly pageviews")
+
+    6. **Strategy**:
+       - monetization_model: Primary model ("Ad-Supported", "Affiliate", "Hybrid-Traffic", or "Lead-Gen")
+       - monetization_rationale: 2-3 sentences explaining the recommended mix
+       - scaling_strategy: How to grow revenue as traffic increases
+       - monetization_confidence: "High", "Medium", or "Low"
+
+    7. **SaaS Comparison**:
+       - saas_alternative_viable: Boolean (true/false)
+       - saas_vs_traffic_recommendation: Brief recommendation with rationale
+
+    Be realistic about early-stage traffic projections. Most new sites take 6-12 months
+    to reach meaningful traffic levels. Base estimates on achievable Year 1 targets.
+  agent: traffic_monetization_analyst

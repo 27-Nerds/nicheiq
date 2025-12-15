@@ -151,6 +151,20 @@ class TieredKeyword(BaseModel):
         default=None, description="Search intent (e.g., 'High conversion intent', 'Informational')"
     )
 
+    # NEW: Tier classification rationale for transparency
+    tier: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=4,
+        description="Keyword tier (0=premium, 1=quick_win, 2=strategic, 3=geographic, 4=categorical)"
+    )
+    tier_rationale: Optional[str] = Field(
+        default=None,
+        description=(
+            "Explanation of tier classification (e.g., 'High volume (4.2k) + Low competition (18) = quick win')"
+        )
+    )
+
     @field_validator('keyword')
     @classmethod
     def validate_keyword_constraints(cls, v: str) -> str:
@@ -283,7 +297,7 @@ class KeywordBasedPageType(BaseModel):
         ..., description="Name of page type based on keyword intent (e.g., 'Problem Solution Pages', 'Geographic Landing Pages')"
     )
     url_pattern: str = Field(
-        ..., description="URL pattern optimized for target keywords (e.g., '/tools/{problem-keyword}/', '/city/{city-name}/')"
+        ..., description="URL pattern optimized for target keywords (e.g., '/tools/[problem-keyword]/', '/city/[city-name]/')"
     )
     target_keyword_cluster: str = Field(
         ..., description="Which keyword tier/cluster this page type targets (e.g., 'Tier 1 quick wins', 'Geographic group: Spanish markets')"
@@ -374,7 +388,7 @@ class PageTypeImplementation(BaseModel):
     )
     url_pattern: str = Field(
         ...,
-        description="URL structure pattern (e.g., '/translators/{city}', '/guides/{topic}')"
+        description="URL structure pattern (e.g., '/translators/[city]', '/guides/[topic]')"
     )
     target_keywords: list[str] = Field(
         ...,

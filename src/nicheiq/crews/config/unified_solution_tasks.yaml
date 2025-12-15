@@ -1,187 +1,336 @@
 # UnifiedSolutionCrew Tasks
-# 4-task pipeline consolidating Stages 7, 8, 8.5, 8.75 with CrewAI context chaining
+# 6-task pipeline: 3 new divergent-convergent ideation tasks + 3 existing tasks
+# Architecture: divergent_exploration → diversity_filtering → solution_refinement → competitive_analysis → competitive_refinement → solution_selection
 
-solution_ideation:
+# =============================================================================
+# NEW: Divergent-Convergent Ideation Architecture (3 Tasks)
+# =============================================================================
+
+divergent_exploration:
   description: >
-    **TASK 1: Solution Ideation (Brainstorm + Evaluate + Refine)**
+    **TASK 1: DIVERGENT EXPLORATION (Generate 8-12 Raw Concepts)**
 
-    Generate 3-5 comprehensive solution proposals addressing validated pain points.
+    Generate diverse solution concepts for micro/mini SaaS with SEO traffic focus.
+    This is the DIVERGENT phase - prioritize quantity and variety over polish.
 
-    ## Validated Pain Points
+    ## Input Context
 
-    **Analysis Summary:**
+    **Pain Points:**
     {analysis_summary}
 
-    **High-Opportunity Pain Points ({high_priority_count} identified):**
-    {high_priority_list}
+    High-priority ({high_priority_count}): {high_priority_list}
+    Medium-priority ({medium_priority_count}): {medium_priority_list}
 
-    **Medium-Opportunity Pain Points ({medium_priority_count} identified):**
-    {medium_priority_list}
+    **Niche:** {niche_description}
+    **Allowed Types:** {allowed_project_types}
 
-    **Top Categories:** {top_categories}
+    ## Target Audience Intelligence (from Stage 6.5)
 
-    **Total validated pain points:** {total_pain_points}
-    **Total mentions:** {total_mentions}
+    **Primary Target Segment:** {primary_target_segment}
 
-    **Project Type Constraints:** {allowed_project_types}
+    **Audience Segments:**
+    {audience_segments_summary}
 
-    ## Validated User Segments
+    **Common Vocabulary** (use these terms in solution naming/features):
+    {common_vocabulary}
 
-    {user_segments}
+    **Frustrations with Existing Tools** (gaps to exploit):
+    {frustrations_with_existing}
+
+    **Tools Currently Used** (competitive context):
+    {tools_currently_used}
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    **WORKFLOW (FOLLOW IN ORDER):**
+    **FORCED IDEATION TECHNIQUES (Apply ALL 5):**
 
-    1. **Validate Data** → If high_priority_count = 0 AND medium_priority_count = 0, STOP and return error
-    2. **Review User Segments** → Use validated segments above to inform target_personas (align personas with actual user groups)
-    3. **Query Knowledge Sources** → Search for additional quotes and context beyond summaries above
-    4. **Brainstorm** → Generate 3-5 diverse solution concepts (consider ALL types: directories, aggregators, SaaS, marketplaces, comparison tools)
-    5. **Evaluate** → Score each solution for technical_feasibility_score (0-1) and market_fit_score (0-1)
-    6. **Refine** → Add target_personas, detailed core_features, pricing_strategy, differentiation_factors
+    For each technique, generate 1-3 concepts:
 
-    **CRITICAL: Indexable Pages First Framework**
+    1. **NICHE DRILLING** - "What's the most specific sub-sub-niche?"
+       - Don't: "Job board" → Do: "Remote healthcare compliance job board"
+       - Don't: "Travel directory" → Do: "Budget digital nomad visa directory for Eastern Europe"
+       - Ask: What's a niche so specific that big players ignore it?
 
-    Prioritize solution types with organic content generation (lower CAC):
+    2. **DATA SOURCE INVERSION** - "What unique data source could power this?"
+       - Reddit discussions → Sentiment aggregator
+       - Government APIs → Compliance checker
+       - User submissions → Community-curated directory
+       - Web scraping [specific sites] → Price comparison
+       - Ask: What data exists that no one is productizing?
 
-    | Type | SEO Score | Content Model | Organic CAC | Paid CAC |
-    |------|-----------|---------------|-------------|----------|
-    | **directory** | 0.8-1.0 | User submissions = pages | $15-30 | $200-350 |
-    | **aggregator** | 0.8-1.0 | Data combos = comparisons | $20-40 | $180-300 |
-    | **comparison-tool** | 0.5-0.7 | "[A] vs [B]" pages | $50-100 | $200-350 |
-    | **marketplace** | 0.5-0.7 | Profiles + reviews | $80-150 | $200-400 |
-    | **saas** | 0.2-0.4 | Manual blog content | $200-400 | $300-600 |
+    3. **CROSS-INDUSTRY TEMPLATE** - "What worked in [X industry], applied here?"
+       - Dating apps → B2B vendor matching
+       - Yelp reviews → Software tool ratings
+       - Glassdoor → Agency transparency platform
+       - Ask: What pattern from consumer apps could work for this B2B problem?
 
-    **SEARCH STRATEGY** (Knowledge Source Queries):
+    4. **ATOMIC FEATURE** - "What single feature could be a standalone product?"
+       - Full PM tool → Just deadline prediction
+       - Full CRM → Just email sequence timing
+       - Full analytics → Just one key metric dashboard
+       - Ask: What's the 10% of a complex product that delivers 80% of value?
 
-    | Query Type | Purpose | Keywords |
-    |------------|---------|----------|
-    | Feature requests | Discover desired capabilities | "wish", "need", "should have", "would love", "missing feature" |
-    | Workaround detection | Find improvised solutions | "workaround", "hack", "currently using", "cobbled together", "manual process" |
-    | Payment signals | Assess willingness to pay | "worth paying", "would pay", "subscription", "expensive but", "budget for" |
-    | Competitor mentions | Identify solution patterns | "using [tool]", "switched to", "alternative to", "better than", "compared to" |
-    | Unmet needs | Surface solution opportunities | "doesn't exist", "can't find", "why isn't there", "someone should build" |
-    | Integration desires | Find feature combinations | "integrate with", "works with", "connect to", "sync between", "all-in-one" |
+    5. **COMMUNITY FLIP** - "What if users created content for each other?"
+       - Expert directory → Peer mentorship matching
+       - Tool comparison → User-submitted reviews + voting
+       - Resource library → Community wiki with curation
+       - Ask: How can we get users to create the value instead of us?
 
-    **REQUIRED FIELDS FOR EVERY SOLUTION:**
+    ═══════════════════════════════════════════════════════════════════════════
 
-    1. **Basic Info:**
-       - solution_name (catchy, descriptive)
-       - description (HOW IT WORKS - 4-6 sentences step-by-step user journey)
-       - value_proposition (one clear sentence)
-       - pain_points_addressed (list specific titles from data)
-       - core_features (5-7 MVP features)
-       - target_personas (2-4 persona descriptions aligned with validated user segments above)
+    **OUTPUT REQUIREMENTS (RawConceptList):**
 
-    2. **Scores & Strategy:**
-       - market_fit_score (0-1, based on pain point severity/mentions)
-       - technical_feasibility_score (0-1, based on tech complexity)
-       - technical_approach (architecture summary + 1-2 sentences)
-       - estimated_development_time (e.g., "3-4 months")
-       - pricing_strategy (detailed monetization model)
-       - differentiation_factors (2-4 unique advantages)
-       - project_type (saas/directory/aggregator/comparison-tool/marketplace)
+    Generate 8-12 concepts. For EACH concept:
 
-    3. **Data Aggregation (if applicable):**
-       - requires_data_aggregation (True for aggregators/directories)
-       - data_sources (list specific APIs/databases/scraping targets)
+    - **concept_name**: Catchy, specific name (e.g., "PlumbingCostCalc", "RemoteTaxAdvisors")
+    - **one_liner**: 1-2 sentence description focusing on unique angle
+    - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip)
+    - **project_type**: directory, aggregator, comparison-tool, marketplace, saas, or other
+    - **target_keywords**: 2-5 specific SEO queries this would rank for
+    - **data_source_hint**: Primary data source or mechanism
 
-    4. **SEO Fields (MANDATORY):**
-       - programmatic_seo_opportunity: Assessment + page count estimate (e.g., "High - 100+ pages Year 1")
-       - content_generation_model: How content is created (user-generated/data-driven/manual)
-       - organic_discovery_queries: 5-10 actual search queries users would type
-       - estimated_cac_organic: Use project type CAC benchmarks from table
-       - estimated_cac_paid: Based on niche keyword competitiveness
-       - seo_scalability_score: Use score from table based on project type
+    **EXAMPLES:**
 
-    **DATA ACCURACY VALIDATION:**
+    1. concept_name: "PlumbingCostCalc"
+       one_liner: "Aggregates plumber pricing data from 50 cities to generate '[City] plumbing cost 2025' pages. Solo-dev: scrape local directories + static site."
+       ideation_technique: "data_source_inversion"
+       project_type: "aggregator"
+       target_keywords: ["plumber cost [city]", "how much plumber charges", "plumbing prices near me"]
+       data_source_hint: "Scrape Angi, Thumbtack, Yelp pricing mentions + local directories"
 
-    Before generating solutions, check:
-    - high_priority_count > 0 OR medium_priority_count > 0 (else STOP)
-    - analysis_summary does NOT indicate "insufficient data" (else STOP)
-    - total_pain_points >= 3 (else STOP)
+    2. concept_name: "RemoteTaxAdvisors"
+       one_liner: "Directory of tax advisors specializing in digital nomads, generates '[Country] remote worker tax advisor' pages."
+       ideation_technique: "niche_drilling"
+       project_type: "directory"
+       target_keywords: ["digital nomad tax advisor", "portugal remote worker taxes", "expat tax help"]
+       data_source_hint: "User submissions + LinkedIn outreach to tax professionals"
 
-    Every solution MUST explicitly reference pain point titles, severity scores, or mention counts.
+    3. concept_name: "VPNSpeedTest"
+       one_liner: "Automated speed tests for VPN providers, generates '[VPN A] vs [VPN B] speed comparison' pages."
+       ideation_technique: "atomic_feature"
+       project_type: "comparison-tool"
+       target_keywords: ["nordvpn vs expressvpn speed", "fastest vpn 2025", "vpn speed test results"]
+       data_source_hint: "Automated testing infrastructure running 24/7"
 
-    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+    ═══════════════════════════════════════════════════════════════════════════
 
-    Before finalizing output, verify:
-    - [ ] I validated data sufficiency (high OR medium priority count > 0)
-    - [ ] Generated 3-5 solution concepts (diverse project types)
-    - [ ] Each solution has ALL 25 fields populated (no null/missing fields)
-    - [ ] pain_points_addressed lists specific titles from pain point data
-    - [ ] description includes 4-6 sentence step-by-step HOW IT WORKS user journey
-    - [ ] SEO fields completed: seo_scalability_score, estimated_cac_organic/paid, organic_discovery_queries
-    - [ ] project_type selected from allowed types (saas/directory/aggregator/comparison-tool/marketplace)
-    - [ ] target_personas aligned with validated user segments from input
+    **CRITICAL RULES:**
 
-    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+    ✗ NO evaluation at this stage - defer feasibility judgment
+    ✗ NO "AI-powered [X]" unless you explain the specific data/model advantage
+    ✗ NO "all-in-one platform" - too complex for solo dev
+    ✗ NO multi-sided marketplaces without explaining bootstrapping strategy
 
-    **STOP CONDITIONS:**
-    ✗ High OR medium priority count = 0 → STOP immediately (insufficient data)
-      ❌ Example: Generating solutions when pain point data shows "insufficient" or count = 0
-
-    If STOP condition is met, return IdeaGenerationResult with:
-      - solution_ideas: [] (empty list)
-      - recommended_solution: null
-      - market_insights: "Insufficient validated pain points to generate solutions. High/medium priority pain point count = 0."
-
-    **FIELD REQUIREMENTS:**
-    ✗ Vague descriptions or missing fields → Solution will be rejected by Python validation
-      ❌ Example: "A platform that helps users" (vs detailed step-by-step user journey)
-    ✗ Missing SEO fields → Incomplete solution (Python will reject)
-      ❌ Example: Leaving seo_scalability_score, estimated_cac_organic/paid blank
-    ✗ null values in any field → Python validation error
-      ❌ Example: core_features: null (vs populated list)
-
-    **DATA ACCURACY:**
-    ✗ Invented personas not matching validated segments → Invalid output
-      ❌ Example: "Tech-savvy millennials" when user segments show "45-65 year old retirees"
-    ✗ Generic pain_points_addressed → Must use exact titles from data
-      ❌ Example: "user frustration" (vs "High International Transaction Fees" from pain point list)
-    ✗ Scores without evidence → Hallucination (must reference pain point data)
-      ❌ Example: market_fit_score: 0.9 without citing severity scores or mention counts from input
+    ✓ Wild ideas welcome - we'll filter later
+    ✓ Specific niches over generic categories
+    ✓ Clear SEO keywords for each concept
+    ✓ Each concept should be buildable by 1 developer in 2-3 months
 
   expected_output: >
-    IdeaGenerationResult Pydantic model with:
+    RawConceptList with:
+    - concepts: List of 8-12 RawConcept objects with all fields populated
+    - techniques_used: List of ideation techniques applied
+    - pain_points_referenced: Pain point titles that informed concepts
 
-    **solution_ideas** (List[SolutionIdea]): 3-5 comprehensive solutions with ALL 25 fields populated:
-    - Basic: solution_name, description, value_proposition, pain_points_addressed, core_features, target_personas
-    - Evaluation: market_fit_score, technical_feasibility_score, technical_approach, estimated_development_time
-    - Strategy: pricing_strategy, differentiation_factors, project_type
-    - Data: requires_data_aggregation, data_sources (if applicable)
-    - SEO (6 fields): programmatic_seo_opportunity, content_generation_model, organic_discovery_queries, estimated_cac_organic, estimated_cac_paid, seo_scalability_score
+diversity_filtering:
+  description: >
+    **TASK 2: DIVERSITY FILTERING (Filter to 5-7 Unique Concepts)**
 
-    **COMPLETE EXAMPLE (all 25 fields):**
-    {
-      "solution_name": "ExpatCostCompass",
-      "description": "HOW IT WORKS: Users select their destination country and city, then receive a comprehensive cost-of-living breakdown with real-time pricing data. The platform aggregates rental costs, utilities, groceries, transportation, and healthcare expenses from 50+ verified sources. Users can compare costs across multiple cities side-by-side and filter by lifestyle preferences (budget/mid-range/premium). The comparison engine generates personalized monthly budget estimates based on user-selected spending categories.",
-      "value_proposition": "Make informed relocation decisions with real-time cost comparisons across 200+ cities worldwide",
-      "pain_points_addressed": ["High International Transaction Fees", "Confusing Healthcare Systems", "Unreliable Cost of Living Data"],
-      "core_features": ["Real-time cost aggregation from 50+ sources", "City-to-city comparison tool", "Lifestyle-adjusted budget calculator", "Local healthcare cost guide", "Banking/remittance fee comparisons", "Interactive cost breakdown charts"],
-      "target_personas": ["Remote workers (25-40) evaluating international moves", "Expat families comparing school/healthcare costs", "Digital nomads optimizing for cost arbitrage"],
-      "market_fit_score": 0.82,
-      "technical_feasibility_score": 0.75,
-      "technical_approach": "Data aggregation layer using APIs (Numbeo, Expatistan) + custom scrapers. PostgreSQL for structured cost data, Redis for caching. React frontend with D3.js visualizations. Estimated 6-week MVP with basic comparison functionality.",
-      "estimated_development_time": "3-4 months",
-      "pricing_strategy": "Freemium model - free basic comparisons, $9.99/mo for detailed reports and historical trends, $29.99/mo for API access",
-      "differentiation_factors": ["Real-time data vs static reports", "50+ data sources vs single-source competitors", "Lifestyle-adjusted calculations"],
-      "project_type": "aggregator",
-      "requires_data_aggregation": true,
-      "data_sources": ["Numbeo API", "Expatistan", "Local rental aggregators", "Government statistics portals"],
-      "programmatic_seo_opportunity": "High - 10,000+ pages Year 1 (200 cities × 50 cost categories)",
-      "content_generation_model": "Data-driven: automated city pages from aggregated cost data",
-      "organic_discovery_queries": ["cost of living [city]", "[city A] vs [city B] cost comparison", "how much to live in [city]", "expat budget [city]", "[city] rent prices 2025"],
-      "estimated_cac_organic": "$25-45",
-      "estimated_cac_paid": "$180-280",
-      "seo_scalability_score": 0.85
-    }
+    Filter raw concepts from Task 1 to ensure diversity and remove duplicates.
+    This is the CONVERGENT phase - apply strict diversity criteria.
 
-    **recommended_solution** (Optional[str]): Initially null (will be set in Task 4)
+    ## Context from Task 1
 
-    **market_insights** (str): 4-6 sentences summarizing opportunity landscape
+    You have access to RawConceptList with 8-12 concepts.
 
-    Each solution ready for competitive analysis with complete data.
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **FILTERING WORKFLOW:**
+
+    1. **CLUSTER SIMILAR CONCEPTS**
+       Group concepts that share >50% of these characteristics:
+       - Same primary data source
+       - Same target audience segment
+       - Same core mechanism (how value is delivered)
+       - Same monetization model
+
+       If 2 concepts differ ONLY in:
+       - Target industry (same product, different vertical)
+       - UI/branding differences
+       - "AI-powered" vs "smart" vs "intelligent" labeling
+       → They are DUPLICATES. Keep only the most novel.
+
+    2. **ADAPTIVE DIVERSITY ENFORCEMENT**
+
+       **If multiple project types allowed:**
+       - REQUIRE at least 2 different project_types in final list
+       - Prefer variety: 2 directories + 2 aggregators + 1 comparison = GOOD
+       - Avoid: 5 directories = BAD (lacks architectural diversity)
+
+       **If single project type allowed (e.g., only "directory"):**
+       - REQUIRE diversity WITHIN that type:
+         - Different data sources (Reddit scraper vs API vs user submissions)
+         - Different target sub-niches (budget travelers vs luxury vs digital nomads)
+         - Different content models (reviews vs comparisons vs curated lists)
+
+    3. **SPECIFICITY CHECK**
+       - At least 1 concept must target a specific sub-niche (not generic category)
+       - Reject: "Travel directory" (too broad, already exists)
+       - Accept: "Budget digital nomad visa directory for Eastern Europe" (specific)
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **OUTPUT REQUIREMENTS (FilteredConceptList):**
+
+    - **concepts**: 5-7 unique RawConcept objects (passed from Task 1)
+    - **removed_concepts**: List of concept names that were filtered out
+    - **removal_reasons**: Explanation for each removal (format: "[Name]: [reason]")
+    - **diversity_summary**: Summary of diversity achieved
+
+    **EXAMPLE OUTPUT:**
+
+    removed_concepts: ["VendorCompare", "SmartVendorMatch"]
+    removal_reasons:
+      - "VendorCompare: Too similar to VendorMatch (same data source + mechanism)"
+      - "SmartVendorMatch: 'Smart' prefix doesn't add differentiation, duplicate of VendorMatch"
+    diversity_summary: "3 directories, 2 aggregators, 1 comparison tool across 4 unique data sources. Niches: tax advisors (specific), pricing data (broad), VPN testing (specific)."
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **ANTI-PATTERN CHECKLIST:**
+
+    Before finalizing, verify NONE of these anti-patterns remain:
+
+    ✗ "[Category] directory" without specific data source or curation angle
+    ✗ "All-in-one platform" (too complex for solo dev)
+    ✗ Generic "[Industry] comparison site" without unique scoring methodology
+    ✗ "AI-powered [X]" without explaining the data/model advantage
+    ✗ Solutions requiring enterprise sales cycles
+    ✗ Multi-sided marketplaces without bootstrapping strategy
+
+    If anti-pattern detected → REMOVE from list with explanation
+
+  expected_output: >
+    FilteredConceptList with:
+    - concepts: 5-7 unique RawConcept objects
+    - removed_concepts: Names of filtered concepts
+    - removal_reasons: Explanations for removals
+    - diversity_summary: Summary of diversity achieved
+
+solution_refinement:
+  description: >
+    **TASK 3: SOLUTION REFINEMENT (Expand to Full Specifications)**
+
+    Expand filtered concepts from Task 2 into complete solution specifications.
+    Score each on market fit, novelty, solo-dev feasibility, and SEO potential.
+    Select top 3-5 for detailed specification.
+
+    ## Context from Task 2
+
+    You have access to FilteredConceptList with 5-7 unique concepts.
+
+    ## Pain Points Context
+
+    {analysis_summary}
+
+    High-priority ({high_priority_count}): {high_priority_list}
+    User segments: {user_segments}
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **SCORING CRITERIA (Apply to each concept):**
+
+    **1. market_fit_score (0-1)** - Pain point alignment
+    - 0.9-1.0: Directly addresses top pain point with strong evidence
+    - 0.6-0.8: Addresses multiple medium-priority pain points
+    - 0.3-0.5: Tangentially related to identified pain points
+    - 0.0-0.2: Weak connection to validated problems
+
+    **2. novelty_score (0-1)** - Innovation/uniqueness
+    - 0.9-1.0: Novel mechanism, no direct competitors doing it this way
+    - 0.6-0.8: Unique combination of existing approaches
+    - 0.3-0.5: Better execution of known pattern
+    - 0.0-0.2: Minor variation on obvious solution
+
+    **3. solo_dev_feasibility (0-1)** - Buildable by 1 developer
+    - 0.9-1.0: Static site + APIs, <2 months, no complex backend
+    - 0.7-0.8: Simple backend, 2-3 months, standard tech stack
+    - 0.4-0.6: Moderate complexity, 3-6 months, some specialized skills
+    - 0.0-0.3: Complex infrastructure, >6 months, or requires team
+
+    **4. seo_scalability_score (0-1)** - Organic traffic potential
+    - 0.8-1.0: High programmatic SEO (directories, aggregators) - $15-30 CAC
+    - 0.5-0.7: Moderate content generation (comparison tools) - $50-100 CAC
+    - 0.2-0.4: Limited content scaling (traditional SaaS) - $200-400 CAC
+
+    **COMPOSITE SCORE:**
+    ```
+    composite = (0.25 × market_fit) + (0.30 × solo_dev_feasibility) +
+                (0.20 × novelty) + (0.25 × seo_scalability)
+    ```
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **SELECTION RULES:**
+
+    1. Select top 3-5 concepts by composite score
+    2. **Novelty override**: If all top concepts have novelty < 0.4, replace lowest market_fit with highest novelty concept
+    3. **High-demand SaaS exception**: Include 1 high-demand SaaS even if lower SEO score, if market_fit > 0.8
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **FULL SPECIFICATION (For each selected solution):**
+
+    Expand concept into complete BaseSolutionIdea with ALL 25+ fields:
+
+    **Basic Info:**
+    - solution_name, description (4-6 sentence HOW IT WORKS), value_proposition
+    - pain_points_addressed (use exact titles from data)
+    - core_features (5-7 MVP features)
+    - target_personas (2-4 aligned with user segments)
+
+    **Scores (from above criteria):**
+    - market_fit_score, technical_feasibility_score
+    - novelty_score, novelty_justification ("This is surprising because...")
+    - solo_dev_feasibility
+
+    **Strategy:**
+    - pricing_strategy, differentiation_factors, project_type
+    - technical_approach, estimated_development_time
+    - requires_data_aggregation, data_sources
+
+    **SEO Fields:**
+    - programmatic_seo_opportunity, content_generation_model
+    - organic_discovery_queries (5-10 queries)
+    - estimated_cac_organic, estimated_cac_paid
+    - seo_scalability_score
+
+    ═══════════════════════════════════════════════════════════════════════════
+
+    **NOVELTY JUSTIFICATION REQUIREMENT:**
+
+    For each solution with novelty_score > 0.5, complete:
+
+    "This is surprising because most would try [obvious approach] but this does [unexpected thing] which works because [specific reason based on pain point data]."
+
+    ❌ Bad: "This is surprising because it uses AI"
+    ✓ Good: "This is surprising because most would try to build a full comparison platform, but this only does automated speed testing for VPNs which works because users care most about speed and existing reviews are subjective."
+
+  expected_output: >
+    IdeaGenerationResult with:
+    - solution_ideas: 3-5 complete BaseSolutionIdea objects with all 25+ fields
+    - recommended_solution: null (will be set in Task 6)
+    - market_insights: 4-6 sentences on opportunity landscape
+
+    Each solution must include:
+    - All basic fields (name, description, value_prop, pain_points, features, personas)
+    - All score fields (market_fit, technical_feasibility, novelty, solo_dev_feasibility)
+    - novelty_justification for solutions with novelty > 0.5
+    - All SEO fields (seo_scalability, cac estimates, discovery queries)
+
+# =============================================================================
+# COMPETITIVE ANALYSIS AND SELECTION TASKS
+# =============================================================================
 
 competitive_analysis:
   description: >

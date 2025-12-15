@@ -26,7 +26,7 @@ from ..utils.generation import KeywordSeedGenerator
 
 if TYPE_CHECKING:
     from ..models.competitor import CompetitiveLandscape
-    from ..models.research_state import NicheContext
+    from ..models.research_state import AudienceMappingResult, NicheContext
     from ..models.solution_idea import SolutionIdea
 
 
@@ -55,6 +55,7 @@ class SEOStrategyCrew:
         pain_points: PainPointAnalysisResult | None = None,
         niche_context: "NicheContext | None" = None,
         allowed_project_types: list[str] | None = None,
+        audience_mapping: "AudienceMappingResult | None" = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -72,6 +73,7 @@ class SEOStrategyCrew:
             pain_points: Optional pain point analysis from Stage 6
             niche_context: Optional niche context with market_segments and industry_boundaries
             allowed_project_types: Optional project type constraints from user
+            audience_mapping: Optional audience intelligence from Stage 6.5 (common_vocabulary for keywords)
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -82,6 +84,7 @@ class SEOStrategyCrew:
         self.pain_points = pain_points
         self.niche_context = niche_context
         self.allowed_project_types = allowed_project_types
+        self.audience_mapping = audience_mapping
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -606,12 +609,21 @@ class SEOStrategyCrew:
             # Initialize KeywordSeedGenerator
             generator = KeywordSeedGenerator()
 
+            # Extract audience vocabulary for keyword grounding (from Stage 6.5)
+            audience_vocab = (
+                self.audience_mapping.common_vocabulary
+                if self.audience_mapping else None
+            )
+            if audience_vocab:
+                logger.info(f"Passing {len(audience_vocab)} audience vocabulary terms to seed generator")
+
             # Generate seeds with full context
             result = generator.generate_seeds(
                 solution=self.selected_solution,
                 niche_context=self.niche_context,
                 pain_points=self.pain_points,
                 competitive_analysis=self.competitive_analysis,
+                audience_vocabulary=audience_vocab,
                 num_broad_seeds=30,
                 num_targeted_seeds=15,
             )
@@ -943,6 +955,7 @@ class SEOStrategyCrew:
                 verbose=True,
                 process_type="sequential",
             )
+            self._last_crew = strategy_crew  # Store for usage_metrics access
 
             # Execute with CSV directly in inputs
             # Format solution architecture for task context
@@ -1167,3 +1180,15 @@ class SEOStrategyCrew:
         except Exception as e:
             logger.error(f"4-Task SEO Strategy Flow failed: {e}")
             raise
+
+    @property
+    def usage_metrics(self) -> dict | None:
+        """
+        Get usage metrics from the last crew execution.
+
+        Returns:
+            CrewAI UsageMetrics object or None if no execution yet
+        """
+        if hasattr(self, '_last_crew') and self._last_crew:
+            return self._last_crew.usage_metrics
+        return None

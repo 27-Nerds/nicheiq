@@ -1,0 +1,61 @@
+graph TB
+    Start([User Input: Niche Idea]) --> Stage1[Stage 1-4: Niche Validation]
+
+    Stage1 --> Stage5[Stage 5: Search & Discover]
+    Stage5 --> Stage6[Stage 6: Pain Point Analysis]
+    Stage6 --> Stage7[Stage 7-8: Solution Development]
+    Stage7 --> Stage88[Stage 8.8: Keyword Demand Validation]
+    Stage88 --> Stage885[Stage 8.85: Solution Refinement]
+    Stage885 --> Stage9[Stage 9: SEO Strategy]
+    Stage9 --> Stage95[Stage 9.5: SEO Score Refinement]
+    Stage95 --> Stage975[Stage 9.75: Data Source Research]
+    Stage975 --> Stage10[Stage 10: Final Report]
+
+    Stage10 --> Output([Comprehensive Market Report])
+
+    %% Stage Details
+    Stage1:::validation
+    Stage5:::collection
+    Stage6:::analysis
+    Stage7:::analysis
+    Stage88:::validation
+    Stage885:::analysis
+    Stage9:::strategy
+    Stage95:::strategy
+    Stage975:::strategy
+    Stage10:::output
+
+    %% Quality Badges
+    Stage1 -.->|Input Validation| Q1[Structured Output]
+    Stage5 -.->|3-Layer Filtering| Q2[Pre-Validation<br/>Deduplication<br/>Quality Checks]
+    Stage6 -.->|RAG + Anti-Hallucination| Q3[400+ Items<br/>Source Tracking<br/>Min Thresholds]
+    Stage7 -.->|Context Chaining + Guardrails| Q4[15+ Specialized Agents<br/>Field Preservation<br/>Auto-Retry]
+    Stage88 -.->|Adaptive Pivoting| Q5[Up to 4 Attempts<br/>Semantic Validation<br/>Live API Data]
+    Stage9 -.->|Iterative Enrichment| Q6[150+ Keywords<br/>DataForSEO API<br/>Multi-Round Expansion]
+    Stage10 -.->|Hybrid Python + LLM| Q7[Zero Hallucination<br/>85% Cost Reduction<br/>5x Faster]
+
+    %% Data Transformations
+    Stage5 -->|50-200 Discussions| Stage6
+    Stage6 -->|50+ Scored Pain Points| Stage7
+    Stage7 -->|3-5 Solution Concepts| Stage88
+    Stage88 -->|Validated Top 3 Solutions| Stage885
+    Stage885 -->|Refined Selected Solution| Stage9
+    Stage9 -->|150+ Enriched Keywords<br/>29-Field SEO Strategy| Stage95
+    Stage10 -->|30-Field Report<br/>Analytics + Visualizations| Output
+
+    %% Styling
+    classDef validation fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,color:#000
+    classDef collection fill:#fff3e0,stroke:#f57c00,stroke-width:2px,color:#000
+    classDef analysis fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#000
+    classDef strategy fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#000
+    classDef output fill:#fce4ec,stroke:#c2185b,stroke-width:2px,color:#000
+
+    style Start fill:#fff,stroke:#333,stroke-width:3px
+    style Output fill:#fff,stroke:#333,stroke-width:3px
+    style Q1 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5
+    style Q2 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5
+    style Q3 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5
+    style Q4 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5
+    style Q5 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5
+    style Q6 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5
+    style Q7 fill:#fff9c4,stroke:#f57f17,stroke-width:1px,stroke-dasharray: 5 5

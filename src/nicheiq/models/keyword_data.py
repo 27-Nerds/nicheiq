@@ -3,7 +3,7 @@ Pydantic models for keyword research data (Stage 9).
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -74,6 +74,29 @@ class Keyword(BaseModel):
     )
     # Note: monthly_searches is preserved in raw dict format during pipeline stages
     # (12-month historical data from DataForSEO), but not typed in this model yet
+
+    # NEW: Competition scale metadata for data quality tracking
+    competition_scale: Literal["0-1", "0-100"] = Field(
+        default="0-1",
+        description=(
+            "Scale used for competition field. '0-1' is normalized, '0-100' is raw from DataForSEO. "
+            "IMPORTANT: Always normalize to 0-1 before using in calculations."
+        )
+    )
+
+    # NEW: Tier classification rationale for transparency
+    tier: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=4,
+        description="Keyword tier (0=premium, 1=quick_win, 2=strategic, 3=geographic, 4=categorical)"
+    )
+    tier_rationale: Optional[str] = Field(
+        default=None,
+        description=(
+            "Explanation of tier classification (e.g., 'High volume (4.2k) + Low difficulty (18) = quick win')"
+        )
+    )
 
     @field_validator('competition_index', 'cpc', mode='before')
     @classmethod
@@ -240,6 +263,11 @@ class KeywordValidationSummary(BaseModel):
         ..., ge=0.0, le=100.0,
         description="Average competition index across validated keywords (0-100 scale from DataForSEO)"
     )
+    # NEW: Explicit documentation of competition scale
+    competition_scale: Literal["0-100"] = Field(
+        default="0-100",
+        description="Scale of avg_competition field (always 0-100 from DataForSEO raw data)"
+    )
     keyword_demand_score: float = Field(
         ...,
         ge=0.0,
@@ -345,6 +373,11 @@ class CrewKeywordValidationResult(BaseModel):
     validated_count: int = Field(..., ge=0, description="Number of validated keywords")
     total_volume: int = Field(..., ge=0, description="Total monthly search volume")
     avg_competition: float = Field(..., ge=0.0, le=100.0, description="Average competition index")
+    # NEW: Explicit documentation of competition scale
+    competition_scale: Literal["0-100"] = Field(
+        default="0-100",
+        description="Scale of avg_competition field (always 0-100 from DataForSEO raw data)"
+    )
     keyword_demand_score: float = Field(
         ...,
         ge=0.0,

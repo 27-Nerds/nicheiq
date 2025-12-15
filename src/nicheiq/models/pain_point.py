@@ -174,6 +174,15 @@ class PainPoint(BaseModel):
         description="Engagement metrics for source posts (for traceability)"
     )
 
+    # NEW: Audience segment mapping (from Stage 6.5 audience mapping)
+    affected_segments: Optional[list[str]] = Field(
+        default=None,
+        description=(
+            "Audience segments from Stage 6.5 that experience this pain point "
+            "(e.g., ['Solo Founders', 'Marketing Managers']). Populated when audience mapping available."
+        )
+    )
+
 class PainPointAnalysisResult(BaseModel):
     """Complete result of pain point analysis."""
 

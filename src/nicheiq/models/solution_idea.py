@@ -273,6 +273,43 @@ class BaseSolutionIdea(BaseModel):
         )
     )
 
+    # Novelty & Solo-Dev Feasibility Fields (Stage 7)
+    novelty_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Innovation/uniqueness score (0-1 scale). "
+            "0.9-1.0: Novel mechanism, no direct competitors doing it this way. "
+            "0.6-0.8: Unique combination of existing approaches. "
+            "0.3-0.5: Better execution of known pattern. "
+            "0.0-0.2: Minor variation on obvious/generic solution."
+        )
+    )
+
+    novelty_justification: Optional[str] = Field(
+        default=None,
+        description=(
+            "Explanation of why this solution is non-obvious. "
+            "Format: 'This is surprising because most would try [obvious approach] "
+            "but this does [unexpected thing] which works because [reason].' "
+            "Required when novelty_score > 0.5 to validate the innovation claim."
+        )
+    )
+
+    solo_dev_feasibility: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Feasibility for a solo developer to build and launch (0-1 scale). "
+            "0.9-1.0: Static site + APIs, <2 months, no complex backend. "
+            "0.7-0.8: Simple backend, 2-3 months, standard tech stack. "
+            "0.4-0.6: Moderate complexity, 3-6 months, some specialized skills needed. "
+            "0.0-0.3: Complex infrastructure, >6 months, or requires team/enterprise sales."
+        )
+    )
+
 
 class SolutionIdea(BaseSolutionIdea):
     """
@@ -445,4 +482,166 @@ class CompetitiveEnhancements(BaseModel):
     overall_competitive_insights: str = Field(
         ...,
         description="Cross-solution competitive insights and market positioning (2-3 paragraphs)"
+    )
+
+
+class IdeationProcess(BaseModel):
+    """
+    Metadata about the ideation/filtering process for transparency.
+
+    Captures the divergent-convergent ideation workflow to provide visibility into:
+    - How many concepts were generated and filtered
+    - Which concepts were removed and why
+    - What ideation techniques were applied
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    total_concepts_generated: int = Field(
+        ...,
+        description="Total raw concepts from divergent exploration phase"
+    )
+    concepts_filtered: int = Field(
+        ...,
+        description="Number of concepts filtered out during diversity pass"
+    )
+    removed_concepts: list[str] = Field(
+        default_factory=list,
+        description="Names of concepts removed as duplicates or too similar"
+    )
+    removal_reasons: list[str] = Field(
+        default_factory=list,
+        description="Explanations for why each removed concept was filtered"
+    )
+    techniques_used: list[str] = Field(
+        default_factory=list,
+        description="Ideation techniques applied during exploration (e.g., niche_drilling, data_source_inversion)"
+    )
+    diversity_summary: Optional[str] = Field(
+        default=None,
+        description="Summary of diversity achieved: project types represented, data sources covered"
+    )
+
+
+# =============================================================================
+# Divergent-Convergent Ideation Models (3-Task Architecture)
+# =============================================================================
+
+class RawConcept(BaseModel):
+    """
+    Lightweight concept from divergent exploration (Task 1).
+
+    Minimal fields to capture wild ideas quickly without premature evaluation.
+    Each concept should be generated using one of the forced ideation techniques.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    concept_name: str = Field(
+        ...,
+        description="Short, descriptive name for the concept (e.g., 'PlumbingCostCalc', 'RemoteTaxAdvisors')"
+    )
+    one_liner: str = Field(
+        ...,
+        description=(
+            "1-2 sentence description of what this solution does and why it's interesting. "
+            "Focus on the unique angle, not generic 'helps users with X'. "
+            "Example: 'Aggregates plumber pricing from 50 cities to generate [City] plumbing cost pages.'"
+        )
+    )
+    ideation_technique: str = Field(
+        ...,
+        description=(
+            "Which ideation technique generated this concept. One of: "
+            "'niche_drilling' (specific sub-niche), "
+            "'data_source_inversion' (unique data source), "
+            "'cross_industry_template' (pattern from other industry), "
+            "'atomic_feature' (single feature as product), "
+            "'community_flip' (users create content for each other)"
+        )
+    )
+    project_type: str = Field(
+        ...,
+        description="Project type: directory, aggregator, comparison-tool, marketplace, saas, or other"
+    )
+    target_keywords: list[str] = Field(
+        ...,
+        min_length=2,
+        max_length=5,
+        description=(
+            "2-5 example SEO keywords this solution would target. "
+            "Must be specific search queries users would type. "
+            "Example: ['[city] plumbing cost', 'plumber prices near me', 'how much does plumber charge']"
+        )
+    )
+    data_source_hint: Optional[str] = Field(
+        default=None,
+        description=(
+            "Hint about the primary data source or mechanism. "
+            "Examples: 'Reddit discussions', 'Government APIs', 'User submissions', 'Web scraping [sites]'"
+        )
+    )
+
+
+class RawConceptList(BaseModel):
+    """
+    Output of divergent exploration task (Task 1).
+
+    Contains 8-12 raw concepts generated using forced ideation techniques.
+    No evaluation or scoring at this stage - quantity and variety over quality.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    concepts: list[RawConcept] = Field(
+        ...,
+        min_length=6,
+        max_length=15,
+        description="8-12 raw concepts from divergent exploration (minimum 6, maximum 15)"
+    )
+    techniques_used: list[str] = Field(
+        ...,
+        description="List of ideation techniques applied during exploration"
+    )
+    pain_points_referenced: list[str] = Field(
+        ...,
+        description="Pain point titles that informed the concept generation"
+    )
+
+
+class FilteredConceptList(BaseModel):
+    """
+    Output of diversity filtering task (Task 2).
+
+    Contains 5-7 unique concepts after removing duplicates and enforcing diversity.
+    Includes transparency about what was removed and why.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    concepts: list[RawConcept] = Field(
+        ...,
+        min_length=3,
+        max_length=8,
+        description="5-7 unique concepts after filtering (minimum 3, maximum 8)"
+    )
+    removed_concepts: list[str] = Field(
+        ...,
+        description="Names of concepts removed as duplicates or too similar"
+    )
+    removal_reasons: list[str] = Field(
+        ...,
+        description=(
+            "Explanations for why each removed concept was filtered. "
+            "Format: '[ConceptName]: [reason]' "
+            "Example: 'VendorCompare: Too similar to VendorMatch (same data source + mechanism)'"
+        )
+    )
+    diversity_summary: str = Field(
+        ...,
+        description=(
+            "Summary of diversity achieved: project types represented, "
+            "data sources variety, niche specificity distribution. "
+            "Example: '3 directories, 2 aggregators, 1 comparison tool across 4 unique data sources'"
+        )
     )

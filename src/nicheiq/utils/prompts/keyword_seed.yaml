@@ -2,7 +2,7 @@
 # Used by: KeywordSeedGenerator.generate_seeds()
 # Variables: niche_description, market_segments, industry_boundaries, solution_name,
 #            solution_type, value_proposition, core_features, target_personas,
-#            pain_points_addressed, competitors, num_broad_seeds, num_targeted_seeds, total_seeds
+#            pain_points_addressed, competitors, audience_vocabulary, num_broad_seeds, num_targeted_seeds, total_seeds
 
 template: |
   You are an SEO keyword strategist generating seed keywords for expansion.
@@ -14,6 +14,9 @@ template: |
   {market_segments}
 
   **Industry Boundaries:** {industry_boundaries}
+
+  **Audience Vocabulary (from user discussions):**
+  {audience_vocabulary}
 
   SOLUTION DETAILS:
   **Solution Name:** {solution_name}
@@ -47,7 +50,7 @@ template: |
 
   Write 2-3 sentences summarizing your analysis.
 
-  **STEP 2: EXTRACT MARKET SEGMENT CHARACTERISTICS**
+  **STEP 2: EXTRACT MARKET SEGMENT CHARACTERISTICS + AUDIENCE VOCABULARY**
 
   From the market_segments above, extract:
   1. **Demographics:** Age groups, experience levels, roles (e.g., "beginner", "professional", "enterprise")
@@ -55,7 +58,15 @@ template: |
   3. **Priorities:** Values and preferences (e.g., "eco-friendly", "energy efficient", "convenient", "quality")
   4. **Context:** Usage scenarios (e.g., "first home", "small business", "remote teams")
 
-  List 5-8 segment characteristics you'll use as keyword modifiers.
+  **CRITICAL: Review the "Audience Vocabulary" section above.**
+  These are ACTUAL TERMS users employ in forum discussions - they represent real search language.
+  PRIORITIZE incorporating these exact terms into your keywords where semantically appropriate.
+
+  Example: If audience_vocabulary includes "hair damage", "curl pattern", "ingredient transparency":
+  - Generate keywords like "hair damage prevention", "curl pattern guide", "ingredient transparency skincare"
+  - These terms have HIGH probability of matching user search queries
+
+  List 5-8 segment characteristics you'll use as keyword modifiers, noting any from audience_vocabulary.
 
   **STEP 3: APPLY SEMANTIC VALIDATION RULES**
 
@@ -147,7 +158,37 @@ template: |
 
   Write 1 sentence confirming you'll add domain qualifiers to ambiguous terms.
 
-  Write 1-2 sentences confirming you've reviewed all 8 rules.
+  **RULE 9: Ban bare generic descriptors (CRITICAL FOR NICHE SPECIFICITY)**
+
+  Generic single-word terms MUST ALWAYS include niche context. These terms alone return millions of irrelevant searches.
+
+  **High-Risk Generic Terms (MUST be combined with words from niche_description above):**
+  - "professional" → "professional [word from niche_description]" (NOT bare "professional")
+  - "budget" → "budget [word from niche_description]", "affordable [word from niche_description]" (NOT bare "budget")
+  - "vegan" → "vegan [word from niche_description]" (NOT bare "vegan")
+  - "natural" → "natural [word from niche_description]" (NOT bare "natural")
+  - "organic" → "organic [word from niche_description]" (NOT bare "organic")
+  - "price" → "[niche word] prices", "[niche word] price comparison" (NOT bare "price")
+  - "review" → "[niche word] reviews", "[product from core_features] reviews" (NOT bare "review")
+  - "compare" → "compare [niche word]", "[niche word] comparison" (NOT bare "compare")
+  - "best" → "best [niche word]", "best [product from core_features]" (NOT bare "best")
+  - "top" → "top [niche word]", "top [product from core_features]" (NOT bare "top")
+  - "guide" → "[niche word] guide", "[niche word] buying guide" (NOT bare "guide")
+  - "tips" → "[niche word] tips" (NOT bare "tips")
+
+  **Concrete Examples (apply pattern to YOUR niche_description: "{niche_description}"):**
+  - If niche is "home appliances": "budget appliances", "professional kitchen equipment" (NOT "budget", "professional")
+  - If niche is "project management": "best project management tools", "PM software comparison" (NOT "best", "comparison")
+  - If niche is "fitness supplements": "vegan protein supplements", "natural workout routines" (NOT "vegan", "natural")
+
+  **Self-Check for EVERY broad seed (1-2 words):**
+  1. Does this keyword contain at least one word from the niche_description or core_features sections above?
+  2. Would someone searching THIS EXACT TERM be looking for products/services related to "{niche_description}"?
+  3. If you can't answer YES to both → ADD a qualifier from niche_description or REJECT keyword
+
+  Write 1 sentence confirming you will domain-lock all generic terms using words from niche_description.
+
+  Write 1-2 sentences confirming you've reviewed all 9 rules.
 
   **STEP 4: PLAN TOPIC CLUSTERS**
 

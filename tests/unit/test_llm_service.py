@@ -9,7 +9,7 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 from pydantic import BaseModel, Field
 
-from nicheiq.utils.llm_service import LLMService
+from nicheiq.utils.llm_service import LLMService, TokenUsage
 
 
 # Test Models
@@ -19,6 +19,23 @@ class TestModel(BaseModel):
     value: int = Field(..., description="Test value")
 
 
+def _make_raw_response(response_metadata: dict | None = None) -> Mock:
+    """Create mock raw response with response_metadata."""
+    mock = Mock()
+    mock.response_metadata = response_metadata or {
+        'token_usage': {'prompt_tokens': 100, 'completion_tokens': 50}
+    }
+    return mock
+
+
+def _make_structured_response(parsed_result, response_metadata: dict | None = None) -> dict:
+    """Create mock response for with_structured_output(include_raw=True)."""
+    return {
+        'parsed': parsed_result,
+        'raw': _make_raw_response(response_metadata)
+    }
+
+
 class TestInvokeStructured:
     """Test LLMService.invoke_structured() method."""
 
@@ -26,14 +43,14 @@ class TestInvokeStructured:
     @patch('nicheiq.utils.llm_service.logger')
     def test_successful_invocation(self, mock_logger, mock_chat_openai):
         """Verify successful structured output with Pydantic model."""
-        # Setup mock
+        # Setup mock - now returns dict with 'parsed' and 'raw' due to include_raw=True
         expected_result = TestModel(name="test", value=42)
         mock_llm = Mock()
-        mock_llm.invoke.return_value = expected_result
+        mock_llm.invoke.return_value = _make_structured_response(expected_result)
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
-        # Test
-        result = LLMService.invoke_structured(
+        # Test - now returns tuple (result, usage)
+        result, usage = LLMService.invoke_structured(
             prompt="Test prompt",
             output_model=TestModel
         )
@@ -42,6 +59,9 @@ class TestInvokeStructured:
         assert isinstance(result, TestModel)
         assert result.name == "test"
         assert result.value == 42
+        assert isinstance(usage, TokenUsage)
+        assert usage.prompt_tokens == 100
+        assert usage.completion_tokens == 50
         mock_logger.debug.assert_called_once()
         assert "TestModel" in str(mock_logger.debug.call_args)
 
@@ -50,7 +70,7 @@ class TestInvokeStructured:
         """Verify default temperature=0.6 for structured calls."""
         # Setup mock
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test
@@ -65,7 +85,7 @@ class TestInvokeStructured:
         """Verify default timeout=120 seconds."""
         # Setup mock
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test
@@ -80,7 +100,7 @@ class TestInvokeStructured:
         """Test custom temperature parameter."""
         # Setup mock
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test with custom temperature
@@ -95,7 +115,7 @@ class TestInvokeStructured:
         """Test custom timeout parameter."""
         # Setup mock
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test with custom timeout
@@ -112,7 +132,7 @@ class TestInvokeStructured:
         # Setup
         mock_settings.openai_model_name = "gpt-4o"
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test with custom model
@@ -130,7 +150,7 @@ class TestInvokeStructured:
         mock_settings.openai_model_name = "gpt-4o"
         mock_settings.openai_api_key = "test-key"
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test without model_name parameter
@@ -148,7 +168,7 @@ class TestInvokeStructured:
         mock_settings.openai_model_name = "gpt-4o"
         mock_settings.openai_api_key = "sk-test-key-12345"
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test
@@ -164,7 +184,7 @@ class TestInvokeStructured:
         """Verify logger.debug called with model name."""
         # Setup
         mock_llm = Mock()
-        mock_llm.invoke.return_value = TestModel(name="test", value=1)
+        mock_llm.invoke.return_value = _make_structured_response(TestModel(name="test", value=1))
         mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
 
         # Test
@@ -195,6 +215,28 @@ class TestInvokeStructured:
         assert "TestModel" in error_message
         assert "failed" in error_message
 
+    @patch('nicheiq.utils.llm_service.ChatOpenAI')
+    def test_returns_token_usage(self, mock_chat_openai):
+        """Verify TokenUsage is returned with token counts."""
+        # Setup mock with specific token counts
+        mock_llm = Mock()
+        mock_llm.invoke.return_value = _make_structured_response(
+            TestModel(name="test", value=1),
+            {'token_usage': {'prompt_tokens': 250, 'completion_tokens': 75}}
+        )
+        mock_chat_openai.return_value.with_structured_output.return_value = mock_llm
+
+        # Test
+        result, usage = LLMService.invoke_structured("Test", TestModel)
+
+        # Assert
+        assert isinstance(usage, TokenUsage)
+        assert usage.prompt_tokens == 250
+        assert usage.completion_tokens == 75
+        usage_dict = usage.to_dict()
+        assert usage_dict['prompt_tokens'] == 250
+        assert usage_dict['completion_tokens'] == 75
+
 
 class TestInvokePlain:
     """Test LLMService.invoke_plain() method."""
@@ -203,16 +245,22 @@ class TestInvokePlain:
     @patch('nicheiq.utils.llm_service.logger')
     def test_successful_invocation(self, mock_logger, mock_chat_openai):
         """Verify successful plain text invocation."""
-        # Setup mock
+        # Setup mock with response_metadata for token usage
         mock_result = Mock()
         mock_result.content = "test response"
+        mock_result.response_metadata = {
+            'token_usage': {'prompt_tokens': 100, 'completion_tokens': 50}
+        }
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
-        # Test
-        result = LLMService.invoke_plain("Test prompt")
+        # Test - now returns tuple (content, usage)
+        content, usage = LLMService.invoke_plain("Test prompt")
 
         # Assert
-        assert result == "test response"
+        assert content == "test response"
+        assert isinstance(usage, TokenUsage)
+        assert usage.prompt_tokens == 100
+        assert usage.completion_tokens == 50
         mock_logger.debug.assert_called_once()
 
     @patch('nicheiq.utils.llm_service.ChatOpenAI')
@@ -221,14 +269,15 @@ class TestInvokePlain:
         # Setup mock
         mock_result = Mock()
         mock_result.content = "extracted content"
+        mock_result.response_metadata = {'token_usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
         # Test
-        result = LLMService.invoke_plain("Test")
+        content, usage = LLMService.invoke_plain("Test")
 
         # Assert
-        assert isinstance(result, str)
-        assert result == "extracted content"
+        assert isinstance(content, str)
+        assert content == "extracted content"
 
     @patch('nicheiq.utils.llm_service.ChatOpenAI')
     def test_default_temperature_is_0_7(self, mock_chat_openai):
@@ -236,6 +285,7 @@ class TestInvokePlain:
         # Setup mock
         mock_result = Mock()
         mock_result.content = "test"
+        mock_result.response_metadata = {'token_usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
         # Test
@@ -251,6 +301,7 @@ class TestInvokePlain:
         # Setup mock
         mock_result = Mock()
         mock_result.content = "test"
+        mock_result.response_metadata = {'token_usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
         # Test
@@ -266,6 +317,7 @@ class TestInvokePlain:
         # Setup mock
         mock_result = Mock()
         mock_result.content = "test"
+        mock_result.response_metadata = {'token_usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
         # Test with custom parameters
@@ -291,6 +343,7 @@ class TestInvokePlain:
         mock_settings.openai_api_key = "test-key"
         mock_result = Mock()
         mock_result.content = "test"
+        mock_result.response_metadata = {'token_usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
         # Test
@@ -312,6 +365,7 @@ class TestInvokePlain:
 
         mock_result = Mock()
         mock_result.content = "test"
+        mock_result.response_metadata = {'token_usage': {'prompt_tokens': 10, 'completion_tokens': 5}}
         mock_chat_openai.return_value.invoke.return_value = mock_result
 
         # Test
@@ -340,3 +394,25 @@ class TestInvokePlain:
         mock_logger.error.assert_called_once()
         error_message = mock_logger.error.call_args[0][0]
         assert "failed" in error_message
+
+    @patch('nicheiq.utils.llm_service.ChatOpenAI')
+    def test_returns_token_usage(self, mock_chat_openai):
+        """Verify TokenUsage is returned with token counts."""
+        # Setup mock with specific token counts
+        mock_result = Mock()
+        mock_result.content = "test"
+        mock_result.response_metadata = {
+            'token_usage': {'prompt_tokens': 300, 'completion_tokens': 100}
+        }
+        mock_chat_openai.return_value.invoke.return_value = mock_result
+
+        # Test
+        content, usage = LLMService.invoke_plain("Test")
+
+        # Assert
+        assert isinstance(usage, TokenUsage)
+        assert usage.prompt_tokens == 300
+        assert usage.completion_tokens == 100
+        usage_dict = usage.to_dict()
+        assert usage_dict['prompt_tokens'] == 300
+        assert usage_dict['completion_tokens'] == 100

@@ -107,6 +107,59 @@ def validate_pydantic_pain_point_output(result: TaskOutput) -> tuple[bool, Any]:
         logger.error(f"Guardrail validation exception: {str(e)}. Raw output preview: {raw_preview}...")
         return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the ValidationResult model with no extra text.")
 
+
+def validate_extraction_output(result: TaskOutput) -> tuple[bool, Any]:
+    """
+    Guardrail function to ensure PainPointExtraction contains valid pain points.
+
+    This prevents Task 2 from returning empty results due to:
+    - Missing [source: ID] suffixes in quotes from Task 1
+    - Overly strict anti-hallucination guardrails
+    - Model confusion about extraction requirements
+
+    Returns:
+        tuple[bool, Any]: (success, validated_result_or_error_message)
+    """
+    try:
+        # Check if Pydantic output exists
+        if not result.pydantic:
+            raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
+            logger.error(f"Task 2 guardrail failed - No Pydantic output found. Raw: {raw_preview}...")
+            return (False, "CRITICAL ERROR: Return ONLY the PainPointExtraction Pydantic model. Do not add explanatory text.")
+
+        extraction = result.pydantic
+
+        # Check extracted_pain_points field exists
+        if not hasattr(extraction, 'extracted_pain_points'):
+            logger.error(f"Task 2 guardrail failed - Missing 'extracted_pain_points' field. Type: {type(extraction)}")
+            return (False, "OUTPUT ERROR: Missing 'extracted_pain_points' field in PainPointExtraction")
+
+        # Check for empty or insufficient extraction
+        pain_point_count = len(extraction.extracted_pain_points) if extraction.extracted_pain_points else 0
+
+        if pain_point_count == 0:
+            logger.error("Task 2 guardrail failed - Zero pain points extracted")
+            return (False, "EXTRACTION ERROR: Zero pain points extracted. Task 1 found multiple categories with quotes. "
+                          "Re-analyze the categorization output and knowledge sources to extract 5-10 pain points. "
+                          "IMPORTANT: If quotes don't have [source: ID] suffixes, search the knowledge sources directly "
+                          "for fresh quotes WITH source tags, or use the pattern from categories without requiring source tags.")
+
+        if pain_point_count < 3:
+            logger.warning(f"Task 2 guardrail failed - Only {pain_point_count} pain points extracted (minimum 3)")
+            return (False, f"EXTRACTION ERROR: Only {pain_point_count} pain points extracted (minimum 3 required). "
+                          f"Task 1 found multiple high-frequency categories. Extract more pain points from the evidence. "
+                          f"Each pain point needs 3+ quotes - search knowledge sources for additional supporting evidence.")
+
+        # Success - return the validated Pydantic output
+        logger.debug(f"Task 2 guardrail passed: {pain_point_count} pain points extracted")
+        return (True, result.pydantic)
+
+    except Exception as e:
+        raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
+        logger.error(f"Task 2 guardrail exception: {str(e)}. Raw: {raw_preview}...")
+        return (False, f"VALIDATION_ERROR: Failed to validate extraction - {str(e)}. Return ONLY the PainPointExtraction model.")
+
+
 @CrewBase
 class PainPointCrew:
     """
@@ -147,16 +200,27 @@ class PainPointCrew:
         self.reddit_posts = self._filter_low_quality_reddit(reddit_posts or [])
         self.twitter_threads = self._filter_low_quality_twitter(twitter_threads or [])
 
-        # Log filtering results
+        # Log quality filtering results
         if original_reddit_count > len(self.reddit_posts):
             logger.info(
-                f"Filtered out {original_reddit_count - len(self.reddit_posts)} "
+                f"Quality filter: removed {original_reddit_count - len(self.reddit_posts)} "
                 f"low-quality Reddit posts ({len(self.reddit_posts)}/{original_reddit_count} remaining)"
             )
         if original_twitter_count > len(self.twitter_threads):
             logger.info(
-                f"Filtered out {original_twitter_count - len(self.twitter_threads)} "
+                f"Quality filter: removed {original_twitter_count - len(self.twitter_threads)} "
                 f"low-quality Twitter threads ({len(self.twitter_threads)}/{original_twitter_count} remaining)"
+            )
+
+        # Apply token budget filter to keep only top posts by engagement/recency
+        if self.reddit_posts:
+            from nicheiq.config.settings import settings
+            from nicheiq.utils.token_monitor import ContentTokenMonitor
+
+            token_monitor = ContentTokenMonitor()
+            self.reddit_posts = token_monitor.filter_posts_to_token_budget(
+                self.reddit_posts,
+                settings.max_reddit_content_tokens
             )
 
         self.niche_description = niche_description
@@ -164,8 +228,8 @@ class PainPointCrew:
         self.industry_boundaries = industry_boundaries
         self.knowledge_sources = []
 
-        # Store formatted content for direct injection into first task
-        # (subsequent tasks use knowledge sources for RAG-based evidence retrieval)
+        # Store formatted content for direct injection into Task 1 (categorization)
+        # Tasks 2 & 3 use agent-level knowledge sources for RAG-based quote retrieval
         self.formatted_reddit_content = ""
         self.formatted_twitter_content = ""
 
@@ -173,35 +237,35 @@ class PainPointCrew:
         total_reddit_comments = sum(len(post.comments) for post in self.reddit_posts)
         total_twitter_replies = sum(len(thread.replies) for thread in self.twitter_threads)
 
-        # Initialize knowledge sources for semantic search
+        # Initialize knowledge sources for agent-level RAG (Tasks 2 & 3 only)
+        # Task 1 uses direct injection only (no RAG) - content_researcher has no knowledge_sources
+        # Tasks 2 & 3 use agent-level knowledge_sources for RAG-based quote retrieval
         from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
         if self.reddit_posts:
-            reddit_content = self._prepare_reddit_content()
-            self.formatted_reddit_content = reddit_content  # Store for direct task injection
+            self.formatted_reddit_content = self._prepare_reddit_content()
             self.reddit_knowledge = StringKnowledgeSource(
-                content=reddit_content,
+                content=self.formatted_reddit_content,
                 chunk_size=2000,      # Preserve discussion context
                 chunk_overlap=300     # More overlap for conversational threading
             )
             self.knowledge_sources.append(self.reddit_knowledge)
-            logger.info(f"Reddit knowledge source created ({len(reddit_content)} chars)")
+            logger.info(f"Reddit content: {len(self.formatted_reddit_content)} chars, knowledge source created")
 
         if self.twitter_threads:
-            twitter_content = self._prepare_twitter_content()
-            self.formatted_twitter_content = twitter_content  # Store for direct task injection
+            self.formatted_twitter_content = self._prepare_twitter_content()
             self.twitter_knowledge = StringKnowledgeSource(
-                content=twitter_content,
+                content=self.formatted_twitter_content,
                 chunk_size=1500,      # Smaller chunks for tweets
                 chunk_overlap=200     # Less overlap needed
             )
             self.knowledge_sources.append(self.twitter_knowledge)
-            logger.info(f"Twitter knowledge source created ({len(twitter_content)} chars)")
+            logger.info(f"Twitter content: {len(self.formatted_twitter_content)} chars, knowledge source created")
 
         logger.info(
             f"PainPointCrew initialized with {len(self.reddit_posts)} Reddit posts "
             f"({total_reddit_comments} comments) and {len(self.twitter_threads)} Twitter threads "
-            f"({total_twitter_replies} replies) - {len(self.knowledge_sources)} knowledge source(s) ready"
+            f"({total_twitter_replies} replies) - {len(self.knowledge_sources)} knowledge source(s)"
         )
 
     def _filter_low_quality_reddit(self, posts: list[RedditPost]) -> list[RedditPost]:
@@ -290,7 +354,7 @@ class PainPointCrew:
         """
         Recursively format comments with their nested replies.
 
-        With knowledge sources + RAG, we can include full comment bodies without truncation.
+        Comments are sorted by score to prioritize high-engagement content.
 
         Args:
             comments: List of RedditComment objects
@@ -315,10 +379,12 @@ class PainPointCrew:
 
             # Include nested replies (up to max_depth)
             if comment.replies and depth < max_depth:
-                # Much higher limits with RAG - semantic search retrieves only relevant chunks
-                reply_limit = 30 if depth == 0 else (20 if depth == 1 else 10)
+                # Limits tuned for direct injection mode (no RAG)
+                reply_limit = 30 if depth == 0 else (15 if depth == 1 else 8)
+                # Sort by score (descending) to get most engaging replies first
+                sorted_replies = sorted(comment.replies, key=lambda c: c.score, reverse=True)
                 nested_content = self._format_comments_with_replies(
-                    comment.replies[:reply_limit],
+                    sorted_replies[:reply_limit],
                     post_id=post_id,
                     depth=depth + 1,
                     max_depth=max_depth
@@ -334,7 +400,7 @@ class PainPointCrew:
         """
         Format Twitter replies with comprehensive content and conversation threading.
 
-        With knowledge sources + RAG, we can include full tweet text and more conversations.
+        Replies are sorted by engagement to prioritize high-value content.
 
         Args:
             replies: List of TwitterTweet reply objects
@@ -365,8 +431,7 @@ class PainPointCrew:
         root_replies.sort(key=lambda t: t.likes + t.retweets, reverse=True)
 
         formatted = []
-        # No limit with RAG - semantic search retrieves only relevant chunks
-        # Process all root replies (was 50)
+        # Process all root replies (sorted by engagement)
 
         for root_reply in root_replies:
             # Include full tweet text with source tracking
@@ -377,11 +442,11 @@ class PainPointCrew:
             # Add nested replies to this conversation (if any)
             if root_reply.tweet_id in children_map:
                 nested_replies = children_map[root_reply.tweet_id]
-                # Sort nested by engagement and include more replies per conversation
+                # Sort nested by engagement
                 nested_replies.sort(key=lambda t: t.likes + t.retweets, reverse=True)
 
-                # Include top 20 nested replies per conversation (was 10)
-                for nested in nested_replies[:20]:
+                # Include top 10 nested replies per conversation (tuned for direct injection)
+                for nested in nested_replies[:10]:
                     # Include full nested tweet text with source tracking
                     formatted.append(
                         f"  └─ @{nested.author_username} [{nested.likes} likes]: {nested.text} [source: {thread_id}]"
@@ -472,6 +537,7 @@ class PainPointCrew:
         Identifies specific problems, frustrations, and unmet needs.
 
         Uses low-moderate temperature (0.3) for consistent pattern extraction with flexibility.
+        Has knowledge_sources attached for RAG-based quote retrieval.
         """
         from langchain_openai import ChatOpenAI
 
@@ -482,6 +548,7 @@ class PainPointCrew:
                 temperature=0.3,  # Low-moderate for consistent extraction with nuanced understanding
                 api_key=settings.openai_api_key
             ),
+            knowledge_sources=self.knowledge_sources,  # RAG for quote retrieval
             verbose=True,
         )
 
@@ -492,6 +559,7 @@ class PainPointCrew:
         Assesses severity, willingness to pay, and market potential.
 
         Uses low temperature (0.2) for objective, consistent scoring.
+        Has knowledge_sources attached for RAG-based evidence validation.
         """
         from langchain_openai import ChatOpenAI
 
@@ -502,6 +570,7 @@ class PainPointCrew:
                 temperature=0.2,  # Low temperature for analytical, objective scoring
                 api_key=settings.openai_api_key
             ),
+            knowledge_sources=self.knowledge_sources,  # RAG for evidence validation
             verbose=True,
         )
 
@@ -531,6 +600,8 @@ class PainPointCrew:
             agent=self.pain_point_analyst(),
             context=[self.categorize_content_task()],
             output_pydantic=PainPointExtraction,
+            guardrail=validate_extraction_output,
+            guardrail_max_retries=3,
         )
 
     @task
@@ -555,15 +626,13 @@ class PainPointCrew:
         """
         Assemble the PainPointCrew with all agents, tasks, and knowledge sources.
 
-        Knowledge sources are attached at crew level so all agents can access them
-        for semantic search and retrieval during task execution.
+        Architecture:
+        - Task 1 (content_researcher): NO RAG - uses direct injection only
+        - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): HAVE RAG via agent-level knowledge_sources
 
         Returns:
-            Configured Crew instance with knowledge sources
+            Configured Crew instance (knowledge is agent-level, not crew-level)
         """
-        from crewai.knowledge.knowledge import Knowledge
-        from ..utils.helpers import sanitize_collection_name
-
         embedder_config = {
             "provider": "openai",
             "config": {
@@ -571,25 +640,20 @@ class PainPointCrew:
             }
         }
 
-        # Create Knowledge with niche-specific collection name for isolation
-        knowledge = None
-        if self.knowledge_sources:
-            collection_name = sanitize_collection_name(self.niche_description, "pain")
-            logger.info(f"Creating knowledge with collection: {collection_name}")
-            knowledge = Knowledge(
-                sources=self.knowledge_sources,
-                embedder=embedder_config,
-                collection_name=collection_name,
-            )
-            knowledge.add_sources()
+        # Note: Knowledge sources are attached at agent level (pain_point_analyst, pain_point_validator)
+        # Task 1's agent (content_researcher) has NO knowledge_sources - uses direct injection only
+        logger.info(
+            f"PainPointCrew using agent-level knowledge: "
+            f"content_researcher=NO RAG, pain_point_analyst=RAG ({len(self.knowledge_sources)} sources), "
+            f"pain_point_validator=RAG ({len(self.knowledge_sources)} sources)"
+        )
 
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
-            knowledge=knowledge,  # Use pre-configured Knowledge instead of knowledge_sources
             verbose=True,
             process_type="sequential",  # Tasks run in order
-            embedder=embedder_config
+            embedder=embedder_config  # Shared embedder config for agent-level knowledge
         )
 
     def _extract_and_clean_sources(self, pain_points: list[UnvalidatedPainPoint]) -> list[UnvalidatedPainPoint]:
@@ -680,9 +744,10 @@ class PainPointCrew:
 
             # Log initialization
             logger.info(
-                f"Knowledge sources: {len(self.knowledge_sources)} source(s), "
+                f"Hybrid mode (Task 1: direct injection, Tasks 2-3: agent-level RAG): "
                 f"{len(self.reddit_posts)} Reddit posts ({total_reddit_comments} comments), "
-                f"{len(self.twitter_threads)} Twitter threads ({total_twitter_replies} replies)"
+                f"{len(self.twitter_threads)} Twitter threads ({total_twitter_replies} replies), "
+                f"{len(self.knowledge_sources)} knowledge source(s) for agents"
             )
 
             # ANTI-HALLUCINATION CHECK: Verify sufficient content volume
@@ -708,34 +773,37 @@ class PainPointCrew:
                     f"- pain point extraction may be limited due to sparse discussion content"
                 )
 
-            # Execute crew with metadata inputs only
-            # Content is accessed automatically via knowledge sources
+            # Execute crew in hybrid mode:
+            # - Task 1: Full content via direct injection (categorization)
+            # - Tasks 2 & 3: RAG via knowledge sources (quote retrieval)
             crew_instance = self.crew()
+            self._last_crew = crew_instance  # Store for usage_metrics access
 
-            # Verify knowledge sources are initialized (debug logging)
-            logger.debug("=" * 80)
-            logger.debug("KNOWLEDGE SOURCES VERIFICATION")
-            logger.debug("=" * 80)
-            if hasattr(crew_instance, 'knowledge_sources') and crew_instance.knowledge_sources:
-                logger.debug(f"✅ {len(crew_instance.knowledge_sources)} knowledge source(s) attached to crew")
-                for i, ks in enumerate(crew_instance.knowledge_sources, 1):
-                    logger.debug(f"   Source {i}: {type(ks).__name__}, {len(ks.content)} chars")
+            # Token monitoring: Log content size and check context limits
+            monitor = ContentTokenMonitor()
+            content_tokens = monitor.count_tokens(
+                self.formatted_reddit_content + self.formatted_twitter_content,
+                model=settings.content_analysis_llm
+            )
+
+            # Context limit check: ~1M tokens available, leave 400K for scaffolding + agent overhead
+            max_content_tokens = 600_000
+            if content_tokens > max_content_tokens:
+                logger.warning(
+                    f"[Stage 6] Content tokens ({content_tokens:,}) exceed safe limit ({max_content_tokens:,}). "
+                    f"Consider reducing posts or comment depth. Proceeding anyway..."
+                )
             else:
-                logger.warning("⚠️  No knowledge sources attached to crew!")
-            logger.debug("=" * 80)
+                logger.info(f"[Stage 6] Content size: {content_tokens:,} tokens (limit: {max_content_tokens:,})")
 
-            # Token monitoring: Log content size and check soft caps
             if settings.token_monitoring_enabled:
-                monitor = ContentTokenMonitor()
-
-                # Monitor Reddit content
+                # Detailed token breakdown
                 reddit_tokens = monitor.log_content_stats(
                     content=self.formatted_reddit_content,
                     label="Stage 6 - Reddit content",
                     model=settings.content_analysis_llm
                 )
 
-                # Monitor Twitter content
                 twitter_tokens = monitor.log_content_stats(
                     content=self.formatted_twitter_content,
                     label="Stage 6 - Twitter content",
@@ -763,8 +831,9 @@ class PainPointCrew:
                 from datetime import datetime
                 collection_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-            # Hybrid approach: Pass full content for first agent (comprehensive categorization),
-            # while knowledge sources remain available for subsequent agents (targeted evidence retrieval)
+            # Hybrid approach:
+            # - Task 1 (content_researcher): full content via direct injection (NO RAG)
+            # - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): agent-level RAG for quote retrieval
             crew_output = crew_instance.kickoff(inputs={
                 "niche_description": self.niche_description,
                 "market_segments": market_segments_formatted,
@@ -915,3 +984,15 @@ class PainPointCrew:
         except Exception as e:
             logger.error(f"Pain point analysis failed: {e}")
             raise
+
+    @property
+    def usage_metrics(self) -> dict | None:
+        """
+        Get usage metrics from the last crew execution.
+
+        Returns:
+            Dict with prompt_tokens, completion_tokens, total_tokens or None if not available
+        """
+        if hasattr(self, '_last_crew') and self._last_crew:
+            return self._last_crew.usage_metrics
+        return None

@@ -184,11 +184,12 @@ analyze_keywords_and_tier:
     - Vehicles: "car", "tire", "bike" (keep if automotive niche)
     - Telecom: "verizon", "t-mobile" (keep if telecom niche)
 
-    **FILTERING GUIDANCE (IMPORTANT):**
-    - Target: Filter 20-30% as truly irrelevant (NOT 40-50%)
-    - When in doubt about relevance → INCLUDE the keyword in Tier 4
-    - Over-filtering is WORSE than under-filtering (keywords can be refined later)
-    - Report filtering stats in key_findings
+    **FILTERING GUIDANCE (CRITICAL - READ CAREFULLY):**
+    - Target: Filter ONLY 10-20% as truly irrelevant (NOT 30-50%!)
+    - ⚠️ WHEN IN DOUBT → INCLUDE THE KEYWORD IN TIER 4 (this is mandatory)
+    - Over-filtering is a CRITICAL FAILURE (keywords can always be refined later)
+    - Report filtering stats in key_findings with explicit count
+    - If you filter >25% of keywords, you are being TOO AGGRESSIVE - reconsider
 
     ═══ KEYWORD UTILIZATION MANDATE ═══
     You are analyzing {enriched_keywords_count} keywords. Your output MUST tier a MINIMUM of 80% of relevant keywords (after filtering).
@@ -219,14 +220,16 @@ analyze_keywords_and_tier:
           - ⚠️ NO hallucinated city names - only group if location is IN keyword text
 
        b. **Tier 4 (Category) - CRITICAL - Most Keywords Go Here:**
-          - MINIMUM: 6 category groups (aim for 8-15)
+          - MINIMUM: 8 category groups (aim for 10-15)
           - MINIMUM: 15 keywords per category group (aim for 20-100+)
-          - If you have 150+ remaining keywords → create 10+ categories
-          - Category themes: ingredient, product type, user concern, price tier, comparison, review, misc
+          - If you have 150+ remaining keywords → create 12+ categories
+          - Category themes: ingredient, product type, user concern, price tier, comparison, review, misc, brand, format, audience
+          - ⚠️ WHEN IN DOUBT about a keyword's relevance → PUT IT IN TIER 4
 
-          ❌ CRITICAL FAILURE: Tier 4 has <6 categories
+          ❌ CRITICAL FAILURE: Tier 4 has <8 categories
           ❌ CRITICAL FAILURE: Tier 4 categories average <15 keywords each
-          ✅ SUCCESS: Tier 4 has 8-15 categories with 20-100 keywords each
+          ❌ CRITICAL FAILURE: Total utilization <70% of input keywords
+          ✅ SUCCESS: Tier 4 has 10-15 categories with 20-100 keywords each
           ⚠️ Your Tier 4 groups should contain HUNDREDS of keywords total
 
        c. **Self-Check BEFORE submitting:**
@@ -249,7 +252,7 @@ analyze_keywords_and_tier:
     - [ ] Selected ALL Tier 1 keywords meeting threshold (opp_score >100) - NOT limited to 3-5
     - [ ] Selected ALL Tier 2 keywords meeting threshold (opp_score 50-100) - NOT limited to 3-5
     - [ ] Tier 3 geographic groups ONLY contain keywords with explicit location mentions
-    - [ ] Tier 4 has MINIMUM 6 category groups (aim for 8-15)
+    - [ ] Tier 4 has MINIMUM 8 category groups (aim for 10-15)
     - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords (should be 150-250+ keywords)
     - [ ] Tier 4 category groups average 15+ keywords per group (aim for 20-100+)
     - [ ] Calculated EXACT keyword utilization: tiered_keywords / relevant_keywords ≥ 80%

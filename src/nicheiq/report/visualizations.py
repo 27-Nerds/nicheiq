@@ -236,3 +236,79 @@ class ChartGenerator:
         except Exception as e:
             logger.warning(f"Failed to generate competitive landscape: {e}")
             return None
+
+    def generate_implementation_timeline(
+        self,
+        first_30_days,
+        output_name: str = "implementation_timeline"
+    ) -> tuple[str, str] | None:
+        """
+        Generate horizontal bar chart showing 30-day implementation timeline.
+
+        Args:
+            first_30_days: First30DaysPlaybook with week actions
+            output_name: Base name for output files
+
+        Returns:
+            Tuple of (png_path, json_path) or None if failed
+        """
+        if not PLOTLY_AVAILABLE or not first_30_days:
+            return None
+
+        try:
+            # Build timeline data
+            weeks = ["Week 1", "Week 2", "Week 3", "Week 4"]
+            action_counts = [
+                len(first_30_days.week_1_actions) if first_30_days.week_1_actions else 0,
+                len(first_30_days.week_2_actions) if first_30_days.week_2_actions else 0,
+                len(first_30_days.week_3_actions) if first_30_days.week_3_actions else 0,
+                len(first_30_days.week_4_actions) if first_30_days.week_4_actions else 0
+            ]
+
+            # Get first action from each week as hover labels
+            week_labels = [
+                first_30_days.week_1_actions[0][:50] + "..." if first_30_days.week_1_actions else "No actions",
+                first_30_days.week_2_actions[0][:50] + "..." if first_30_days.week_2_actions else "No actions",
+                first_30_days.week_3_actions[0][:50] + "..." if first_30_days.week_3_actions else "No actions",
+                first_30_days.week_4_actions[0][:50] + "..." if first_30_days.week_4_actions else "No actions"
+            ]
+
+            fig = go.Figure()
+
+            # Horizontal bar chart with gradient colors
+            colors = ['#27ae60', '#2980b9', '#8e44ad', '#e74c3c']
+
+            fig.add_trace(go.Bar(
+                y=weeks,
+                x=action_counts,
+                orientation='h',
+                marker_color=colors,
+                text=action_counts,
+                textposition='inside',
+                hovertext=week_labels,
+                hoverinfo='text+x'
+            ))
+
+            fig.update_layout(
+                title="30-Day Implementation Timeline",
+                xaxis_title="Number of Actions",
+                yaxis_title="Week",
+                height=350,
+                showlegend=False,
+                font=dict(size=12)
+            )
+
+            # Save PNG
+            png_path = self.output_dir / f"{output_name}.png"
+            fig.write_image(str(png_path), width=700, height=350)
+
+            # Save JSON
+            json_path = self.output_dir / f"{output_name}.json"
+            fig.write_json(str(json_path))
+
+            logger.info(f"[OK] Implementation timeline saved: {png_path}")
+            return (str(png_path), str(json_path))
+
+        except Exception as e:
+            logger.warning(f"Failed to generate implementation timeline: {e}")
+            return None

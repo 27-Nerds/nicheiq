@@ -15,6 +15,12 @@ from nicheiq.utils.validation.thread_validator import ThreadRelevanceValidator, 
 from nicheiq.utils.validation.keyword_validator import KeywordRelevanceValidator, KeywordBatchValidation
 from nicheiq.models.research_state import NicheContext
 from nicheiq.models.solution_idea import SolutionIdea
+from nicheiq.utils.llm_service import TokenUsage
+
+
+def _mock_token_usage() -> TokenUsage:
+    """Create mock TokenUsage for testing."""
+    return TokenUsage(prompt_tokens=100, completion_tokens=50, model="gpt-4o")
 
 
 class TestQueryGeneratorIntegration:
@@ -23,8 +29,8 @@ class TestQueryGeneratorIntegration:
     @patch('nicheiq.utils.generation.query_generator.LLMService.invoke_plain')
     def test_uses_llm_service_invoke_plain(self, mock_invoke_plain):
         """Verify QueryGenerator calls LLMService.invoke_plain()."""
-        # Setup
-        mock_invoke_plain.return_value = '[]'  # Empty JSON array
+        # Setup - now returns tuple (content, usage)
+        mock_invoke_plain.return_value = ('[]', _mock_token_usage())
         generator = QueryGenerator()
 
         # Test
@@ -38,7 +44,7 @@ class TestQueryGeneratorIntegration:
     def test_passes_correct_temperature(self, mock_invoke_plain):
         """Verify temperature=0.7 is passed."""
         # Setup
-        mock_invoke_plain.return_value = '[]'
+        mock_invoke_plain.return_value = ('[]', _mock_token_usage())
         generator = QueryGenerator()
 
         # Test
@@ -54,7 +60,7 @@ class TestQueryGeneratorIntegration:
         """Verify settings.openai_model_name is passed."""
         # Setup
         mock_settings.openai_model_name = "gpt-4o"
-        mock_invoke_plain.return_value = '[]'
+        mock_invoke_plain.return_value = ('[]', _mock_token_usage())
         generator = QueryGenerator()
 
         # Test
@@ -84,7 +90,7 @@ class TestKeywordSeedGeneratorIntegration:
     @patch('nicheiq.utils.generation.keyword_seed_generator.LLMService.invoke_structured')
     def test_uses_llm_service_invoke_structured(self, mock_invoke_structured):
         """Verify KeywordSeedGenerator calls LLMService.invoke_structured()."""
-        # Setup
+        # Setup - now returns tuple (result, usage)
         from nicheiq.models.seo_strategy import ExpandedKeywordList, ConceptualKeyword, ConceptualTopicCluster
         mock_result = ExpandedKeywordList(
             keywords=[
@@ -95,7 +101,7 @@ class TestKeywordSeedGeneratorIntegration:
             ],
             expansion_rationale="test rationale"
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         generator = KeywordSeedGenerator()
         solution = SolutionIdea(
@@ -126,7 +132,7 @@ class TestKeywordSeedGeneratorIntegration:
             topic_clusters=[ConceptualTopicCluster(name="t", description="t", strategic_importance=1)],
             expansion_rationale="test"
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         generator = KeywordSeedGenerator()
         solution = SolutionIdea(
@@ -157,7 +163,7 @@ class TestKeywordSeedGeneratorIntegration:
             topic_clusters=[ConceptualTopicCluster(name="t", description="t", strategic_importance=1)],
             expansion_rationale="test"
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         generator = KeywordSeedGenerator()
         solution = SolutionIdea(
@@ -193,14 +199,14 @@ class TestValidatorsIntegration:
     @patch('nicheiq.utils.validation.thread_validator.LLMService.invoke_structured')
     def test_thread_validator_uses_llm_service(self, mock_invoke_structured):
         """Verify ThreadRelevanceValidator uses LLMService."""
-        # Setup
+        # Setup - now returns tuple (result, usage)
         from nicheiq.models.research_state import SearchResultItem
         from nicheiq.utils.validation.thread_validator import ValidationResult
 
         mock_result = BatchValidationResponse(
             results=[ValidationResult(thread_index=0, is_relevant=True, confidence=0.9, reason="test")]
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         validator = ThreadRelevanceValidator()
         search_results = [
@@ -229,7 +235,7 @@ class TestValidatorsIntegration:
         mock_result = BatchValidationResponse(
             results=[ValidationResult(thread_index=0, is_relevant=True, confidence=0.9, reason="test")]
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         validator = ThreadRelevanceValidator()
         search_results = [
@@ -257,7 +263,7 @@ class TestValidatorsIntegration:
         mock_result = BatchValidationResponse(
             results=[ValidationResult(thread_index=0, is_relevant=True, confidence=0.9, reason="test")]
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         validator = ThreadRelevanceValidator()
         search_results = [
@@ -274,7 +280,7 @@ class TestValidatorsIntegration:
     @patch('nicheiq.utils.validation.keyword_validator.LLMService.invoke_structured')
     def test_keyword_validator_uses_llm_service(self, mock_invoke_structured):
         """Verify KeywordRelevanceValidator uses LLMService."""
-        # Setup
+        # Setup - now returns tuple (result, usage)
         from nicheiq.utils.validation.keyword_validator import KeywordRelevance
 
         mock_result = KeywordBatchValidation(
@@ -287,7 +293,7 @@ class TestValidatorsIntegration:
                 )
             ]
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         validator = KeywordRelevanceValidator()
         keywords = [{"keyword": "test keyword"}]
@@ -322,7 +328,7 @@ class TestValidatorsIntegration:
                 )
             ]
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         validator = KeywordRelevanceValidator()
         keywords = [{"keyword": "test keyword"}]  # Multi-word to pass pre-filter
@@ -351,7 +357,7 @@ class TestValidatorsIntegration:
                 KeywordRelevance(keyword="test", is_relevant=True, relevance_score=0.8, reason="t")
             ]
         )
-        mock_invoke_structured.return_value = mock_result
+        mock_invoke_structured.return_value = (mock_result, _mock_token_usage())
 
         validator = KeywordRelevanceValidator()
         keywords = [{"keyword": "test keyword"}]  # Multi-word to pass pre-filter

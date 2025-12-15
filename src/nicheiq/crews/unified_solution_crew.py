@@ -1,120 +1,55 @@
 """
 UnifiedSolutionCrew - Stages 7-8.75: Complete Solution Pipeline
-Consolidates solution ideation, competitive analysis, refinement, and selection into unified multi-task flow.
+Implements 6-task divergent-convergent architecture for solution ideation.
 
-Architecture (CrewAI Best Practice - Context Chaining):
-- Task 1: Solution Ideation (brainstorm + evaluate + refine)
-- Task 2: Competitive Analysis (parallel per solution)
-- Task 3: Competitive Refinement (enhance with insights)
-- Task 4: Solution Selection (score and select best)
+Architecture:
+1. Divergent Exploration - Generate 8-12 raw concepts with forced ideation
+2. Diversity Filtering - Filter to 5-7 unique concepts
+3. Solution Refinement - Expand to 3-5 full specifications
+4. Competitive Analysis - Analyze competitive landscape
+5. Competitive Refinement - Enhance with competitive insights
+6. Solution Selection - Select best solution
 
-Benefits over separate crews:
-- Automatic field preservation via output_pydantic + context chaining
-- No manual data formatting between stages
-- Guardrails ensure no data loss
-- Follows CrewAI documentation best practices
+Benefits:
+- Forced ideation techniques prevent obvious/similar ideas
+- Explicit diversity filtering catches duplicates
+- Novelty scoring ensures innovation
+- Solo-dev feasibility weighted in scoring
 """
 
-import re
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ..flows.checkpoint_manager import CheckpointManager
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
-from crewai.tools import BaseTool
-from crewai_tools import SerperDevTool
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
-from ..models.research_state import NicheContext
+from ..models.research_state import AudienceMappingResult, NicheContext
 from ..models.social_content import SocialContentCollection
 from ..models.solution_idea import (
     CompetitiveEnhancements,
+    FilteredConceptList,
     IdeaGenerationResult,
+    IdeationProcess,
+    RawConceptList,
 )
 from ..models.solution_selection import SolutionSelection
-from ..utils.generation import CompetitorQueryGenerator
+from ..tools import CachedSerperDevTool, CompetitorQueryTool
+from ..utils.crew_helpers import (
+    prepare_competitor_intelligence,
+    prepare_pain_point_content,
+)
+from ..utils.validation import (
+    create_diversity_guardrail,
+    validate_enhancements_output,
+)
 
-
-class CompetitorQueryTool(BaseTool):
-    """
-    Tool for generating context-aware competitor search queries.
-    Uses CompetitorQueryGenerator with semantic validation.
-    """
-    name: str = "generate_competitor_queries"
-    description: str = (
-        "Generate strategic competitor search queries for a solution. "
-        "Input format: 'solution_name|project_type|pain_points' "
-        "(pain_points is comma-separated list, optional). "
-        "Returns list of validated search queries with rationale."
-    )
-
-    _generator: CompetitorQueryGenerator = None
-    _niche_context: NicheContext | None = None
-
-    def __init__(self, niche_context: NicheContext | None = None, **kwargs):
-        super().__init__(**kwargs)
-        self._generator = CompetitorQueryGenerator()
-        self._niche_context = niche_context
-
-    def _run(self, input_str: str) -> str:
-        """Generate competitor queries from input string."""
-        parts = input_str.split("|")
-        solution_name = parts[0].strip() if len(parts) > 0 else ""
-        project_type = parts[1].strip() if len(parts) > 1 else "saas"
-        pain_points = [p.strip() for p in parts[2].split(",")] if len(parts) > 2 and parts[2].strip() else None
-
-        queries = self._generator.generate_competitor_queries(
-            solution_name=solution_name,
-            project_type=project_type,
-            niche_context=self._niche_context,
-            pain_points_addressed=pain_points,
-            num_queries=8
-        )
-
-        if not queries:
-            return "No queries generated. Try with different input."
-
-        # Format output for agent consumption
-        result = f"Generated {len(queries)} competitor search queries:\n\n"
-        for i, q in enumerate(queries, 1):
-            result += f"{i}. [{q.get('type', 'category')}] {q.get('query')}\n"
-            result += f"   Rationale: {q.get('rationale', 'N/A')}\n\n"
-
-        return result
-
-class CachedSerperDevTool(SerperDevTool):
-    """
-    Wrapper around SerperDevTool that caches search results within a session.
-    Reduces redundant API calls when multiple solutions have overlapping competitors.
-    """
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._cache = {}
-        self._hits = 0
-        self._misses = 0
-
-    def run(self, search_query: str, **kwargs):
-        """Execute search with caching."""
-        cache_key = search_query.strip().lower()
-
-        if cache_key in self._cache:
-            self._hits += 1
-            logger.debug(f"Cache hit for: {search_query[:50]}... (hits: {self._hits})")
-            return self._cache[cache_key]
-
-        self._misses += 1
-        logger.debug(f"Cache miss for: {search_query[:50]}... (misses: {self._misses})")
-        result = super().run(search_query, **kwargs)
-        self._cache[cache_key] = result
-
-        return result
 
 @CrewBase
 class UnifiedSolutionCrew:
@@ -137,6 +72,7 @@ class UnifiedSolutionCrew:
         social_content: SocialContentCollection | None = None,
         allowed_project_types: list[str] | None = None,
         niche_context: NicheContext | None = None,
+        audience_mapping: AudienceMappingResult | None = None,
         checkpoint_mgr: "CheckpointManager | None" = None,
     ):
         """
@@ -147,12 +83,14 @@ class UnifiedSolutionCrew:
             social_content: Optional social content for competitor intelligence
             allowed_project_types: Optional constraints on project types
             niche_context: Optional structured niche context with market segments and boundaries
+            audience_mapping: Optional audience intelligence from AudienceMappingCrew
             checkpoint_mgr: Optional checkpoint manager for task-level saves
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
         self.allowed_project_types = allowed_project_types
         self.niche_context = niche_context
+        self.audience_mapping = audience_mapping
         self.checkpoint_mgr = checkpoint_mgr
 
         # Initialize search tool for competitive research
@@ -166,7 +104,7 @@ class UnifiedSolutionCrew:
 
         # Prepare pain point knowledge source (for Task 1)
         if pain_point_analysis.pain_points:
-            pain_point_content = self._prepare_pain_point_content()
+            pain_point_content = prepare_pain_point_content(pain_point_analysis)
             from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
             self.pain_point_knowledge = StringKnowledgeSource(
@@ -182,7 +120,7 @@ class UnifiedSolutionCrew:
 
         # Prepare competitor intelligence knowledge source (for Task 2)
         if social_content and (social_content.reddit_posts or social_content.twitter_threads):
-            competitor_intel = self._prepare_competitor_intelligence(social_content)
+            competitor_intel = prepare_competitor_intelligence(social_content)
             if competitor_intel:
                 from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
 
@@ -196,128 +134,42 @@ class UnifiedSolutionCrew:
                     f"Competitor intelligence knowledge source created ({len(competitor_intel)} chars)"
                 )
 
+        # Create diversity guardrail with allowed project types
+        self._diversity_guardrail = create_diversity_guardrail(allowed_project_types)
+
         logger.info(
             f"UnifiedSolutionCrew initialized with {len(pain_point_analysis.pain_points)} pain points "
             f"and {len(self.knowledge_sources)} knowledge sources"
         )
 
-    def _prepare_pain_point_content(self) -> str:
-        """
-        Format pain points with ALL quotes for knowledge source.
-        Preserves all 3-5 quotes per pain point for richer context.
-        """
-        formatted = []
-        for pp in self.pain_point_analysis.pain_points:
-            formatted.append(f"""[PAIN POINT: {pp.title}]
-[SEVERITY: {pp.severity_score:.2f}]
-[WILLINGNESS TO PAY: {pp.willingness_to_pay:.2f}]
-[OPPORTUNITY LEVEL: {pp.opportunity_level.value}]
-[MENTIONS: {pp.mention_count}]
-[PLATFORMS: {', '.join(pp.source_platforms if pp.source_platforms else ['N/A'])}]
-[CATEGORIES: {', '.join(pp.categories if pp.categories else ['N/A'])}]
+    # ========== AUDIENCE CONTEXT HELPER ==========
 
-### Problem Description:
-{pp.description}
+    def _format_audience_context(self) -> dict[str, str]:
+        """Format audience mapping for task inputs."""
+        if not self.audience_mapping:
+            return {
+                "primary_target_segment": "Not available",
+                "audience_segments_summary": "Not available",
+                "common_vocabulary": "Not available",
+                "frustrations_with_existing": "Not available",
+                "tools_currently_used": "Not available",
+            }
 
-### All User Evidence ({len(pp.representative_quotes)} quotes):
-{chr(10).join(f'- "{quote}"' for quote in pp.representative_quotes)}
-""")
-        return "\n\n===\n\n".join(formatted)
+        # Format audience segments
+        segments = "\n".join(
+            f"- {s.segment_name}: {', '.join(s.pain_point_alignment)} ({s.expertise_level})"
+            for s in self.audience_mapping.audience_segments[:5]
+        ) if self.audience_mapping.audience_segments else "Not available"
 
-    def _prepare_competitor_intelligence(self, social_content: SocialContentCollection) -> str:
-        """
-        Extract competitor and tool mentions from social discussions.
-        Filters content for existing tools, alternatives, comparisons, pricing.
-        """
-        competitor_indicators = [
-            # Usage patterns
-            "using", "used", "tried", "currently use", "switched from", "switched to",
-            # Comparisons and alternatives
-            "alternative", "instead of", "compared to", "better than", "worse than",
-            # Tool/product names and categories
-            "tool", "platform", "service", "app", "software", "website",
-            # Pricing and value
-            "price", "cost", "expensive", "cheap", "affordable", "worth",
-            "subscription", "free", "paid", "trial",
-        ]
-
-        # Performance optimization: Compile indicators into regex pattern
-        # Reduces O(n*m*k) to O(n*m) where k=indicator count
-        indicator_pattern = re.compile(
-            '|'.join(re.escape(indicator) for indicator in competitor_indicators),
-            re.IGNORECASE
-        )
-
-        # Filter Reddit posts for competitor mentions
-        filtered_reddit = []
-        for post in social_content.reddit_posts:
-            # Check post title and body
-            content_lower = (post.title + " " + (post.selftext or "")).lower()
-            if indicator_pattern.search(content_lower):
-                filtered_reddit.append(post)
-            else:
-                # Check comments for competitor mentions
-                for comment in post.comments:
-                    if indicator_pattern.search(comment.body.lower()):
-                        filtered_reddit.append(post)
-                        break
-
-        # Filter Twitter threads for competitor mentions
-        filtered_twitter = []
-        for thread in social_content.twitter_threads:
-            content_lower = thread.root_tweet.text.lower()
-            if indicator_pattern.search(content_lower):
-                filtered_twitter.append(thread)
-            else:
-                # Check replies
-                for reply in thread.replies:
-                    if indicator_pattern.search(reply.text.lower()):
-                        filtered_twitter.append(thread)
-                        break
-
-        if not filtered_reddit and not filtered_twitter:
-            logger.info("No competitor mentions found in social content")
-            return ""
-
-        # Format filtered content
-        formatted = []
-
-        # Reddit competitor intelligence
-        if filtered_reddit:
-            formatted.append("[REDDIT COMPETITOR INTELLIGENCE]\n")
-            for post in filtered_reddit:
-                formatted.append(f"""[SUBREDDIT: r/{post.subreddit}]
-[SCORE: {post.score}]
-
-### {post.title}
-
-{post.selftext}
-
----
-## Discussion ({len(post.comments)} comments):
-{chr(10).join(f'- "{c.body}"' for c in post.comments[:10])}  # First 10 comments
-""")
-
-        # Twitter competitor intelligence
-        if filtered_twitter:
-            formatted.append("\n\n[TWITTER COMPETITOR INTELLIGENCE]\n")
-            for thread in filtered_twitter:
-                formatted.append(f"""[LIKES: {thread.root_tweet.likes}]
-
-### Root Tweet:
-{thread.root_tweet.text}
-
----
-## Replies ({len(thread.replies)} total):
-{chr(10).join(f'- "{r.text}"' for r in thread.replies[:10])}  # First 10 replies
-""")
-
-        logger.info(
-            f"Filtered competitor intelligence: {len(filtered_reddit)} Reddit posts, "
-            f"{len(filtered_twitter)} Twitter threads"
-        )
-
-        return "\n\n===\n\n".join(formatted)
+        return {
+            "primary_target_segment": self.audience_mapping.primary_target_segment or "Not available",
+            "audience_segments_summary": segments,
+            "common_vocabulary": ", ".join(self.audience_mapping.common_vocabulary[:12]) if self.audience_mapping.common_vocabulary else "Not available",
+            "frustrations_with_existing": "\n".join(
+                f"- {f}" for f in self.audience_mapping.frustrations_with_existing[:5]
+            ) if self.audience_mapping.frustrations_with_existing else "Not available",
+            "tools_currently_used": ", ".join(self.audience_mapping.tools_currently_used[:8]) if self.audience_mapping.tools_currently_used else "Not available",
+        }
 
     # ========== AGENTS ==========
 
@@ -325,13 +177,19 @@ class UnifiedSolutionCrew:
     def solution_ideator(self) -> Agent:
         """
         Agent for generating innovative solution concepts.
-        Uses configurable brainstorm_llm with higher temperature for creativity.
+        Uses configurable brainstorm_llm with high temperature and diversity penalties.
+
+        Temperature: 0.85 (high for creative ideation)
+        Frequency penalty: 0.5 (reduce repetitive patterns)
+        Presence penalty: 0.3 (encourage topic diversity)
         """
         return Agent(
             config=self.agents_config["solution_ideator"],
             llm=ChatOpenAI(
                 model=settings.brainstorm_llm,
-                temperature=0.7,
+                temperature=0.85,  # Increased from 0.7 for more creative diversity
+                frequency_penalty=0.5,  # Reduce repetition of similar phrases
+                presence_penalty=0.3,  # Encourage exploring new topics
                 api_key=settings.openai_api_key
             ),
             verbose=True,
@@ -342,11 +200,12 @@ class UnifiedSolutionCrew:
         """
         Agent for evaluating solution concepts.
         Uses low temperature for consistent, objective scoring.
+        Uses brainstorm_llm for reliable structured JSON output.
         """
         return Agent(
             config=self.agents_config["solution_evaluator"],
             llm=ChatOpenAI(
-                model=settings.openai_model_name,
+                model=settings.brainstorm_llm,
                 temperature=0.2,
                 api_key=settings.openai_api_key
             ),
@@ -398,11 +257,12 @@ class UnifiedSolutionCrew:
         """
         Agent for refining solutions with competitive insights.
         Moderate temperature for structured enhancement.
+        Uses brainstorm_llm for reliable structured JSON output.
         """
         return Agent(
             config=self.agents_config["solution_refiner"],
             llm=ChatOpenAI(
-                model=settings.openai_model_name,
+                model=settings.brainstorm_llm,
                 temperature=0.4,
                 api_key=settings.openai_api_key
             ),
@@ -425,195 +285,127 @@ class UnifiedSolutionCrew:
             verbose=True,
         )
 
-    # ========== TASKS ==========
+    # ========== TASKS (New 3-Task Divergent-Convergent Architecture) ==========
 
     @task
-    def solution_ideation_task(self) -> Task:
+    def divergent_exploration_task(self) -> Task:
         """
-        Task 1: Generate and refine solution concepts from pain points.
-        Output: IdeaGenerationResult with 3-5 solutions.
+        NEW Task 1: Generate 8-12 raw concepts using forced ideation techniques.
+
+        Divergent phase - prioritize quantity and variety over polish.
+        Uses high temperature (0.85) for creative diversity.
+        Output: RawConceptList with 8-12 lightweight concepts.
         """
         return Task(
-            config=self.tasks_config["solution_ideation"],
-            agent=self.solution_ideator(),
-            output_pydantic=IdeaGenerationResult,
+            config=self.tasks_config["divergent_exploration"],
+            agent=self.solution_ideator(),  # High temp (0.85) for creativity
+            output_pydantic=RawConceptList,
         )
+
+    @task
+    def diversity_filtering_task(self) -> Task:
+        """
+        NEW Task 2: Filter raw concepts to ensure diversity.
+
+        Convergent phase - apply strict diversity criteria.
+        Clusters similar concepts, enforces architectural variety.
+        Output: FilteredConceptList with 5-7 unique concepts.
+        """
+        return Task(
+            config=self.tasks_config["diversity_filtering"],
+            agent=self.solution_evaluator(),  # Low temp (0.2) for objective filtering
+            context=[self.divergent_exploration_task()],
+            output_pydantic=FilteredConceptList,
+        )
+
+    @task
+    def solution_refinement_task(self) -> Task:
+        """
+        Task 3: Expand filtered concepts into full specifications.
+
+        Scores each on market fit, novelty, solo-dev feasibility, SEO.
+        Selects top 3-5 for detailed specification.
+        Includes diversity guardrail to catch similar solutions.
+        Output: IdeaGenerationResult with 3-5 complete solutions.
+        """
+        return Task(
+            config=self.tasks_config["solution_refinement"],
+            agent=self.solution_refiner(),  # Moderate temp (0.4) for structured creativity
+            context=[self.diversity_filtering_task()],
+            output_pydantic=IdeaGenerationResult,
+            guardrail=self._diversity_guardrail,  # Enforce diversity in final output
+        )
+
+    # ========== COMPETITIVE TASKS ==========
 
     @task
     def competitive_analysis_task(self) -> Task:
         """
-        Task 2: Analyze competitive landscape for ALL solutions.
-        Depends on: solution_ideation_task (via context)
+        Task 4: Analyze competitive landscape for solutions.
+        Depends on: solution_refinement_task (via context)
         Output: CompetitiveAnalysisResult with per-solution landscapes.
         """
         return Task(
             config=self.tasks_config["competitive_analysis"],
             agent=self.competitive_researcher(),
-            context=[self.solution_ideation_task()],
+            context=[self.solution_refinement_task()],
             output_pydantic=CompetitiveAnalysisResult,
         )
 
     @task
     def competitive_refinement_task(self) -> Task:
         """
-        Task 3: Generate competitive enhancements for solutions.
-
-        Generates ONLY enhancements based on competitive analysis:
-        - new_core_features (2-4 NEW features from competitive gaps)
-        - new_differentiation_factors (2-3 NEW factors)
-        - value_proposition_update (if competitive analysis suggests changes)
-        - pricing_strategy_update (if competitive analysis suggests changes)
-        - market_fit_score_adjustment (±0.1 if justified)
-
-        All base solution fields from Task 1 will be preserved via Python merge in execute_pipeline().
-
-        Depends on: solution_ideation_task + competitive_analysis_task (via context)
+        Task 5: Generate competitive enhancements for solutions.
+        Depends on: solution_refinement_task + competitive_analysis_task (via context)
         Output: CompetitiveEnhancements (enhancements only)
         """
         return Task(
             config=self.tasks_config["competitive_refinement"],
             agent=self.solution_refiner(),
-            context=[self.solution_ideation_task(), self.competitive_analysis_task()],
+            context=[self.solution_refinement_task(), self.competitive_analysis_task()],
             output_pydantic=CompetitiveEnhancements,
-            guardrail=self._validate_enhancements_output,
+            guardrail=validate_enhancements_output,
         )
-
-    def _validate_enhancements_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Guardrail for competitive_refinement_task to ensure valid enhancement output.
-
-        Validates:
-        - Pydantic output exists
-        - solution_enhancements list is populated
-        - Each enhancement has required fields
-
-        Returns:
-            tuple[bool, Any]: (success, result_or_error)
-        """
-        try:
-            result = task_output.pydantic
-            if result is None:
-                return (False, "Competitive refinement returned None pydantic output")
-
-            if not isinstance(result, CompetitiveEnhancements):
-                return (False, f"Invalid output type: expected CompetitiveEnhancements, got {type(result)}")
-
-            # Validate solution_enhancements exists and has entries
-            if not result.solution_enhancements:
-                return (False, "solution_enhancements list cannot be empty - must have at least 1 enhancement")
-
-            # Validate each enhancement has required solution_name
-            for i, enh in enumerate(result.solution_enhancements):
-                if not enh.solution_name or enh.solution_name.strip() == "":
-                    return (False, f"Enhancement {i} missing solution_name")
-
-            logger.info(f"✓ Enhancements guardrail passed: {len(result.solution_enhancements)} solution enhancements")
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Enhancement validation error: {str(e)}")
 
     @task
     def solution_selection_task(self) -> Task:
         """
-        Task 4: Select best solution based on scoring criteria.
-        Depends on: competitive_refinement_task (via context)
+        Task 6: Select best solution based on scoring criteria.
+        Depends on: solution_refinement_task (full specs) + competitive_refinement_task (enhancements)
         Output: SolutionSelection with selected solution and rationale.
+
+        NOTE: Must include solution_refinement_task in context to provide complete solution
+        specs with numeric scores (market_fit_score, technical_feasibility_score, etc.).
+        Without Task 3's data, the selection agent only sees enhancement deltas from Task 5.
         """
         return Task(
             config=self.tasks_config["solution_selection"],
             agent=self.strategic_selector(),
-            context=[self.competitive_refinement_task()],
+            context=[self.solution_refinement_task(), self.competitive_refinement_task()],
             output_pydantic=SolutionSelection,
         )
 
-    # ========== GUARDRAILS ==========
-
-    def _validate_no_field_loss(self, task_output) -> tuple[bool, Any]:
-        """
-        Guardrail for competitive_refinement_task to ensure no data loss.
-        Validates solution count and required fields are preserved.
-
-        Returns:
-            tuple[bool, Any]: (success: bool, result_or_error: Any)
-        """
-        try:
-            result = task_output.pydantic
-
-            if not isinstance(result, IdeaGenerationResult):
-                return (False, f"Invalid output type: expected IdeaGenerationResult, got {type(result)}")
-
-            # DETECT SCHEMA OUTPUT BUG: Agent returned JSON Schema instead of populated data
-            if len(result.solution_ideas) == 0:
-                logger.error("⚠️ Task 3 returned empty solution_ideas list - possible schema confusion")
-                logger.error(f"Output type: {type(result)}")
-
-                # Check raw output for schema indicators
-                if hasattr(task_output, 'raw') and task_output.raw:
-                    raw_preview = str(task_output.raw)[:1000]
-                    logger.error(f"Raw output preview: {raw_preview}")
-
-                    # Detect schema structure patterns
-                    if any(indicator in task_output.raw for indicator in [
-                        '"additionalProperties"',
-                        '"properties":',
-                        '"type": "object"',
-                        '"required": ['
-                    ]):
-                        return (
-                            False,
-                            "Agent returned JSON Schema definition instead of populated data. "
-                            "Task prompt includes concrete examples - agent must extract actual values from Task 1 context "
-                            "and output populated IdeaGenerationResult with real solution data."
-                        )
-
-                return (False, "Empty solution_ideas list - agent must extract solutions from Task 1 context")
-
-            # Check solution count matches input (stored during crew execution)
-            if hasattr(self, '_expected_solution_count'):
-                actual_count = len(result.solution_ideas)
-                if actual_count != self._expected_solution_count:
-                    return (
-                        False,
-                        f"Solution count mismatch: expected {self._expected_solution_count}, got {actual_count}"
-                    )
-
-            # Validate required fields
-            field_errors = []
-            for idea in result.solution_ideas:
-                missing_fields = []
-
-                if not idea.solution_name or idea.solution_name.strip() == "":
-                    missing_fields.append("solution_name")
-                if not idea.description or idea.description.strip() == "":
-                    missing_fields.append("description")
-                if not idea.pain_points_addressed:
-                    missing_fields.append("pain_points_addressed")
-                if not idea.core_features:
-                    missing_fields.append("core_features")
-                if idea.market_fit_score is None:
-                    missing_fields.append("market_fit_score")
-                if idea.technical_feasibility_score is None:
-                    missing_fields.append("technical_feasibility_score")
-
-                if missing_fields:
-                    field_errors.append(f"Solution '{idea.solution_name}': {', '.join(missing_fields)}")
-
-            if field_errors:
-                return (False, "Required fields missing:\n" + "\n".join(field_errors))
-
-            logger.info(f"✓ Guardrail passed: {len(result.solution_ideas)} solutions with all fields preserved")
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Guardrail validation error: {str(e)}")
 
     # ========== CREW ASSEMBLY ==========
 
     @crew
     def crew(self) -> Crew:
         """
-        Assemble UnifiedSolutionCrew with 4 sequential tasks and knowledge sources.
+        Assemble UnifiedSolutionCrew with 6-task divergent-convergent pipeline.
+
+        Tasks:
+        1. divergent_exploration - Generate 8-12 raw concepts (high creativity)
+        2. diversity_filtering - Filter to 5-7 unique concepts
+        3. solution_refinement - Expand to full specifications (3-5 solutions)
+        4. competitive_analysis - Analyze competitive landscape
+        5. competitive_refinement - Enhance with competitive insights
+        6. solution_selection - Select best solution
+
+        Benefits:
+        - Forced ideation techniques prevent obvious/similar ideas
+        - Explicit diversity filtering catches duplicates
+        - Novelty scoring ensures innovation
+        - Solo-dev feasibility weighted in scoring
         """
         from crewai.knowledge.knowledge import Knowledge
         from ..utils.helpers import sanitize_collection_name
@@ -623,9 +415,19 @@ class UnifiedSolutionCrew:
             "config": {"model_name": "text-embedding-3-small"}
         }
 
+        # 6-task divergent-convergent pipeline
+        pipeline_tasks = [
+            self.divergent_exploration_task(),   # Task 1: Generate 8-12 raw concepts
+            self.diversity_filtering_task(),     # Task 2: Filter to 5-7 unique
+            self.solution_refinement_task(),     # Task 3: Expand to full specs
+            self.competitive_analysis_task(),    # Task 4: Competitive research
+            self.competitive_refinement_task(),  # Task 5: Enhance with insights
+            self.solution_selection_task(),      # Task 6: Select best
+        ]
+
         crew_config = {
             "agents": self.agents,
-            "tasks": self.tasks,
+            "tasks": pipeline_tasks,
             "verbose": True,
             "process_type": "sequential",
             "embedder": embedder_config,
@@ -633,7 +435,6 @@ class UnifiedSolutionCrew:
 
         # Create Knowledge with niche-specific collection name for isolation
         if self.knowledge_sources:
-            # Get niche from context for collection naming
             niche = self.niche_context.niche_input if self.niche_context else "default"
             collection_name = sanitize_collection_name(niche, "solution")
             logger.info(f"Creating solution knowledge with collection: {collection_name}")
@@ -649,14 +450,29 @@ class UnifiedSolutionCrew:
 
     # ========== EXECUTION ==========
 
-    def execute_pipeline(self) -> tuple[IdeaGenerationResult, CompetitiveAnalysisResult, SolutionSelection]:
+    def execute_pipeline(self) -> tuple[
+        IdeaGenerationResult,
+        CompetitiveAnalysisResult,
+        SolutionSelection,
+        Optional[CompetitiveEnhancements],
+        Optional[IdeationProcess]
+    ]:
         """
-        Execute complete solution pipeline (4 tasks).
+        Execute complete solution pipeline using divergent-convergent architecture (6 tasks).
+
+        Architecture:
+        1. Divergent Exploration - Generate 8-12 raw concepts with forced ideation
+        2. Diversity Filtering - Filter to 5-7 unique concepts
+        3. Solution Refinement - Expand to 3-5 full specifications
+        4. Competitive Analysis - Analyze competitive landscape
+        5. Competitive Refinement - Enhance with competitive insights
+        6. Solution Selection - Select best solution
 
         Returns:
-            Tuple of (refined_solutions, competitive_analysis, solution_selection)
+            Tuple of (refined_solutions, competitive_analysis, solution_selection,
+                      competitive_enhancements, ideation_process)
         """
-        logger.info("Starting Unified Solution Pipeline (Stages 7-8.75)...")
+        logger.info("Starting Unified Solution Pipeline (Divergent-Convergent Architecture)...")
 
         if not self.pain_point_analysis.pain_points:
             logger.warning("No pain points provided - cannot generate solutions")
@@ -673,7 +489,9 @@ class UnifiedSolutionCrew:
                     selection_criteria_scores=[],
                     runner_up_solutions=[],
                     recommended_focus=""
-                )
+                ),
+                None,  # competitive_enhancements
+                None   # ideation_process
             )
 
         try:
@@ -728,9 +546,15 @@ class UnifiedSolutionCrew:
                 user_segments_formatted = "Not available"
                 logger.warning("No user segments available from pain point analysis")
 
-            # Execute crew with unified pipeline
-            logger.info("Executing Task 1: Solution Ideation...")
-            crew_output = self.crew().kickoff(inputs={
+            # Format audience context for task inputs
+            audience_context = self._format_audience_context()
+            if self.audience_mapping:
+                logger.info(f"Passing audience intelligence: {len(self.audience_mapping.common_vocabulary or [])} vocabulary terms, {len(self.audience_mapping.audience_segments or [])} segments")
+
+            # Execute crew with divergent-convergent pipeline
+            logger.info("Executing Pipeline: Divergent Exploration → Diversity Filtering → Solution Refinement...")
+            self._last_crew = self.crew()  # Store for usage_metrics access
+            crew_output = self._last_crew.kickoff(inputs={
                 "analysis_summary": self.pain_point_analysis.analysis_summary,
                 "high_priority_count": len(high_priority),
                 "medium_priority_count": len(medium_priority),
@@ -743,55 +567,76 @@ class UnifiedSolutionCrew:
                 "niche_description": niche_description,
                 "market_segments": market_segments_formatted,
                 "industry_boundaries": industry_boundaries,
-                "user_segments": user_segments_formatted
+                "user_segments": user_segments_formatted,
+                # Audience intelligence from Stage 6.5
+                **audience_context,
             })
 
-            # Extract final result (Task 4 output - SolutionSelection)
+            # Extract final result (Task 6 output - SolutionSelection)
             solution_selection = crew_output.pydantic
             if solution_selection is None:
                 raise ValueError(
-                    "Task 4 (Solution Selection) returned None pydantic output. "
+                    "Task 6 (Solution Selection) returned None pydantic output. "
                     "Check task configuration and agent prompt."
                 )
 
             # Access intermediate task outputs (CrewAI provides access via crew_output.tasks_outputs)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-            if len(task_outputs) < 4:
+            if len(task_outputs) < 6:
                 raise ValueError(
-                    f"Expected 4 task outputs, got {len(task_outputs)}. "
+                    f"Expected 6 task outputs, got {len(task_outputs)}. "
                     "Pipeline may have failed mid-execution."
                 )
 
-            # Extract Task 1 (base solutions) - REQUIRED
-            base_solutions = task_outputs[0].pydantic
+            # Log intermediate outputs for debugging
+            raw_concepts = task_outputs[0].pydantic  # RawConceptList
+            filtered_concepts = task_outputs[1].pydantic  # FilteredConceptList
+            if raw_concepts:
+                logger.info(f"  Task 1 (Divergent): Generated {len(raw_concepts.concepts)} raw concepts")
+            if filtered_concepts:
+                logger.info(f"  Task 2 (Filter): Filtered to {len(filtered_concepts.concepts)} unique concepts")
+                if filtered_concepts.removed_concepts:
+                    logger.info(f"  Removed {len(filtered_concepts.removed_concepts)} similar concepts")
+
+            # Extract Task 3 (refined solutions) - REQUIRED
+            base_solutions = task_outputs[2].pydantic
             if base_solutions is None:
                 raise ValueError(
-                    "Task 1 (Solution Ideation) returned None pydantic output. "
+                    "Task 3 (Solution Refinement) returned None pydantic output. "
                     "Check IdeaGenerationResult schema and agent prompt."
                 )
 
-            # Extract Task 2 (competitive analysis) - REQUIRED
-            competitive_analysis = task_outputs[1].pydantic
+            # Extract Task 4 (competitive analysis) - REQUIRED
+            competitive_analysis = task_outputs[3].pydantic
             if competitive_analysis is None:
                 raise ValueError(
-                    "Task 2 (Competitive Analysis) returned None pydantic output. "
+                    "Task 4 (Competitive Analysis) returned None pydantic output. "
                     "Check CompetitiveAnalysisResult schema and agent prompt."
                 )
 
-            # Extract Task 3 (enhancements) - OPTIONAL (can be None if no enhancements generated)
-            enhancements = task_outputs[2].pydantic  # CompetitiveEnhancements or None
+            # Extract Task 5 (enhancements) - OPTIONAL (can be None if no enhancements generated)
+            enhancements = task_outputs[4].pydantic  # CompetitiveEnhancements or None
 
             # Save task-level checkpoints for resume capability
             if self.checkpoint_mgr:
+                if raw_concepts:
+                    self.checkpoint_mgr.save_stage("stage_7_1_divergent", raw_concepts)
+                    logger.debug("Checkpoint saved: stage_7_1_divergent")
+                if filtered_concepts:
+                    self.checkpoint_mgr.save_stage("stage_7_2_filtered", filtered_concepts)
+                    logger.debug("Checkpoint saved: stage_7_2_filtered")
                 if base_solutions:
-                    self.checkpoint_mgr.save_stage("stage_7_1_ideation", base_solutions)
-                    logger.debug("Checkpoint saved: stage_7_1_ideation")
-                if competitive_analysis:
-                    self.checkpoint_mgr.save_stage("stage_7_2_competitive", competitive_analysis)
-                    logger.debug("Checkpoint saved: stage_7_2_competitive")
-                if enhancements:
-                    self.checkpoint_mgr.save_stage("stage_7_3_refinement", enhancements)
+                    self.checkpoint_mgr.save_stage("stage_7_3_refinement", base_solutions)
                     logger.debug("Checkpoint saved: stage_7_3_refinement")
+                if competitive_analysis:
+                    self.checkpoint_mgr.save_stage("stage_7_4_competitive", competitive_analysis)
+                    logger.debug("Checkpoint saved: stage_7_4_competitive")
+                if enhancements:
+                    self.checkpoint_mgr.save_stage("stage_7_5_enhancements", enhancements)
+                    logger.debug("Checkpoint saved: stage_7_5_enhancements")
+                if solution_selection:
+                    self.checkpoint_mgr.save_stage("stage_7_6_selection", solution_selection)
+                    logger.debug("Checkpoint saved: stage_7_6_selection")
 
             # Python merge: Apply enhancements to base solutions
             from copy import deepcopy
@@ -834,13 +679,38 @@ class UnifiedSolutionCrew:
                     f"[OK] Applied competitive enhancements to {len(refined_solutions.solution_ideas)} solutions"
                 )
 
+            # Build ideation process metadata for transparency
+            ideation_process = IdeationProcess(
+                total_concepts_generated=len(raw_concepts.concepts) if raw_concepts else 0,
+                concepts_filtered=len(filtered_concepts.removed_concepts) if filtered_concepts else 0,
+                removed_concepts=filtered_concepts.removed_concepts if filtered_concepts else [],
+                removal_reasons=filtered_concepts.removal_reasons if filtered_concepts else [],
+                techniques_used=raw_concepts.techniques_used if raw_concepts else [],
+                diversity_summary=filtered_concepts.diversity_summary if filtered_concepts else None,
+            )
+
             logger.info("✓ Unified Pipeline Complete:")
-            logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
-            logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
+            logger.info(f"  - Raw concepts: {len(raw_concepts.concepts) if raw_concepts else 0}")
+            logger.info(f"  - Filtered concepts: {len(filtered_concepts.concepts) if filtered_concepts else 0}")
+            logger.info(f"  - Removed concepts: {ideation_process.concepts_filtered}")
+            logger.info(f"  - Final solutions: {len(refined_solutions.solution_ideas)}")
+            logger.info(f"  - Competitive landscapes: {len(competitive_analysis.solution_landscapes)}")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
 
-            return (refined_solutions, competitive_analysis, solution_selection)
+            return (refined_solutions, competitive_analysis, solution_selection, enhancements, ideation_process)
 
         except Exception as e:
             logger.error(f"Unified pipeline failed: {e}")
             raise
+
+    @property
+    def usage_metrics(self) -> dict | None:
+        """
+        Get usage metrics from the last crew execution.
+
+        Returns:
+            Dict with prompt_tokens, completion_tokens, total_tokens or None if not available
+        """
+        if hasattr(self, '_last_crew') and self._last_crew:
+            return self._last_crew.usage_metrics
+        return None

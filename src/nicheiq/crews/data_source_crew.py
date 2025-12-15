@@ -254,7 +254,9 @@ class DataSourceResearchCrew:
                 seo_priorities = f"High-priority keywords: {', '.join(top_keywords)}"
 
             # Execute crew with inputs
-            crew_output = self.crew().kickoff(inputs={
+            crew_instance = self.crew()
+            self._last_crew = crew_instance  # Store for usage_metrics access
+            crew_output = crew_instance.kickoff(inputs={
                 "solution_name": self.solution.solution_name,
                 "solution_description": self.solution.description,
                 "solution_features": ', '.join(self.solution.core_features if self.solution.core_features else []),
@@ -362,3 +364,15 @@ class DataSourceResearchCrew:
         except Exception as e:
             logger.error(f"Data source research failed: {e}")
             raise
+
+    @property
+    def usage_metrics(self) -> dict | None:
+        """
+        Get usage metrics from the last crew execution.
+
+        Returns:
+            CrewAI UsageMetrics object or None if no execution yet
+        """
+        if hasattr(self, '_last_crew') and self._last_crew:
+            return self._last_crew.usage_metrics
+        return None

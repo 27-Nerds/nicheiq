@@ -80,7 +80,7 @@ class Settings(BaseSettings):
     # Application Settings
     log_level: str = Field(default="INFO", description="Logging level")
     max_retries: int = Field(default=3, description="Maximum retry attempts for API calls")
-    timeout_seconds: int = Field(default=30, description="API request timeout in seconds")
+    timeout_seconds: int = Field(default=60, description="API request timeout in seconds (increased for large batches)")
     niche_description: str | None = Field(
         default=None, description="Niche/market area to research (optional, can be provided via CLI)"
     )
@@ -109,6 +109,10 @@ class Settings(BaseSettings):
     min_comment_score: int = Field(
         default=2,
         description="Minimum score for Reddit comments (filters out low-quality/downvoted comments)"
+    )
+    max_reddit_content_tokens: int = Field(
+        default=400_000,
+        description="Maximum tokens for Reddit content in PainPointCrew (filters by engagement/recency)"
     )
     min_twitter_likes: int = Field(default=10, description="Minimum likes for Twitter posts (higher threshold for quality)")
     min_twitter_replies: int = Field(
@@ -221,6 +225,17 @@ class Settings(BaseSettings):
     cost_logging_enabled: bool = Field(
         default=True,
         description="Log estimated API costs for token usage"
+    )
+
+    # Cost Budget Configuration
+    cost_budget_enabled: bool = Field(
+        default=False,
+        description="Enable cost budget tracking (logs warning when approaching limit)"
+    )
+    cost_budget_limit: float = Field(
+        default=5.00,
+        gt=0,
+        description="Maximum API cost budget per run in USD (soft limit, logs warning when exceeded)"
     )
 
     # Solution Validation Configuration

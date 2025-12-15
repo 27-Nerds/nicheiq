@@ -19,6 +19,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..crews import PainPointCrew, SEOStrategyCrew, UnifiedSolutionCrew
 from ..crews.solution_refinement_crew import SolutionRefinementCrew
+from ..crews.traffic_monetization_crew import TrafficMonetizationCrew
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.research_state import ResearchState
 from ..tools.reddit_tool import RedditCollectorTool
@@ -32,7 +33,7 @@ from ..utils.score_refinement import (
 )
 from ..utils.search_helpers import SearchHelper
 from ..utils.seed_generation import SeedGenerator
-from ..utils.token_monitor import ContentTokenMonitor
+from ..utils.token_monitor import ContentTokenMonitor, CostTracker
 from ..utils.validation import KeywordRelevanceValidator
 from .checkpoint_manager import CheckpointManager
 
@@ -76,6 +77,9 @@ class ResearchFlow(Flow[ResearchState]):
         self.dataforseo_tool = DataForSEOExpandTool()
 
         logger.info(f"ResearchFlow initialized for niche: {niche_description[:100]}...")
+
+        # Initialize cost tracker for run-level cost monitoring
+        self.cost_tracker = CostTracker()
 
         # Initialize checkpoint manager
         self.checkpoint_mgr = CheckpointManager(
@@ -213,6 +217,10 @@ class ResearchFlow(Flow[ResearchState]):
             ),
             8.5: lambda: (
                 self.state.competitive_analysis is not None and
+                self.state.idea_generation is not None
+            ),
+            8.55: lambda: (
+                self.state.keyword_validation_results is not None and
                 self.state.idea_generation is not None
             ),
             8.75: lambda: (
@@ -523,6 +531,99 @@ class ResearchFlow(Flow[ResearchState]):
 
         return (tier, confidence_score)
 
+    def _mark_stage_complete(self, stage: float, used_fallback: bool = False) -> None:
+        """
+        Mark a stage as complete with timestamp tracking.
+
+        This enables diagnostic visibility into pipeline execution:
+        - Which stages completed successfully
+        - When each stage completed
+        - Which stages used fallback/incomplete data
+
+        Args:
+            stage: Stage number (e.g., 5, 6, 6.5, 8.5)
+            used_fallback: True if stage used fallback/incomplete data
+        """
+        # Track completed stage (avoid duplicates)
+        if stage not in self.state.completed_stages:
+            self.state.completed_stages.append(stage)
+            self.state.completed_stages.sort()  # Keep sorted for readability
+            logger.debug(f"[Stage Tracking] Stage {stage} marked complete")
+
+        # Track completion timestamp
+        stage_key = str(stage)
+        self.state.stage_completion_timestamps[stage_key] = datetime.now()
+
+        # Track fallback usage
+        if used_fallback and stage not in self.state.fallback_stages:
+            self.state.fallback_stages.append(stage)
+            self.state.fallback_stages.sort()
+            logger.warning(f"[Stage Tracking] Stage {stage} used fallback data")
+
+    def _map_pain_points_to_segments(self, audience_result) -> None:
+        """
+        Map pain points to audience segments based on keyword matching.
+
+        Phase 3: Enriches PainPoint.affected_segments by matching pain point
+        categories and keywords against audience segment primary concerns.
+
+        This enables:
+        - Understanding which segments experience which pain points
+        - Solution targeting based on segment-pain alignment
+        - Marketing messaging specific to segment needs
+
+        Args:
+            audience_result: AudienceMappingResult from Stage 6.5
+        """
+        if not self.state.pain_point_analysis:
+            return
+
+        # Build lookup: lowercase keywords from segments → segment names
+        segment_keyword_map: dict[str, list[str]] = {}
+        for segment in audience_result.audience_segments:
+            segment_name = segment.segment_name
+            # Use primary_concerns as matching keywords
+            for concern in (segment.pain_point_alignment or []):
+                keywords = concern.lower().split()
+                for keyword in keywords:
+                    if len(keyword) > 3:  # Skip short words
+                        if keyword not in segment_keyword_map:
+                            segment_keyword_map[keyword] = []
+                        if segment_name not in segment_keyword_map[keyword]:
+                            segment_keyword_map[keyword].append(segment_name)
+
+        # Map pain points to segments
+        mapped_count = 0
+        for pain_point in self.state.pain_point_analysis.pain_points:
+            matching_segments = set()
+
+            # Match against pain point title and categories
+            title_words = pain_point.title.lower().split()
+            categories = [c.lower() for c in (pain_point.categories or [])]
+
+            # Check title keywords
+            for word in title_words:
+                if word in segment_keyword_map:
+                    matching_segments.update(segment_keyword_map[word])
+
+            # Check category keywords
+            for cat in categories:
+                cat_words = cat.split()
+                for word in cat_words:
+                    if word in segment_keyword_map:
+                        matching_segments.update(segment_keyword_map[word])
+
+            # Update affected_segments
+            if matching_segments:
+                pain_point.affected_segments = list(matching_segments)
+                mapped_count += 1
+
+        if mapped_count > 0:
+            logger.info(
+                f"[Stage 6.5] Mapped {mapped_count}/{len(self.state.pain_point_analysis.pain_points)} "
+                f"pain points to audience segments"
+            )
+
     def _execute_remaining_stages(self) -> str:
         """
         Execute remaining stages after checkpoint resume.
@@ -559,7 +660,7 @@ class ResearchFlow(Flow[ResearchState]):
                 logger.info("Skipping Stage 6.5 (Audience Mapping) - already completed")
 
             # Stages 7-8.75 now handled by unified solution pipeline
-            if "stage_7_4_selection" not in completed_stages:
+            if "stage_7_6_selection" not in completed_stages:
                 if self._validate_stage_prerequisites(7):
                     logger.info("Executing Unified Solution Pipeline (Stages 7-8.75)...")
                     self.stage_7_unified_solution_pipeline()
@@ -575,7 +676,7 @@ class ResearchFlow(Flow[ResearchState]):
             # before Stage 8.5 runs. Use checkpoint status as the primary check.
             if "stage_8_pricing_validation" not in completed_stages:
                 # Only run if Stage 7 (unified pipeline) has completed
-                if "stage_7_4_selection" in completed_stages:
+                if "stage_7_6_selection" in completed_stages:
                     if self._validate_stage_prerequisites(8):
                         self.stage_8_pricing_validation()
                         # Refresh completed_stages so subsequent stages see this checkpoint
@@ -604,10 +705,25 @@ class ResearchFlow(Flow[ResearchState]):
             else:
                 logger.info("Skipping Stage 8.5 (Keyword Validation) - already completed")
 
-            # Stage 8.6: Market Sizing (runs after Stage 8.5, now has keyword data)
-            if "stage_8_6_market_sizing" not in completed_stages:
+            # Stage 8.55: Traffic Monetization (runs after Stage 8.5 for directory/aggregator types)
+            if "stage_8_55_traffic_monetization" not in completed_stages:
                 # Only run if Stage 8.5 has completed
                 if "stage_8_5_keyword_validation" in completed_stages:
+                    if self._validate_stage_prerequisites(8.55):
+                        self.stage_8_55_traffic_monetization()
+                        # Refresh completed_stages so subsequent stages see this checkpoint
+                        completed_stages = self.checkpoint_mgr.get_completed_stages()
+                    else:
+                        logger.info("Skipping Stage 8.55 (Traffic Monetization) - prerequisites not met")
+                else:
+                    logger.info("Skipping Stage 8.55 (Traffic Monetization) - awaiting Stage 8.5")
+            else:
+                logger.info("Skipping Stage 8.55 (Traffic Monetization) - already completed")
+
+            # Stage 8.6: Market Sizing (runs after Stage 8.55, now has keyword data and traffic analysis)
+            if "stage_8_6_market_sizing" not in completed_stages:
+                # Only run if Stage 8.55 has completed (which runs after 8.5)
+                if "stage_8_55_traffic_monetization" in completed_stages or "stage_8_5_keyword_validation" in completed_stages:
                     if self._validate_stage_prerequisites(8.6):
                         self.stage_8_6_market_sizing()
                         # Refresh completed_stages so subsequent stages see this checkpoint
@@ -768,13 +884,17 @@ Return a valid JSON object with this structure:
 
         # Use centralized LLM service for structured output
         # Moderate temperature (0.5) for balanced understanding + structured strategy
-        context: NicheContext = LLMService.invoke_structured(
+        context, usage = LLMService.invoke_structured(
             prompt=prompt,
             output_model=NicheContext,
             temperature=0.5,
             timeout=120,
             model_name=settings.openai_model_name
         )
+
+        # Record cost if tracker is available
+        if hasattr(self, 'cost_tracker') and self.cost_tracker:
+            self.cost_tracker.record_llm_usage("Stage 1 - Niche Context", usage.to_dict())
 
         # Add niche_input to the context
         context.niche_input = niche_input
@@ -965,6 +1085,37 @@ Return a valid JSON object with this structure:
             twitter_threads=twitter_threads
         )
 
+        # Track filtering statistics (Phase 2.5: Data quality transparency)
+        # This enables understanding of false negative rates in URL filtering
+        reddit_searched = len(unique_reddit_results)
+        reddit_relevant = len(reddit_urls)
+        twitter_searched = len(unique_twitter_results) if settings.enable_twitter else 0
+        twitter_relevant = len(twitter_urls) if settings.enable_twitter else 0
+
+        self.state.filtering_stats = {
+            "reddit_urls_searched": reddit_searched,
+            "reddit_urls_relevant": reddit_relevant,
+            "reddit_filtering_rate": (reddit_searched - reddit_relevant) / reddit_searched if reddit_searched > 0 else 0,
+            "twitter_urls_searched": twitter_searched,
+            "twitter_urls_relevant": twitter_relevant,
+            "twitter_filtering_rate": (twitter_searched - twitter_relevant) / twitter_searched if twitter_searched > 0 else 0,
+            "total_urls_searched": reddit_searched + twitter_searched,
+            "total_urls_relevant": reddit_relevant + twitter_relevant,
+            "overall_filtering_rate": (
+                (reddit_searched + twitter_searched - reddit_relevant - twitter_relevant) /
+                (reddit_searched + twitter_searched)
+            ) if (reddit_searched + twitter_searched) > 0 else 0,
+        }
+        logger.info(
+            f"[Filtering Stats] Reddit: {reddit_relevant}/{reddit_searched} relevant "
+            f"({self.state.filtering_stats['reddit_filtering_rate']*100:.1f}% filtered)"
+        )
+        if settings.enable_twitter:
+            logger.info(
+                f"[Filtering Stats] Twitter: {twitter_relevant}/{twitter_searched} relevant "
+                f"({self.state.filtering_stats['twitter_filtering_rate']*100:.1f}% filtered)"
+            )
+
         # Validate social content quality
         from ..utils.validation import SocialContentValidator
         validator = SocialContentValidator()
@@ -989,6 +1140,9 @@ Return a valid JSON object with this structure:
 
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 6
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(5, used_fallback=(quality_tier == "INSUFFICIENT"))
 
         # Checkpoint: Save social content
         self.checkpoint_mgr.save_stage("stage_5_social_content", self.state.social_content)
@@ -1057,6 +1211,14 @@ Return a valid JSON object with this structure:
         logger.info("Running pain point analysis crew...")
         self.state.pain_point_analysis = pain_point_crew.analyze()
 
+        # Record crew cost
+        if pain_point_crew.usage_metrics:
+            self.cost_tracker.record_crew_usage(
+                stage="Stage 6 - Pain Point Analysis",
+                usage_metrics=pain_point_crew.usage_metrics,
+                model=settings.content_analysis_llm
+            )
+
         logger.info(f"[OK] Identified {len(self.state.pain_point_analysis.pain_points)} pain points")
         logger.info(f"[OK] Total mentions: {self.state.pain_point_analysis.total_mentions}")
         # Ensure top_categories contains strings
@@ -1094,6 +1256,9 @@ Return a valid JSON object with this structure:
 
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 6.5
+
+        # Mark stage complete with tracking (fallback if quality is BRONZE)
+        self._mark_stage_complete(6, used_fallback=(quality_tier == "BRONZE"))
 
         # Checkpoint: Save pain point analysis
         self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
@@ -1140,6 +1305,14 @@ Return a valid JSON object with this structure:
             niche_description=self.niche_description
         )
 
+        # Record crew cost
+        if audience_crew.usage_metrics:
+            self.cost_tracker.record_crew_usage(
+                stage="Stage 6.5 - Audience Mapping",
+                usage_metrics=audience_crew.usage_metrics,
+                model=settings.openai_model_name
+            )
+
         # Check if analysis succeeded
         if not audience_result:
             logger.warning("[Stage 6.5] Audience mapping failed - continuing without audience data")
@@ -1149,6 +1322,14 @@ Return a valid JSON object with this structure:
         # Store result
         self.state.audience_mapping = audience_result
         self.state.current_stage = 7
+
+        # Phase 3: Map pain points to audience segments (enriches PainPoint.affected_segments)
+        # This connects pain points to target segments for better solution positioning
+        if self.state.pain_point_analysis and audience_result.audience_segments:
+            self._map_pain_points_to_segments(audience_result)
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(6.5)
 
         # Save checkpoint
         self.checkpoint_mgr.save_stage("stage_6_5_audience_mapping", audience_result)
@@ -1212,38 +1393,109 @@ Return a valid JSON object with this structure:
         )
 
         try:
-            # Initialize UnifiedSolutionCrew
+            # Initialize UnifiedSolutionCrew with audience intelligence from Stage 6.5
             unified_crew = UnifiedSolutionCrew(
                 pain_point_analysis=self.state.pain_point_analysis,
                 social_content=self.state.social_content,
                 allowed_project_types=self.allowed_project_types,
                 niche_context=self.state.niche_context,
+                audience_mapping=self.state.audience_mapping,
                 checkpoint_mgr=self.checkpoint_mgr
             )
 
-            # Execute complete pipeline (4 tasks in sequence with context chaining)
-            logger.info("Executing unified solution pipeline (4-task flow)...")
-            refined_solutions, competitive_analysis, solution_selection = unified_crew.execute_pipeline()
+            # Execute complete pipeline (6 tasks in sequence with context chaining)
+            logger.info("Executing unified solution pipeline (6-task flow)...")
+            (
+                refined_solutions,
+                competitive_analysis,
+                solution_selection,
+                competitive_enhancements,
+                ideation_process
+            ) = unified_crew.execute_pipeline()
+
+            # Record crew cost
+            if unified_crew.usage_metrics:
+                self.cost_tracker.record_crew_usage(
+                    stage="Stage 7 - Unified Solution Pipeline",
+                    usage_metrics=unified_crew.usage_metrics,
+                    model=settings.brainstorm_llm
+                )
 
             # Save results to state
             self.state.idea_generation = refined_solutions
             self.state.competitive_analysis = competitive_analysis
             self.state.solution_selection = solution_selection
+            self.state.competitive_enhancements = competitive_enhancements  # Preserves overall_competitive_insights
+            self.state.ideation_process = ideation_process  # Preserves removed concepts, techniques
+
+            # DEFENSIVE: Validate solution selection - detect error strings
+            # The LLM may return "Insufficient evidence for strategic selection" if context chain fails
+            INVALID_SELECTION_PATTERNS = [
+                "insufficient evidence",
+                "unable to select",
+                "cannot determine",
+                "no clear winner",
+            ]
+            selected_name = self.state.solution_selection.selected_solution_name or ""
+
+            if any(pattern in selected_name.lower() for pattern in INVALID_SELECTION_PATTERNS):
+                logger.warning(
+                    f"⚠️ Solution selection returned error string: '{selected_name}'. "
+                    f"Triggering fallback selection..."
+                )
+
+                # Fallback: Select highest market_fit_score from idea_generation
+                if self.state.idea_generation and self.state.idea_generation.solution_ideas:
+                    sorted_ideas = sorted(
+                        self.state.idea_generation.solution_ideas,
+                        key=lambda s: getattr(s, 'market_fit_score', 0) or 0,
+                        reverse=True
+                    )
+                    fallback_solution = sorted_ideas[0]
+                    fallback_name = fallback_solution.solution_name
+                    fallback_score = getattr(fallback_solution, 'market_fit_score', 'N/A')
+
+                    logger.warning(
+                        f"✓ Fallback selected: '{fallback_name}' "
+                        f"(market_fit_score: {fallback_score})"
+                    )
+
+                    # Update selection state
+                    self.state.solution_selection.selected_solution_name = fallback_name
+                    original_rationale = self.state.solution_selection.selection_rationale or ""
+                    self.state.solution_selection.selection_rationale = (
+                        f"[AUTO-FALLBACK] LLM selection failed with '{selected_name}'. "
+                        f"Auto-selected highest market_fit_score ({fallback_score}). "
+                        f"Original response: {original_rationale[:200]}..."
+                    )
+
+                    # Track fallback for visibility
+                    if not hasattr(self.state, 'fallback_stages'):
+                        self.state.fallback_stages = []
+                    self.state.fallback_stages.append(7.4)
+                else:
+                    logger.error(
+                        "⚠️ Fallback failed - no solutions available in idea_generation. "
+                        "Pipeline will proceed with invalid selection name."
+                    )
 
             # Log results
             logger.info("[OK] Solution Pipeline Complete:")
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
             logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
+            if ideation_process:
+                logger.info(f"  - Ideation: {ideation_process.total_concepts_generated} concepts → {ideation_process.concepts_filtered} filtered")
 
             # Update stage (continue to keyword validation)
             self.state.current_stage = 8.8
 
-            # Checkpoints: Save all intermediate outputs (Stage 7 internal tasks)
-            self.checkpoint_mgr.save_stage("stage_7_1_ideation", self.state.idea_generation)
-            self.checkpoint_mgr.save_stage("stage_7_2_competitive", self.state.competitive_analysis)
-            self.checkpoint_mgr.save_stage("stage_7_3_refinement", self.state.idea_generation)
-            self.checkpoint_mgr.save_stage("stage_7_4_selection", self.state.solution_selection)
+            # Mark stage complete with tracking
+            self._mark_stage_complete(7)
+
+            # Checkpoints saved internally by UnifiedSolutionCrew.execute_pipeline()
+            # All 6 task outputs checkpointed: stage_7_1 through stage_7_6
+            logger.debug("Stage 7 checkpoints saved by UnifiedSolutionCrew")
 
         except Exception as e:
             logger.error(f"Unified solution pipeline failed: {e}")
@@ -1629,6 +1881,14 @@ Return a valid JSON object with this structure:
                 allowed_project_types=self.state.allowed_project_types
             )
 
+            # Record crew cost
+            if pricing_crew.usage_metrics:
+                self.cost_tracker.record_crew_usage(
+                    stage=f"Stage 8 - Pricing Strategy ({solution_name})",
+                    usage_metrics=pricing_crew.usage_metrics,
+                    model=settings.openai_model_name
+                )
+
             if pricing_result:
                 pricing_results.append(pricing_result)
                 logger.info(f"[Stage 8] ✓ {solution_name}: Starter {pricing_result.recommended_starter_price}, Pro {pricing_result.recommended_pro_price}")
@@ -1645,6 +1905,9 @@ Return a valid JSON object with this structure:
         # Store final results
         self.state.pricing_strategies = pricing_results
         self.state.current_stage = 8.5
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(8)
 
         logger.info(f"[Stage 8] Pricing Strategy Validation Complete - {len(pricing_results)}/{len(top_n_scores)} solutions analyzed")
 
@@ -1684,7 +1947,21 @@ Return a valid JSON object with this structure:
         # Sort by composite score and take top N (configurable)
         top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
 
-        logger.info(f"[Stage 8.5] Validating keyword demand for top {len(top_n_scores)} solutions")
+        # Phase 2.2: Always include selected solution for validation (prevents data loss)
+        # The selected solution may not be in top N if Stage 7.6 used different scoring criteria
+        selected_name = self.state.solution_selection.selected_solution_name
+        top_n_names = {s.solution_name for s in top_n_scores}
+        if selected_name and selected_name not in top_n_names:
+            # Find selected solution's score object and add it to validation set
+            selected_score = next(
+                (s for s in all_scores if s.solution_name == selected_name),
+                None
+            )
+            if selected_score:
+                top_n_scores.append(selected_score)
+                logger.info(f"[Stage 8.5] Added selected solution '{selected_name}' to validation set (not in top {settings.top_solutions_for_validation})")
+
+        logger.info(f"[Stage 8.5] Validating keyword demand for {len(top_n_scores)} solutions")
 
         # Resume support: Load existing validation results if available
         # This allows incremental processing - skip solutions already validated
@@ -1695,6 +1972,14 @@ Return a valid JSON object with this structure:
             already_validated = {v.solution_name for v in validation_results}
             if already_validated:
                 logger.info(f"[Stage 8.5] Resuming - {len(already_validated)} solutions already validated: {already_validated}")
+
+        # Extract audience vocabulary for keyword grounding (Stage 6.5 data)
+        audience_vocab = (
+            self.state.audience_mapping.common_vocabulary
+            if self.state.audience_mapping else None
+        )
+        if audience_vocab:
+            logger.info(f"[Stage 8.5] Using {len(audience_vocab)} audience vocabulary terms for keyword validation")
 
         for idx, solution_score in enumerate(top_n_scores, 1):
             solution_name = solution_score.solution_name
@@ -1720,7 +2005,8 @@ Return a valid JSON object with this structure:
             seed_generator = SeedGenerator(
                 state=self.state,
                 niche_context=self.state.niche_context if hasattr(self.state, 'niche_context') else None,
-                pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None
+                pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None,
+                audience_vocabulary=audience_vocab
             )
 
             # Adaptive keyword generation with pivot strategies
@@ -1761,7 +2047,8 @@ Return a valid JSON object with this structure:
                     expanded_keywords,
                     solution,
                     niche_context=niche_context,
-                    validation_cache=keyword_validation_cache
+                    validation_cache=keyword_validation_cache,
+                    audience_vocabulary=audience_vocab
                 )
 
                 # Accumulate good keywords across attempts (with deduplication)
@@ -1913,6 +2200,9 @@ Return a valid JSON object with this structure:
         # Update stage and checkpoint
         self.state.current_stage = 8.6
 
+        # Mark stage complete with tracking
+        self._mark_stage_complete(8.5)
+
         # Save keyword validation results
         self.checkpoint_mgr.save_stage("stage_8_5_keyword_validation", validation_results)
 
@@ -1920,7 +2210,7 @@ Return a valid JSON object with this structure:
         # This ensures winner changes and rationale updates survive resume
         if self.state.solution_selection:
             self.checkpoint_mgr.save_stage(
-                "stage_7_4_selection",
+                "stage_7_6_selection",
                 self.state.solution_selection.model_dump()
             )
             logger.debug("[Stage 8.5] Updated solution_selection checkpoint after keyword re-ranking")
@@ -1928,6 +2218,146 @@ Return a valid JSON object with this structure:
         logger.info(f"[Stage 8.5] Keyword validation complete - {len(validation_results)} solutions validated")
 
     @listen(stage_8_5_keyword_validation)
+    def stage_8_55_traffic_monetization(self):
+        """
+        Stage 8.55: Traffic Monetization Analysis (for directories/aggregators)
+
+        For traffic-based project types (directory, aggregator, comparison-tool),
+        provides traffic monetization strategy instead of SaaS pricing.
+
+        Uses keyword data from Stage 8.5 to estimate:
+        - Traffic potential (monthly pageviews)
+        - Ad revenue (CPM by niche)
+        - Affiliate revenue opportunities
+        - Sponsored listing potential
+        """
+        logger.info("=" * 80)
+        logger.info("STAGE 8.55: Traffic Monetization Analysis")
+        logger.info("=" * 80)
+
+        # Traffic-based project types that use this crew
+        traffic_types = ['directory', 'aggregator', 'comparison-tool']
+
+        # Check prerequisites
+        if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
+            logger.warning("[Stage 8.55] No solution ideas - skipping traffic monetization")
+            return
+
+        if not self.state.keyword_validation_results:
+            logger.warning("[Stage 8.55] No keyword validation results - skipping traffic monetization")
+            return
+
+        # Get solutions to analyze (same top N as Stage 8.5)
+        if not self.state.solution_selection or not self.state.solution_selection.all_solution_scores:
+            logger.warning("[Stage 8.55] No solution scores - skipping traffic monetization")
+            return
+
+        all_scores = self.state.solution_selection.all_solution_scores
+        top_n_scores = sorted(
+            all_scores,
+            key=lambda s: s.composite_score,
+            reverse=True
+        )[:settings.top_solutions_for_validation]
+
+        # Filter to traffic-based solutions only
+        traffic_solutions = []
+        for score in top_n_scores:
+            solution = find_solution_by_name(
+                score.solution_name,
+                self.state.idea_generation.solution_ideas
+            )
+            if solution and solution.project_type in traffic_types:
+                traffic_solutions.append((score, solution))
+                logger.info(
+                    f"[Stage 8.55] {solution.solution_name}: project_type='{solution.project_type}' "
+                    f"→ Traffic monetization eligible"
+                )
+
+        if not traffic_solutions:
+            logger.info(
+                f"[Stage 8.55] No traffic-based solutions found in top {len(top_n_scores)} "
+                f"(types: {traffic_types}). Skipping traffic monetization analysis."
+            )
+            return
+
+        logger.info(f"[Stage 8.55] Analyzing {len(traffic_solutions)} traffic-based solutions")
+
+        # Initialize results list (support resume)
+        traffic_results = []
+        already_analyzed = set()
+        if self.state.traffic_monetization_results:
+            traffic_results = list(self.state.traffic_monetization_results)
+            already_analyzed = {r.solution_name for r in traffic_results}
+            logger.info(f"[Stage 8.55] Resuming - {len(already_analyzed)} solutions already analyzed")
+
+        # Initialize Traffic Monetization Crew
+        traffic_crew = TrafficMonetizationCrew()
+
+        for idx, (score, solution) in enumerate(traffic_solutions, 1):
+            solution_name = solution.solution_name
+
+            # Skip if already analyzed (resume support)
+            if solution_name in already_analyzed:
+                logger.info(f"[Stage 8.55] ({idx}/{len(traffic_solutions)}) Skipping {solution_name} - already analyzed")
+                continue
+
+            logger.info(f"[Stage 8.55] ({idx}/{len(traffic_solutions)}) Analyzing: {solution_name}")
+
+            try:
+                # Run traffic monetization analysis
+                result = traffic_crew.analyze(
+                    selected_solution=solution,
+                    keyword_validation_results=self.state.keyword_validation_results,
+                    competitive_analysis=self.state.competitive_analysis,
+                    niche_description=self.niche_description
+                )
+
+                # Record crew cost
+                if traffic_crew.usage_metrics:
+                    self.cost_tracker.record_crew_usage(
+                        stage=f"Stage 8.55 - Traffic Monetization ({solution_name})",
+                        usage_metrics=traffic_crew.usage_metrics,
+                        model=settings.openai_model_name
+                    )
+
+                if result:
+                    traffic_results.append(result)
+                    logger.info(
+                        f"[Stage 8.55] ✓ {solution_name}: {result.monetization_model} model, "
+                        f"Est. Revenue: {result.estimated_monthly_revenue_range}"
+                    )
+
+                    # Incremental checkpoint
+                    self.state.traffic_monetization_results = traffic_results
+                    self.checkpoint_mgr.save_stage(
+                        "stage_8_55_traffic_monetization_partial",
+                        [r.model_dump() for r in traffic_results]
+                    )
+                else:
+                    logger.warning(f"[Stage 8.55] ✗ {solution_name}: Traffic monetization analysis failed")
+
+            except Exception as e:
+                logger.error(f"[Stage 8.55] Error analyzing {solution_name}: {str(e)}")
+
+        # Store final results
+        self.state.traffic_monetization_results = traffic_results
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(8.55)
+
+        # Save checkpoint
+        if traffic_results:
+            self.checkpoint_mgr.save_stage(
+                "stage_8_55_traffic_monetization",
+                [r.model_dump() for r in traffic_results]
+            )
+
+        logger.info(
+            f"[Stage 8.55] Traffic Monetization Analysis Complete - "
+            f"{len(traffic_results)}/{len(traffic_solutions)} solutions analyzed"
+        )
+
+    @listen(stage_8_55_traffic_monetization)
     def stage_8_6_market_sizing(self):
         """
         Stage 8.6: Market Sizing & Validation
@@ -2008,6 +2438,14 @@ Return a valid JSON object with this structure:
             niche_description=self.niche_description
         )
 
+        # Record crew cost
+        if market_sizing_crew.usage_metrics:
+            self.cost_tracker.record_crew_usage(
+                stage="Stage 8.6 - Market Sizing",
+                usage_metrics=market_sizing_crew.usage_metrics,
+                model=settings.openai_model_name
+            )
+
         # Check if analysis succeeded
         if not market_sizing_result:
             logger.warning("[Stage 8.6] Market sizing failed - continuing without market sizing data")
@@ -2017,6 +2455,9 @@ Return a valid JSON object with this structure:
         # Store result
         self.state.market_sizing = market_sizing_result
         self.state.current_stage = 8.7
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(8.6)
 
         # Save checkpoint
         self.checkpoint_mgr.save_stage("stage_8_6_market_sizing", market_sizing_result)
@@ -2113,9 +2554,40 @@ Return a valid JSON object with this structure:
             allowed_project_types=self.state.allowed_project_types
         )
 
+        # Record crew cost
+        if refinement_crew.usage_metrics:
+            self.cost_tracker.record_crew_usage(
+                stage="Stage 8.7 - Solution Refinement",
+                usage_metrics=refinement_crew.usage_metrics,
+                model=settings.openai_model_name
+            )
+
         if refinement:
             # Store refinement in state
             self.state.solution_refinement = refinement
+
+            # Phase 2.3: Merge refinements inline to selected solution (prevents data loss)
+            # This ensures downstream stages (SEO, Report) have access to strategic refinements
+            # without needing to query solution_refinement separately
+            if selected_solution:
+                # Find index of selected solution in idea_generation
+                for idx, idea in enumerate(self.state.idea_generation.solution_ideas):
+                    if idea.solution_name == selected_name:
+                        # Merge available refinement fields into solution
+                        # Note: We add refinement data as new fields, not replacing existing ones
+                        if hasattr(idea, 'geographic_priorities') or hasattr(idea, '__dict__'):
+                            # Store refinement metadata in solution's extra fields if model allows
+                            # Or add to strategic_notes if available
+                            if hasattr(idea, 'strategic_notes') and idea.strategic_notes is not None:
+                                idea.strategic_notes = (
+                                    f"{idea.strategic_notes}\n\n"
+                                    f"**Stage 8.7 Refinements:**\n"
+                                    f"- Geographic priorities: {', '.join(refinement.geographic_priorities[:3])}\n"
+                                    f"- Category pivot: {refinement.category_pivot_recommendation or 'None'}\n"
+                                    f"- Key insight: {refinement.strategic_insights[0] if refinement.strategic_insights else 'N/A'}"
+                                )
+                            logger.info(f"[Stage 8.7] Merged refinements into solution '{selected_name}'")
+                        break
 
             logger.info(
                 f"[Stage 8.7] Refinement complete:\n"
@@ -2127,11 +2599,19 @@ Return a valid JSON object with this structure:
 
             # Update stage first, then checkpoint (Pattern A - safer for resume)
             self.state.current_stage = 9
+
+            # Mark stage complete with tracking
+            self._mark_stage_complete(8.7)
+
             self.checkpoint_mgr.save_stage("stage_8_7_solution_refinement", refinement.model_dump())
         else:
             logger.warning("[Stage 8.7] Refinement failed - proceeding without refinement data")
             # Update stage first, then checkpoint (Pattern A - safer for resume)
             self.state.current_stage = 9
+
+            # Mark stage complete with tracking (used fallback since refinement failed)
+            self._mark_stage_complete(8.7, used_fallback=True)
+
             self.checkpoint_mgr.save_stage("stage_8_7_solution_refinement", {"skipped": True, "reason": "refinement_failed"})
 
     @listen(stage_8_7_solution_refinement)
@@ -2183,7 +2663,7 @@ Return a valid JSON object with this structure:
 
         logger.info(f"Generating SEO strategy for selected solution: {selected_solution_name}")
 
-        # Initialize SEOStrategyCrew with SELECTED solution
+        # Initialize SEOStrategyCrew with SELECTED solution and audience vocabulary
         seo_crew = SEOStrategyCrew(
             niche=self.niche_description,
             selected_solution=selected_solution,
@@ -2192,6 +2672,7 @@ Return a valid JSON object with this structure:
             pain_points=self.state.pain_point_analysis,
             niche_context=self.state.niche_context,
             allowed_project_types=self.state.allowed_project_types,
+            audience_mapping=self.state.audience_mapping,
         )
 
         # Check for existing sub-phase checkpoints (enables partial resume)
@@ -2381,6 +2862,14 @@ Return a valid JSON object with this structure:
                 expanded_keywords=expanded_keywords
             )
 
+            # Record crew cost
+            if seo_crew.usage_metrics:
+                self.cost_tracker.record_crew_usage(
+                    stage="Stage 9 - SEO Strategy",
+                    usage_metrics=seo_crew.usage_metrics,
+                    model=settings.openai_model_name
+                )
+
             # VALIDATION: Verify keyword utilization (detect dropped keywords)
             total_tier_1 = len(seo_strategy.tier_1_keywords)
             total_tier_2 = len(seo_strategy.tier_2_keywords or [])
@@ -2437,6 +2926,9 @@ Return a valid JSON object with this structure:
 
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 9.5
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(9)
 
         # Checkpoint: Save SEO strategy
         if self.state.seo_strategy_report:
@@ -2552,6 +3044,14 @@ Return a valid JSON object with this structure:
             top_enriched_keywords=top_enriched_keywords  # Per-keyword monthly trend data
         )
 
+        # Record crew cost
+        if trend_crew.usage_metrics:
+            self.cost_tracker.record_crew_usage(
+                stage="Stage 9.5 - Trend Longevity",
+                usage_metrics=trend_crew.usage_metrics,
+                model=settings.openai_model_name
+            )
+
         # Check if analysis succeeded
         if not trend_result:
             logger.warning("[Stage 9.5] Trend analysis failed - continuing without trend data")
@@ -2561,6 +3061,10 @@ Return a valid JSON object with this structure:
         # Store result
         self.state.trend_longevity = trend_result
         self.state.current_stage = 9.6
+
+        # Mark stage complete with tracking (fallback if used minimal trend)
+        used_fallback = trend_result.trend_direction == "Unknown"
+        self._mark_stage_complete(9.5, used_fallback=used_fallback)
 
         # Save checkpoint
         self.checkpoint_mgr.save_stage("stage_9_5_trend_longevity", trend_result)
@@ -2703,8 +3207,27 @@ Return a valid JSON object with this structure:
                 )
             )
 
-            # Store enrichment in state (will be merged in Stage 10)
+            # Store enrichment in state (for report generator access)
             self.state.seo_enrichment = seo_enrichment
+
+            # Phase 2.4: Merge SEO enrichment inline to selected solution (prevents data loss)
+            # This ensures downstream stages and reports have direct access to refined scores
+            # without needing to query seo_enrichment separately
+            for idx, idea in enumerate(self.state.idea_generation.solution_ideas):
+                if idea.solution_name == selected_solution_name:
+                    # Store original values for comparison (if not already stored)
+                    if not hasattr(idea, '_original_seo_scalability_score'):
+                        idea._original_seo_scalability_score = idea.seo_scalability_score
+                        idea._original_estimated_cac_organic = idea.estimated_cac_organic
+                        idea._original_programmatic_seo_opportunity = idea.programmatic_seo_opportunity
+
+                    # Apply refined values inline
+                    idea.seo_scalability_score = refined_scalability['score']
+                    idea.estimated_cac_organic = refined_cac['cac_range']
+                    idea.programmatic_seo_opportunity = refined_programmatic
+
+                    logger.info(f"[Stage 9.6] Merged SEO refinements into solution '{selected_solution_name}'")
+                    break
 
             logger.info("[OK] SEO scores refined:")
             logger.info(
@@ -2723,6 +3246,10 @@ Return a valid JSON object with this structure:
 
             # Update stage first, then checkpoint (Pattern A - safer for resume)
             self.state.current_stage = 9.7
+
+            # Mark stage complete with tracking
+            self._mark_stage_complete(9.6)
+
             self.checkpoint_mgr.save_stage("stage_9_6_seo_refinement", self.state.seo_enrichment)
 
         except Exception as e:
@@ -2730,6 +3257,9 @@ Return a valid JSON object with this structure:
             logger.warning("Continuing with original estimates")
             # Still update stage even on failure (Pattern A - safer for resume)
             self.state.current_stage = 9.7
+
+            # Mark stage complete with tracking (used fallback since refinement failed)
+            self._mark_stage_complete(9.6, used_fallback=True)
 
     @listen(stage_9_6_refine_seo_scores)
     def stage_9_7_research_data_sources(self):
@@ -2810,6 +3340,14 @@ Return a valid JSON object with this structure:
             data_source_research = data_crew.research()
             self.state.data_source_research = data_source_research
 
+            # Record crew cost
+            if data_crew.usage_metrics:
+                self.cost_tracker.record_crew_usage(
+                    stage="Stage 9.7 - Data Sources",
+                    usage_metrics=data_crew.usage_metrics,
+                    model=settings.openai_model_name
+                )
+
             logger.info(
                 f"[OK] Data source research complete: "
                 f"{len(data_source_research.primary_data_sources)} primary sources, "
@@ -2827,6 +3365,9 @@ Return a valid JSON object with this structure:
 
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 10
+
+        # Mark stage complete with tracking
+        self._mark_stage_complete(9.7)
 
         # Checkpoint: Save data source research
         if self.state.data_source_research:
@@ -2885,6 +3426,25 @@ Return a valid JSON object with this structure:
         # Store report paths
         self.report_path = str(report_filepath)
         self.raw_state_path = str(raw_filepath)
+
+        # Mark stage complete with tracking (final stage)
+        self._mark_stage_complete(10)
+
+        # Log pipeline completion summary
+        logger.info("=" * 80)
+        logger.info("PIPELINE COMPLETE")
+        logger.info(f"  Stages completed: {sorted(self.state.completed_stages)}")
+        if self.state.fallback_stages:
+            logger.warning(f"  Stages with fallback data: {sorted(self.state.fallback_stages)}")
+        logger.info("=" * 80)
+
+        # Log cost summary
+        if settings.cost_logging_enabled:
+            self.cost_tracker.log_summary()
+
+        # Store cost summary in state for report
+        cost_summary = self.cost_tracker.get_summary()
+        self.state.cost_summary = cost_summary
 
     # NOTE: Score refinement methods moved to utils/score_refinement.py
     # - refine_scalability_score

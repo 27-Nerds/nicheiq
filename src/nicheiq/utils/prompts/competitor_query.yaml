@@ -3,7 +3,7 @@
 # Variables: context_section (pre-built), num_queries, project_type
 
 template: |
-  You are an expert competitive intelligence researcher specializing in discovering and validating market competitors. Your goal is to generate semantically valid search queries that discover actual competitors for a specific solution.
+  You are an expert competitive intelligence researcher specializing in discovering and validating market competitors. Your goal is to generate semantically valid, highly specific search queries that discover actual named competitors for a specific solution.
 
   {context_section}
 
@@ -38,6 +38,98 @@ template: |
   **Competitor Landscape:**
   - Established players likely? (mature market) vs Fragmented/emerging? (new market)
   - Evidence: Pain points mention existing tools/platforms?
+
+  ### ANTI-PATTERNS TO AVOID
+
+  Before generating, review these patterns that FAIL to discover actual competitors:
+
+  **Generic Category (finds articles, not products):**
+  - "[niche] [type] platforms" - e.g., "micro-SaaS aggregator platforms"
+  - "[niche] tools" - e.g., "SaaS comparison tools"
+  - Why fails: Returns category overviews, not named competitors
+
+  **Pattern Repetition (low diversity):**
+  - Multiple queries with only audience swap
+  - >2 queries using "[X] for [segment]" template
+  - Why fails: Duplicate search results, missed competitive angles
+
+  **Missing Discovery Intent (no comparison context):**
+  - Queries without "vs", "alternatives", "compared to", "top N"
+  - Why fails: Misses contexts where users NAME specific products
+
+  **Feature-Focused (finds tutorials, not competitors):**
+  - "tools to validate ideas" - finds how-to content
+  - "how to compare [category]" - finds methodology articles
+  - Why fails: Not competitive intelligence
+
+  **Correct Transformations (adapt to your niche):**
+  - "[niche] aggregator platforms" → "[inferred incumbent] alternatives for [segment]"
+  - "[niche] comparison tools" → "top 10 [niche] directories vs [incumbent] 2024"
+  - "tools for [segment]" → "[incumbent A] vs [incumbent B] for [niche] discovery"
+
+  ### INFER LIKELY INCUMBENTS (Dynamic - Based on Niche Analysis)
+
+  Analyze the niche context to identify probable market leaders. This is a PROCESS:
+
+  **Step A: Identify the vertical/industry from niche description:**
+  - Extract the core domain (e.g., "home appliances", "pet care", "travel", "legal services")
+  - Note if B2B or B2C
+
+  **Step B: Determine incumbent types based on project_type:**
+  | Project Type | Likely Incumbent Categories |
+  |--------------|----------------------------|
+  | Directory | Well-known review sites, curated lists, buyer's guides |
+  | Aggregator | Comparison engines, data platforms, price trackers |
+  | Marketplace | Leading exchanges, platforms connecting buyers/sellers |
+  | Comparison-tool | Review aggregators, rating platforms |
+  | SaaS | Established software in that vertical |
+
+  **Step C: Infer specific incumbents using these patterns:**
+  - For PHYSICAL PRODUCTS: Amazon, major retail sites, specialty review sites (e.g., Wirecutter, Consumer Reports)
+  - For SERVICES: Yelp, vertical-specific platforms (Angi for home, Avvo for legal, Rover for pet care)
+  - For B2B: Industry-specific directories, trade publications, G2, Capterra
+  - For TRAVEL: Booking aggregators (Kayak, Skyscanner), review platforms (TripAdvisor)
+  - For FINANCE: Comparison sites (NerdWallet, Bankrate), rate aggregators
+  - For DEVELOPER RESOURCES (code snippets, tutorials, documentation):
+    - Code Sharing: GitHub, GitLab, CodePen, CodeSandbox, JSFiddle
+    - Q&A: StackOverflow, Dev.to, Reddit programming subs
+    - Documentation: DevDocs.io, MDN, ReadTheDocs
+    - API Examples: Postman, RapidAPI, Swagger
+  - For FINTECH/PAYMENT (billing, checkout, payment processing):
+    - Payment APIs: Stripe Docs, PayPal Developer, Square Docs
+    - Banking/Data: Plaid, Yodlee, MX
+    - Billing: Chargebee, Recurly, Paddle
+  - For SAAS DISCOVERY (product listings, app directories):
+    - ProductHunt, Indie Hackers, BetaList, AlternativeTo, G2, Capterra, StackShare
+  - For any vertical: The top Google results for "[niche] reviews", "[niche] comparison", "[niche] best"
+
+  **Step C.5: Analyze Solution Name for Vertical Signals (CRITICAL)**
+
+  Before defaulting to generic incumbents, scan the solution name and pain points for vertical-specific keywords:
+
+  | Keyword Pattern | Vertical | Correct Incumbents |
+  |-----------------|----------|-------------------|
+  | "snippet", "code", "example" | Developer Resources | GitHub, StackOverflow, CodePen, Dev.to |
+  | "sdk", "api", "integration" | API/SDK Resources | Stripe Docs, Postman, RapidAPI, Twilio Docs |
+  | "payment", "checkout", "billing" | FinTech/Payments | Stripe, Plaid, Square, PayPal Developer |
+  | "data", "analytics", "dashboard" | Data/Analytics | Tableau, Looker, Metabase, Grafana |
+  | "template", "boilerplate", "starter" | Project Templates | Vercel Templates, Create React App, Cookiecutter |
+  | "library", "package", "module" | Package Registries | npm, PyPI, RubyGems, Maven Central |
+
+  **Example applications:**
+  - "DevToolPaymentSnippets" → contains "payment" + "snippets" → FinTech + Developer Resources → Stripe Docs, GitHub payment repos, StackOverflow payment tags
+  - "APIDocAggregator" → contains "api" + "aggregator" → API Resources → Postman, RapidAPI, DevDocs.io
+  - "TemplateMarketplace" → contains "template" + "marketplace" → Project Templates → ThemeForest, Vercel Templates, GitHub Templates
+
+  **Step D: Extract incumbents from context clues:**
+  - Pain points may mention existing tools/platforms by name
+  - Market segments may reference where users currently shop/compare
+  - Industry boundaries may name adjacent competitors
+
+  **Use inferred incumbents in queries:**
+  - Named Discovery: "[category] like [inferred incumbent] for [segment]"
+  - Established Player: "[inferred incumbent] alternatives"
+  - Comparison: "[incumbent A] vs [incumbent B] for [niche]"
 
   ## STEP 2: APPLY SEMANTIC VALIDATION RULES
 
@@ -79,46 +171,132 @@ template: |
   - Only search within the defined scope from industry_boundaries
   - Avoid adjacent markets explicitly excluded
 
-  ## STEP 3: GENERATE QUERIES (5 Types)
+  ### SPECIFICITY REQUIREMENTS (CRITICAL)
 
-  **1. Direct Competitor Category (30% of queries)** - Core competitor type
-  - "[solution category] [type]" where type matches project_type
-  - Examples:
-    - SaaS: "project management software", "expense tracking tools"
-    - Directory: "contractor directories", "restaurant guides"
-    - Aggregator: "flight comparison sites", "insurance aggregators"
-    - Marketplace: "freelance marketplaces", "rental platforms"
+  Every query MUST include 1+ specificity markers:
 
-  **2. Alternative/Comparison Searches (25% of queries)** - What users search
-  - "best [category]"
-  - "[category] alternatives"
-  - "[category] comparison"
-  - "top [category] platforms/tools/sites"
+  **A. Named Competitors (inferred from Step 1):**
+  - Explicit product names from your incumbent inference
+  - Example: "alternatives to Wirecutter for appliance reviews"
 
-  **3. Segment-Specific Competitors (20% of queries)** - Use market segment characteristics
-  - "[category] for [segment characteristic]"
-  - Extract from market segments: demographics, constraints, priorities
-  - Examples:
-    - "project management for small teams"
-    - "affordable appliance directories"
-    - "contractor platforms for homeowners"
+  **B. Comparison Operators:**
+  - "vs", "versus", "compared to", "better than"
+  - Example: "Kayak vs Skyscanner for budget flights"
 
-  **4. Problem-Specific Solutions (15% of queries)** - Pain point targeting
-  - "solve [pain point] tools/platforms"
-  - "[pain point] solutions"
-  - Examples:
-    - "reliable contractor platforms"
-    - "verified service provider directories"
-    - "compare [product category] easily"
+  **C. Ranking Signals:**
+  - "top 5", "top 10", "best", "leading", "2024"
+  - Example: "top 10 pet care marketplaces 2024"
 
-  **5. Established Player Searches (10% of queries)** - Known competitors
-  - Only if you can infer likely established players from niche/category
-  - "[established player] vs"
-  - "[established player] alternatives"
-  - "better than [established player]"
-  - Examples:
-    - "Upwork alternatives" (if marketplace for freelancers)
-    - "Zillow competitors" (if real estate directory)
+  **D. Concrete Constraints:**
+  - Price: "free", "under $50", "enterprise pricing", "budget"
+  - Size: "for small teams", "for solo founders", "for enterprises"
+  - Feature: "with API", "self-hosted", "open source", "verified reviews"
+
+  **E. Discovery Intent:**
+  - "alternatives to", "switching from", "instead of", "reviews of"
+  - Example: "switching from Angi to cheaper contractor platforms"
+
+  ## STEP 3: GENERATE QUERIES WITH DISCOVERY INTENT
+
+  Generate queries using these 5 archetypes. Adapt examples to YOUR niche:
+
+  ### 1. Named Competitor Discovery (30%) - HIGHEST PRIORITY
+  **Goal**: Find discussions where specific competitors are named
+
+  **Pattern**: [comparison operator] + [inferred incumbent] + [segment/constraint]
+  **Required**: At least one named competitor (inferred from Step 1) + comparison intent
+
+  **Examples by niche**:
+  - Home appliances: "Consumer Reports alternatives for budget appliances"
+  - Pet care: "directories like Rover for pet sitting services"
+  - Legal services: "top 10 lawyer directories vs Avvo 2024"
+  - Travel: "Kayak alternatives for budget flight comparison"
+  - SaaS: "G2 alternatives for small business software reviews"
+  - Developer tools: "GitHub code snippet repositories vs StackOverflow for payment integration"
+  - API documentation: "Stripe Docs alternatives for payment API examples"
+
+  ### 2. User Evaluation Behavior (25%)
+  **Goal**: Find users comparing or evaluating competitors
+
+  **Pattern**: [evaluation verb] + [category] + [decision context]
+  **Required**: Evaluation language ("comparing", "deciding", "reviewing", "switching")
+
+  **Examples by niche**:
+  - Home appliances: "comparing appliance review sites for first home buyers"
+  - Pet care: "reviews of Rover vs Wag for dog walking"
+  - Legal services: "deciding between Avvo and FindLaw for lawyer search"
+  - Travel: "switching from Expedia to cheaper alternatives"
+  - B2B: "comparing software review platforms for enterprise purchasing"
+  - Developer resources: "comparing Postman vs RapidAPI for testing payment APIs"
+  - Code snippets: "switching from StackOverflow to GitHub Gists for code examples"
+
+  ### 3. Established Player Alternatives (20%)
+  **Goal**: Find alternatives to inferred market leaders
+
+  **Pattern**: [incumbent name] + "alternatives" OR "vs" + [constraint]
+  **Required**: Named incumbent from your Step 1 inference
+
+  **Examples by niche**:
+  - Home appliances: "Wirecutter alternatives for unbiased reviews"
+  - Pet care: "Chewy alternatives with better subscription options"
+  - Legal services: "Avvo alternatives with verified reviews"
+  - Travel: "TripAdvisor alternatives with less fake reviews"
+  - Services: "Angi alternatives for contractor hiring"
+  - Developer docs: "Stripe API documentation alternatives with more code examples"
+  - Code sharing: "GitHub alternatives for private payment integration snippets"
+
+  ### 4. Segment-Specific Discovery (15%)
+  **Goal**: Find competitors serving specific segments
+
+  **Pattern**: [category] + "for" + [specific segment from context] + [discovery intent]
+  **Required**: Specific segment (from market_segments) + comparison/ranking element
+
+  **Examples by niche**:
+  - Home appliances: "best appliance comparison sites for apartment renters"
+  - Pet care: "top pet marketplaces for exotic animal owners"
+  - Legal services: "lawyer directories for small business disputes"
+  - Travel: "comparison sites for budget family vacations"
+  - B2B: "software directories for nonprofit organizations"
+  - Developer tools: "best payment SDK code libraries for solo developers 2024"
+  - API resources: "top API documentation sites for startup developers"
+
+  ### 5. Problem-Specific Alternatives (10%)
+  **Goal**: Find competitors solving specific pain points
+
+  **Pattern**: [pain point solution] + "instead of" OR "without" + [limitation]
+  **Required**: Specific pain (from pain_points_addressed) + alternative framing
+
+  **Examples by niche**:
+  - Home appliances: "appliance reviews without sponsored content bias"
+  - Pet care: "pet sitter platforms with actual background checks"
+  - Legal services: "lawyer directories with transparent pricing"
+  - Travel: "flight comparison without hidden fees"
+  - Services: "contractor platforms that verify licenses"
+  - Developer tools: "payment integration examples without complex authentication setup"
+  - Code snippets: "API code samples with copy-paste ready examples"
+
+  ## STEP 3.5: SELF-VERIFICATION (MANDATORY)
+
+  Before outputting, validate ALL queries:
+
+  ### Verification Checklist:
+  1. **Named competitors**: ≥50% of queries mention specific product names (from your Step 1 inference)
+  2. **Discovery intent**: Every query has comparison/evaluation/alternative language
+  3. **Specificity**: Every query has ≥1 specificity marker from Step 2
+  4. **Diversity**: No more than 2 queries share same template structure
+  5. **Type distribution**: Approximately 30/25/20/15/10 split (±5%)
+  6. **Grounding**: Queries match solution context (project_type, niche, pain points)
+
+  ### If Check Fails - Transform Before Including:
+
+  - Generic: "[niche] aggregator platforms" (fails: no discovery intent)
+    FIX: "[inferred incumbent] alternatives for [segment] [niche]"
+
+  - No named competitor: "[niche] comparison sites for [segment]"
+    FIX: "[incumbent A] vs [incumbent B] for [segment] [niche]"
+
+  - Pattern repetition: Multiple "[X] for [segment]" queries
+    FIX: Vary structure - use "vs", "alternatives to", "top 10", "reviews of"
 
   ## STEP 4: OUTPUT FORMAT
 
@@ -126,19 +304,18 @@ template: |
 
   [
     {{
-      "query": "the exact search query text",
-      "type": "category|alternative|segment|problem|established",
-      "rationale": "1-sentence explanation of why this query finds relevant competitors for this solution type"
+      "query": "the exact search query text (must pass verification checklist)",
+      "type": "named_competitor|evaluation|established_alternative|segment_discovery|problem_alternative",
+      "rationale": "1-sentence explanation citing: inferred incumbent used, specificity markers, discovery intent"
     }},
     ...
   ]
 
-  **Quality Checklist (Self-Validate Before Outputting):**
-  - [ ] Does this query match the project_type? (e.g., "directories" for directory solutions)
-  - [ ] Would this query actually find competitors, not just general info?
-  - [ ] Does it respect industry boundaries?
-  - [ ] Does it leverage market segment insights where available?
-  - [ ] Is it specific enough to find actual products/platforms?
-  - [ ] Does it pass semantic validation rules (Rules 1-6)?
+  **Final Quality Checklist:**
+  - [ ] ≥50% of queries contain named competitors from your Step 1 inference?
+  - [ ] Every query has discovery intent (vs, alternatives, comparing, top N)?
+  - [ ] Every query has ≥1 specificity marker?
+  - [ ] No more than 2 queries share same template structure?
+  - [ ] Rationale cites the inferred incumbent and specificity markers used?
 
-  Generate {num_queries} queries now, following Steps 1-4 in order.
+  Generate {num_queries} queries now, following Steps 1-4 in order. Remember: named competitors + discovery intent > generic categories.

@@ -232,7 +232,7 @@ class KeywordRelevanceValidator:
 
             try:
                 # Use centralized LLM service for structured output
-                response = LLMService.invoke_structured(
+                response, _usage = LLMService.invoke_structured(
                     prompt=prompt,
                     output_model=KeywordBatchValidation,
                     temperature=0,  # Deterministic for consistency

@@ -19,10 +19,16 @@ from .data_source import DataSourceResearchResult
 from .executive_summary import ExecutiveDashboard
 from .keyword_data import CrewKeywordValidationResult, KeywordValidationResult
 from .marketing_blueprint import GTMBlueprint
-from .pain_point import ContentCategorizationReport, PainPointAnalysisResult
+from .pain_point import ContentCategorizationReport, PainPoint, PainPointAnalysisResult
 from .seo_strategy import SEOStrategyReport
 from .social_content import SocialContentCollection
-from .solution_idea import IdeaGenerationResult, SolutionIdea, SolutionSEORefinement
+from .solution_idea import (
+    CompetitiveEnhancements,
+    IdeaGenerationResult,
+    IdeationProcess,
+    SolutionIdea,
+    SolutionSEORefinement,
+)
 from .solution_refinement import SolutionRefinement
 from .solution_selection import SelectionCriteriaScore, SolutionSelection
 
@@ -74,6 +80,137 @@ class SubredditBreakdown(BaseModel):
     name: str = Field(..., description="Subreddit name (without r/ prefix)")
     post_count: int = Field(..., description="Number of posts from this subreddit")
 
+
+# ========== PHASE 6: Report Enhancement Models ==========
+
+class DataQualitySummary(BaseModel):
+    """Data quality assessment summary for report transparency."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    social_content_quality_tier: Optional[str] = Field(
+        default=None,
+        description="Social content quality tier: EXCELLENT, GOOD, MINIMAL, INSUFFICIENT"
+    )
+    pain_point_quality_tier: Optional[str] = Field(
+        default=None,
+        description="Pain point analysis quality tier: GOLD, SILVER, BRONZE, INSUFFICIENT"
+    )
+    pain_point_confidence_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score for pain point analysis (0-1)"
+    )
+    overall_data_quality: str = Field(
+        ...,
+        description="Overall data quality assessment: HIGH, MEDIUM, LOW"
+    )
+    quality_caveats: list[str] = Field(
+        default_factory=list,
+        description="Warnings about data limitations or quality issues"
+    )
+
+
+class PainSegmentMapping(BaseModel):
+    """Cross-reference of pain points to affected audience segments."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    pain_point_title: str = Field(..., description="Title of the pain point")
+    affected_segments: list[str] = Field(
+        default_factory=list,
+        description="Audience segments affected by this pain point"
+    )
+    severity_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Severity score of this pain point (0-1)"
+    )
+
+
+class RefinementHighlights(BaseModel):
+    """Key strategic insights from Stage 8.7 solution refinement."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    top_strategic_insights: list[str] = Field(
+        default_factory=list,
+        description="Top 3-5 strategic insights from refinement analysis"
+    )
+    geographic_priority: Optional[str] = Field(
+        default=None,
+        description="Primary geographic market recommendation"
+    )
+    feature_priority: Optional[str] = Field(
+        default=None,
+        description="Top feature to build first based on keyword demand"
+    )
+    category_pivot_recommendation: Optional[str] = Field(
+        default=None,
+        description="Category pivot suggestion if applicable"
+    )
+
+
+class StageTimingSummary(BaseModel):
+    """Pipeline execution timing summary."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    total_duration_seconds: float = Field(
+        ...,
+        description="Total pipeline execution time in seconds"
+    )
+    stage_durations: dict[str, float] = Field(
+        default_factory=dict,
+        description="Duration per stage in seconds (stage number → duration)"
+    )
+    slowest_stage: Optional[str] = Field(
+        default=None,
+        description="Name/number of the slowest stage"
+    )
+    fastest_stage: Optional[str] = Field(
+        default=None,
+        description="Name/number of the fastest stage"
+    )
+
+
+class SEOCalculationTransparency(BaseModel):
+    """Transparency into SEO score calculations from Stage 9.6."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    baseline_seo_score: Optional[float] = Field(
+        default=None,
+        description="Original SEO scalability score before refinement"
+    )
+    refined_seo_score: Optional[float] = Field(
+        default=None,
+        description="Final refined SEO scalability score"
+    )
+    volume_multiplier: Optional[float] = Field(
+        default=None,
+        description="Applied volume adjustment multiplier"
+    )
+    competition_modifier: Optional[float] = Field(
+        default=None,
+        description="Competition factor applied to calculations"
+    )
+    tier1_multiplier: Optional[float] = Field(
+        default=None,
+        description="Quick-win (Tier 1) keyword bonus multiplier"
+    )
+    estimated_year1_pages: Optional[int] = Field(
+        default=None,
+        description="Projected programmatic pages in year 1"
+    )
+    calculation_rationale: Optional[str] = Field(
+        default=None,
+        description="Human-readable explanation of score calculation"
+    )
+
+
 class ResearchMetadata(BaseModel):
     """Metadata about the research data collection process."""
 
@@ -88,20 +225,60 @@ class ResearchMetadata(BaseModel):
     collection_date: datetime = Field(..., description="When data collection occurred")
     data_size_mb: float = Field(..., description="Total data size in megabytes")
 
+    # NEW: Stage completion tracking (Phase 4 - diagnostic visibility)
+    completed_stages: Optional[list[float]] = Field(
+        default=None,
+        description="List of completed pipeline stages (e.g., [5, 6, 6.5, 7, 8, 8.5, 9, 9.5, 10])"
+    )
+    fallback_stages: Optional[list[float]] = Field(
+        default=None,
+        description="Stages that used fallback/incomplete data (for quality assessment)"
+    )
+    filtering_stats: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Stage 5 URL filtering statistics (searched, relevant, filtering rate)"
+    )
+
 class AlternativeSolution(BaseModel):
-    """Condensed summary of a runner-up solution for comparison."""
+    """Enhanced alternative solution with competitive analysis details."""
 
     model_config = ConfigDict(extra='forbid')
 
+    # Core identification
     solution_name: str = Field(..., description="Name of the alternative solution")
     summary: str = Field(..., description="2-3 paragraph overview of the solution")
+
+    # Existing score fields
     market_fit_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Market fit score (None if not assessed)")
     technical_feasibility_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Technical feasibility (None if not assessed)")
     competitive_advantage_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Competitive advantage score (None if not assessed)")
     seo_growth_potential_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="SEO scalability score (None if not assessed)")
+
+    # Existing strategic fields
     key_differentiator: str = Field(..., description="Primary unique value proposition")
     best_suited_for: str = Field(..., description="When this solution is the best choice")
     pivot_trigger: str = Field(..., description="Conditions that would justify pivoting to this solution")
+
+    # NEW: Core solution details
+    description: Optional[str] = Field(default=None, description="Brief description of the solution")
+    value_proposition: Optional[str] = Field(default=None, description="Value proposition statement")
+    core_features: Optional[list[str]] = Field(default=None, description="Top 3-5 core features")
+    target_personas: Optional[list[str]] = Field(default=None, description="Primary target personas")
+    technical_approach: Optional[str] = Field(default=None, description="Technical implementation approach")
+
+    # NEW: Additional scores and feasibility
+    novelty_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Innovation/novelty score")
+    solo_dev_feasibility: Optional[str] = Field(default=None, description="Solo developer feasibility: HIGH, MEDIUM, LOW")
+
+    # NEW: Competitive landscape for this solution
+    top_competitors: Optional[list[str]] = Field(default=None, description="Top 3 competitors for this solution")
+    market_gaps: Optional[list[str]] = Field(default=None, description="Key market gaps this solution addresses")
+    competitive_intensity: Optional[str] = Field(default=None, description="Competitive intensity: LOW, MEDIUM, HIGH")
+
+    # NEW: Economic indicators
+    estimated_development_time: Optional[str] = Field(default=None, description="Estimated development time")
+    estimated_cac_organic: Optional[float] = Field(default=None, description="Estimated organic customer acquisition cost")
+    pricing_model: Optional[str] = Field(default=None, description="Recommended pricing model")
 
 class CompetitorMatrixEntry(BaseModel):
     """Single competitor entry showing which solutions it competes against."""
@@ -112,6 +289,21 @@ class CompetitorMatrixEntry(BaseModel):
     solutions_competed: list[str] = Field(..., description="List of solution names this competitor appears in")
     competitor_type: str = Field(..., description="Type: direct, partial, indirect")
     threat_level: str = Field(..., description="Overall threat level: high, medium, low")
+
+
+class CompetitorCard(BaseModel):
+    """Detailed competitor profile for report - preserves full competitor data."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    name: str = Field(..., description="Name of the competitor")
+    url: Optional[str] = Field(default=None, description="Website URL")
+    competitor_type: str = Field(..., description="Type: DIRECT, PARTIAL, or INDIRECT")
+    description: str = Field(..., description="What this competitor offers")
+    key_features: list[str] = Field(default_factory=list, description="Main features they provide")
+    pricing_model: Optional[str] = Field(default=None, description="Pricing model if available")
+    strengths: list[str] = Field(default_factory=list, description="Competitor strengths")
+    weaknesses: list[str] = Field(default_factory=list, description="Competitor weaknesses")
 
 class CompetitiveIntensityEntry(BaseModel):
     """Competitive intensity for a single solution."""
@@ -127,6 +319,10 @@ class CompetitiveLandscapeMatrix(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     all_solutions_analyzed: list[str] = Field(..., description="Names of all solutions analyzed")
+    selected_solution_competitors: list[str] = Field(
+        default_factory=list,
+        description="Direct competitors for the selected solution (names only for executive summary)"
+    )
     competitor_overlap: list[CompetitorMatrixEntry] = Field(
         ..., description="Competitors appearing in multiple solution landscapes"
     )
@@ -246,6 +442,28 @@ class FinalReport(BaseModel):
         description="Paths to generated visualization charts: pain point matrix, competitive landscape, keyword opportunity, implementation timeline"
     )
 
+    # Data Quality & Pipeline Transparency (Phase 6)
+    data_quality_summary: Optional[DataQualitySummary] = Field(
+        default=None,
+        description="Data quality assessment: quality tiers, confidence scores, caveats"
+    )
+    pain_segment_matrix: Optional[list[PainSegmentMapping]] = Field(
+        default=None,
+        description="Cross-reference of pain points to affected audience segments"
+    )
+    refinement_highlights: Optional[RefinementHighlights] = Field(
+        default=None,
+        description="Key strategic insights from Stage 8.7 solution refinement"
+    )
+    stage_timing_summary: Optional[StageTimingSummary] = Field(
+        default=None,
+        description="Pipeline execution timing for performance visibility"
+    )
+    seo_calculation_transparency: Optional[SEOCalculationTransparency] = Field(
+        default=None,
+        description="SEO score calculation methodology from Stage 9.6"
+    )
+
     # Solution Selection (Stage 8.5)
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
@@ -283,16 +501,10 @@ class FinalReport(BaseModel):
         description="Pricing strategy for the selected solution with recommended tiers, ARPU, LTV estimates"
     )
 
-    # Market Sizing & Validation (Stage 8.6)
-    market_sizing: Optional['MarketSizingResult'] = Field(
+    # Traffic Monetization for selected solution (for directories/aggregators - alternative to pricing_strategy)
+    traffic_monetization: Optional['TrafficMonetizationResult'] = Field(
         default=None,
-        description="Market sizing analysis with TAM/SAM/SOM estimates, validation signals, growth potential, and viability assessment from Stage 8.6"
-    )
-
-    # Trend Longevity Analysis (Stage 9.2)
-    trend_longevity: Optional['TrendLongevityResult'] = Field(
-        default=None,
-        description="Trend longevity and market momentum analysis from Stage 9.2"
+        description="Traffic monetization strategy for the selected solution (ads, affiliates, sponsored listings) - used for directories/aggregators instead of pricing_strategy"
     )
 
     # Problem Section
@@ -300,11 +512,9 @@ class FinalReport(BaseModel):
     pain_points_summary: str = Field(
         ..., description="Summary of pain point analysis with severity and WTP insights"
     )
-
-    # Audience & Market Intelligence (Stage 6.5)
-    audience_mapping: Optional['AudienceMappingResult'] = Field(
-        default=None,
-        description="Audience segmentation analysis with target segments, influencers, common vocabulary, and recommended marketing channels from Stage 6.5"
+    pain_point_categories: list[str] = Field(
+        default_factory=list,
+        description="Top categories of pain points identified from analysis"
     )
 
     # Solution Section
@@ -319,18 +529,9 @@ class FinalReport(BaseModel):
     competitive_summary: str = Field(
         ..., description="Summary of competitive landscape and positioning opportunities"
     )
-    competitive_analysis: Optional[CompetitiveAnalysisResult] = Field(
-        default=None,
-        description="Detailed competitive analysis with competitor profiles, market gaps, and differentiation opportunities"
-    )
 
     # Market Validation
     market_validation: str = Field(..., description="Overall market validation conclusion")
-
-    # SEO Strategy (Enhanced from simple string to comprehensive report)
-    seo_strategy: Optional[SEOStrategyReport] = Field(
-        default=None, description="Comprehensive SEO strategy with tiered keywords, content plan, and roadmap"
-    )
 
     # Organic Acquisition Strategy (NEW - SEO-First Focus)
     acquisition_strategy_summary: Optional[str] = Field(
@@ -395,11 +596,7 @@ class FinalReport(BaseModel):
         )
     )
 
-    # Data Sourcing (for solutions requiring aggregation)
-    data_source_research: Optional[DataSourceResearchResult] = Field(
-        default=None,
-        description="Structured data source research results with discovered APIs, providers, cost estimates, and implementation roadmap (Stage 9.75)"
-    )
+    # Data Sourcing Summary (for solutions requiring aggregation)
     data_sourcing_recommendations: str = Field(
         ..., description="Data sourcing strategy for aggregation projects"
     )
@@ -431,6 +628,73 @@ class FinalReport(BaseModel):
     content_categorization: Optional[ContentCategorizationReport] = Field(
         default=None,
         description="Content categorization analysis: theme categories, user segments, and discussion quality from Stage 6 Task 1"
+    )
+
+    # Data Richness Enhancements - Preserve Full Objects
+    solution_innovation_assessment: Optional[dict] = Field(
+        default=None,
+        description="Innovation metrics: novelty_score, novelty_justification, solo_dev_feasibility"
+    )
+    solution_organic_discovery: Optional[dict] = Field(
+        default=None,
+        description="Organic discovery patterns: target_queries, seo_scalability scores, CAC estimates"
+    )
+    competitor_profiles: list[CompetitorCard] = Field(
+        default_factory=list,
+        description="Detailed competitor profiles with features, pricing, strengths, weaknesses"
+    )
+
+    # Ideation Process Transparency (NEW - preserves removed concepts, techniques)
+    ideation_process: Optional[IdeationProcess] = Field(
+        default=None,
+        description="Ideation process metadata: removed concepts, techniques used, diversity summary"
+    )
+
+    # Competitive Strategic Insights (NEW - preserves overall_competitive_insights from Stage 7.5)
+    overall_competitive_insights: Optional[str] = Field(
+        default=None,
+        description="Cross-solution competitive insights and market positioning (from Stage 7.5)"
+    )
+
+    # ========== FULL STAGE DATA (NEW - preserves complete pipeline outputs) ==========
+
+    # Stage 1-4: Full Niche Context
+    niche_context: Optional[NicheContext] = Field(
+        default=None,
+        description="Full niche context with market segments and industry boundaries from Stages 1-4"
+    )
+
+    # Stage 6.5: Audience Intelligence (full object)
+    # Note: Using string forward reference since AudienceMappingResult is defined later in this file
+    audience_mapping: Optional["AudienceMappingResult"] = Field(
+        default=None,
+        description="Complete audience mapping: segments, influencers, messaging frameworks from Stage 6.5"
+    )
+
+    # Stage 8.6: Market Sizing (full object)
+    # Note: Using string forward reference since MarketSizingResult is defined later in this file
+    market_sizing: Optional["MarketSizingResult"] = Field(
+        default=None,
+        description="TAM/SAM/SOM analysis, viability verdict, growth drivers, risks from Stage 8.6"
+    )
+
+    # Stage 9.5: Trend Longevity (full object)
+    # Note: Using string forward reference since TrendLongevityResult is defined later in this file
+    trend_longevity: Optional["TrendLongevityResult"] = Field(
+        default=None,
+        description="Market momentum, trend direction, seasonality, timing recommendation from Stage 9.5"
+    )
+
+    # Stage 9: Full SEO Strategy (full object, not just analytics)
+    seo_strategy_report: Optional[SEOStrategyReport] = Field(
+        default=None,
+        description="Complete SEO strategy with implementation roadmap, content strategy from Stage 9"
+    )
+
+    # Stage 9.7: Full Data Source Research (full object, not just string summary)
+    data_source_research_full: Optional[DataSourceResearchResult] = Field(
+        default=None,
+        description="Full data source analysis with provider details, costs, integration plan from Stage 9.7"
     )
 
     # Metadata
@@ -493,6 +757,92 @@ class PricingStrategyResult(BaseModel):
     )
     market_segment_pricing: Optional[dict[str, str]] = Field(
         default=None, description="Different pricing for different market segments if applicable"
+    )
+
+
+# Stage 8.55: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
+class TrafficMonetizationResult(BaseModel):
+    """Traffic-based monetization strategy for directories/aggregators."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    solution_name: str = Field(..., description="Name of the solution being analyzed")
+    monetization_model: str = Field(
+        ..., description="Primary monetization model: 'Ad-Supported', 'Affiliate', 'Hybrid-Traffic', 'Lead-Gen'"
+    )
+
+    # Traffic Projections (from keyword data)
+    estimated_monthly_pageviews: str = Field(
+        ..., description="Estimated monthly pageviews range (e.g., '50,000 - 100,000')"
+    )
+    traffic_source_breakdown: dict[str, str] = Field(
+        ..., description="Traffic source distribution (e.g., {'organic_search': '70%', 'direct': '20%', 'referral': '10%'})"
+    )
+
+    # Ad Revenue Estimates
+    estimated_cpm_rate: str = Field(
+        ..., description="Estimated CPM rate for this niche (e.g., '$3-8 CPM (lifestyle niche)')"
+    )
+    estimated_monthly_ad_revenue: str = Field(
+        ..., description="Estimated monthly ad revenue range (e.g., '$150 - $800')"
+    )
+    recommended_ad_networks: list[str] = Field(
+        ..., description="Recommended ad networks based on traffic tier (e.g., ['Google AdSense', 'Mediavine', 'Ezoic'])"
+    )
+
+    # Affiliate Revenue Estimates
+    affiliate_commission_rate: str = Field(
+        ..., description="Typical affiliate commission rates (e.g., '5-15% (Amazon Associates)')"
+    )
+    estimated_affiliate_ctr: str = Field(
+        ..., description="Estimated affiliate click-through rate (e.g., '2-5% of pageviews')"
+    )
+    estimated_monthly_affiliate_revenue: str = Field(
+        ..., description="Estimated monthly affiliate revenue (e.g., '$200 - $500')"
+    )
+    recommended_affiliate_programs: list[str] = Field(
+        ..., description="Recommended affiliate programs for this niche"
+    )
+
+    # Premium/Sponsored Options (B2B)
+    sponsored_listing_price: Optional[str] = Field(
+        default=None, description="Suggested sponsored listing price (e.g., '$99/month per listing')"
+    )
+    premium_placement_price: Optional[str] = Field(
+        default=None, description="Premium featured placement price (e.g., '$299/month featured')"
+    )
+    lead_gen_price_per_lead: Optional[str] = Field(
+        default=None, description="Lead generation pricing (e.g., '$15-30 per qualified lead')"
+    )
+
+    # Total Revenue Projection
+    estimated_monthly_revenue_range: str = Field(
+        ..., description="Total estimated monthly revenue range (e.g., '$500 - $2,000')"
+    )
+    estimated_annual_revenue_range: str = Field(
+        ..., description="Total estimated annual revenue range"
+    )
+    break_even_traffic_threshold: str = Field(
+        ..., description="Traffic threshold for break-even (e.g., '25,000 monthly pageviews')"
+    )
+
+    # Strategy
+    monetization_rationale: str = Field(
+        ..., description="Explanation of why this monetization mix was recommended"
+    )
+    scaling_strategy: str = Field(
+        ..., description="How to grow revenue as traffic scales (network upgrades, affiliate optimization, etc.)"
+    )
+    monetization_confidence: str = Field(
+        ..., description="Confidence level: 'High', 'Medium', 'Low'"
+    )
+
+    # Comparison to SaaS (context for decision-making)
+    saas_alternative_viable: bool = Field(
+        ..., description="Whether this could also work as a subscription SaaS"
+    )
+    saas_vs_traffic_recommendation: str = Field(
+        ..., description="Recommendation on traffic vs SaaS monetization with rationale"
     )
 
 
@@ -725,6 +1075,18 @@ class ResearchState(BaseModel):
     # Stage 8: Competitive Analysis
     competitive_analysis: Optional[CompetitiveAnalysisResult] = None
 
+    # Stage 7.5: Competitive Enhancements (preserves overall_competitive_insights)
+    competitive_enhancements: Optional[CompetitiveEnhancements] = Field(
+        default=None,
+        description="Competitive enhancements with overall_competitive_insights from Stage 7.5"
+    )
+
+    # Stage 7.1/7.2: Ideation Process Metadata (preserves removed concepts, techniques)
+    ideation_process: Optional[IdeationProcess] = Field(
+        default=None,
+        description="Ideation process metadata: removed concepts, techniques used, diversity summary"
+    )
+
     # Stage 7.4: Solution Selection
     solution_selection: Optional[SolutionSelection] = None
 
@@ -744,6 +1106,12 @@ class ResearchState(BaseModel):
     pricing_strategies: Optional[list[PricingStrategyResult]] = Field(
         default=None,
         description="Pricing strategies for top N solutions from Stage 8"
+    )
+
+    # Stage 8.55: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
+    traffic_monetization_results: Optional[list[TrafficMonetizationResult]] = Field(
+        default=None,
+        description="Traffic monetization strategies for directory/aggregator/comparison-tool solutions from Stage 8.55"
     )
 
     # Stage 8.6: Market Sizing & Validation
@@ -798,3 +1166,27 @@ class ResearchState(BaseModel):
     completed_at: Optional[datetime] = None
     current_stage: int = Field(default=1, description="Current pipeline stage (1-10)")
     errors: list[str] = Field(default_factory=list, description="Errors encountered")
+
+    # Stage Completion Tracking (NEW - for diagnostic visibility)
+    completed_stages: list[float] = Field(
+        default_factory=list,
+        description="List of completed stage numbers (e.g., [1, 5, 6, 6.5, 7, 8, 8.5])"
+    )
+    stage_completion_timestamps: dict[str, datetime] = Field(
+        default_factory=dict,
+        description="Timestamp when each stage completed (key: stage number as string)"
+    )
+    fallback_stages: list[float] = Field(
+        default_factory=list,
+        description="Stages that used fallback/incomplete data (e.g., [9.5] if trend used fallback)"
+    )
+    filtering_stats: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Filtering statistics from Stage 5: URLs searched, relevant found, filtering rate"
+    )
+
+    # Cost Tracking
+    cost_summary: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="API cost summary: total tokens, costs by stage, total cost (from CostTracker)"
+    )

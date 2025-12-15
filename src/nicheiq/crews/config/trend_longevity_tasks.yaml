@@ -85,11 +85,11 @@ trend_longevity_analysis:
       If you cannot cite actual data, use null or "Insufficient data for assessment".
 
       ALLOWED DATA SOURCES (cite these explicitly):
-        * Reddit engagement: "Sample of {X} posts averaging {Y} upvotes, {Z} comments - Stage 5"
-        * Discussion recency: "Most recent post from {date} ({X} days ago) - Stage 5"
-        * Discussion volume: "{X} total Reddit threads collected - Stage 5"
-        * Pain point signals: "{X} pain points with {Y} total mentions - Stage 6"
-        * Competitor landscape: "{X} competitors identified; market gaps in {areas} - Stage 7"
+        * Reddit engagement: "Sample of [X] posts averaging [Y] upvotes, [Z] comments - Stage 5"
+        * Discussion recency: "Most recent post from [date] ([X] days ago) - Stage 5"
+        * Discussion volume: "[X] total Reddit threads collected - Stage 5"
+        * Pain point signals: "[X] pain points with [Y] total mentions - Stage 6"
+        * Competitor landscape: "[X] competitors identified; market gaps in [areas] - Stage 7"
 
       REQUIRED CITATION FORMAT: "[Signal] - Source: Stage X data showing [metric]"
       Example GOOD: "Active community - Source: Stage 5 shows 5 posts from last 30 days, avg 45 upvotes"

@@ -80,11 +80,22 @@ class KeyMetrics(BaseModel):
     total_keyword_search_volume: int = Field(
         description="Total monthly search volume across all keywords"
     )
+    tier0_keyword_count: int = Field(
+        description="Number of Tier 0 (Foundation) keywords"
+    )
     tier1_keyword_count: int = Field(
         description="Number of Tier 1 (Quick Win) keywords"
     )
     tier2_keyword_count: int = Field(
         description="Number of Tier 2 (Strategic Growth) keywords"
+    )
+    tier3_keyword_count: int = Field(
+        default=0,
+        description="Number of Tier 3 (Long Term) keywords"
+    )
+    tier4_keyword_count: int = Field(
+        default=0,
+        description="Number of Tier 4 (Low Priority) keywords"
     )
     total_keyword_count: int = Field(
         description="Total number of enriched keywords analyzed"

@@ -279,6 +279,8 @@ class DataForSEOBaseClient:
                 # - search_volume: null → skip keyword (not useful without volume data)
                 # - competition_index: null → default to 0 (represents "no competition data")
                 # - cpc: null → default to 0 (represents "no cost data")
+                null_volume_count = 0
+                null_volume_keywords = []
                 for item in result_data:
                     # Parse response according to docs
                     search_volume = item.get("search_volume")
@@ -286,7 +288,10 @@ class DataForSEOBaseClient:
 
                     # Skip if search_volume is None (API returned null)
                     if search_volume is None:
-                        logger.debug(f"Skipping keyword with null search_volume: {item.get('keyword', 'unknown')}")
+                        null_volume_count += 1
+                        kw = item.get('keyword', 'unknown')
+                        null_volume_keywords.append(kw)
+                        logger.debug(f"Skipping keyword with null search_volume: {kw}")
                         continue
 
                     # Default competition_index to 0 if None
@@ -305,6 +310,7 @@ class DataForSEOBaseClient:
                                 "search_volume": search_volume,
                                 "competition": competition_float,
                                 "competition_index": competition_index,
+                                "competition_scale": "0-1",  # Explicit: competition is normalized from 0-100
                                 "cpc": item.get("cpc") or 0,  # Coalesce None to 0
                                 "monthly_searches": item.get("monthly_searches", []),  # 12-month historical data
                             })
@@ -325,9 +331,18 @@ class DataForSEOBaseClient:
                 # Add limited batch to all keywords
                 all_keywords.extend(batch_keywords)
 
-                # Log batch success
+                # Log batch success with null volume tracking
                 keywords_added = len(all_keywords) - keywords_before_batch
                 logger.debug(f"Batch {batch_idx} completed: {keywords_added} keywords passed filters and added to results")
+
+                # Log null volume keywords at INFO level if significant (helps identify niche keyword gaps)
+                if null_volume_count > 0:
+                    logger.info(
+                        f"Batch {batch_idx}: {null_volume_count} keywords had null search_volume "
+                        f"(DataForSEO lacks data for niche terms like: {', '.join(null_volume_keywords[:3])}...)"
+                        if null_volume_count > 3 else
+                        f"Batch {batch_idx}: {null_volume_count} keywords had null search_volume: {', '.join(null_volume_keywords)}"
+                    )
 
             except Exception as e:
                 logger.error(f"Keyword expansion failed for batch {batch_idx}: {e}")
@@ -463,13 +478,18 @@ class DataForSEOBaseClient:
                 # - competition_index: null → default to 0 (represents "no competition data")
                 # - cpc: null → default to 0 (represents "no cost data")
                 result_count = 0
+                null_volume_count = 0
+                null_volume_keywords = []
                 for item in result_data:
                     search_volume = item.get("search_volume")
                     competition_index = item.get("competition_index")
 
                     # Skip if search_volume is None
                     if search_volume is None:
-                        logger.debug(f"Skipping keyword with null search_volume: {item.get('keyword', 'unknown')}")
+                        null_volume_count += 1
+                        kw = item.get('keyword', 'unknown')
+                        null_volume_keywords.append(kw)
+                        logger.debug(f"Skipping keyword with null search_volume: {kw}")
                         continue
 
                     # Default competition_index to 0 if None
@@ -484,12 +504,21 @@ class DataForSEOBaseClient:
                         "search_volume": search_volume,
                         "competition": competition_float,
                         "competition_index": competition_index,
+                        "competition_scale": "0-1",  # Explicit: competition is normalized from 0-100
                         "cpc": item.get("cpc") or 0,  # Coalesce None to 0
                         "monthly_searches": item.get("monthly_searches", []),  # 12-month historical data
                     })
                     result_count += 1
 
                 logger.debug(f"Batch {batch_idx}: Processed {result_count} keywords from {len(result_data)} results")
+
+                # Log null volume keywords at INFO level if any (helps identify niche keyword gaps)
+                if null_volume_count > 0:
+                    sample_kws = ', '.join(null_volume_keywords[:3])
+                    if null_volume_count > 3:
+                        logger.info(f"Batch {batch_idx}: {null_volume_count} keywords had null search_volume (e.g., {sample_kws}...)")
+                    else:
+                        logger.info(f"Batch {batch_idx}: {null_volume_count} keywords had null search_volume: {sample_kws}")
 
             except Exception as e:
                 logger.error(f"Search volume retrieval failed for batch {batch_idx}: {e}")

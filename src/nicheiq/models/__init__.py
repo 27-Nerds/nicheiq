@@ -32,7 +32,14 @@ from .social_content import (
     TwitterThread,
     TwitterTweet,
 )
-from .solution_idea import BaseSolutionIdea, IdeaGenerationResult, SolutionIdea
+from .solution_idea import (
+    BaseSolutionIdea,
+    FilteredConceptList,
+    IdeaGenerationResult,
+    RawConcept,
+    RawConceptList,
+    SolutionIdea,
+)
 from .solution_refinement import SolutionRefinement
 from .solution_selection import SolutionSelection
 from .seo_strategy import SEOStrategyReport
@@ -45,6 +52,10 @@ __all__ = [
     "BaseSolutionIdea",
     "SolutionIdea",
     "IdeaGenerationResult",
+    # Divergent-Convergent Ideation (3-Task Architecture)
+    "RawConcept",
+    "RawConceptList",
+    "FilteredConceptList",
     # Competitors
     "Competitor",
     "CompetitorType",

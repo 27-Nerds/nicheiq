@@ -87,7 +87,7 @@ categorize_content:
        - **frequency**: Either "High", "Medium", or "Low" based on mention count
        - **mention_count**: Number of distinct discussions mentioning this theme (integer)
        - **primary_user_segments**: List of specific user types discussing this theme (e.g., ["Budget-conscious consumers", "Luxury skincare aspirants"])
-       - **representative_quotes**: 3-6 direct user quotes from knowledge sources that exemplify this theme (actual quotes, not paraphrased)
+       - **representative_quotes**: 3-6 direct user quotes that exemplify this theme. CRITICAL: Copy quotes EXACTLY as they appear in knowledge sources, INCLUDING the [source: POST_ID] suffix at the end of each quote (e.g., "I spent 3 hours on setup [source: abc123]"). DO NOT strip the [source: ...] tags - they are required for Task 2 traceability.
 
     **user_segments**: List of UserSegment objects (aim for 4-8 segments based on distinct user types in discussions).
     Each UserSegment object must contain:
@@ -105,7 +105,7 @@ categorize_content:
 
     CRITICAL: Return a valid ContentCategorizationReport Pydantic object with ALL fields populated.
     DO NOT return markdown text or a description of what the report should contain.
-    Every quote in representative_quotes MUST be directly copied from knowledge sources - NO paraphrasing.
+    Every quote in representative_quotes MUST be directly copied from knowledge sources WITH its [source: ID] suffix - NO paraphrasing, NO stripping source tags.
     Every user segment name MUST match self-descriptions from discussions - NO generic assumptions.
 
 extract_pain_points:
@@ -125,13 +125,27 @@ extract_pain_points:
     6. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
     7. Validate: If <3 quotes found → EXCLUDE pain point (quality over quota)
 
+    **CATEGORY COVERAGE REQUIREMENT** (Prevents Missing High-WTP Pain Points):
+
+    ✓ MUST extract at least ONE pain point from EVERY high-frequency category (≥10 mentions) in Task 1
+    ✓ If Task 1 found "Financial/Cost" or "Money/Budget" category → this MUST become a pain point
+    ✓ DO NOT skip categories just because they seem "obvious" or "non-emotional"
+    ✓ Financial pain points often have the HIGHEST WTP potential - prioritize them
+
+    **Why This Matters:**
+    - Emotional pain (fear, frustration) drives severity scores
+    - Financial pain (cost complaints) drives WTP scores
+    - BOTH are needed for high-opportunity pain points
+    - Missing financial categories = artificially low WTP scores downstream
+
     **SEARCH STRATEGY** (Knowledge Source Queries):
 
     | Query Type | Purpose | Keywords |
     |------------|---------|----------|
     | Problem keywords | Find quote evidence | Specific problem terms from categories |
     | Emotional language | Severity assessment | "frustrating", "critical", "annoying", "showstopper" |
-    | Impact mentions | Business impact | "time", "expensive", "productivity", "revenue" |
+    | Financial pain | WTP signals (HIGH PRIORITY) | "cost", "expensive", "afford", "budget", "price", "pay", "$", "£", "€" |
+    | Impact mentions | Business impact | "time", "productivity", "revenue" |
     | Workarounds | Current solutions | "using", "tried", "alternative to" |
 
     **Acceptance Criteria:**

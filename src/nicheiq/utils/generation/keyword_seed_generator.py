@@ -53,6 +53,7 @@ class KeywordSeedGenerator:
         niche_context: "NicheContext | None" = None,
         pain_points: "PainPointAnalysisResult | None" = None,
         competitive_analysis: "CompetitiveAnalysisResult | None" = None,
+        audience_vocabulary: list[str] | None = None,
         num_broad_seeds: int = 30,
         num_targeted_seeds: int = 15
     ) -> "ExpandedKeywordList | None":
@@ -64,6 +65,7 @@ class KeywordSeedGenerator:
             niche_context: Optional NicheContext with market_segments and industry_boundaries
             pain_points: Optional pain point analysis for keyword grounding
             competitive_analysis: Optional competitive context
+            audience_vocabulary: Optional list of terms from audience mapping (common_vocabulary)
             num_broad_seeds: Target count for broad seeds (1-2 words)
             num_targeted_seeds: Target count for targeted keywords (3-5 words)
 
@@ -96,6 +98,14 @@ class KeywordSeedGenerator:
                     competitor_names = [c.name for c in matching_landscape.competitors[:8]]
                     competitors = ", ".join(competitor_names)
 
+            # Format audience vocabulary (from Stage 6.5 AudienceMappingCrew)
+            audience_vocab_formatted = (
+                ", ".join(audience_vocabulary[:15])
+                if audience_vocabulary else "Not available"
+            )
+            if audience_vocabulary:
+                logger.info(f"Including {len(audience_vocabulary[:15])} audience vocabulary terms in keyword generation")
+
             # Build the chain-of-thought prompt
             prompt = get_prompt(
                 "keyword_seed",
@@ -109,6 +119,7 @@ class KeywordSeedGenerator:
                 target_personas=target_personas,
                 pain_points_addressed=pain_points_addressed,
                 competitors=competitors,
+                audience_vocabulary=audience_vocab_formatted,
                 num_broad_seeds=num_broad_seeds,
                 num_targeted_seeds=num_targeted_seeds,
                 total_seeds=num_broad_seeds + num_targeted_seeds
@@ -120,7 +131,7 @@ class KeywordSeedGenerator:
             from ...models.seo_strategy import ExpandedKeywordList
 
             # Use centralized LLM service for structured output
-            result = LLMService.invoke_structured(
+            result, _usage = LLMService.invoke_structured(
                 prompt=prompt,
                 output_model=ExpandedKeywordList,
                 temperature=0.5,  # Balanced creativity for keyword diversity
@@ -143,25 +154,29 @@ class KeywordSeedGenerator:
                     f"below 80% threshold"
                 )
 
-            # Check for suspicious keywords
-            suspicious_count = 0
+            # Post-generation validation - FILTER suspicious keywords (not just warn)
+            valid_keywords = []
+            suspicious_keywords = []
+
             for kw in result.keywords:
                 if self._is_suspicious_keyword(kw.keyword, solution_type, niche_context):
-                    logger.warning(
-                        f"Potentially suspicious keyword: '{kw.keyword}' - "
-                        f"Rationale: {kw.rationale}"
-                    )
-                    suspicious_count += 1
+                    logger.warning(f"Removed suspicious keyword: '{kw.keyword}' - Rationale: {kw.rationale}")
+                    suspicious_keywords.append(kw)
+                else:
+                    valid_keywords.append(kw)
 
-            if suspicious_count > 5:
-                logger.warning(
-                    f"Found {suspicious_count} potentially suspicious keywords - "
-                    f"review prompt alignment with semantic validation rules"
-                )
+            if suspicious_keywords:
+                logger.info(f"Filtered {len(suspicious_keywords)} suspicious keywords from {total_keywords} total")
 
+            result.keywords = valid_keywords
+
+            # Apply domain-locking filter to remove generic keywords without niche context
+            result.keywords = self._filter_generic_keywords(result.keywords, niche_context)
+
+            final_count = len(result.keywords)
             logger.info(
-                f"[OK] Generated {total_keywords} seed keywords across "
-                f"{len(result.topic_clusters)} clusters"
+                f"[OK] Generated {final_count} seed keywords across "
+                f"{len(result.topic_clusters)} clusters (filtered from {total_keywords} initial)"
             )
 
             return result
@@ -194,6 +209,132 @@ class KeywordSeedGenerator:
 
         return text
 
+    def _extract_domain_terms(self, niche_context: "NicheContext | None") -> set[str]:
+        """
+        Dynamically extract domain-specific terms from niche context.
+
+        Extracts significant words from:
+        - niche_description
+        - market_segments
+        - industry_boundaries (IN SCOPE section)
+
+        Returns set of lowercase domain terms (3+ chars, no stopwords).
+        """
+        if not niche_context:
+            return set()
+
+        # Stopwords to exclude
+        stopwords = {
+            'the', 'and', 'for', 'with', 'that', 'this', 'from', 'are', 'was',
+            'were', 'been', 'being', 'have', 'has', 'had', 'does', 'did', 'will',
+            'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can',
+            'need', 'dare', 'ought', 'used', 'who', 'what', 'where', 'when', 'why',
+            'how', 'all', 'each', 'every', 'both', 'few', 'more', 'most', 'other',
+            'some', 'such', 'only', 'own', 'same', 'than', 'too', 'very', 'just',
+            'but', 'not', 'also', 'any', 'into', 'out', 'about', 'over', 'after',
+            'before', 'between', 'under', 'above', 'below', 'through', 'during'
+        }
+
+        domain_terms = set()
+
+        # Extract from niche_description
+        if niche_context.niche_description:
+            words = re.findall(r'\b[a-z]{3,}\b', niche_context.niche_description.lower())
+            domain_terms.update(w for w in words if w not in stopwords)
+
+        # Extract from market_segments
+        if niche_context.market_segments:
+            for segment in niche_context.market_segments:
+                words = re.findall(r'\b[a-z]{3,}\b', segment.lower())
+                domain_terms.update(w for w in words if w not in stopwords)
+
+        # Extract from industry_boundaries (IN SCOPE section only)
+        if niche_context.industry_boundaries:
+            boundaries_lower = niche_context.industry_boundaries.lower()
+            # Extract IN SCOPE section
+            in_scope_match = re.search(
+                r'in\s+scope[:\s]+(.*?)(?:out\s+of\s+scope|$)',
+                boundaries_lower, re.DOTALL
+            )
+            if in_scope_match:
+                in_scope_text = in_scope_match.group(1)
+                words = re.findall(r'\b[a-z]{3,}\b', in_scope_text)
+                domain_terms.update(w for w in words if w not in stopwords)
+
+        return domain_terms
+
+    def _filter_generic_keywords(
+        self,
+        keywords: list,
+        niche_context: "NicheContext | None"
+    ) -> list:
+        """
+        Filter out generic single-word keywords lacking domain context.
+
+        Works for ANY niche by dynamically extracting domain terms from niche_context.
+        Removes bare generics like "professional", "budget", "vegan" that don't
+        contain any niche-specific terms.
+        """
+        if not niche_context:
+            return keywords
+
+        # Extract domain terms from niche context
+        domain_terms = self._extract_domain_terms(niche_context)
+
+        if not domain_terms:
+            logger.warning("Could not extract domain terms from niche context - skipping filter")
+            return keywords
+
+        logger.debug(f"Extracted domain terms: {sorted(domain_terms)[:20]}...")
+
+        # Universal generic terms that need domain context (niche-agnostic)
+        generic_bare_terms = {
+            # Price/value terms
+            'professional', 'budget', 'affordable', 'cheap', 'expensive',
+            'luxury', 'premium', 'quality', 'best', 'top', 'price', 'value',
+            # Action/intent terms
+            'review', 'reviews', 'compare', 'comparison', 'buy', 'purchase',
+            'alternative', 'alternatives', 'vs', 'rating', 'ratings',
+            # Attribute terms
+            'vegan', 'natural', 'organic', 'eco', 'sustainable', 'green',
+            # Generic descriptors
+            'guide', 'tips', 'ideas', 'list', 'examples', 'types'
+        }
+
+        filtered = []
+        filtered_count = 0
+
+        for kw in keywords:
+            keyword_lower = kw.keyword.lower().strip()
+            words = keyword_lower.split()
+
+            # Single-word generic → reject (no domain context possible)
+            if len(words) == 1 and keyword_lower in generic_bare_terms:
+                logger.info(f"Filtered generic keyword: '{kw.keyword}' (bare generic, no domain)")
+                filtered_count += 1
+                continue
+
+            # Multi-word: check if ANY word overlaps with domain terms
+            has_domain_context = any(
+                word in domain_terms or any(dt in word for dt in domain_terms)
+                for word in words
+            )
+
+            # If keyword has no domain context AND is all generic terms, reject
+            if not has_domain_context:
+                is_all_generic = all(w in generic_bare_terms or len(w) <= 2 for w in words)
+                if is_all_generic:
+                    logger.info(f"Filtered generic keyword: '{kw.keyword}' (all generic, no domain)")
+                    filtered_count += 1
+                    continue
+
+            filtered.append(kw)
+
+        if filtered_count > 0:
+            logger.info(f"Domain-lock filter: Removed {filtered_count} generic keywords")
+
+        return filtered
+
     def _is_suspicious_keyword(
         self,
         keyword: str,
@@ -218,6 +359,21 @@ class KeywordSeedGenerator:
             True if keyword appears suspicious
         """
         keyword_lower = keyword.lower()
+
+        # Rule 5: Check for bare generic descriptors (niche-agnostic)
+        # These single-word terms are universally generic and need domain context
+        generic_bare_terms = {
+            'professional', 'budget', 'vegan', 'natural', 'organic',
+            'price', 'affordable', 'cheap', 'expensive', 'luxury',
+            'review', 'reviews', 'compare', 'comparison', 'buy', 'value',
+            'quality', 'best', 'top', 'alternative', 'alternatives',
+            'guide', 'tips', 'ideas', 'list', 'examples', 'types'
+        }
+
+        # Single-word generic terms are always suspicious
+        if keyword_lower in generic_bare_terms:
+            logger.debug(f"Suspicious: '{keyword}' is bare generic term (no domain context)")
+            return True
 
         # Rule 1: Check for "app/apps for X" with physical products
         # Explanation: "apps for furniture" is nonsensical (furniture isn't software)

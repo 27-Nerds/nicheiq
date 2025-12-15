@@ -187,6 +187,16 @@ REDDIT_COMMENT_LIMIT=None
 #   - 32: Load most comments (balanced, recommended)
 #   - 0: Top-level comments only (fastest)
 # Note: More comments = slower but more pain points
+
+MAX_REDDIT_CONTENT_TOKENS=400000
+# Maximum tokens for Reddit content in Stage 6 (PainPointCrew)
+# Posts are sorted by engagement/recency score and trimmed to fit budget
+# Formula: post.score / days_old (recent high-engagement posts prioritized)
+# Options:
+#   - 200000: Aggressive filtering (top posts only)
+#   - 400000: Balanced (recommended)
+#   - 600000: Include more posts (higher cost)
+# Note: Prevents context overflow while keeping best content
 ```
 
 ### Twitter Quality Filters
@@ -313,6 +323,78 @@ THREAD_VALIDATION_MAX_WORKERS=2
 - **Disable parallel (`VALIDATION_PARALLEL_ENABLED=false`)**: Troubleshooting or sequential debugging
 
 **Note:** Setting `max_workers=1` or disabling parallel validation will fall back to sequential processing with no functionality changes.
+
+---
+
+## Cost Tracking & Token Monitoring
+
+NicheIQ includes comprehensive cost tracking and token monitoring to help control API expenses.
+
+### Token Monitoring
+
+```bash
+# Enable token counting and cost monitoring (default: true)
+TOKEN_MONITORING_ENABLED=true
+
+# Log warning when content exceeds this token count
+TOKEN_WARNING_THRESHOLD=200000
+# Default: 200,000 tokens
+# Useful for identifying expensive stages
+
+# Enable soft cap enforcement (default: false)
+TOKEN_SOFT_CAP_ENABLED=false
+# When true, logs critical warning when cap exceeded
+
+# Soft cap token limit
+TOKEN_SOFT_CAP=400000
+# Default: 400,000 tokens
+# Only enforced if TOKEN_SOFT_CAP_ENABLED=true
+
+# Log estimated API costs for token usage (default: true)
+COST_LOGGING_ENABLED=true
+# Shows per-stage cost estimates during execution
+```
+
+### Cost Budget
+
+```bash
+# Enable cost budget tracking (default: false)
+COST_BUDGET_ENABLED=false
+# When true, tracks cumulative costs and logs warning when approaching limit
+
+# Maximum API cost budget per run in USD
+COST_BUDGET_LIMIT=5.00
+# Default: $5.00
+# This is a soft limit - logs warning when exceeded but doesn't halt execution
+```
+
+**Cost Tracking Features:**
+- **Per-stage breakdown**: See costs for each pipeline stage (Pain Point Analysis, Solution Ideation, SEO Strategy, etc.)
+- **Input/output token costs**: Tracks both prompt and completion tokens with accurate per-model pricing
+- **CrewAI + LLM tracking**: Captures costs from both CrewAI crews and direct LLM calls
+- **End-of-run summary**: Formatted cost report logged at pipeline completion
+
+**Example Output:**
+```
+============================================================
+COST SUMMARY
+============================================================
+Total Tokens: 250,000
+  - Input tokens:  200,000 ($0.0500)
+  - Output tokens: 50,000 ($0.0200)
+Total Cost: $0.0700
+------------------------------------------------------------
+Per-Stage Breakdown:
+  Stage 6 - Pain Point Analysis: $0.0350 (150,000 in / 30,000 out)
+  Stage 7 - Solution Ideation: $0.0200 (30,000 in / 15,000 out)
+  Stage 9 - SEO Strategy: $0.0150 (20,000 in / 5,000 out)
+============================================================
+```
+
+**When to enable cost budget:**
+- **Development/testing**: Set `COST_BUDGET_LIMIT=1.00` to catch runaway costs early
+- **Production**: Set to expected maximum (~$3-5) as a safety net
+- **Budget-conscious**: Enable to get visibility into per-run costs
 
 ---
 

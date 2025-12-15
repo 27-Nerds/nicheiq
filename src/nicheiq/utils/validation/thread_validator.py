@@ -78,13 +78,14 @@ class ThreadRelevanceValidator:
         )
 
         # Use centralized LLM service for structured output
-        return LLMService.invoke_structured(
+        result, _usage = LLMService.invoke_structured(
             prompt=prompt,
             output_model=BatchValidationResponse,
             temperature=0,  # Deterministic for consistency
             timeout=120,
             model_name=settings.thread_validation_llm
         )
+        return result
 
     def validate_batch(
         self,
