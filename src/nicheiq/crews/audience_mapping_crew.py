@@ -8,8 +8,6 @@ Uses Knowledge Sources (RAG) for semantic search through full discussion content
 enabling extraction of ACTUAL usernames, vocabulary, and tools mentioned.
 """
 
-from typing import Any
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
@@ -231,13 +229,14 @@ class AudienceMappingCrew:
         Identifies distinct audience segments, influencers, and communities
         from social media discussions using knowledge source queries.
         """
+        from ..utils.llm_service import build_llm_kwargs
+
         return Agent(
             config=self.agents_config["audience_researcher"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.4,  # Moderate creativity for segment identification
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.4,  # Moderate creativity (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -253,45 +252,7 @@ class AudienceMappingCrew:
             config=self.tasks_config["audience_mapping_analysis"],
             agent=self.audience_researcher(),
             output_pydantic=AudienceMappingResult,
-            guardrail=self._validate_audience_output,
         )
-
-    def _validate_audience_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Validate audience mapping output meets CRITICAL RULES from task YAML.
-
-        Checks:
-        - Rule 1: 3-5 distinct audience segments
-        - Rule 3: 5-10 key influencers with actual names
-        - Rule 4: 10-15 vocabulary terms from discussions
-
-        Args:
-            task_output: Task output from CrewAI
-
-        Returns:
-            (True, result) if validation passes, (False, error_message) if fails
-        """
-        try:
-            result = task_output.pydantic
-
-            # Rule 1: 3-5 distinct segments
-            if not result.audience_segments or len(result.audience_segments) < 3:
-                return (False, f"Must have 3-5 audience segments, got {len(result.audience_segments) if result.audience_segments else 0}")
-
-            if len(result.audience_segments) > 5:
-                return (False, f"Must have 3-5 audience segments, got {len(result.audience_segments)} (too many)")
-
-            # Rule 3: 5-10 influencers
-            if not result.key_influencers or len(result.key_influencers) < 5:
-                return (False, f"Must have 5-10 key influencers, got {len(result.key_influencers) if result.key_influencers else 0}")
-
-            # Rule 4: 10-15 vocabulary terms
-            if not result.common_vocabulary or len(result.common_vocabulary) < 10:
-                return (False, f"Must have 10-15 vocabulary terms, got {len(result.common_vocabulary) if result.common_vocabulary else 0}")
-
-            return (True, result)
-        except Exception as e:
-            return (False, f"Validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:

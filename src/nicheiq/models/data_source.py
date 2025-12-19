@@ -4,7 +4,7 @@ Pydantic models for data source research (Stage 9.5).
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class DataSource(BaseModel):
@@ -108,7 +108,7 @@ class SourceEvaluationReport(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     high_priority_sources: list[EvaluatedDataSource] = Field(
-        ..., description="1-3 HIGH priority sources"
+        ..., min_length=1, description="1-3 HIGH priority sources (minimum 1)"
     )
     medium_priority_sources: list[EvaluatedDataSource] = Field(
         ..., description="2-4 MEDIUM priority sources"
@@ -125,6 +125,17 @@ class SourceEvaluationReport(BaseModel):
     evaluation_summary: str = Field(
         ..., description="2-3 sentence summary of evaluation findings"
     )
+
+    @field_validator('high_priority_sources')
+    @classmethod
+    def validate_sources(cls, v: list[EvaluatedDataSource]) -> list[EvaluatedDataSource]:
+        """Validate that each high-priority source has required fields."""
+        for source in v:
+            if source.url and not source.url.startswith('http'):
+                raise ValueError(f"Invalid URL for source '{source.provider}': {source.url}")
+            if not source.quality_metrics:
+                raise ValueError(f"Missing quality_metrics for source: {source.provider}")
+        return v
 
 class RoadmapPhase(BaseModel):
     """Structured phase in implementation roadmap."""
@@ -157,7 +168,8 @@ class DataImplementationPlan(BaseModel):
 
     implementation_phases: list[RoadmapPhase] = Field(
         ...,
-        description="3-phase structured roadmap (MVP/Growth/Scale) with goals, milestones, costs, and fallbacks"
+        min_length=1,
+        description="3-phase structured roadmap (MVP/Growth/Scale) with goals, milestones, costs, and fallbacks (minimum 1)"
     )
     data_partnerships_needed: Optional[list[DataPartnership]] = Field(
         default=None,
@@ -169,7 +181,8 @@ class DataImplementationPlan(BaseModel):
     )
     implementation_roadmap: str = Field(
         ...,
-        description="Recommended phased approach for data integration (2-3 paragraphs)"
+        min_length=50,
+        description="Recommended phased approach for data integration (2-3 paragraphs, minimum 50 chars)"
     )
     competitive_data_insights: Optional[str] = Field(
         default=None,

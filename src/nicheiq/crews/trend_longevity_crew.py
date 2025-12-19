@@ -6,14 +6,13 @@ market timing, trend sustainability, and longevity. Determines if the market is
 growing, stable, or declining, and whether now is the right time to enter.
 """
 
-from typing import Any
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.llm_service import build_llm_kwargs
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
@@ -57,11 +56,10 @@ class TrendLongevityCrew:
         """
         return Agent(
             config=self.agents_config["trend_analyst"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.3,  # Low-medium temperature for trend analysis
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.3,  # Low-medium temperature for trend analysis (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -77,76 +75,7 @@ class TrendLongevityCrew:
             config=self.tasks_config["trend_longevity_analysis"],
             agent=self.trend_analyst(),
             output_pydantic=TrendLongevityResult,
-            guardrail=self._validate_trend_output,
         )
-
-    def _validate_trend_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Validate trend longevity output meets CRITICAL RULES.
-
-        Checks:
-        - Trend direction is one of expected values
-        - Longevity verdict matches trend data
-        - Momentum score in valid range (0.0-1.0)
-        - Required enum fields populated
-
-        Args:
-            task_output: Task output from CrewAI
-
-        Returns:
-            (True, result) if validation passes, (False, error_message) if fails
-        """
-        try:
-            result = task_output.pydantic
-
-            # Validate trend direction
-            valid_directions = ["Growing", "Stable", "Declining"]
-            if result.trend_direction not in valid_directions:
-                return (False, f"Trend direction must be one of: {valid_directions}, got '{result.trend_direction}'")
-
-            # Validate trend confidence
-            valid_confidence = ["High", "Medium", "Low"]
-            if result.trend_confidence not in valid_confidence:
-                return (False, f"Trend confidence must be one of: {valid_confidence}, got '{result.trend_confidence}'")
-
-            # Validate momentum score range
-            if not (0.0 <= result.momentum_score <= 1.0):
-                return (False, f"Momentum score must be 0.0-1.0, got {result.momentum_score}")
-
-            # Validate keyword volume trend
-            valid_volume_trends = ["Increasing", "Stable", "Decreasing"]
-            if result.keyword_volume_trend not in valid_volume_trends:
-                return (False, f"Keyword volume trend must be one of: {valid_volume_trends}, got '{result.keyword_volume_trend}'")
-
-            # Validate discussion frequency trend
-            valid_discussion_trends = ["Increasing", "Stable", "Decreasing"]
-            if result.discussion_frequency_trend not in valid_discussion_trends:
-                return (False, f"Discussion frequency trend must be one of: {valid_discussion_trends}, got '{result.discussion_frequency_trend}'")
-
-            # Validate longevity verdict
-            valid_verdicts = ["Sustainable", "Risky", "Fad"]
-            if result.longevity_verdict not in valid_verdicts:
-                return (False, f"Longevity verdict must be one of: {valid_verdicts}, got '{result.longevity_verdict}'")
-
-            # Validate timing recommendation
-            valid_timing = ["Enter Now", "Monitor & Wait", "Missed Window"]
-            if result.timing_recommendation not in valid_timing:
-                return (False, f"Timing recommendation must be one of: {valid_timing}, got '{result.timing_recommendation}'")
-
-            # Validate market maturity
-            valid_maturity = ["Emerging", "Growth", "Mature"]
-            if result.market_maturity not in valid_maturity:
-                return (False, f"Market maturity must be one of: {valid_maturity}, got '{result.market_maturity}'")
-
-            # Validate momentum score aligns with trend direction (FAIL instead of warn)
-            if result.trend_direction == "Growing" and result.momentum_score < 0.6:
-                return (False, f"Inconsistent: trend_direction='Growing' requires momentum_score >= 0.6, got {result.momentum_score}. Either lower momentum_score or change trend_direction to 'Stable'.")
-            elif result.trend_direction == "Declining" and result.momentum_score > 0.4:
-                return (False, f"Inconsistent: trend_direction='Declining' requires momentum_score <= 0.4, got {result.momentum_score}. Either raise momentum_score or change trend_direction to 'Stable'.")
-
-            return (True, result)
-        except Exception as e:
-            return (False, f"Validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:

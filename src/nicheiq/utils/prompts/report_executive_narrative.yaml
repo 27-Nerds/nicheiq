@@ -75,8 +75,17 @@ template: |
   - ONLY reference scores and metrics explicitly listed above
   - DO NOT create features or capabilities not in solution description
 
-  **Before finalizing, verify:**
-  ✓ All pain point references match EXACTLY the title above
-  ✓ All score references use actual values from above (no generic "strong" or "good")
-  ✓ No invented market claims or statistics
-  ✓ Tagline includes solution name and uses active verb
+  <brief_explanation>
+  First, state the top pain point and the dominant score pattern (strengths vs concerns).
+  </brief_explanation>
+
+  <verification>
+  Before returning, verify:
+  - JSON contains exactly 3 fields: tagline, core_value_prop, verdict_rationale
+  - Tagline is 10-15 words with solution name and active verb
+  - core_value_prop is 2-3 sentences
+  - verdict_rationale is 2-3 sentences max with specific score values
+  - All pain point references match EXACTLY the title above
+  - All score references use actual values (no generic "strong" or "good")
+  - No invented market claims or statistics
+  </verification>

@@ -318,4 +318,17 @@ template: |
   - [ ] No more than 2 queries share same template structure?
   - [ ] Rationale cites the inferred incumbent and specificity markers used?
 
+  <brief_explanation>
+  First, state the solution category and 2-3 likely incumbents you'll reference in queries.
+  </brief_explanation>
+
   Generate {num_queries} queries now, following Steps 1-4 in order. Remember: named competitors + discovery intent > generic categories.
+
+  <verification>
+  Before returning, verify:
+  - Array has exactly {num_queries} queries
+  - ≥50% of queries name specific competitors
+  - Every query has discovery intent (vs, alternatives, top N)
+  - No more than 2 queries share same template structure
+  - You completed ALL {num_queries} queries before returning
+  </verification>

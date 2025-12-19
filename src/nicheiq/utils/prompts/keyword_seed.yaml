@@ -292,4 +292,18 @@ template: |
     "expansion_rationale": "2-3 sentence summary of overall keyword strategy and coverage"
   }}
 
+  <brief_explanation>
+  First, state the niche category and 3 key segment modifiers you'll use throughout.
+  </brief_explanation>
+
   Generate the keywords now, following STEP 1-5 process.
+
+  <verification>
+  Before returning, verify:
+  - Keywords array has exactly {total_seeds} items
+  - {num_broad_seeds} broad seeds (1-2 words each)
+  - {num_targeted_seeds} targeted keywords (3-5 words each)
+  - All generic terms domain-locked with niche context
+  - topic_clusters array has 5-8 clusters
+  - You completed ALL keywords before returning
+  </verification>

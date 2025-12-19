@@ -7,14 +7,13 @@ Validates monetization strategy by determining optimal pricing based on:
 - Selected solution features and positioning
 """
 
-from typing import Any
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import PricingStrategyResult
 
 
@@ -53,11 +52,10 @@ class PricingStrategyCrew:
         """
         return Agent(
             config=self.agents_config["pricing_analyst"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.3,  # Low temperature for consistent pricing analysis
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.3,  # Low temperature for consistent pricing analysis (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -73,56 +71,7 @@ class PricingStrategyCrew:
             config=self.tasks_config["pricing_strategy_analysis"],
             agent=self.pricing_analyst(),
             output_pydantic=PricingStrategyResult,
-            guardrail=self._validate_pricing_output,
         )
-
-    def _validate_pricing_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Validate pricing strategy output meets CRITICAL RULES.
-
-        Checks:
-        - Pricing model is valid
-        - Pricing confidence is valid
-        - Price strings contain dollar sign
-        - Feature tiers are populated
-
-        Returns:
-            (True, result) if validation passes, (False, error_message) if fails
-        """
-        try:
-            result = task_output.pydantic
-            if result is None:
-                return (False, "Pricing analysis returned None pydantic output")
-
-            # Validate pricing model
-            valid_models = ["Freemium", "Subscription", "Hybrid", "One-time"]
-            if result.pricing_model not in valid_models:
-                return (False, f"Invalid pricing_model: '{result.pricing_model}'. Must be one of: {valid_models}")
-
-            # Validate pricing confidence
-            valid_confidence = ["High", "Medium", "Low"]
-            if result.pricing_confidence not in valid_confidence:
-                return (False, f"Invalid pricing_confidence: '{result.pricing_confidence}'. Must be one of: {valid_confidence}")
-
-            # Validate price strings contain dollar sign (basic format check)
-            if "$" not in result.recommended_starter_price:
-                return (False, f"recommended_starter_price missing $ symbol: '{result.recommended_starter_price}'")
-            if "$" not in result.recommended_pro_price:
-                return (False, f"recommended_pro_price missing $ symbol: '{result.recommended_pro_price}'")
-            if "$" not in result.estimated_arpu:
-                return (False, f"estimated_arpu missing $ symbol: '{result.estimated_arpu}'")
-
-            # Validate feature tiers are populated
-            if not result.starter_tier_features or len(result.starter_tier_features) == 0:
-                return (False, "starter_tier_features cannot be empty")
-            if not result.pro_tier_features or len(result.pro_tier_features) == 0:
-                return (False, "pro_tier_features cannot be empty")
-
-            logger.info(f"✓ Pricing guardrail passed: {result.pricing_model} model, {result.pricing_confidence} confidence")
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Pricing validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:

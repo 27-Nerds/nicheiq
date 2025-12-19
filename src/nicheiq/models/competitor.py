@@ -45,11 +45,11 @@ class CompetitiveLandscape(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
-    competitors: Optional[list[Competitor]] = Field(
-        default=None, description="All competitors (direct, indirect, and partial solutions)"
+    competitors: list[Competitor] = Field(
+        default_factory=list, min_length=2, description="All competitors (minimum 2 required)"
     )
     market_gaps: list[str] = Field(
-        ..., description="Specific unmet needs or underserved areas in the market"
+        ..., min_length=2, description="Specific unmet needs or underserved areas (minimum 2)"
     )
     differentiation_opportunities: list[str] = Field(
         ..., description="Specific ways this solution can differentiate from competitors"
@@ -70,11 +70,11 @@ class CompetitiveAnalysisResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     solution_landscapes: list[CompetitiveLandscape] = Field(
-        ..., description="Competitive landscape for each solution idea"
+        ..., min_length=1, description="Competitive landscape for each solution idea (at least 1)"
     )
     top_opportunities: list[str] = Field(
         ..., description="3-5 highest-potential differentiation opportunities across all solutions"
     )
     strategic_recommendations: str = Field(
-        ..., description="Executive summary with strategic insights and market positioning recommendations"
+        ..., min_length=50, description="Executive summary with strategic insights (minimum 50 chars)"
     )

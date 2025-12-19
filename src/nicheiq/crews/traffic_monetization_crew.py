@@ -8,14 +8,13 @@ Routes from research_flow.py when:
     project_type in ['directory', 'aggregator', 'comparison-tool']
 """
 
-from typing import Any
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import TrafficMonetizationResult
 
 
@@ -58,11 +57,10 @@ class TrafficMonetizationCrew:
         """
         return Agent(
             config=self.agents_config["traffic_monetization_analyst"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.4,  # Balanced for creative revenue suggestions
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.4,  # Balanced for creative revenue suggestions (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -78,62 +76,7 @@ class TrafficMonetizationCrew:
             config=self.tasks_config["traffic_monetization_analysis"],
             agent=self.traffic_monetization_analyst(),
             output_pydantic=TrafficMonetizationResult,
-            guardrail=self._validate_traffic_output,
         )
-
-    def _validate_traffic_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Validate traffic monetization output meets requirements.
-
-        Checks:
-        - Monetization model is valid
-        - Confidence level is valid
-        - Revenue estimates contain dollar sign
-        - Required lists are populated
-
-        Returns:
-            (True, result) if validation passes, (False, error_message) if fails
-        """
-        try:
-            result = task_output.pydantic
-            if result is None:
-                return (False, "Traffic analysis returned None pydantic output")
-
-            # Validate monetization model
-            valid_models = ["Ad-Supported", "Affiliate", "Hybrid-Traffic", "Lead-Gen"]
-            if result.monetization_model not in valid_models:
-                return (False, f"Invalid monetization_model: '{result.monetization_model}'. Must be one of: {valid_models}")
-
-            # Validate confidence level
-            valid_confidence = ["High", "Medium", "Low"]
-            if result.monetization_confidence not in valid_confidence:
-                return (False, f"Invalid monetization_confidence: '{result.monetization_confidence}'. Must be one of: {valid_confidence}")
-
-            # Validate revenue estimates contain dollar sign
-            if "$" not in result.estimated_monthly_revenue_range:
-                return (False, f"estimated_monthly_revenue_range missing $ symbol: '{result.estimated_monthly_revenue_range}'")
-            if "$" not in result.estimated_annual_revenue_range:
-                return (False, f"estimated_annual_revenue_range missing $ symbol: '{result.estimated_annual_revenue_range}'")
-            if "$" not in result.estimated_monthly_ad_revenue:
-                return (False, f"estimated_monthly_ad_revenue missing $ symbol: '{result.estimated_monthly_ad_revenue}'")
-            if "$" not in result.estimated_cpm_rate:
-                return (False, f"estimated_cpm_rate missing $ symbol: '{result.estimated_cpm_rate}'")
-
-            # Validate required lists are populated
-            if not result.recommended_ad_networks or len(result.recommended_ad_networks) == 0:
-                return (False, "recommended_ad_networks cannot be empty")
-            if not result.recommended_affiliate_programs or len(result.recommended_affiliate_programs) == 0:
-                return (False, "recommended_affiliate_programs cannot be empty")
-
-            # Validate traffic_source_breakdown is a dict with values
-            if not result.traffic_source_breakdown or len(result.traffic_source_breakdown) == 0:
-                return (False, "traffic_source_breakdown cannot be empty")
-
-            logger.info(f"✓ Traffic monetization guardrail passed: {result.monetization_model} model, {result.monetization_confidence} confidence")
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Traffic validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:

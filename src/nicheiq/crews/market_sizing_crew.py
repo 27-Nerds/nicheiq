@@ -5,6 +5,7 @@ Calculates TAM/SAM/SOM (Total/Serviceable/Obtainable Market) estimates and valid
 market attractiveness using keyword demand, pain point frequency, and competitive analysis.
 """
 
+import json
 from typing import Any
 
 from crewai import Agent, Crew, Task
@@ -13,11 +14,13 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.llm_service import build_llm_kwargs
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import MarketSizingResult
 from ..models.solution_idea import SolutionIdea
+from ..utils.parsing.json_extractor import clean_llm_response
 
 
 @CrewBase
@@ -56,11 +59,10 @@ class MarketSizingCrew:
         """
         return Agent(
             config=self.agents_config["market_analyst"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.2,  # Low temperature for numerical accuracy
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.2,  # Low temperature for numerical accuracy (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -82,6 +84,12 @@ class MarketSizingCrew:
         """
         Validate market sizing output meets CRITICAL RULES.
 
+        NOTE: This guardrail must remain (not moved to Pydantic) because it performs
+        complex TAM > SAM > SOM hierarchy validation that requires cross-field comparison.
+
+        CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+        We must parse .raw directly and return (True, raw_string) on success.
+
         Checks:
         - TAM/SAM/SOM hierarchy (TAM > SAM > SOM)
         - Required numeric estimates present
@@ -91,10 +99,30 @@ class MarketSizingCrew:
             task_output: Task output from CrewAI
 
         Returns:
-            (True, result) if validation passes, (False, error_message) if fails
+            (True, raw_string) if validation passes, (False, error_message) if fails
         """
         try:
+            # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+            # Try pydantic first, then fall back to parsing .raw
             result = task_output.pydantic
+            if result is None:
+                # CrewAI 1.7.0 behavior: parse from .raw
+                if not hasattr(task_output, 'raw') or not task_output.raw:
+                    return (False, "Market sizing returned empty output (no pydantic or raw)")
+
+                try:
+                    # Clean LLM response to remove XML-like tags that may confuse JSON parsing
+                    cleaned_raw = clean_llm_response(task_output.raw)
+                    raw_json = json.loads(cleaned_raw)
+                    result = MarketSizingResult.model_validate(raw_json)
+                    logger.debug("Market sizing guardrail: Parsed MarketSizingResult from .raw")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"[DEBUG] Failed to parse JSON from .raw: {e}")
+                    logger.warning(f"[DEBUG] .raw first 500 chars: {task_output.raw[:500]}")
+                    return (False, f"Invalid JSON in task output: {e}")
+                except Exception as e:
+                    logger.warning(f"[DEBUG] Failed to validate MarketSizingResult: {e}")
+                    return (False, f"Failed to parse MarketSizingResult: {e}")
 
             # Ensure all required fields have estimates (not placeholders)
             if not result.total_addressable_market or result.total_addressable_market == "TBD":
@@ -175,7 +203,8 @@ class MarketSizingCrew:
                 # Log but don't fail validation if numeric parsing fails
                 logger.warning(f"[Guardrail] Could not validate numeric hierarchy: {str(numeric_error)}")
 
-            return (True, result)
+            # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
+            return (True, task_output.raw)
         except Exception as e:
             return (False, f"Validation error: {str(e)}")
 

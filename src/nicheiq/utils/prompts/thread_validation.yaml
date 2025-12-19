@@ -32,3 +32,16 @@ template: |
   - reason: "brief explanation"
 
   Be strict - only mark as relevant if the thread clearly discusses niche-related problems or needs.
+
+  <brief_explanation>
+  First, write one sentence summarizing your relevance criteria for this niche.
+  </brief_explanation>
+
+  <verification>
+  Before returning, verify:
+  - Results array has exactly {batch_size} items
+  - Each item has: thread_index, is_relevant, confidence, reason
+  - No thread_index is missing or duplicated
+  - thread_index values are 0 to {batch_size}-1
+  - You completed ALL threads before returning
+  </verification>

@@ -9,6 +9,49 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def _patch_tiktoken_models():
+    """
+    Patch tiktoken's MODEL_TO_ENCODING to support new OpenAI models.
+
+    This runs at import time to ensure all libraries (CrewAI, LangChain)
+    can tokenize new models like gpt-5.2, gpt-5.1, etc.
+    """
+    try:
+        from tiktoken import model as tm
+
+        # Models not yet in tiktoken 0.12.0 - all use o200k_base encoding
+        new_models = {
+            # GPT-5.2 series
+            "gpt-5.2": "o200k_base",
+            "gpt-5.2-chat-latest": "o200k_base",
+            "gpt-5.2-pro": "o200k_base",
+            # GPT-5.1 series
+            "gpt-5.1": "o200k_base",
+            "gpt-5.1-chat-latest": "o200k_base",
+            "gpt-5.1-codex-max": "o200k_base",
+            "gpt-5.1-codex": "o200k_base",
+            "gpt-5.1-codex-mini": "o200k_base",
+            # GPT-5 codex variants
+            "gpt-5-codex": "o200k_base",
+            "gpt-5-search-api": "o200k_base",
+            "gpt-5-pro": "o200k_base",
+            # o4 series
+            "o4": "o200k_base",
+            "o4-mini-deep-research": "o200k_base",
+        }
+
+        for model, encoding in new_models.items():
+            if model not in tm.MODEL_TO_ENCODING:
+                tm.MODEL_TO_ENCODING[model] = encoding
+
+    except ImportError:
+        pass  # tiktoken not installed
+
+
+# Patch tiktoken at import time
+_patch_tiktoken_models()
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -37,6 +80,10 @@ class Settings(BaseSettings):
     brainstorm_llm: str = Field(
         default="gpt-4o",
         description="Model to use for solution brainstorming/ideation (gpt-4o, o1-mini, or claude-3-5-sonnet for creative thinking)"
+    )
+    brainstorm_reasoning_effort: str | None = Field(
+        default=None,
+        description="Reasoning effort for GPT-5 series models: 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'. Leave unset for older models."
     )
     keyword_validation_llm: str = Field(
         default="gpt-4.1-nano",

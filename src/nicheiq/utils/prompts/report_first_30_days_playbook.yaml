@@ -180,4 +180,18 @@ template: |
   ✓ At least 50% of actions must reference specific pain points by title
   ✓ Every action needs: deliverable + channel + pain point tie-in + measurable outcome
 
+  <brief_explanation>
+  First, state the solution type and the primary channel you'll focus on in Week 1-2.
+  </brief_explanation>
+
   Now generate the comprehensive 30-day playbook following all rules above.
+
+  <verification>
+  Before returning, verify:
+  - JSON contains 4 weeks with week_number, week_theme, focus_areas, action_items, success_metrics, key_deliverables
+  - Each week has 5-8 action_items
+  - ≥50% of actions reference specific pain point titles (exact match)
+  - All channel names are EXACT copies from channels summary
+  - All metrics are conservative (≤500 visitors, ≤70 subscribers)
+  - Weekly progression follows Foundation → Value First → Validation → Optimization
+  </verification>

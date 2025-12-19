@@ -17,7 +17,7 @@ class SelectionCriteriaScore(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     criterion: str = Field(..., description="Criterion name (e.g., 'market_fit', 'technical_feasibility')")
-    score: float = Field(..., description="Score value (0-1 scale)")
+    score: float = Field(..., ge=0.0, le=1.0, description="Score value (0-1 scale)")
     justification: Optional[str] = Field(default=None, description="Brief justification for the score")
 
 class SolutionScores(BaseModel):
@@ -69,15 +69,17 @@ class SolutionSelection(BaseModel):
 
     selected_solution_name: str = Field(
         ...,
-        description="Name of the selected solution to focus on"
+        min_length=3,
+        description="Name of the selected solution to focus on (minimum 3 chars)"
     )
 
     selection_rationale: str = Field(
         ...,
+        min_length=100,
         description=(
             "2-3 paragraphs explaining WHY this solution was selected over alternatives. "
             "Should reference specific data points: market fit scores, competitive gaps, "
-            "pain point alignment, and strategic advantages."
+            "pain point alignment, and strategic advantages. (minimum 100 chars)"
         )
     )
 

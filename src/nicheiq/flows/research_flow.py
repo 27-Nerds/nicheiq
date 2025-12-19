@@ -467,14 +467,40 @@ class ResearchFlow(Flow[ResearchState]):
         # High-opportunity pain points
         high_opportunity = len([pp for pp in pain_points if pp.opportunity_level.value == "high"])
 
+        # Determine if single-platform mode (Twitter disabled)
+        single_platform_mode = not settings.enable_twitter
+
+        # Adjust weights based on platform availability
+        if single_platform_mode:
+            # Redistribute cross-platform 15% weight to other metrics
+            # Quote density gets +10% (most impactful for single-source validation)
+            # Source attribution gets +5% (verifiable without cross-platform)
+            weights = {
+                "high_severity": 0.25,
+                "high_wtp": 0.20,
+                "quote_density": 0.30,  # 20% + 10% redistributed
+                "cross_platform": 0.0,   # N/A in single-platform mode
+                "source_coverage": 0.15, # 10% + 5% redistributed
+                "high_opportunity": 0.10
+            }
+        else:
+            weights = {
+                "high_severity": 0.25,
+                "high_wtp": 0.20,
+                "quote_density": 0.20,
+                "cross_platform": 0.15,
+                "source_coverage": 0.10,
+                "high_opportunity": 0.10
+            }
+
         # Calculate confidence score (0-1)
         confidence_score = (
-            (high_severity / max(total_count, 1)) * 0.25 +  # 25%: High severity distribution
-            (high_wtp / max(total_count, 1)) * 0.20 +        # 20%: WTP signal strength
-            (min(quote_density / 10, 1.0)) * 0.20 +          # 20%: Quote density (target: 10+)
-            (cross_platform_count / max(total_count, 1)) * 0.15 +  # 15%: Cross-platform validation
-            source_coverage * 0.10 +                         # 10%: Source attribution
-            (high_opportunity / max(total_count, 1)) * 0.10  # 10%: High-opportunity %
+            (high_severity / max(total_count, 1)) * weights["high_severity"] +
+            (high_wtp / max(total_count, 1)) * weights["high_wtp"] +
+            (min(quote_density / 10, 1.0)) * weights["quote_density"] +
+            (cross_platform_count / max(total_count, 1)) * weights["cross_platform"] +
+            source_coverage * weights["source_coverage"] +
+            (high_opportunity / max(total_count, 1)) * weights["high_opportunity"]
         )
 
         # Tier classification with detailed logging
@@ -485,16 +511,20 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info(f"Severity distribution: {high_severity} high | {medium_severity} medium | {total_count - high_severity - medium_severity} low")
         logger.info(f"WTP signal: {high_wtp} high | {medium_wtp} medium")
         logger.info(f"Quote density: {quote_density:.1f} quotes/pain point (target: ≥10 for GOLD)")
-        logger.info(f"Cross-platform validation: {cross_platform_count}/{total_count} pain points ({cross_platform_count/total_count*100:.0f}%)")
+        if single_platform_mode:
+            logger.info("Platform mode: Single-platform (Twitter disabled) - cross-platform metric skipped")
+        else:
+            logger.info(f"Cross-platform validation: {cross_platform_count}/{total_count} pain points ({cross_platform_count/total_count*100:.0f}%)")
         logger.info(f"Source attribution coverage: {source_coverage*100:.0f}%")
         logger.info(f"High-opportunity pain points: {high_opportunity} ({high_opportunity/total_count*100:.0f}%)")
         logger.info(f"Overall confidence score: {confidence_score:.2f}")
 
         # GOLD tier: Exceptional quality for high-confidence pipeline
+        gold_cross_platform_ok = single_platform_mode or cross_platform_count >= 3
         if (
             high_severity >= 5 and
             quote_density >= 10 and
-            cross_platform_count >= 3 and
+            gold_cross_platform_ok and
             source_coverage >= 0.90 and
             high_opportunity >= 3
         ):
@@ -664,6 +694,8 @@ class ResearchFlow(Flow[ResearchState]):
                 if self._validate_stage_prerequisites(7):
                     logger.info("Executing Unified Solution Pipeline (Stages 7-8.75)...")
                     self.stage_7_unified_solution_pipeline()
+                    # Refresh completed_stages so subsequent stages see Stage 7 checkpoint
+                    completed_stages = self.checkpoint_mgr.get_completed_stages()
                 else:
                     logger.info("Skipping Stages 7-8.75 (Unified Solution Pipeline) - prerequisites not met")
                     # Skip all solution stages if prerequisites not met
@@ -1257,8 +1289,11 @@ Return a valid JSON object with this structure:
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 6.5
 
-        # Mark stage complete with tracking (fallback if quality is BRONZE)
-        self._mark_stage_complete(6, used_fallback=(quality_tier == "BRONZE"))
+        # Mark stage complete with tracking
+        # In single-platform mode, BRONZE is expected (not fallback)
+        # Only mark as fallback if BRONZE with Twitter enabled (cross-platform was possible)
+        is_fallback = (quality_tier == "BRONZE" and settings.enable_twitter)
+        self._mark_stage_complete(6, used_fallback=is_fallback)
 
         # Checkpoint: Save pain point analysis
         self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
@@ -1410,7 +1445,6 @@ Return a valid JSON object with this structure:
                 competitive_analysis,
                 solution_selection,
                 competitive_enhancements,
-                ideation_process
             ) = unified_crew.execute_pipeline()
 
             # Record crew cost
@@ -1426,7 +1460,6 @@ Return a valid JSON object with this structure:
             self.state.competitive_analysis = competitive_analysis
             self.state.solution_selection = solution_selection
             self.state.competitive_enhancements = competitive_enhancements  # Preserves overall_competitive_insights
-            self.state.ideation_process = ideation_process  # Preserves removed concepts, techniques
 
             # DEFENSIVE: Validate solution selection - detect error strings
             # The LLM may return "Insufficient evidence for strategic selection" if context chain fails
@@ -1484,8 +1517,6 @@ Return a valid JSON object with this structure:
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
             logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
-            if ideation_process:
-                logger.info(f"  - Ideation: {ideation_process.total_concepts_generated} concepts → {ideation_process.concepts_filtered} filtered")
 
             # Update stage (continue to keyword validation)
             self.state.current_stage = 8.8
@@ -2961,21 +2992,21 @@ Return a valid JSON object with this structure:
             from ..models.research_state import TrendLongevityResult
             logger.warning(f"[Stage 9.5] ⚠️ Creating minimal trend analysis due to: {reason}")
             return TrendLongevityResult(
-                trend_direction="Unknown",
+                trend_direction="Stable",  # Conservative default (valid Literal)
                 trend_confidence="Low",
                 momentum_score=0.5,  # Neutral
-                keyword_volume_trend="Unknown",
+                keyword_volume_trend="Stable",  # Conservative default (valid Literal)
                 volume_growth_rate="Insufficient data",
                 trend_duration="Unknown",
-                discussion_frequency_trend="Unknown",
+                discussion_frequency_trend="Stable",  # Conservative default (valid Literal)
                 discussion_recency="Unknown",
                 community_growth_indicators=["Trend analysis unavailable - insufficient data"],
                 new_entrants_trend="Unknown",
                 competitive_activity_level="Unknown",
                 seasonal_pattern="Unknown",
                 peak_periods=None,
-                market_maturity="Unknown",
-                longevity_verdict="Unknown",
+                market_maturity="Emerging",  # Conservative default (valid Literal)
+                longevity_verdict="Risky",  # Conservative default (valid Literal)
                 longevity_rationale=f"Trend analysis could not be completed: {reason}. Manual market research recommended.",
                 trend_reversal_risks=["Data insufficient for trend analysis"],
                 timing_recommendation="Monitor & Wait",

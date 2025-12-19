@@ -4,7 +4,7 @@ Pydantic models for pain point analysis (Stage 6).
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .keyword_data import OpportunityLevel
 
@@ -73,17 +73,29 @@ class ContentCategorizationReport(BaseModel):
 
     executive_summary: str = Field(..., description="2-3 sentence overview")
     theme_categories: list[ThemeCategory] = Field(
-        ..., description="5-10 theme categories identified"
+        ..., min_length=4, description="5-10 theme categories identified (minimum 4)"
     )
     user_segments: list[UserSegment] = Field(
-        ..., description="User segment profiles"
+        ..., min_length=3, description="User segment profiles (minimum 3)"
     )
     discussion_quality_assessment: str = Field(
         ..., description="Quality assessment narrative"
     )
     overall_quality: str = Field(
-        ..., description="High/Medium/Low with justification"
+        ..., description="High/Medium/Low rating"
     )
+    overall_quality_justification: Optional[str] = Field(
+        default=None, description="Justification for the quality rating"
+    )
+
+    @field_validator('theme_categories')
+    @classmethod
+    def validate_themes_have_quotes(cls, v: list[ThemeCategory]) -> list[ThemeCategory]:
+        """Ensure each theme has representative quotes."""
+        for theme in v:
+            if not theme.representative_quotes:
+                raise ValueError(f"Theme '{theme.category_name}' missing representative_quotes")
+        return v
 
 class PainPointExtraction(BaseModel):
     """Output from pain_point_analyst before validation."""
@@ -92,7 +104,7 @@ class PainPointExtraction(BaseModel):
 
     niche: str = Field(..., description="The niche being analyzed")
     extracted_pain_points: list[UnvalidatedPainPoint] = Field(
-        ..., description="Pain points extracted from discussions (not yet scored)"
+        ..., min_length=3, description="Pain points extracted from discussions (minimum 3)"
     )
     extraction_summary: str = Field(
         ..., description="Summary of extraction process and key findings"
@@ -130,7 +142,7 @@ class ValidationResult(BaseModel):
 
     niche: str = Field(..., description="The niche being analyzed")
     pain_point_scores: list[PainPointScoring] = Field(
-        ..., description="Validation scores for each extracted pain point"
+        ..., min_length=1, description="Validation scores for each extracted pain point (at least 1)"
     )
     validation_summary: str = Field(
         ..., description="Summary of validation methodology and overall assessment"

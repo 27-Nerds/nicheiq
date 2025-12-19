@@ -1,158 +1,18 @@
 """
 Crew Guardrails - Validation functions for CrewAI task outputs.
-Used as guardrail callbacks in task definitions.
+
+NOTE: CrewAI 1.7.0 intentionally sets task_output.pydantic = None when guardrails exist.
+Most validation has been migrated to Pydantic model validators (the recommended approach).
+Only complex cross-solution comparisons remain here as guardrails.
 """
 
+import json
 from typing import Any
 
 from loguru import logger
 
-from ...models.solution_idea import CompetitiveEnhancements, IdeaGenerationResult
-
-
-def validate_no_field_loss(
-    task_output, expected_count: int | None = None
-) -> tuple[bool, Any]:
-    """
-    Guardrail for competitive_refinement_task to ensure no data loss.
-    Validates solution count and required fields are preserved.
-
-    Args:
-        task_output: CrewAI task output object
-        expected_count: Optional expected solution count
-
-    Returns:
-        tuple[bool, Any]: (success: bool, result_or_error: Any)
-    """
-    try:
-        result = task_output.pydantic
-
-        if not isinstance(result, IdeaGenerationResult):
-            return (
-                False,
-                f"Invalid output type: expected IdeaGenerationResult, got {type(result)}",
-            )
-
-        # DETECT SCHEMA OUTPUT BUG: Agent returned JSON Schema instead of populated data
-        if len(result.solution_ideas) == 0:
-            logger.error(
-                "Task 3 returned empty solution_ideas list - possible schema confusion"
-            )
-            logger.error(f"Output type: {type(result)}")
-
-            # Check raw output for schema indicators
-            if hasattr(task_output, "raw") and task_output.raw:
-                raw_preview = str(task_output.raw)[:1000]
-                logger.error(f"Raw output preview: {raw_preview}")
-
-                # Detect schema structure patterns
-                if any(
-                    indicator in task_output.raw
-                    for indicator in [
-                        '"additionalProperties"',
-                        '"properties":',
-                        '"type": "object"',
-                        '"required": [',
-                    ]
-                ):
-                    return (
-                        False,
-                        "Agent returned JSON Schema definition instead of populated data. "
-                        "Task prompt includes concrete examples - agent must extract actual values from context "
-                        "and output populated IdeaGenerationResult with real solution data.",
-                    )
-
-            return (
-                False,
-                "Empty solution_ideas list - agent must extract solutions from context",
-            )
-
-        # Check solution count matches input if provided
-        if expected_count is not None:
-            actual_count = len(result.solution_ideas)
-            if actual_count != expected_count:
-                return (
-                    False,
-                    f"Solution count mismatch: expected {expected_count}, got {actual_count}",
-                )
-
-        # Validate required fields
-        field_errors = []
-        for idea in result.solution_ideas:
-            missing_fields = []
-
-            if not idea.solution_name or idea.solution_name.strip() == "":
-                missing_fields.append("solution_name")
-            if not idea.description or idea.description.strip() == "":
-                missing_fields.append("description")
-            if not idea.pain_points_addressed:
-                missing_fields.append("pain_points_addressed")
-            if not idea.core_features:
-                missing_fields.append("core_features")
-            if idea.market_fit_score is None:
-                missing_fields.append("market_fit_score")
-            if idea.technical_feasibility_score is None:
-                missing_fields.append("technical_feasibility_score")
-
-            if missing_fields:
-                field_errors.append(
-                    f"Solution '{idea.solution_name}': {', '.join(missing_fields)}"
-                )
-
-        if field_errors:
-            return (False, "Required fields missing:\n" + "\n".join(field_errors))
-
-        logger.info(
-            f"✓ Guardrail passed: {len(result.solution_ideas)} solutions with all fields preserved"
-        )
-        return (True, result)
-
-    except Exception as e:
-        return (False, f"Guardrail validation error: {str(e)}")
-
-
-def validate_enhancements_output(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for competitive_refinement_task to ensure valid enhancement output.
-
-    Validates:
-    - Pydantic output exists
-    - solution_enhancements list is populated
-    - Each enhancement has required fields
-
-    Returns:
-        tuple[bool, Any]: (success, result_or_error)
-    """
-    try:
-        result = task_output.pydantic
-        if result is None:
-            return (False, "Competitive refinement returned None pydantic output")
-
-        if not isinstance(result, CompetitiveEnhancements):
-            return (
-                False,
-                f"Invalid output type: expected CompetitiveEnhancements, got {type(result)}",
-            )
-
-        # Validate solution_enhancements exists and has entries
-        if not result.solution_enhancements:
-            return (
-                False,
-                "solution_enhancements list cannot be empty - must have at least 1 enhancement",
-            )
-
-        # Validate each enhancement has required solution_name
-        for i, enh in enumerate(result.solution_enhancements):
-            if not enh.solution_name or enh.solution_name.strip() == "":
-                return (False, f"Enhancement {i} missing solution_name")
-
-        logger.info(
-            f"✓ Enhancements guardrail passed: {len(result.solution_enhancements)} solution enhancements"
-        )
-        return (True, result)
-
-    except Exception as e:
-        return (False, f"Enhancement validation error: {str(e)}")
+from ...models.solution_idea import IdeaGenerationResult
+from ..parsing.json_extractor import clean_llm_response
 
 
 def validate_diversity(
@@ -160,6 +20,12 @@ def validate_diversity(
 ) -> tuple[bool, Any]:
     """
     Guardrail for solution_refinement_task to enforce diversity.
+
+    NOTE: This guardrail must remain (not moved to Pydantic) because it performs
+    cross-solution comparisons that cannot be expressed as single-field validators.
+
+    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    We must parse .raw directly and return (True, raw_string) on success.
 
     Adaptive rules based on allowed_project_types:
     - If multiple types allowed: require at least 2 different project_types
@@ -174,9 +40,27 @@ def validate_diversity(
         tuple[bool, Any]: (success, result_or_error)
     """
     try:
+        # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+        # Try pydantic first, then fall back to parsing .raw
         result = task_output.pydantic
         if result is None:
-            return (False, "Solution refinement returned None pydantic output")
+            # CrewAI 1.7.0 behavior: parse from .raw
+            if not hasattr(task_output, 'raw') or not task_output.raw:
+                return (False, "Solution refinement returned empty output (no pydantic or raw)")
+
+            try:
+                # Clean LLM response to remove XML-like tags that may confuse JSON parsing
+                cleaned_raw = clean_llm_response(task_output.raw)
+                raw_json = json.loads(cleaned_raw)
+                result = IdeaGenerationResult.model_validate(raw_json)
+                logger.debug("Diversity guardrail: Parsed IdeaGenerationResult from .raw")
+            except json.JSONDecodeError as e:
+                logger.warning(f"[DEBUG] Failed to parse JSON from .raw: {e}")
+                logger.warning(f"[DEBUG] .raw first 500 chars: {task_output.raw[:500]}")
+                return (False, f"Invalid JSON in task output: {e}")
+            except Exception as e:
+                logger.warning(f"[DEBUG] Failed to validate IdeaGenerationResult: {e}")
+                return (False, f"Failed to parse IdeaGenerationResult: {e}")
 
         if not isinstance(result, IdeaGenerationResult):
             return (
@@ -233,7 +117,8 @@ def validate_diversity(
                     )
 
         logger.info(f"✓ Diversity guardrail passed: {len(ideas)} unique solutions")
-        return (True, result)
+        # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
+        return (True, task_output.raw)
 
     except Exception as e:
         return (False, f"Diversity validation error: {str(e)}")

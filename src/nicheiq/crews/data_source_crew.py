@@ -3,8 +3,6 @@ DataSourceResearchCrew - Stage 9.75: Targeted Data Source Research
 Deep research on data sources, APIs, and integrations for the SELECTED solution only.
 """
 
-from typing import Any
-
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
 from crewai_tools import SerperDevTool
@@ -12,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.llm_service import build_llm_kwargs
 from ..models.competitor import CompetitiveLandscape
 from ..models.data_source import (
     DataImplementationPlan,
@@ -76,17 +75,15 @@ class DataSourceResearchCrew:
         return Agent(
             config=self.agents_config["data_source_researcher"],
             tools=[self.search_tool],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.2,  # Low temperature for consistent factual research
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.2,  # Low temperature for consistent factual research (ignored for reasoning models)
+            )),
             verbose=True,
-            function_calling_llm=ChatOpenAI(
+            function_calling_llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.function_calling_llm,
-                temperature=0.1,  # Low temperature for reliable searches
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.1,  # Low temperature for reliable searches (ignored for reasoning models)
+            )),
         )
 
     @agent
@@ -98,11 +95,10 @@ class DataSourceResearchCrew:
         return Agent(
             config=self.agents_config["data_quality_analyst"],
             verbose=True,
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.3,
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.3,  # Balanced for quality assessment (ignored for reasoning models)
+            )),
         )
 
     @task
@@ -127,47 +123,7 @@ class DataSourceResearchCrew:
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task()],
             output_pydantic=SourceEvaluationReport,
-            guardrail=self._validate_evaluation_output,
         )
-
-    def _validate_evaluation_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Validate source evaluation output meets CRITICAL RULES.
-
-        Checks:
-        - At least 1 high priority source is identified
-        - All sources have valid URLs
-        - Quality metrics are populated
-
-        Returns:
-            (True, result) if validation passes, (False, error_message) if fails
-        """
-        try:
-            result = task_output.pydantic
-            if result is None:
-                return (False, "Source evaluation returned None pydantic output")
-
-            # Validate at least 1 high priority source
-            if not result.high_priority_sources or len(result.high_priority_sources) == 0:
-                return (False, "Must identify at least 1 high priority data source")
-
-            # Validate all high priority sources have URLs
-            for src in result.high_priority_sources:
-                if not src.url or not src.url.startswith("http"):
-                    return (False, f"High priority source '{src.provider}' missing valid URL")
-                if not src.quality_metrics:
-                    return (False, f"High priority source '{src.provider}' missing quality_metrics")
-
-            logger.info(
-                f"✓ Evaluation guardrail passed: "
-                f"{len(result.high_priority_sources)} HIGH, "
-                f"{len(result.medium_priority_sources)} MEDIUM, "
-                f"{len(result.low_priority_sources)} LOW priority sources"
-            )
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Evaluation validation error: {str(e)}")
 
     @task
     def create_data_roadmap_task(self) -> Task:
@@ -180,47 +136,7 @@ class DataSourceResearchCrew:
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task(), self.evaluate_data_sources_task()],
             output_pydantic=DataImplementationPlan,
-            guardrail=self._validate_implementation_output,
         )
-
-    def _validate_implementation_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Validate implementation plan output meets CRITICAL RULES.
-
-        Checks:
-        - At least 1 implementation phase is defined
-        - Implementation roadmap is substantive
-        - Cost estimate is provided
-
-        Returns:
-            (True, result) if validation passes, (False, error_message) if fails
-        """
-        try:
-            result = task_output.pydantic
-            if result is None:
-                return (False, "Implementation plan returned None pydantic output")
-
-            # Validate at least 1 implementation phase
-            if not result.implementation_phases or len(result.implementation_phases) == 0:
-                return (False, "Must define at least 1 implementation phase")
-
-            # Validate implementation roadmap is substantive
-            if not result.implementation_roadmap or len(result.implementation_roadmap) < 50:
-                return (False, "implementation_roadmap must be substantive (50+ chars)")
-
-            # Validate cost estimate is provided
-            if not result.estimated_monthly_cost:
-                return (False, "estimated_monthly_cost is required")
-
-            logger.info(
-                f"✓ Implementation guardrail passed: "
-                f"{len(result.implementation_phases)} phases, "
-                f"cost estimate: {result.estimated_monthly_cost}"
-            )
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Implementation validation error: {str(e)}")
 
     @crew
     def crew(self) -> Crew:

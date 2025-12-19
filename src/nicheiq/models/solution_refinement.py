@@ -28,8 +28,9 @@ class SolutionRefinement(BaseModel):
 
     geographic_priorities: list[str] = Field(
         ...,
+        min_length=1,
         description=(
-            "Ranked list of geographic markets to prioritize based on keyword volume and demand. "
+            "Ranked list of geographic markets to prioritize based on keyword volume and demand (minimum 1). "
             "Examples: ['Spain', 'Portugal', 'France'], ['United States', 'Canada', 'United Kingdom']. "
             "Order reflects keyword volume and market opportunity."
         )
@@ -58,8 +59,9 @@ class SolutionRefinement(BaseModel):
 
     content_strategy_preview: str = Field(
         ...,
+        min_length=100,
         description=(
-            "Early content strategy recommendations based on top keyword themes and clusters. "
+            "Early content strategy recommendations based on top keyword themes and clusters (minimum 100 chars). "
             "Should be 2-3 paragraphs outlining which content types to prioritize, "
             "what topics resonate most with search demand, and how to structure the content roadmap. "
             "Examples: pillar pages, comparison content, geographic landing pages, how-to guides."

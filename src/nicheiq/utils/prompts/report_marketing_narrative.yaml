@@ -58,8 +58,17 @@ template: |
   - No generic advice - tie to actual pain points
   - pain_point_addressed field MUST be exact copy from Top Pain Points list
 
-  **═══ CRITICAL RULES (Verify Before Submitting) ═══**
-  ✗ NO invented pain points beyond the list above
-  ✗ NO generic marketing advice unrelated to actual pain points
-  ✓ Every content angle MUST reference specific pain point from input
-  ✓ pain_point_addressed field MUST be exact copy from Top Pain Points list
+  <brief_explanation>
+  First, state the primary persona and the top pain point you'll address throughout.
+  </brief_explanation>
+
+  <verification>
+  Before returning, verify:
+  - JSON contains: core_marketing_message, message_framework, content_angles
+  - core_marketing_message is 10-15 words
+  - message_framework has 3 sentences (Before/After/Bridge)
+  - content_angles has exactly {max_content_angles} items
+  - Each content_angle has: title, content_type, pain_point_addressed, hook, key_points, target_channel
+  - pain_point_addressed fields are EXACT copies from Top Pain Points list
+  - No invented pain points or generic marketing advice
+  </verification>

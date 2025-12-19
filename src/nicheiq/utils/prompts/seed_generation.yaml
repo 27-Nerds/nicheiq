@@ -102,4 +102,19 @@ template: |
   - **No Clear Competitors**: Skip comparison keywords, add more problem/need-based seeds
     Example: "how to find reliable expat services" instead of "[Competitor] alternative"
 
+  <brief_explanation>
+  First, state the solution category (extracted from description) and the diversity pattern you'll use.
+  </brief_explanation>
+
   Now generate 10 seed keywords for the solution described above.
+
+  <verification>
+  Before returning, verify:
+  - Exactly 10 seed keywords generated
+  - 3-4 broad market keywords (1-2 words)
+  - 2-3 specific solution keywords (2-3 words)
+  - 2-3 problem/need-based keywords (3-5 words)
+  - 1-2 competitive keywords (if competitors provided)
+  - No invented brand names used as keywords
+  - You completed ALL 10 seeds before returning
+  </verification>

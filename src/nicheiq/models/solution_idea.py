@@ -5,7 +5,7 @@ Pydantic models for solution ideas (Stage 7).
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SEORefinementMetadata(BaseModel):
@@ -428,13 +428,34 @@ class IdeaGenerationResult(BaseModel):
 
     model_config = ConfigDict(extra='forbid')
 
-    solution_ideas: list[BaseSolutionIdea] = Field(..., description="Generated solution concepts")
+    solution_ideas: list[BaseSolutionIdea] = Field(
+        ..., min_length=3, description="Generated solution concepts (minimum 3)"
+    )
     recommended_solution: Optional[str] = Field(
         default=None, description="Recommended solution name from the list"
     )
     market_insights: str = Field(
         ..., description="Market insights and opportunity assessment"
     )
+
+    @field_validator('solution_ideas')
+    @classmethod
+    def validate_required_fields(cls, v: list[BaseSolutionIdea]) -> list[BaseSolutionIdea]:
+        """Ensure each solution has all required fields populated."""
+        for idea in v:
+            if not idea.solution_name or not idea.solution_name.strip():
+                raise ValueError("Solution missing solution_name")
+            if not idea.description or not idea.description.strip():
+                raise ValueError(f"Solution '{idea.solution_name}' missing description")
+            if not idea.pain_points_addressed:
+                raise ValueError(f"Solution '{idea.solution_name}' missing pain_points_addressed")
+            if not idea.core_features:
+                raise ValueError(f"Solution '{idea.solution_name}' missing core_features")
+            if idea.market_fit_score is None:
+                raise ValueError(f"Solution '{idea.solution_name}' missing market_fit_score")
+            if idea.technical_feasibility_score is None:
+                raise ValueError(f"Solution '{idea.solution_name}' missing technical_feasibility_score")
+        return v
 
 class SolutionEnhancement(BaseModel):
     """Enhancement data for a single solution from competitive analysis."""
@@ -477,50 +498,25 @@ class CompetitiveEnhancements(BaseModel):
 
     solution_enhancements: list[SolutionEnhancement] = Field(
         ...,
-        description="Enhancements for each solution based on competitive analysis"
+        min_length=1,
+        description="Enhancements for each solution based on competitive analysis (at least 1)"
     )
     overall_competitive_insights: str = Field(
         ...,
         description="Cross-solution competitive insights and market positioning (2-3 paragraphs)"
     )
 
+    @field_validator('solution_enhancements')
+    @classmethod
+    def validate_solution_names(cls, v: list[SolutionEnhancement]) -> list[SolutionEnhancement]:
+        """Ensure each enhancement has a valid solution_name."""
+        for enh in v:
+            if not enh.solution_name or not enh.solution_name.strip():
+                raise ValueError("Each enhancement must have a solution_name")
+        return v
 
-class IdeationProcess(BaseModel):
-    """
-    Metadata about the ideation/filtering process for transparency.
 
-    Captures the divergent-convergent ideation workflow to provide visibility into:
-    - How many concepts were generated and filtered
-    - Which concepts were removed and why
-    - What ideation techniques were applied
-    """
-
-    model_config = ConfigDict(extra='forbid')
-
-    total_concepts_generated: int = Field(
-        ...,
-        description="Total raw concepts from divergent exploration phase"
-    )
-    concepts_filtered: int = Field(
-        ...,
-        description="Number of concepts filtered out during diversity pass"
-    )
-    removed_concepts: list[str] = Field(
-        default_factory=list,
-        description="Names of concepts removed as duplicates or too similar"
-    )
-    removal_reasons: list[str] = Field(
-        default_factory=list,
-        description="Explanations for why each removed concept was filtered"
-    )
-    techniques_used: list[str] = Field(
-        default_factory=list,
-        description="Ideation techniques applied during exploration (e.g., niche_drilling, data_source_inversion)"
-    )
-    diversity_summary: Optional[str] = Field(
-        default=None,
-        description="Summary of diversity achieved: project types represented, data sources covered"
-    )
+# REMOVED: IdeationProcess class - not reliably populated, transparency not needed in final report
 
 
 # =============================================================================

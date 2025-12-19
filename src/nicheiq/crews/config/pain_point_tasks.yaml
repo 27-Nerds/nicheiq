@@ -33,11 +33,15 @@ categorize_content:
     ═══════════════════════════════════════════════════════════════════════════
 
 
-    **Workflow:**
+    # Reasoning Strategy
+    Follow this step-by-step analysis approach:
 
-    1. Review ALL content (Reddit + Twitter sections above)
-    2. Identify 5-10 theme categories from recurring patterns (let data guide you)
-    3. For each category: user segments (from self-descriptions), frequency (High/Medium/Low based on mention count)
+    1. **Content Scan**: Skim all Reddit + Twitter content above to assess volume and density of discussions
+    2. **Theme Extraction**: Identify 5-10 recurring theme categories from patterns (let data guide you, not assumptions)
+    3. **Segment Mapping**: For each category, identify user segments from explicit self-descriptions in discussions
+    4. **Frequency Assignment**: Assign High/Medium/Low based on actual mention counts (count occurrences)
+    5. **Quote Collection**: Gather ≥3 representative quotes per theme, preserving [source: ID] suffixes
+    6. **Quality Verification**: Verify each theme has sufficient evidence before including
 
     **Pattern Keywords:**
     - Problems: "frustration", "difficult", "can't", "impossible", "broken", "struggle"
@@ -73,6 +77,11 @@ categorize_content:
       ✅ Example: "Budget-conscious first-time buyers seeking affordable luxury dupes" (from discussions)
     ✗ DO NOT use training data or niche assumptions - ONLY analyze provided content
       ❌ Example: Creating categories based on assumptions about the niche vs actual patterns
+
+    # Final Reasoning Instruction
+    First, think step by step about the major discussion themes you observed across the Reddit and Twitter content.
+    Then, identify the user segments that appear most frequently in each theme based on self-descriptions.
+    Finally, structure your categorization following the expected output format exactly, ensuring all quotes include [source: ID] suffixes.
 
   expected_output: >
     A ContentCategorizationReport object with the following structure:
@@ -209,6 +218,9 @@ extract_pain_points:
 
     CRITICAL: DO NOT remove [source: ID] suffixes yourself - Python will extract them post-processing.
 
+    # Brief Explanation (GPT-5 Pattern)
+    Give a brief explanation (2-3 bullets) summarizing your pain point extraction approach at the start of your answer, then output the structured results.
+
   expected_output: >
     A PainPointExtraction object with the following structure:
 
@@ -329,6 +341,9 @@ validate_pain_points:
     ✗ Scoring rationale must reference specific quotes
       ❌ Example: "This seems important" (generic)
       ✅ Example: "3 users mentioned $X budget allocation for solutions"
+
+    # Brief Explanation (GPT-5 Pattern)
+    Give a brief explanation (2-3 bullets) summarizing your scoring approach at the start of your answer, then output the structured validation results.
 
   expected_output: >
     ValidationResult Pydantic model with scoring data ONLY:

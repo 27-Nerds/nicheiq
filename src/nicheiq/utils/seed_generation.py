@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from .llm_service import build_llm_kwargs
 from ..tools.dataforseo_tool import DataForSEOBaseClient
 from .keyword_filtering import filter_single_word_keywords
 from .prompts import load_prompt
@@ -451,11 +452,13 @@ class SeedGenerator:
             List of seed keywords
         """
         try:
-            structured_llm = ChatOpenAI(
+            structured_llm = ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.7,
-                api_key=settings.openai_api_key
-            ).with_structured_output(KeywordSeedResult)
+                temperature=0.7,  # Creative for seed generation (ignored for reasoning models)
+            )).with_structured_output(
+                KeywordSeedResult,
+                method="json_schema"  # Explicit constrained decoding for guaranteed schema adherence
+            )
 
             prompt_context = {
                 "solution_name": solution.solution_name,

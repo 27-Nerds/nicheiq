@@ -320,6 +320,9 @@ class KeywordBasedPageType(BaseModel):
     seo_optimization_notes: str = Field(
         ..., description="SEO-specific guidance: title patterns, header structure, internal linking strategy for these pages"
     )
+    seo_optimization_notes_addendum: Optional[str] = Field(
+        default=None, description="Additional SEO optimization notes if needed"
+    )
 
 class SectionKeywordMapping(BaseModel):
     """Mapping of a site section to its keyword cluster."""
@@ -376,6 +379,9 @@ class UniversalSEOElements(BaseModel):
         ...,
         description="When to use index/noindex, follow/nofollow with page type examples (2 paragraphs, markdown)"
     )
+    robots_meta_guidelines_note: Optional[str] = Field(
+        default=None, description="Additional notes on robots meta guidelines"
+    )
 
 class PageTypeImplementation(BaseModel):
     """SEO implementation template for specific page type."""
@@ -421,6 +427,9 @@ class PageTypeImplementation(BaseModel):
     content_guidelines: str = Field(
         ...,
         description="Min/optimal word count, required sections, quality standards (2-3 sentences)"
+    )
+    priority: Optional[str] = Field(
+        default=None, description="Implementation priority level (e.g., 'high', 'medium', 'low')"
     )
 
 class SchemaExample(BaseModel):
@@ -696,7 +705,9 @@ class KeywordAnalysisResult(BaseModel):
 
     # Tier structure
     tier_1_keywords: list[TieredKeyword] = Field(
-        ..., description="High volume + low competition keywords (3-5 keywords)"
+        ...,
+        min_length=1,
+        description="High volume + low competition keywords (3-5 keywords, minimum 1)"
     )
     tier_1_quick_win_strategy: str = Field(
         ..., description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
@@ -717,7 +728,11 @@ class KeywordAnalysisResult(BaseModel):
     # Metadata and findings
     total_keywords_analyzed: int = Field(..., description="Total number of keywords analyzed")
     total_monthly_volume: int = Field(..., description="Total monthly search volume across all keywords")
-    key_findings: list[str] = Field(..., description="3-5 bullet points highlighting key SEO findings")
+    key_findings: list[str] = Field(
+        ...,
+        min_length=1,
+        description="3-5 bullet points highlighting key SEO findings (minimum 1)"
+    )
     competitive_positioning: str = Field(
         ..., description="Keyword gaps to exploit, unique positioning angles (markdown, 2-4 sections)"
     )
@@ -795,7 +810,9 @@ class ContentStrategyResult(BaseModel):
 
     # Content strategy
     content_strategy: str = Field(
-        ..., description="Comprehensive content strategy with numbered sections (markdown, 4-6 paragraphs)"
+        ...,
+        min_length=100,
+        description="Comprehensive content strategy with numbered sections (markdown, 4-6 paragraphs, minimum 100 chars)"
     )
     topic_clusters: Optional[list[TopicCluster]] = Field(
         default=None, description="Content pillars/clusters (3-5 clusters)"
@@ -803,13 +820,17 @@ class ContentStrategyResult(BaseModel):
 
     # Technical SEO
     technical_seo_recommendations: str = Field(
-        ..., description="Technical SEO recommendations with URL structure, schema markup, code examples (markdown, 3-5 sections)"
+        ...,
+        min_length=50,
+        description="Technical SEO recommendations with URL structure, schema markup, code examples (markdown, 3-5 sections, minimum 50 chars)"
     )
     keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] = Field(
         default=None, description="Site structure organized around keyword clusters and search intent patterns"
     )
     keyword_based_page_types: Optional[list[KeywordBasedPageType]] = Field(
-        default=None, description="Page types derived from keyword analysis (4-8 page types)"
+        default=None,
+        min_length=2,
+        description="Page types derived from keyword analysis (4-8 page types, minimum 2)"
     )
 
 class ImplementationPlanResult(BaseModel):
@@ -855,16 +876,24 @@ class FinalSynthesis(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     long_term_strategy: str = Field(
-        ..., description="Year 1/2/3 strategic milestones (markdown, 3 sections)"
+        ...,
+        min_length=50,
+        description="Year 1/2/3 strategic milestones (markdown, 3 sections, minimum 50 chars)"
     )
     conclusion_bottom_line: str = Field(
-        ..., description="Bottom line summary (1 paragraph)"
+        ...,
+        min_length=50,
+        description="Bottom line summary (1 paragraph, minimum 50 chars)"
     )
     competitive_advantages: list[str] = Field(
-        ..., description="2-4 key competitive advantages from SEO analysis"
+        ...,
+        min_length=2,
+        description="2-4 key competitive advantages from SEO analysis (minimum 2)"
     )
     critical_success_factors: list[str] = Field(
-        ..., description="3-4 critical success factors"
+        ...,
+        min_length=3,
+        description="3-4 critical success factors (minimum 3)"
     )
 
 class ImplementationGuide(BaseModel):
@@ -881,7 +910,9 @@ class ImplementationGuide(BaseModel):
         ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"
     )
     page_type_implementations: list[PageTypeImplementation] = Field(
-        ..., description="SEO templates for 4-6 key page types"
+        ...,
+        min_length=4,
+        description="SEO templates for 4-6 key page types (minimum 4)"
     )
     schema_markup_strategy: SchemaMarkupStrategy = Field(
         ..., description="Schema markup strategy with JSON-LD examples and testing"

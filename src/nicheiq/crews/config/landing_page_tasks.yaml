@@ -1,0 +1,426 @@
+# Landing Page Generator Crew Tasks
+# Sequential 4-task pipeline with context chaining
+
+create_landing_strategy:
+  description: >
+    # Instructions
+    - Analyze ALL research data before making strategic decisions
+    - Pick ONE primary persona, not multiple
+    - Identify the most emotionally resonant pain point
+    - Define ONE memorable element that will make this page unforgettable
+    - Be SPECIFIC in all recommendations - vague strategies are useless
+
+    Create a strategic landing page brief that will guide all downstream agents.
+    Your decisions here shape the entire page - be specific and intentional.
+
+    ## Research Data to Analyze
+    - Product: {product_name}
+    - Solution Type: {solution_type}
+    - Target Personas: {target_personas}
+    - Value Proposition: {value_proposition}
+    - Pain Points: {pain_points}
+    - Pain Points Summary: {pain_points_summary}
+    - Competitive Positioning: {competitive_summary}
+    - Features: {features}
+
+    ## Strategic Decisions Required
+
+    1. **Primary Persona**: Pick ONE persona to focus on. Who has:
+       - Highest pain intensity?
+       - Most budget/willingness to pay?
+       - Clearest path to conversion?
+
+    2. **Key Messaging Angle**: What emotional trigger resonates most?
+       - Fear (of loss, risk, missing out)
+       - Desire (for control, growth, efficiency)
+       - Frustration (with current solutions, manual work)
+       - Aspiration (to be seen as professional, successful)
+
+    3. **Pain Points to Emphasize**: Select 2-3 pain points that:
+       - Resonate emotionally with primary persona
+       - Have specific, quotable examples from research
+       - Connect directly to product features
+
+    4. **Differentiation Hook**: What can THIS product claim that competitors can't?
+       - Proprietary data/methodology?
+       - Unique feature combination?
+       - Specific audience focus?
+
+    5. **Memorable Element**: What ONE thing will visitors remember?
+       BE SPECIFIC. Don't say "good design" or "professional look".
+       Say exactly what: "Oversized statistic in hero: 5 advertisers = 50% revenue risk, displayed as large typography"
+
+    6. **Section Strategy**: Which sections and why?
+       - hero (required) - What approach? (problem-first, benefit-first, question, statistic-led)
+       - problem - Include if pain points are emotionally strong
+       - solution/features - Include if features differentiate
+       - how_it_works - Include for complex products
+       - social_proof - Include if good quotes available
+       - pricing - Include if price is competitive advantage
+       - comparison - Include if beating competitors
+       - cta (required) - What conversion goal?
+
+    7. **CTA Recommendations**: Provide 3 specific CTA text options.
+       Don't use generic "Get Started" - match to conversion goal and product.
+
+    # Final Instructions (Read Last)
+    - Do NOT try to target everyone - pick ONE primary persona
+    - Do NOT list generic pain points - use SPECIFIC examples from research
+    - Do NOT suggest vague memorable elements - describe EXACTLY what it looks like
+    - memorable_element_implementation must give HTML developer CLEAR direction
+    - cta_recommendations must be 3 SPECIFIC options, not generic
+
+  expected_output: >
+    LandingStrategy with:
+    - primary_persona: The ONE persona to target
+    - primary_persona_reasoning: Why this persona (2-3 sentences)
+    - key_messaging_angle: The emotional trigger to lead with
+    - pain_points_to_emphasize: Top 2-3 pain points with specific quotes/numbers
+    - differentiation_hook: What makes this product unique (1-2 sentences)
+    - recommended_sections: Section list in order [hero, problem, solution, ...]
+    - section_reasoning: Why these sections in this order
+    - memorable_element: The ONE thing to remember (SPECIFIC description)
+    - memorable_element_implementation: How to implement it (specific guidance)
+    - headline_direction: problem-first, benefit-first, question, or statistic-led
+    - tone_of_voice: professional-authoritative, friendly-approachable, urgent-direct, or technical-precise
+    - conversion_goal: email_signup, waitlist, demo_request, or free_trial
+    - cta_recommendations: 3 specific CTA text options (not generic)
+
+design_brand_identity:
+  description: >
+    # Instructions
+    - Output SPECIFIC hex codes (e.g., #3B82F6), not generic color names
+    - Every color choice must be justified by the product category
+    - If product category is unclear, default to "minimal-professional" mood
+    - Include typography and decorative element recommendations in layout_notes
+    - ALIGN with the Landing Strategy from previous task
+
+    Design a UNIQUE brand identity specifically for this product. Analyze the
+    research data to understand WHO the target audience is and WHAT mood will
+    resonate with them. DO NOT use generic colors - every choice must be justified.
+
+    ## Landing Strategy (from Task 0 - USE THIS)
+    The Marketing Strategist has provided strategic direction. Align your design with:
+    - **tone_of_voice**: Match design mood to the specified tone
+    - **memorable_element**: Your design should SUPPORT the memorable element
+    - **primary_persona**: Design for THIS audience specifically
+
+    ## Product Context (Analyze This First)
+    - Name: {product_name}
+    - Category: {project_type}
+    - Target Audience: {target_personas}
+    - Value Proposition: {value_proposition}
+    - Competitive Positioning: {competitive_summary}
+    - Top Pain Points: {pain_points_summary}
+
+    ## Design Decisions Required (Be Specific)
+    1. **Primary Color**: Pick a HEX code that matches the product category:
+       - Developer/DevOps -> dark themes (#0F172A), teals (#14B8A6), cyans
+       - Marketing/Growth -> vibrant gradients, purples (#8B5CF6), oranges
+       - B2B/Enterprise -> professional blues (#2563EB), grays, trust colors
+       - Consumer -> warm, friendly colors matching emotional appeal
+       - AI/ML -> futuristic purples (#7C3AED), electric blues, gradients
+
+    2. **Secondary Color**: Accent for CTAs - must contrast well with primary
+
+    3. **Background**: Light (#F8FAFC) vs dark (#0F172A) theme based on audience
+
+    4. **Design Mood**: Choose ONE that fits the product personality:
+       - "minimal-professional": Clean lines, lots of whitespace, subtle shadows
+       - "bold-vibrant": Strong colors, large typography, high energy
+       - "dark-technical": Dark theme, code aesthetic, developer-focused
+       - "friendly-approachable": Rounded corners, warm colors, playful
+
+    5. **Gradient Style**: Specify Tailwind gradient for hero section (e.g., bg-gradient-to-br from-slate-900 to-slate-800)
+
+    6. **Layout Notes**: MUST INCLUDE these recommendations for HTML developer:
+       - Typography: Which Google Font to use (Inter, Cal Sans, JetBrains Mono, etc.)
+       - Hero style: Full-width gradient, image background, or split layout
+       - Decorative elements: Badge styles, accent shapes, icon style (outline/solid)
+       - Card variations: How to differentiate cards within sections
+       - Spacing rhythm: Which sections need more/less padding
+
+    # Final Instructions (Read Last)
+    - Do NOT use generic color names like "blue" - always use hex codes
+    - Do NOT skip design_reasoning - explain WHY these colors fit this product
+    - layout_notes MUST include typography and decorative element recommendations
+
+  expected_output: >
+    BrandIdentity with:
+    - color_primary: Specific hex code (e.g., #3B82F6)
+    - color_secondary: Specific hex code for CTAs
+    - color_background: Hex code or gradient CSS
+    - color_text: Primary text color hex
+    - color_text_muted: Secondary text color hex
+    - design_mood: One of the four mood options
+    - gradient_style: Tailwind gradient classes for hero (e.g., bg-gradient-to-br from-slate-900 to-slate-800)
+    - layout_notes: MUST include all of these:
+      1. Typography: Google Font name (Inter, Cal Sans, etc.) and weight recommendations
+      2. Hero style: Full-width gradient, split layout, or image background
+      3. Decorative elements: Badge/pill style, accent shapes, icon style
+      4. Card variations: How cards should differ across sections
+      5. Spacing rhythm: Section padding variations (py-16, py-24, py-32)
+    - design_reasoning: 2-3 sentences explaining WHY these choices fit this product
+
+generate_landing_copy:
+  description: >
+    # Instructions
+    - FOLLOW the Landing Strategy from Task 0 - it defines sections, messaging, and CTAs
+    - HERO and CTA sections are REQUIRED - always include them
+    - Explain your section choices in section_selection_reasoning
+    - AVOID generic AI copy patterns (see below)
+
+    Write conversion-optimized copy following the strategic direction from Task 0.
+    The Marketing Strategist has already decided the sections and messaging approach.
+
+    ## Landing Strategy (from Task 0 - FOLLOW THIS)
+    The Marketing Strategist has provided:
+    - **recommended_sections**: USE this section list and order
+    - **pain_points_to_emphasize**: Focus on THESE specific pain points
+    - **headline_direction**: Use this approach for the hero headline
+    - **cta_recommendations**: Pick from THESE CTA options (don't invent new ones)
+    - **tone_of_voice**: Write in THIS tone throughout
+    - **key_messaging_angle**: Lead with THIS emotional trigger
+
+    ## Brand Identity (from Task 1)
+    Use the brand identity context to match copy tone to design mood.
+
+    ## Product Data to Analyze
+    - Product: {product_name}
+    - Solution Type: {solution_type}
+    - Target Audience: {target_personas}
+    - Value Proposition: {value_proposition}
+    - Pain Points: {pain_points}
+    - Features: {features}
+    - User Journey: {user_journey}
+    - Pricing: {pricing_summary}
+    - Competitive Advantages: {competitive_summary}
+    - Social Proof Quotes: {quotes}
+
+    ## AI SLOP COPY PATTERNS TO AVOID
+    These phrases make landing pages look generic and AI-generated:
+    - "Revolutionize your workflow" - meaningless buzzword
+    - "Game-changing solution" - overused
+    - "You're not alone" - cliché problem section opener
+    - "Seamlessly integrate" - vague tech jargon
+    - "Take your X to the next level" - empty promise
+    - "In today's fast-paced world" - unnecessary filler
+    - Headlines that could apply to ANY product in the category
+
+    ## SPECIFICITY RULES (makes copy feel authentic)
+    - Use EXACT numbers from pain_points: "5 advertisers = 50% revenue risk"
+    - Reference SPECIFIC scenarios from the data, not generic problems
+    - Name the exact audience: "newsletter operators" not "creators"
+    - Use language from actual user quotes when available
+
+    ## CTA VARIETY (don't use "Get Started" for everything)
+    Match CTA to the action:
+    - Data products: "See the data", "Explore sponsors", "Search now"
+    - SaaS tools: "Try free for 14 days", "Start building"
+    - Waitlist: "Get early access", "Join the beta", "Claim your spot"
+    - Lead gen: "See pricing", "Talk to sales", "Book a demo"
+
+    ## Section Selection Decision (YOU MUST DECIDE)
+    Analyze the product and choose which sections to include from this pool:
+    - **hero** (REQUIRED) - Problem-first headline with SPECIFIC benefit
+    - **problem** - 3 pain point statements using EXACT quotes/numbers from data
+    - **solution** - 3-5 features with benefits (include if features differentiate)
+    - **how_it_works** - 3-4 steps (include for complex/technical products)
+    - **social_proof** - Testimonial quotes (include if good quotes available)
+    - **pricing** - Price anchoring (include if price is competitive advantage)
+    - **comparison** - vs competitors table (include if beating competitors)
+    - **use_cases** - Different personas/scenarios (include for multi-persona products)
+    - **faq** - Address objections (include if objections need handling)
+    - **cta** (REQUIRED) - Email capture form with action-specific CTA
+
+    ## Section Selection Guidelines
+    - Developer tools: Hero -> Problem -> How It Works -> Features -> CTA (skip pricing)
+    - B2B enterprise: Hero -> Problem -> Solution -> Comparison -> Social Proof -> CTA
+    - Consumer: Hero -> Solution -> Social Proof -> Pricing -> FAQ -> CTA
+    - Early MVP: Hero -> Problem -> Solution -> CTA (minimal, validation focus)
+
+    YOU MUST explain why you chose these sections in section_selection_reasoning.
+
+    # Fallback Handling
+    If value_proposition is empty: Use product_name as fallback headline
+    If pain_points has <2 items: Skip problem section, note in reasoning
+    If quotes is empty: Skip social_proof section
+
+    # Final Instructions (Read Last)
+    - Do NOT include more than 8 sections
+    - Do NOT skip section_selection_reasoning - it is required
+    - Do NOT use generic CTAs like "Get Started Free" - match CTA to the product action
+    - Do NOT use buzzwords: "revolutionize", "game-changing", "seamlessly", "next level"
+    - CRITICAL: items field must be list of objects {"title": "...", "description": "..."}, NOT strings
+
+  expected_output: >
+    LandingPageCopy with:
+    - product_name: The product name
+    - tagline: Short value proposition (1 sentence)
+    - sections: List of LandingPageSection objects (only sections you chose to include)
+      Each section must have: section_type, headline, body, cta_text (optional), items (optional)
+      IMPORTANT - items format (when included): Must be a list of OBJECTS, not strings.
+      Each item object must have {"title": "string", "description": "string"} keys.
+      Example: items: [{"title": "Pain Point 1", "description": "Details..."}, {"title": "Pain Point 2", "description": "..."}]
+    - section_selection_reasoning: 2-3 sentences explaining your section choices
+    - meta_title: SEO title (50-60 chars)
+    - meta_description: SEO description (150-160 chars)
+
+generate_html_page:
+  description: >
+    # Instructions
+    - Use EXACT hex colors from brand_identity - no substitutions
+    - Include ALL sections from copy context in the order provided
+    - IMPLEMENT the memorable_element from Landing Strategy
+    - HTML must be complete and valid (<!DOCTYPE html> to </html>)
+    - AVOID AI slop layout patterns (see below)
+
+    Generate a UNIQUE, production-ready HTML landing page from scratch.
+    DO NOT use a generic template - build custom layouts based on the design mood.
+
+    ## Landing Strategy (from Task 0 - IMPLEMENT THE MEMORABLE ELEMENT)
+    The Marketing Strategist specified a memorable_element - this is the ONE thing that
+    makes this page unforgettable. IMPLEMENT IT as described in memorable_element_implementation.
+    This could be: oversized typography, a striking statistic, unique layout, etc.
+    The memorable element is your TOP PRIORITY for visual design.
+
+    ## Brand Identity (MUST USE THESE EXACT COLORS)
+    Use all colors and design mood from the brand identity context.
+    IMPORTANT: Follow the layout_notes from brand_identity for typography, hero style, and decorative elements.
+
+    ## Copy Content (MUST USE THIS TEXT)
+    Use all copy from the landing page copy context. Implement each section in order.
+
+    ## AI SLOP LAYOUT PATTERNS TO AVOID
+    These patterns make pages look like generic AI templates:
+    - Hero as a WHITE CARD/BOX on gray background - WRONG, use FULL-WIDTH hero
+    - Purple gradients on white backgrounds - CLICHÉ, choose bolder color combinations
+    - Same 3-column grid for every section - WRONG, use ASYMMETRIC and varied layouts
+    - Generic fonts (Inter, Roboto, Arial, system fonts) - WRONG, use DISTINCTIVE fonts
+    - Predictable symmetric layouts - WRONG, add asymmetry, overlap, diagonal flow
+    - Timid color palettes - WRONG, use DOMINANT colors with sharp accents
+    - No atmosphere or texture - WRONG, add gradient meshes, patterns, depth
+    - Every section py-24 - WRONG, vary rhythm DRAMATICALLY (py-12 to py-32)
+
+    ## PROFESSIONAL LAYOUT REQUIREMENTS
+    1. **HERO MUST BE DRAMATIC AND FULL-WIDTH**:
+       - Use min-h-[70vh] or min-h-screen for impact
+       - Background: gradient mesh, bold gradient, or textured background
+       - Typography: text-6xl md:text-7xl lg:text-8xl font-black tracking-tighter
+       - Add atmosphere: subtle noise/grain texture, geometric patterns, or gradient mesh
+       - Consider asymmetric layout: text left, visual element right
+
+    2. **STICKY NAVIGATION** with glass morphism:
+       - Logo/product name on left
+       - CTA button on right (links to #signup)
+       - Use backdrop-blur-md bg-white/70 (or dark equivalent)
+       - Subtle border-b border-gray-200/50
+
+    3. **ASYMMETRIC & VARIED LAYOUTS** - break the grid:
+       - Problem section: Numbered list with large numbers OR alternating left/right
+       - Features section: Asymmetric 2-col (60/40 split) OR bento grid OR staggered
+       - How it works: Horizontal timeline with connecting line OR diagonal steps
+       - Social proof: One large quote with smaller ones OR asymmetric card layout
+       - Let some elements OVERLAP or break out of their containers
+
+    4. **DRAMATIC SPACING RHYTHM** - create visual breathing:
+       - Hero: py-24 to py-40 (generous, dramatic)
+       - Dense sections (pricing, features): py-16 to py-20
+       - Statement sections: py-32 (room to breathe)
+       - CTA: py-16 (tighter, urgent)
+       - VARY within page - rhythm creates interest
+
+    5. **VISUAL HIERARCHY** through dramatic size contrast:
+       - Hero headline: text-6xl to text-8xl font-black tracking-tighter
+       - Section headlines: text-4xl to text-5xl font-bold
+       - Card headlines: text-xl to text-2xl font-semibold
+       - Body text: text-lg or text-xl font-normal leading-relaxed
+
+    6. **MOTION & ATMOSPHERE**:
+       - Page load: Add staggered animations with animation-delay (style="animation-delay: 100ms")
+       - Hover states: transform hover:scale-105, shadow expansion, color shifts
+       - Background depth: Layered elements, blur effects, gradient overlays
+       - Texture: Consider subtle noise/grain overlay on hero (via SVG or CSS)
+
+    7. **ONE MEMORABLE ELEMENT**:
+       - Every page needs ONE thing visitors will remember
+       - Could be: dramatic typography, unique color, interesting layout, cool animation
+       - Ask: "What makes THIS page unforgettable?"
+
+    ## Layout Templates by Design Mood
+
+    **If "minimal-professional":**
+    - Hero: FULL-WIDTH, generous whitespace, asymmetric text placement
+    - Typography: Clean sans like DM Sans or Source Sans 3 (NOT Inter)
+    - Colors: Restraint with 1-2 accent colors, lots of negative space
+    - Cards: Subtle borders or no borders, minimal shadows
+    - Memorable element: Perfect typography and spacing precision
+
+    **If "bold-vibrant":**
+    - Hero: FULL-WIDTH dramatic gradient, oversized text (text-7xl+), animated elements
+    - Typography: Bold display font like Clash Display or Cabinet Grotesk
+    - Colors: High contrast, saturated accents, gradient meshes
+    - Cards: Colorful backgrounds, shadow-2xl, hover animations
+    - Memorable element: Color impact and energy
+
+    **If "dark-technical":**
+    - Hero: Dark background (#0F172A to #1E293B gradient), code aesthetic
+    - Typography: Monospace for accents (Geist Mono, JetBrains Mono), clean sans for body
+    - Colors: Dark base with neon/bright accents (cyan, green, purple)
+    - Cards: Dark with subtle glow borders, terminal-style elements
+    - Memorable element: Developer aesthetic and subtle glow effects
+
+    **If "friendly-approachable":**
+    - Hero: Warm gradient, playful elements, rounded everything
+    - Typography: Rounded friendly fonts like Nunito, Quicksand, or Fredoka
+    - Colors: Warm palette, pastels with vibrant accents
+    - Cards: rounded-2xl, soft shadows, subtle animations
+    - Memorable element: Warmth and approachability
+
+    ## Technical Requirements (MUST FOLLOW)
+    - Start with: <!DOCTYPE html>
+    - Tailwind CSS via CDN: <script src="https://cdn.tailwindcss.com"></script>
+    - Google Fonts - CHOOSE DISTINCTIVE FONTS (NOT Inter/Roboto):
+      Example: <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:wght@700;900&display=swap" rel="stylesheet">
+      Use font from layout_notes or select based on mood
+    - Mobile-first responsive (sm:, md:, lg: breakpoints)
+    - Email form with action="#" method="POST" placeholder
+    - Include meta tags for SEO (title, description, viewport)
+    - Include Open Graph meta tags (og:title, og:description)
+    - Smooth scroll behavior: scroll-smooth on html element
+    - CTA section should have id="signup" for anchor links
+    - Add subtle CSS animations for page load stagger effect
+
+    # Verification Checklist (Before Output)
+    Verify these before returning:
+    1. HTML starts with <!DOCTYPE html>
+    2. Hero is FULL-WIDTH with min-h-[70vh] (NOT a card on gray background)
+    3. Hero headline is text-6xl or larger with font-black or font-extrabold
+    4. Sticky nav with glass morphism (backdrop-blur) is included
+    5. Tailwind CDN script is included
+    6. Google Fonts link with DISTINCTIVE font (NOT Inter/Roboto/Arial)
+    7. All sections from copy are implemented
+    8. Section layouts are ASYMMETRIC or VARIED (not all identical grids)
+    9. Spacing VARIES between sections (not all py-24)
+    10. Email form has action="#" method="POST"
+    11. CTA section has id="signup"
+    12. Colors match brand_identity hex codes exactly
+    13. ONE memorable visual element exists (dramatic typography, unique color, interesting layout)
+
+    # Final Instructions (Read Last)
+    - Do NOT put hero in a card/box - hero MUST be full-width with gradient/color background
+    - Do NOT use Inter, Roboto, or Arial fonts - these are AI slop indicators
+    - Do NOT use identical symmetric layouts for every section - add asymmetry
+    - Do NOT use text-4xl or text-5xl for hero - use text-6xl or larger
+    - Do NOT use same py-24 spacing everywhere - vary dramatically
+    - Do NOT create predictable 3-column grids for every section
+    - Do NOT skip sticky navigation with glass morphism effect
+    - Do NOT invent new sections not in copy
+    - Do NOT change colors from brand_identity
+
+  expected_output: >
+    HTMLPageResult with:
+    - html_content: Complete, valid HTML file starting with <!DOCTYPE html>
+      MUST include: full-width hero (not a card), sticky nav, Google Fonts, varied section layouts
+    - sections_included: List of section types in the generated HTML
+    - design_notes: 2-3 sentences explaining: (1) hero layout choice, (2) how you varied section layouts, (3) decorative elements used

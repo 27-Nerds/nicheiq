@@ -155,6 +155,21 @@ class CheckpointManager:
             metadata["completed_stages"].append(completed_stage)
         metadata["errors"] = self.state.errors.copy() if hasattr(self.state, 'errors') else []
 
+        # Quality tier fields (for data quality summary in final report)
+        if hasattr(self.state, 'social_content_quality_tier') and self.state.social_content_quality_tier:
+            metadata["social_content_quality_tier"] = self.state.social_content_quality_tier
+        if hasattr(self.state, 'pain_point_quality_tier') and self.state.pain_point_quality_tier:
+            metadata["pain_point_quality_tier"] = self.state.pain_point_quality_tier
+        if hasattr(self.state, 'pain_point_confidence_score') and self.state.pain_point_confidence_score is not None:
+            metadata["pain_point_confidence_score"] = self.state.pain_point_confidence_score
+
+        # Stage completion timestamps (for timing summary in final report)
+        if hasattr(self.state, 'stage_completion_timestamps') and self.state.stage_completion_timestamps:
+            metadata["stage_completion_timestamps"] = {
+                k: v.isoformat() if hasattr(v, 'isoformat') else str(v)
+                for k, v in self.state.stage_completion_timestamps.items()
+            }
+
         # Save metadata with atomic write (prevents corruption)
         temp_file = metadata_file.with_suffix('.json.tmp')
         try:
@@ -241,7 +256,7 @@ class CheckpointManager:
             # Tasks 3-6: Essential outputs (loaded to state for resume)
             "stage_7_3_refinement.json": "idea_generation",
             "stage_7_4_competitive.json": "competitive_analysis",
-            "stage_7_5_enhancements.json": None,  # CompetitiveEnhancements - debug only
+            "stage_7_5_enhancements.json": "competitive_enhancements",  # Load for overall_competitive_insights
             "stage_7_6_selection.json": "solution_selection",
             # Stage 8-8.7: Post-solution validation stages
             "stage_8_pricing_validation.json": "pricing_strategies",
@@ -348,6 +363,21 @@ class CheckpointManager:
         # Restore allowed_project_types from checkpoint metadata
         if metadata.get("allowed_project_types"):
             self.state.allowed_project_types = metadata["allowed_project_types"]
+
+        # Restore quality tier fields
+        if metadata.get("social_content_quality_tier"):
+            self.state.social_content_quality_tier = metadata["social_content_quality_tier"]
+        if metadata.get("pain_point_quality_tier"):
+            self.state.pain_point_quality_tier = metadata["pain_point_quality_tier"]
+        if metadata.get("pain_point_confidence_score") is not None:
+            self.state.pain_point_confidence_score = metadata["pain_point_confidence_score"]
+
+        # Restore stage completion timestamps
+        if metadata.get("stage_completion_timestamps"):
+            self.state.stage_completion_timestamps = {
+                k: datetime.fromisoformat(v) if isinstance(v, str) else v
+                for k, v in metadata["stage_completion_timestamps"].items()
+            }
 
     def get_completed_stages(self, folder_path: Path | None = None) -> list[str]:
         """Get list of completed stage identifiers from checkpoint folder."""

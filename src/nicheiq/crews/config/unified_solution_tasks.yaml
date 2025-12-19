@@ -40,6 +40,14 @@ divergent_exploration:
     **Tools Currently Used** (competitive context):
     {tools_currently_used}
 
+    <long_context_handling>
+    Before generating concepts:
+    1. List 3-5 key pain point themes from the analysis above
+    2. Re-state niche constraints: "{niche_description}" with allowed types "{allowed_project_types}"
+    3. Anchor each concept to specific pain points from the input
+    4. If pain point data is sparse: Note this and proceed with available evidence
+    </long_context_handling>
+
     ═══════════════════════════════════════════════════════════════════════════
 
     **FORCED IDEATION TECHNIQUES (Apply ALL 5):**
@@ -143,6 +151,13 @@ diversity_filtering:
 
     You have access to RawConceptList with 8-12 concepts.
 
+    <output_verbosity_spec>
+    - concepts: Pass through 5-7 RawConcept objects unchanged
+    - removed_concepts: List of names only
+    - removal_reasons: 1 sentence per removal (format: "[Name]: [reason]")
+    - diversity_summary: 2-3 sentences max
+    </output_verbosity_spec>
+
     ═══════════════════════════════════════════════════════════════════════════
 
     **FILTERING WORKFLOW:**
@@ -235,6 +250,26 @@ solution_refinement:
 
     High-priority ({high_priority_count}): {high_priority_list}
     User segments: {user_segments}
+
+    <long_context_handling>
+    Before scoring and expanding:
+    1. List pain point themes from above context
+    2. Re-state selection criteria: Top 3-5 by composite score
+    3. Anchor each solution's market_fit_score to specific pain points
+    </long_context_handling>
+
+    <output_verbosity_spec>
+    For each of the 25+ fields:
+    - description: 4-6 sentences (HOW IT WORKS focus)
+    - value_proposition: 1-2 sentences
+    - core_features: 5-7 items, 1 sentence each
+    - target_personas: 2-4 personas, 1 sentence each
+    - pricing_strategy: 2-3 sentences
+    - differentiation_factors: 3-5 items, 1 sentence each
+    - novelty_justification: 1-2 sentences following template
+    - organic_discovery_queries: 5-10 queries
+    - All numeric scores: decimal only (e.g., 0.75)
+    </output_verbosity_spec>
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -485,6 +520,14 @@ competitive_refinement:
     Tasks 1 and 2 are available in your context for reference:
     - Task 1: IdeaGenerationResult (base solutions - reference for solution names)
     - Task 2: CompetitiveAnalysisResult (competitive insights to apply)
+
+    <uncertainty_and_ambiguity>
+    - If Task 2 competitive insights are sparse: Proceed with available data
+    - Note gaps in overall_competitive_insights: "Limited competitive data available for [solution]"
+    - Never fabricate competitor details or market gaps
+    - Make reasonable positioning recommendations based on available evidence
+    - If no competitive data exists for a solution: Generate enhancements based on general market knowledge, noting this limitation
+    </uncertainty_and_ambiguity>
 
     **YOUR TASK: Generate Competitive Enhancements**
 

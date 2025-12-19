@@ -157,4 +157,17 @@ template: |
   - [ ] Uses segment vocabulary from context?
   - [ ] Discovery-focused (not leading)?
 
+  <brief_explanation>
+  First, state the core niche topic and primary pain expression pattern you'll use.
+  </brief_explanation>
+
   Generate {num_queries} SHORT queries now. Count words before including each one.
+
+  <verification>
+  Before returning, verify:
+  - Array has exactly {num_queries} queries
+  - Each query is 3-6 words (count them!)
+  - No technology/tool/brand names (unless niche IS that tech)
+  - Platform distribution: ~60% reddit, ~30% twitter, ~10% both
+  - You completed ALL {num_queries} queries before returning
+  </verification>

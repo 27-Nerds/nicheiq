@@ -11,6 +11,74 @@ from ..config.settings import settings
 T = TypeVar('T', bound=BaseModel)
 
 
+def is_reasoning_model(model: str) -> bool:
+    """
+    Check if a model is a reasoning model that doesn't support sampling parameters.
+
+    Reasoning models (GPT-5 series, o1/o3 series) don't support:
+    - temperature, top_p, presence_penalty, frequency_penalty
+    - max_tokens (use max_completion_tokens instead)
+
+    See: https://community.openai.com/t/temperature-in-gpt-5-models/1337133
+    """
+    model_lower = model.lower()
+    # GPT-5 series (gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2, etc.)
+    if model_lower.startswith("gpt-5"):
+        return True
+    # o1/o3/o4 reasoning models
+    if model_lower.startswith(("o1", "o3", "o4")):
+        return True
+    return False
+
+
+def build_llm_kwargs(
+    model: str,
+    temperature: float | None = None,
+    api_key: str | None = None,
+    timeout: int | None = None,
+    **extra_kwargs
+) -> dict:
+    """
+    Build kwargs dict for ChatOpenAI, excluding unsupported params for reasoning models.
+
+    Use this helper when instantiating ChatOpenAI directly in crews to ensure
+    compatibility with GPT-5 and reasoning models.
+
+    Args:
+        model: Model name
+        temperature: Temperature setting (ignored for reasoning models)
+        api_key: OpenAI API key (defaults to settings)
+        timeout: Timeout in seconds
+        **extra_kwargs: Additional kwargs (frequency_penalty, presence_penalty, etc.)
+
+    Returns:
+        Dict of kwargs safe to pass to ChatOpenAI
+    """
+    kwargs = {"model": model}
+
+    if api_key:
+        kwargs["api_key"] = api_key
+    else:
+        kwargs["api_key"] = settings.openai_api_key
+
+    if timeout:
+        kwargs["timeout"] = timeout
+
+    # For reasoning models, exclude sampling parameters
+    if not is_reasoning_model(model):
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        # Also handle other sampling params that may be passed
+        for param in ["top_p", "frequency_penalty", "presence_penalty"]:
+            if param in extra_kwargs:
+                kwargs[param] = extra_kwargs.pop(param)
+
+    # Add remaining kwargs
+    kwargs.update(extra_kwargs)
+
+    return kwargs
+
+
 class TokenUsage:
     """Token usage data from LLM invocation."""
 
@@ -78,13 +146,21 @@ class LLMService:
         """
         model = model_name or settings.openai_model_name
         try:
-            llm = ChatOpenAI(
-                model=model,
-                temperature=temperature,
-                api_key=settings.openai_api_key,
-                timeout=timeout,
+            # Build kwargs - exclude temperature for reasoning models (GPT-5, o1/o3/o4)
+            llm_kwargs = {
+                "model": model,
+                "api_key": settings.openai_api_key,
+                "timeout": timeout,
+            }
+            if not is_reasoning_model(model):
+                llm_kwargs["temperature"] = temperature
+
+            llm = ChatOpenAI(**llm_kwargs)
+            structured_llm = llm.with_structured_output(
+                output_model,
+                method="json_schema",  # Explicit constrained decoding for guaranteed schema adherence
+                include_raw=True
             )
-            structured_llm = llm.with_structured_output(output_model, include_raw=True)
 
             raw_result = structured_llm.invoke(prompt)
             parsed = raw_result['parsed']
@@ -129,12 +205,16 @@ class LLMService:
         """
         model = model_name or settings.openai_model_name
         try:
-            llm = ChatOpenAI(
-                model=model,
-                temperature=temperature,
-                api_key=settings.openai_api_key,
-                timeout=timeout,
-            )
+            # Build kwargs - exclude temperature for reasoning models (GPT-5, o1/o3/o4)
+            llm_kwargs = {
+                "model": model,
+                "api_key": settings.openai_api_key,
+                "timeout": timeout,
+            }
+            if not is_reasoning_model(model):
+                llm_kwargs["temperature"] = temperature
+
+            llm = ChatOpenAI(**llm_kwargs)
 
             result = llm.invoke(prompt)
             usage = LLMService._extract_usage(

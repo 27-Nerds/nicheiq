@@ -8,7 +8,6 @@ from typing import Any
 
 from crewai import Agent, Crew, Task
 from crewai.project import CrewBase, agent, crew, task
-from crewai.tasks.task_output import TaskOutput
 from loguru import logger
 
 from ..config.settings import settings
@@ -65,99 +64,6 @@ def fuzzy_find_matching_score(title: str, scores: list, threshold: float = FUZZY
         return (best_match, best_ratio)
 
     return (None, best_ratio)
-
-
-def validate_pydantic_pain_point_output(result: TaskOutput) -> tuple[bool, Any]:
-    """
-    Guardrail function to ensure ValidationResult is valid with no extra text.
-
-    This prevents agents from adding explanatory commentary and validates that
-    the number of scores matches the number of extracted pain points.
-
-    Returns:
-        tuple[bool, Any]: (success, validated_result_or_error_message)
-    """
-    try:
-        # Check if Pydantic output exists
-        if not result.pydantic:
-            # Log raw output preview for debugging
-            raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
-            logger.error(f"Guardrail validation failed - No Pydantic output found. Raw output preview: {raw_preview}...")
-            return (False, "CRITICAL ERROR: Return ONLY the ValidationResult Pydantic model with NO additional text, explanations, or commentary. Do not add phrases like 'The above JSON object fully complies...'")
-
-        # Validate it's the correct type
-        validation_result = result.pydantic  # Should be ValidationResult
-
-        # Check pain_point_scores list exists
-        if not hasattr(validation_result, 'pain_point_scores'):
-            logger.error(f"Guardrail validation failed - Missing 'pain_point_scores' field. Output type: {type(validation_result)}")
-            return (False, "OUTPUT ERROR: Missing 'pain_point_scores' field in ValidationResult")
-
-        if not validation_result.pain_point_scores:
-            logger.error("Guardrail validation failed - Empty pain_point_scores list")
-            return (False, "VALIDATION ERROR: Empty pain_point_scores list. You must score all extracted pain points.")
-
-        # Success - return the validated Pydantic output
-        logger.debug(f"Guardrail validation passed: {len(validation_result.pain_point_scores)} pain points scored")
-        return (True, result.pydantic)
-
-    except Exception as e:
-        # Log exception details for debugging
-        raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
-        logger.error(f"Guardrail validation exception: {str(e)}. Raw output preview: {raw_preview}...")
-        return (False, f"VALIDATION_ERROR: Failed to validate output - {str(e)}. Return ONLY the ValidationResult model with no extra text.")
-
-
-def validate_extraction_output(result: TaskOutput) -> tuple[bool, Any]:
-    """
-    Guardrail function to ensure PainPointExtraction contains valid pain points.
-
-    This prevents Task 2 from returning empty results due to:
-    - Missing [source: ID] suffixes in quotes from Task 1
-    - Overly strict anti-hallucination guardrails
-    - Model confusion about extraction requirements
-
-    Returns:
-        tuple[bool, Any]: (success, validated_result_or_error_message)
-    """
-    try:
-        # Check if Pydantic output exists
-        if not result.pydantic:
-            raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
-            logger.error(f"Task 2 guardrail failed - No Pydantic output found. Raw: {raw_preview}...")
-            return (False, "CRITICAL ERROR: Return ONLY the PainPointExtraction Pydantic model. Do not add explanatory text.")
-
-        extraction = result.pydantic
-
-        # Check extracted_pain_points field exists
-        if not hasattr(extraction, 'extracted_pain_points'):
-            logger.error(f"Task 2 guardrail failed - Missing 'extracted_pain_points' field. Type: {type(extraction)}")
-            return (False, "OUTPUT ERROR: Missing 'extracted_pain_points' field in PainPointExtraction")
-
-        # Check for empty or insufficient extraction
-        pain_point_count = len(extraction.extracted_pain_points) if extraction.extracted_pain_points else 0
-
-        if pain_point_count == 0:
-            logger.error("Task 2 guardrail failed - Zero pain points extracted")
-            return (False, "EXTRACTION ERROR: Zero pain points extracted. Task 1 found multiple categories with quotes. "
-                          "Re-analyze the categorization output and knowledge sources to extract 5-10 pain points. "
-                          "IMPORTANT: If quotes don't have [source: ID] suffixes, search the knowledge sources directly "
-                          "for fresh quotes WITH source tags, or use the pattern from categories without requiring source tags.")
-
-        if pain_point_count < 3:
-            logger.warning(f"Task 2 guardrail failed - Only {pain_point_count} pain points extracted (minimum 3)")
-            return (False, f"EXTRACTION ERROR: Only {pain_point_count} pain points extracted (minimum 3 required). "
-                          f"Task 1 found multiple high-frequency categories. Extract more pain points from the evidence. "
-                          f"Each pain point needs 3+ quotes - search knowledge sources for additional supporting evidence.")
-
-        # Success - return the validated Pydantic output
-        logger.debug(f"Task 2 guardrail passed: {pain_point_count} pain points extracted")
-        return (True, result.pydantic)
-
-    except Exception as e:
-        raw_preview = result.raw[:500] if hasattr(result, 'raw') and result.raw else "No raw output available"
-        logger.error(f"Task 2 guardrail exception: {str(e)}. Raw: {raw_preview}...")
-        return (False, f"VALIDATION_ERROR: Failed to validate extraction - {str(e)}. Return ONLY the PainPointExtraction model.")
 
 
 @CrewBase
@@ -519,14 +425,14 @@ class PainPointCrew:
         consistent, structured categorization output.
         """
         from langchain_openai import ChatOpenAI
+        from ..utils.llm_service import build_llm_kwargs
 
         return Agent(
             config=self.agents_config["content_researcher"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.content_analysis_llm,
-                temperature=0,  # Deterministic for categorization
-                api_key=settings.openai_api_key
-            ),
+                temperature=0,  # Deterministic for categorization (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -540,14 +446,14 @@ class PainPointCrew:
         Has knowledge_sources attached for RAG-based quote retrieval.
         """
         from langchain_openai import ChatOpenAI
+        from ..utils.llm_service import build_llm_kwargs
 
         return Agent(
             config=self.agents_config["pain_point_analyst"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.3,  # Low-moderate for consistent extraction with nuanced understanding
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.3,  # Low-moderate (ignored for reasoning models)
+            )),
             knowledge_sources=self.knowledge_sources,  # RAG for quote retrieval
             verbose=True,
         )
@@ -562,14 +468,14 @@ class PainPointCrew:
         Has knowledge_sources attached for RAG-based evidence validation.
         """
         from langchain_openai import ChatOpenAI
+        from ..utils.llm_service import build_llm_kwargs
 
         return Agent(
             config=self.agents_config["pain_point_validator"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.2,  # Low temperature for analytical, objective scoring
-                api_key=settings.openai_api_key
-            ),
+                temperature=0.2,  # Low temperature (ignored for reasoning models)
+            )),
             knowledge_sources=self.knowledge_sources,  # RAG for evidence validation
             verbose=True,
         )
@@ -600,8 +506,6 @@ class PainPointCrew:
             agent=self.pain_point_analyst(),
             context=[self.categorize_content_task()],
             output_pydantic=PainPointExtraction,
-            guardrail=validate_extraction_output,
-            guardrail_max_retries=3,
         )
 
     @task
@@ -617,8 +521,6 @@ class PainPointCrew:
             agent=self.pain_point_validator(),
             context=[self.extract_pain_points_task()],
             output_pydantic=ValidationResult,
-            guardrail=validate_pydantic_pain_point_output,
-            guardrail_max_retries=3,
         )
 
     @crew

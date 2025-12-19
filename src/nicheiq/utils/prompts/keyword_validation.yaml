@@ -131,3 +131,16 @@ template: |
   }}
 
   **CRITICAL**: Be STRICT. It's better to reject borderline keywords than pollute the keyword set with irrelevant terms. When in doubt, mark as NOT RELEVANT.
+
+  <brief_explanation>
+  First, write one sentence stating what makes a keyword relevant for "{solution_name}".
+  </brief_explanation>
+
+  <verification>
+  Before returning, verify:
+  - Results array has exactly {batch_size} items
+  - Each item has: keyword, is_relevant, relevance_score, reason
+  - Every keyword from input appears exactly once in results
+  - No keywords are missing or duplicated
+  - You completed ALL keywords before returning
+  </verification>

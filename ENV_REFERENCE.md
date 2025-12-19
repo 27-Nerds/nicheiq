@@ -114,6 +114,14 @@ BRAINSTORM_LLM=gpt-4o
 # Used for: Solution generation, strategic thinking
 # Why gpt-4o: Complex reasoning and creativity required
 
+# GPT-5 Series Reasoning Control (optional)
+# BRAINSTORM_REASONING_EFFORT=medium
+# Values: none, minimal, low, medium, high, xhigh
+# Only for GPT-5 series models (gpt-5, gpt-5.2, etc.)
+# When set: Uses reasoning_effort parameter instead of temperature
+# Leave UNSET for older models (gpt-4o, etc.) - they use temperature
+# Note: Passing reasoning_effort to non-GPT-5 models causes API errors
+
 # Keyword Relevance Validation (90% cost reduction)
 KEYWORD_VALIDATION_LLM=gpt-4.1-nano
 # Used for: Quick keyword relevance checks

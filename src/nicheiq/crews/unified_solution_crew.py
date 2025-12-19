@@ -28,6 +28,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..utils.llm_service import build_llm_kwargs
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult, NicheContext
@@ -36,7 +37,6 @@ from ..models.solution_idea import (
     CompetitiveEnhancements,
     FilteredConceptList,
     IdeaGenerationResult,
-    IdeationProcess,
     RawConceptList,
 )
 from ..models.solution_selection import SolutionSelection
@@ -45,10 +45,7 @@ from ..utils.crew_helpers import (
     prepare_competitor_intelligence,
     prepare_pain_point_content,
 )
-from ..utils.validation import (
-    create_diversity_guardrail,
-    validate_enhancements_output,
-)
+from ..utils.validation import create_diversity_guardrail
 
 
 @CrewBase
@@ -177,21 +174,26 @@ class UnifiedSolutionCrew:
     def solution_ideator(self) -> Agent:
         """
         Agent for generating innovative solution concepts.
-        Uses configurable brainstorm_llm with high temperature and diversity penalties.
+        Uses configurable brainstorm_llm with high temperature/reasoning_effort.
 
-        Temperature: 0.85 (high for creative ideation)
-        Frequency penalty: 0.5 (reduce repetitive patterns)
-        Presence penalty: 0.3 (encourage topic diversity)
+        GPT-5 series: reasoning_effort from settings (default: high for creative ideation)
+        Older models: temperature=0.85, frequency_penalty=0.5, presence_penalty=0.3
         """
+        # Use build_llm_kwargs for automatic reasoning model detection
+        # For reasoning models: temperature/frequency_penalty/presence_penalty are ignored
+        # For older models: uses the specified sampling parameters
+        llm_kwargs = build_llm_kwargs(
+            model=settings.brainstorm_llm,
+            temperature=0.85,
+            frequency_penalty=0.5,
+            presence_penalty=0.3,
+        )
+        if settings.brainstorm_reasoning_effort:
+            llm_kwargs["reasoning_effort"] = settings.brainstorm_reasoning_effort
+
         return Agent(
             config=self.agents_config["solution_ideator"],
-            llm=ChatOpenAI(
-                model=settings.brainstorm_llm,
-                temperature=0.85,  # Increased from 0.7 for more creative diversity
-                frequency_penalty=0.5,  # Reduce repetition of similar phrases
-                presence_penalty=0.3,  # Encourage exploring new topics
-                api_key=settings.openai_api_key
-            ),
+            llm=ChatOpenAI(**llm_kwargs),
             verbose=True,
         )
 
@@ -199,16 +201,23 @@ class UnifiedSolutionCrew:
     def solution_evaluator(self) -> Agent:
         """
         Agent for evaluating solution concepts.
-        Uses low temperature for consistent, objective scoring.
+        Uses low temperature/reasoning_effort for consistent, objective scoring.
         Uses brainstorm_llm for reliable structured JSON output.
+
+        GPT-5 series: reasoning_effort from settings
+        Older models: temperature=0.2
         """
+        # Use build_llm_kwargs for automatic reasoning model detection
+        llm_kwargs = build_llm_kwargs(
+            model=settings.brainstorm_llm,
+            temperature=0.2,  # Ignored for reasoning models
+        )
+        if settings.brainstorm_reasoning_effort:
+            llm_kwargs["reasoning_effort"] = settings.brainstorm_reasoning_effort
+
         return Agent(
             config=self.agents_config["solution_evaluator"],
-            llm=ChatOpenAI(
-                model=settings.brainstorm_llm,
-                temperature=0.2,
-                api_key=settings.openai_api_key
-            ),
+            llm=ChatOpenAI(**llm_kwargs),
             verbose=True,
         )
 
@@ -223,16 +232,14 @@ class UnifiedSolutionCrew:
         return Agent(
             config=self.agents_config["competitive_researcher"],
             tools=[self.query_tool, self.search_tool],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.3,
-                api_key=settings.openai_api_key
-            ),
-            function_calling_llm=ChatOpenAI(
-                model=settings.function_calling_llm,  # gpt-4o-mini for cost-efficient tool calls
-                temperature=0.1,  # Low temperature for reliable tool execution
-                api_key=settings.openai_api_key
-            ),
+            )),
+            function_calling_llm=ChatOpenAI(**build_llm_kwargs(
+                model=settings.function_calling_llm,
+                temperature=0.1,
+            )),
             verbose=True,
         )
 
@@ -244,11 +251,10 @@ class UnifiedSolutionCrew:
         """
         return Agent(
             config=self.agents_config["market_analyst"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.4,
-                api_key=settings.openai_api_key
-            ),
+            )),
             verbose=True,
         )
 
@@ -256,16 +262,23 @@ class UnifiedSolutionCrew:
     def solution_refiner(self) -> Agent:
         """
         Agent for refining solutions with competitive insights.
-        Moderate temperature for structured enhancement.
+        Moderate temperature/reasoning_effort for structured enhancement.
         Uses brainstorm_llm for reliable structured JSON output.
+
+        GPT-5 series: reasoning_effort from settings
+        Older models: temperature=0.4
         """
+        # Use build_llm_kwargs for automatic reasoning model detection
+        llm_kwargs = build_llm_kwargs(
+            model=settings.brainstorm_llm,
+            temperature=0.4,  # Ignored for reasoning models
+        )
+        if settings.brainstorm_reasoning_effort:
+            llm_kwargs["reasoning_effort"] = settings.brainstorm_reasoning_effort
+
         return Agent(
             config=self.agents_config["solution_refiner"],
-            llm=ChatOpenAI(
-                model=settings.brainstorm_llm,
-                temperature=0.4,
-                api_key=settings.openai_api_key
-            ),
+            llm=ChatOpenAI(**llm_kwargs),
             verbose=True,
         )
 
@@ -277,11 +290,10 @@ class UnifiedSolutionCrew:
         """
         return Agent(
             config=self.agents_config["strategic_selector"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.2,
-                api_key=settings.openai_api_key
-            ),
+            )),
             verbose=True,
         )
 
@@ -364,7 +376,6 @@ class UnifiedSolutionCrew:
             agent=self.solution_refiner(),
             context=[self.solution_refinement_task(), self.competitive_analysis_task()],
             output_pydantic=CompetitiveEnhancements,
-            guardrail=validate_enhancements_output,
         )
 
     @task
@@ -455,7 +466,6 @@ class UnifiedSolutionCrew:
         CompetitiveAnalysisResult,
         SolutionSelection,
         Optional[CompetitiveEnhancements],
-        Optional[IdeationProcess]
     ]:
         """
         Execute complete solution pipeline using divergent-convergent architecture (6 tasks).
@@ -679,25 +689,18 @@ class UnifiedSolutionCrew:
                     f"[OK] Applied competitive enhancements to {len(refined_solutions.solution_ideas)} solutions"
                 )
 
-            # Build ideation process metadata for transparency
-            ideation_process = IdeationProcess(
-                total_concepts_generated=len(raw_concepts.concepts) if raw_concepts else 0,
-                concepts_filtered=len(filtered_concepts.removed_concepts) if filtered_concepts else 0,
-                removed_concepts=filtered_concepts.removed_concepts if filtered_concepts else [],
-                removal_reasons=filtered_concepts.removal_reasons if filtered_concepts else [],
-                techniques_used=raw_concepts.techniques_used if raw_concepts else [],
-                diversity_summary=filtered_concepts.diversity_summary if filtered_concepts else None,
-            )
+            # Log pipeline summary
+            removed_count = len(filtered_concepts.removed_concepts) if filtered_concepts else 0
 
             logger.info("✓ Unified Pipeline Complete:")
             logger.info(f"  - Raw concepts: {len(raw_concepts.concepts) if raw_concepts else 0}")
             logger.info(f"  - Filtered concepts: {len(filtered_concepts.concepts) if filtered_concepts else 0}")
-            logger.info(f"  - Removed concepts: {ideation_process.concepts_filtered}")
+            logger.info(f"  - Removed concepts: {removed_count}")
             logger.info(f"  - Final solutions: {len(refined_solutions.solution_ideas)}")
             logger.info(f"  - Competitive landscapes: {len(competitive_analysis.solution_landscapes)}")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
 
-            return (refined_solutions, competitive_analysis, solution_selection, enhancements, ideation_process)
+            return (refined_solutions, competitive_analysis, solution_selection, enhancements)
 
         except Exception as e:
             logger.error(f"Unified pipeline failed: {e}")

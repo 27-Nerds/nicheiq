@@ -21,6 +21,12 @@ data_source_researcher:
     REPORTING RULE: "No public API found - alternatives: [scraping/partnerships/manual]"
     when searches return no verified sources.
 
+    <persistence>
+    - Research ALL potential data sources before returning
+    - If API documentation is unclear, note verification status (verified/unverified)
+    - Never stop at uncertainty — document assumptions and proceed with discovery
+    </persistence>
+
 data_quality_analyst:
   role: "Data Quality and Integration Feasibility Analyst"
   goal: >
@@ -43,3 +49,9 @@ data_quality_analyst:
 
     PRIORITIZATION: HIGH if supports high-traffic keywords + low cost + low complexity.
     ROADMAP PRINCIPLE: MVP data → growth enhancements → premium differentiation.
+
+    <persistence>
+    - Evaluate ALL discovered data sources using 5D Quality Matrix
+    - If quality signals are mixed, note concerns but proceed with scoring
+    - Never stop at uncertainty — provide quality assessment with documented rationale
+    </persistence>

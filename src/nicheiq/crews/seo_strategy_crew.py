@@ -220,15 +220,15 @@ class SEOStrategyCrew:
         Uses zero temperature for data-driven keyword analysis (no creativity needed).
         """
         from langchain_openai import ChatOpenAI
+        from ..utils.llm_service import build_llm_kwargs
 
         return Agent(
             config=self.agents_config["keyword_strategist"],
             tools=[],  # No tools needed - analyzes CSV data provided in task context
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,  # Zero temperature for precise data extraction (no creativity needed)
-                api_key=settings.openai_api_key,
-            ),
+                temperature=0.0,  # Zero temperature (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -241,14 +241,14 @@ class SEOStrategyCrew:
         Uses moderate temperature (0.5) for balanced creative strategy with structure.
         """
         from langchain_openai import ChatOpenAI
+        from ..utils.llm_service import build_llm_kwargs
 
         return Agent(
             config=self.agents_config["content_strategist"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.5,  # Moderate temperature for creative content ideas with structured output
-                api_key=settings.openai_api_key,
-            ),
+                temperature=0.5,  # Moderate temperature (ignored for reasoning models)
+            )),
             verbose=True,
         )
 
@@ -262,15 +262,15 @@ class SEOStrategyCrew:
         Slightly higher than 0.3 to encourage solution-specific examples while maintaining accuracy.
         """
         from langchain_openai import ChatOpenAI
+        from ..utils.llm_service import build_llm_kwargs
 
         return Agent(
             config=self.agents_config["seo_specialist"],
-            llm=ChatOpenAI(
+            llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.4,  # Moderate temperature for technical precision with customization flexibility
-                timeout=180,  # Increased timeout to 180 seconds for complex implementation tasks
-                api_key=settings.openai_api_key,
-            ),
+                temperature=0.4,  # Moderate temperature (ignored for reasoning models)
+                timeout=180,
+            )),
             verbose=True,
         )
 
@@ -291,57 +291,6 @@ class SEOStrategyCrew:
     # MULTI-TASK SEO STRATEGY (4-TASK FLOW)
     # ========================================
 
-    def _validate_keyword_analysis_output(self, task_output) -> tuple[bool, Any]:
-        """
-        Guardrail to validate KeywordAnalysisResult output structure.
-
-        Catches common LLM output errors:
-        1. JSON Schema wrapper instead of data (properties, required, additionalProperties)
-        2. Missing required fields (tier_1_keywords, tier_1_quick_win_strategy)
-        3. Empty tier_1_keywords list
-
-        Returns:
-            tuple[bool, Any]: (True, result) if valid, (False, error_message) if validation fails
-        """
-        try:
-            # Check for JSON Schema wrapper pattern in raw output
-            raw = task_output.raw if hasattr(task_output, 'raw') else str(task_output)
-            if '"additionalProperties"' in raw or ('"properties"' in raw and '"required"' in raw):
-                return (
-                    False,
-                    "Output appears to be a JSON Schema definition, not data. "
-                    "Return field values directly at the root level: "
-                    '{"tier_0_keywords": [...], "tier_1_keywords": [...], ...} '
-                    "Do NOT wrap in 'properties' or include 'additionalProperties', 'required', 'type' keys."
-                )
-
-            result = task_output.pydantic
-
-            # Validate required fields
-            if not result.tier_1_keywords:
-                return (False, "tier_1_keywords is required but missing or empty")
-
-            if not result.tier_1_quick_win_strategy or len(result.tier_1_quick_win_strategy.strip()) == 0:
-                return (False, "tier_1_quick_win_strategy is required but missing or empty")
-
-            if not result.key_findings or len(result.key_findings) == 0:
-                return (False, "key_findings is required but missing or empty")
-
-            # Log success with tier distribution
-            tier_0_count = len(result.tier_0_keywords) if result.tier_0_keywords else 0
-            tier_1_count = len(result.tier_1_keywords)
-            tier_2_count = len(result.tier_2_keywords) if result.tier_2_keywords else 0
-
-            logger.info(
-                f"[OK] Keyword analysis validation passed: "
-                f"Tier 0={tier_0_count}, Tier 1={tier_1_count}, Tier 2={tier_2_count}, "
-                f"analyzed={result.total_keywords_analyzed}"
-            )
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Validation error: {str(e)}")
-
     @task
     def analyze_keywords_and_tier_task(self) -> Task:
         """
@@ -355,8 +304,6 @@ class SEOStrategyCrew:
             config=self.tasks_config["analyze_keywords_and_tier"],
             agent=self.keyword_strategist(),
             output_pydantic=KeywordAnalysisResult,
-            guardrail=self._validate_keyword_analysis_output,
-            guardrail_max_retries=3,
         )
 
     @task
@@ -398,54 +345,6 @@ class SEOStrategyCrew:
             output_pydantic=ImplementationPlanResult,
         )
 
-    def _validate_seo_synthesis(self, task_output) -> tuple[bool, Any]:
-        """
-        Guardrail to ensure Task 4 preserves all fields from Tasks 1-3.
-
-        Validates that all critical fields are populated in the SEOStrategyReport
-        to prevent field loss during synthesis. Automatically retries if validation fails.
-
-        Returns:
-            tuple[bool, Any]: (True, result) if valid, (False, error_message) if validation fails
-        """
-        try:
-            result = task_output.pydantic
-
-            # Check critical fields are populated
-            required_fields = {
-                "tier_1_keywords": list,
-                "tier_1_quick_win_strategy": str,
-                "content_strategy": str,
-                "technical_seo_recommendations": str,
-                "implementation_roadmap": str,
-                "key_metrics_to_track": list,
-                "long_term_strategy": str,
-                "conclusion_bottom_line": str,
-                "competitive_advantages": list,
-                "critical_success_factors": list,
-                "expected_timeline": str,
-                "next_steps_checklist": list,
-            }
-
-            for field, expected_type in required_fields.items():
-                value = getattr(result, field, None)
-                if value is None:
-                    return (False, f"Missing required field: {field}")
-                if expected_type is list and len(value) == 0:
-                    return (False, f"Empty required list field: {field}")
-                if expected_type is str and len(value.strip()) == 0:
-                    return (False, f"Empty required string field: {field}")
-
-            logger.info(
-                f"[OK] SEO synthesis validation passed: "
-                f"all {len(required_fields)} critical fields populated"
-            )
-            return (True, result)
-
-        except Exception as e:
-            logger.error(f"SEO synthesis validation error: {e}")
-            return (False, f"Validation error: {str(e)}")
-
     @task
     def synthesize_final_seo_strategy_task(self) -> Task:
         """
@@ -471,52 +370,7 @@ class SEOStrategyCrew:
                 self.create_implementation_plan_task(),  # Task 3 (reference)
             ],
             output_pydantic=FinalSynthesis,
-            guardrail=self._validate_final_synthesis,
         )
-
-    def _validate_final_synthesis(self, task_output) -> tuple[bool, Any]:
-        """
-        Guardrail for synthesize_final_seo_strategy_task.
-
-        Validates all 4 synthesis fields are populated:
-        - long_term_strategy
-        - conclusion_bottom_line
-        - competitive_advantages
-        - critical_success_factors
-
-        Returns:
-            tuple[bool, Any]: (success, result_or_error)
-        """
-        try:
-            result = task_output.pydantic
-            if result is None:
-                return (False, "Final synthesis returned None pydantic output")
-
-            # Validate long_term_strategy
-            if not result.long_term_strategy or len(result.long_term_strategy.strip()) < 50:
-                return (False, f"long_term_strategy too short (must be 50+ chars)")
-
-            # Validate conclusion_bottom_line
-            if not result.conclusion_bottom_line or len(result.conclusion_bottom_line.strip()) < 50:
-                return (False, f"conclusion_bottom_line too short (must be 50+ chars)")
-
-            # Validate competitive_advantages
-            if not result.competitive_advantages or len(result.competitive_advantages) < 2:
-                return (False, f"competitive_advantages must have at least 2 items, got {len(result.competitive_advantages) if result.competitive_advantages else 0}")
-
-            # Validate critical_success_factors
-            if not result.critical_success_factors or len(result.critical_success_factors) < 3:
-                return (False, f"critical_success_factors must have at least 3 items, got {len(result.critical_success_factors) if result.critical_success_factors else 0}")
-
-            logger.info(
-                f"✓ Final synthesis guardrail passed: "
-                f"{len(result.competitive_advantages)} advantages, "
-                f"{len(result.critical_success_factors)} success factors"
-            )
-            return (True, result)
-
-        except Exception as e:
-            return (False, f"Final synthesis validation error: {str(e)}")
 
     @task
     def create_implementation_guide_task(self) -> Task:
@@ -543,7 +397,6 @@ class SEOStrategyCrew:
                 self.synthesize_final_seo_strategy_task(),  # Task 4 (reference only)
             ],
             output_pydantic=ImplementationGuide,
-            guardrail=self._validate_implementation_guide,  # Automated validation
         )
 
     @crew
@@ -694,53 +547,6 @@ class SEOStrategyCrew:
         except Exception as e:
             logger.warning(f"Failed to extract page types from Task 2: {e}")
             return "Unable to extract page types from Task 2 - generate based on project_type standards"
-
-    def _validate_implementation_guide(self, task_output) -> tuple[bool, Any]:
-        """
-        Guardrail function to validate Task 5 implementation guide output structure.
-
-        Validates:
-        - Pydantic output exists
-        - Minimum 4 page type implementations
-
-        Args:
-            task_output: TaskOutput from Task 5 (create_implementation_guide)
-
-        Returns:
-            tuple[bool, Any]: (success, validated_result_or_error_message)
-        """
-        try:
-            # Check if Pydantic output exists
-            if not task_output.pydantic:
-                return (
-                    False,
-                    "Return ONLY the ImplementationGuide Pydantic model",
-                )
-
-            result = task_output.pydantic  # Should be ImplementationGuide
-
-            # Validation: Check page template count
-            if (
-                not hasattr(result, "page_type_implementations")
-                or not result.page_type_implementations
-            ):
-                return (False, "Need at least 4 page type implementations - found 0")
-
-            page_templates = result.page_type_implementations
-            if len(page_templates) < 4:
-                return (
-                    False,
-                    f"Need at least 4 page type implementations - found {len(page_templates)}",
-                )
-
-            logger.info(
-                f"✓ Implementation guide validation passed: {len(page_templates)} page types"
-            )
-            return (True, result)
-
-        except Exception as e:
-            logger.error(f"Guardrail validation exception: {str(e)}")
-            return (False, f"Validation error: {str(e)}")
 
     def _calculate_trend_metrics(self, monthly_searches: list[dict]) -> dict:
         """

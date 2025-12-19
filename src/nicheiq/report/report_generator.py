@@ -53,7 +53,6 @@ from ..models.research_state import (
     EvidenceAppendix,
     FinalReport,
     PainPointEvidence,
-    PainSegmentMapping,
     QuoteSource,
     RefinementHighlights,
     ResearchMetadata,
@@ -236,11 +235,7 @@ class ReportGenerator:
                 f"{len(final_report.data_quality_summary.quality_caveats)} caveats"
             )
 
-        final_report.pain_segment_matrix = self._generate_pain_segment_matrix()
-        if final_report.pain_segment_matrix:
-            logger.info(
-                f"[OK] Pain-segment matrix: {len(final_report.pain_segment_matrix)} pain points mapped to segments"
-            )
+        # REMOVED: pain_segment_matrix - depends on affected_segments which is never populated
 
         final_report.refinement_highlights = self._generate_refinement_highlights()
         if final_report.refinement_highlights:
@@ -333,6 +328,14 @@ class ReportGenerator:
             for p in self.state.pricing_strategies:
                 if p.solution_name == selected_solution_name:
                     pricing_strategy = p
+                    break
+
+        # Extract traffic monetization for selected solution from list (Stage 8.55)
+        traffic_monetization = None
+        if hasattr(self.state, 'traffic_monetization_results') and self.state.traffic_monetization_results:
+            for tm in self.state.traffic_monetization_results:
+                if tm.solution_name == selected_solution_name:
+                    traffic_monetization = tm
                     break
 
         # Generate market_validation based on actual metrics
@@ -454,8 +457,11 @@ class ReportGenerator:
             solution_implementation_overview=solution_implementation_overview,
             mvp_scope_definition=mvp_scope_definition,
 
-            # Pricing strategy (Stage 8.7)
+            # Pricing strategy (Stage 8)
             pricing_strategy=pricing_strategy,
+
+            # Traffic monetization (Stage 8.55) - for directories/aggregators
+            traffic_monetization=traffic_monetization,
 
             # Pain points (ALL pain points, no limit)
             top_pain_points=top_pain_points if top_pain_points else ["No pain points identified"],
@@ -498,8 +504,7 @@ class ReportGenerator:
             solution_organic_discovery=solution_organic_discovery,
             # competitor_profiles populated in _generate_competitive_landscape_matrix()
 
-            # Ideation Process Transparency (NEW)
-            ideation_process=self.state.ideation_process,
+            # REMOVED: ideation_process - not reliably populated
 
             # Competitive Strategic Insights (NEW - from Stage 7.5)
             overall_competitive_insights=(
@@ -785,31 +790,7 @@ class ReportGenerator:
             logger.warning(f"Failed to generate data quality summary: {e}")
             return None
 
-    def _generate_pain_segment_matrix(self) -> list[PainSegmentMapping] | None:
-        """
-        Generate cross-reference matrix of pain points to audience segments.
-
-        Extracts affected_segments from each pain point (populated in Phase 3).
-        """
-        try:
-            if not self.state.pain_point_analysis or not self.state.pain_point_analysis.pain_points:
-                return None
-
-            mappings: list[PainSegmentMapping] = []
-            for pp in self.state.pain_point_analysis.pain_points:
-                # Only include pain points that have segment mapping
-                affected = getattr(pp, 'affected_segments', None) or []
-                if affected:
-                    mappings.append(PainSegmentMapping(
-                        pain_point_title=pp.title,
-                        affected_segments=affected,
-                        severity_score=pp.severity_score,
-                    ))
-
-            return mappings if mappings else None
-        except Exception as e:
-            logger.warning(f"Failed to generate pain segment matrix: {e}")
-            return None
+    # REMOVED: _generate_pain_segment_matrix - depends on affected_segments which is never populated
 
     def _generate_refinement_highlights(self) -> RefinementHighlights | None:
         """
@@ -909,7 +890,15 @@ class ReportGenerator:
 
             # Get refined score and metadata from enrichment
             refined_score = getattr(enrichment, 'seo_scalability_score_refined', None)
-            metadata = getattr(enrichment, 'seo_refinement_metadata', {}) or {}
+            metadata_obj = getattr(enrichment, 'seo_refinement_metadata', None)
+
+            # Convert Pydantic model to dict if needed, otherwise use empty dict
+            if metadata_obj is not None and hasattr(metadata_obj, 'model_dump'):
+                metadata = metadata_obj.model_dump()
+            elif isinstance(metadata_obj, dict):
+                metadata = metadata_obj
+            else:
+                metadata = {}
 
             # Build rationale string
             rationale_parts = []

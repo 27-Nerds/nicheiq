@@ -39,4 +39,17 @@ template: |
   - Indexable Pages: {indexable_pages}
   - CAC Organic: ${cac_organic}
 
+  <brief_explanation>
+  First, state the solution category and the key market opportunity in one sentence.
+  </brief_explanation>
+
   Return JSON with these 3 fields only.
+
+  <verification>
+  Before returning, verify:
+  - JSON contains exactly 3 fields: executive_summary, acquisition_strategy_summary, next_steps
+  - executive_summary is 4-6 sentences
+  - acquisition_strategy_summary is 2-3 paragraphs
+  - next_steps contains 5-8 action items
+  - All content references actual data provided (no invented metrics)
+  </verification>

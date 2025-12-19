@@ -3,9 +3,9 @@ Pydantic models for research flow state management.
 """
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .analytics import (
     CompetitiveAnalytics,
@@ -25,7 +25,6 @@ from .social_content import SocialContentCollection
 from .solution_idea import (
     CompetitiveEnhancements,
     IdeaGenerationResult,
-    IdeationProcess,
     SolutionIdea,
     SolutionSEORefinement,
 )
@@ -112,22 +111,7 @@ class DataQualitySummary(BaseModel):
     )
 
 
-class PainSegmentMapping(BaseModel):
-    """Cross-reference of pain points to affected audience segments."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    pain_point_title: str = Field(..., description="Title of the pain point")
-    affected_segments: list[str] = Field(
-        default_factory=list,
-        description="Audience segments affected by this pain point"
-    )
-    severity_score: Optional[float] = Field(
-        default=None,
-        ge=0.0,
-        le=1.0,
-        description="Severity score of this pain point (0-1)"
-    )
+# REMOVED: PainSegmentMapping - depends on affected_segments which is never populated
 
 
 class RefinementHighlights(BaseModel):
@@ -447,10 +431,7 @@ class FinalReport(BaseModel):
         default=None,
         description="Data quality assessment: quality tiers, confidence scores, caveats"
     )
-    pain_segment_matrix: Optional[list[PainSegmentMapping]] = Field(
-        default=None,
-        description="Cross-reference of pain points to affected audience segments"
-    )
+    # REMOVED: pain_segment_matrix - depends on affected_segments which is never populated
     refinement_highlights: Optional[RefinementHighlights] = Field(
         default=None,
         description="Key strategic insights from Stage 8.7 solution refinement"
@@ -644,11 +625,7 @@ class FinalReport(BaseModel):
         description="Detailed competitor profiles with features, pricing, strengths, weaknesses"
     )
 
-    # Ideation Process Transparency (NEW - preserves removed concepts, techniques)
-    ideation_process: Optional[IdeationProcess] = Field(
-        default=None,
-        description="Ideation process metadata: removed concepts, techniques used, diversity summary"
-    )
+    # REMOVED: ideation_process - not reliably populated, transparency not needed in final report
 
     # Competitive Strategic Insights (NEW - preserves overall_competitive_insights from Stage 7.5)
     overall_competitive_insights: Optional[str] = Field(
@@ -719,7 +696,7 @@ class PricingStrategyResult(BaseModel):
         default=None, description="Enterprise tier price if applicable"
     )
 
-    pricing_model: str = Field(
+    pricing_model: Literal["Freemium", "Subscription", "Hybrid", "One-time"] = Field(
         ..., description="Pricing model: 'Freemium', 'Subscription', 'Hybrid', 'One-time'"
     )
     pricing_rationale: str = Field(..., description="Why this pricing strategy was chosen")
@@ -728,8 +705,12 @@ class PricingStrategyResult(BaseModel):
     free_tier_features: Optional[list[str]] = Field(
         default=None, description="Features included in free tier (if freemium)"
     )
-    starter_tier_features: list[str] = Field(..., description="Features in starter tier")
-    pro_tier_features: list[str] = Field(..., description="Features in pro tier")
+    starter_tier_features: list[str] = Field(
+        ..., min_length=1, description="Features in starter tier (minimum 1)"
+    )
+    pro_tier_features: list[str] = Field(
+        ..., min_length=1, description="Features in pro tier (minimum 1)"
+    )
 
     # Economics
     estimated_arpu: str = Field(..., description="Estimated average revenue per user (e.g., '$32/month')")
@@ -747,7 +728,7 @@ class PricingStrategyResult(BaseModel):
     value_proposition_delta: str = Field(
         ..., description="Value proposition compared to competitors (e.g., '15% more features at 20% lower price')"
     )
-    pricing_confidence: str = Field(
+    pricing_confidence: Literal["High", "Medium", "Low"] = Field(
         ..., description="Confidence level: 'High', 'Medium', 'Low'"
     )
 
@@ -767,7 +748,7 @@ class TrafficMonetizationResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
-    monetization_model: str = Field(
+    monetization_model: Literal["Ad-Supported", "Affiliate", "Hybrid-Traffic", "Lead-Gen"] = Field(
         ..., description="Primary monetization model: 'Ad-Supported', 'Affiliate', 'Hybrid-Traffic', 'Lead-Gen'"
     )
 
@@ -787,7 +768,9 @@ class TrafficMonetizationResult(BaseModel):
         ..., description="Estimated monthly ad revenue range (e.g., '$150 - $800')"
     )
     recommended_ad_networks: list[str] = Field(
-        ..., description="Recommended ad networks based on traffic tier (e.g., ['Google AdSense', 'Mediavine', 'Ezoic'])"
+        ...,
+        min_length=1,
+        description="Recommended ad networks based on traffic tier (e.g., ['Google AdSense', 'Mediavine', 'Ezoic'], minimum 1)"
     )
 
     # Affiliate Revenue Estimates
@@ -801,7 +784,7 @@ class TrafficMonetizationResult(BaseModel):
         ..., description="Estimated monthly affiliate revenue (e.g., '$200 - $500')"
     )
     recommended_affiliate_programs: list[str] = Field(
-        ..., description="Recommended affiliate programs for this niche"
+        ..., min_length=1, description="Recommended affiliate programs for this niche (minimum 1)"
     )
 
     # Premium/Sponsored Options (B2B)
@@ -833,7 +816,7 @@ class TrafficMonetizationResult(BaseModel):
     scaling_strategy: str = Field(
         ..., description="How to grow revenue as traffic scales (network upgrades, affiliate optimization, etc.)"
     )
-    monetization_confidence: str = Field(
+    monetization_confidence: Literal["High", "Medium", "Low"] = Field(
         ..., description="Confidence level: 'High', 'Medium', 'Low'"
     )
 
@@ -882,16 +865,22 @@ class AudienceMappingResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     # Audience Segments
-    audience_segments: list[AudienceSegment] = Field(..., description="3-5 distinct audience segments identified")
+    audience_segments: list[AudienceSegment] = Field(
+        ..., min_length=3, max_length=5, description="3-5 distinct audience segments identified"
+    )
     primary_target_segment: str = Field(..., description="Recommended primary target segment name")
     segment_prioritization_rationale: str = Field(..., description="Why this segment should be targeted first (2-3 sentences)")
 
     # Influencers & Communities
-    key_influencers: list[InfluencerProfile] = Field(..., description="Top 5-10 influencers/communities in the niche")
+    key_influencers: list[InfluencerProfile] = Field(
+        ..., min_length=5, max_length=10, description="Top 5-10 influencers/communities in the niche"
+    )
     community_hubs: list[str] = Field(..., description="Key online communities/forums (subreddits, Discord servers, forums)")
 
     # Content & Messaging Insights
-    common_vocabulary: list[str] = Field(..., description="10-15 terms/phrases frequently used by audience")
+    common_vocabulary: list[str] = Field(
+        ..., min_length=10, max_length=15, description="10-15 terms/phrases frequently used by audience"
+    )
     content_preferences: str = Field(..., description="Preferred content types and formats (e.g., tutorials, comparisons, case studies)")
     messaging_frameworks: list[str] = Field(..., description="3-5 messaging angles that resonate (e.g., 'save time', 'increase revenue')")
 
@@ -967,17 +956,27 @@ class TrendLongevityResult(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     # Overall Trend Assessment
-    trend_direction: str = Field(..., description="'Growing', 'Stable', 'Declining' - overall market trend direction")
-    trend_confidence: str = Field(..., description="'High', 'Medium', 'Low' - confidence in trend assessment based on data quality")
-    momentum_score: float = Field(..., description="0.0-1.0 score indicating market momentum (0=declining, 0.5=stable, 1.0=strong growth)")
+    trend_direction: Literal["Growing", "Stable", "Declining"] = Field(
+        ..., description="Overall market trend direction"
+    )
+    trend_confidence: Literal["High", "Medium", "Low"] = Field(
+        ..., description="Confidence in trend assessment based on data quality"
+    )
+    momentum_score: float = Field(
+        ..., ge=0.0, le=1.0, description="0.0-1.0 score indicating market momentum (0=declining, 0.5=stable, 1.0=strong growth)"
+    )
 
     # Keyword Trend Analysis
-    keyword_volume_trend: str = Field(..., description="Search volume trend: 'Increasing', 'Stable', 'Decreasing'")
+    keyword_volume_trend: Literal["Increasing", "Stable", "Decreasing"] = Field(
+        ..., description="Search volume trend"
+    )
     volume_growth_rate: Optional[str] = Field(default=None, description="Estimated YoY growth rate (e.g., '+25% YoY', '-10% YoY', 'Stable')")
     trend_duration: Optional[str] = Field(default=None, description="How long trend has been active (e.g., '2+ years growth', '6 months spike', 'Emerging')")
 
     # Discussion Momentum (Social Signals)
-    discussion_frequency_trend: str = Field(..., description="Social discussion trend: 'Increasing', 'Stable', 'Decreasing'")
+    discussion_frequency_trend: Literal["Increasing", "Stable", "Decreasing"] = Field(
+        ..., description="Social discussion trend"
+    )
     discussion_recency: str = Field(..., description="'Recent' (<6 months), 'Moderate' (6-12 months), 'Dated' (12+ months)")
     community_growth_indicators: list[str] = Field(..., description="3-5 signals of community growth or decline (new subreddits, forum activity, etc.)")
 
@@ -990,17 +989,36 @@ class TrendLongevityResult(BaseModel):
     peak_periods: Optional[list[str]] = Field(default=None, description="Peak months/quarters if seasonal (e.g., ['Q4', 'November-December'])")
 
     # Longevity Assessment
-    market_maturity: str = Field(..., description="'Emerging' (<2 years), 'Growth' (2-5 years), 'Mature' (5+ years)")
-    longevity_verdict: str = Field(..., description="'Sustainable', 'Risky', 'Fad' - long-term viability assessment")
+    market_maturity: Literal["Emerging", "Growth", "Mature"] = Field(
+        ..., description="Market maturity stage: 'Emerging' (<2 years), 'Growth' (2-5 years), 'Mature' (5+ years)"
+    )
+    longevity_verdict: Literal["Sustainable", "Risky", "Fad"] = Field(
+        ..., description="Long-term viability assessment"
+    )
     longevity_rationale: str = Field(..., description="2-3 sentences explaining longevity verdict with specific trend data")
 
     # Risk Factors
     trend_reversal_risks: list[str] = Field(..., description="3-5 factors that could reverse positive trends (tech shifts, regulation, etc.)")
-    timing_recommendation: str = Field(..., description="'Enter Now', 'Monitor & Wait', 'Missed Window' - timing advice based on trends")
+    timing_recommendation: Literal["Enter Now", "Monitor & Wait", "Missed Window"] = Field(
+        ..., description="Timing advice based on trends"
+    )
 
     # Supporting Data Summary
     data_sources_analyzed: list[str] = Field(..., description="Data sources used: keyword trends, discussion activity, competitive intel")
     analysis_timeframe: str = Field(..., description="Timeframe analyzed (e.g., '12 months', '6 months', '24 months')")
+
+    @model_validator(mode='after')
+    def validate_consistency(self) -> 'TrendLongevityResult':
+        """Validate that trend direction and momentum score are consistent."""
+        if self.trend_direction == "Growing" and self.momentum_score < 0.6:
+            raise ValueError(
+                f"Growing trend requires momentum_score >= 0.6, got {self.momentum_score}"
+            )
+        if self.trend_direction == "Declining" and self.momentum_score > 0.4:
+            raise ValueError(
+                f"Declining trend requires momentum_score <= 0.4, got {self.momentum_score}"
+            )
+        return self
 
 
 class ResearchState(BaseModel):
@@ -1081,11 +1099,7 @@ class ResearchState(BaseModel):
         description="Competitive enhancements with overall_competitive_insights from Stage 7.5"
     )
 
-    # Stage 7.1/7.2: Ideation Process Metadata (preserves removed concepts, techniques)
-    ideation_process: Optional[IdeationProcess] = Field(
-        default=None,
-        description="Ideation process metadata: removed concepts, techniques used, diversity summary"
-    )
+    # REMOVED: ideation_process - not reliably populated
 
     # Stage 7.4: Solution Selection
     solution_selection: Optional[SolutionSelection] = None
