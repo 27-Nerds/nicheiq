@@ -82,7 +82,7 @@ Examples:
         sys.exit(1)
 
     logger.info(f"Report loaded: {report.selected_solution_name}")
-    logger.info(f"Pain points: {len(report.top_pain_points)}")
+    logger.info(f"Pain points: {len(report.detailed_pain_points) if report.detailed_pain_points else 0}")
 
     # Generate landing page
     logger.info("Starting landing page generation...")

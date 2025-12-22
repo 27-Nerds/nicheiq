@@ -448,7 +448,7 @@ class FinalReport(BaseModel):
     # Solution Selection (Stage 8.5)
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
-    runner_up_solutions: Optional[list[str]] = Field(default=None, description="Other viable solutions considered")
+    # runner_up_solutions removed - use alternative_solutions instead
     selection_criteria_scores: Optional[list[SelectionCriteriaScore]] = Field(
         default=None,
         description="Breakdown of selection criteria scores (0-1 scale): market_fit, technical_feasibility, competitive_advantage, keyword_opportunity, data_requirements"
@@ -489,13 +489,14 @@ class FinalReport(BaseModel):
     )
 
     # Problem Section
-    top_pain_points: list[str] = Field(..., description="Top identified pain points")
+    # top_pain_points removed - use detailed_pain_points instead
     pain_points_summary: str = Field(
         ..., description="Summary of pain point analysis with severity and WTP insights"
     )
-    pain_point_categories: list[str] = Field(
-        default_factory=list,
-        description="Top categories of pain points identified from analysis"
+    # pain_point_categories removed - derive from detailed_pain_points.categories
+    detailed_pain_points: Optional[list[PainPoint]] = Field(
+        default=None,
+        description="Complete pain point objects with metadata (scores, quotes, categories)"
     )
 
     # Solution Section
@@ -616,10 +617,7 @@ class FinalReport(BaseModel):
         default=None,
         description="Innovation metrics: novelty_score, novelty_justification, solo_dev_feasibility"
     )
-    solution_organic_discovery: Optional[dict] = Field(
-        default=None,
-        description="Organic discovery patterns: target_queries, seo_scalability scores, CAC estimates"
-    )
+    # solution_organic_discovery removed - use selected_solution_details.organic_discovery_queries instead
     competitor_profiles: list[CompetitorCard] = Field(
         default_factory=list,
         description="Detailed competitor profiles with features, pricing, strengths, weaknesses"

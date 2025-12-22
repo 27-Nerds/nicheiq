@@ -174,10 +174,7 @@ class ExecutiveDashboard(BaseModel):
         le=1.0,
         description="Overall confidence in this opportunity (0-1 scale, based on market fit + competitive advantage)"
     )
-
-    niche_description: str = Field(
-        description="One-sentence description of the target niche"
-    )
+    # niche_description removed - use root report.niche instead
 
 # Model for LLM-generated strategic narrative (hybrid approach)
 class ExecutiveNarrative(BaseModel):

@@ -110,8 +110,9 @@ class ReportGenerator:
         """
         logger.info("Step 1: Building report from research data (Python)...")
         final_report = self._assemble_base_report()
+        pain_count = len(final_report.detailed_pain_points) if final_report.detailed_pain_points else 0
         logger.info(
-            f"[OK] Base report assembled: {len(final_report.top_pain_points)} pain points, "
+            f"[OK] Base report assembled: {pain_count} pain points, "
             f"{len(final_report.recommended_solutions)} solutions"
         )
 
@@ -274,14 +275,9 @@ class ReportGenerator:
         which can then be enhanced with LLM for strategic synthesis fields (20% of work).
         """
 
-        # Extract ALL pain points sorted by priority (severity + WTP)
-        top_pain_points = self.accessor.get_formatted_pain_points()
+        # Extract pain points summary (detailed_pain_points used directly)
         pain_points_summary = self.accessor.get_pain_points_summary()
-
-        # Extract pain point categories
-        pain_point_categories: list[str] = []
-        if self.state.pain_point_analysis and self.state.pain_point_analysis.top_categories:
-            pain_point_categories = self.state.pain_point_analysis.top_categories
+        # top_pain_points and pain_point_categories removed - use detailed_pain_points instead
 
         # Extract ALL recommended solutions (no limit)
         recommended_solutions = self.accessor.get_all_solution_names(selected_first=True)
@@ -293,7 +289,7 @@ class ReportGenerator:
         # Extract solution selection (Stage 8.5)
         selected_solution_name = self.accessor.get_selected_solution_name()
         selection_rationale = self.accessor.get_selection_rationale()
-        runner_up_solutions = self.accessor.get_runner_up_solutions()
+        # runner_up_solutions removed - use alternative_solutions instead
         selection_criteria_scores = self.accessor.get_selection_criteria_scores()
         recommended_focus = self.accessor.get_recommended_focus()
 
@@ -418,19 +414,12 @@ class ReportGenerator:
         # === DATA RICHNESS ENHANCEMENTS ===
         # Extract innovation assessment from selected solution
         solution_innovation_assessment = None
-        solution_organic_discovery = None
+        # solution_organic_discovery removed - data available in selected_solution_details
         if selected_solution_details:
             solution_innovation_assessment = {
                 "novelty_score": getattr(selected_solution_details, 'novelty_score', None),
                 "novelty_justification": getattr(selected_solution_details, 'novelty_justification', None),
                 "solo_dev_feasibility": getattr(selected_solution_details, 'solo_dev_feasibility', None)
-            }
-            solution_organic_discovery = {
-                "target_queries": getattr(selected_solution_details, 'organic_discovery_queries', []) or [],
-                "seo_scalability_score": getattr(selected_solution_details, 'seo_scalability_score', None),
-                "seo_scalability_score_refined": getattr(selected_solution_details, 'seo_scalability_score_refined', None),
-                "estimated_cac_organic": getattr(selected_solution_details, 'estimated_cac_organic', None),
-                "estimated_cac_organic_refined": getattr(selected_solution_details, 'estimated_cac_organic_refined', None)
             }
 
         # Build comprehensive final report with all fields
@@ -440,14 +429,14 @@ class ReportGenerator:
             # Basic info
             niche=self.state.niche_context.niche_description,
             executive_summary=f"Market research completed for {self.state.niche_context.niche_description}. "
-            f"Identified {len(top_pain_points)} validated pain points and "
+            f"Identified {len(self.state.pain_point_analysis.pain_points) if self.state.pain_point_analysis else 0} validated pain points and "
             f"{len(recommended_solutions)} solution concepts. "
             f"Selected solution: {selected_solution_name}.",
 
             # Solution selection (Stage 8.75)
             selected_solution_name=selected_solution_name,
             selection_rationale=selection_rationale,
-            runner_up_solutions=runner_up_solutions,
+            # runner_up_solutions removed - use alternative_solutions
             selection_criteria_scores=selection_criteria_scores,
             recommended_focus=recommended_focus,
 
@@ -463,10 +452,10 @@ class ReportGenerator:
             # Traffic monetization (Stage 8.55) - for directories/aggregators
             traffic_monetization=traffic_monetization,
 
-            # Pain points (ALL pain points, no limit)
-            top_pain_points=top_pain_points if top_pain_points else ["No pain points identified"],
+            # Pain points (detailed_pain_points is source of truth)
+            # top_pain_points and pain_point_categories removed
             pain_points_summary=pain_points_summary,
-            pain_point_categories=pain_point_categories,
+            detailed_pain_points=self.accessor.get_sorted_pain_points() if self.state.pain_point_analysis else None,
 
             # Solutions (ALL solutions, selected first)
             recommended_solutions=recommended_solutions if recommended_solutions else ["No solutions generated"],
@@ -501,7 +490,7 @@ class ReportGenerator:
 
             # Data Richness Enhancements - Preserve Full Objects
             solution_innovation_assessment=solution_innovation_assessment,
-            solution_organic_discovery=solution_organic_discovery,
+            # solution_organic_discovery removed - use selected_solution_details
             # competitor_profiles populated in _generate_competitive_landscape_matrix()
 
             # REMOVED: ideation_process - not reliably populated
@@ -652,14 +641,17 @@ class ReportGenerator:
 
         # Load prompt template from YAML
         template = load_prompt("report_strategic_synthesis")
+        # Get pain points from detailed_pain_points
+        pain_points = base_report.detailed_pain_points or []
+        pain_point_titles = [pp.title for pp in pain_points[:3]]
         prompt = template.format(
             niche=base_report.niche,
             selected_solution_name=base_report.selected_solution_name,
-            pain_points_count=len(base_report.top_pain_points),
+            pain_points_count=len(pain_points),
             market_validation=base_report.market_validation,
             seo_scalability=base_report.selected_solution_details.seo_scalability_score if base_report.selected_solution_details else 'N/A',
             selection_rationale=base_report.selection_rationale,
-            top_pain_points=', '.join(base_report.top_pain_points[:3]),
+            top_pain_points=', '.join(pain_point_titles),
             project_type=base_report.selected_solution_details.project_type if base_report.selected_solution_details else 'N/A',
             indexable_pages=base_report.selected_solution_details.estimated_indexable_pages if base_report.selected_solution_details else 'N/A',
             cac_organic=base_report.selected_solution_details.estimated_cac_organic if base_report.selected_solution_details else 'N/A'
@@ -1455,7 +1447,7 @@ It differentiates through {diff_text}.
                 core_pain_point=core_pain_point,
                 key_metrics=key_metrics,
                 confidence_score=confidence_score,
-                niche_description=self.state.niche_context.niche_description
+                # niche_description removed - use root report.niche
             )
 
             logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, confidence {confidence_score:.2f}")

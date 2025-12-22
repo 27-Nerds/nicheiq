@@ -1,15 +1,18 @@
 """
 LandingPageCrew - Generates unique, fully-designed HTML landing pages.
 
-4-Agent Pipeline:
+7-Agent Pipeline:
 0. Marketing Strategist -> Creates strategic landing page brief
-1. Brand Designer -> Creates unique color palette and design mood
-2. Copywriter -> Writes conversion-optimized copy following strategy
-3. HTML Developer -> Generates complete HTML with Tailwind CSS
+1. Creative Director -> Creates autonomous visual strategy (archetype, intensity, hero layout)
+2. Brand Designer -> Executes creative direction into specific brand assets
+3. Copywriter -> Writes conversion-optimized copy following strategy
+4. HTML Developer -> Generates complete HTML implementing creative direction
+5. Animation Enhancer -> Adds premium motion design and micro-interactions
+6. QA Reviewer -> Validates and fixes visual design issues
 
 Each run produces a unique design tailored to the specific product.
-The Marketing Strategist defines the "one memorable element" that makes
-the page stand out from generic AI-generated content.
+The Creative Director ensures visual differentiation through niche-derived
+archetypes, hero layouts, and layout rhythms - not category stereotypes.
 """
 
 from typing import Optional
@@ -22,11 +25,14 @@ from loguru import logger
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.landing_page import (
+    AnimatedHTMLResult,
     BrandIdentity,
+    CreativeDirection,
     HTMLPageResult,
     LandingPageCopy,
     LandingPageResult,
     LandingStrategy,
+    QAReviewResult,
 )
 from ..models.research_state import FinalReport
 
@@ -36,15 +42,18 @@ class LandingPageCrew:
     """
     Generates unique, fully-designed landing pages from research reports.
 
-    4-Agent Pipeline:
+    7-Agent Pipeline:
     0. Marketing Strategist -> Creates strategic brief with persona, messaging, memorable element
-    1. Brand Designer -> Creates color palette and design mood aligned with strategy
-    2. Copywriter -> Writes copy following strategic direction
-    3. HTML Developer -> Generates complete HTML implementing the memorable element
+    1. Creative Director -> Creates autonomous visual strategy (archetype, intensity, hero layout)
+    2. Brand Designer -> Executes creative direction into specific brand assets
+    3. Copywriter -> Writes copy following strategic direction
+    4. HTML Developer -> Generates complete HTML implementing creative direction
+    5. Animation Enhancer -> Adds premium motion design and micro-interactions
+    6. QA Reviewer -> Validates and fixes visual design issues (layout, typography, responsive)
 
     Each run produces a unique design tailored to the specific product.
-    The Marketing Strategist defines the "one memorable element" that makes
-    each page stand out from generic AI-generated content.
+    The Creative Director ensures visual differentiation through niche-derived
+    archetypes, hero layouts, and layout rhythms - not category stereotypes.
     """
 
     agents_config = "config/landing_page_agents.yaml"
@@ -66,8 +75,25 @@ class LandingPageCrew:
         return Agent(
             config=self.agents_config["marketing_strategist"],
             llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
+                model=settings.landing_page_llm,
                 temperature=0.7,  # Strategic creativity (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
+            )),
+            verbose=True,
+        )
+
+    @agent
+    def creative_director(self) -> Agent:
+        """
+        Creative Director agent - makes autonomous visual strategy decisions.
+        High temperature (0.9) for creative, unexpected combinations.
+        """
+        return Agent(
+            config=self.agents_config["creative_director"],
+            llm=ChatOpenAI(**build_llm_kwargs(
+                model=settings.landing_page_llm,
+                temperature=0.9,  # HIGH for creative decisions (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -81,8 +107,9 @@ class LandingPageCrew:
         return Agent(
             config=self.agents_config["brand_designer"],
             llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
+                model=settings.landing_page_llm,
                 temperature=0.8,  # High creativity for unique colors (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -96,8 +123,9 @@ class LandingPageCrew:
         return Agent(
             config=self.agents_config["landing_page_copywriter"],
             llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
+                model=settings.landing_page_llm,
                 temperature=0.7,  # Creative but focused (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -111,8 +139,41 @@ class LandingPageCrew:
         return Agent(
             config=self.agents_config["html_developer"],
             llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
+                model=settings.landing_page_llm,
                 temperature=0.3,  # Lower for valid code (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
+            )),
+            verbose=True,
+        )
+
+    @agent
+    def animation_enhancer(self) -> Agent:
+        """
+        Enhances HTML with premium animations and micro-interactions.
+        Low temperature (0.3) for preserving HTML structure while adding animations.
+        """
+        return Agent(
+            config=self.agents_config["animation_enhancer"],
+            llm=ChatOpenAI(**build_llm_kwargs(
+                model=settings.landing_page_llm,
+                temperature=0.3,  # Low to preserve structure (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
+            )),
+            verbose=True,
+        )
+
+    @agent
+    def qa_reviewer(self) -> Agent:
+        """
+        QA Reviewer agent - validates and fixes visual design issues.
+        Low temperature (0.2) for precise, systematic fixes without creative deviation.
+        """
+        return Agent(
+            config=self.agents_config["qa_reviewer"],
+            llm=ChatOpenAI(**build_llm_kwargs(
+                model=settings.landing_page_llm,
+                temperature=0.2,  # Low for precise fixes (ignored for reasoning models)
+                reasoning_effort=settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -129,23 +190,37 @@ class LandingPageCrew:
         )
 
     @task
+    def create_creative_direction_task(self) -> Task:
+        """Task 1: Create autonomous creative direction based on niche analysis."""
+        return Task(
+            config=self.tasks_config["create_creative_direction"],
+            agent=self.creative_director(),
+            context=[self.create_landing_strategy_task()],  # Uses strategy
+            output_pydantic=CreativeDirection,
+        )
+
+    @task
     def design_brand_identity_task(self) -> Task:
-        """Task 1: Design unique brand identity aligned with strategy."""
+        """Task 2: Execute creative direction into specific brand assets."""
         return Task(
             config=self.tasks_config["design_brand_identity"],
             agent=self.brand_designer(),
-            context=[self.create_landing_strategy_task()],  # Chain from strategy
+            context=[
+                self.create_landing_strategy_task(),
+                self.create_creative_direction_task(),  # NEW dependency
+            ],
             output_pydantic=BrandIdentity,
         )
 
     @task
     def generate_landing_copy_task(self) -> Task:
-        """Task 2: Write landing page copy following strategic direction."""
+        """Task 3: Write landing page copy following section_density from creative direction."""
         return Task(
             config=self.tasks_config["generate_landing_copy"],
             agent=self.landing_page_copywriter(),
             context=[
                 self.create_landing_strategy_task(),  # Include strategy
+                self.create_creative_direction_task(),  # For section_density
                 self.design_brand_identity_task(),
             ],
             output_pydantic=LandingPageCopy,
@@ -153,16 +228,47 @@ class LandingPageCrew:
 
     @task
     def generate_html_page_task(self) -> Task:
-        """Task 3: Generate complete HTML implementing the memorable element."""
+        """Task 4: Generate complete HTML implementing creative direction."""
         return Task(
             config=self.tasks_config["generate_html_page"],
             agent=self.html_developer(),
             context=[
-                self.create_landing_strategy_task(),  # Include strategy for memorable element
+                self.create_landing_strategy_task(),  # For memorable element
+                self.create_creative_direction_task(),  # For hero/layout/density
                 self.design_brand_identity_task(),
                 self.generate_landing_copy_task(),
             ],
             output_pydantic=HTMLPageResult,
+        )
+
+    @task
+    def enhance_animations_task(self) -> Task:
+        """Task 5: Enhance HTML with premium animations and micro-interactions."""
+        return Task(
+            config=self.tasks_config["enhance_animations"],
+            agent=self.animation_enhancer(),
+            context=[
+                self.create_landing_strategy_task(),  # For memorable element animation
+                self.create_creative_direction_task(),  # For intensity-to-animation mapping
+                self.design_brand_identity_task(),  # For mood-to-animation mapping
+                self.generate_html_page_task(),  # The HTML to enhance
+            ],
+            output_pydantic=AnimatedHTMLResult,
+        )
+
+    @task
+    def qa_review_task(self) -> Task:
+        """Task 6: QA review and fix visual design issues."""
+        return Task(
+            config=self.tasks_config["qa_review_html"],
+            agent=self.qa_reviewer(),
+            context=[
+                self.create_landing_strategy_task(),  # For memorable element preservation
+                self.create_creative_direction_task(),  # For creative direction context
+                self.design_brand_identity_task(),  # For design mood context
+                self.enhance_animations_task(),  # The animated HTML to review
+            ],
+            output_pydantic=QAReviewResult,
         )
 
     # ========== CREW ==========
@@ -201,25 +307,42 @@ class LandingPageCrew:
         # Run the crew
         result = self.crew().kickoff(inputs=inputs)
 
-        # Extract outputs from each task (4 tasks now)
+        # Extract outputs from each task (7 tasks now)
         strategy = result.tasks_output[0].pydantic
-        brand_identity = result.tasks_output[1].pydantic
-        copy = result.tasks_output[2].pydantic
-        html_result = result.tasks_output[3].pydantic
+        creative_direction = result.tasks_output[1].pydantic
+        brand_identity = result.tasks_output[2].pydantic
+        copy = result.tasks_output[3].pydantic
+        html_result = result.tasks_output[4].pydantic
+        animated_result = result.tasks_output[5].pydantic
+        qa_result = result.tasks_output[6].pydantic
 
         logger.info(f"Landing page generated with {len(html_result.sections_included)} sections")
         logger.info(f"Primary persona: {strategy.primary_persona}")
         logger.info(f"Memorable element: {strategy.memorable_element[:100]}...")
+        logger.info(f"Creative direction: {creative_direction.design_archetype}, "
+                   f"intensity: {creative_direction.visual_intensity}, "
+                   f"hero: {creative_direction.hero_archetype}")
         logger.info(f"Design mood: {brand_identity.design_mood}")
         logger.info(f"Section selection reasoning: {copy.section_selection_reasoning[:100]}...")
+        logger.info(f"Animations added: {', '.join(animated_result.animations_added)}")
+        logger.info(f"QA Review: {qa_result.issues_fixed_count} issues fixed, score: {qa_result.quality_score}/100, passes: {qa_result.passes_qa}")
+
+        # Combine creative direction, design notes, animation notes, and QA review notes
+        combined_notes = (
+            f"Creative Direction: {creative_direction.archetype_rationale}\n\n"
+            f"Design: {html_result.design_notes}\n\n"
+            f"Animation: {animated_result.animation_notes}\n\n"
+            f"QA Review: {qa_result.review_notes}"
+        )
 
         return LandingPageResult(
             landing_strategy=strategy,
             brand_identity=brand_identity,
             page_copy=copy,
-            html_output=html_result.html_content,
+            html_output=qa_result.html_content,  # Use QA-reviewed HTML
             sections_generated=html_result.sections_included,
-            generation_notes=html_result.design_notes,
+            animations_added=animated_result.animations_added,
+            generation_notes=combined_notes,
         )
 
     def _extract_inputs(self, report: FinalReport) -> dict:
@@ -227,6 +350,7 @@ class LandingPageCrew:
         Extract crew inputs from FinalReport.
 
         Maps FinalReport fields to the placeholders in task YAML.
+        Includes 10 new uniqueness-driving fields for differentiated landing pages.
         """
         # Get solution details
         solution_details = report.selected_solution_details
@@ -257,10 +381,11 @@ class LandingPageCrew:
             if ps.pricing_rationale:
                 pricing_summary += f"\n{ps.pricing_rationale[:200]}"
 
-        # Extract quotes for social proof
+        # Extract quotes for social proof (from detailed_pain_points)
         quotes = "Not available"
-        if report.top_pain_points:
-            quotes = "\n".join(f'"{pp}"' for pp in report.top_pain_points[:3])
+        if report.detailed_pain_points:
+            # Use pain point titles as social proof quotes
+            quotes = "\n".join(f'"{pp.title}"' for pp in report.detailed_pain_points[:3])
 
         # Extract solution type
         solution_type = "saas"
@@ -270,17 +395,71 @@ class LandingPageCrew:
         # Extract project type for brand design
         project_type = solution_type
 
+        # ========== NEW: Uniqueness-driving fields (V3) ==========
+
+        # Niche category context
+        niche = report.niche or ""
+
+        # Pre-computed tagline from executive dashboard
+        core_tagline = ""
+        if report.executive_dashboard and report.executive_dashboard.recommended_solution_snapshot:
+            core_tagline = report.executive_dashboard.recommended_solution_snapshot.tagline or ""
+
+        # GTM Blueprint fields
+        core_marketing_message = ""
+        message_framework = ""
+        content_angles = ""
+        if report.go_to_market_blueprint:
+            gtm = report.go_to_market_blueprint
+            core_marketing_message = gtm.core_marketing_message or ""
+            message_framework = gtm.message_framework or ""
+            if gtm.example_content_angles:
+                # Extract title + hook from each angle
+                content_angles = "\n".join(
+                    f"- {a.title}: {a.hook}"
+                    for a in gtm.example_content_angles[:3]
+                )
+
+        # Differentiation factors from solution details
+        differentiation_factors = ""
+        if solution_details and solution_details.differentiation_factors:
+            differentiation_factors = "\n".join(
+                f"- {f}" for f in solution_details.differentiation_factors[:4]
+            )
+
+        # Runner-up solutions for comparison positioning (from alternative_solutions)
+        runner_ups = ""
+        if report.alternative_solutions:
+            runner_ups = ", ".join(alt.solution_name for alt in report.alternative_solutions[:2])
+
+        # MVP features for roadmap section
+        mvp_features = ""
+        if report.mvp_scope_definition:
+            mvp_features = report.mvp_scope_definition[:300]
+
         return {
+            # Original 12 fields
             "product_name": report.selected_solution_name,
             "solution_type": solution_type,
             "project_type": project_type,
             "target_personas": target_personas or "SaaS users looking for this solution",
             "value_proposition": value_proposition or report.executive_summary[:200],
-            "pain_points": "\n".join(f"- {pp}" for pp in report.top_pain_points[:5]),
+            "pain_points": "\n".join(f"- {pp.title}" for pp in report.detailed_pain_points[:5]) if report.detailed_pain_points else "",
             "pain_points_summary": report.pain_points_summary[:500] if report.pain_points_summary else "",
             "features": features or "Core product features",
             "user_journey": user_journey,
             "pricing_summary": pricing_summary,
             "competitive_summary": report.competitive_summary[:500] if report.competitive_summary else "",
             "quotes": quotes,
+            # NEW: 10 uniqueness-driving fields (V3)
+            "niche": niche,
+            "core_tagline": core_tagline,
+            "core_marketing_message": core_marketing_message,
+            "message_framework": message_framework,
+            "selection_rationale": report.selection_rationale or "",
+            "recommended_focus": report.recommended_focus or "",
+            "content_angles": content_angles,
+            "differentiation_factors": differentiation_factors,
+            "runner_ups": runner_ups,
+            "mvp_features": mvp_features,
         }

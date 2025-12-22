@@ -180,9 +180,10 @@ extract_pain_points:
       ✅ Example: "I spent 3 hours trying to figure this out" (direct quote)
     ✗ DO NOT invent "example" quotes or use general niche knowledge
       ❌ Example: Creating plausible-sounding quotes not from knowledge sources
-    ✗ Mention counts must be actual occurrences - NO estimates
+    ✗ Mention counts must be actual unique post occurrences - NOT quote count
+      ❌ Example: mention_count = 3 (just because you collected 3 quotes)
       ❌ Example: "~15 mentions" (estimated)
-      ✅ Example: "12 mentions" (counted from knowledge source queries)
+      ✅ Example: "12 mentions" (counted 12 distinct posts with [source: ID] discussing this pain point)
 
     **OUTPUT REQUIREMENTS:**
     ✗ Pain point descriptions must use exact user language - NO corporate paraphrasing
@@ -231,7 +232,7 @@ extract_pain_points:
     **extracted_pain_points**: List of UnvalidatedPainPoint objects (10-20 pain points), each containing:
        - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
        - **description**: 2-3 sentence clear articulation of the specific problem in user language
-       - **mention_count**: Number of times this problem appeared across discussions
+       - **mention_count**: Total number of UNIQUE discussions/posts where this problem was mentioned (count distinct source posts, NOT quote count - a pain point may have 20+ mentions but only 3-5 representative quotes selected)
        - **representative_quotes**: 3-5 direct user quotes (MUST include [source: ID] suffix)
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to
@@ -291,8 +292,10 @@ validate_pain_points:
     |-------------|---------------------|-------------------------------|
     | **0.8-1.0** (High) | Critical business impact, workflow blocker, strong emotional language ("nightmare", "critical", "can't work without") | Explicit payment mentions, budget availability, current spend on inadequate solutions |
     | **0.5-0.7** (Medium) | Significant inconvenience, wastes time/money, clear frustration | Frustration with existing paid tools, value/ROI mentions |
-    | **0.3-0.4** (Low) | Notable annoyance, mentioned but not critical | Some consideration for solutions, no money mentions |
-    | **0.0-0.2** (Minimal) | Minor inconvenience, weak signals | No financial indicators, expect free solutions |
+    | **0.3-0.5** (Low-Med) | Notable pain affecting productivity | INFERRED: severity ≥0.7 AND workflow-blocking = WTP 0.35-0.45 |
+    | **0.2-0.35** (Low) | Notable annoyance, mentioned but not critical | INFERRED: productivity/time loss mentioned = WTP 0.2-0.35 |
+    | **0.1-0.2** (Minimal) | Minor inconvenience with some frustration | INFERRED: strong emotional language = WTP 0.1-0.2 |
+    | **0.0-0.1** (None) | Minor inconvenience, weak signals | No financial OR productivity impact signals |
 
     **WORKFLOW:**
     1. Review extracted pain points from Task 2 context
@@ -306,12 +309,20 @@ validate_pain_points:
     - Score conservatively when uncertain
     - Cross-reference Reddit + Twitter evidence
 
+    **WTP INFERENCE RULES** (When No Explicit Payment Signals):
+    When knowledge sources lack explicit money/budget mentions, INFER WTP based on:
+    - severity ≥0.7 AND workflow-blocking problem → assign WTP 0.35-0.45
+    - productivity/time loss explicitly mentioned → assign WTP 0.25-0.35
+    - Strong emotional language (frustration, anger) → assign WTP 0.15-0.25
+    - Only assign WTP 0.0-0.1 when problem is minor inconvenience with NO productivity impact
+    - CRITICAL: NEVER assign identical WTP scores to all pain points - use the full range to differentiate
+
     **CRITICAL DATA ACCURACY RULES:**
-    - Scores MUST be based ONLY on evidence you can find in knowledge sources through queries
-    - If knowledge source queries return insufficient evidence for a score, assign 0.0 and note "Insufficient evidence"
+    - Scores MUST be based on evidence you can find in knowledge sources through queries
+    - If knowledge source queries return insufficient evidence for severity, assign 0.0 with note
     - DO NOT assign scores based on assumptions about what severity "should" be for this type of problem
     - Every severity score ≥0.5 MUST have at least one direct quote showing strong emotional language or business impact
-    - Every WTP score ≥0.5 MUST have at least one quote mentioning money, budget, cost, or pricing
+    - WTP scores ≥0.5 require explicit payment mentions; WTP scores 0.1-0.5 can be INFERRED from severity/impact
 
     **CRITICAL CONSTRAINT: 1:1 Mapping Required**
     - You MUST score EXACTLY the pain points from Task 2—no more, no fewer
@@ -325,10 +336,12 @@ validate_pain_points:
       ❌ Example: Scoring without querying knowledge sources (using assumptions about severity)
     ✗ Every severity score ≥0.5 requires ≥1 quote showing strong emotional language/business impact
       ❌ Example: Assigning 0.9 severity without quotes showing "critical", "nightmare", "can't work"
-    ✗ Every WTP score ≥0.5 requires ≥1 quote mentioning money/budget/cost/pricing
-      ❌ Example: Assigning high WTP scores without any money/budget mentions in discussions
-    ✗ If evidence is insufficient → assign 0.0 with "Insufficient evidence" note
-      ✅ Example: "severity_score: 0.0 - Insufficient evidence in knowledge sources"
+    ✗ WTP scores ≥0.5 require explicit payment mentions; WTP 0.1-0.5 can be INFERRED from severity/impact
+      ✅ Example: High severity (0.8) + workflow blocker → infer WTP 0.35-0.45
+      ✅ Example: Time/productivity loss mentioned → infer WTP 0.25-0.35
+    ✗ NEVER assign identical WTP scores to ALL pain points - discriminate using the full 0.0-0.5 range
+      ❌ Example: All 10 pain points with WTP = 0.0 (no discrimination)
+      ✅ Example: WTP scores ranging from 0.1 to 0.45 based on inferred impact
 
     **OUTPUT REQUIREMENTS:**
     ✗ pain_point_scores count MUST EXACTLY match Task 2 extraction count (1:1 mapping)

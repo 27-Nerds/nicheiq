@@ -93,14 +93,14 @@ def _generate_solution_selection_section(report: FinalReport) -> str:
         "",
     ]
 
-    # Add runner-up solutions if any
-    if report.runner_up_solutions:
+    # Add runner-up solutions if any (from alternative_solutions)
+    if report.alternative_solutions:
         section.extend([
             "**Runner-up Solutions Considered:**",
             "",
         ])
-        for i, solution in enumerate(report.runner_up_solutions, 1):
-            section.append(f"{i}. {solution}")
+        for i, alt in enumerate(report.alternative_solutions, 1):
+            section.append(f"{i}. {alt.solution_name}")
         section.append("")
 
     # Add note about SEO focus
@@ -124,8 +124,9 @@ def _generate_pain_points_section(report: FinalReport) -> str:
         "",
     ]
 
-    for i, pain_point in enumerate(report.top_pain_points, 1):
-        section.append(f"{i}. **{pain_point}**")
+    if report.detailed_pain_points:
+        for i, pain_point in enumerate(report.detailed_pain_points, 1):
+            section.append(f"{i}. **{pain_point.title}**")
 
     return "\n".join(section)
 

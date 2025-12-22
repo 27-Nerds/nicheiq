@@ -36,6 +36,7 @@ def build_llm_kwargs(
     temperature: float | None = None,
     api_key: str | None = None,
     timeout: int | None = None,
+    reasoning_effort: str | None = None,
     **extra_kwargs
 ) -> dict:
     """
@@ -49,6 +50,7 @@ def build_llm_kwargs(
         temperature: Temperature setting (ignored for reasoning models)
         api_key: OpenAI API key (defaults to settings)
         timeout: Timeout in seconds
+        reasoning_effort: Reasoning effort for GPT-5/o1/o3 models ('none', 'minimal', 'low', 'medium', 'high', 'xhigh')
         **extra_kwargs: Additional kwargs (frequency_penalty, presence_penalty, etc.)
 
     Returns:
@@ -64,8 +66,12 @@ def build_llm_kwargs(
     if timeout:
         kwargs["timeout"] = timeout
 
-    # For reasoning models, exclude sampling parameters
-    if not is_reasoning_model(model):
+    # For reasoning models, exclude sampling parameters but allow reasoning_effort
+    if is_reasoning_model(model):
+        if reasoning_effort:
+            # Pass reasoning_effort via model_kwargs for OpenAI API
+            kwargs["model_kwargs"] = {"reasoning_effort": reasoning_effort}
+    else:
         if temperature is not None:
             kwargs["temperature"] = temperature
         # Also handle other sampling params that may be passed

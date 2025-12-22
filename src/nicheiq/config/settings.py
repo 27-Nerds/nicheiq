@@ -93,6 +93,14 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="Model to use for keyword research crew in Stage 8.8 (gpt-4o-mini for cost efficiency, gpt-4o for better quality)"
     )
+    landing_page_llm: str = Field(
+        default="gpt-5.2",
+        description="Model to use for landing page generation (gpt-5.2 recommended for high-quality creative output)"
+    )
+    landing_page_reasoning_effort: str | None = Field(
+        default=None,
+        description="Reasoning effort for landing page LLM (GPT-5 series): 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'. Leave unset for older models."
+    )
 
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")

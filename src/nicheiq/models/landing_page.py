@@ -1,12 +1,15 @@
 """
 Pydantic models for Landing Page Generator Crew.
 
-These models define the structured outputs for the 4-agent pipeline:
+These models define the structured outputs for the 7-agent pipeline:
 0. LandingStrategy - Marketing Strategist output (strategy, memorable element)
-1. BrandIdentity - Brand Designer output (colors, mood, layout)
-2. LandingPageCopy - Copywriter output (dynamic sections)
-3. HTMLPageResult - HTML Developer output (complete page)
-4. LandingPageResult - Final combined result
+1. CreativeDirection - Creative Director output (design archetype, visual intensity, layout)
+2. BrandIdentity - Brand Designer output (colors, mood, layout)
+3. LandingPageCopy - Copywriter output (dynamic sections)
+4. HTMLPageResult - HTML Developer output (complete page)
+5. AnimatedHTMLResult - Animation Enhancer output (premium motion design)
+6. QAReviewResult - QA Reviewer output (validated and fixed HTML)
+7. LandingPageResult - Final combined result
 """
 
 from typing import Optional
@@ -78,6 +81,72 @@ class LandingStrategy(BaseModel):
     )
 
 
+class CreativeDirection(BaseModel):
+    """Task 1 output: Creative direction for landing page design.
+
+    The Creative Director agent analyzes niche positioning, competitive landscape,
+    and target persona psychology to create a UNIQUE visual direction. This breaks
+    away from templated designs by making autonomous creative decisions based on
+    market context. Downstream agents (Brand Designer, HTML Developer) MUST follow.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Visual Identity
+    design_archetype: str = Field(
+        ...,
+        description="Primary design archetype: 'bold-disruptor', 'premium-authority', 'friendly-accessible', 'technical-precision', 'minimal-elegant', 'vibrant-energetic', 'earth-organic', 'neon-futuristic'"
+    )
+    visual_intensity: str = Field(
+        ...,
+        description="Visual boldness level: 'whisper' (minimal), 'conversational' (balanced), 'statement' (bold), 'shout' (maximum impact)"
+    )
+
+    # Color Direction (not specific hex - that's brand designer's job)
+    color_personality: str = Field(
+        ...,
+        description="Color mood derived from niche: 'trust-blues', 'growth-greens', 'energy-oranges', 'luxury-purples', 'tech-cyans', 'earth-neutrals', 'neon-accents', 'monochrome-sophisticated'"
+    )
+    color_temperature: str = Field(
+        ...,
+        description="Overall warmth: 'cool' (blues/greens), 'warm' (oranges/reds), 'neutral' (grays/earth), 'mixed' (warm accents on cool base)"
+    )
+
+    # Layout Direction
+    hero_archetype: str = Field(
+        ...,
+        description="Hero layout pattern: 'split-showcase' (text left, visual right), 'centered-statement' (centered headline, minimal), 'immersive-full' (full-bleed background, overlay text), 'asymmetric-dynamic' (off-center, energetic), 'product-demo' (hero with embedded demo/preview)"
+    )
+    section_density: str = Field(
+        ...,
+        description="Content density: 'sparse' (few sections, lots of whitespace), 'balanced' (standard 5-7 sections), 'rich' (many sections, detailed)"
+    )
+    layout_rhythm: str = Field(
+        ...,
+        description="Section layout variation: 'uniform' (consistent structure), 'alternating' (left-right pattern), 'progressive' (builds complexity), 'dramatic' (varied heights/widths)"
+    )
+
+    # Typography Direction
+    typography_personality: str = Field(
+        ...,
+        description="Font character: 'geometric-modern', 'humanist-friendly', 'technical-precise', 'editorial-elegant', 'playful-rounded', 'bold-impact'"
+    )
+    heading_scale: str = Field(
+        ...,
+        description="Headline sizing: 'modest' (text-4xl max), 'standard' (text-5xl-6xl), 'bold' (text-7xl), 'massive' (text-8xl+)"
+    )
+
+    # Strategic Reasoning
+    archetype_rationale: str = Field(
+        ...,
+        description="2-3 sentences explaining why this archetype fits the niche, competitive position, and target persona"
+    )
+    differentiation_visual: str = Field(
+        ...,
+        description="How the visual direction differentiates from competitors (1-2 sentences)"
+    )
+
+
 class BrandIdentity(BaseModel):
     """Task 1 output: Unique brand identity for the product.
 
@@ -107,6 +176,18 @@ class BrandIdentity(BaseModel):
     color_text_muted: str = Field(
         ...,
         description="Secondary/muted text color as hex code."
+    )
+    font_heading: str = Field(
+        ...,
+        description="Google Font for headings/headlines (e.g., 'Space Grotesk', 'DM Sans', 'Outfit')"
+    )
+    font_body: str = Field(
+        ...,
+        description="Google Font for body text (e.g., 'Inter', 'Source Sans 3', 'Work Sans')"
+    )
+    font_code: Optional[str] = Field(
+        default=None,
+        description="Google Font for code/monospace if needed (e.g., 'JetBrains Mono', 'Fira Code')"
     )
     design_mood: str = Field(
         ...,
@@ -217,11 +298,102 @@ class HTMLPageResult(BaseModel):
     )
 
 
+class AnimatedHTMLResult(BaseModel):
+    """Task 4 output: Enhanced HTML with premium animations.
+
+    The Animation Enhancer agent takes the complete HTML from the HTML Developer
+    and enhances it with premium micro-interactions and motion design:
+    - Page load animations (staggered fade-ins)
+    - Scroll-triggered reveals
+    - Hover states (scale, shadow expansion)
+    - Micro-interactions (button feedback, form focus)
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    html_content: str = Field(
+        ...,
+        description="Complete enhanced HTML with animations (<!DOCTYPE html> to </html>)"
+    )
+    animations_added: list[str] = Field(
+        ...,
+        description="List of animation types implemented: page_load, scroll, hover, micro"
+    )
+    animation_notes: str = Field(
+        ...,
+        description="2-3 sentences explaining motion design choices"
+    )
+
+
+class QAIssue(BaseModel):
+    """Individual QA issue found during visual design review."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    issue_type: str = Field(
+        ...,
+        description="Category: 'layout_spacing', 'typography', 'responsive'"
+    )
+    severity: str = Field(
+        ...,
+        description="Severity level: 'critical', 'major', 'minor'"
+    )
+    location: str = Field(
+        ...,
+        description="CSS selector or section where issue was found (e.g., '.hero', '#pricing', 'nav')"
+    )
+    description: str = Field(
+        ...,
+        description="Description of what's wrong"
+    )
+    fix_applied: str = Field(
+        ...,
+        description="Description of the fix that was applied"
+    )
+
+
+class QAReviewResult(BaseModel):
+    """Task 5 output: QA-reviewed and refined HTML.
+
+    The QA Reviewer agent validates the animated HTML against visual design rules,
+    identifies issues, and applies fixes to ensure professional quality output.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    html_content: str = Field(
+        ...,
+        description="Refined HTML with all QA fixes applied (<!DOCTYPE html> to </html>)"
+    )
+    issues_found: list[QAIssue] = Field(
+        default_factory=list,
+        description="List of issues identified during review"
+    )
+    issues_fixed_count: int = Field(
+        ...,
+        description="Number of issues that were fixed"
+    )
+    quality_score: int = Field(
+        ...,
+        ge=0,
+        le=100,
+        description="Overall quality score (0-100) based on compliance with design rules"
+    )
+    passes_qa: bool = Field(
+        ...,
+        description="True if page meets minimum quality threshold (score >= 80)"
+    )
+    review_notes: str = Field(
+        ...,
+        description="2-3 sentences summarizing the QA review findings and improvements"
+    )
+
+
 class LandingPageResult(BaseModel):
     """Final output combining all tasks.
 
     This is the complete result returned by LandingPageCrew.generate()
-    containing strategy, brand identity, copy, and final HTML.
+    containing strategy, brand identity, copy, HTML, and animations.
     """
 
     model_config = ConfigDict(extra='forbid')
@@ -240,13 +412,17 @@ class LandingPageResult(BaseModel):
     )
     html_output: str = Field(
         ...,
-        description="Complete HTML file content"
+        description="Complete HTML file content with animations"
     )
     sections_generated: list[str] = Field(
         ...,
         description="List of sections included in final output"
     )
+    animations_added: list[str] = Field(
+        default_factory=list,
+        description="List of animation types applied: page_load, scroll, hover, micro"
+    )
     generation_notes: str = Field(
         ...,
-        description="Combined notes about design and generation choices"
+        description="Combined notes about design, generation, and animation choices"
     )

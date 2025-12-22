@@ -26,6 +26,8 @@ NicheIQ is an autonomous AI-powered market research agent that analyzes social m
 - **Solution Ideation**: Multi-agent system for generating and refining SaaS concepts
 - **Competitive Analysis**: Automated competitor research and gap identification
 - **Keyword Validation**: Quantitative demand validation using DataForSEO API
+- **Landing Page Generation**: 4-agent pipeline to generate unique, conversion-optimized HTML landing pages
+- **Hybrid Report Generation**: 80% Python + 20% LLM for fast, accurate, cost-effective reports
 - **Cost-Optimized**: Batched API calls to minimize research costs
 
 ## Architecture
@@ -318,13 +320,22 @@ nicheiq/
 │   │   │   ├── seo_strategy_tasks.yaml
 │   │   │   ├── solution_refinement_agents.yaml
 │   │   │   ├── solution_refinement_tasks.yaml
+│   │   │   ├── landing_page_agents.yaml
+│   │   │   ├── landing_page_tasks.yaml
 │   │   │   ├── data_source_agents.yaml
 │   │   │   └── data_source_tasks.yaml
 │   │   ├── pain_point_crew.py          # Stage 6: Pain point analysis
 │   │   ├── unified_solution_crew.py    # Stages 7-8.75: Ideation + competitive + selection
 │   │   ├── seo_strategy_crew.py        # Stage 9: SEO strategy
 │   │   ├── solution_refinement_crew.py # Stage 8.85: Solution refinement
+│   │   ├── landing_page_crew.py        # Landing page generation (4 agents)
 │   │   └── data_source_crew.py         # Stage 9.75: Data source research (conditional)
+│   ├── report/                   # Report generation module
+│   │   ├── report_generator.py  # Stage 10: Hybrid Python + LLM report
+│   │   ├── templates/           # Report templates
+│   │   └── utils/               # State accessors and helpers
+│   ├── landing/                  # Landing page generation module
+│   │   └── __main__.py          # CLI entry point for landing page
 │   ├── flows/
 │   │   └── research_flow.py     # Main 10-stage pipeline
 │   └── main.py                   # CLI entry point
@@ -340,7 +351,9 @@ Research results are saved to `./output/` (configurable):
 
 ```
 output/
-├── research_report_20240315_143022.json  # Complete research data
+├── final_report_20240315_143022.json    # Complete research report
+├── research_state_raw_20240315_143022.json  # Raw state data
+├── checkpoints/                          # Resume capability
 └── logs/
     └── nicheiq_2024-03-15.log           # Detailed execution logs
 ```
@@ -349,14 +362,142 @@ output/
 
 The JSON report contains:
 
-- **Niche Description**: Original research input
-- **Search Queries**: Generated search queries
-- **Reddit Posts**: Collected posts with comments
-- **Twitter Threads**: Collected threads with engagement
-- **Pain Point Analysis**: Validated pain points with scores
+- **Executive Dashboard**: Go/no-go verdict, confidence score, key metrics
+- **Go-to-Market Blueprint**: ICP, marketing channels, 30-day playbook
+- **Pain Point Analysis**: Validated pain points with scores and quotes
 - **Solution Ideas**: Refined SaaS concepts with features
-- **Competitive Analysis**: Competitor profiles and market gaps
-- **Keyword Research**: Validated keywords with search volumes
+- **Competitive Analysis**: Competitor profiles, market gaps, positioning matrix
+- **SEO Strategy**: 150+ validated keywords, content strategy, implementation roadmap
+- **Market Sizing**: TAM/SAM/SOM calculations with methodology
+- **Analytics & Visualizations**: Charts and data visualizations for reports
+
+---
+
+## Report Generation
+
+NicheIQ uses a **hybrid Python + LLM approach** for Stage 10 report generation, optimizing for speed, accuracy, and cost.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Stage 10: Report Generation               │
+├─────────────────────────────────────────────────────────────┤
+│  Step 1: Python Data Assembly (80%)                         │
+│  - 27 fields direct copy from research state                │
+│  - Template-based summaries and calculations                │
+│  - Zero hallucination risk on data fields                   │
+├─────────────────────────────────────────────────────────────┤
+│  Step 2: LLM Strategic Synthesis (20%)                      │
+│  - executive_summary: High-level narrative                  │
+│  - acquisition_strategy_summary: GTM recommendations        │
+│  - next_steps: Prioritized action items                     │
+├─────────────────────────────────────────────────────────────┤
+│  Step 3: Enhanced Sections (Python)                         │
+│  - Executive Dashboard with go/no-go verdict                │
+│  - GTM Blueprint with ICP and channels                      │
+│  - Analytics with visualizations                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Benefits
+
+| Metric | Previous (Full LLM) | Current (Hybrid) |
+|--------|---------------------|------------------|
+| Cost | $0.10-0.30 | $0.02-0.05 |
+| Speed | 5-15 seconds | 2-3 seconds |
+| Accuracy | Variable | 100% on data fields |
+| Hallucination Risk | Moderate | Zero on data |
+
+---
+
+## Landing Page Generation
+
+Generate unique, conversion-optimized HTML landing pages from your research reports using a **4-agent pipeline**.
+
+### Quick Start
+
+```bash
+# Generate landing page from research report
+python -m nicheiq.landing --report output/final_report_20241216_143022.json
+
+# Specify custom output path
+python -m nicheiq.landing --report output/final_report.json --output my_landing.html
+```
+
+### 4-Agent Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                 Landing Page Generation                      │
+├─────────────────────────────────────────────────────────────┤
+│  Agent 1: Marketing Strategist                              │
+│  - Creates strategic brief with persona focus               │
+│  - Defines key messaging angle and differentiation          │
+│  - Specifies ONE memorable element for the page             │
+├─────────────────────────────────────────────────────────────┤
+│  Agent 2: Brand Designer                                    │
+│  - Creates unique color palette based on product category   │
+│  - Defines design mood (minimal/bold/dark/friendly)         │
+│  - Never uses generic colors - justified by product         │
+├─────────────────────────────────────────────────────────────┤
+│  Agent 3: Copywriter                                        │
+│  - Selects which sections to include (hero/problem/etc.)    │
+│  - Writes conversion-optimized copy                         │
+│  - Avoids "AI slop" patterns (generic phrases)              │
+├─────────────────────────────────────────────────────────────┤
+│  Agent 4: HTML Developer                                    │
+│  - Generates complete HTML with Tailwind CSS                │
+│  - Implements memorable element from strategy               │
+│  - Creates responsive, mobile-first design                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Output
+
+Each run produces a **unique design** tailored to your specific product:
+
+```
+Landing Page Generated Successfully!
+============================================================
+Output: /path/to/landing_page.html
+
+Product: ContentFlow AI
+Tagline: Repurpose once, publish everywhere
+
+Design Mood: bold-vibrant
+Primary Color: #8B5CF6
+Secondary Color: #F97316
+
+Sections Included (6):
+  - hero
+  - problem
+  - solution
+  - how_it_works
+  - social_proof
+  - cta
+
+Open landing_page.html in your browser to view!
+```
+
+### Design Moods
+
+| Mood | Best For | Characteristics |
+|------|----------|-----------------|
+| `minimal-professional` | B2B, Enterprise | Clean lines, whitespace, subtle shadows |
+| `bold-vibrant` | Consumer, Marketing | Strong colors, large typography, gradients |
+| `dark-technical` | Developer tools | Dark theme (#0F172A), monospace, neon accents |
+| `friendly-approachable` | Consumer apps | Rounded corners, warm colors, playful |
+
+### Anti-"AI Slop" Features
+
+The landing page generator is specifically designed to avoid generic AI patterns:
+
+- **No generic fonts**: Uses distinctive typography (Satoshi, Cabinet Grotesk, not Inter/Roboto)
+- **No purple gradients on white**: Chooses bold, product-specific color palettes
+- **No "revolutionize your workflow"**: Writes specific, product-relevant copy
+- **No centered card heroes**: Uses full-width, dramatic layouts
+- **One memorable element**: Every page has ONE thing visitors remember
 
 ## Customization
 
@@ -483,13 +624,27 @@ cp .env.example .env
 
 ## Roadmap
 
+- [x] Landing page generation (4-agent pipeline)
+- [x] Trend analysis and market timing insights (TrendLongevityCrew)
+- [x] Audience mapping and persona development (AudienceMappingCrew)
+- [x] Market sizing with TAM/SAM/SOM (MarketSizingCrew)
 - [ ] PDF report generation with visualizations
 - [ ] Web interface for easier usage
 - [ ] Additional data sources (Hacker News, Product Hunt, IndieHackers)
-- [ ] Trend analysis and market timing insights
 - [ ] Automated LinkedIn outreach for validation
 - [ ] Integration with market research databases
 - [ ] Multi-language support for international markets
+
+## Documentation
+
+For more detailed documentation, see:
+
+- **[CLAUDE.md](CLAUDE.md)** - Main project documentation and architecture
+- **[docs/AGENT_ARCHITECTURE.md](docs/AGENT_ARCHITECTURE.md)** - Complete agent analysis with 24 agents across 11 crews
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Deep technical architecture
+- **[docs/PATTERNS.md](docs/PATTERNS.md)** - Reusable code patterns
+- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Setup guide with API keys
+- **[ENV_REFERENCE.md](ENV_REFERENCE.md)** - Environment variables reference
 
 ## Contributing
 

@@ -604,6 +604,12 @@ class PainPointCrew:
             pp.source_post_ids = list(sources)
             pp.representative_quotes = cleaned_quotes
 
+            # Recalculate mention_count from actual unique sources
+            # LLM often confuses mention_count with quote count (always ~3)
+            # Actual mention count = number of unique source posts
+            if sources:
+                pp.mention_count = len(sources)
+
             # Log extraction results for this pain point
             if sources:
                 logger.info(
