@@ -101,6 +101,15 @@ class Settings(BaseSettings):
         default=None,
         description="Reasoning effort for landing page LLM (GPT-5 series): 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'. Leave unset for older models."
     )
+    # Creative vs Execution reasoning effort (overrides landing_page_reasoning_effort if set)
+    landing_page_creative_reasoning_effort: str | None = Field(
+        default="high",
+        description="Reasoning effort for creative agents (Strategist, Creative Director, Brand Designer, Copywriter). 'high' recommended for differentiated outputs."
+    )
+    landing_page_execution_reasoning_effort: str | None = Field(
+        default="medium",
+        description="Reasoning effort for execution agents (HTML Developer, Animation Enhancer, QA Reviewer). 'medium' recommended for reliable implementation."
+    )
 
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")

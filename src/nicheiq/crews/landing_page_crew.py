@@ -1,20 +1,25 @@
 """
 LandingPageCrew - Generates unique, fully-designed HTML landing pages.
 
-7-Agent Pipeline:
+8-Agent Pipeline:
 0. Marketing Strategist -> Creates strategic landing page brief
 1. Creative Director -> Creates autonomous visual strategy (archetype, intensity, hero layout)
-2. Brand Designer -> Executes creative direction into specific brand assets
-3. Copywriter -> Writes conversion-optimized copy following strategy
-4. HTML Developer -> Generates complete HTML implementing creative direction
-5. Animation Enhancer -> Adds premium motion design and micro-interactions
-6. QA Reviewer -> Validates and fixes visual design issues
+2. Visual Designer -> Interprets creative direction into specific visual decisions
+3. Brand Designer -> Executes creative direction into specific brand assets
+4. Copywriter -> Writes conversion-optimized copy following strategy
+5. HTML Developer -> Generates complete HTML implementing visual design
+6. Animation Enhancer -> Adds premium motion design and micro-interactions
+7. QA Reviewer -> Validates and fixes visual design issues
 
 Each run produces a unique design tailored to the specific product.
 The Creative Director ensures visual differentiation through niche-derived
 archetypes, hero layouts, and layout rhythms - not category stereotypes.
+The Visual Designer adds creative interpretation with card treatments,
+visual surprises, and animation personality.
 """
 
+import random
+import time
 from typing import Optional
 
 from crewai import Agent, Crew, Task
@@ -33,6 +38,7 @@ from ..models.landing_page import (
     LandingPageResult,
     LandingStrategy,
     QAReviewResult,
+    VisualDesignSpec,
 )
 from ..models.research_state import FinalReport
 
@@ -42,18 +48,20 @@ class LandingPageCrew:
     """
     Generates unique, fully-designed landing pages from research reports.
 
-    7-Agent Pipeline:
+    8-Agent Pipeline:
     0. Marketing Strategist -> Creates strategic brief with persona, messaging, memorable element
     1. Creative Director -> Creates autonomous visual strategy (archetype, intensity, hero layout)
-    2. Brand Designer -> Executes creative direction into specific brand assets
-    3. Copywriter -> Writes copy following strategic direction
-    4. HTML Developer -> Generates complete HTML implementing creative direction
-    5. Animation Enhancer -> Adds premium motion design and micro-interactions
-    6. QA Reviewer -> Validates and fixes visual design issues (layout, typography, responsive)
+    2. Visual Designer -> Interprets creative direction into card treatments, visual surprises
+    3. Brand Designer -> Executes creative direction into specific brand assets
+    4. Copywriter -> Writes copy following strategic direction
+    5. HTML Developer -> Generates complete HTML implementing visual design spec
+    6. Animation Enhancer -> Adds premium motion design and micro-interactions
+    7. QA Reviewer -> Validates and fixes visual design issues (layout, typography, responsive)
 
     Each run produces a unique design tailored to the specific product.
     The Creative Director ensures visual differentiation through niche-derived
     archetypes, hero layouts, and layout rhythms - not category stereotypes.
+    The Visual Designer adds creative interpretation with specific visual decisions.
     """
 
     agents_config = "config/landing_page_agents.yaml"
@@ -69,15 +77,13 @@ class LandingPageCrew:
     def marketing_strategist(self) -> Agent:
         """
         Creates strategic landing page brief before design/copy.
-        Moderate temperature (0.7) for strategic creativity while
-        maintaining focus on research data.
+        Uses high reasoning_effort for creative differentiation (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["marketing_strategist"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.7,  # Strategic creativity (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -86,14 +92,29 @@ class LandingPageCrew:
     def creative_director(self) -> Agent:
         """
         Creative Director agent - makes autonomous visual strategy decisions.
-        High temperature (0.9) for creative, unexpected combinations.
+        Uses high reasoning_effort for creative, unexpected combinations (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["creative_director"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.9,  # HIGH for creative decisions (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
+            )),
+            verbose=True,
+        )
+
+    @agent
+    def visual_designer(self) -> Agent:
+        """
+        Visual Designer agent - interprets creative direction into specific visual decisions.
+        Makes creative choices about card treatments, memorable element visuals, and visual surprises.
+        Uses high reasoning_effort for creative interpretation (GPT-5.2).
+        """
+        return Agent(
+            config=self.agents_config["visual_designer"],
+            llm=ChatOpenAI(**build_llm_kwargs(
+                model=settings.landing_page_llm,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -102,14 +123,13 @@ class LandingPageCrew:
     def brand_designer(self) -> Agent:
         """
         Creates unique brand identity based on product category.
-        High temperature (0.8) for creative, unique color choices.
+        Uses high reasoning_effort for unique color/typography choices (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["brand_designer"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.8,  # High creativity for unique colors (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -118,14 +138,13 @@ class LandingPageCrew:
     def landing_page_copywriter(self) -> Agent:
         """
         Writes conversion-optimized copy and decides which sections to include.
-        Moderate temperature (0.7) for creative but focused copy.
+        Uses high reasoning_effort for creative but focused copy (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["landing_page_copywriter"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.7,  # Creative but focused (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -134,14 +153,13 @@ class LandingPageCrew:
     def html_developer(self) -> Agent:
         """
         Generates complete HTML pages with Tailwind CSS.
-        Lower temperature (0.3) for valid, working code.
+        Uses medium reasoning_effort for reliable implementation (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["html_developer"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.3,  # Lower for valid code (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_execution_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -150,14 +168,13 @@ class LandingPageCrew:
     def animation_enhancer(self) -> Agent:
         """
         Enhances HTML with premium animations and micro-interactions.
-        Low temperature (0.3) for preserving HTML structure while adding animations.
+        Uses medium reasoning_effort for reliable implementation (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["animation_enhancer"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.3,  # Low to preserve structure (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_execution_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -166,14 +183,13 @@ class LandingPageCrew:
     def qa_reviewer(self) -> Agent:
         """
         QA Reviewer agent - validates and fixes visual design issues.
-        Low temperature (0.2) for precise, systematic fixes without creative deviation.
+        Uses medium reasoning_effort for precise, systematic fixes (GPT-5.2).
         """
         return Agent(
             config=self.agents_config["qa_reviewer"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                temperature=0.2,  # Low for precise fixes (ignored for reasoning models)
-                reasoning_effort=settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_execution_reasoning_effort or settings.landing_page_reasoning_effort,
             )),
             verbose=True,
         )
@@ -200,21 +216,34 @@ class LandingPageCrew:
         )
 
     @task
+    def create_visual_design_task(self) -> Task:
+        """Task 2: Create visual design specifications (card treatments, visual surprises)."""
+        return Task(
+            config=self.tasks_config["create_visual_design"],
+            agent=self.visual_designer(),
+            context=[
+                self.create_landing_strategy_task(),  # For memorable element
+                self.create_creative_direction_task(),  # For archetype, intensity
+            ],
+            output_pydantic=VisualDesignSpec,
+        )
+
+    @task
     def design_brand_identity_task(self) -> Task:
-        """Task 2: Execute creative direction into specific brand assets."""
+        """Task 3: Execute creative direction into specific brand assets."""
         return Task(
             config=self.tasks_config["design_brand_identity"],
             agent=self.brand_designer(),
             context=[
-                self.create_landing_strategy_task(),
-                self.create_creative_direction_task(),  # NEW dependency
+                self.create_creative_direction_task(),
+                self.create_visual_design_task(),  # For visual design context
             ],
             output_pydantic=BrandIdentity,
         )
 
     @task
     def generate_landing_copy_task(self) -> Task:
-        """Task 3: Write landing page copy following section_density from creative direction."""
+        """Task 4: Write landing page copy following section_density from creative direction."""
         return Task(
             config=self.tasks_config["generate_landing_copy"],
             agent=self.landing_page_copywriter(),
@@ -228,13 +257,14 @@ class LandingPageCrew:
 
     @task
     def generate_html_page_task(self) -> Task:
-        """Task 4: Generate complete HTML implementing creative direction."""
+        """Task 5: Generate complete HTML implementing visual design spec."""
         return Task(
             config=self.tasks_config["generate_html_page"],
             agent=self.html_developer(),
             context=[
                 self.create_landing_strategy_task(),  # For memorable element
                 self.create_creative_direction_task(),  # For hero/layout/density
+                self.create_visual_design_task(),  # For card treatments, visual surprises
                 self.design_brand_identity_task(),
                 self.generate_landing_copy_task(),
             ],
@@ -243,13 +273,14 @@ class LandingPageCrew:
 
     @task
     def enhance_animations_task(self) -> Task:
-        """Task 5: Enhance HTML with premium animations and micro-interactions."""
+        """Task 6: Enhance HTML with premium animations and micro-interactions."""
         return Task(
             config=self.tasks_config["enhance_animations"],
             agent=self.animation_enhancer(),
             context=[
                 self.create_landing_strategy_task(),  # For memorable element animation
                 self.create_creative_direction_task(),  # For intensity-to-animation mapping
+                self.create_visual_design_task(),  # For animation personality
                 self.design_brand_identity_task(),  # For mood-to-animation mapping
                 self.generate_html_page_task(),  # The HTML to enhance
             ],
@@ -258,13 +289,14 @@ class LandingPageCrew:
 
     @task
     def qa_review_task(self) -> Task:
-        """Task 6: QA review and fix visual design issues."""
+        """Task 7: QA review and fix visual design issues."""
         return Task(
             config=self.tasks_config["qa_review_html"],
             agent=self.qa_reviewer(),
             context=[
                 self.create_landing_strategy_task(),  # For memorable element preservation
                 self.create_creative_direction_task(),  # For creative direction context
+                self.create_visual_design_task(),  # For visual design spec context
                 self.design_brand_identity_task(),  # For design mood context
                 self.enhance_animations_task(),  # The animated HTML to review
             ],
@@ -299,7 +331,12 @@ class LandingPageCrew:
         # Extract inputs from report
         inputs = self._extract_inputs(report)
 
+        # Add variation context for creative diversity
+        variation_context = self._generate_variation_context()
+        inputs.update(variation_context)
+
         # Log input summary
+        logger.info(f"Variation hint: {inputs['variation_hint']} (seed: {inputs['variation_seed']})")
         logger.info(f"Extracted inputs: product_name={inputs['product_name']}, "
                    f"solution_type={inputs['solution_type']}, "
                    f"features_count={len(inputs['features'].split(',')) if inputs['features'] else 0}")
@@ -307,14 +344,15 @@ class LandingPageCrew:
         # Run the crew
         result = self.crew().kickoff(inputs=inputs)
 
-        # Extract outputs from each task (7 tasks now)
+        # Extract outputs from each task (8 tasks now)
         strategy = result.tasks_output[0].pydantic
         creative_direction = result.tasks_output[1].pydantic
-        brand_identity = result.tasks_output[2].pydantic
-        copy = result.tasks_output[3].pydantic
-        html_result = result.tasks_output[4].pydantic
-        animated_result = result.tasks_output[5].pydantic
-        qa_result = result.tasks_output[6].pydantic
+        visual_design = result.tasks_output[2].pydantic
+        brand_identity = result.tasks_output[3].pydantic
+        copy = result.tasks_output[4].pydantic
+        html_result = result.tasks_output[5].pydantic
+        animated_result = result.tasks_output[6].pydantic
+        qa_result = result.tasks_output[7].pydantic
 
         logger.info(f"Landing page generated with {len(html_result.sections_included)} sections")
         logger.info(f"Primary persona: {strategy.primary_persona}")
@@ -322,14 +360,18 @@ class LandingPageCrew:
         logger.info(f"Creative direction: {creative_direction.design_archetype}, "
                    f"intensity: {creative_direction.visual_intensity}, "
                    f"hero: {creative_direction.hero_archetype}")
+        logger.info(f"Visual design: {len(visual_design.card_treatments)} card treatments, "
+                   f"{len(visual_design.visual_surprises)} visual surprises, "
+                   f"animation: {visual_design.animation_personality}")
         logger.info(f"Design mood: {brand_identity.design_mood}")
         logger.info(f"Section selection reasoning: {copy.section_selection_reasoning[:100]}...")
         logger.info(f"Animations added: {', '.join(animated_result.animations_added)}")
         logger.info(f"QA Review: {qa_result.issues_fixed_count} issues fixed, score: {qa_result.quality_score}/100, passes: {qa_result.passes_qa}")
 
-        # Combine creative direction, design notes, animation notes, and QA review notes
+        # Combine creative direction, visual design, design notes, animation notes, and QA review notes
         combined_notes = (
             f"Creative Direction: {creative_direction.archetype_rationale}\n\n"
+            f"Visual Design: {visual_design.visual_design_rationale}\n\n"
             f"Design: {html_result.design_notes}\n\n"
             f"Animation: {animated_result.animation_notes}\n\n"
             f"QA Review: {qa_result.review_notes}"
@@ -344,6 +386,31 @@ class LandingPageCrew:
             animations_added=animated_result.animations_added,
             generation_notes=combined_notes,
         )
+
+    def _generate_variation_context(self) -> dict:
+        """Generate simple variation hint for the run.
+
+        Provides a subtle nudge to creative agents to explore different
+        directions each run, without prescriptive instructions.
+        """
+        seed = int(time.time()) % 100000
+        rng = random.Random(seed)
+
+        hints = [
+            "Consider an unexpected color temperature for this category",
+            "Try a hero layout that's atypical for this product type",
+            "Pick fonts that feel fresh, not the obvious choice",
+            "Vary the visual intensity from what you'd normally expect",
+            "Surprise us with the section structure",
+            "Explore a design archetype that breaks category conventions",
+            "Consider warm colors where cool is expected, or vice versa",
+            "Try a bold approach where minimal is typical, or vice versa",
+        ]
+
+        return {
+            "variation_hint": rng.choice(hints),
+            "variation_seed": seed,
+        }
 
     def _extract_inputs(self, report: FinalReport) -> dict:
         """

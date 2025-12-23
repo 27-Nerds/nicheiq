@@ -1,15 +1,16 @@
 """
 Pydantic models for Landing Page Generator Crew.
 
-These models define the structured outputs for the 7-agent pipeline:
+These models define the structured outputs for the 8-agent pipeline:
 0. LandingStrategy - Marketing Strategist output (strategy, memorable element)
 1. CreativeDirection - Creative Director output (design archetype, visual intensity, layout)
-2. BrandIdentity - Brand Designer output (colors, mood, layout)
-3. LandingPageCopy - Copywriter output (dynamic sections)
-4. HTMLPageResult - HTML Developer output (complete page)
-5. AnimatedHTMLResult - Animation Enhancer output (premium motion design)
-6. QAReviewResult - QA Reviewer output (validated and fixed HTML)
-7. LandingPageResult - Final combined result
+2. VisualDesignSpec - Visual Designer output (card treatments, visual surprises, animation personality)
+3. BrandIdentity - Brand Designer output (colors, mood, layout)
+4. LandingPageCopy - Copywriter output (dynamic sections)
+5. HTMLPageResult - HTML Developer output (complete page)
+6. AnimatedHTMLResult - Animation Enhancer output (premium motion design)
+7. QAReviewResult - QA Reviewer output (validated and fixed HTML)
+8. LandingPageResult - Final combined result
 """
 
 from typing import Optional
@@ -144,6 +145,138 @@ class CreativeDirection(BaseModel):
     differentiation_visual: str = Field(
         ...,
         description="How the visual direction differentiates from competitors (1-2 sentences)"
+    )
+
+
+class CardTreatment(BaseModel):
+    """Visual treatment specification for a card type.
+
+    The Visual Designer specifies how different card types should look,
+    enabling varied treatments across the page.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    card_type: str = Field(
+        ...,
+        description="Card purpose: 'feature', 'pain_point', 'step', 'benefit', 'pricing', 'faq'"
+    )
+    visual_elements: list[str] = Field(
+        ...,
+        description="Visual elements to include: 'emoji_icon', 'accent_bar_left', 'numbered_badge', 'gradient_bg', 'decorative_border', 'shadow_lift'"
+    )
+    emphasis_level: str = Field(
+        ...,
+        description="Visual emphasis: 'primary' (bold), 'secondary' (subtle), 'tertiary' (minimal)"
+    )
+    icon_suggestion: Optional[str] = Field(
+        default=None,
+        description="Suggested emoji or unicode icon if using icons (e.g., '🚀', '⚡', '✓')"
+    )
+
+
+class MemorableElementVisual(BaseModel):
+    """Visual specification for the page's memorable element.
+
+    The Landing Strategy defines WHAT the memorable element is.
+    This model defines HOW it should look visually.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    implementation_type: str = Field(
+        ...,
+        description="Visual approach: 'hero_stat', 'callout_box', 'sidebar_highlight', 'full_bleed_graphic', 'floating_badge', 'artifact_screenshot'"
+    )
+    placement: str = Field(
+        ...,
+        description="Position on page: 'hero_right', 'hero_below', 'section_standalone', 'inline_with_copy'"
+    )
+    color_treatment: str = Field(
+        ...,
+        description="Color emphasis: 'accent_dominant', 'primary_subtle', 'high_contrast', 'muted_elegant'"
+    )
+    typography_scale: str = Field(
+        ...,
+        description="Text sizing: 'massive' (text-8xl+), 'large' (text-6xl), 'standard' (text-4xl)"
+    )
+    animation_entry: str = Field(
+        ...,
+        description="Entry animation: 'fade_up', 'scale_in', 'slide_from_right', 'pulse_attention', 'none'"
+    )
+
+
+class VisualSurprise(BaseModel):
+    """A deliberate design convention break.
+
+    Visual surprises make the page feel hand-crafted rather than template-generated.
+    Each surprise documents what convention is being broken and why.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    convention_broken: str = Field(
+        ...,
+        description="What typical pattern we're deliberately breaking"
+    )
+    creative_choice: str = Field(
+        ...,
+        description="What we're doing instead (the surprise)"
+    )
+    section_applied: str = Field(
+        ...,
+        description="Which section this convention break applies to"
+    )
+
+
+class VisualDesignSpec(BaseModel):
+    """Task 2.5 output: Visual design specifications from Visual Designer.
+
+    The Visual Designer interprets the Creative Director's abstract vision
+    into specific visual decisions. This bridges abstract creative direction
+    and concrete implementation.
+    """
+
+    model_config = ConfigDict(extra='forbid')
+
+    # Card Strategy
+    card_treatments: list[CardTreatment] = Field(
+        ...,
+        description="Visual treatment specifications for each card type on the page"
+    )
+    card_variation_approach: str = Field(
+        ...,
+        description="How cards vary: 'by_type' (features differ from pain points), 'by_position' (first card differs), 'alternating' (odd/even), 'progressive' (builds intensity)"
+    )
+
+    # Memorable Element
+    memorable_element_visual: MemorableElementVisual = Field(
+        ...,
+        description="Visual specification for the ONE memorable element from landing strategy"
+    )
+
+    # Visual Surprises
+    visual_surprises: list[VisualSurprise] = Field(
+        ...,
+        description="2-3 deliberate convention breaks to make the page feel unique"
+    )
+
+    # Section Hierarchy
+    section_visual_weights: dict[str, str] = Field(
+        ...,
+        description="Visual weight per section: 'hero': 'dominant', 'problem': 'secondary', etc. Options: 'dominant', 'standard', 'subtle'"
+    )
+
+    # Animation Personality
+    animation_personality: str = Field(
+        ...,
+        description="Animation character: 'playful' (bouncy easing, stagger), 'professional' (smooth, minimal), 'dramatic' (slow reveals, scale), 'technical' (precise, fast)"
+    )
+
+    # Design Reasoning
+    visual_design_rationale: str = Field(
+        ...,
+        description="2-3 sentences explaining the visual strategy and why these choices fit the product"
     )
 
 
