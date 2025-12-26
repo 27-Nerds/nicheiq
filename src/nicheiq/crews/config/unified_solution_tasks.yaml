@@ -50,39 +50,16 @@ divergent_exploration:
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    **FORCED IDEATION TECHNIQUES (Apply ALL 5):**
+    ## Creative Ideation Approaches
 
-    For each technique, generate 1-3 concepts:
+    Generate diverse concepts using creative approaches. Consider:
+    - **Niche drilling** - Find specific sub-niches where big players don't compete
+    - **Data source inversion** - What unique data exists that no one is productizing?
+    - **Cross-industry templates** - What patterns work elsewhere that could apply here?
+    - **Atomic features** - What single feature delivers 80% of a complex product's value?
+    - **Community flip** - How can users create value for each other?
 
-    1. **NICHE DRILLING** - "What's the most specific sub-sub-niche?"
-       - Don't: "Job board" → Do: "Remote healthcare compliance job board"
-       - Don't: "Travel directory" → Do: "Budget digital nomad visa directory for Eastern Europe"
-       - Ask: What's a niche so specific that big players ignore it?
-
-    2. **DATA SOURCE INVERSION** - "What unique data source could power this?"
-       - Reddit discussions → Sentiment aggregator
-       - Government APIs → Compliance checker
-       - User submissions → Community-curated directory
-       - Web scraping [specific sites] → Price comparison
-       - Ask: What data exists that no one is productizing?
-
-    3. **CROSS-INDUSTRY TEMPLATE** - "What worked in [X industry], applied here?"
-       - Dating apps → B2B vendor matching
-       - Yelp reviews → Software tool ratings
-       - Glassdoor → Agency transparency platform
-       - Ask: What pattern from consumer apps could work for this B2B problem?
-
-    4. **ATOMIC FEATURE** - "What single feature could be a standalone product?"
-       - Full PM tool → Just deadline prediction
-       - Full CRM → Just email sequence timing
-       - Full analytics → Just one key metric dashboard
-       - Ask: What's the 10% of a complex product that delivers 80% of value?
-
-    5. **COMMUNITY FLIP** - "What if users created content for each other?"
-       - Expert directory → Peer mentorship matching
-       - Tool comparison → User-submitted reviews + voting
-       - Resource library → Community wiki with curation
-       - Ask: How can we get users to create the value instead of us?
+    Choose techniques that fit THIS problem space. Not all techniques apply to every niche.
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -273,44 +250,25 @@ solution_refinement:
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    **SCORING CRITERIA (Apply to each concept):**
+    ## Evaluation Criteria (score 0-1)
 
-    **1. market_fit_score (0-1)** - Pain point alignment
-    - 0.9-1.0: Directly addresses top pain point with strong evidence
-    - 0.6-0.8: Addresses multiple medium-priority pain points
-    - 0.3-0.5: Tangentially related to identified pain points
-    - 0.0-0.2: Weak connection to validated problems
+    Evaluate each concept on:
+    - **market_fit_score** - How well does this address validated pain points?
+    - **novelty_score** - How differentiated is this from existing solutions?
+    - **solo_dev_feasibility** - Can one developer build this in 2-3 months?
+    - **seo_scalability_score** - What's the organic traffic potential?
 
-    **2. novelty_score (0-1)** - Innovation/uniqueness
-    - 0.9-1.0: Novel mechanism, no direct competitors doing it this way
-    - 0.6-0.8: Unique combination of existing approaches
-    - 0.3-0.5: Better execution of known pattern
-    - 0.0-0.2: Minor variation on obvious solution
-
-    **3. solo_dev_feasibility (0-1)** - Buildable by 1 developer
-    - 0.9-1.0: Static site + APIs, <2 months, no complex backend
-    - 0.7-0.8: Simple backend, 2-3 months, standard tech stack
-    - 0.4-0.6: Moderate complexity, 3-6 months, some specialized skills
-    - 0.0-0.3: Complex infrastructure, >6 months, or requires team
-
-    **4. seo_scalability_score (0-1)** - Organic traffic potential
-    - 0.8-1.0: High programmatic SEO (directories, aggregators) - $15-30 CAC
-    - 0.5-0.7: Moderate content generation (comparison tools) - $50-100 CAC
-    - 0.2-0.4: Limited content scaling (traditional SaaS) - $200-400 CAC
-
-    **COMPOSITE SCORE:**
-    ```
-    composite = (0.25 × market_fit) + (0.30 × solo_dev_feasibility) +
-                (0.20 × novelty) + (0.25 × seo_scalability)
-    ```
+    Weight factors based on what matters most for THIS specific niche.
+    Market fit and feasibility typically matter most, but use your judgment.
+    Select top 3-5 concepts by overall merit.
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    **SELECTION RULES:**
+    **SELECTION GUIDANCE:**
 
-    1. Select top 3-5 concepts by composite score
-    2. **Novelty override**: If all top concepts have novelty < 0.4, replace lowest market_fit with highest novelty concept
-    3. **High-demand SaaS exception**: Include 1 high-demand SaaS even if lower SEO score, if market_fit > 0.8
+    - Prioritize concepts with strong market fit and realistic execution paths
+    - Ensure diversity in project types when selecting (don't pick 5 similar directories)
+    - Consider novelty as a tiebreaker when market fit is similar
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -661,107 +619,73 @@ solution_selection:
     - Market fit and technical feasibility scores
     - SEO scalability and CAC estimates
 
-    **WORKFLOW (FOLLOW IN ORDER):**
+    **WORKFLOW:**
 
-    1. **Score Each Solution** across 4 criteria (0-1 scale):
+    ## Selection Criteria
 
-       **A. Market Fit (0-1)**:
-       - Weight: pain point severity scores, mention counts, willingness to pay
-       - Data source: pain_points_addressed field + original pain point analysis
-       - Formula: Average of (severity_score + wtp_score) for addressed pain points
-       - market_fit_score from solution provides baseline
+    Consider all factors and select the solution most likely to succeed:
+    - **Market fit** (pain point alignment, evidence strength)
+    - **Technical feasibility** (can be built solo in reasonable time)
+    - **Competitive advantage** (gaps to exploit, differentiation)
+    - **SEO growth potential** (organic acquisition economics)
 
-       **B. Technical Feasibility (0-1)**:
-       - Weight: technical_feasibility_score from solution
-       - Consider: estimated_development_time, technical_approach complexity
-       - Lower is riskier (longer time, more dependencies)
+    Weight factors based on this specific context. A low-competition niche might
+    weight competitive advantage less. A technical product might weight feasibility more.
+    Your judgment matters - use the scores as inputs, not rigid formulas.
 
-       **C. Competitive Advantage (0-1)**:
-       - Weight: differentiation_factors count and strength
-       - Data source: market_gaps addressed, competitive_intensity
-       - Lower competitive_intensity + more market_gaps = higher score
+    **Selection Process:**
+    1. Score each solution across the 4 criteria (0-1 scale)
+    2. Consider overall merit - not just weighted averages
+    3. Select the solution that best balances all factors for THIS context
+    4. Verify selection makes strategic sense
 
-       **D. SEO Growth Potential (0-1)**:
-       - Weight: seo_scalability_score (architectural SEO potential)
-       - Consider: programmatic_seo_opportunity, estimated_cac_organic
-       - Lower CAC + higher scalability = higher score
+    **Build Selection Rationale:**
+    - Reference specific data from the analysis
+    - Quantify claims with evidence (pain point severity, competitive gaps, CAC estimates)
+    - Explain why THIS solution beats alternatives
 
-    2. **Calculate Composite Score**:
-       - Weighted average: (0.35 × market_fit) + (0.25 × technical_feasibility) + (0.20 × competitive_advantage) + (0.20 × seo_growth)
-       - Rank solutions by composite score
+    **Identify Runner-Ups:**
+    - List 2nd and 3rd best solutions
+    - Explain why each could be a viable pivot
 
-    3. **Strategic Selection**:
-       - Select highest-scoring solution
-       - Verify selection makes strategic sense (not just highest score)
-       - Consider: speed to market, resource requirements, market timing
-
-    4. **Build Selection Rationale**:
-       - Reference specific data: pain point severity (e.g., "addresses 3 pain points with avg severity 0.82")
-       - Quote competitive intensity (e.g., "LOW competitive intensity with 5 identified gaps")
-       - Cite CAC estimates (e.g., "$20-40 organic CAC vs $180-300 paid")
-       - Mention SEO scalability (e.g., "0.85 SEO scalability score - directory model generates 100+ pages Year 1")
-       - Quantify every claim with evidence from analysis
-
-    5. **Identify Runner-Ups**:
-       - List 2nd and 3rd highest-scoring solutions
-       - Explain why each could be viable alternative pivot
-
-    6. **Recommended Focus**:
-       - Strategic recommendation for next steps (e.g., "Validate directory curation model with early adopters")
-       - Based on selected solution's characteristics and market position
+    **Recommended Focus:**
+    - Actionable next steps based on the selected solution
 
     **SCORING TRANSPARENCY:**
 
-    For EVERY solution evaluated, you MUST populate the all_solution_scores field with:
+    For EVERY solution evaluated, populate the all_solution_scores field with:
     - Solution name (exact match from Task 3 output)
     - Selection criteria scores: [market_fit, technical_feasibility, competitive_advantage, seo_growth_potential]
-    - Composite score calculation: (0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
+    - Composite score (your overall assessment of merit)
     - Rank (1=best, 2=runner-up #1, 3=runner-up #2, etc.)
-    - Key evidence supporting each score (quote specific numbers)
+    - Key evidence supporting each score
 
     This enables transparent comparison of ALL alternatives in the final report.
 
-    **PRE-SUBMISSION VALIDATION CHECKLIST:**
+    **QUALITY CHECK:**
 
-    Before finalizing selection, verify:
-    - [ ] Selected ONE solution (highest composite score)
-    - [ ] Selection rationale references ≥5 specific data points (pain point severity, CAC estimates, gap count, competitive intensity)
-    - [ ] selection_criteria_scores has 4 scores for selected solution (market_fit, technical_feasibility, competitive_advantage, seo_growth_potential)
-    - [ ] all_solution_scores populated for ALL solutions (selected + runner-ups) with 7 fields each
-    - [ ] all_solution_scores DOES NOT include keyword_demand_score or adjusted_composite_score (calculated later in Stage 8.8)
-    - [ ] Composite score calculated correctly: (0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
-    - [ ] Runner-up solutions listed (2nd and 3rd place by composite score)
-    - [ ] Recommended focus is actionable (not generic "validate market")
-    - [ ] No generic language - all claims quantified with evidence
+    Your selection must:
+    - Reference specific data (pain point severity, competitive intensity, CAC estimates)
+    - Include scores for all solutions evaluated (transparency)
+    - Explain why this solution beats alternatives
+    - Provide actionable next steps (not generic "validate market")
 
-    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+    ═══ CRITICAL RULES ═══
 
     **FIELD REQUIREMENTS:**
     ✗ Including keyword_demand_score in all_solution_scores → Premature (Stage 8.8 calculates)
-      ❌ Example: {keyword_demand_score: 0.8, adjusted_composite_score: 0.75} in all_solution_scores
-      ✅ Example: {composite_score: 0.68, rank: 1} (only 7 required fields, no keyword_demand_score)
-    ✗ Incorrect composite score formula → Calculation error
-      ❌ Example: Equal weights (0.25 each) instead of specified weighted formula
-      ✅ Example: (0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
+    ✗ Missing all_solution_scores → Must include scores for ALL solutions evaluated
 
     **DATA ACCURACY:**
     ✗ Generic selection rationale without data → Hallucination risk
       ❌ Example: "Strong market fit and low competition" (vague, no numbers)
-      ✅ Example: "Addresses 3 pain points (avg severity 0.82), LOW competitive intensity with 5 gaps, $20-40 organic CAC"
+      ✅ Example: "Addresses 3 pain points (avg severity 0.82), LOW competitive intensity with 5 gaps"
     ✗ Scores without evidence → Arbitrary scoring
-      ❌ Example: competitive_advantage_score: 0.9 (no justification from Task 2 data)
+      ❌ Example: competitive_advantage_score: 0.9 (no justification)
       ✅ Example: competitive_advantage_score: 0.85 (LOW intensity + 5 market gaps from Task 2)
     ✗ Vague recommended focus → Generic fluff
-      ❌ Example: "Build MVP and validate market" (meaningless template)
-      ✅ Example: "Validate directory curation model with 50 early adopters in expat communities, focus on pricing transparency feature"
-
-    **TRANSPARENCY VIOLATIONS:**
-    ✗ Missing all_solution_scores → Incomplete comparison visibility
-      ❌ Example: Only providing scores for selected solution (hides alternatives)
-      ✅ Example: all_solution_scores populated for ALL solutions with 7 fields each (enables transparent comparison)
-    ✗ Incomplete all_solution_scores entries → Missing data
-      ❌ Example: Only 3 of 7 fields populated per solution
-      ✅ Example: All 7 fields (solution_name, 4 criterion scores, composite_score, rank) populated for every solution
+      ❌ Example: "Build MVP and validate market"
+      ✅ Example: "Validate directory curation model with 50 early adopters"
 
   expected_output: >
     SolutionSelection Pydantic model with:
@@ -782,20 +706,20 @@ solution_selection:
     - criterion="competitive_advantage", score=0.X, justification="[specific data]"
     - criterion="seo_growth_potential", score=0.X, justification="[specific data]"
 
-    **all_solution_scores** (List[SolutionScores]): CRITICAL - Scores for ALL solutions evaluated:
-    For EACH solution (selected + runner-ups), include ONLY these 7 fields:
+    **all_solution_scores** (List[SolutionScores]): Scores for ALL solutions evaluated:
+    For EACH solution (selected + runner-ups), include these fields:
     - solution_name: [exact name from Task 3]
-    - market_fit_score: 0.X (from solution's market_fit_score field)
-    - technical_feasibility_score: 0.X (from solution's technical_feasibility_score field)
-    - competitive_advantage_score: 0.X (calculated from competitive analysis: lower intensity + more gaps = higher score)
-    - seo_growth_potential_score: 0.X (from solution's seo_scalability_score field)
-    - composite_score: 0.X (weighted average: 0.35×market_fit + 0.25×technical + 0.20×competitive + 0.20×seo)
+    - market_fit_score: 0.X
+    - technical_feasibility_score: 0.X
+    - competitive_advantage_score: 0.X
+    - seo_growth_potential_score: 0.X
+    - composite_score: 0.X (your overall assessment of merit)
     - rank: N (1=best, 2=second, etc.)
 
-    CRITICAL: DO NOT include keyword_demand_score or adjusted_composite_score fields.
+    NOTE: DO NOT include keyword_demand_score or adjusted_composite_score fields.
     These will be calculated later by Stage 8.8 using real DataForSEO API validation.
 
-    **runner_up_solutions** (List[str]): 2-3 alternative solution names ranked by composite score
+    **runner_up_solutions** (List[str]): 2-3 alternative solution names ranked by merit
 
     **recommended_focus** (str): Next steps recommendation (3-4 sentences) - actionable and specific
 

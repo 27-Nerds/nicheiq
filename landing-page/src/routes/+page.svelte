@@ -3,10 +3,7 @@
 		Hero,
 		HowItWorks,
 		SampleReport,
-		WhoItsFor,
-		BusinessIntelligence,
 		ComparisonTable,
-		Credibility,
 		Pricing,
 		FAQ,
 		Footer
@@ -37,19 +34,10 @@
 	<!-- 3. Prove value with sample output -->
 	<SampleReport />
 
-	<!-- 4. Help visitors self-identify -->
-	<WhoItsFor />
-
-	<!-- 5. Business Intelligence - Market Sizing, Pricing, Risk -->
-	<BusinessIntelligence />
-
-	<!-- 6. Position against alternatives -->
+	<!-- 4. Position against alternatives -->
 	<ComparisonTable />
 
-	<!-- 7. Build credibility -->
-	<Credibility />
-
-	<!-- 8. Pricing -->
+	<!-- 5. Pricing -->
 	<Pricing />
 
 	<!-- 9. Handle final objections -->

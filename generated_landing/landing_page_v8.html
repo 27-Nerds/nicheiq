@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FragranceCompliance Checklist — Ship Samples Confidently</title>
+  <meta name="description" content="Join the waitlist for a citation-backed fragrance compliance checklist that creates a dated “minimum viable this week” plan for shipping samples across regions." />
+
+  <!-- Fonts (brand_identity) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            heading: ['Fraunces', 'serif'],
+            body: ['Instrument Sans', 'system-ui', 'sans-serif'],
+            mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace'],
+          },
+          colors: {
+            ink: '#1C2329',
+            paper1: '#F6F0E6',
+            paper2: '#F2E7D7',
+            paper3: '#EFE1CF',
+            muted: '#6C6257',
+            vermillion: '#D6422B',
+            brass: '#8A7A4A'
+          },
+          boxShadow: {
+            pressed: '0 1px 0 #8A7A4A',
+            lift: '0 14px 30px rgba(28,35,41,0.14), 0 3px 10px rgba(28,35,41,0.10)'
+          },
+          keyframes: {
+            slideInRight: {
+              '0%': { transform: 'translateX(22px)', opacity: '0.99' },
+              '100%': { transform: 'translateX(0px)', opacity: '1' },
+            },
+            fadeUp: {
+              '0%': { transform: 'translateY(6px)', opacity: '0.99' },
+              '100%': { transform: 'translateY(0px)', opacity: '1' },
+            },
+            riseIn: {
+              '0%': { transform: 'translateY(10px)', opacity: '0.99' },
+              '100%': { transform: 'translateY(0px)', opacity: '1' },
+            },
+            floatArtifact: {
+              '0%': { transform: 'translateY(0px)' },
+              '50%': { transform: 'translateY(-2px)' },
+              '100%': { transform: 'translateY(0px)' },
+            },
+            pressPop: {
+              '0%': { transform: 'translateY(0px) scale(1)' },
+              '50%': { transform: 'translateY(1px) scale(0.99)' },
+              '100%': { transform: 'translateY(0px) scale(1)' },
+            },
+            focusSweep: {
+              '0%': { backgroundPosition: '0% 50%' },
+              '100%': { backgroundPosition: '100% 50%' },
+            }
+          },
+          animation: {
+            slideInRight: 'slideInRight 240ms ease-out both',
+            fadeUp: 'fadeUp 220ms ease-out both',
+            riseIn: 'riseIn 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both',
+            floatArtifact: 'floatArtifact 4.8s ease-in-out infinite',
+            pressPop: 'pressPop 180ms ease-out both',
+            focusSweep: 'focusSweep 520ms ease-out both'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root{ color-scheme: light; }
+    body{
+      background: linear-gradient(180deg, #F6F0E6 0%, #F2E7D7 55%, #EFE1CF 100%);
+      color: #1C2329;
+      font-family: Instrument Sans, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    /* Subtle paper grain (quiet, not decorative-heavy) */
+    .paper-grain{
+      background-image:
+        radial-gradient(rgba(28,35,41,0.045) 1px, transparent 1px),
+        radial-gradient(rgba(28,35,41,0.035) 1px, transparent 1px);
+      background-size: 18px 18px, 26px 26px;
+      background-position: 0 0, 9px 11px;
+      mix-blend-mode: multiply;
+      pointer-events: none;
+      opacity: 0.22;
+    }
+
+    .no-autofill-bg input:-webkit-autofill{
+      -webkit-box-shadow: 0 0 0px 1000px #F6F0E6 inset;
+      -webkit-text-fill-color: #1C2329;
+      transition: background-color 9999s ease-in-out 0s;
+    }
+
+    /* ------------------------------ */
+    /* Motion additions (safe defaults)
+       - Content is visible by default.
+       - Scroll animation uses transform/filter only; opacity stays near-1.
+       - Reduced motion: no transforms/animations.
+    /* ------------------------------ */
+
+    [data-animate]{
+      transform: none;
+      filter: none;
+      opacity: 1;
+    }
+
+    .reveal-ready{
+      transform: translateY(12px);
+      filter: blur(0.25px);
+      opacity: 0.995;
+      transition:
+        transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1),
+        filter 360ms ease,
+        opacity 240ms ease;
+    }
+    .reveal-in{
+      transform: translateY(0px);
+      filter: blur(0px);
+      opacity: 1;
+    }
+
+    /* Micro-interactions */
+    .btn-press{
+      transform: translateY(0px);
+      transition: transform 140ms ease, box-shadow 180ms ease, opacity 180ms ease;
+    }
+    .btn-press:active{ transform: translateY(1px) scale(0.99); }
+
+    .input-float{
+      transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+    }
+    .input-float:focus{
+      transform: translateY(-1px);
+    }
+
+    /* Hover lift for key artifact only (quiet but premium) */
+    .artifact-lift{
+      transition: transform 220ms ease, box-shadow 240ms ease;
+    }
+    @media (hover:hover) and (pointer:fine){
+      .artifact-lift:hover{
+        transform: translateY(-2px);
+        box-shadow: 0 18px 40px rgba(28,35,41,0.16), 0 4px 14px rgba(28,35,41,0.12);
+      }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce){
+      *, *::before, *::after{
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+      }
+      .reveal-ready{ transform: none !important; filter: none !important; opacity: 1 !important; }
+      .artifact-lift, .btn-press, .input-float{ transform: none !important; }
+    }
+  </style>
+</head>
+
+<body class="text-ink">
+  <!-- Utility Header (tight) -->
+  <header class="relative" data-animate>
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between py-4" data-animate>
+        <a href="#" class="flex items-baseline gap-2" data-animate>
+          <span class="font-heading text-[17px] sm:text-[18px] tracking-tight">FragranceCompliance Checklist</span>
+          <span class="hidden sm:inline font-mono text-[11px] tracking-[0.08em] text-muted">A5 bench-side aid</span>
+        </a>
+
+        <div class="flex items-center gap-3" data-animate>
+          <span class="inline-flex items-center gap-2 rounded-full border border-ink/15 bg-paper1/70 px-3 py-1 font-mono text-[11px] tracking-[0.08em] text-ink">
+            <span class="inline-block h-1.5 w-1.5 rounded-full bg-brass"></span>
+            LAUNCHING SOON
+          </span>
+          <a href="#problem" class="hidden sm:inline text-sm font-body text-muted hover:text-ink transition">What’s included?</a>
+        </div>
+      </div>
+    </div>
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8" data-animate>
+      <div class="h-px w-full bg-brass/55"></div>
+    </div>
+  </header>
+
+  <!-- HERO (dominant, asymmetric split; no feature cards/grid) -->
+  <main>
+    <section class="relative overflow-hidden" data-animate>
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 py-10 sm:py-14 lg:py-16">
+          <!-- Left: Copy + inline form -->
+          <div class="lg:col-span-6" data-animate>
+            <div class="max-w-xl" data-animate>
+              <p class="font-mono text-[12px] tracking-[0.10em] text-muted reveal-ready" data-animate data-reveal style="transition-delay: 0ms;">COMING SOON • WAITLIST OPEN</p>
+              <h1 class="mt-3 font-heading text-4xl sm:text-5xl lg:text-6xl leading-[1.02] tracking-tight reveal-ready" data-animate data-reveal style="transition-delay: 40ms;">
+                Stop guessing on ship day.
+              </h1>
+              <p class="mt-4 text-[16px] sm:text-[17px] leading-7 text-muted reveal-ready" data-animate data-reveal style="transition-delay: 80ms;">
+                Launching soon: get early access to a compliance checklist built for solo indie perfumers shipping samples weekly.
+                Answer a few basics (where you ship, what you ship), and get a staged action list you can actually finish before your next drop-off.
+                Every requirement is citation-backed—with a captured excerpt + access date—so you’re not betting your shop on random forum advice.
+              </p>
+
+              <!-- Inline waitlist form -->
+              <form id="signup" action="#" class="no-autofill-bg mt-7 reveal-ready" data-animate data-reveal style="transition-delay: 120ms;">
+                <div class="flex flex-col sm:flex-row gap-3 sm:items-stretch">
+                  <div class="flex-1">
+                    <label class="sr-only" for="email">Email</label>
+                    <input id="email" name="email" type="email" autocomplete="email" required
+                      placeholder="you@studio.com"
+                      class="input-float w-full min-h-[44px] rounded-xl bg-paper1/85 px-4 py-3.5 text-ink placeholder:font-mono placeholder:text-[12px] placeholder:tracking-[0.06em] placeholder:text-muted border border-ink/25 focus:outline-none focus:ring-2 focus:ring-ink/25 focus:border-ink/35" />
+                  </div>
+                  <button type="submit"
+                    class="btn-press min-h-[44px] rounded-xl bg-vermillion px-5 py-3.5 text-paper1 font-body font-semibold shadow-pressed hover:opacity-95 active:translate-y-[1px] transition">
+                    Join the waitlist
+                  </button>
+                </div>
+                <div class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  <p class="text-sm text-muted">
+                    Founding maker perk: <span class="text-ink">first access</span> to the printable A5 “Shipping Bench Card” + exportable PDF checklist.
+                  </p>
+                  <span class="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.08em] text-muted">
+                    <span class="inline-block h-1 w-1 rounded-full bg-brass"></span>
+                    ONE EMAIL AT LAUNCH
+                  </span>
+                </div>
+              </form>
+
+              <!-- Directional cue to CTA (non-invasive) -->
+              <div class="mt-6 flex items-center gap-3 reveal-ready" data-animate data-reveal style="transition-delay: 160ms;">
+                <span class="font-mono text-[11px] tracking-[0.08em] text-muted">↓</span>
+                <span class="text-sm text-muted">Join now so your next label print isn’t a gamble.</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Bench-card artifact (dominant), overlaps container edge slightly on desktop -->
+          <div class="lg:col-span-6" data-animate>
+            <div class="relative lg:ml-2" data-animate>
+              <!-- Workbench surface -->
+              <div class="relative rounded-2xl border border-ink/10 bg-gradient-to-b from-paper2/70 to-paper3/70 p-4 sm:p-6 reveal-ready" data-animate data-reveal style="transition-delay: 80ms;">
+                <!-- subtle grain overlay -->
+                <div class="paper-grain absolute inset-0 rounded-2xl"></div>
+
+                <div class="relative">
+                  <!-- Bench Card -->
+                  <div class="relative mx-auto w-full max-w-[560px] animate-slideInRight artifact-lift" data-animate id="benchCard">
+                    <div class="relative rounded-[18px] border border-ink/20 bg-paper1 shadow-lift" id="heroArtifact">
+                      <!-- Coffee ring / wear (kept subtle) -->
+                      <div class="pointer-events-none absolute -left-6 -top-5 h-24 w-24 rounded-full border border-ink/10 bg-transparent"></div>
+                      <div class="pointer-events-none absolute left-10 top-10 h-28 w-28 rounded-full border border-ink/5 bg-transparent"></div>
+
+                      <div class="p-5 sm:p-6">
+                        <div class="flex items-start justify-between gap-4">
+                          <div>
+                            <div class="inline-flex items-center gap-2">
+                              <span class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-ink/15 bg-paper2/70 font-mono text-[11px]">A5</span>
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">BENCH CARD</span>
+                            </div>
+                            <h2 class="mt-3 font-heading text-2xl sm:text-[28px] leading-tight tracking-tight">
+                              SHIP DAY —<br class="hidden sm:block" /> MINIMUM VIABLE COMPLIANCE (THIS WEEK)
+                            </h2>
+                          </div>
+                          <div class="shrink-0 text-right">
+                            <div class="inline-flex items-center rounded-full border border-ink/20 bg-paper2/60 px-3 py-1 font-mono text-[11px] tracking-[0.08em]">
+                              READY TO PRINT
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Stamp note (vermillion) -->
+                        <div class="mt-4 flex items-center justify-between gap-3">
+                          <div class="inline-flex items-center gap-2 rounded-lg border border-vermillion/30 bg-paper1 px-3 py-2 animate-fadeUp" style="animation-delay: 80ms;">
+                            <span class="font-mono text-[11px] tracking-[0.10em] text-vermillion">STAMP NOTE</span>
+                            <span class="h-1.5 w-1.5 rounded-full bg-vermillion"></span>
+                            <span class="text-sm text-muted">Capture excerpt + access date.</span>
+                          </div>
+                          <div class="hidden sm:block h-px flex-1 bg-brass/55"></div>
+                        </div>
+
+                        <!-- Stamped boxes (3) -->
+                        <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div class="rounded-xl border border-ink/15 bg-paper2/55 px-4 py-3">
+                            <div class="flex items-center justify-between">
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">BOX 01</span>
+                              <span class="font-mono text-[11px] text-ink">◼</span>
+                            </div>
+                            <p class="mt-2 font-body text-sm text-ink">Citations captured</p>
+                          </div>
+                          <div class="rounded-xl border border-ink/15 bg-paper2/55 px-4 py-3">
+                            <div class="flex items-center justify-between">
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">BOX 02</span>
+                              <span class="font-mono text-[11px] text-ink">◼</span>
+                            </div>
+                            <p class="mt-2 font-body text-sm text-ink">Checklist version dated</p>
+                          </div>
+                          <div class="rounded-xl border border-ink/15 bg-paper2/55 px-4 py-3">
+                            <div class="flex items-center justify-between">
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">BOX 03</span>
+                              <span class="font-mono text-[11px] text-ink">◼</span>
+                            </div>
+                            <p class="mt-2 font-body text-sm text-ink">Packout reminders</p>
+                          </div>
+                        </div>
+
+                        <!-- Version / Accessed stamp area (mono) -->
+                        <div class="mt-6 rounded-xl border border-ink/20 bg-paper1 px-4 py-3">
+                          <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                            <div class="font-mono text-[12px] tracking-[0.08em] text-ink">
+                              VERSION: <span class="text-muted">____ / ____ / ____</span>
+                            </div>
+                            <div class="font-mono text-[12px] tracking-[0.08em] text-ink">
+                              ACCESSED: <span class="text-muted">____ / ____ / ____</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Callout arrow pointing to version/accessed stamp (no collision; normal flow within absolute-safe area) -->
+                    <div class="hidden lg:block pointer-events-none absolute -right-4 xl:-right-6 top-[72%] reveal-ready" data-animate data-reveal style="transition-delay: 200ms;">
+                      <div class="flex items-center gap-3">
+                        <div class="h-px w-16 bg-brass/70"></div>
+                        <div class="rounded-lg border border-ink/15 bg-paper1/85 px-3 py-2">
+                          <p class="font-mono text-[11px] tracking-[0.10em] text-ink">DATE-STAMPED PROOF</p>
+                          <p class="text-xs text-muted mt-0.5">Version + accessed fields you can keep.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Slight overlap beyond container edge on desktop (artifact loud) -->
+                  <div class="hidden lg:block absolute -right-3 -bottom-3 h-10 w-10 rounded-full border border-brass/60 bg-paper1/70"></div>
+                </div>
+              </div>
+
+              <!-- Mobile callout (kept simple) -->
+              <div class="lg:hidden mt-4 reveal-ready" data-animate data-reveal style="transition-delay: 120ms;">
+                <div class="rounded-xl border border-brass/60 bg-paper1/70 px-4 py-3">
+                  <p class="font-mono text-[11px] tracking-[0.10em] text-ink">LOOK FOR:</p>
+                  <p class="text-sm text-muted mt-1">The version + accessed stamp—so you can show what guidance said when you acted.</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Problem (compressed, no grids; label strips with rotations + brass pin dot + left ink bar) -->
+    <section id="problem" class="relative" data-animate>
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="py-10 sm:py-12">
+          <div class="max-w-2xl" data-animate>
+            <h2 class="font-heading text-2xl sm:text-3xl tracking-tight reveal-ready" data-animate data-reveal>Three ways shipping steals your week</h2>
+            <p class="mt-3 text-[15px] sm:text-[16px] leading-7 text-muted reveal-ready" data-animate data-reveal style="transition-delay: 40ms;">
+              If you’re packing at midnight, the rules feel like a moving target. That’s when mistakes happen—and discovery gets harder when paid samples have to be right the first time.
+              This checklist is designed to cut the second-guessing before your next label print.
+            </p>
+          </div>
+
+          <div class="mt-7 max-w-3xl" data-animate>
+            <ul class="space-y-4" data-animate>
+              <!-- Strip 1 -->
+              <li class="relative reveal-ready" data-animate data-reveal>
+                <div class="flex items-start gap-3">
+                  <div class="mt-2 h-2.5 w-2.5 rounded-full bg-brass shrink-0"></div>
+                  <div class="w-full">
+                    <div class="origin-left rotate-[-1.2deg]">
+                      <div class="rounded-xl border border-brass/60 bg-paper1/80">
+                        <div class="flex">
+                          <div class="w-1.5 bg-ink rounded-l-xl"></div>
+                          <div class="flex-1 px-4 py-3">
+                            <div class="flex items-baseline justify-between gap-4">
+                              <p class="font-body font-semibold text-ink">Burnout from packout + questions</p>
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">◼</span>
+                            </div>
+                            <p class="mt-1 text-sm text-muted">Orders pile up, customers go quiet, and you’re left rewriting the same shipping notes every week.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+
+              <!-- Strip 2 -->
+              <li class="relative reveal-ready" data-animate data-reveal style="transition-delay: 60ms;">
+                <div class="flex items-start gap-3">
+                  <div class="mt-2 h-2.5 w-2.5 rounded-full bg-brass shrink-0"></div>
+                  <div class="w-full">
+                    <div class="origin-left rotate-[1.0deg]">
+                      <div class="rounded-xl border border-brass/60 bg-paper1/80">
+                        <div class="flex">
+                          <div class="w-1.5 bg-ink rounded-l-xl"></div>
+                          <div class="flex-1 px-4 py-3">
+                            <div class="flex items-baseline justify-between gap-4">
+                              <p class="font-body font-semibold text-ink">Compliance uncertainty</p>
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">◼</span>
+                            </div>
+                            <p class="mt-1 text-sm text-muted">Alcohol vs oil, sample sizes, destinations—tiny details change what’s required, and it’s hard to know what’s official.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+
+              <!-- Strip 3 -->
+              <li class="relative reveal-ready" data-animate data-reveal style="transition-delay: 120ms;">
+                <div class="flex items-start gap-3">
+                  <div class="mt-2 h-2.5 w-2.5 rounded-full bg-brass shrink-0"></div>
+                  <div class="w-full">
+                    <div class="origin-left rotate-[-0.7deg]">
+                      <div class="rounded-xl border border-brass/60 bg-paper1/80">
+                        <div class="flex">
+                          <div class="w-1.5 bg-ink rounded-l-xl"></div>
+                          <div class="flex-1 px-4 py-3">
+                            <div class="flex items-baseline justify-between gap-4">
+                              <p class="font-body font-semibold text-ink">Discovery pressure as free samples fade</p>
+                              <span class="font-mono text-[11px] tracking-[0.10em] text-muted">◼</span>
+                            </div>
+                            <p class="mt-1 text-sm text-muted">When samples are paid, you can’t afford returns, delays, or “we can’t ship this” surprises.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </li>
+            </ul>
+
+            <p class="mt-6 text-[15px] sm:text-[16px] leading-7 text-ink reveal-ready" data-animate data-reveal style="transition-delay: 160ms;">
+              Relief looks like this: a dated, citation-backed “minimum viable this week” plan you can finish before the next drop-off.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA (standard; ink blot + brass ruleline band + stamped date chip embedded) -->
+    <section class="relative" aria-label="Final call to action" data-animate>
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="py-10 sm:py-12">
+          <div class="relative rounded-2xl border border-ink/10 bg-paper1/55 overflow-hidden reveal-ready" data-animate data-reveal>
+            <!-- Ink blot (subtle) -->
+            <div class="pointer-events-none absolute -left-10 -top-10 h-44 w-44 rounded-full bg-ink/5 blur-[1px]"></div>
+            <div class="pointer-events-none absolute left-24 top-12 h-24 w-24 rounded-full bg-ink/4"></div>
+
+            <div class="relative p-6 sm:p-8">
+              <!-- Brass ruleline with embedded stamped date chip -->
+              <div class="flex items-center gap-4" data-animate>
+                <div class="h-px flex-1 bg-brass/70"></div>
+                <div class="inline-flex items-center gap-2 rounded-full border border-brass/70 bg-paper2/70 px-3 py-1 font-mono text-[11px] tracking-[0.10em] text-ink">
+                  <span class="inline-block h-1.5 w-1.5 rounded-full bg-brass"></span>
+                  DATE-STAMP READY
+                </div>
+                <div class="h-px flex-1 bg-brass/70"></div>
+              </div>
+
+              <div class="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start" data-animate>
+                <div class="lg:col-span-7" data-animate>
+                  <h2 class="font-heading text-2xl sm:text-3xl tracking-tight reveal-ready" data-animate data-reveal style="transition-delay: 40ms;">Claim your founding maker spot</h2>
+                  <p class="mt-3 text-[15px] sm:text-[16px] leading-7 text-muted reveal-ready" data-animate data-reveal style="transition-delay: 80ms;">
+                    Get the first release when FragranceCompliance Checklist opens, plus the bench-side printable so ship day feels like a routine—not a risk.
+                    Limited early-access invites keep feedback manageable and updates fast.
+                  </p>
+
+                  <form action="#" class="no-autofill-bg mt-5 reveal-ready" data-animate data-reveal style="transition-delay: 120ms;">
+                    <div class="flex flex-col sm:flex-row gap-3 sm:items-stretch">
+                      <div class="flex-1">
+                        <label class="sr-only" for="email2">Email</label>
+                        <input id="email2" name="email" type="email" autocomplete="email" required
+                          placeholder="email for launch access"
+                          class="input-float w-full min-h-[44px] rounded-xl bg-paper1/90 px-4 py-3.5 text-ink placeholder:font-mono placeholder:text-[12px] placeholder:tracking-[0.06em] placeholder:text-muted border border-ink/25 focus:outline-none focus:ring-2 focus:ring-ink/25 focus:border-ink/35" />
+                      </div>
+                      <button type="submit"
+                        class="btn-press min-h-[44px] rounded-xl bg-vermillion px-5 py-3.5 text-paper1 font-body font-semibold shadow-pressed hover:opacity-95 active:translate-y-[1px] transition">
+                        Save my spot
+                      </button>
+                    </div>
+                    <div class="mt-3 flex flex-wrap items-center gap-3">
+                      <!-- Benefit card treatment (tertiary): gradient_bg + shadow_lift (compact) -->
+                      <div class="inline-flex items-center gap-2 rounded-xl border border-ink/10 bg-gradient-to-b from-paper2/70 to-paper3/70 px-3 py-2 shadow-lift">
+                        <span class="font-mono text-[11px] tracking-[0.10em] text-ink">✓</span>
+                        <span class="text-sm text-muted">No spam — one launch email + critical update notes only.</span>
+                      </div>
+                      <p class="text-xs text-muted">By joining, you agree to receive launch access updates.</p>
+                    </div>
+                  </form>
+                </div>
+
+                <!-- Repeated bench-card thumbnail for recall -->
+                <div class="lg:col-span-5" data-animate>
+                  <div class="rounded-2xl border border-ink/10 bg-paper2/45 p-4 sm:p-5 reveal-ready" data-animate data-reveal style="transition-delay: 80ms;" id="ctaThumb">
+                    <div class="flex items-start gap-4">
+                      <div class="relative w-24 sm:w-28 shrink-0">
+                        <div class="rounded-xl border border-ink/20 bg-paper1 shadow-lift">
+                          <div class="p-3">
+                            <div class="font-mono text-[10px] tracking-[0.10em] text-muted">SHIP DAY</div>
+                            <div class="mt-1 font-heading text-[14px] leading-[1.05] tracking-tight">MINIMUM VIABLE</div>
+                            <div class="mt-2 h-px w-full bg-brass/60"></div>
+                            <div class="mt-2 space-y-1">
+                              <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-ink">Citations</span>
+                                <span class="font-mono text-[10px] text-muted">◼</span>
+                              </div>
+                              <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-ink">Versioned</span>
+                                <span class="font-mono text-[10px] text-muted">◼</span>
+                              </div>
+                              <div class="flex items-center justify-between">
+                                <span class="text-[11px] text-ink">Packout</span>
+                                <span class="font-mono text-[10px] text-muted">◼</span>
+                              </div>
+                            </div>
+                            <div class="mt-2 rounded-md border border-ink/15 bg-paper2/60 px-2 py-1 font-mono text-[9px] tracking-[0.10em] text-ink">ACCESSED: ____</div>
+                          </div>
+                        </div>
+                        <div class="pointer-events-none absolute -right-2 -top-2 rounded-lg border border-vermillion/35 bg-paper1 px-2 py-1">
+                          <span class="font-mono text-[9px] tracking-[0.10em] text-vermillion">STAMP</span>
+                        </div>
+                      </div>
+
+                      <div class="flex-1">
+                        <p class="font-body font-semibold text-ink">Bench-side printable, not a dashboard.</p>
+                        <p class="mt-1 text-sm text-muted">The same version/date system from the hero—so it’s obvious what you relied on, and when.</p>
+                        <div class="mt-3 flex items-center gap-2">
+                          <div class="h-2 w-2 rounded-full bg-brass"></div>
+                          <p class="font-mono text-[11px] tracking-[0.10em] text-muted">EARLY ACCESS INVITES LIMITED</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer (subtle) -->
+    <footer class="relative" data-animate>
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="py-8" data-animate>
+          <div class="h-px w-full bg-brass/55"></div>
+          <div class="mt-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 reveal-ready" data-animate data-reveal>
+            <p class="text-sm text-muted">FragranceCompliance Checklist — calm, dated ship-day guidance for indie perfumers.</p>
+            <div class="flex items-center gap-4">
+              <a href="#" class="text-sm text-muted hover:text-ink transition min-h-[44px] inline-flex items-center">Privacy</a>
+              <a href="mailto:hello@example.com" class="text-sm text-muted hover:text-ink transition min-h-[44px] inline-flex items-center">Contact</a>
+            </div>
+          </div>
+          <p class="mt-3 font-mono text-[11px] tracking-[0.08em] text-muted reveal-ready" data-animate data-reveal style="transition-delay: 40ms;">Citations are snapshot with excerpt + access date.</p>
+        </div>
+      </div>
+    </footer>
+  </main>
+
+  <script>
+    // Scroll reveals: flourish only (content remains visible by default)
+    // Safety: avoids opacity:0; uses transform/filter with near-1 opacity.
+    // Performance: will-change applied to max 3 key elements.
+
+    (function(){
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) return;
+
+      var wc = 0;
+      function addWillChange(el){
+        if (!el || wc >= 5) return;
+        // apply only where it matters
+        el.style.willChange = 'transform, filter';
+        wc++;
+      }
+
+      // Key elements (<=3) + hero entrance already uses animation
+      addWillChange(document.getElementById('heroArtifact')); // 1
+      addWillChange(document.querySelector('#signup button')); // 2
+      addWillChange(document.querySelector('input#email')); // 3
+
+      // Prepare reveal elements (they are still visible, just slightly offset)
+      var revealEls = Array.prototype.slice.call(document.querySelectorAll('[data-reveal]'));
+      revealEls.forEach(function(el){
+        el.classList.add('reveal-ready');
+      });
+
+      if (!('IntersectionObserver' in window)){
+        // No JS-only visibility: if IO unsupported, show state (still visible already)
+        revealEls.forEach(function(el){ el.classList.add('reveal-in'); });
+        return;
+      }
+
+      var io = new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if (entry.isIntersecting){
+            entry.target.classList.add('reveal-in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.18, rootMargin: '0px 0px -10% 0px' });
+
+      revealEls.forEach(function(el){ io.observe(el); });
+
+      // Subtle continuous float for the hero artifact after it settles (quiet "loud artifact")
+      var card = document.getElementById('benchCard');
+      if (card){
+        // start after entrance finishes
+        window.setTimeout(function(){
+          card.classList.add('animate-floatArtifact');
+          // keep will-change limited; float is transform-only
+        }, 320);
+      }
+
+      // Button press feedback (micro)
+      var btns = Array.prototype.slice.call(document.querySelectorAll('button[type="submit"]'));
+      btns.forEach(function(btn){
+        btn.addEventListener('click', function(){
+          // quick tactile pop without affecting layout
+          btn.classList.remove('animate-pressPop');
+          // reflow
+          void btn.offsetWidth;
+          btn.classList.add('animate-pressPop');
+        }, { passive: true });
+      });
+
+      // Focus cue on inputs (subtle sweep via background gradient position)
+      var inputs = Array.prototype.slice.call(document.querySelectorAll('input[type="email"]'));
+      inputs.forEach(function(inp){
+        inp.addEventListener('focus', function(){
+          inp.style.backgroundImage = 'linear-gradient(90deg, rgba(246,240,230,0.92), rgba(242,231,215,0.92), rgba(246,240,230,0.92))';
+          inp.style.backgroundSize = '200% 100%';
+          inp.style.animation = 'focusSweep 520ms ease-out 1';
+        });
+        inp.addEventListener('blur', function(){
+          inp.style.animation = 'none';
+          inp.style.backgroundImage = '';
+          inp.style.backgroundSize = '';
+        });
+      });
+
+    })();
+  </script>
+</body>
+</html>

@@ -13,8 +13,8 @@ class FeaturePriority(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     feature_name: str = Field(..., description="Name of the feature")
-    priority: int = Field(..., ge=1, le=10, description="Priority rank (1 = highest priority)")
-    keyword_support: int = Field(
+    priority: float = Field(..., ge=1, le=10, description="Priority rank (1 = highest priority)")
+    keyword_support: float = Field(
         ..., ge=0, description="Number of keywords that validate demand for this feature"
     )
     rationale: str = Field(

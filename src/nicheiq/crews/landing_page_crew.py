@@ -20,6 +20,8 @@ visual surprises, and animation personality.
 
 import random
 import time
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from crewai import Agent, Crew, Task
@@ -28,7 +30,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
+from ..utils.llm_service import build_llm, build_llm_kwargs
 from ..models.landing_page import (
     AnimatedHTMLResult,
     BrandIdentity,
@@ -83,7 +85,7 @@ class LandingPageCrew:
             config=self.agents_config["marketing_strategist"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort,
             )),
             verbose=True,
         )
@@ -98,7 +100,7 @@ class LandingPageCrew:
             config=self.agents_config["creative_director"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort,
             )),
             verbose=True,
         )
@@ -114,7 +116,7 @@ class LandingPageCrew:
             config=self.agents_config["visual_designer"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort,
             )),
             verbose=True,
         )
@@ -129,7 +131,7 @@ class LandingPageCrew:
             config=self.agents_config["brand_designer"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort,
             )),
             verbose=True,
         )
@@ -144,7 +146,7 @@ class LandingPageCrew:
             config=self.agents_config["landing_page_copywriter"],
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_creative_reasoning_effort or settings.landing_page_reasoning_effort,
+                reasoning_effort=settings.landing_page_creative_reasoning_effort,
             )),
             verbose=True,
         )
@@ -153,14 +155,14 @@ class LandingPageCrew:
     def html_developer(self) -> Agent:
         """
         Generates complete HTML pages with Tailwind CSS.
-        Uses medium reasoning_effort for reliable implementation (GPT-5.2).
+        Uses execution LLM (gpt-5.1-codex-max) for reliable code generation.
         """
         return Agent(
             config=self.agents_config["html_developer"],
-            llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_execution_reasoning_effort or settings.landing_page_reasoning_effort,
-            )),
+            llm=build_llm(
+                model=settings.landing_page_execution_llm,
+                reasoning_effort=settings.landing_page_execution_reasoning_effort,
+            ),
             verbose=True,
         )
 
@@ -168,14 +170,14 @@ class LandingPageCrew:
     def animation_enhancer(self) -> Agent:
         """
         Enhances HTML with premium animations and micro-interactions.
-        Uses medium reasoning_effort for reliable implementation (GPT-5.2).
+        Uses execution LLM (gpt-5.1-codex-max) for reliable code generation.
         """
         return Agent(
             config=self.agents_config["animation_enhancer"],
-            llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_execution_reasoning_effort or settings.landing_page_reasoning_effort,
-            )),
+            llm=build_llm(
+                model=settings.landing_page_execution_llm,
+                reasoning_effort=settings.landing_page_execution_reasoning_effort,
+            ),
             verbose=True,
         )
 
@@ -183,14 +185,14 @@ class LandingPageCrew:
     def qa_reviewer(self) -> Agent:
         """
         QA Reviewer agent - validates and fixes visual design issues.
-        Uses medium reasoning_effort for precise, systematic fixes (GPT-5.2).
+        Uses execution LLM with low reasoning effort for structured validation.
         """
         return Agent(
             config=self.agents_config["qa_reviewer"],
-            llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.landing_page_llm,
-                reasoning_effort=settings.landing_page_execution_reasoning_effort or settings.landing_page_reasoning_effort,
-            )),
+            llm=build_llm(
+                model=settings.landing_page_execution_llm,
+                reasoning_effort=settings.landing_page_validation_reasoning_effort,
+            ),
             verbose=True,
         )
 
@@ -250,6 +252,7 @@ class LandingPageCrew:
             context=[
                 self.create_landing_strategy_task(),  # Include strategy
                 self.create_creative_direction_task(),  # For section_density
+                self.create_visual_design_task(),  # For content_redundancy_notes
                 self.design_brand_identity_task(),
             ],
             output_pydantic=LandingPageCopy,
@@ -308,28 +311,38 @@ class LandingPageCrew:
     @crew
     def crew(self) -> Crew:
         """Create the Landing Page Generator crew."""
+        # Generate unique log file path for this run
+        log_dir = Path(settings.output_dir) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = log_dir / f"landing_crew_{timestamp}.json"
+
+        logger.info(f"Crew prompts/responses will be logged to: {log_file}")
+
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
             verbose=True,
+            output_log_file=str(log_file),  # Captures all prompts/responses
         )
 
     # ========== PUBLIC API ==========
 
-    def generate(self, report: FinalReport) -> LandingPageResult:
+    def generate(self, report: FinalReport, page_mode: str = "coming_soon") -> LandingPageResult:
         """
         Generate complete landing page from research report.
 
         Args:
             report: FinalReport from NicheIQ pipeline
+            page_mode: "coming_soon" (waitlist) or "launched" (full product)
 
         Returns:
             LandingPageResult with brand, copy, and HTML
         """
-        logger.info(f"Generating landing page for: {report.selected_solution_name}")
+        logger.info(f"Generating landing page for: {report.selected_solution_name} (mode: {page_mode})")
 
         # Extract inputs from report
-        inputs = self._extract_inputs(report)
+        inputs = self._extract_inputs(report, page_mode)
 
         # Add variation context for creative diversity
         variation_context = self._generate_variation_context()
@@ -412,12 +425,16 @@ class LandingPageCrew:
             "variation_seed": seed,
         }
 
-    def _extract_inputs(self, report: FinalReport) -> dict:
+    def _extract_inputs(self, report: FinalReport, page_mode: str = "coming_soon") -> dict:
         """
         Extract crew inputs from FinalReport.
 
         Maps FinalReport fields to the placeholders in task YAML.
         Includes 10 new uniqueness-driving fields for differentiated landing pages.
+
+        Args:
+            report: FinalReport from NicheIQ pipeline
+            page_mode: "coming_soon" (waitlist) or "launched" (full product)
         """
         # Get solution details
         solution_details = report.selected_solution_details
@@ -504,7 +521,44 @@ class LandingPageCrew:
         if report.mvp_scope_definition:
             mvp_features = report.mvp_scope_definition[:300]
 
+        # ========== NEW: Audience Intelligence Fields (Part C) ==========
+
+        # Niche vocabulary for authentic copy
+        niche_vocabulary = ""
+        primary_segment = ""
+        messaging_frameworks = ""
+        if report.audience_mapping:
+            am = report.audience_mapping
+            # Common vocabulary: 10-15 niche-specific terms
+            if am.common_vocabulary:
+                niche_vocabulary = ", ".join(am.common_vocabulary[:10])
+            # Primary target segment
+            primary_segment = am.primary_target_segment or ""
+            # Messaging frameworks
+            if am.messaging_frameworks:
+                messaging_frameworks = "\n".join(f"- {mf}" for mf in am.messaging_frameworks[:5])
+
+        # ========== NEW: Market Credibility Fields ==========
+
+        # Trend direction and market momentum
+        trend_signal = ""
+        market_verdict = ""
+        if report.trend_longevity:
+            tl = report.trend_longevity
+            trend_signal = f"{tl.trend_direction} market (confidence: {tl.trend_confidence})"
+            if tl.momentum_score >= 0.7:
+                trend_signal += " - Strong momentum"
+
+        if report.market_sizing:
+            ms = report.market_sizing
+            market_verdict = ms.market_viability_verdict or ""  # "Strong", "Moderate", "Weak"
+            if ms.total_addressable_market:
+                market_verdict += f" | TAM: {ms.total_addressable_market}"
+
         return {
+            # Page mode context
+            "page_mode": page_mode,
+
             # Original 12 fields
             "product_name": report.selected_solution_name,
             "solution_type": solution_type,
@@ -529,4 +583,11 @@ class LandingPageCrew:
             "differentiation_factors": differentiation_factors,
             "runner_ups": runner_ups,
             "mvp_features": mvp_features,
+            # NEW: Audience Intelligence (Part C)
+            "niche_vocabulary": niche_vocabulary,
+            "primary_segment": primary_segment,
+            "messaging_frameworks": messaging_frameworks,
+            # NEW: Market Credibility (Part C)
+            "trend_signal": trend_signal,
+            "market_verdict": market_verdict,
         }

@@ -1,0 +1,1213 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Curated, local-first prompt playbooks for versioning, testing, and context management. Copy repo-ready templates and ship predictable AI features fast." />
+  <title>SoloPromptPlaybooks — Repo-Ready Prompt Workflows</title>
+
+  <!-- Google Fonts (exact names from brand_identity) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: "#201C17",
+            inkMuted: "#6E6256",
+            primary: "#2F2A24",
+            accent: "#C4632D",
+            accentHover: "#A95226",
+            paper: "#FBF7F0",
+            fail: "#A14A41",
+            pass: "#4F6A4B",
+            amber: "#B8892E",
+            olive: "#4F6A4B"
+          },
+          fontFamily: {
+            heading: ["Sora", "ui-sans-serif", "system-ui"],
+            body: ["IBM Plex Sans", "ui-sans-serif", "system-ui"],
+            code: ["IBM Plex Mono", "ui-monospace", "SFMono-Regular", "Menlo", "monospace"]
+          },
+          boxShadow: {
+            lift: "0 18px 50px rgba(32, 28, 23, 0.14)",
+            lift2: "0 22px 65px rgba(32, 28, 23, 0.18)",
+          },
+          transitionTimingFunction: {
+            tech: "cubic-bezier(0.2, 0.8, 0.2, 1)"
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root{
+      --bg-a:#F4F0E8;
+      --bg-b:#EFE7DB;
+      --bg-c:#F7F3EC;
+      --border: rgba(47,42,36,0.18);
+      --border2: rgba(47,42,36,0.14);
+    }
+    body{
+      background: linear-gradient(180deg, var(--bg-a) 0%, var(--bg-b) 45%, var(--bg-c) 100%);
+      color:#201C17;
+      font-family: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    /* subtle grain overlay (no external assets) */
+    .grain{
+      position: relative;
+      isolation: isolate;
+    }
+    .grain::before{
+      content:"";
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      opacity:.10;
+      mix-blend-mode:multiply;
+      background-image:
+        radial-gradient(circle at 12% 18%, rgba(32,28,23,.35) 0.6px, transparent 0.7px),
+        radial-gradient(circle at 62% 44%, rgba(32,28,23,.28) 0.6px, transparent 0.7px),
+        radial-gradient(circle at 84% 72%, rgba(32,28,23,.24) 0.6px, transparent 0.7px);
+      background-size: 180px 140px, 220px 180px, 260px 210px;
+      filter: blur(.2px);
+      z-index: -1;
+    }
+
+    /* double-line card border: outer + inner inset */
+    .double-border{
+      border: 1px solid rgba(47,42,36,0.18);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.6);
+    }
+
+    /* rubber stamp styling */
+    .stamp{
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      border: 3px solid currentColor;
+      padding: .55rem .9rem;
+      border-radius: .25rem;
+      transform: rotate(-8deg);
+      opacity: .92;
+      filter: saturate(1.05) blur(.15px);
+      mix-blend-mode: multiply;
+      box-shadow: 0 10px 22px rgba(32,28,23,0.18);
+      max-width: min(92vw, 42rem);
+      white-space: normal;
+    }
+
+    /* slightly skewed edges feel */
+    .skew-edge{ transform: rotate(-1deg); }
+
+    /* --------------------
+       Motion system (technical + statement)
+       -------------------- */
+    @media (prefers-reduced-motion: reduce){
+      *, *::before, *::after{ animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+    }
+
+    /* base reveal state for scroll/page-load */
+    [data-animate]{
+      opacity: 0;
+      transform: translateY(10px);
+      filter: blur(0.0px);
+      will-change: transform, opacity;
+    }
+    [data-animate].is-in{
+      opacity: 1;
+      transform: translateY(0);
+      transition: opacity 520ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    /* directional variants */
+    [data-animate="in-right"]{ transform: translateX(18px); }
+    [data-animate="in-left"]{ transform: translateX(-18px); }
+    [data-animate="in-up"]{ transform: translateY(14px); }
+    [data-animate="in-down"]{ transform: translateY(-14px); }
+    [data-animate="scale-in"]{ transform: scale(0.985); }
+
+    /* stagger support */
+    .is-in[data-delay]{ transition-delay: var(--d, 0ms); }
+
+    /* page load header slight settle */
+    @keyframes settleIn {
+      0% { opacity: 0; transform: translateY(-8px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+    .animate-settle{ animation: settleIn 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+    /* existing memorable element animation */
+    @keyframes slideFromRight {
+      0% { transform: translateX(22px); opacity: 0; }
+      100% { transform: translateX(0); opacity: 1; }
+    }
+    .animate-slide-right{ animation: slideFromRight 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+    /* micro-interactions: technical, precise */
+    .tap:active{ transform: translateY(1px) scale(0.99); }
+    .focus-glow{ transition: box-shadow 160ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .focus-glow:focus-within{ box-shadow: 0 0 0 2px rgba(184,137,46,0.55), 0 0 0 6px rgba(184,137,46,0.16); }
+
+    /* hover lift refinement (keeps existing Tailwind transitions intact) */
+    .hover-lift-tech{ transition: transform 150ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 150ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .hover-lift-tech:hover{ transform: translateY(-2px); }
+
+    /* subtle caret wiggle for diff links (technical, non-playful) */
+    @keyframes nudgeRight{
+      0%{ transform: translateX(0); }
+      100%{ transform: translateX(3px); }
+    }
+    .nudge-on-hover:hover .nudge{
+      animation: nudgeRight 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    }
+
+    /* stamp press-in feedback */
+    @keyframes stampPop{
+      0%{ transform: rotate(var(--r, -8deg)) scale(0.94); opacity: 0; }
+      70%{ transform: rotate(var(--r, -8deg)) scale(1.01); opacity: 1; }
+      100%{ transform: rotate(var(--r, -8deg)) scale(1); opacity: 0.92; }
+    }
+    .stamp-anim{ animation: stampPop 520ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+  </style>
+</head>
+
+<body class="grain">
+  <!-- Top bar / nav (subtle) -->
+  <header class="px-4 sm:px-6 lg:px-10">
+    <div class="mx-auto max-w-6xl py-5 flex items-center justify-between animate-settle">
+      <a href="#" class="flex items-center gap-2" data-animate="in-up" data-delay="0">
+        <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg double-border bg-paper">
+          <span class="font-code text-[13px] font-semibold text-primary">SP</span>
+        </span>
+        <div class="leading-tight">
+          <div class="font-heading font-semibold text-primary">SoloPromptPlaybooks</div>
+          <div class="font-code text-[12px] text-inkMuted">repo-first reliability workflows</div>
+        </div>
+      </a>
+      <nav class="hidden sm:flex items-center gap-6 text-sm text-inkMuted" data-animate="in-up" data-delay="70">
+        <a class="hover:text-ink transition" href="#problem">Problem</a>
+        <a class="hover:text-ink transition" href="#solution">Playbooks</a>
+        <a class="hover:text-ink transition" href="#comparison">Diff</a>
+        <a class="hover:text-ink transition" href="#pricing">Pricing</a>
+        <a class="inline-flex items-center gap-2 rounded-lg px-3 py-2 double-border bg-paper hover:shadow-lift transition duration-150 ease-out hover-lift-tech tap min-h-[44px]" href="#signup">
+          <span class="font-code text-[12px] text-inkMuted">/</span>
+          <span class="font-medium text-primary">Get drops</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- HERO (dominant, asymmetric-dynamic) -->
+  <section class="px-4 sm:px-6 lg:px-10 pt-6 sm:pt-10">
+    <div class="mx-auto max-w-6xl">
+      <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        <!-- Left: copy -->
+        <div class="lg:col-span-7">
+          <div class="inline-flex items-center gap-2 rounded-full px-3 py-1.5 double-border bg-paper" data-animate="in-up" data-delay="0">
+            <span class="h-2 w-2 rounded-full bg-pass"></span>
+            <span class="font-code text-[12px] text-inkMuted">curated • local-first • PR-reviewable</span>
+          </div>
+
+          <h1 class="mt-5 font-heading font-extrabold tracking-tight text-primary text-4xl sm:text-5xl lg:text-6xl leading-[1.05]" data-animate="in-up" data-delay="90">
+            Stop losing nights to frozen outputs—ship prompts like code (in git, with tests).
+          </h1>
+
+          <p class="mt-5 text-ink text-base sm:text-lg leading-relaxed max-w-2xl" data-animate="in-up" data-delay="160">
+            <span class="font-semibold">SoloPromptPlaybooks</span> is a curated directory of <span class="font-semibold">repo-ready prompt workflows</span>
+            (versioning, testing, context) you can drop into a project in minutes.
+          </p>
+
+          <div class="mt-5 space-y-3 text-inkMuted" data-animate="in-up" data-delay="220">
+            <p class="text-sm sm:text-base">
+              <span class="font-semibold text-primary">Not a prompt marketplace.</span>
+              <span class="font-semibold text-primary">Not a SaaS vault.</span>
+              These are playbooks: clear use case → defined inputs/outputs → adoption steps → expected outcomes—plus change history so you can trust why a template works.
+            </p>
+          </div>
+
+          <!-- CTA + email -->
+          <div class="mt-7 max-w-xl" data-animate="in-up" data-delay="280">
+            <form action="#" class="flex flex-col sm:flex-row gap-3 focus-glow rounded-2xl" data-animate="in-up" data-delay="300">
+              <label class="sr-only" for="email">Email</label>
+              <div class="flex-1">
+                <input id="email" name="email" type="email" required placeholder="you@domain.com" class="w-full rounded-xl bg-paper double-border px-4 py-3 text-ink placeholder:text-inkMuted focus:outline-none focus:ring-2 focus:ring-amber focus:ring-offset-2 focus:ring-offset-[#F4F0E8] min-h-[44px]" />
+                <div class="mt-2 flex items-center gap-2 text-[12px] text-inkMuted font-code">
+                  <span class="inline-flex items-center gap-1 rounded-md bg-[rgba(47,42,36,0.06)] px-2 py-1 border border-[rgba(47,42,36,0.14)]">CI-friendly</span>
+                  <span class="inline-flex items-center gap-1 rounded-md bg-[rgba(47,42,36,0.06)] px-2 py-1 border border-[rgba(47,42,36,0.14)]">local-first</span>
+                  <span class="hidden sm:inline">• no fluff, just playbooks</span>
+                </div>
+              </div>
+              <button id="signup" type="submit" class="rounded-xl bg-accent px-5 py-3 font-semibold text-[#FBF7F0] shadow-lift hover:bg-accentHover transition duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-amber focus:ring-offset-2 focus:ring-offset-[#F4F0E8] tap min-h-[44px]">
+                Email me new playbooks
+              </button>
+            </form>
+            <div class="mt-4 grid sm:grid-cols-3 gap-3" data-animate="in-up" data-delay="360">
+              <!-- hero cards (benefit-ish, varied) -->
+              <div class="rounded-xl bg-paper double-border p-4 hover-lift-tech">
+                <div class="flex items-start justify-between gap-3">
+                  <div class="inline-flex items-center gap-2">
+                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-[rgba(196,99,45,0.12)] border border-[rgba(47,42,36,0.14)]">🧰</span>
+                    <div>
+                      <div class="font-semibold text-primary">Repo-ready downloads</div>
+                      <div class="font-code text-[12px] text-inkMuted">Markdown / YAML / prompt files</div>
+                    </div>
+                  </div>
+                </div>
+                <p class="mt-3 text-sm text-inkMuted leading-relaxed">Templates structured to live in your repo, not your browser history.</p>
+              </div>
+
+              <div class="rounded-xl bg-paper double-border p-4 relative overflow-hidden hover-lift-tech">
+                <div class="absolute -top-10 -right-10 h-24 w-24 rounded-full bg-[rgba(184,137,46,0.18)] blur-xl"></div>
+                <div class="flex items-start gap-2">
+                  <span class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-[rgba(184,137,46,0.14)] border border-[rgba(47,42,36,0.14)]">⏱</span>
+                  <div>
+                    <div class="font-semibold text-primary">Adopt in 10 minutes</div>
+                    <div class="font-code text-[12px] text-inkMuted">copy → commit → run</div>
+                  </div>
+                </div>
+                <p class="mt-3 text-sm text-inkMuted leading-relaxed">Each playbook includes “how to adopt” steps so you can ship fast.</p>
+              </div>
+
+              <div class="rounded-xl bg-paper double-border p-4 hover-lift-tech">
+                <div class="flex items-start gap-2">
+                  <span class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-[rgba(79,106,75,0.14)] border border-[rgba(47,42,36,0.14)]">🔒</span>
+                  <div>
+                    <div class="font-semibold text-primary">Local-first by default</div>
+                    <div class="font-code text-[12px] text-inkMuted">privacy-conscious workflows</div>
+                  </div>
+                </div>
+                <p class="mt-3 text-sm text-inkMuted leading-relaxed">Store in git, share via PRs, avoid prompt-vault lock-in.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: incident artifact panel -->
+        <div class="lg:col-span-5" data-animate="in-right" data-delay="140">
+          <div class="skew-edge rounded-2xl bg-paper double-border shadow-lift p-5 sm:p-6 hover-lift-tech">
+            <!-- CI header strip -->
+            <div class="flex items-center justify-between gap-4 pb-4 border-b border-[rgba(47,42,36,0.14)]">
+              <div>
+                <div class="font-code text-[12px] uppercase tracking-wider text-inkMuted">CI Job</div>
+                <div class="mt-1 font-heading font-semibold text-primary">prompt-reliability / eval</div>
+              </div>
+              <div class="text-right">
+                <div class="font-code text-[12px] text-inkMuted">2025-12-23 09:14:03Z</div>
+                <div class="mt-1 inline-flex items-center gap-2">
+                  <span class="inline-flex items-center gap-2 rounded-full bg-[rgba(47,42,36,0.06)] px-3 py-1 border border-[rgba(47,42,36,0.14)] font-code text-[12px] text-inkMuted">
+                    <span class="h-1.5 w-1.5 rounded-full bg-amber"></span>
+                    stream-watch
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- log body -->
+            <div class="mt-4 font-code text-[13px] sm:text-[13px] leading-relaxed">
+              <div class="flex items-start gap-3">
+                <span class="mt-0.5 inline-flex rounded-md bg-[rgba(161,74,65,0.12)] border border-[rgba(161,74,65,0.35)] px-2 py-0.5 text-fail">FAIL</span>
+                <div>
+                  <div class="text-ink">
+                    <span class="text-inkMuted">00:00:47</span> model <span class="text-primary">"thinking"</span> → <span class="font-semibold text-fail">NO OUTPUT</span>
+                  </div>
+                  <div class="text-inkMuted">stream stalled; stop condition not triggered; user request waiting…</div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex items-start gap-3">
+                <span class="mt-0.5 inline-flex rounded-md bg-[rgba(184,137,46,0.14)] border border-[rgba(184,137,46,0.35)] px-2 py-0.5 text-amber">FIX</span>
+                <div class="w-full">
+                  <div class="text-ink">apply guardrail + stop condition + retry rule</div>
+                  <div class="mt-2 rounded-lg bg-[rgba(47,42,36,0.04)] border border-[rgba(47,42,36,0.14)] p-3">
+                    <div class="text-inkMuted text-[12px]">playbook.yaml</div>
+                    <pre class="mt-2 whitespace-pre-wrap text-[12px] text-ink"><code>retry_rules:
+  - on: "no_tokens_for_ms&gt;=1500"
+    max_attempts: 2
+stop_conditions:
+  - type: "json_complete"
+validation:
+  - rubric: "summary_v1"
+  - check: "no_empty_fields"</code></pre>
+                  </div>
+                  <div class="mt-2 flex items-center justify-between gap-3">
+                    <a href="#" class="inline-flex items-center gap-2 rounded-md bg-[rgba(47,42,36,0.06)] px-2 py-1 border border-[rgba(47,42,36,0.14)] text-inkMuted hover:text-ink transition nudge-on-hover min-h-[44px]">
+                      <span class="font-code text-[12px]">@@</span>
+                      <span class="font-code text-[12px]">view diff</span>
+                      <span class="nudge font-code text-[12px]">→</span>
+                    </a>
+                    <span class="font-code text-[12px] text-inkMuted">commit as an asset, not a guess</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 flex items-start gap-3">
+                <span class="mt-0.5 inline-flex rounded-md bg-[rgba(79,106,75,0.12)] border border-[rgba(79,106,75,0.35)] px-2 py-0.5 text-pass">PASS</span>
+                <div>
+                  <div class="text-ink"><span class="text-inkMuted">00:00:06</span> completion validated + rubric checks</div>
+                  <div class="text-inkMuted">expected output shape met; retries used: 1; cost stable.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="mt-4 text-sm text-inkMuted" data-animate="in-up" data-delay="220">
+            Keep your prompts local. Review changes in PRs. Roll back safely.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MEMORABLE ELEMENT: Full-bleed “Frozen Output Incident Card” (hero_below, slide_from_right, high_contrast) -->
+  <section class="mt-10 sm:mt-14" data-animate="in-up" data-delay="0">
+    <div class="w-full">
+      <div class="relative overflow-hidden border-y border-[rgba(47,42,36,0.18)] bg-[#1B1916] text-[#FBF7F0]">
+        <div class="absolute inset-0 opacity-[0.08]" style="background-image: radial-gradient(circle at 18% 22%, rgba(255,255,255,0.9) 0.6px, transparent 0.7px), radial-gradient(circle at 62% 44%, rgba(255,255,255,0.8) 0.6px, transparent 0.7px); background-size: 220px 160px, 260px 210px;"></div>
+
+        <div class="mx-auto max-w-6xl px-4 sm:px-6 lg:px-10 py-10 sm:py-12 relative">
+          <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
+            <!-- Left: FAIL panel -->
+            <div class="lg:col-span-6 rounded-2xl bg-[#12100E] border border-[rgba(255,255,255,0.12)] p-5 sm:p-6 relative overflow-hidden" data-animate="in-left" data-delay="40">
+              <div class="flex items-center justify-between gap-4">
+                <div class="font-code text-[12px] text-[rgba(255,255,255,0.70)]">job: stream-check</div>
+                <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] font-code text-[12px] text-[rgba(255,255,255,0.72)]">
+                  <span class="h-1.5 w-1.5 rounded-full bg-[#A14A41]"></span>
+                  timeout
+                </span>
+              </div>
+
+              <div class="mt-4 font-code text-[13px] leading-relaxed text-[rgba(255,255,255,0.82)]">
+                <div><span class="text-[rgba(255,255,255,0.55)]">00:00:05</span> request queued</div>
+                <div><span class="text-[rgba(255,255,255,0.55)]">00:00:18</span> model: “thinking”</div>
+                <div><span class="text-[rgba(255,255,255,0.55)]">00:00:47</span> <span class="text-[#FFB4AC]">stream stalled</span> → <span class="font-semibold">NO OUTPUT</span></div>
+                <div class="mt-2 text-[rgba(255,255,255,0.62)]">cause: unfinished stream, no stop condition, no retry guardrail</div>
+              </div>
+
+              <div class="absolute -right-2 -top-2 max-w-[calc(100%-0.5rem)]" style="animation-delay: 40ms;">
+                <div class="stamp text-[#A14A41] stamp-anim" style="--r:-8deg;">RUN HUNG: 47s “thinking” → NO OUTPUT</div>
+              </div>
+            </div>
+
+            <!-- Right: PASS panel -->
+            <div class="lg:col-span-6 rounded-2xl bg-[#12100E] border border-[rgba(255,255,255,0.12)] p-5 sm:p-6 relative overflow-hidden" data-animate="in-right" data-delay="120">
+              <div class="flex items-center justify-between gap-4">
+                <div class="font-code text-[12px] text-[rgba(255,255,255,0.70)]">job: playbook-guardrails</div>
+                <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] font-code text-[12px] text-[rgba(255,255,255,0.72)]">
+                  <span class="h-1.5 w-1.5 rounded-full bg-[#4F6A4B]"></span>
+                  auto-retry
+                </span>
+              </div>
+
+              <div class="mt-4 font-code text-[13px] leading-relaxed text-[rgba(255,255,255,0.82)]">
+                <div><span class="text-[rgba(255,255,255,0.55)]">00:00:01</span> apply retry_rules + stop_conditions</div>
+                <div><span class="text-[rgba(255,255,255,0.55)]">00:00:03</span> validate output shape (rubric)</div>
+                <div><span class="text-[rgba(255,255,255,0.55)]">00:00:06</span> <span class="text-[#BFE0BA]">PASS</span> completion validated + checks</div>
+                <div class="mt-2 text-[rgba(255,255,255,0.62)]">result: predictable UX, controlled retries, diffable changes</div>
+              </div>
+
+              <div class="absolute -left-2 -bottom-2 max-w-[calc(100%-0.5rem)]" style="transform: rotate(6deg);">
+                <div class="stamp text-[#4F6A4B] stamp-anim" style="--r:6deg;">AUTO-RETRY PLAYBOOK: PASS in 6s</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-8 sm:mt-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4" data-animate="in-up" data-delay="180">
+            <div>
+              <div class="font-heading font-extrabold tracking-tight text-3xl sm:text-4xl">Adopt in &lt;10 minutes.</div>
+              <div class="mt-2 text-[rgba(255,255,255,0.72)] max-w-2xl">A workflow artifact you can commit, review, and run—so reliability isn’t a late-night guessing game.</div>
+            </div>
+            <a href="#" class="inline-flex items-center justify-between gap-3 rounded-xl border border-[rgba(255,255,255,0.18)] bg-[rgba(255,255,255,0.06)] px-4 py-3 hover:bg-[rgba(255,255,255,0.10)] transition duration-150 ease-out tap nudge-on-hover min-h-[44px]">
+              <div class="text-left">
+                <div class="font-code text-[12px] text-[rgba(255,255,255,0.68)]">sample repo</div>
+                <div class="font-semibold">Download artifact</div>
+              </div>
+              <span class="font-code text-[12px] text-[rgba(255,255,255,0.70)]">git clone <span class="nudge">→</span></span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PROBLEM (standard) -->
+  <section id="problem" class="px-4 sm:px-6 lg:px-10 py-14 sm:py-16" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        <div class="lg:col-span-5" data-animate="in-up" data-delay="60">
+          <h2 class="font-heading font-extrabold tracking-tight text-primary text-3xl sm:text-4xl">Your model isn’t unreliable. Your workflow is.</h2>
+          <p class="mt-4 text-inkMuted leading-relaxed">
+            If you’re building solo, every weird output becomes a personal incident. The painful part isn’t writing prompts—it’s the
+            <span class="font-semibold text-primary">lack of versioning, testing, and context controls</span> around them.
+          </p>
+          <div class="mt-6 rounded-xl bg-paper double-border p-4" data-animate="scale-in" data-delay="120">
+            <div class="flex items-center justify-between">
+              <div class="font-code text-[12px] text-inkMuted">signal</div>
+              <span class="font-code text-[12px] text-inkMuted">most common failure mode</span>
+            </div>
+            <div class="mt-2 font-code text-[13px] text-ink">
+              <span class="text-fail">! </span> "unfinished stream" → manual debug loop → lost night
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-7" data-animate="in-up" data-delay="120">
+          <div class="grid sm:grid-cols-2 gap-4">
+            <!-- pain_point cards: accent_bar_left, decorative border, shadow lift, emoji icon -->
+            <div class="rounded-2xl bg-paper double-border p-5 shadow-lift hover:shadow-lift2 transition duration-150 ease-out hover-lift-tech" data-animate="in-up" data-delay="0">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-accent"></div>
+                <div class="flex-1">
+                  <div class="flex items-start justify-between gap-3">
+                    <div>
+                      <div class="inline-flex items-center gap-2">
+                        <span class="text-lg">🧊</span>
+                        <h3 class="font-heading font-semibold text-primary">Unfinished / frozen outputs</h3>
+                      </div>
+                      <p class="mt-2 text-sm text-inkMuted leading-relaxed">Stalls, partial completions, and long “thinking time” that blows up UX and retries your budget.</p>
+                    </div>
+                    <span class="font-code text-[12px] text-inkMuted rounded-md px-2 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.06)]">incident</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 shadow-lift hover:shadow-lift2 transition duration-150 ease-out hover-lift-tech" data-animate="in-up" data-delay="60">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-amber"></div>
+                <div class="flex-1">
+                  <div class="inline-flex items-center gap-2">
+                    <span class="text-lg">⏱</span>
+                    <h3 class="font-heading font-semibold text-primary">Iteration time sink</h3>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Endless refine-run-compare loops with no standard rubrics, no baselines, and no guardrails.</p>
+                  <div class="mt-3 flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-amber"></span>
+                    <span class="font-code text-[12px] text-inkMuted">operational cost accumulates silently</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 shadow-lift hover:shadow-lift2 transition duration-150 ease-out hover-lift-tech" data-animate="in-up" data-delay="120">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-olive"></div>
+                <div class="flex-1">
+                  <div class="inline-flex items-center gap-2">
+                    <span class="text-lg">🧩</span>
+                    <h3 class="font-heading font-semibold text-primary">Fragmented tooling</h3>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Prompts live in docs, chat logs, and code comments—no unified flow for PR review, tests, and rollback.</p>
+                  <div class="mt-3 rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] px-3 py-2">
+                    <div class="font-code text-[12px] text-inkMuted">symptom</div>
+                    <div class="font-code text-[12px] text-ink">"which prompt version is in prod?"</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 shadow-lift hover:shadow-lift2 transition duration-150 ease-out hover-lift-tech" data-animate="in-up" data-delay="180">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-accent"></div>
+                <div class="flex-1">
+                  <div class="inline-flex items-center gap-2">
+                    <span class="text-lg">🔒</span>
+                    <h3 class="font-heading font-semibold text-primary">Privacy anxiety</h3>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">You want local/offline practices and minimal context leakage—without giving up velocity.</p>
+                  <div class="mt-3 inline-flex items-center gap-2 rounded-full border border-[rgba(47,42,36,0.14)] bg-[rgba(79,106,75,0.10)] px-3 py-1">
+                    <span class="h-2 w-2 rounded-full bg-pass"></span>
+                    <span class="font-code text-[12px] text-inkMuted">local-first mindset</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOLUTION (dominant) - stacked patch notes layout surprise -->
+  <section id="solution" class="px-4 sm:px-6 lg:px-10 py-14 sm:py-16" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+        <div data-animate="in-up" data-delay="40">
+          <h2 class="font-heading font-extrabold tracking-tight text-primary text-3xl sm:text-4xl">A curated directory of prompt workflows you can commit today.</h2>
+          <p class="mt-4 text-inkMuted leading-relaxed max-w-3xl">
+            SoloPromptPlaybooks turns “prompting” into an operational practice. Every playbook is curated for signal: clear use case,
+            inputs/outputs, adoption steps, expected outcomes, and change history + rationale.
+          </p>
+        </div>
+        <a href="#signup" class="inline-flex items-center justify-center rounded-xl bg-accent px-5 py-3 font-semibold text-[#FBF7F0] shadow-lift hover:bg-accentHover transition duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-amber focus:ring-offset-2 focus:ring-offset-[#F4F0E8] tap min-h-[44px]" data-animate="in-right" data-delay="120">
+          Send the weekly drops
+        </a>
+      </div>
+
+      <!-- Stacked patch notes layout: first card wider, overlaps by ~12-16px -->
+      <div class="mt-10 relative">
+        <div class="grid lg:grid-cols-12 gap-5">
+          <!-- Wide featured card (primary feature, gradient bg) -->
+          <div class="lg:col-span-8 rounded-2xl bg-paper double-border shadow-lift p-6 sm:p-7 relative overflow-hidden hover-lift-tech" data-animate="in-left" data-delay="80">
+            <div class="absolute -top-16 -right-16 h-44 w-44 rounded-full bg-[rgba(196,99,45,0.20)] blur-2xl"></div>
+            <div class="absolute -bottom-16 -left-16 h-44 w-44 rounded-full bg-[rgba(79,106,75,0.16)] blur-2xl"></div>
+
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <div class="inline-flex items-center gap-2">
+                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(196,99,45,0.12)]">🧰</span>
+                  <div>
+                    <div class="font-code text-[12px] text-inkMuted">feature bundle</div>
+                    <h3 class="font-heading font-bold text-primary text-xl">Versioning playbooks</h3>
+                  </div>
+                </div>
+                <p class="mt-3 text-inkMuted leading-relaxed">
+                  PR-friendly prompt organization, diffs that make sense, and rollback patterns when outputs regress.
+                </p>
+              </div>
+              <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 double-border bg-[rgba(47,42,36,0.04)]">
+                <span class="h-2 w-2 rounded-full bg-accent"></span>
+                <span class="font-code text-[12px] text-inkMuted">diffable</span>
+              </span>
+            </div>
+
+            <div class="mt-6 grid sm:grid-cols-2 gap-4">
+              <div class="rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] p-4" data-animate="scale-in" data-delay="160">
+                <div class="font-code text-[12px] text-inkMuted">recommended structure</div>
+                <pre class="mt-2 font-code text-[12px] text-ink whitespace-pre-wrap"><code>prompts/
+  summarizer/
+    prompt.md
+    rubric.yaml
+    changelog.md</code></pre>
+              </div>
+              <div class="rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] p-4" data-animate="scale-in" data-delay="210">
+                <div class="font-code text-[12px] text-inkMuted">PR review cue</div>
+                <div class="mt-2 font-code text-[12px] text-ink">@@ prompt.md + rubric.yaml</div>
+                <div class="mt-2 text-sm text-inkMuted">Prompts reviewed like code, not vibes.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Side card (overlapped via negative margin on lg) -->
+          <div class="lg:col-span-4 lg:-ml-4 lg:mt-4 rounded-2xl bg-paper double-border shadow-lift p-6 relative overflow-hidden hover-lift-tech" data-animate="in-right" data-delay="140">
+            <div class="absolute -top-10 -right-10 h-28 w-28 rounded-full bg-[rgba(184,137,46,0.18)] blur-xl"></div>
+            <div class="flex items-start gap-3">
+              <div class="w-1.5 self-stretch rounded-full bg-amber"></div>
+              <div class="flex-1">
+                <div class="inline-flex items-center gap-2">
+                  <span class="text-lg">🧪</span>
+                  <h3 class="font-heading font-semibold text-primary">Testing playbooks</h3>
+                </div>
+                <p class="mt-2 text-sm text-inkMuted leading-relaxed">Standardized rubrics, checklists, and eval scaffolds to catch failures before users do.</p>
+                <div class="mt-4 flex items-center justify-between gap-3">
+                  <span class="font-code text-[12px] text-inkMuted">eval</span>
+                  <span class="inline-flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(79,106,75,0.10)] font-code text-[12px] text-inkMuted"><span class="h-2 w-2 rounded-full bg-pass"></span> CI-ready</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2 cards (progressive left-edge ticks clay→amber→olive) -->
+          <div class="lg:col-span-6 rounded-2xl bg-paper double-border shadow-lift p-6 hover:shadow-lift2 transition duration-150 ease-out hover-lift-tech" data-animate="in-up" data-delay="160">
+            <div class="flex items-start gap-4">
+              <div class="w-1.5 self-stretch rounded-full bg-accent"></div>
+              <div class="flex-1">
+                <div class="inline-flex items-center gap-2">
+                  <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(196,99,45,0.10)]">🧭</span>
+                  <h3 class="font-heading font-semibold text-primary">Context management playbooks</h3>
+                </div>
+                <p class="mt-2 text-sm text-inkMuted leading-relaxed">Local-first patterns for context packing, redaction, and “what not to send” rules.</p>
+                <div class="mt-4 grid grid-cols-2 gap-3">
+                  <div class="rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] px-3 py-2">
+                    <div class="font-code text-[11px] text-inkMuted">policy</div>
+                    <div class="font-code text-[12px] text-ink">redact: pii, secrets</div>
+                  </div>
+                  <div class="rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] px-3 py-2">
+                    <div class="font-code text-[11px] text-inkMuted">budget</div>
+                    <div class="font-code text-[12px] text-ink">pack: top-k notes</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-6 rounded-2xl bg-paper double-border shadow-lift p-6 hover:shadow-lift2 transition duration-150 ease-out hover-lift-tech" data-animate="in-up" data-delay="220">
+            <div class="flex items-start gap-4">
+              <div class="w-1.5 self-stretch rounded-full bg-olive"></div>
+              <div class="flex-1">
+                <div class="inline-flex items-center gap-2">
+                  <span class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(79,106,75,0.12)]">🧱</span>
+                  <h3 class="font-heading font-semibold text-primary">Structured feedback (not prompt dumping)</h3>
+                </div>
+                <p class="mt-2 text-sm text-inkMuted leading-relaxed">Voting + guided submissions so the library improves without turning into an unmoderated pastebin.</p>
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                  <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] font-code text-[12px] text-inkMuted">format: use_case</span>
+                  <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] font-code text-[12px] text-inkMuted">inputs/outputs</span>
+                  <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] font-code text-[12px] text-inkMuted">rationale</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS (dominant, step cards) -->
+  <section id="how" class="px-4 sm:px-6 lg:px-10 py-14 sm:py-16" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <div class="grid lg:grid-cols-12 gap-8 lg:gap-10">
+        <div class="lg:col-span-5" data-animate="in-up" data-delay="60">
+          <h2 class="font-heading font-extrabold tracking-tight text-primary text-3xl sm:text-4xl">Copy → commit → test → iterate (without reinventing everything).</h2>
+          <p class="mt-4 text-inkMuted leading-relaxed">
+            SoloPromptPlaybooks is designed to feel like a repo README + CI artifact. You don’t “set up an account and hope.” You adopt a workflow.
+          </p>
+          <div class="mt-6 rounded-xl bg-paper double-border p-4" data-animate="scale-in" data-delay="140">
+            <div class="flex items-center justify-between">
+              <div class="font-code text-[12px] text-inkMuted">adoption</div>
+              <span class="font-code text-[12px] text-inkMuted">&lt; 10 min target</span>
+            </div>
+            <div class="mt-2 font-code text-[12px] text-inkMuted">$ git add prompts/ && git commit -m "add guardrail playbook"</div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-7" data-animate="in-up" data-delay="120">
+          <div class="space-y-4">
+            <!-- step cards: numbered_badge + accent_bar_left + decorative_border -->
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="0">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-accent"></div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(196,99,45,0.12)] font-code font-semibold text-primary">1</span>
+                      <h3 class="font-heading font-semibold text-primary">Pick a workflow (not a vibe)</h3>
+                    </div>
+                    <span class="font-code text-[12px] text-inkMuted">filter: versioning / testing / context</span>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Filter by model type and toolchain (CI, local) so you choose the right operational pattern fast.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="70">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-amber"></div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(184,137,46,0.14)] font-code font-semibold text-primary">2</span>
+                      <h3 class="font-heading font-semibold text-primary">Download repo-ready artifacts</h3>
+                    </div>
+                    <span class="inline-flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] font-code text-[12px] text-inkMuted">.md</span>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Grab Markdown/YAML/prompt files with sane defaults and clear extension points.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="140">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-olive"></div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(79,106,75,0.14)] font-code font-semibold text-primary">3</span>
+                      <h3 class="font-heading font-semibold text-primary">Follow “Adopt in 10 minutes” steps</h3>
+                    </div>
+                    <span class="font-code text-[12px] text-inkMuted">minimal glue code</span>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Wire it into your project with minimal configuration—focused on shipping, not setup.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="210">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-accent"></div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(196,99,45,0.10)] font-code font-semibold text-primary">4</span>
+                      <h3 class="font-heading font-semibold text-primary">Validate with rubrics + checks</h3>
+                    </div>
+                    <span class="inline-flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(79,106,75,0.30)] bg-[rgba(79,106,75,0.10)] font-code text-[12px] text-inkMuted"><span class="h-2 w-2 rounded-full bg-pass"></span> pass/fail</span>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Run structured checklists/evals so you can tell if reliability improved—or just changed wording.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="280">
+              <div class="flex items-start gap-4">
+                <div class="w-1.5 self-stretch rounded-full bg-amber"></div>
+                <div class="flex-1">
+                  <div class="flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                      <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(184,137,46,0.12)] font-code font-semibold text-primary">5</span>
+                      <h3 class="font-heading font-semibold text-primary">Improve through structured feedback</h3>
+                    </div>
+                    <span class="font-code text-[12px] text-inkMuted">rationale tracked</span>
+                  </div>
+                  <p class="mt-2 text-sm text-inkMuted leading-relaxed">Submit edits with rationale, vote on what works, and track changes like a real engineering asset.</p>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARISON (standard) - pseudo-terminal diff surprise -->
+  <section id="comparison" class="px-4 sm:px-6 lg:px-10 py-14 sm:py-16" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <h2 class="font-heading font-extrabold tracking-tight text-primary text-3xl sm:text-4xl" data-animate="in-up" data-delay="40">Why SoloPromptPlaybooks beats “prompt libraries” and “prompt vaults” for solo devs</h2>
+      <p class="mt-4 text-inkMuted leading-relaxed max-w-3xl" data-animate="in-up" data-delay="110">Most alternatives optimize for collecting prompts. You need workflows that survive real code.</p>
+
+      <div class="mt-8 rounded-2xl bg-paper double-border shadow-lift p-5 sm:p-6 hover-lift-tech" data-animate="in-up" data-delay="160">
+        <div class="flex items-center justify-between gap-4">
+          <div class="font-code text-[12px] text-inkMuted">PR review</div>
+          <div class="inline-flex items-center gap-2 flex-wrap justify-end">
+            <span class="inline-flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(161,74,65,0.28)] bg-[rgba(161,74,65,0.08)] font-code text-[12px] text-inkMuted">- prompt dumps / vaults</span>
+            <span class="inline-flex items-center gap-2 rounded-md px-2 py-1 border border-[rgba(79,106,75,0.28)] bg-[rgba(79,106,75,0.10)] font-code text-[12px] text-inkMuted">+ SoloPromptPlaybooks</span>
+          </div>
+        </div>
+
+        <div class="mt-4 grid lg:grid-cols-2 gap-4">
+          <div class="rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.03)] p-4" data-animate="in-left" data-delay="220">
+            <div class="font-code text-[12px] text-inkMuted">prompt_dumps_or_vaults.yaml</div>
+            <pre class="mt-3 font-code text-[12px] text-ink whitespace-pre-wrap"><code><span style="color:#A14A41">-</span> adoption_steps: null
+<span style="color:#A14A41">-</span> expected_outcomes: null
+<span style="color:#A14A41">-</span> retry_rules: null
+<span style="color:#A14A41">-</span> stop_conditions: null
+<span style="color:#A14A41">-</span> ci_tests: null
+<span style="color:#A14A41">-</span> pr_review: "hard"</code></pre>
+            <div class="mt-3 font-code text-[12px] text-inkMuted">copy text → hope it works in your stack</div>
+          </div>
+
+          <div class="rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.03)] p-4" data-animate="in-right" data-delay="260">
+            <div class="font-code text-[12px] text-inkMuted">solopromptplaybooks.yaml</div>
+            <pre class="mt-3 font-code text-[12px] text-ink whitespace-pre-wrap"><code><span style="color:#4F6A4B">+</span> inputs_outputs: defined
+<span style="color:#4F6A4B">+</span> adoption_steps: "&lt;10 min"
+<span style="color:#4F6A4B">+</span> expected_outcomes: measurable
+<span style="color:#4F6A4B">+</span> retry_rules: included
+<span style="color:#4F6A4B">+</span> stop_conditions: included
+<span style="color:#4F6A4B">+</span> ci_tests: rubric/checklist
+<span style="color:#4F6A4B">+</span> pr_review: "diffable"</code></pre>
+            <div class="mt-3 font-code text-[12px] text-inkMuted">workflow artifact → commit → review → run</div>
+          </div>
+        </div>
+
+        <div class="mt-6 grid sm:grid-cols-3 gap-4">
+          <!-- comparison cards: decorative border + accent_bar_left + shadow_lift -->
+          <div class="rounded-2xl bg-paper double-border shadow-lift p-5 hover-lift-tech" data-animate="in-up" data-delay="220">
+            <div class="flex items-start gap-4">
+              <div class="w-1.5 self-stretch rounded-full bg-olive"></div>
+              <div>
+                <div class="inline-flex items-center gap-2">
+                  <span class="text-lg">⚖</span>
+                  <h3 class="font-heading font-semibold text-primary">Local-first trust</h3>
+                </div>
+                <p class="mt-2 text-sm text-inkMuted leading-relaxed">Your prompts live in git. Audit what changed and why—without a vendor UI in the middle.</p>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-2xl bg-paper double-border shadow-lift p-5 hover-lift-tech" data-animate="in-up" data-delay="270">
+            <div class="flex items-start gap-4">
+              <div class="w-1.5 self-stretch rounded-full bg-amber"></div>
+              <div>
+                <div class="inline-flex items-center gap-2">
+                  <span class="text-lg">🧩</span>
+                  <h3 class="font-heading font-semibold text-primary">Adoption friction removed</h3>
+                </div>
+                <p class="mt-2 text-sm text-inkMuted leading-relaxed">Already shaped like repo artifacts—no translating blog posts into your codebase.</p>
+              </div>
+            </div>
+          </div>
+          <div class="rounded-2xl bg-paper double-border shadow-lift p-5 hover-lift-tech" data-animate="in-up" data-delay="320">
+            <div class="flex items-start gap-4">
+              <div class="w-1.5 self-stretch rounded-full bg-accent"></div>
+              <div>
+                <div class="inline-flex items-center gap-2">
+                  <span class="text-lg">🛡</span>
+                  <h3 class="font-heading font-semibold text-primary">Workflow &gt; prompt</h3>
+                </div>
+                <p class="mt-2 text-sm text-inkMuted leading-relaxed">Adopt guardrails, tests, and context policies—not clever wording that breaks silently.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SOCIAL PROOF (subtle) -->
+  <section id="social" class="px-4 sm:px-6 lg:px-10 py-12 sm:py-14" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+        <div class="lg:col-span-5" data-animate="in-up" data-delay="40">
+          <h2 class="font-heading font-extrabold tracking-tight text-primary text-2xl sm:text-3xl">Built to be improved in public—without turning into noise.</h2>
+          <p class="mt-3 text-inkMuted leading-relaxed">Thoughtful submissions, reproducible outcomes, clear rationale. Not anonymous paste.</p>
+        </div>
+        <div class="lg:col-span-7" data-animate="in-up" data-delay="120">
+          <div class="grid sm:grid-cols-3 gap-4">
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="0">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="font-code text-[12px] text-inkMuted">signal</div>
+                  <div class="mt-1 font-heading font-semibold text-primary">Contributor profiles</div>
+                </div>
+                <div class="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)]">👤</div>
+              </div>
+              <p class="mt-3 text-sm text-inkMuted leading-relaxed">Know who wrote it, what else they’ve shipped, and how the community rates their workflows.</p>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="60">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="font-code text-[12px] text-inkMuted">loop</div>
+                  <div class="mt-1 font-heading font-semibold text-primary">Structured feedback</div>
+                </div>
+                <div class="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(184,137,46,0.14)]">🗳</div>
+              </div>
+              <p class="mt-3 text-sm text-inkMuted leading-relaxed">Guided submissions + voting keep quality consistent as the directory grows.</p>
+            </div>
+
+            <div class="rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="120">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <div class="font-code text-[12px] text-inkMuted">audit</div>
+                  <div class="mt-1 font-heading font-semibold text-primary">Change history</div>
+                </div>
+                <div class="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-[rgba(47,42,36,0.14)] bg-[rgba(79,106,75,0.12)]">🧾</div>
+              </div>
+              <p class="mt-3 text-sm text-inkMuted leading-relaxed">See the rationale behind edits so you’re not guessing what broke (or improved) reliability.</p>
+            </div>
+          </div>
+
+          <div class="mt-5 rounded-xl bg-[rgba(47,42,36,0.04)] border border-[rgba(47,42,36,0.14)] p-4 hover-lift-tech" data-animate="in-up" data-delay="160">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <div class="font-code text-[12px] text-inkMuted">reputation hint</div>
+                <div class="mt-1 font-code text-[13px] text-ink">top_contributors: stable • reproducible • PR-quality</div>
+              </div>
+              <a href="#" class="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline nudge-on-hover min-h-[44px]">
+                View contributor rubric
+                <span class="font-code text-[12px] text-inkMuted nudge">→</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING (standard) -->
+  <section id="pricing" class="px-4 sm:px-6 lg:px-10 py-14 sm:py-16" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-6">
+        <div data-animate="in-up" data-delay="40">
+          <h2 class="font-heading font-extrabold tracking-tight text-primary text-3xl sm:text-4xl">Freemium for discovery. Paid for people who ship.</h2>
+          <p class="mt-4 text-inkMuted leading-relaxed max-w-3xl">Start free to browse and evaluate. Upgrade when you want deeper access and faster iteration.</p>
+        </div>
+        <div class="rounded-xl bg-paper double-border px-4 py-3" data-animate="in-right" data-delay="120">
+          <div class="font-code text-[12px] text-inkMuted">solo-dev friendly</div>
+          <div class="mt-1 font-heading font-semibold text-primary">Starter $7/mo • Pro $19/mo</div>
+        </div>
+      </div>
+
+      <div class="mt-10 grid lg:grid-cols-3 gap-5">
+        <!-- pricing cards: decorative_border + gradient_bg + shadow_lift (restrained) -->
+        <div class="rounded-2xl bg-paper double-border shadow-lift p-6 relative overflow-hidden hover-lift-tech" data-animate="in-up" data-delay="120">
+          <div class="absolute -top-14 -right-14 h-40 w-40 rounded-full bg-[rgba(47,42,36,0.06)] blur-2xl"></div>
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="inline-flex items-center gap-2">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)]">🧾</span>
+                <div>
+                  <div class="font-code text-[12px] text-inkMuted">plan</div>
+                  <h3 class="font-heading font-bold text-primary text-xl">Free</h3>
+                </div>
+              </div>
+              <p class="mt-3 text-sm text-inkMuted leading-relaxed">Explore the directory and see the curation format before you commit to anything.</p>
+            </div>
+            <div class="text-right">
+              <div class="font-heading font-extrabold text-primary text-2xl">$0</div>
+              <div class="font-code text-[12px] text-inkMuted">/ month</div>
+            </div>
+          </div>
+          <ul class="mt-5 space-y-2 text-sm text-inkMuted">
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>Browse playbooks + formats</span></li>
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>See inputs/outputs + rationale</span></li>
+            <li class="flex items-start gap-2"><span class="text-inkMuted">—</span><span>Limited drops</span></li>
+          </ul>
+          <a href="#signup" class="mt-6 inline-flex w-full items-center justify-center rounded-xl border border-[rgba(47,42,36,0.28)] bg-transparent px-4 py-3 font-semibold text-primary hover:bg-[rgba(196,99,45,0.10)] transition duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-amber focus:ring-offset-2 focus:ring-offset-[#F4F0E8] tap min-h-[44px]">
+            Get curated playbook alerts
+          </a>
+        </div>
+
+        <div class="rounded-2xl bg-paper double-border shadow-lift p-6 relative overflow-hidden hover-lift-tech" data-animate="in-up" data-delay="170">
+          <div class="absolute -top-16 -left-16 h-44 w-44 rounded-full bg-[rgba(196,99,45,0.18)] blur-2xl"></div>
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="inline-flex items-center gap-2">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(196,99,45,0.12)]">🧾</span>
+                <div>
+                  <div class="font-code text-[12px] text-inkMuted">plan</div>
+                  <h3 class="font-heading font-bold text-primary text-xl">Starter</h3>
+                </div>
+              </div>
+              <p class="mt-3 text-sm text-inkMuted leading-relaxed">For solo builders who want vetted, repo-ready workflows without the clutter.</p>
+            </div>
+            <div class="text-right">
+              <div class="font-heading font-extrabold text-primary text-2xl">$7</div>
+              <div class="font-code text-[12px] text-inkMuted">/ month</div>
+            </div>
+          </div>
+          <div class="mt-4 inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)]">
+            <span class="h-2 w-2 rounded-full bg-accent"></span>
+            <span class="font-code text-[12px] text-inkMuted">best for shipping weekly</span>
+          </div>
+          <ul class="mt-5 space-y-2 text-sm text-inkMuted">
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>Weekly curated drops</span></li>
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>Repo-ready templates (md/yaml)</span></li>
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>Adopt-in-10-min guides</span></li>
+          </ul>
+          <a href="#signup" class="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-accent px-4 py-3 font-semibold text-[#FBF7F0] shadow-lift hover:bg-accentHover transition duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-amber focus:ring-offset-2 focus:ring-offset-[#F4F0E8] tap min-h-[44px]">
+            Get curated playbook alerts
+          </a>
+        </div>
+
+        <div class="rounded-2xl bg-paper double-border shadow-lift p-6 relative overflow-hidden hover-lift-tech" data-animate="in-up" data-delay="220">
+          <div class="absolute -bottom-16 -right-16 h-44 w-44 rounded-full bg-[rgba(79,106,75,0.16)] blur-2xl"></div>
+          <div class="flex items-start justify-between">
+            <div>
+              <div class="inline-flex items-center gap-2">
+                <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(79,106,75,0.12)]">🧾</span>
+                <div>
+                  <div class="font-code text-[12px] text-inkMuted">plan</div>
+                  <h3 class="font-heading font-bold text-primary text-xl">Pro</h3>
+                </div>
+              </div>
+              <p class="mt-3 text-sm text-inkMuted leading-relaxed">For AI power users who want standardized rubrics/checklists and serious prompt QA.</p>
+            </div>
+            <div class="text-right">
+              <div class="font-heading font-extrabold text-primary text-2xl">$19</div>
+              <div class="font-code text-[12px] text-inkMuted">/ month</div>
+            </div>
+          </div>
+          <div class="mt-4 rounded-xl border border-[rgba(47,42,36,0.14)] bg-[rgba(47,42,36,0.04)] p-4">
+            <div class="font-code text-[12px] text-inkMuted">includes</div>
+            <div class="mt-2 font-code text-[12px] text-ink">ci_tests: rubric/checklist packs</div>
+          </div>
+          <ul class="mt-5 space-y-2 text-sm text-inkMuted">
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>Deeper rubric libraries</span></li>
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>Advanced reliability patterns</span></li>
+            <li class="flex items-start gap-2"><span class="text-pass">✅</span><span>More serious QA workflow</span></li>
+          </ul>
+          <a href="#signup" class="mt-6 inline-flex w-full items-center justify-center rounded-xl border border-[rgba(47,42,36,0.28)] bg-transparent px-4 py-3 font-semibold text-primary hover:bg-[rgba(196,99,45,0.10)] transition duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-amber focus:ring-offset-2 focus:ring-offset-[#F4F0E8] tap min-h-[44px]">
+            Get curated playbook alerts
+          </a>
+        </div>
+      </div>
+
+      <p class="mt-6 text-sm text-inkMuted font-code" data-animate="in-up" data-delay="280">Tip: start free, then upgrade when you want standardized QA you can run repeatedly.</p>
+    </div>
+  </section>
+
+  <!-- FAQ (tertiary) -->
+  <section id="faq" class="px-4 sm:px-6 lg:px-10 py-12 sm:py-14" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <h2 class="font-heading font-extrabold tracking-tight text-primary text-2xl sm:text-3xl" data-animate="in-up" data-delay="40">FAQ (the stuff you’ll ask before trusting a playbook)</h2>
+      <div class="mt-8 grid lg:grid-cols-2 gap-4">
+        <details class="group rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="90">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4 min-h-[44px]">
+            <span class="font-heading font-semibold text-primary">Is this just a list of prompts?</span>
+            <span class="font-code text-[12px] text-inkMuted group-open:rotate-90 transition">›</span>
+          </summary>
+          <p class="mt-3 text-sm text-inkMuted leading-relaxed">No. It’s a directory of <span class="font-semibold text-primary">workflows</span>—versioning/testing/context patterns with inputs/outputs, adoption steps, expected outcomes, and rationale.</p>
+        </details>
+
+        <details class="group rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="140">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4 min-h-[44px]">
+            <span class="font-heading font-semibold text-primary">Will this work with local models?</span>
+            <span class="font-code text-[12px] text-inkMuted group-open:rotate-90 transition">›</span>
+          </summary>
+          <p class="mt-3 text-sm text-inkMuted leading-relaxed">Yes. Playbooks are designed to be model-agnostic where possible, and tagged by model type/toolchain so you can filter for local-first workflows.</p>
+        </details>
+
+        <details class="group rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="190">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4 min-h-[44px]">
+            <span class="font-heading font-semibold text-primary">How does this help with frozen or unfinished outputs?</span>
+            <span class="font-code text-[12px] text-inkMuted group-open:rotate-90 transition">›</span>
+          </summary>
+          <p class="mt-3 text-sm text-inkMuted leading-relaxed">Playbooks include operational guardrails—stop conditions, retry rules, and validation checks—so stalls are detected and handled predictably.</p>
+        </details>
+
+        <details class="group rounded-2xl bg-paper double-border p-5 hover-lift-tech" data-animate="in-up" data-delay="240">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4 min-h-[44px]">
+            <span class="font-heading font-semibold text-primary">Can I keep everything in git?</span>
+            <span class="font-code text-[12px] text-inkMuted group-open:rotate-90 transition">›</span>
+          </summary>
+          <p class="mt-3 text-sm text-inkMuted leading-relaxed">That’s the point. Templates are repo-ready artifacts (Markdown/YAML/prompt files) meant for PR review, diffs, and rollback.</p>
+        </details>
+
+        <details class="group rounded-2xl bg-paper double-border p-5 lg:col-span-2 hover-lift-tech" data-animate="in-up" data-delay="290">
+          <summary class="cursor-pointer list-none flex items-center justify-between gap-4 min-h-[44px]">
+            <span class="font-heading font-semibold text-primary">How do you prevent low-quality submissions?</span>
+            <span class="font-code text-[12px] text-inkMuted group-open:rotate-90 transition">›</span>
+          </summary>
+          <p class="mt-3 text-sm text-inkMuted leading-relaxed">Submissions follow a structured format and are improved through voting + guided feedback, rather than unmoderated prompt dumping.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA (dominant) -->
+  <section id="signup" class="px-4 sm:px-6 lg:px-10 py-16 sm:py-20" data-animate="in-up" data-delay="0">
+    <div class="mx-auto max-w-6xl">
+      <div class="rounded-3xl bg-[#1B1916] text-[#FBF7F0] border border-[rgba(255,255,255,0.12)] overflow-hidden relative" data-animate="scale-in" data-delay="60">
+        <div class="absolute inset-0 opacity-[0.10]" style="background-image: radial-gradient(circle at 16% 24%, rgba(255,255,255,0.9) 0.6px, transparent 0.7px), radial-gradient(circle at 72% 56%, rgba(255,255,255,0.75) 0.6px, transparent 0.7px); background-size: 240px 180px, 280px 220px;"></div>
+        <div class="relative p-7 sm:p-10 lg:p-12">
+          <div class="grid lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+            <div class="lg:col-span-7" data-animate="in-up" data-delay="120">
+              <h2 class="font-heading font-extrabold tracking-tight text-3xl sm:text-4xl lg:text-5xl leading-[1.05]">Want the next playbook drop? Keep it local. Keep it shippable.</h2>
+              <p class="mt-4 text-[rgba(255,255,255,0.78)] leading-relaxed max-w-2xl">
+                If you’re done treating prompts like fragile magic spells, subscribe for curated playbooks you can <span class="font-semibold text-white">commit to your repo</span>.
+              </p>
+
+              <div class="mt-6 grid sm:grid-cols-2 gap-4" data-animate="in-up" data-delay="170">
+                <div class="rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.06)] p-5 hover-lift-tech">
+                  <div class="flex items-start gap-3">
+                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(79,106,75,0.18)] border border-[rgba(255,255,255,0.12)]">✅</span>
+                    <div>
+                      <div class="font-semibold">Prevent stalled/unfinished outputs</div>
+                      <div class="mt-1 font-code text-[12px] text-[rgba(255,255,255,0.70)]">stop_conditions + retry_rules</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.06)] p-5 hover-lift-tech">
+                  <div class="flex items-start gap-3">
+                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(196,99,45,0.18)] border border-[rgba(255,255,255,0.12)]">🧪</span>
+                    <div>
+                      <div class="font-semibold">Prompt tests + rubrics</div>
+                      <div class="mt-1 font-code text-[12px] text-[rgba(255,255,255,0.70)]">repeatable QA in CI</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.06)] p-5 hover-lift-tech">
+                  <div class="flex items-start gap-3">
+                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(184,137,46,0.18)] border border-[rgba(255,255,255,0.12)]">🧾</span>
+                    <div>
+                      <div class="font-semibold">PR-friendly diffs</div>
+                      <div class="mt-1 font-code text-[12px] text-[rgba(255,255,255,0.70)]">review + rollback</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.06)] p-5 hover-lift-tech">
+                  <div class="flex items-start gap-3">
+                    <span class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.12)]">🔒</span>
+                    <div>
+                      <div class="font-semibold">Privacy-conscious context</div>
+                      <div class="mt-1 font-code text-[12px] text-[rgba(255,255,255,0.70)]">redaction + packing</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="lg:col-span-5" data-animate="in-right" data-delay="180">
+              <div class="rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.06)] p-6 hover-lift-tech">
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <div class="font-code text-[12px] text-[rgba(255,255,255,0.70)]">subscribe</div>
+                    <div class="mt-1 font-heading font-semibold text-xl">Email me new playbooks</div>
+                  </div>
+                  <span class="inline-flex items-center gap-2 rounded-full px-3 py-1 border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.06)] font-code text-[12px] text-[rgba(255,255,255,0.72)]">
+                    <span class="h-1.5 w-1.5 rounded-full bg-[#B8892E]"></span>
+                    weekly
+                  </span>
+                </div>
+
+                <form action="#" class="mt-5 flex flex-col gap-3 focus-glow rounded-2xl">
+                  <label class="sr-only" for="email2">Email</label>
+                  <input id="email2" name="email" type="email" required placeholder="you@domain.com" class="w-full rounded-xl bg-[#12100E] border border-[rgba(255,255,255,0.16)] px-4 py-3 text-[#FBF7F0] placeholder:text-[rgba(255,255,255,0.55)] focus:outline-none focus:ring-2 focus:ring-[#B8892E] focus:ring-offset-2 focus:ring-offset-[#1B1916] min-h-[44px]" />
+                  <button type="submit" class="rounded-xl bg-accent px-5 py-3 font-semibold text-[#FBF7F0] shadow-lift hover:bg-accentHover transition duration-150 ease-out focus:outline-none focus:ring-2 focus:ring-[#B8892E] focus:ring-offset-2 focus:ring-offset-[#1B1916] tap min-h-[44px]">
+                    Email me new playbooks
+                  </button>
+                  <div class="flex items-center justify-between gap-3 text-[12px] font-code text-[rgba(255,255,255,0.65)]">
+                    <span>No onboarding. Just drops.</span>
+                    <a href="#" class="inline-flex items-center gap-2 rounded-md bg-[rgba(255,255,255,0.06)] px-2 py-1 border border-[rgba(255,255,255,0.14)] hover:bg-[rgba(255,255,255,0.10)] transition nudge-on-hover min-h-[44px]">
+                      <span>@@</span>
+                      <span>sample diff</span>
+                      <span class="nudge">→</span>
+                    </a>
+                  </div>
+                </form>
+              </div>
+
+              <div class="mt-4 rounded-2xl border border-[rgba(255,255,255,0.14)] bg-[rgba(255,255,255,0.04)] p-5 hover-lift-tech" data-animate="in-up" data-delay="260">
+                <div class="flex items-start gap-3">
+                  <div class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.14)] bg-[rgba(79,106,75,0.16)]">✅</div>
+                  <div>
+                    <div class="font-semibold">Conversion goal: email signup</div>
+                    <p class="mt-1 text-sm text-[rgba(255,255,255,0.74)]">No long onboarding—just curated drops so you can pick a playbook and ship.</p>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="mt-8 text-center text-sm text-inkMuted" data-animate="in-up" data-delay="220">
+        <div class="font-code">© <span id="year"></span> SoloPromptPlaybooks • built for git/CI-native reliability</div>
+      </footer>
+    </div>
+  </section>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // IntersectionObserver scroll reveals (technical: precise, fast, functional)
+    (function(){
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      const nodes = Array.from(document.querySelectorAll('[data-animate]'));
+
+      // map numeric data-delay to css var
+      nodes.forEach((el) => {
+        const d = parseInt(el.getAttribute('data-delay') || '0', 10);
+        if (!Number.isNaN(d)) el.style.setProperty('--d', d + 'ms');
+      });
+
+      if (reduce){
+        nodes.forEach(el => el.classList.add('is-in'));
+        return;
+      }
+
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting){
+            entry.target.classList.add('is-in');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.14, rootMargin: '0px 0px -10% 0px' });
+
+      nodes.forEach(el => io.observe(el));
+    })();
+  </script>
+</body>
+</html>

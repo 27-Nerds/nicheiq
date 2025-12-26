@@ -96,45 +96,45 @@ class CreativeDirection(BaseModel):
     # Visual Identity
     design_archetype: str = Field(
         ...,
-        description="Primary design archetype: 'bold-disruptor', 'premium-authority', 'friendly-accessible', 'technical-precision', 'minimal-elegant', 'vibrant-energetic', 'earth-organic', 'neon-futuristic'"
+        description="Design character that fits this product (e.g., bold-disruptor, premium-authority, minimal-elegant, technical-precision, or your own hybrid)"
     )
     visual_intensity: str = Field(
         ...,
-        description="Visual boldness level: 'whisper' (minimal), 'conversational' (balanced), 'statement' (bold), 'shout' (maximum impact)"
+        description="Visual boldness level (e.g., whisper, conversational, statement, shout, or custom level)"
     )
 
     # Color Direction (not specific hex - that's brand designer's job)
     color_personality: str = Field(
         ...,
-        description="Color mood derived from niche: 'trust-blues', 'growth-greens', 'energy-oranges', 'luxury-purples', 'tech-cyans', 'earth-neutrals', 'neon-accents', 'monochrome-sophisticated'"
+        description="Color mood that fits the product story (e.g., trust-blues, growth-greens, luxury-purples, or your own palette direction)"
     )
     color_temperature: str = Field(
         ...,
-        description="Overall warmth: 'cool' (blues/greens), 'warm' (oranges/reds), 'neutral' (grays/earth), 'mixed' (warm accents on cool base)"
+        description="Overall color warmth (e.g., cool, warm, neutral, mixed, or custom balance)"
     )
 
     # Layout Direction
     hero_archetype: str = Field(
         ...,
-        description="Hero layout pattern: 'split-showcase' (text left, visual right), 'centered-statement' (centered headline, minimal), 'immersive-full' (full-bleed background, overlay text), 'asymmetric-dynamic' (off-center, energetic), 'product-demo' (hero with embedded demo/preview)"
+        description="Hero layout pattern (e.g., split-showcase, centered-statement, immersive-full, asymmetric-dynamic, or custom layout)"
     )
     section_density: str = Field(
         ...,
-        description="Content density: 'sparse' (few sections, lots of whitespace), 'balanced' (standard 5-7 sections), 'rich' (many sections, detailed)"
+        description="Content density level (e.g., sparse, balanced, rich, or custom density)"
     )
     layout_rhythm: str = Field(
         ...,
-        description="Section layout variation: 'uniform' (consistent structure), 'alternating' (left-right pattern), 'progressive' (builds complexity), 'dramatic' (varied heights/widths)"
+        description="Section layout variation (e.g., uniform, alternating, progressive, dramatic, or custom rhythm)"
     )
 
     # Typography Direction
     typography_personality: str = Field(
         ...,
-        description="Font character: 'geometric-modern', 'humanist-friendly', 'technical-precise', 'editorial-elegant', 'playful-rounded', 'bold-impact'"
+        description="Font character that matches the product (e.g., geometric-modern, humanist-friendly, editorial-elegant, or custom style)"
     )
     heading_scale: str = Field(
         ...,
-        description="Headline sizing: 'modest' (text-4xl max), 'standard' (text-5xl-6xl), 'bold' (text-7xl), 'massive' (text-8xl+)"
+        description="Headline sizing approach (e.g., modest, standard, bold, massive, or custom scale)"
     )
 
     # Strategic Reasoning
@@ -277,6 +277,27 @@ class VisualDesignSpec(BaseModel):
     visual_design_rationale: str = Field(
         ...,
         description="2-3 sentences explaining the visual strategy and why these choices fit the product"
+    )
+
+    # Page Structure (architecture decisions)
+    page_blueprint: str = Field(
+        ...,
+        description="Wireframe-level page structure: section order, layout type (grid/stacked), and key structural decisions"
+    )
+
+    hero_composition: str = Field(
+        ...,
+        description="Hero content: what elements belong (headline, form, artifact) and what doesn't (feature cards if artifact demonstrates them)"
+    )
+
+    section_composition: dict[str, str] = Field(
+        ...,
+        description="Per-section content: 'hero': 'headline + form + artifact, no feature cards', 'problem': 'single pain point callout'"
+    )
+
+    content_redundancy_notes: str = Field(
+        ...,
+        description="What NOT to include because it's redundant: 'artifact shows compliance steps, so don't list as cards'"
     )
 
 

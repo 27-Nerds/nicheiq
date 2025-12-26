@@ -1,6 +1,6 @@
 """LLM invocation utilities for report generation."""
 
-from typing import Type, TypeVar
+from typing import Any, Type, TypeVar
 
 from langchain_openai import ChatOpenAI
 from loguru import logger
@@ -29,6 +29,20 @@ def is_reasoning_model(model: str) -> bool:
     if model_lower.startswith(("o1", "o3", "o4")):
         return True
     return False
+
+
+def is_codex_model(model: str) -> bool:
+    """
+    Check if a model requires the Responses API (Codex models).
+
+    Codex models (gpt-5.1-codex-max, etc.) only support the Responses API,
+    not the Chat Completions endpoint. LangChain's ChatOpenAI supports this
+    via the use_responses_api=True parameter.
+
+    See: https://python.langchain.com/docs/integrations/chat/openai/
+    """
+    model_lower = model.lower()
+    return "codex" in model_lower
 
 
 def build_llm_kwargs(
@@ -66,11 +80,14 @@ def build_llm_kwargs(
     if timeout:
         kwargs["timeout"] = timeout
 
+    # Note: For Codex models, use build_llm() instead of ChatOpenAI directly
+    # The use_responses_api flag on ChatOpenAI is ignored by CrewAI's internal handling
+
     # For reasoning models, exclude sampling parameters but allow reasoning_effort
     if is_reasoning_model(model):
         if reasoning_effort:
-            # Pass reasoning_effort via model_kwargs for OpenAI API
-            kwargs["model_kwargs"] = {"reasoning_effort": reasoning_effort}
+            # Pass reasoning_effort directly (LangChain supports it as explicit parameter)
+            kwargs["reasoning_effort"] = reasoning_effort
     else:
         if temperature is not None:
             kwargs["temperature"] = temperature
@@ -83,6 +100,49 @@ def build_llm_kwargs(
     kwargs.update(extra_kwargs)
 
     return kwargs
+
+
+def build_llm(
+    model: str,
+    reasoning_effort: str | None = None,
+    api_key: str | None = None,
+    max_output_tokens: int = 16384,
+    **extra_kwargs: Any,
+) -> Any:
+    """
+    Build the appropriate LLM instance based on model type.
+
+    For Codex models (gpt-5.1-codex-max, etc.), returns CodexLLM which uses
+    the Responses API. For all other models, returns ChatOpenAI.
+
+    Args:
+        model: Model name
+        reasoning_effort: Reasoning effort for GPT-5/o1/o3 models
+        api_key: OpenAI API key (defaults to settings)
+        max_output_tokens: Max output tokens for Codex models
+        **extra_kwargs: Additional kwargs passed to the LLM
+
+    Returns:
+        LLM instance (CodexLLM or ChatOpenAI)
+    """
+    if is_codex_model(model):
+        # Use custom CodexLLM for Codex models (Responses API)
+        from .codex_llm import CodexLLM
+        return CodexLLM(
+            model=model,
+            api_key=api_key or settings.openai_api_key,
+            reasoning_effort=reasoning_effort or "medium",
+            max_output_tokens=max_output_tokens,
+        )
+    else:
+        # Use ChatOpenAI for standard models
+        llm_kwargs = build_llm_kwargs(
+            model=model,
+            api_key=api_key,
+            reasoning_effort=reasoning_effort,
+            **extra_kwargs,
+        )
+        return ChatOpenAI(**llm_kwargs)
 
 
 class TokenUsage:

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Join the FragranceCompliance Checklist waitlist: citation-backed, versioned shipping + labeling requirements by region and product type, plus an A5 Bench Card PDF." />
+  <title>FragranceCompliance Checklist Waitlist for Indie Perfumers</title>
+
+  <!-- Google Fonts (brand_identity) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#C24A2C',
+            secondary: '#0E8F8A',
+            bg: '#F6F0E6',
+            text: '#1D1A16',
+            muted: '#6B5F52',
+            paperEdge: '#D9C9B6',
+            warmMid: '#F1E1D0',
+            coolWash: '#D7F1EF'
+          },
+          fontFamily: {
+            heading: ['Fraunces', 'serif'],
+            body: ['Instrument Sans', 'ui-sans-serif', 'system-ui'],
+            mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace']
+          },
+          boxShadow: {
+            lift: '0 18px 40px rgba(29, 26, 22, 0.12)',
+            liftSoft: '0 10px 24px rgba(29, 26, 22, 0.10)'
+          },
+          keyframes: {
+            fadeUp: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0px)' },
+            },
+            fadeIn: {
+              '0%': { opacity: '0' },
+              '100%': { opacity: '1' },
+            },
+            softLift: {
+              '0%': { transform: 'translateY(0px)' },
+              '100%': { transform: 'translateY(-2px)' },
+            },
+            press: {
+              '0%': { transform: 'scale(1)' },
+              '100%': { transform: 'scale(0.99)' },
+            }
+          },
+          animation: {
+            fadeUp: 'fadeUp 260ms ease-out both',
+            fadeIn: 'fadeIn 220ms ease-out both',
+            softLift: 'softLift 220ms ease-out both',
+            press: 'press 120ms ease-out both'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    :root{ color-scheme: light; }
+
+    /* Page-load staged reveal (professional, refined) */
+    @keyframes pageIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .page-load { opacity: 0; animation: pageIn 280ms ease-out forwards; }
+    .delay-1 { animation-delay: 40ms; }
+    .delay-2 { animation-delay: 90ms; }
+    .delay-3 { animation-delay: 140ms; }
+    .delay-4 { animation-delay: 190ms; }
+
+    /* Scroll reveal (statement intensity: noticeable but controlled) */
+    @keyframes revealUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .reveal { opacity: 0; transform: translateY(14px); }
+    .reveal.is-visible { animation: revealUp 300ms ease-out forwards; }
+    .reveal.d1.is-visible { animation-delay: 40ms; }
+    .reveal.d2.is-visible { animation-delay: 80ms; }
+    .reveal.d3.is-visible { animation-delay: 120ms; }
+
+    /* Paper fiber + coffee ring watermark (subtle) */
+    .paper-texture {
+      background:
+        radial-gradient(closest-side at 70% 35%, rgba(194,74,44,0.06), rgba(194,74,44,0.00) 55%),
+        radial-gradient(circle at 30% 70%, rgba(29,26,22,0.035), rgba(29,26,22,0.00) 52%),
+        repeating-linear-gradient(0deg, rgba(29,26,22,0.018), rgba(29,26,22,0.018) 1px, rgba(255,255,255,0) 1px, rgba(255,255,255,0) 7px),
+        repeating-linear-gradient(90deg, rgba(29,26,22,0.012), rgba(29,26,22,0.012) 1px, rgba(255,255,255,0) 1px, rgba(255,255,255,0) 9px);
+    }
+
+    /* Perforation edge for lab label tag */
+    .perforated { position: relative; }
+    .perforated:after{
+      content:"";
+      position:absolute;
+      left:10px;
+      right:10px;
+      bottom:6px;
+      border-bottom: 1px dashed #D9C9B6;
+      opacity: 0.9;
+      pointer-events:none;
+    }
+
+    /* Professional slide-from-right entry (hero artifact) */
+    @keyframes slideFromRight {
+      from { transform: translateX(18px) rotate(3deg); opacity: 0; }
+      to   { transform: translateX(0) rotate(3deg); opacity: 1; }
+    }
+    .animate-slideFromRight { animation: slideFromRight 260ms ease-out both; }
+
+    /* Subtle hover + focus micro-interactions (professional: no bounce) */
+    .hover-lift { transition: transform 220ms ease-out, box-shadow 220ms ease-out, border-color 220ms ease-out; }
+    .hover-lift:hover { transform: translateY(-2px); box-shadow: 0 18px 40px rgba(29, 26, 22, 0.14); border-color: rgba(14,143,138,0.55); }
+
+    .hover-outline { transition: border-color 200ms ease-out, transform 200ms ease-out; }
+    .hover-outline:hover { border-color: rgba(14,143,138,0.55); }
+
+    .btn-press { transition: transform 120ms ease-out, filter 200ms ease-out; }
+    .btn-press:active { transform: scale(0.99); }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .animate-slideFromRight, .page-load, .reveal.is-visible { animation: none !important; opacity: 1 !important; transform: none !important; }
+      .hover-lift, .hover-outline, .btn-press { transition: none !important; }
+      html { scroll-behavior: auto; }
+    }
+
+    /* Form controls baseline */
+    input, select { outline: none; }
+    input:focus, select:focus { box-shadow: 0 0 0 3px rgba(14, 143, 138, 0.22); border-color: #0E8F8A; }
+  </style>
+</head>
+
+<body class="bg-bg text-text font-body">
+  <!-- Top utility bar (minimal, coming soon emphasis without adding extra section content) -->
+  <header class="w-full page-load delay-1">
+    <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between py-5">
+        <div class="flex items-center gap-3">
+          <div class="h-10 w-10 rounded-lg" style="background: linear-gradient(135deg, #C24A2C 0%, #F1E1D0 55%, #D7F1EF 100%);"></div>
+          <div>
+            <div class="font-heading text-lg leading-none">FragranceCompliance Checklist</div>
+            <div class="font-mono text-xs text-muted">Launching soon • waitlist open</div>
+          </div>
+        </div>
+        <a href="#signup" class="hidden sm:inline-flex min-h-[44px] items-center gap-2 rounded-full border border-paperEdge bg-bg px-4 py-2 text-sm text-text hover:border-secondary transition-colors hover-outline">
+          <span class="font-mono text-xs" style="color:#0E8F8A;">→</span>
+          <span>Join waitlist</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO (dominant, asymmetric-dynamic) -->
+    <section class="w-full">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-start py-10 sm:py-14 lg:py-16">
+          <!-- Left: problem-first headline + waitlist form -->
+          <div class="lg:col-span-6">
+            <div class="inline-flex items-center gap-2 rounded-full border border-paperEdge bg-bg px-3 py-1.5 page-load delay-2">
+              <span class="inline-block h-2 w-2 rounded-full" style="background:#C24A2C;"></span>
+              <span class="font-mono text-xs text-muted">COMING SOON • waitlist + bench card</span>
+            </div>
+
+            <h1 class="mt-5 font-heading tracking-tight text-4xl sm:text-5xl lg:text-6xl leading-[1.02] page-load delay-3">
+              Stop the “am I shipping illegally?” spiral
+            </h1>
+
+            <p class="mt-4 text-base sm:text-lg text-muted leading-relaxed max-w-xl page-load delay-4">
+              FragranceCompliance Checklist (coming soon) helps indie perfumers ship smarter across regions—without trusting random threads. Every requirement is citation-backed with a captured excerpt + access date, plus versioned updates when sources change. Join the waitlist for early access and the printable A5 Compliance Bench Card (Label • Docs • Carrier/Region).
+            </p>
+
+            <!-- Waitlist form (compact) -->
+            <div id="signup" class="mt-7 sm:mt-8 reveal">
+              <div class="mb-3 inline-flex items-center gap-2 rounded-md border border-paperEdge bg-bg px-3 py-2 font-mono text-[11px] text-muted perforated">
+                <span class="uppercase tracking-wide">PRE-LAUNCH RUN</span>
+                <span class="opacity-70">•</span>
+                <span>v0.9</span>
+                <span class="opacity-70">•</span>
+                <span>waitlist open</span>
+              </div>
+
+              <form action="#" method="post" class="rounded-2xl border border-paperEdge bg-bg p-4 sm:p-5 shadow-liftSoft hover-lift">
+                <div class="grid grid-cols-1 sm:grid-cols-6 gap-3">
+                  <div class="sm:col-span-6">
+                    <label class="block text-sm font-medium" for="email">Email</label>
+                    <div class="mt-1.5 relative">
+                      <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center font-mono text-xs" style="color:#0E8F8A;">@</div>
+                      <input id="email" name="email" type="email" required placeholder="you@domain.com" autocomplete="email" class="w-full rounded-xl border border-paperEdge bg-bg px-8 py-3 text-base text-text placeholder:text-muted/60 transition-colors" />
+                    </div>
+                  </div>
+
+                  <div class="sm:col-span-3">
+                    <label class="block text-sm font-medium" for="make">What you make</label>
+                    <select id="make" name="make" class="mt-1.5 w-full rounded-xl border border-paperEdge bg-bg px-3 py-3 text-base text-text transition-colors">
+                      <option value="alcohol">alcohol spray</option>
+                      <option value="oil">oil-based</option>
+                      <option value="samples">samples</option>
+                    </select>
+                  </div>
+
+                  <div class="sm:col-span-3">
+                    <label class="block text-sm font-medium" for="ship">Where you ship</label>
+                    <select id="ship" name="ship" class="mt-1.5 w-full rounded-xl border border-paperEdge bg-bg px-3 py-3 text-base text-text transition-colors">
+                      <option value="domestic">domestic</option>
+                      <option value="international">international</option>
+                      <option value="both">both</option>
+                    </select>
+                  </div>
+
+                  <div class="sm:col-span-6 pt-1">
+                    <button type="submit" class="group w-full min-h-[44px] rounded-xl px-4 py-3.5 text-base font-semibold text-bg transition-colors btn-press" style="background:#C24A2C;" aria-label="Join the Waitlist">
+                      <span class="inline-flex items-center justify-center gap-2">
+                        <span>Join the Waitlist</span>
+                        <span class="font-mono text-sm opacity-90 transition-transform group-hover:translate-x-0.5" aria-hidden="true">→</span>
+                      </span>
+                    </button>
+                    <div class="mt-3 flex items-start gap-3">
+                      <div class="mt-0.5 h-6 w-6 rounded-full border border-paperEdge bg-bg flex items-center justify-center" aria-hidden="true">
+                        <span class="font-mono text-[11px]" style="color:#0E8F8A;">i</span>
+                      </div>
+                      <p class="text-sm text-muted leading-relaxed">
+                        You’ll get the printable A5 Bench Card PDF and first access invites. No spam—just launch updates.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </form>
+
+              <!-- Directional cue toward form/CTA -->
+              <div class="mt-4 flex items-center gap-3 text-sm text-muted">
+                <span class="font-mono text-xs" style="color:#0E8F8A;">↳</span>
+                <span>Pin this to your next shipping day: <span class="font-mono" style="color:#0E8F8A;">Label</span> • <span class="font-mono" style="color:#0E8F8A;">Docs</span> • <span class="font-mono" style="color:#0E8F8A;">Carrier/Region</span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: oversized “Compliance Bench Card” artifact screenshot (rotated + washi tape + textures) -->
+          <div class="lg:col-span-6 lg:pl-2">
+            <div class="relative mx-auto max-w-xl">
+              <!-- bench background panel -->
+              <div class="absolute inset-0 -z-10 rounded-3xl" style="background: linear-gradient(135deg, rgba(241,225,208,0.85) 0%, rgba(246,240,230,0.9) 45%, rgba(215,241,239,0.75) 100%); border:1px solid #D9C9B6;"></div>
+
+              <!-- subtle objects silhouettes (no extra sections, stays within hero visual) -->
+              <div class="absolute -left-2 top-10 -z-10 h-16 w-16 rounded-full" style="background: radial-gradient(circle at 35% 35%, rgba(14,143,138,0.20), rgba(14,143,138,0.00) 65%);"></div>
+              <div class="absolute right-6 bottom-6 -z-10 h-28 w-28 rounded-full" style="background: radial-gradient(circle at 40% 40%, rgba(194,74,44,0.16), rgba(194,74,44,0.00) 70%);"></div>
+
+              <!-- A5 artifact card -->
+              <div class="relative rounded-[26px] p-5 sm:p-6 lg:p-7 shadow-lift border hover-lift" style="background:#F6F0E6; border-color:#D9C9B6; transform: rotate(3deg);" >
+                <div class="animate-slideFromRight">
+                  <!-- washi tape strip (semi-transparent teal) -->
+                  <div class="absolute -top-3 left-10 h-10 w-32 rounded-lg" style="background: rgba(14,143,138,0.24); transform: rotate(-8deg);"></div>
+
+                  <!-- coffee ring watermark behind -->
+                  <div class="pointer-events-none absolute inset-0 rounded-[24px] paper-texture"></div>
+
+                  <div class="relative">
+                    <div class="flex items-start justify-between gap-4">
+                      <div>
+                        <div class="font-heading text-xl sm:text-2xl leading-tight">Compliance Bench Card</div>
+                        <div class="mt-1 font-mono text-xs" style="color:#6B5F52;">A5 printable • ship day calm</div>
+                      </div>
+                      <!-- corner tag: versioned + citation snapshot -->
+                      <div class="shrink-0 rounded-lg border border-paperEdge bg-bg px-2.5 py-2 hover-outline">
+                        <div class="font-mono text-[11px] leading-tight" style="color:#0E8F8A;">Versioned</div>
+                        <div class="font-mono text-[11px] leading-tight" style="color:#0E8F8A;">+ citation snapshot</div>
+                      </div>
+                    </div>
+
+                    <div class="mt-5 grid grid-cols-1 gap-3">
+                      <!-- stamped checkbox rows -->
+                      <div class="flex items-center justify-between rounded-xl border border-paperEdge bg-bg px-4 py-3 hover-outline" style="transition: transform 200ms ease-out, border-color 200ms ease-out;">
+                        <div class="flex items-center gap-3">
+                          <div class="h-9 w-9 rounded-lg flex items-center justify-center" style="background: rgba(194,74,44,0.12); border:1px solid #D9C9B6;">
+                            <span class="font-mono text-sm" style="color:#C24A2C;">☑</span>
+                          </div>
+                          <div>
+                            <div class="font-semibold">Label</div>
+                            <div class="font-mono text-[11px]" style="color:#6B5F52;">marking + contents path</div>
+                          </div>
+                        </div>
+                        <span class="font-mono text-xs" style="color:#0E8F8A;">route →</span>
+                      </div>
+
+                      <div class="flex items-center justify-between rounded-xl border border-paperEdge bg-bg px-4 py-3 hover-outline" style="transition: transform 200ms ease-out, border-color 200ms ease-out;">
+                        <div class="flex items-center gap-3">
+                          <div class="h-9 w-9 rounded-lg flex items-center justify-center" style="background: rgba(194,74,44,0.12); border:1px solid #D9C9B6;">
+                            <span class="font-mono text-sm" style="color:#C24A2C;">☑</span>
+                          </div>
+                          <div>
+                            <div class="font-semibold">Docs</div>
+                            <div class="font-mono text-[11px]" style="color:#6B5F52;">SDS + declaration cues</div>
+                          </div>
+                        </div>
+                        <span class="font-mono text-xs" style="color:#0E8F8A;">verify →</span>
+                      </div>
+
+                      <div class="flex items-center justify-between rounded-xl border border-paperEdge bg-bg px-4 py-3 hover-outline" style="transition: transform 200ms ease-out, border-color 200ms ease-out;">
+                        <div class="flex items-center gap-3">
+                          <div class="h-9 w-9 rounded-lg flex items-center justify-center" style="background: rgba(194,74,44,0.12); border:1px solid #D9C9B6;">
+                            <span class="font-mono text-sm" style="color:#C24A2C;">☑</span>
+                          </div>
+                          <div>
+                            <div class="font-semibold">Carrier/Region</div>
+                            <div class="font-mono text-[11px]" style="color:#6B5F52;">domestic vs intl rules</div>
+                          </div>
+                        </div>
+                        <span class="font-mono text-xs" style="color:#0E8F8A;">map →</span>
+                      </div>
+                    </div>
+
+                    <!-- tiny evidence line (mono) -->
+                    <div class="mt-4 flex flex-wrap items-center gap-2">
+                      <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#6B5F52;">excerpt captured</span>
+                      <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#6B5F52;">access date logged</span>
+                      <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#6B5F52;">changes versioned</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- small bench hint row (kept within hero visual, no new feature list) -->
+              <div class="mt-5 flex items-center justify-center gap-3 text-xs text-muted reveal d1">
+                <span class="inline-block h-2 w-2 rounded-full" style="background:#0E8F8A;"></span>
+                <span class="font-mono">bench-top artifact • not a generic template</span>
+                <span class="inline-block h-2 w-2 rounded-full" style="background:#C24A2C;"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROBLEM (standard; spike of recognition) -->
+    <section class="w-full">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="py-10 sm:py-12 lg:py-14">
+          <div class="max-w-2xl reveal">
+            <h2 class="font-heading tracking-tight text-3xl sm:text-4xl leading-tight">Shipping day shouldn’t feel like roulette</h2>
+            <p class="mt-3 text-base sm:text-lg text-muted leading-relaxed">
+              If you’re packing samples at midnight, the real tax is uncertainty: labeling, documentation, and carrier rules that change by product type and destination. One “wrong” shipment can mean delays, returns, or a shop headache that makes sampling even less viable. This checklist is designed for small-batch reality: do the minimum that keeps you safe this week, then scale up when you’re ready.
+            </p>
+          </div>
+
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+            <!-- Pain point card 1 (primary) -->
+            <article class="relative rounded-2xl border bg-bg p-5 shadow-liftSoft reveal d1 hover-lift" style="border-color:#D9C9B6;">
+              <div class="absolute left-0 top-0 h-full w-1.5 rounded-l-2xl" style="background:#C24A2C;"></div>
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-9 w-9 rounded-xl flex items-center justify-center" style="background: rgba(194,74,44,0.10); border:1px solid #D9C9B6;">
+                  <span class="text-lg" aria-hidden="true">⚠</span>
+                </div>
+                <div>
+                  <h3 class="font-semibold text-lg">Region-specific rules</h3>
+                  <p class="mt-1 text-sm text-muted leading-relaxed">Requirements route by jurisdiction so you’re not guessing which guidance applies.</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#0E8F8A;">jurisdiction routing</span>
+                    <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#6B5F52;">avoid misapplied rules</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Pain point card 2 (primary) -->
+            <article class="relative rounded-2xl border bg-bg p-5 shadow-liftSoft reveal d2 hover-lift" style="border-color:#D9C9B6;">
+              <div class="absolute left-0 top-0 h-full w-1.5 rounded-l-2xl" style="background:#C24A2C;"></div>
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-9 w-9 rounded-xl flex items-center justify-center" style="background: rgba(194,74,44,0.10); border:1px solid #D9C9B6;">
+                  <span class="text-lg" aria-hidden="true">⚠</span>
+                </div>
+                <div>
+                  <h3 class="font-semibold text-lg">Product-type differences</h3>
+                  <p class="mt-1 text-sm text-muted leading-relaxed">Alcohol vs oil vs samples are treated as different compliance paths—not one generic article.</p>
+                  <div class="mt-3 flex flex-wrap gap-2">
+                    <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#6B5F52;">path-specific checklist</span>
+                    <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#0E8F8A;">clear route cues</span>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Pain point card 3 (featured; breaks grid, spans 2 columns; heavier stamp + incident note line) -->
+            <article class="relative md:col-span-2 rounded-2xl border bg-bg p-5 sm:p-6 shadow-lift reveal d3 hover-lift" style="border-color:#D9C9B6;">
+              <div class="absolute left-0 top-0 h-full w-1.5 rounded-l-2xl" style="background:#C24A2C;"></div>
+
+              <!-- heavier vermilion stamp mark -->
+              <div class="pointer-events-none absolute -right-3 -top-3 h-24 w-24 rounded-2xl" style="background: rgba(194,74,44,0.16); border: 2px solid rgba(194,74,44,0.35); transform: rotate(10deg);"></div>
+              <div class="pointer-events-none absolute -right-1 -top-1 h-24 w-24 rounded-2xl" style="border: 1px dashed rgba(194,74,44,0.45); transform: rotate(10deg);"></div>
+
+              <div class="flex items-start gap-3">
+                <div class="mt-0.5 h-10 w-10 rounded-xl flex items-center justify-center" style="background: rgba(194,74,44,0.10); border:1px solid #D9C9B6;">
+                  <span class="text-xl" aria-hidden="true">⚠</span>
+                </div>
+                <div class="min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h3 class="font-semibold text-lg">Trust, not vibes</h3>
+                    <span class="rounded-full border border-paperEdge bg-bg px-2.5 py-1 font-mono text-[11px] hover-outline" style="color:#C24A2C;">verify fast</span>
+                  </div>
+                  <!-- mono incident note line -->
+                  <div class="mt-1 font-mono text-[11px]" style="color:#6B5F52;">INCIDENT NOTE 23:58 — “Do I need a different declaration for this destination?”</div>
+                  <p class="mt-3 text-sm text-muted leading-relaxed max-w-3xl">
+                    Each item includes a citation snapshot (excerpt + access date) so you can verify fast.
+                  </p>
+
+                  <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <!-- feature-style micro cards inside (still problem context, but helps richness without adding sections) -->
+                    <div class="rounded-xl border border-paperEdge p-3 hover-lift" style="background: linear-gradient(135deg, rgba(241,225,208,0.75), rgba(215,241,239,0.45));">
+                      <div class="flex items-center justify-between">
+                        <span class="font-mono text-[11px]" style="color:#0E8F8A;">EXCERPT</span>
+                        <span class="font-mono text-[11px]" style="color:#6B5F52;">✓</span>
+                      </div>
+                      <div class="mt-2 text-sm">Captured snippet for quick cross-checking.</div>
+                    </div>
+                    <div class="rounded-xl border border-paperEdge p-3 hover-lift" style="background: linear-gradient(135deg, rgba(241,225,208,0.75), rgba(215,241,239,0.45));">
+                      <div class="flex items-center justify-between">
+                        <span class="font-mono text-[11px]" style="color:#0E8F8A;">ACCESS DATE</span>
+                        <span class="font-mono text-[11px]" style="color:#6B5F52;">✓</span>
+                      </div>
+                      <div class="mt-2 text-sm">So “current” has a timestamp, not a vibe.</div>
+                    </div>
+                    <div class="rounded-xl border border-paperEdge p-3 hover-lift" style="background: linear-gradient(135deg, rgba(241,225,208,0.75), rgba(215,241,239,0.45));">
+                      <div class="flex items-center justify-between">
+                        <span class="font-mono text-[11px]" style="color:#0E8F8A;">VERSIONING</span>
+                        <span class="font-mono text-[11px]" style="color:#6B5F52;">✓</span>
+                      </div>
+                      <div class="mt-2 text-sm">Updates tracked when sources change.</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA (standard; increasing simplicity, reassurance + exclusivity) -->
+    <section class="w-full">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div class="py-10 sm:py-12 lg:py-14">
+          <div class="rounded-3xl border border-paperEdge bg-bg p-6 sm:p-8 lg:p-10 shadow-liftSoft reveal">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-start">
+              <div class="lg:col-span-7">
+                <h2 class="font-heading tracking-tight text-3xl sm:text-4xl leading-tight">Get the Bench Card first</h2>
+                <p class="mt-3 text-base sm:text-lg text-muted leading-relaxed max-w-2xl">
+                  Waitlist members get founding access invites and the printable “Compliance Bench Card” you can keep next to blotters and bubble mailers. It’s built to turn compliance into muscle memory: Label, Docs, Carrier/Region—checked before you tape the box. Join now if you want calmer shipping days before your next restock or drop.
+                </p>
+
+                <!-- Feature cards (secondary): emoji_icon + gradient_bg + shadow_lift -->
+                <div class="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <article class="rounded-2xl border border-paperEdge p-4 shadow-liftSoft hover-lift" style="background: linear-gradient(135deg, rgba(241,225,208,0.82) 0%, rgba(215,241,239,0.52) 100%);">
+                    <div class="flex items-center justify-between">
+                      <div class="inline-flex items-center gap-2">
+                        <span class="text-lg" aria-hidden="true">✓</span>
+                        <span class="font-semibold">Founding access invite</span>
+                      </div>
+                      <span class="rounded-full border border-paperEdge bg-bg px-2 py-1 font-mono text-[11px]" style="color:#0E8F8A;">priority</span>
+                    </div>
+                    <p class="mt-2 text-sm text-muted leading-relaxed">Be first in line when early access opens.</p>
+                  </article>
+
+                  <article class="rounded-2xl border border-paperEdge p-4 shadow-liftSoft hover-lift" style="background: linear-gradient(135deg, rgba(241,225,208,0.82) 0%, rgba(215,241,239,0.52) 100%);">
+                    <div class="flex items-center justify-between">
+                      <div class="inline-flex items-center gap-2">
+                        <span class="text-lg" aria-hidden="true">✓</span>
+                        <span class="font-semibold">A5 Bench Card PDF</span>
+                      </div>
+                      <span class="rounded-full border border-paperEdge bg-bg px-2 py-1 font-mono text-[11px]" style="color:#6B5F52;">printable</span>
+                    </div>
+                    <p class="mt-2 text-sm text-muted leading-relaxed">Printable shipping/labeling reminders for your workbench.</p>
+                  </article>
+
+                  <article class="rounded-2xl border border-paperEdge p-4 shadow-liftSoft hover-lift" style="background: linear-gradient(135deg, rgba(241,225,208,0.82) 0%, rgba(215,241,239,0.52) 100%);">
+                    <div class="flex items-center justify-between">
+                      <div class="inline-flex items-center gap-2">
+                        <span class="text-lg" aria-hidden="true">✓</span>
+                        <span class="font-semibold">Early feedback lane</span>
+                      </div>
+                      <span class="rounded-full border border-paperEdge bg-bg px-2 py-1 font-mono text-[11px]" style="color:#0E8F8A;">moderated</span>
+                    </div>
+                    <p class="mt-2 text-sm text-muted leading-relaxed">Suggest updates via the change-submission flow (moderated).</p>
+                  </article>
+                </div>
+              </div>
+
+              <!-- Right: simple CTA panel with directional cue back to signup -->
+              <div class="lg:col-span-5">
+                <div class="rounded-2xl border border-paperEdge bg-bg p-5 sm:p-6 hover-lift">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <div class="font-mono text-xs" style="color:#6B5F52;">Pre-launch</div>
+                      <div class="mt-1 font-semibold">Claim your spot</div>
+                    </div>
+                    <div class="h-10 w-10 rounded-xl flex items-center justify-center" style="background: rgba(14,143,138,0.12); border:1px solid #D9C9B6;">
+                      <span class="font-mono text-sm" style="color:#0E8F8A;">→</span>
+                    </div>
+                  </div>
+
+                  <p class="mt-3 text-sm text-muted leading-relaxed">
+                    You’ll be notified when early access opens and receive the Bench Card PDF.
+                  </p>
+
+                  <a href="#signup" class="mt-5 inline-flex w-full min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-base font-semibold text-bg transition-colors btn-press" style="background:#C24A2C;">
+                    <span>Claim Founding Access</span>
+                    <span class="font-mono text-sm opacity-90" aria-hidden="true">↘</span>
+                  </a>
+
+                  <div class="mt-4 rounded-xl border border-paperEdge bg-bg p-3 hover-outline">
+                    <div class="flex items-center justify-between">
+                      <span class="font-mono text-[11px]" style="color:#0E8F8A;">CITATION-BACKED</span>
+                      <span class="font-mono text-[11px]" style="color:#6B5F52;">evidence cues in mono</span>
+                    </div>
+                    <div class="mt-2 font-mono text-[11px]" style="color:#6B5F52;">
+                      “excerpt + access date” attached to requirements
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <footer class="mt-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 text-sm text-muted reveal d1">
+            <div class="font-mono text-xs">© <span id="year"></span> FragranceCompliance Checklist</div>
+            <div class="flex items-center gap-2 font-mono text-xs">
+              <span class="inline-block h-2 w-2 rounded-full" style="background:#0E8F8A;"></span>
+              <span>Warm paper • precise evidence</span>
+            </div>
+          </footer>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    // IntersectionObserver scroll reveals (professional: short, crisp, no bounce)
+    (function () {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduce) return;
+
+      const els = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window) || els.length === 0) {
+        els.forEach(el => el.classList.add('is-visible'));
+        return;
+      }
+
+      const io = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: '0px 0px -10% 0px' });
+
+      els.forEach(el => io.observe(el));
+    })();
+  </script>
+</body>
+</html>

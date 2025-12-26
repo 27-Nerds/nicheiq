@@ -24,6 +24,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from ..config.settings import settings
 from ..crews.landing_page_crew import LandingPageCrew
 from ..models.research_state import FinalReport
 
@@ -55,13 +56,40 @@ Examples:
         action="store_true",
         help="Enable verbose logging"
     )
+    parser.add_argument(
+        "--mode",
+        choices=["coming_soon", "launched"],
+        default="coming_soon",
+        help="Page mode: coming_soon (waitlist) or launched (full product). Default: coming_soon"
+    )
 
     args = parser.parse_args()
 
     # Configure logging
-    if not args.verbose:
-        logger.remove()
-        logger.add(sys.stderr, level="INFO")
+    logger.remove()  # Remove default handler
+
+    # Console handler
+    console_level = "DEBUG" if args.verbose else "INFO"
+    logger.add(
+        sys.stderr,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        level=console_level,
+        colorize=True,
+    )
+
+    # File handler for detailed logs
+    log_dir = Path(settings.output_dir) / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.add(
+        log_dir / "landing_page_{time:YYYY-MM-DD}.log",
+        rotation="1 day",
+        retention="7 days",
+        level="DEBUG",
+        format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+    )
+
+    logger.info(f"Logging to file: {log_dir / 'landing_page_*.log'}")
 
     # Validate report path
     report_path = Path(args.report)
@@ -85,14 +113,14 @@ Examples:
     logger.info(f"Pain points: {len(report.detailed_pain_points) if report.detailed_pain_points else 0}")
 
     # Generate landing page
-    logger.info("Starting landing page generation...")
+    logger.info(f"Starting landing page generation (mode: {args.mode})...")
     logger.info("  - Brand Designer will choose unique colors based on product category")
     logger.info("  - Copywriter will select sections based on solution type")
     logger.info("  - HTML Developer will generate custom layout")
 
     try:
         crew = LandingPageCrew()
-        result = crew.generate(report)
+        result = crew.generate(report, page_mode=args.mode)
     except Exception as e:
         logger.error(f"Landing page generation failed: {e}")
         raise

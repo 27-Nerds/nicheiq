@@ -78,8 +78,8 @@ class Settings(BaseSettings):
         description="Model to use for thread relevance validation in Stage 5 (gpt-4o-mini or gpt-3.5-turbo for cost efficiency)"
     )
     brainstorm_llm: str = Field(
-        default="gpt-4o",
-        description="Model to use for solution brainstorming/ideation (gpt-4o, o1-mini, or claude-3-5-sonnet for creative thinking)"
+        default="gpt-5.2",
+        description="Model to use for solution brainstorming/ideation (gpt-5.2 recommended for creative thinking)"
     )
     brainstorm_reasoning_effort: str | None = Field(
         default=None,
@@ -97,18 +97,22 @@ class Settings(BaseSettings):
         default="gpt-5.2",
         description="Model to use for landing page generation (gpt-5.2 recommended for high-quality creative output)"
     )
-    landing_page_reasoning_effort: str | None = Field(
-        default=None,
-        description="Reasoning effort for landing page LLM (GPT-5 series): 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'. Leave unset for older models."
-    )
-    # Creative vs Execution reasoning effort (overrides landing_page_reasoning_effort if set)
-    landing_page_creative_reasoning_effort: str | None = Field(
+    # 3-tier reasoning effort for landing page agents
+    landing_page_creative_reasoning_effort: str = Field(
         default="high",
-        description="Reasoning effort for creative agents (Strategist, Creative Director, Brand Designer, Copywriter). 'high' recommended for differentiated outputs."
+        description="Reasoning effort for creative agents (Strategist, Creative Director, Visual Designer, Brand Designer, Copywriter). 'high' recommended."
     )
-    landing_page_execution_reasoning_effort: str | None = Field(
+    landing_page_execution_reasoning_effort: str = Field(
         default="medium",
-        description="Reasoning effort for execution agents (HTML Developer, Animation Enhancer, QA Reviewer). 'medium' recommended for reliable implementation."
+        description="Reasoning effort for code generation agents (HTML Developer, Animation Enhancer). 'medium' recommended."
+    )
+    landing_page_validation_reasoning_effort: str = Field(
+        default="low",
+        description="Reasoning effort for validation agents (QA Reviewer). 'low' recommended for structured validation tasks."
+    )
+    landing_page_execution_llm: str = Field(
+        default="gpt-5.1-codex-max",
+        description="Model for execution agents (HTML Developer, Animation Enhancer, QA Reviewer). Codex models recommended for reliable code generation."
     )
 
     # CrewAI+ (Enterprise) - Optional
