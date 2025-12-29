@@ -3,96 +3,54 @@
 
 create_landing_strategy:
   description: >
-    # Role and Objective
     Create a strategic landing page brief for {product_name} ({solution_type}).
 
-    # Instructions
-
-    ## Page Mode
-    Mode: {page_mode}
-
-    If page_mode is "coming_soon":
-    - This is a PRE-LAUNCH waitlist page; the product does not exist yet
-    - CRITICAL: Select MINIMAL sections (hero + 1 supporting + cta)
-    - CTA in hero section: embed email capture above the fold
-    - Skip: how_it_works, comparison, detailed features, extensive FAQ
-    - Recommend ONE urgency element (countdown, limited spots, founding member perk)
+    ## Page Mode: {page_mode}
+    If "coming_soon": minimal sections (hero + 1 supporting + cta), email capture in hero.
 
     ## Input Data
-    - Target Personas: {target_personas}
+    - Personas: {target_personas} | Primary segment: {primary_segment}
     - Value Proposition: {value_proposition}
-    - Pain Points: {pain_points}
-    - Pain Points Summary: {pain_points_summary}
-    - Competitive Positioning: {competitive_summary}
+    - Pain Points: {pain_points} | Summary: {pain_points_summary}
+    - Competitive: {competitive_summary}
     - Features: {features}
+    - Niche: {niche} | Vocabulary: {niche_vocabulary}
+    - Tagline: {core_tagline} | Message: {core_marketing_message}
+    - Focus: {recommended_focus}
+    - Messaging frameworks: {messaging_frameworks}
 
-    ## Uniqueness Context
-    - Niche Category: {niche}
-    - Pre-computed Tagline: {core_tagline}
-    - Core Marketing Message: {core_marketing_message}
-    - Strategic Focus: {recommended_focus}
-
-    ## Audience Intelligence Available
-    - Primary segment: {primary_segment}
-    - Niche vocabulary: {niche_vocabulary}
-    - Messaging frameworks:
-    {messaging_frameworks}
-
-    Use these to craft copy that sounds native to this audience, not generic SaaS language.
-
-    ## Niche Context Usage
-    The niche category ({niche}) should inform ALL strategic decisions:
-    - Primary persona language: Use vocabulary natural to THIS niche
-    - Pain point framing: Use terminology THIS audience uses
-    - Messaging tone: Match how THIS community communicates
-    - Visual expectations: Reference what THIS audience expects from quality products
-
-    AVOID: Using generic startup/SaaS language for all niches.
-    Each niche has its own vocabulary - learn it and use it.
-
-    ## Required Decisions
-    1. **Primary Persona**: Select ONE persona with highest pain intensity + budget
-    2. **Key Messaging Angle**: Define emotional trigger (fear/desire/frustration/aspiration)
-    3. **Pain Points**: List 2-3 with specific quotes/numbers from research
-    4. **Differentiation**: State what competitors cannot claim
-    5. **Memorable Element**: Specify ONE visual (e.g., "Oversized statistic: 5 advertisers = 50% revenue")
-    6. **Sections**: Choose from [hero, problem, solution, how_it_works, social_proof, pricing, comparison, cta]
-    7. **CTAs**: Provide 3 action-specific options (do not use "Get Started")
-
-    ## Quality Checklist
-    - Primary persona must be ONE person, not multiple
-    - Memorable element must be a SPECIFIC visual, not vague description
-    - CTAs must be action-specific, not generic
-    - Do not fabricate statistics not in input data
+    ## Deliverables
+    1. Primary Persona: ONE persona (highest pain + budget)
+    2. Key Messaging Angle: emotional trigger
+    3. Pain Points: 2-3 with quotes/numbers from research
+    4. Differentiation: what competitors cannot claim
+    5. Memorable Element: ONE specific visual (e.g., "Oversized statistic: 5 advertisers = 50% revenue")
+    6. Sections: from [hero, problem, solution, how_it_works, social_proof, pricing, comparison, cta]
+    7. CTAs: 3 action-specific options (NOT "Get Started")
 
     <output_verbosity_spec>
     - primary_persona: ONE persona, ≤10 words
     - reasoning fields: 2-3 sentences max
-    - memorable_element: SPECIFIC visual description, not vague
+    - memorable_element: SPECIFIC visual, not vague
     - cta_recommendations: ≤5 words each
     </output_verbosity_spec>
 
-    <uncertainty_and_ambiguity>
-    - If persona data is sparse: Choose highest-pain persona, note assumption
-    - If differentiation unclear: Reference competitive positioning from input
+    <scope_constraints>
+    - Use niche vocabulary, not generic SaaS language
     - Do not fabricate statistics not in input data
+    - Primary persona must be ONE person, not multiple
+    </scope_constraints>
+
+    <uncertainty_and_ambiguity>
+    - Sparse persona data: Choose highest-pain persona, note assumption
+    - Unclear differentiation: Reference competitive positioning
     </uncertainty_and_ambiguity>
 
   expected_output: >
-    LandingStrategy with length constraints:
-    - primary_persona: ONE persona (≤10 words)
-    - primary_persona_reasoning: Why this persona (2-3 sentences max)
-    - key_messaging_angle: Emotional trigger (1 sentence)
-    - pain_points_to_emphasize: 2-3 bullets with quotes/numbers
-    - differentiation_hook: Unique angle (1-2 sentences)
-    - recommended_sections: Ordered list [hero, ...]
-    - section_reasoning: Why these sections (2-3 sentences)
-    - memorable_element: SPECIFIC visual description (1-2 sentences)
-    - memorable_element_implementation: Implementation guidance (2-3 sentences)
-    - headline_direction: problem-first | benefit-first | question | statistic-led
-    - tone_of_voice: professional-authoritative | friendly-approachable | urgent-direct | technical-precise
-    - conversion_goal: email_signup | waitlist | demo_request | free_trial
-    - cta_recommendations: 3 specific CTAs (≤5 words each)
+    LandingStrategy with: primary_persona, primary_persona_reasoning, key_messaging_angle,
+    pain_points_to_emphasize, differentiation_hook, recommended_sections, section_reasoning,
+    memorable_element, memorable_element_implementation, headline_direction, tone_of_voice,
+    conversion_goal, cta_recommendations
 
 create_creative_direction:
   description: >
@@ -127,106 +85,43 @@ create_creative_direction:
 
 create_visual_design:
   description: >
-    # Role and Objective
-    Create visual design specifications for {product_name} landing page by
-    interpreting the creative direction with your own visual personality.
+    Create visual design specifications for {product_name} landing page.
+    Page Mode: {page_mode} (if "coming_soon": design for anticipation)
 
-    # Instructions
+    ## Context (from previous tasks)
+    - Creative Direction: archetype, visual intensity, hero archetype, section density
+    - Landing Strategy: memorable element, primary persona, conversion goal
 
-    ## Context (from context)
-    - Creative Direction: design archetype, visual intensity, hero archetype, section density
-    - Landing Strategy: memorable element description, primary persona, conversion goal
-    - Page Mode: {page_mode}
-
-    If page_mode is "coming_soon":
-    - Design visuals that communicate "launching soon" and build anticipation
-    - Consider how to visually indicate pre-launch status
-
-    ## Page Architecture Decisions (do this FIRST)
-
-    1. **Page Blueprint**:
-       - What sections does this page need? (hero, problem, features, cta, etc.)
-       - What's the section order?
-       - What layout type? (two-column hero, stacked sections, grid features)
-
-    2. **Hero Composition**:
-       - What elements belong IN the hero? (headline, subheadline, form, artifact)
-       - What does NOT belong? (feature cards if artifact demonstrates them)
-       - Is this artifact-focused (artifact is focal) or form-focused (form is focal)?
-
-    3. **Content Redundancy Assessment**:
-       - What does the artifact already demonstrate visually?
-       - What would be redundant if added as text/cards?
-       - What can be removed without losing conversion power?
-
-    4. **Section Composition**:
-       - For each section: what content goes in it?
-       - What's primary (big), what's secondary (small)?
-
-    ## Visual Styling Decisions (after structure)
-
-    5. **Card Treatment Strategy**:
-       - Define how different card types look (feature, pain point, step)
-       - Specify visual elements (emoji icons, accent bars, gradients, shadows)
-       - Describe how they vary across the page
-
-    6. **Memorable Element Visual**:
-       - The landing strategy defines WHAT; you define HOW it looks
-       - Specify implementation type (hero stat, callout box, artifact screenshot)
-       - Choose color treatment (accent dominant, subtle, high contrast)
-       - Select animation entry (fade up, scale in, pulse)
-
-    7. **Visual Surprises**:
-       - Pick 2-3 deliberate convention breaks
-       - Specify what patterns to break and what alternatives to use
-       - Make the page feel hand-crafted, not template-generated
-
-    8. **Section Visual Weights**:
-       - Define which sections dominate visually
-       - Specify which sections fade into background
-
-    9. **Animation Personality**:
-       - playful = bouncy, staggered, energetic
-       - professional = smooth, minimal, refined
-       - dramatic = slow reveals, scale effects
-       - technical = precise, fast, functional
-
-    ## Quality Checklist
-    - Structure decisions must be explicit for HTML Developer
-    - Content redundancy notes must clearly state what NOT to include
-    - Each visual choice must feel intentional, not template-applied
-    - Card treatments must vary between card types
-    - Do not repeat the same pattern for every card
+    ## Deliverables
+    1. Page Blueprint: sections needed, order, layout type
+    2. Hero Composition: what's IN (headline, form, artifact) vs OUT
+    3. Content Redundancy Notes: what NOT to include (critical for downstream)
+    4. Section Composition: content per section, primary vs secondary
+    5. Card Treatments: visual specs per card type (feature, pain, step)
+    6. Memorable Element Visual: HOW the strategy's element looks
+    7. Visual Surprises: 2-3 convention breaks
+    8. Animation Personality: playful | professional | dramatic | technical
 
     <output_verbosity_spec>
-    - page_blueprint: 2-3 sentences describing structure
-    - hero_composition: 1-2 sentences on what's in/out
+    - page_blueprint: 2-3 sentences
+    - hero_composition: 1-2 sentences
     - section_composition: 1 sentence per section
     - content_redundancy_notes: What NOT to include
-    - card_treatments: 1-2 sentences per card type
+    - card_treatments: 1-2 sentences per type
     - visual_surprises: 2-3 specific items
-    - visual_design_rationale: 2-3 sentences max
     </output_verbosity_spec>
 
-    <long_context_handling>
-    - Reference creative direction explicitly when making choices
-    - Reference landing strategy's memorable element
-    - If context unclear, state interpretation before proceeding
-    </long_context_handling>
+    <scope_constraints>
+    - Structure decisions MUST be explicit for HTML Developer
+    - content_redundancy_notes MUST specify what NOT to include
+    - Card treatments MUST vary between card types
+    </scope_constraints>
 
   expected_output: >
-    VisualDesignSpec with:
-    - page_blueprint: Wireframe-level structure description
-    - hero_composition: What's in the hero and why
-    - section_composition: Dict of section → content description
-    - content_redundancy_notes: What NOT to include and why
-    - card_treatments: List of CardTreatment specs per card type
-    - card_variation_approach: How cards vary across the page
-    - memorable_element_visual: MemorableElementVisual with implementation details
-    - visual_surprises: 2-3 VisualSurprise objects
-    - section_visual_weights: Dict of section → weight
-    - animation_personality: One of the personality types
-    - visual_design_rationale: 2-3 sentences explaining choices
+    VisualDesignSpec with: page_blueprint, hero_composition, section_composition,
+    content_redundancy_notes, card_treatments, card_variation_approach,
+    memorable_element_visual, visual_surprises, section_visual_weights,
+    animation_personality, visual_design_rationale
 
 design_brand_identity:
   description: >
@@ -293,317 +188,128 @@ design_brand_identity:
 
 generate_landing_copy:
   description: >
-    # Role and Objective
-    Write conversion-optimized copy for {product_name} that follows the
-    creative direction and landing strategy.
+    Write conversion-optimized copy for {product_name} ({solution_type}).
+    Page Mode: {page_mode}
 
-    # Instructions
-
-    ## Context
-    - Solution Type: {solution_type}
-    - Target Audience: {target_personas}
-    - Value Proposition: {value_proposition}
-    - Pain Points: {pain_points}
-    - Features: {features}
-    - Pricing: {pricing_summary}
-    - Differentiation: {differentiation_factors}
+    ## Input Data
+    - Personas: {target_personas} | Value Prop: {value_proposition}
+    - Pain Points: {pain_points} | Features: {features}
+    - Pricing: {pricing_summary} | Differentiation: {differentiation_factors}
     - Content Angles: {content_angles}
+    - Market: {trend_signal} | {market_verdict}
 
-    ## Market Credibility Signals (use sparingly for social proof)
-    - Market signal: {trend_signal}
-    - Market verdict: {market_verdict}
+    ## Context from Previous Tasks
+    - visual_design_spec.content_redundancy_notes: What NOT to include
+    - visual_design_spec.hero_composition: What belongs IN vs OUT of hero
+    - landing_strategy.tone_of_voice: Writing style guide
 
-    If page_mode is "coming_soon" and trend_signal shows "Growing":
-    - Consider adding "Join a growing market" or similar credibility messaging
-
-    ## Page Mode
-    Mode: {page_mode}
-
-    If page_mode is "coming_soon":
-    - This is a WAITLIST page - focus on email conversion
-    - Write copy that:
-      1. Has ONE clear "coming soon" indicator (not repeated throughout)
-      2. Captures email with urgency: "Join X waitlist members" or "Limited early access"
-      3. Gives ONE compelling reason to sign up NOW (founding member perk, early pricing, etc.)
-      4. Places email form in hero or immediately after - NOT buried
-    - Keep total word count under 400 words (excluding meta)
-    - Avoid redundant "pre-launch", "coming soon", "not available yet" language
-
-    ## Creative Direction (from context)
-    - Section density determines how many sections to include (sparse/balanced/rich)
-    - Tone of voice from landing strategy guides your writing style
-
-    ## Visual Design Constraints (from context - CRITICAL)
-    The Visual Designer has decided page structure. Check these fields:
-    - hero_composition: What belongs IN the hero vs OUT
-    - content_redundancy_notes: What NOT to include
-    - section_composition: What goes in each section
-
-    BEFORE adding items/cards to any section, check content_redundancy_notes.
-    If it says "artifact already demonstrates X", do NOT write cards about X.
-    If hero_composition says "OUT of hero: feature grids", do NOT add items to hero.
-
-    ## Section Selection
-    Choose sections that best communicate THIS product's value to THIS persona.
-    Required: hero (with email capture for waitlist), cta
-    Beyond that, pick sections that fit - you're not limited to a predefined list.
-    For waitlist pages: prioritize email capture, but include sections that build enough trust for signup.
-
-    ## Quality Checklist
-    - Headlines must be product-specific (test: would this work for competitors?)
-    - Numbers must use EXACT data from research when available
-    - CTAs must match the action ("See sponsor data" not "Get Started")
-    - Do not fabricate testimonials or statistics
-    - Items format must be [{"title": "string", "description": "string"}, ...]
-
-    ## Waitlist Page Checklist (page_mode = "coming_soon")
-    - Email form must be in hero section or immediately visible
-    - Total sections: 3 max (hero + 1-2 supporting + cta)
-    - "Coming soon" language: mentioned ONCE, not repeated
-    - CTA text: "Join the Waitlist" or "Save My Spot" (not "Get Started")
-    - Include social proof if available: "Join X others" or "X spots remaining"
-    - One clear incentive: what do they GET for joining early?
-
-    Explain section choices in section_selection_reasoning.
+    ## Page Mode Rules
+    If "coming_soon": email capture in hero, ≤3 sections, <400 words,
+    "coming soon" mentioned ONCE, urgency-focused CTA.
 
     <output_verbosity_spec>
-    - Headlines: ≤8 words for maximum impact
-    - Body text: 2-4 sentences per section
-    - CTAs: ≤5 words, action-specific
-    - section_selection_reasoning: 2-3 sentences max
+    - Headlines: ≤8 words, product-specific
+    - Body: 2-4 sentences per section
+    - CTAs: ≤5 words, action-specific (NOT "Get Started")
     </output_verbosity_spec>
 
-    <uncertainty_and_ambiguity>
-    - If pricing data missing: Omit pricing section, note in reasoning
-    - If features unclear: Use value proposition as guide
+    <scope_constraints>
+    - RESPECT content_redundancy_notes - do NOT duplicate what's excluded
+    - Headlines must be product-specific (test: would this work for competitors?)
     - Do not fabricate testimonials or statistics
+    - Items format: [{"title": "string", "description": "string"}, ...]
+    </scope_constraints>
+
+    <uncertainty_and_ambiguity>
+    - Pricing missing: Omit pricing section, note in reasoning
+    - Features unclear: Use value proposition as guide
     </uncertainty_and_ambiguity>
 
   expected_output: >
-    LandingPageCopy with:
-    - product_name: Product name
-    - tagline: Value proposition (1 sentence)
-    - sections: List of LandingPageSection with section_type, headline, body, optional cta_text and items
-    - section_selection_reasoning: Why these sections for this product
-    - meta_title: SEO title (50-60 chars)
-    - meta_description: SEO description (150-160 chars)
+    LandingPageCopy with: product_name, tagline, sections (List of LandingPageSection),
+    section_selection_reasoning, meta_title (50-60 chars), meta_description (150-160 chars)
 
 generate_html_page:
   description: >
-    # Role and Objective
     Generate production-ready HTML implementing the creative direction,
     brand identity, and visual design specification.
+    Page Mode: {page_mode}
 
-    # Instructions
-    - Strictly follow hero_archetype, layout_rhythm, heading_scale from context
-    - Use only the colors and fonts specified in brand_identity
-
-    ## Creative Direction (from context)
-    - Use: hero_archetype, layout_rhythm, section_density, heading_scale
-    - Apply these via Tailwind CSS
-
-    ## Visual Design Spec (from context)
-    - Use specified card_treatments per card type
-    - Precisely implement memorable_element_visual (placement, color, animation)
-    - Apply visual_surprises only as indicated
-    - Adjust section_visual_weights for size/spacing
-
-    ## Page Mode
-    Mode: {page_mode}
-
-    If page_mode is "coming_soon":
-    - Include a visible "coming soon" or "launching soon" indicator
-    - Page must clearly feel like a pre-launch waitlist page, not live product
-
-    ## Implementation Requirements
-    1. **Hero**: Use hero_archetype from creative direction
-    2. **Typography**: Use only brand_identity fonts via Google Fonts <link>
-    3. **Colors**: Use only brand_identity HEX codes
-    4. **Spacing**: Follow section_density
-    5. **Layouts**: Use layout_rhythm for section variation
-    6. **Memorable Element**: Implement per landing strategy
+    ## Context from Previous Tasks
+    - creative_direction: hero_archetype, layout_rhythm, section_density, heading_scale
+    - visual_design_spec: card_treatments, memorable_element_visual, visual_surprises
+    - brand_identity: colors (HEX codes), fonts (Google Font names)
 
     ## Technical Requirements
-    - Output valid HTML5 with <!DOCTYPE html>; use Tailwind CDN
-    - Include correct Google Fonts <link> for brand_identity fonts
-    - Design mobile-first (sm:, md:, lg: Tailwind classes)
-    - Email form: action="#", CTA section: id="signup"
-    - Meta tags: title, description, viewport
-    - Add scroll-smooth to html element
+    - Valid HTML5 with Tailwind CDN and Google Fonts
+    - Mobile-first (sm:, md:, lg: breakpoints)
+    - Email form action="#", CTA section id="signup"
 
-    ## Quality Checklist
-    - Hero section must stretch full width; do not use gray card for hero
-    - All content sections from context must be included
-    - INTERNAL DATA vs VISIBLE TEXT:
-      Context fields inform design choices but NEVER appear as visible text:
-      - Design archetypes (technical-precision, minimal-professional, bold-vibrant)
-      - Design moods (dark-technical, friendly-approachable)
-      - Placeholder versions (v0.x, v1.0, "updated weekly")
-      - Field names (Primary CTA, section_density, hero_archetype)
+    ## Critical Rules (consolidated)
+    1. Use ONLY brand_identity colors and fonts - no fabrication
+    2. Hero stretches full width - no gray card wrapper
+    3. Card treatments MUST vary between card types (follow visual_design_spec)
+    4. NEVER expose internal data as visible text (archetypes, moods, v0.x versions)
+    5. Absolute positioning: NEVER use top-[X%] inside cards - causes collision
+       (Safe: bottom-4 with pb-X, or outside container, or normal flow)
 
-    ## Card Quality Bar
-    - Each card must include at least one visual element (icon, accent bar, badge, gradient)
-    - Vary card treatments; do not repeat single pattern
-    - Use card purpose to guide styling (feature vs pain point vs step)
-    - Use accent color for anchors; do not let it dominate
-
-    ## Layout Collision Prevention (CRITICAL)
-    - Absolute positioned elements MUST NOT overlap normal flow content
-    - NEVER use percentage-based positioning (top-[50%], top-[72%]) inside cards with variable content
-      - Percentages depend on container height which varies with content
-      - A callout at top-[72%] WILL overlap content if content fills past 72%
-    - SAFE patterns for callouts:
-      1. Position from BOTTOM (bottom-4) with adequate pb-X on parent
-      2. Place callout OUTSIDE the content container entirely
-      3. Use normal flow (after content, not absolute)
-    - If you must use absolute inside a card:
-      - Position at edges only (top-0, bottom-0, -right-4)
-      - Add explicit padding to parent (pb-20) to create safe zone
-      - NEVER position mid-card with percentage
-
-    IMPLEMENTATION APPROACH:
-    Match implementation complexity to the aesthetic vision:
-    - Maximalist designs need elaborate code with extensive effects
-    - Minimalist designs need restraint, precision, careful spacing
-    Implement ONLY what creative direction specifies. Don't add default decorations.
-
-    VISUAL CUES:
-    Use directional elements (arrows, gaze, pointing imagery) to guide eye toward CTA.
+    If "coming_soon": Include visible "launching soon" indicator.
 
     <scope_constraints>
-    - Implement all creative direction as specified
-    - Use exact brand_identity colors and fonts
-    - Follow card_treatments from visual design spec
-    - Do not add extra sections or decorative elements
+    - Implement EXACTLY what creative direction specifies
+    - Do not add extra sections, features, or decorative elements
+    - All visible text must make sense to end users, not designers
     </scope_constraints>
 
-    <long_context_handling>
-    - Reference creative_direction for layout
-    - Reference visual_design_spec for card details
-    - Reference brand_identity for colors and fonts
-    </long_context_handling>
-
     <uncertainty_and_ambiguity>
-    If critical context is missing (brand_identity, creative_direction, visual_design_spec):
-    - Note which context was missing in design_notes
-    - Use sensible defaults for missing values
-    - Do not fabricate brand colors or fonts
+    Missing context: Note in design_notes, use sensible defaults, don't fabricate.
     </uncertainty_and_ambiguity>
 
   expected_output: >
-    HTMLPageResult with:
-    - html_content: Complete HTML (<!DOCTYPE html> to </html>)
-    - sections_included: List of section types implemented
-    - design_notes: 2-3 sentences on implementation choices
+    HTMLPageResult with: html_content (complete HTML), sections_included, design_notes
 
 enhance_animations:
   description: >
-    # Role and Objective
-    Enhance HTML with animations matched to the creative direction and
-    visual design specification.
+    Enhance HTML with animations matched to creative direction.
 
-    # Instructions
+    ## Context from Previous Tasks
+    - visual_intensity: whisper | conversational | statement | shout
+    - animation_personality: playful | professional | dramatic | technical
 
-    ## Creative Direction (from context)
-    Visual intensity determines animation energy:
-    - whisper = minimal/almost static
-    - conversational = subtle
-    - statement = dynamic
-    - shout = bold, motion-rich
-
-    ## Animation Personality (from visual design spec)
-    The Visual Designer has specified animation_personality:
-    - playful = bouncy easing, stagger effects, energetic
-    - professional = smooth, minimal, refined
-    - dramatic = slow reveals, scale effects
-    - technical = precise, fast, functional
-
-    Match timing, easing, and effects to this personality.
-
-    ## Technical Implementation
-    1. Use CSS @keyframes in <style> block
-    2. Use Tailwind animation utilities
-    3. Use IntersectionObserver for scroll reveals
-    4. Preserve ALL existing HTML structure and content
-
-    ## Quality Checklist
-    - Animation energy must match visual_intensity exactly
-    - Timing and easing must match animation_personality
-    - Do not remove existing content or structure
-    - Only ADD animations; do not modify content
-
-    ## Performance Requirements (CRITICAL)
-    - will-change: Apply ONLY to hero entrance + 2-3 key interactive elements (max 5 total)
-    - Fallback: All text content must be visible with CSS alone (no JS required)
-    - Pattern: Do NOT start content at opacity: 0 - use transform-only animations or start at opacity: 0.99
-    - Memory: Avoid will-change on every animated element (causes browser warnings)
-    - Graceful degradation: Content must be readable if JavaScript is disabled
+    ## Technical Tools
+    CSS @keyframes, Tailwind animation utilities, IntersectionObserver for scroll reveals.
 
     <scope_constraints>
     - Match animation energy to visual_intensity EXACTLY
-    - Follow animation_personality from visual design
-    - NEVER remove existing content or structure
-    - Only ADD animations
-    - Content must remain visible without JavaScript
-    - Limit will-change to maximum 5 elements
+    - NEVER remove existing content or structure - only ADD animations
+    - Content must be visible even if JavaScript fails (CSS fallback required)
+    - Limit will-change to max 5 elements (browser memory limit)
+    - NEVER start content at opacity: 0 without CSS fallback
     </scope_constraints>
 
   expected_output: >
-    AnimatedHTMLResult with:
-    - html_content: Enhanced HTML with animations (<!DOCTYPE html> to </html>)
-    - animations_added: List of animation types (page_load, scroll, hover, micro)
-    - animation_notes: How animation energy matches visual_intensity
+    AnimatedHTMLResult with: html_content, animations_added, animation_notes
 
 qa_review_html:
   description: >
-    # Role and Objective
-    Validate HTML implementation against the creative direction specification
-    and apply fixes while preserving all content.
+    Validate HTML against creative direction and apply fixes.
 
-    # Instructions
-
-    ## Validation Approach
-    The creative direction IS the specification. Check that the HTML implements:
-    1. heading_scale → appropriate headline sizes
-    2. section_density → appropriate spacing
-    3. hero_archetype → appropriate hero structure
-    4. visual_intensity → appropriate animation energy
-
-    Do not enforce your own preferences over the creative direction.
-
-    ## Universal Rules (always check)
-    1. Responsive: sm:/md:/lg: breakpoints, no overflow
+    ## Validation Rules
+    1. Responsive: sm:/md:/lg: breakpoints, no horizontal overflow
     2. Accessibility: touch targets min-h-[44px], readable contrast
     3. HTML validity: proper nesting, closed tags
-    4. Layout collision test:
-       - For each `absolute` element inside a content container:
-         - If using top-[X%]: FAIL - percentages cause overlap with variable content
-         - If using bottom-X without parent pb-X padding: FAIL
-         - Callouts must be at container edges, not mid-container
+    4. Layout collision: top-[X%] inside cards = FAIL (causes overlap)
+    5. Creative direction compliance: heading_scale, section_density, hero_archetype
 
-    ## Quality Checklist
-    - Implementation must match creative direction specification
-    - Do not remove sections, text, or HTML elements
-    - Do not remove animations or transition classes
-    - Only modify Tailwind utility classes for fixes
-    - Preserve all creative direction choices
-
-    ## Scoring
-    - Score 0-100 based on creative direction compliance
-    - passes_qa = True if score >= 80
+    Score 0-100 based on compliance. passes_qa = True if score >= 80.
 
     <scope_constraints>
-    - Validate against creative direction, not preferences
+    - Validate against CREATIVE DIRECTION, not personal preferences
     - NEVER remove sections, text, or animations
-    - Only modify Tailwind classes for fixes
-    - Preserve creative direction choices
+    - Only modify Tailwind utility classes for fixes
+    - Preserve all creative direction choices
     </scope_constraints>
 
   expected_output: >
-    QAReviewResult with:
-    - html_content: Refined HTML with fixes applied (<!DOCTYPE html> to </html>)
-    - issues_found: List of QAIssue objects (only issues that contradict creative direction)
-    - issues_fixed_count: Total fixes applied
-    - quality_score: 0-100 based on creative direction compliance
-    - passes_qa: True if score >= 80
-    - review_notes: How implementation aligns with creative direction
+    QAReviewResult with: html_content, issues_found, issues_fixed_count,
+    quality_score (0-100), passes_qa (True if ≥80), review_notes
