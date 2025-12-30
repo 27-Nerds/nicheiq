@@ -43,6 +43,9 @@ dependencies = [
     "loguru>=0.7.0",
     "tenacity>=8.2.0",
     "tiktoken>=0.5.0",
+    # Web worker dependencies
+    "rq>=1.16.0",
+    "redis>=5.0.0",
 ]
 
 [project.optional-dependencies]

@@ -86,4 +86,8 @@ Thumbs.db
 tmp/
 temp/
 
+# Generated/test HTML files at root level
+/*.html
+
+# Data directory
 data/

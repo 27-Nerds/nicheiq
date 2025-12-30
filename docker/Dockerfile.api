@@ -1,0 +1,29 @@
+# Node.js API Dockerfile
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY backend/package*.json ./
+
+# Install dependencies
+RUN npm ci --omit=dev
+
+# Copy Prisma schema and generate client
+COPY backend/prisma ./prisma/
+RUN npx prisma generate
+
+# Copy compiled source
+COPY backend/dist ./dist/
+
+# Copy source for TypeScript (if running with tsx in dev)
+COPY backend/src ./src/
+COPY backend/tsconfig.json ./
+
+# Create output directory
+RUN mkdir -p /app/output/jobs
+
+EXPOSE 3001
+
+# Run with tsx for TypeScript support
+CMD ["npx", "tsx", "src/index.ts"]

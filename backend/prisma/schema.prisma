@@ -1,0 +1,114 @@
+// Prisma schema for NicheIQ Web App
+// Job tracking, progress, and asset management
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Job lifecycle states
+enum JobStatus {
+  PENDING    // Job created, not yet queued
+  QUEUED     // Added to Redis queue
+  RUNNING    // Worker is processing
+  COMPLETED  // Successfully finished
+  FAILED     // Error occurred
+  CANCELLED  // User cancelled
+}
+
+// Stage execution states
+enum StageStatus {
+  PENDING    // Not started
+  RUNNING    // Currently executing
+  COMPLETED  // Finished successfully
+  SKIPPED    // Skipped (e.g., optional stage)
+  FAILED     // Error during execution
+}
+
+// Types of generated assets
+enum AssetType {
+  REPORT_JSON   // Final report (JSON)
+  REPORT_RAW    // Raw research state
+  LANDING_PAGE  // Generated HTML landing page
+}
+
+// Main job tracking table
+model Job {
+  id                   String      @id @default(uuid())
+  email                String      @db.VarChar(255)
+  niche                String      @db.Text
+  allowedProjectTypes  Json?       // Optional list of project types
+
+  // Status tracking
+  status               JobStatus   @default(PENDING)
+  currentStage         Float       @default(1)
+  currentStageName     String?     @db.VarChar(100)
+  stagesCompleted      Int         @default(0)
+  totalStages          Int         @default(14)
+  progressPercent      Float       @default(0)
+
+  // Error tracking
+  errorMessage         String?     @db.Text
+  errorStage           Float?
+
+  // Timestamps
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  startedAt            DateTime?
+  completedAt          DateTime?
+
+  // Relations
+  progress             JobProgress[]
+  assets               JobAsset[]
+
+  // Indexes for common queries
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+}
+
+// Detailed progress tracking per stage
+model JobProgress {
+  id              Int         @id @default(autoincrement())
+  jobId           String
+  job             Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // Stage info
+  stageNumber     Float
+  stageName       String      @db.VarChar(100)
+  status          StageStatus @default(PENDING)
+
+  // Timing
+  startedAt       DateTime?
+  completedAt     DateTime?
+  durationSeconds Float?
+
+  // Additional details
+  details         Json?       // Stage-specific metadata
+  errorMessage    String?     @db.Text
+
+  @@index([jobId])
+  @@unique([jobId, stageNumber])
+}
+
+// Generated assets (reports, landing pages)
+model JobAsset {
+  id            Int       @id @default(autoincrement())
+  jobId         String
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  // Asset info
+  assetType     AssetType
+  filePath      String    @db.VarChar(500)
+  fileSizeBytes Int?
+
+  // Timestamps
+  createdAt     DateTime  @default(now())
+
+  @@index([jobId])
+  @@unique([jobId, assetType])
+}

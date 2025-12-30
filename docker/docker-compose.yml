@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nicheiq-postgres
+    environment:
+      POSTGRES_USER: nicheiq
+      POSTGRES_PASSWORD: nicheiq
+      POSTGRES_DB: nicheiq
+    ports:
+      - "${DOCKER_PG_PORT:-5435}:5432"  # Use 5435 to avoid conflict with local postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nicheiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: nicheiq-redis
+    ports:
+      - "${DOCKER_REDIS_PORT:-6380}:6379"  # Use 6380 to avoid conflict with local redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # API service (for production)
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: nicheiq-api
+    ports:
+      - "3001:3001"
+    environment:
+      DATABASE_URL: postgresql://nicheiq:nicheiq@postgres:5432/nicheiq
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: 3001
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../output:/app/output
+    profiles:
+      - production
+
+  # Python worker (for production)
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: nicheiq-worker
+    environment:
+      DATABASE_URL: postgresql://nicheiq:nicheiq@postgres:5432/nicheiq
+      REDIS_URL: redis://redis:6379
+      NICHEIQ_OUTPUT_DIR: /app/output/jobs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../output:/app/output
+      - ../src:/app/src
+    profiles:
+      - production
+
+  # Frontend (for production)
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+    container_name: nicheiq-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      PUBLIC_API_URL: http://api:3001
+    depends_on:
+      - api
+    profiles:
+      - production
+
+volumes:
+  postgres_data:
+  redis_data:

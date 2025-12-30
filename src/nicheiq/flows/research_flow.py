@@ -88,6 +88,11 @@ class ResearchFlow(Flow[ResearchState]):
             allowed_project_types=allowed_project_types
         )
 
+        # Optional progress callback for web worker integration
+        # Can be set after initialization: flow.progress_callback = callback
+        # Callback signature: (stage_num: float, stage_name: str, status: str) -> None
+        self.progress_callback = None
+
     # ========== HELPER METHODS ==========
 
     def _execute_with_retry(self, func, max_retries: int = 3, backoff: float = 2.0, operation_name: str = "operation"):
@@ -130,6 +135,23 @@ class ResearchFlow(Flow[ResearchState]):
         # Should never reach here, but for type safety
         if last_exception:
             raise last_exception
+
+    def _emit_progress(self, stage_num: float, stage_name: str, status: str) -> None:
+        """
+        Emit progress update via callback if set.
+
+        Used for web worker integration to publish real-time updates via Redis.
+
+        Args:
+            stage_num: Stage number (e.g., 1, 5, 6.5, 8.5)
+            stage_name: Human-readable stage name
+            status: 'running', 'completed', or 'failed'
+        """
+        if self.progress_callback:
+            try:
+                self.progress_callback(stage_num, stage_name, status)
+            except Exception as e:
+                logger.warning(f"Progress callback failed for stage {stage_num}: {e}")
 
     def resume_from_checkpoint(self, checkpoint_path: Path | None = None) -> bool:
         """
@@ -590,6 +612,27 @@ class ResearchFlow(Flow[ResearchState]):
             self.state.fallback_stages.sort()
             logger.warning(f"[Stage Tracking] Stage {stage} used fallback data")
 
+        # Emit progress callback for web worker integration
+        stage_names = {
+            1: "Niche Validation",
+            5: "Search & Discovery",
+            6: "Pain Point Analysis",
+            6.5: "Audience Mapping",
+            7: "Solution Pipeline",
+            8: "Pricing Validation",
+            8.5: "Keyword Validation",
+            8.55: "Traffic Monetization",
+            8.6: "Market Sizing",
+            8.7: "Solution Refinement",
+            9: "SEO Strategy",
+            9.5: "Trend Analysis",
+            9.6: "SEO Score Refinement",
+            9.7: "Data Source Research",
+            10: "Report Generation",
+        }
+        stage_name = stage_names.get(stage, f"Stage {stage}")
+        self._emit_progress(stage, stage_name, "completed")
+
     def _map_pain_points_to_segments(self, audience_result) -> None:
         """
         Map pain points to audience segments based on keyword matching.
@@ -838,6 +881,7 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info("=" * 80)
         logger.info("STAGE 1-4: Niche Input & Validation")
         logger.info("=" * 80)
+        self._emit_progress(1, "Niche Validation", "running")
 
         niche = self.niche_description.strip()
 
@@ -874,6 +918,7 @@ class ResearchFlow(Flow[ResearchState]):
             logger.warning("Proceeding without structured niche context")
 
         self.state.current_stage = 5
+        self._mark_stage_complete(1)
 
         # Checkpoint: Save niche context for resume
         self.checkpoint_mgr.save_stage("stage_1_niche_context", self.state.niche_context)
@@ -942,6 +987,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 5: Search & Discover")
         logger.info("=" * 80)
+        self._emit_progress(5, "Search & Discovery", "running")
 
         # Generate strategic search queries
         from ..utils.generation import QueryGenerator
@@ -1189,6 +1235,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 6: Pain Point Analysis")
         logger.info("=" * 80)
+        self._emit_progress(6, "Pain Point Analysis", "running")
 
         if not self.state.social_content or (not self.state.social_content.reddit_posts and not self.state.social_content.twitter_threads):
             logger.warning("No social content collected. Skipping pain point analysis.")
@@ -1396,6 +1443,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGES 7-8.75: Unified Solution Pipeline")
         logger.info("=" * 80)
+        self._emit_progress(7, "Solution Pipeline", "running")
 
         # Prerequisites check
         if not self.state.pain_point_analysis or not self.state.pain_point_analysis.pain_points:
@@ -3418,6 +3466,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 10: Final Report Generation (Hybrid Python + LLM)")
         logger.info("=" * 80)
+        self._emit_progress(10, "Report Generation", "running")
 
         from datetime import datetime
 
