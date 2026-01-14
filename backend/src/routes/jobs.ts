@@ -275,6 +275,46 @@ jobsRouter.delete('/:jobId', requireInternalAuth, async (req: AuthenticatedReque
 });
 
 /**
+ * PATCH /api/jobs/:jobId/status
+ * Update job status (internal only - called by Python worker)
+ * Used to mark job as RUNNING when worker picks it up from queue
+ */
+jobsRouter.patch('/:jobId/status', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const { status } = req.body;
+
+    // Validate job exists
+    const job = await getJob(jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Only allow RUNNING status transition (from QUEUED)
+    if (status !== 'RUNNING') {
+      res.status(400).json({ error: 'Invalid status. Only RUNNING is allowed.' });
+      return;
+    }
+
+    // Only transition from QUEUED to RUNNING
+    if (job.status !== JobStatus.QUEUED) {
+      // Job already transitioned, return current status (idempotent)
+      res.json({ id: job.id, status: job.status });
+      return;
+    }
+
+    const updatedJob = await updateJobStatus(jobId, JobStatus.RUNNING);
+    console.log(`Job ${jobId} status updated to RUNNING by worker`);
+
+    res.json({ id: updatedJob.id, status: updatedJob.status });
+  } catch (error) {
+    console.error('Failed to update job status:', error);
+    res.status(500).json({ error: 'Failed to update job status' });
+  }
+});
+
+/**
  * GET /api/jobs/:jobId/queue-position
  * Get queue position for a job (requires authentication and ownership)
  */

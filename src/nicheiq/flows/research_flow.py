@@ -1393,6 +1393,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 6.5: Audience & Influence Mapping")
         logger.info("=" * 80)
+        self._emit_progress(6.5, "Audience Mapping", "running")
 
         # Check if we have required data
         if not self.state.social_content:
@@ -1914,6 +1915,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 8: Pricing Strategy Validation")
         logger.info("=" * 80)
+        self._emit_progress(8, "Pricing Validation", "running")
 
         # Check if we have solution selection with scores
         if not self.state.solution_selection:
@@ -2037,6 +2039,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 8.5: Keyword Demand Validation")
         logger.info("=" * 80)
+        self._emit_progress(8.5, "Keyword Validation", "running")
 
         # Check if feature is enabled
         if not getattr(settings, 'keyword_validation_enabled', True):
@@ -2347,6 +2350,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 8.55: Traffic Monetization Analysis")
         logger.info("=" * 80)
+        self._emit_progress(8.55, "Traffic Monetization", "running")
 
         # Traffic-based project types that use this crew
         traffic_types = ['directory', 'aggregator', 'comparison-tool']
@@ -2484,6 +2488,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 8.6: Market Sizing & Validation")
         logger.info("=" * 80)
+        self._emit_progress(8.6, "Market Sizing", "running")
 
         # Check if we have solution selection
         if not self.state.solution_selection:
@@ -2597,6 +2602,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 8.7: Solution Refinement")
         logger.info("=" * 80)
+        self._emit_progress(8.7, "Solution Refinement", "running")
 
         # Check if feature is enabled
         if not getattr(settings, 'solution_refinement_enabled', True):
@@ -2740,6 +2746,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 9: Integrated Keyword Research + SEO Strategy")
         logger.info("=" * 80)
+        self._emit_progress(9, "SEO Strategy", "running")
 
         # Check if we have solution selection
         if not self.state.solution_selection:
@@ -3060,6 +3067,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 9.5: Trend Longevity & Market Momentum Analysis")
         logger.info("=" * 80)
+        self._emit_progress(9.5, "Trend Analysis", "running")
 
         # Aggregate keyword trends from enriched keywords
         trend_summary = self._aggregate_keyword_trends()
@@ -3207,6 +3215,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 9.6: Refine SEO Scores with Keyword Data")
         logger.info("=" * 80)
+        self._emit_progress(9.6, "SEO Score Refinement", "running")
 
         # Check if refinement is enabled
         if not settings.seo_refinement_enabled:
@@ -3386,6 +3395,7 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         logger.info("STAGE 9.7: Data Source Research")
         logger.info("=" * 80)
+        self._emit_progress(9.7, "Data Source Research", "running")
 
         # Check if we have solution selection
         if not self.state.solution_selection:

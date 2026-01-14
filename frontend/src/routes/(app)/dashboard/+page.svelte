@@ -26,6 +26,8 @@
     status: string;
     currentStage: number;
     currentStageName: string | null;
+    stagesCompleted: number;
+    totalStages: number;
     progressPercent: number;
     errorMessage: string | null;
     createdAt: string;
@@ -33,14 +35,13 @@
     completedAt: string | null;
     hasReport: boolean;
     hasLandingPage: boolean;
-    totalStages?: number;
     // Queue position info (for QUEUED jobs)
     queuePosition?: number | null;
     aheadCount?: number;
     totalQueued?: number;
   }
 
-  const TOTAL_STAGES = 10; // NicheIQ uses a 10-stage pipeline
+  const TOTAL_STAGES = 16; // Fallback - actual value comes from job.totalStages
 
   let { data } = $props();
 
@@ -537,7 +538,7 @@
                         <div class="progress-bar">
                           <div class="progress-bar-fill animate-shimmer" style="width: {job.progressPercent}%"></div>
                         </div>
-                        <p class="text-xs text-text-muted mt-1">{job.progressPercent}% complete</p>
+                        <p class="text-xs text-text-muted mt-1">{Math.round(job.progressPercent)}% complete</p>
                       </div>
                     {/if}
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">

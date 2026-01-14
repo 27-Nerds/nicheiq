@@ -9,6 +9,8 @@ interface Job {
   status: string;
   currentStage: number;
   currentStageName: string | null;
+  stagesCompleted: number;
+  totalStages: number;
   progressPercent: number;
   errorMessage: string | null;
   createdAt: string;

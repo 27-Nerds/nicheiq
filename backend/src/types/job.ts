@@ -30,19 +30,22 @@ export const CompletionEventSchema = z.object({
 export type CompletionEvent = z.infer<typeof CompletionEventSchema>;
 
 // Stage definitions for the NicheIQ pipeline
+// Must match worker/progress.py STAGE_NAMES and research_flow.py stage methods
 export const PIPELINE_STAGES = [
-  { number: 1, name: 'Niche Analysis' },
+  { number: 1, name: 'Niche Validation' },
   { number: 5, name: 'Search & Discovery' },
   { number: 6, name: 'Pain Point Analysis' },
   { number: 6.5, name: 'Audience Mapping' },
   { number: 7, name: 'Solution Pipeline' },
-  { number: 8, name: 'Pricing Strategy' },
+  { number: 8, name: 'Pricing Validation' },
   { number: 8.5, name: 'Keyword Validation' },
   { number: 8.55, name: 'Traffic Monetization' },
   { number: 8.6, name: 'Market Sizing' },
   { number: 8.7, name: 'Solution Refinement' },
   { number: 9, name: 'SEO Strategy' },
-  { number: 9.5, name: 'Trend Longevity' },
+  { number: 9.5, name: 'Trend Analysis' },
+  { number: 9.6, name: 'SEO Score Refinement' },
+  { number: 9.7, name: 'Data Source Research' },
   { number: 10, name: 'Report Generation' },
   { number: 11, name: 'Landing Page Generation' },
 ] as const;

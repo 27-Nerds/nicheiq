@@ -20,6 +20,7 @@ from .progress import (
     publish_job_failed,
     publish_progress,
 )
+from .status import mark_job_running
 
 
 def run_research_job(
@@ -71,7 +72,11 @@ def run_research_job(
         # Attach progress callback to flow
         flow.progress_callback = progress_callback
 
-        # Publish "job started" event to update status from QUEUED to RUNNING
+        # Update job status to RUNNING in database (race-condition safe)
+        # This ensures status is updated even if SSE connection isn't established yet
+        mark_job_running(job_id)
+
+        # Publish "job started" event for SSE clients
         progress_callback(1, "Niche Analysis", "running")
 
         # Run the research pipeline (no resume for web jobs)

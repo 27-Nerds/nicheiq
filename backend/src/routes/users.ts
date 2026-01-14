@@ -46,6 +46,8 @@ usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedR
       status: job.status,
       currentStage: job.currentStage,
       currentStageName: job.currentStageName,
+      stagesCompleted: job.stagesCompleted,
+      totalStages: job.totalStages,
       progressPercent: job.progressPercent,
       errorMessage: job.errorMessage,
       createdAt: job.createdAt.toISOString(),
