@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	type BadgeVariant = 'default' | 'success' | 'error' | 'warning' | 'muted' | 'info';
+	type BadgeVariant = 'default' | 'success' | 'error' | 'warning' | 'muted' | 'info' | 'accent';
 	type BadgeSize = 'sm' | 'md';
 
 	interface Props {
@@ -19,7 +19,8 @@
 		error: 'badge badge-error',
 		warning: 'badge badge-warning',
 		muted: 'badge badge-muted',
-		info: 'badge badge-info'
+		info: 'badge badge-info',
+		accent: 'badge badge-accent'
 	};
 
 	const sizeClass = $derived(size === 'sm' ? 'badge-sm' : '');

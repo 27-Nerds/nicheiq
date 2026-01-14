@@ -26,6 +26,7 @@ def run_research_job(
     job_id: str,
     niche: str,
     email: str,
+    user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None
 ) -> dict:
     """
@@ -38,13 +39,14 @@ def run_research_job(
         job_id: UUID of the job (from Node.js)
         niche: User's niche description
         email: User's email for notifications
+        user_id: Optional user ID for authenticated users
         allowed_project_types: Optional constraint on project types
 
     Returns:
         Dict with status, report_path, and optional landing_path
     """
     rq_job = get_current_job()
-    logger.info(f"[Worker] Starting job {job_id} for niche: {niche[:100]}...")
+    logger.info(f"[Worker] Starting job {job_id} for user {user_id or 'anonymous'}, niche: {niche[:100]}...")
 
     # Set up output directory for this job
     output_base = Path(os.environ.get("NICHEIQ_OUTPUT_DIR", "./output/jobs"))

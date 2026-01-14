@@ -25,7 +25,7 @@
 	// Build feature matrix from competitor profiles
 	const featureList = $derived.by(() => {
 		const allFeatures = new Set<string>();
-		profiles.forEach(p => p.key_features.forEach(f => allFeatures.add(f)));
+		profiles.forEach(p => p.key_features?.forEach(f => allFeatures.add(f)));
 		return Array.from(allFeatures).slice(0, 10);
 	});
 
@@ -208,7 +208,7 @@
 								<td class="text-text-primary">{feature}</td>
 								{#each profiles.slice(0, 4) as competitor}
 									<td class="text-center">
-										{#if competitor.key_features.includes(feature)}
+										{#if competitor.key_features?.includes(feature)}
 											<CheckCircle class="w-5 h-5 text-success mx-auto" />
 										{:else}
 											<XCircle class="w-5 h-5 text-text-muted/30 mx-auto" />

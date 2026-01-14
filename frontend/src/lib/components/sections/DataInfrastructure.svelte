@@ -16,6 +16,8 @@
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		data: DataSourceResearchFull;
@@ -81,7 +83,9 @@
 							<Zap class="w-6 h-6 text-success" />
 						</div>
 						<div>
-							<div class="text-sm text-text-muted">MVP Phase Cost</div>
+							<div class="text-sm text-text-muted inline-flex items-center gap-1">
+								MVP Phase Cost <Tooltip content={getTermTooltip('MVP')} position="top" />
+							</div>
 							<div class="text-lg font-semibold text-success">{data.source_evaluation.total_mvp_cost}</div>
 						</div>
 					</div>

@@ -20,7 +20,7 @@ export async function sendCompletionEmail(
   jobId: string,
   niche: string
 ): Promise<void> {
-  if (!CONFIG.smtp.host || !CONFIG.fromEmail) {
+  if (!CONFIG.smtp.host || !CONFIG.smtp.fromEmail) {
     console.log('Email not configured, skipping notification');
     return;
   }
@@ -112,7 +112,7 @@ Job ID: ${jobId}
 
   try {
     await transporter.sendMail({
-      from: CONFIG.fromEmail,
+      from: CONFIG.smtp.fromEmail,
       to,
       subject: 'Your NicheIQ Research is Ready!',
       text: textContent,
@@ -135,7 +135,7 @@ export async function sendFailureEmail(
   niche: string,
   errorMessage: string
 ): Promise<void> {
-  if (!CONFIG.smtp.host || !CONFIG.fromEmail) {
+  if (!CONFIG.smtp.host || !CONFIG.smtp.fromEmail) {
     console.log('Email not configured, skipping notification');
     return;
   }
@@ -201,7 +201,7 @@ Job ID: ${jobId}
 
   try {
     await transporter.sendMail({
-      from: CONFIG.fromEmail,
+      from: CONFIG.smtp.fromEmail,
       to,
       subject: 'NicheIQ Research Issue',
       text: textContent,

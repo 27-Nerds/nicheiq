@@ -310,6 +310,13 @@ class ReportGenerator:
                 keyword_enrichment=self.state.solution_refinement,
                 seo_enrichment=getattr(self.state, 'seo_enrichment', None)
             )
+            # Sync scores with selection criteria (Stage 8.5) - NO FALLBACKS
+            # This ensures selected_solution_details shows the same final scores
+            # as selection_criteria_scores and executive_dashboard.key_metrics
+            selected_solution_details = self._sync_solution_with_selection_scores(
+                selected_solution_details,
+                selection_criteria_scores
+            )
 
         # Generate template-based sections using ReportTemplates
         solution_user_journey = ReportTemplates.user_journey(selected_solution_details)
@@ -610,6 +617,78 @@ class ReportGenerator:
             )
 
         return enriched
+
+    def _sync_solution_with_selection_scores(
+        self,
+        solution: "SolutionIdea",
+        selection_criteria_scores: list
+    ) -> "SolutionIdea":
+        """
+        Sync solution scores and fields with final values from various stages.
+
+        Score Priority (NO FALLBACKS - uses single authoritative source):
+        - market_fit_score: selection_criteria_scores (Stage 8.5)
+        - technical_feasibility_score: selection_criteria_scores (Stage 8.5)
+        - seo_scalability_score: seo_scalability_score_refined (Stage 9.5) if available,
+                                 otherwise selection_criteria_scores (Stage 8.5)
+
+        Field Sync (Refined → Baseline):
+        - estimated_cac_organic: from estimated_cac_organic_refined (Stage 9.5)
+        - programmatic_seo_opportunity: from programmatic_seo_opportunity_refined (Stage 9.5)
+
+        This ensures:
+        1. selected_solution_details shows the SAME scores as executive_dashboard.key_metrics
+        2. Frontend components only need to check baseline fields (no fallback chains)
+        3. Refined Stage 9.5 values are used when available
+
+        Args:
+            solution: SolutionIdea to update (after _merge_solution_enrichments)
+            selection_criteria_scores: List of SelectionCriteriaScore from Stage 8.5
+
+        Returns:
+            SolutionIdea with scores and fields synced from authoritative sources
+        """
+        # Build score map from selection criteria (Stage 8.5)
+        score_map = {}
+        if selection_criteria_scores:
+            score_map = {s.criterion: s.score for s in selection_criteria_scores}
+
+        # Sync scores - NO FALLBACKS, None = "N/A" in frontend
+        solution.market_fit_score = score_map.get('market_fit')
+        solution.technical_feasibility_score = score_map.get('technical_feasibility')
+
+        # SEO score: prefer refined (Stage 9.5), fall back to selection criteria (Stage 8.5)
+        if solution.seo_scalability_score_refined is not None:
+            solution.seo_scalability_score = solution.seo_scalability_score_refined
+            logger.info(
+                f"[Report] Using refined SEO score: {solution.seo_scalability_score_refined:.2f}"
+            )
+        else:
+            solution.seo_scalability_score = score_map.get('seo_growth_potential')
+
+        # Sync refined CAC to baseline (so frontend only needs one field)
+        if solution.estimated_cac_organic_refined:
+            solution.estimated_cac_organic = solution.estimated_cac_organic_refined
+            logger.info(
+                f"[Report] Using refined CAC: {solution.estimated_cac_organic_refined}"
+            )
+
+        # Sync refined programmatic SEO opportunity to baseline
+        if solution.programmatic_seo_opportunity_refined:
+            solution.programmatic_seo_opportunity = solution.programmatic_seo_opportunity_refined
+            logger.info(
+                f"[Report] Using refined programmatic SEO: {solution.programmatic_seo_opportunity_refined[:50]}..."
+            )
+
+        logger.info(
+            f"[Report] Synced solution fields: "
+            f"market_fit={solution.market_fit_score}, "
+            f"tech_feasibility={solution.technical_feasibility_score}, "
+            f"seo={solution.seo_scalability_score}, "
+            f"cac={solution.estimated_cac_organic}"
+        )
+
+        return solution
 
     def _enhance_report_with_llm(self, base_report: FinalReport) -> FinalReport:
         """
@@ -1510,19 +1589,26 @@ It differentiates through {diff_text}.
                 social_evidence_threads += len(self.state.social_content.reddit_posts)
                 social_evidence_threads += len(self.state.social_content.twitter_threads)
 
-            # Extract score fields from selected solution
+            # Extract score fields from selection criteria (Stage 8.5 final scores)
+            # NO FALLBACKS - use only final selection criteria scores, None if missing
+            selection_criteria_scores = self.accessor.get_selection_criteria_scores()
+            score_map = {}
+            if selection_criteria_scores:
+                for score_entry in selection_criteria_scores:
+                    score_map[score_entry.criterion] = score_entry.score
+
+            # Use selection criteria scores only (None = "N/A" in frontend)
+            market_fit_score = score_map.get('market_fit')
+            competitive_advantage_score = score_map.get('competitive_advantage')
+            technical_feasibility_score = score_map.get('technical_feasibility')
+
+            # SEO score: prefer refined (Stage 9.5), fall back to selection criteria (Stage 8.5)
+            # This ensures KeyMetrics shows the same SEO score as selected_solution_details
             selected_solution = self.accessor.get_selected_solution_details()
-            if not selected_solution:
-                logger.warning("No selected solution for metrics - using default scores")
-                market_fit_score = settings.score_accessor_default_fallback
-                competitive_advantage_score = settings.score_accessor_default_fallback
-                technical_feasibility_score = settings.score_accessor_default_fallback
-                seo_potential_score = settings.score_accessor_default_fallback
+            if selected_solution and selected_solution.seo_scalability_score_refined is not None:
+                seo_potential_score = selected_solution.seo_scalability_score_refined
             else:
-                market_fit_score = self.score_accessor.get_market_fit(selected_solution)
-                competitive_advantage_score = self.score_accessor.get_competitive_advantage(selected_solution)
-                technical_feasibility_score = self.score_accessor.get_technical_feasibility(selected_solution)
-                seo_potential_score = self.score_accessor.get_seo_growth(selected_solution)
+                seo_potential_score = score_map.get('seo_growth_potential')
 
             return KeyMetrics(
                 total_keyword_search_volume=total_keyword_search_volume,
@@ -2180,14 +2266,11 @@ It differentiates through {diff_text}.
         channels_summary = format_channels_for_prompt(channels)
         icp_summary = format_icp_for_prompt(icp)
 
-        # Get keyword and competitive data
-        total_keyword_count = 0
-        tier0_keyword_count = 0
-        tier1_keyword_count = 0
-        if self.state.seo_strategy_report:
-            total_keyword_count = self.state.seo_strategy_report.total_keywords_analyzed or 0
-            tier0_keyword_count = len(self.state.seo_strategy_report.tier_0_keywords) if self.state.seo_strategy_report.tier_0_keywords else 0
-            tier1_keyword_count = len(self.state.seo_strategy_report.tier_1_keywords) if self.state.seo_strategy_report.tier_1_keywords else 0
+        # Get keyword and competitive data - use centralized accessor for consistency
+        tier_counts = self.accessor.get_tier_keyword_counts()
+        total_keyword_count = tier_counts["total"]
+        tier0_keyword_count = tier_counts["tier_0"]
+        tier1_keyword_count = tier_counts["tier_1"]
 
         competitor_count = 0
         if self.state.competitive_analysis:

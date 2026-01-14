@@ -119,25 +119,29 @@ class KeyMetrics(BaseModel):
     social_evidence_threads: int = Field(
         description="Number of Reddit/Twitter threads analyzed"
     )
-    market_fit_score: float = Field(
+    market_fit_score: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Market fit score from selected solution (0-1 scale)"
+        description="Market fit score from selection criteria (0-1 scale). None = N/A"
     )
-    competitive_advantage_score: float = Field(
+    competitive_advantage_score: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Competitive advantage score from selected solution (0-1 scale)"
+        description="Competitive advantage score from selection criteria (0-1 scale). None = N/A"
     )
-    technical_feasibility_score: float = Field(
+    technical_feasibility_score: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Technical feasibility score from selected solution (0-1 scale)"
+        description="Technical feasibility score from selection criteria (0-1 scale). None = N/A"
     )
-    seo_potential_score: float = Field(
+    seo_potential_score: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="SEO growth potential score from selected solution (0-1 scale)"
+        description="SEO growth potential score from selection criteria (0-1 scale). None = N/A"
     )
 
 class ExecutiveDashboard(BaseModel):

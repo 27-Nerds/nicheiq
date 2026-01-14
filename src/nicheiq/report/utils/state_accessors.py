@@ -388,38 +388,53 @@ class StateAccessor:
 
     def get_total_keyword_search_volume(self) -> int:
         """
-        Get total search volume across all SEO keywords.
+        Get total search volume across all keywords.
+
+        Primary source: seo_strategy_report (Stage 9 tiered keywords)
+        Fallback: keyword_validation_results (Stage 8.5 validated keywords)
 
         Returns:
-            Sum of search volumes from all tiers
+            Sum of search volumes from available keyword data
         """
-        if not self.state.seo_strategy_report:
-            return 0
+        # Primary: SEO strategy report (Stage 9)
+        if self.state.seo_strategy_report:
+            total_volume = 0
+            seo = self.state.seo_strategy_report
 
-        total_volume = 0
-        seo = self.state.seo_strategy_report
+            # Sum tier 0, 1, 2
+            for kw in (seo.tier_0_keywords or []):
+                total_volume += kw.search_volume or 0
+            for kw in (seo.tier_1_keywords or []):
+                total_volume += kw.search_volume or 0
+            for kw in (seo.tier_2_keywords or []):
+                total_volume += kw.search_volume or 0
 
-        # Sum tier 0, 1, 2
-        for kw in (seo.tier_0_keywords or []):
-            total_volume += kw.search_volume or 0
-        for kw in (seo.tier_1_keywords or []):
-            total_volume += kw.search_volume or 0
-        for kw in (seo.tier_2_keywords or []):
-            total_volume += kw.search_volume or 0
+            # Sum tier 3 geographic groups
+            if seo.tier_3_geographic_groups:
+                for group in seo.tier_3_geographic_groups:
+                    for kw in group.keywords:
+                        total_volume += kw.search_volume or 0
 
-        # Sum tier 3 geographic groups
-        if seo.tier_3_geographic_groups:
-            for group in seo.tier_3_geographic_groups:
-                for kw in group.keywords:
-                    total_volume += kw.search_volume or 0
+            # Sum tier 4 category groups
+            if seo.tier_4_category_groups:
+                for group in seo.tier_4_category_groups:
+                    for kw in group.keywords:
+                        total_volume += kw.search_volume or 0
 
-        # Sum tier 4 category groups
-        if seo.tier_4_category_groups:
-            for group in seo.tier_4_category_groups:
-                for kw in group.keywords:
-                    total_volume += kw.search_volume or 0
+            if total_volume > 0:
+                return total_volume
 
-        return total_volume
+        # Fallback: keyword_validation_results (Stage 8.5)
+        # Used when Stage 9 SEO strategy failed or returned no keywords
+        if self.state.keyword_validation_results:
+            total_volume = sum(
+                v.total_volume for v in self.state.keyword_validation_results
+                if v.total_volume
+            )
+            if total_volume > 0:
+                return total_volume
+
+        return 0
 
     # ==================================================================================
     # Competitive Analysis Access Methods

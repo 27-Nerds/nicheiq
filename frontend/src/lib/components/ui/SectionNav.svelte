@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { BarChart3, Sparkles, Target, Search, Users, DollarSign, Briefcase, Code, TrendingUp, Lightbulb, UserCheck, MessageSquare, FileText, Database } from 'lucide-svelte';
+	import { BarChart3, Sparkles, Target, Search, Users, DollarSign, Briefcase, Code, TrendingUp, Lightbulb, UserCheck, MessageSquare, FileText, Database, ClipboardList } from 'lucide-svelte';
 	import type { Report } from '$lib/types/report';
 
 	interface Section {
@@ -14,29 +14,29 @@
 
 	let { report = null }: Props = $props();
 
-	// Sections ordered by the consolidated 7-tier architecture (15 sections total)
+	// Sections ordered by UX-optimized decision workflow (16 sections total)
 	const allSections: Section[] = [
-		// Tier 1: Decision (2)
+		// Decision Gateway (Go/No-Go)
 		{ id: 'executive', label: 'Executive', icon: BarChart3 },
 		{ id: 'solution', label: 'Solution', icon: Sparkles },
-		// Tier 2: Problem Analysis (2)
-		{ id: 'pain-analysis', label: 'Pain Analysis', icon: Target },
+		// Customer & Problem (Who & Why)
+		{ id: 'audience', label: 'Audience', icon: UserCheck },
+		{ id: 'pain-analysis', label: 'Pain Points', icon: Target },
 		{ id: 'content-insights', label: 'Content', icon: MessageSquare },
-		// Tier 3: Technical (2)
-		{ id: 'technical', label: 'Technical', icon: Code },
-		{ id: 'seo', label: 'SEO', icon: Search },
-		// Tier 4: Viability (1)
-		{ id: 'monetization', label: 'Monetization', icon: DollarSign },
-		// Tier 5: Market (4)
+		// Market Viability (Is It Worth It?)
 		{ id: 'market-sizing', label: 'Market', icon: DollarSign },
+		{ id: 'monetization', label: 'Monetization', icon: DollarSign },
 		{ id: 'competitors', label: 'Competitors', icon: Users },
 		{ id: 'trends', label: 'Trends', icon: TrendingUp },
-		{ id: 'audience', label: 'Audience', icon: UserCheck },
-		// Tier 6: Execution (2)
+		// Build Specification (How)
+		{ id: 'technical', label: 'Technical', icon: Code },
+		{ id: 'seo', label: 'SEO', icon: Search },
+		// Execution (Launch)
 		{ id: 'gtm-playbook', label: 'GTM', icon: Briefcase },
 		{ id: 'data-infrastructure', label: 'Data', icon: Database },
-		// Tier 7: Reference (2)
+		// Reference (Appendix)
 		{ id: 'alternatives', label: 'Alternatives', icon: Lightbulb },
+		{ id: 'evidence-appendix', label: 'Evidence', icon: ClipboardList },
 		{ id: 'research-metadata', label: 'Research', icon: FileText }
 	];
 
@@ -47,18 +47,19 @@
 		return allSections.filter(section => {
 			switch (section.id) {
 				case 'solution': return !!report.executive_dashboard;
+				case 'audience': return !!report.audience_mapping;
 				case 'pain-analysis': return (report.detailed_pain_points?.length ?? 0) > 0;
 				case 'content-insights': return !!report.content_categorization || !!report.overall_competitive_insights;
-				case 'seo': return !!report.seo_strategy_report;
 				case 'monetization': return !!report.pricing_strategy || !!report.traffic_monetization;
 				case 'competitors': return !!report.competitive_analytics;
 				case 'trends': return !!report.trend_longevity;
-				case 'audience': return !!report.audience_mapping;
+				case 'seo': return !!report.seo_strategy_report;
 				case 'gtm-playbook': return !!report.go_to_market_blueprint;
 				case 'data-infrastructure': return !!report.data_source_research_full;
 				case 'alternatives': return (report.alternative_solutions?.length ?? 0) > 0;
+				case 'evidence-appendix': return !!report.evidence_appendix;
 				case 'research-metadata': return !!report.research_metadata;
-				default: return true; // Always visible: executive, technical, market-sizing
+				default: return true; // Always visible: executive, market-sizing, technical
 			}
 		});
 	});
@@ -172,10 +173,11 @@
 		flex-direction: column;
 		gap: 0.5rem;
 		padding: 0.75rem;
-		background: rgba(15, 15, 18, 0.9);
+		background: rgba(255, 255, 255, 0.95);
 		backdrop-filter: blur(12px);
 		border: 1px solid var(--color-border);
 		border-radius: 1rem;
+		box-shadow: var(--shadow-md);
 	}
 
 	@media (min-width: 1280px) {
@@ -232,7 +234,7 @@
 
 	.nav-item.active {
 		color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
+		background: rgba(229, 90, 40, 0.1);
 	}
 
 	.nav-item-label {
@@ -272,7 +274,7 @@
 		align-items: center;
 		gap: 0.25rem;
 		padding: 0.75rem 1.5rem;
-		background: rgba(15, 15, 18, 0.95);
+		background: rgba(255, 255, 255, 0.95);
 		backdrop-filter: blur(12px);
 		border: 1px solid var(--color-border);
 		border-radius: 2rem;
@@ -280,7 +282,7 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		cursor: pointer;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-md);
 	}
 
 	.nav-mobile-progress {
@@ -313,11 +315,11 @@
 		grid-template-columns: repeat(2, 1fr);
 		gap: 0.25rem;
 		padding: 0.5rem;
-		background: rgba(15, 15, 18, 0.95);
+		background: rgba(255, 255, 255, 0.95);
 		backdrop-filter: blur(12px);
 		border: 1px solid var(--color-border);
 		border-radius: 1rem;
-		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+		box-shadow: var(--shadow-lg);
 		animation: slideUp 0.2s ease;
 	}
 
@@ -355,6 +357,6 @@
 
 	.nav-mobile-item.active {
 		color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
+		background: rgba(229, 90, 40, 0.1);
 	}
 </style>

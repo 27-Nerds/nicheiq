@@ -48,29 +48,55 @@ template: |
 
   ---
 
+  ## CRITICAL: NICHE-SPECIFIC CONTEXT
+
+  Queries must find discussions **specific to this niche**, not generic complaints.
+
+  **GOOD queries** (niche-specific):
+  - "freelancer overwhelmed by invoicing" ← specific WHO + WHAT
+  - "beginner piano hand position pain" ← specific activity
+  - "home gardener pest control frustration" ← specific domain
+
+  **BAD queries** (too generic - will match anyone):
+  - ❌ "burnt out doing everything" ← any job, parenting, school
+  - ❌ "anyone struggling with burnout" ← universal complaint
+  - ❌ "fed up with admin" ← admin of what? Too vague
+  - ❌ "overwhelmed and exhausted" ← life complaint, not niche pain
+
+  **The key test**: Could this query match discussions OUTSIDE your niche?
+  - If yes → too generic, add niche context
+  - If no → good, specific to niche
+
+  Transform generic → niche-specific:
+  - ❌ "frustrated with scheduling" → ✅ "freelancer scheduling clients struggle"
+  - ❌ "burnout help" → ✅ "solo entrepreneur burnout clients"
+  - ❌ "overwhelmed by tasks" → ✅ "solopreneur juggling everything alone"
+
+  ---
+
   ## STEP 2: GENERATE QUERIES (4 PATTERNS)
 
   ### 1. Pain Expression (35%)
-  **Pattern**: [emotion] + [domain activity]
+  **Pattern**: [emotion] + [niche-specific activity]
   **3-5 words**
 
-  Examples:
-  - "frustrated learning programming"
-  - "overwhelmed coding bootcamp"
-  - "stuck on coding basics"
-  - "struggling with meal prep"
-  - "exhausted from budgeting"
+  Examples (note: each includes WHO or WHAT domain):
+  - "freelancer overwhelmed invoicing clients"
+  - "entrepreneur customer support nightmare"
+  - "beginner guitarist finger pain practice"
+  - "home cook meal prep family"
+  - "solopreneur no work life balance"
 
   ### 2. Help-Seeking (25%)
-  **Pattern**: "anyone else" / "how do you" + [pain]
+  **Pattern**: "anyone else" / "how do you" + [niche pain]
   **4-6 words**
 
-  Examples:
-  - "anyone else struggle with coding"
-  - "how do you stay motivated coding"
-  - "is coding bootcamp worth it"
-  - "anyone else hate meal planning"
-  - "how do you budget effectively"
+  Examples (note: includes niche context):
+  - "freelancer anyone else hate invoicing"
+  - "entrepreneur how do you find clients"
+  - "solopreneur anyone else overwhelmed solo"
+  - "beginner cook meal planning family help"
+  - "guitarist how do you practice daily"
 
   ### 3. Role + Pain (20%)
   **Pattern**: [segment role] + [pain/question]
@@ -93,6 +119,23 @@ template: |
   - "3 months coding no progress"
   - "plateau after initial weight loss"
   - "stuck after basic budgeting"
+
+  ---
+
+  ## WARNING: GENERIC QUERIES FAIL
+
+  Generic emotional queries find irrelevant content:
+
+  ❌ AVOID these patterns:
+  - "burnt out" → matches ANY profession/life situation
+  - "struggling with motivation" → universal, not niche-specific
+  - "overwhelmed by tasks" → could be office worker, student, parent
+  - "anyone else exhausted" → health/life complaint
+
+  ✅ ADD niche context to emotions:
+  - "burnt out" → "solopreneur burnt out client work"
+  - "motivation struggle" → "freelancer motivation working alone"
+  - "overwhelmed tasks" → "entrepreneur overwhelmed wearing all hats"
 
   ---
 
@@ -153,8 +196,9 @@ template: |
 
   Before outputting, verify EACH query:
   - [ ] 3-6 words? (Count them!)
+  - [ ] Would this query find content ONLY in this niche? (key test!)
+  - [ ] Does it include WHO has the problem or WHAT specific activity?
   - [ ] No specific tech/tool/brand names?
-  - [ ] Uses segment vocabulary from context?
   - [ ] Discovery-focused (not leading)?
 
   <brief_explanation>

@@ -5,6 +5,8 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		data: AlternativeSolution[];
@@ -54,9 +56,10 @@
 							{/if}
 						</div>
 						<div class="flex flex-wrap gap-2">
-							{#if solution.solo_dev_feasibility}
-								<Badge variant={solution.solo_dev_feasibility === 'HIGH' ? 'success' : solution.solo_dev_feasibility === 'MEDIUM' ? 'warning' : 'error'} size="sm">
-									Solo Dev: {solution.solo_dev_feasibility}
+							{#if solution.solo_dev_feasibility != null}
+								{@const feasibility = solution.solo_dev_feasibility}
+								<Badge variant={feasibility >= 0.7 ? 'success' : feasibility >= 0.4 ? 'warning' : 'error'} size="sm">
+									Solo Dev: {Math.round(feasibility * 100)}%
 								</Badge>
 							{/if}
 							{#if solution.competitive_intensity}
@@ -72,31 +75,31 @@
 					<!-- Scores Grid -->
 					{#if solution.market_fit_score || solution.technical_feasibility_score || solution.novelty_score || solution.competitive_advantage_score}
 						<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-							{#if solution.market_fit_score !== undefined}
+							{#if solution.market_fit_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Market Fit</div>
-									<ProgressBar value={solution.market_fit_score * 100} max={100} showValue={false} />
+									<ProgressBar value={(solution.market_fit_score ?? 0) * 100} max={100} showValue={false} />
 									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.market_fit_score)}</div>
 								</div>
 							{/if}
-							{#if solution.technical_feasibility_score !== undefined}
+							{#if solution.technical_feasibility_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Technical</div>
-									<ProgressBar value={solution.technical_feasibility_score * 100} max={100} showValue={false} />
+									<ProgressBar value={(solution.technical_feasibility_score ?? 0) * 100} max={100} showValue={false} />
 									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.technical_feasibility_score)}</div>
 								</div>
 							{/if}
-							{#if solution.competitive_advantage_score !== undefined}
+							{#if solution.competitive_advantage_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Competitive</div>
-									<ProgressBar value={solution.competitive_advantage_score * 100} max={100} showValue={false} />
+									<ProgressBar value={(solution.competitive_advantage_score ?? 0) * 100} max={100} showValue={false} />
 									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.competitive_advantage_score)}</div>
 								</div>
 							{/if}
-							{#if solution.seo_growth_potential_score !== undefined}
+							{#if solution.seo_growth_potential_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">SEO Potential</div>
-									<ProgressBar value={solution.seo_growth_potential_score * 100} max={100} showValue={false} />
+									<ProgressBar value={(solution.seo_growth_potential_score ?? 0) * 100} max={100} showValue={false} />
 									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.seo_growth_potential_score)}</div>
 								</div>
 							{/if}
@@ -250,7 +253,9 @@
 							{#if solution.estimated_cac_organic}
 								<div class="flex items-center gap-2">
 									<DollarSign class="w-4 h-4 text-text-muted" />
-									<span class="text-text-muted">CAC:</span>
+									<span class="text-text-muted inline-flex items-center gap-1">
+										CAC: <Tooltip content={getTermTooltip('CAC')} position="top" />
+									</span>
 									<span class="text-text-primary">${solution.estimated_cac_organic}</span>
 								</div>
 							{/if}

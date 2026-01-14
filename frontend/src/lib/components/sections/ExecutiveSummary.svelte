@@ -27,6 +27,8 @@
 	import MetricCard from '$lib/components/ui/MetricCard.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		data: ExecutiveDashboard;
@@ -154,12 +156,12 @@
 			<!-- Market Fit Score -->
 			<div class="bento-card stat-card-animated">
 				<div class="flex items-center gap-2 mb-2">
-					<TrendingUp class="w-4 h-4 text-accent" />
+					<TrendingUp class="w-4 h-4 {getScoreClass(metrics.market_fit_score)}" />
 					<span class="text-xs text-text-muted uppercase tracking-wider">Market Fit</span>
 				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.market_fit_score)}">{formatScore(metrics.market_fit_score)}</div>
+				<div class="stat-value text-2xl {getScoreClass(metrics.market_fit_score)}">{formatPercent(metrics.market_fit_score)}</div>
 				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.market_fit_score)}" style="width: {metrics.market_fit_score * 100}%"></div>
+					<div class="score-bar-fill {getScoreBarClass(metrics.market_fit_score)}" style="width: {(metrics.market_fit_score ?? 0) * 100}%"></div>
 				</div>
 			</div>
 
@@ -176,12 +178,12 @@
 			<!-- Competitive Advantage -->
 			<div class="bento-card stat-card-animated">
 				<div class="flex items-center gap-2 mb-2">
-					<Shield class="w-4 h-4 text-success" />
+					<Shield class="w-4 h-4 {getScoreClass(metrics.competitive_advantage_score)}" />
 					<span class="text-xs text-text-muted uppercase tracking-wider">Competitive Edge</span>
 				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.competitive_advantage_score)}">{formatScore(metrics.competitive_advantage_score)}</div>
+				<div class="stat-value text-2xl {getScoreClass(metrics.competitive_advantage_score)}">{formatPercent(metrics.competitive_advantage_score)}</div>
 				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.competitive_advantage_score)}" style="width: {metrics.competitive_advantage_score * 100}%"></div>
+					<div class="score-bar-fill {getScoreBarClass(metrics.competitive_advantage_score)}" style="width: {(metrics.competitive_advantage_score ?? 0) * 100}%"></div>
 				</div>
 			</div>
 
@@ -198,12 +200,12 @@
 			<!-- Technical Feasibility -->
 			<div class="bento-card stat-card-animated">
 				<div class="flex items-center gap-2 mb-2">
-					<Zap class="w-4 h-4 text-accent" />
+					<Zap class="w-4 h-4 {getScoreClass(metrics.technical_feasibility_score)}" />
 					<span class="text-xs text-text-muted uppercase tracking-wider">Tech Feasibility</span>
 				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.technical_feasibility_score)}">{formatScore(metrics.technical_feasibility_score)}</div>
+				<div class="stat-value text-2xl {getScoreClass(metrics.technical_feasibility_score)}">{formatPercent(metrics.technical_feasibility_score)}</div>
 				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.technical_feasibility_score)}" style="width: {metrics.technical_feasibility_score * 100}%"></div>
+					<div class="score-bar-fill {getScoreBarClass(metrics.technical_feasibility_score)}" style="width: {(metrics.technical_feasibility_score ?? 0) * 100}%"></div>
 				</div>
 			</div>
 
@@ -220,12 +222,12 @@
 			<!-- SEO Potential -->
 			<div class="bento-card stat-card-animated">
 				<div class="flex items-center gap-2 mb-2">
-					<LineChart class="w-4 h-4 text-success" />
+					<LineChart class="w-4 h-4 {getScoreClass(metrics.seo_potential_score)}" />
 					<span class="text-xs text-text-muted uppercase tracking-wider">SEO Potential</span>
 				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.seo_potential_score)}">{formatScore(metrics.seo_potential_score)}</div>
+				<div class="stat-value text-2xl {getScoreClass(metrics.seo_potential_score)}">{formatPercent(metrics.seo_potential_score)}</div>
 				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.seo_potential_score)}" style="width: {metrics.seo_potential_score * 100}%"></div>
+					<div class="score-bar-fill {getScoreBarClass(metrics.seo_potential_score)}" style="width: {(metrics.seo_potential_score ?? 0) * 100}%"></div>
 				</div>
 			</div>
 		</div>
@@ -242,8 +244,10 @@
 					<h4 class="font-semibold text-text-primary mb-2">Core Pain Point</h4>
 					<p class="text-lg text-text-primary mb-3">{corePain.title}</p>
 					<div class="flex flex-wrap gap-4 text-sm mb-3">
-						<span>Severity: <strong class="text-accent">{formatScore(corePain.severity_score)}</strong></span>
-						<span>WTP: <strong class="text-accent">{formatScore(corePain.willingness_to_pay_score)}</strong></span>
+						<span>Severity: <strong class="text-accent">{formatPercent(corePain.severity_score)}</strong></span>
+						<span class="inline-flex items-center gap-1">
+							WTP: <Tooltip content={getTermTooltip('WTP')} position="top" /> <strong class="text-accent">{formatPercent(corePain.willingness_to_pay_score)}</strong>
+						</span>
 						<span class="text-text-muted">{corePain.source_platform}</span>
 					</div>
 					<blockquote class="quote-enhanced text-sm">"{corePain.representative_quote}"</blockquote>
@@ -311,8 +315,8 @@
 						{/if}
 						{#if refinementHighlights.feature_priority}
 							<div class="card flex items-center gap-4">
-								<div class="p-3 rounded-lg bg-purple-500/10">
-									<Layers class="w-6 h-6 text-purple-500" />
+								<div class="p-3 rounded-lg bg-secondary/10">
+									<Layers class="w-6 h-6 text-secondary" />
 								</div>
 								<div>
 									<div class="text-sm text-text-muted">Feature Priority</div>

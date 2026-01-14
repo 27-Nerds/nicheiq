@@ -14,7 +14,7 @@
 		BookOpen,
 		BarChart3
 	} from 'lucide-svelte';
-	import type { SEOStrategy, SEOAnalytics, Keyword } from '$lib/types/report';
+	import type { SEOStrategy, SEOAnalytics, Keyword, ContentStrategy, ImplementationRoadmap, BudgetAllocation } from '$lib/types/report';
 	import { formatNumber, parseCompetition, getTierLabel, getTierClass, renderMarkdown, renderTechnicalContent } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import MetricCard from '$lib/components/ui/MetricCard.svelte';
@@ -47,6 +47,47 @@
 		if (difficulty < 0.4) return 'text-success';
 		if (difficulty < 0.6) return 'text-warning';
 		return 'text-error';
+	}
+
+	// Convert ContentStrategy object to markdown
+	function formatContentStrategy(cs: ContentStrategy): string {
+		const parts: string[] = [];
+		if (cs.pillar_pages?.length) {
+			parts.push('**Pillar Pages:**\n' + cs.pillar_pages.map(p => `- ${p}`).join('\n'));
+		}
+		if (cs.cluster_content?.length) {
+			parts.push('**Cluster Content:**\n' + cs.cluster_content.map(c => `- ${c}`).join('\n'));
+		}
+		if (cs.supporting_content?.length) {
+			parts.push('**Supporting Content:**\n' + cs.supporting_content.map(s => `- ${s}`).join('\n'));
+		}
+		return parts.join('\n\n') || 'No content strategy details available.';
+	}
+
+	// Convert ImplementationRoadmap object to markdown
+	function formatImplementationRoadmap(ir: ImplementationRoadmap): string {
+		const parts: string[] = [];
+		const phases = [
+			{ key: 'phase_1', phase: ir.phase_1 },
+			{ key: 'phase_2', phase: ir.phase_2 },
+			{ key: 'phase_3', phase: ir.phase_3 }
+		];
+		for (const { phase } of phases) {
+			if (phase) {
+				parts.push(`**${phase.title}** *(${phase.duration})*\n` + phase.tasks.map(t => `- ${t}`).join('\n'));
+			}
+		}
+		return parts.join('\n\n') || 'No implementation roadmap details available.';
+	}
+
+	// Convert BudgetAllocation object to markdown
+	function formatBudgetAllocation(ba: BudgetAllocation): string {
+		const items: string[] = [];
+		if (ba.content_creation) items.push(`**Content Creation:** ${ba.content_creation}`);
+		if (ba.technical_seo) items.push(`**Technical SEO:** ${ba.technical_seo}`);
+		if (ba.link_building) items.push(`**Link Building:** ${ba.link_building}`);
+		if (ba.tools) items.push(`**Tools:** ${ba.tools}`);
+		return items.join('\n\n') || 'No budget allocation details available.';
 	}
 </script>
 
@@ -175,17 +216,18 @@
 			<h3 class="text-lg font-semibold text-text-primary mb-4">Topic Clusters</h3>
 			<div class="grid md:grid-cols-2 gap-4">
 				{#each strategy.topic_clusters.slice(0, 6) as cluster}
+					{@const clusterKeywords = cluster.supporting_keywords || []}
 					<div class="card-surface">
-						<h4 class="font-semibold text-accent mb-2">{cluster.cluster_name || cluster.pillar_topic}</h4>
+						<h4 class="font-semibold text-accent mb-2">{cluster.cluster_name}</h4>
 						{#if cluster.primary_keyword}
 							<span class="text-xs px-2 py-1 rounded bg-accent/20 text-accent mb-2 inline-block">{cluster.primary_keyword}</span>
 						{/if}
 						<div class="flex flex-wrap gap-2 mt-2">
-							{#each (cluster.supporting_keywords || cluster.cluster_keywords || []).slice(0, 5) as keyword}
+							{#each clusterKeywords.slice(0, 5) as keyword}
 								<span class="text-xs px-2 py-1 rounded bg-bg-hover text-text-muted">{keyword}</span>
 							{/each}
-							{#if (cluster.supporting_keywords || cluster.cluster_keywords || []).length > 5}
-								<span class="text-xs text-text-muted">+{(cluster.supporting_keywords || cluster.cluster_keywords || []).length - 5}</span>
+							{#if clusterKeywords.length > 5}
+								<span class="text-xs text-text-muted">+{clusterKeywords.length - 5}</span>
 							{/if}
 						</div>
 					</div>
@@ -213,7 +255,7 @@
 					<h3 class="text-lg font-semibold text-text-primary">Content Strategy</h3>
 				</div>
 				<div class="card markdown-content narrative text-text-secondary">
-					{@html renderTechnicalContent(strategy.content_strategy)}
+					{@html renderMarkdown(formatContentStrategy(strategy.content_strategy))}
 				</div>
 			</div>
 		</AnimateOnScroll>
@@ -228,7 +270,7 @@
 					<h3 class="text-lg font-semibold text-text-primary">Implementation Roadmap</h3>
 				</div>
 				<div class="card markdown-content narrative text-text-secondary">
-					{@html renderTechnicalContent(strategy.implementation_roadmap)}
+					{@html renderMarkdown(formatImplementationRoadmap(strategy.implementation_roadmap))}
 				</div>
 			</div>
 		</AnimateOnScroll>
@@ -243,7 +285,7 @@
 					<h3 class="text-lg font-semibold text-text-primary">Budget Allocation</h3>
 				</div>
 				<div class="card markdown-content text-text-secondary">
-					{@html renderTechnicalContent(strategy.budget_allocation)}
+					{@html renderMarkdown(formatBudgetAllocation(strategy.budget_allocation))}
 				</div>
 			</div>
 		</AnimateOnScroll>
@@ -259,11 +301,11 @@
 				</div>
 				<div class="grid md:grid-cols-2 gap-4">
 					{#each strategy.keyword_based_page_types as pageType}
-						{@const keywords = pageType.example_keywords || pageType.target_keywords || []}
+						{@const keywords = pageType.example_keywords || []}
 						<div class="card-surface">
-							<h4 class="font-medium text-accent mb-2">{pageType.page_type_name || pageType.page_type}</h4>
-							{#if pageType.target_keyword_cluster || pageType.content_focus}
-								<p class="text-xs text-text-muted mb-2">{pageType.target_keyword_cluster || pageType.content_focus}</p>
+							<h4 class="font-medium text-accent mb-2">{pageType.page_type_name}</h4>
+							{#if pageType.target_keyword_cluster}
+								<p class="text-xs text-text-muted mb-2">{pageType.target_keyword_cluster}</p>
 							{/if}
 							{#if keywords.length > 0}
 								<div class="flex flex-wrap gap-1">

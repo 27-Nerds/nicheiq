@@ -489,8 +489,8 @@ class ResearchFlow(Flow[ResearchState]):
         # High-opportunity pain points
         high_opportunity = len([pp for pp in pain_points if pp.opportunity_level.value == "high"])
 
-        # Determine if single-platform mode (Twitter disabled)
-        single_platform_mode = not settings.enable_twitter
+        # Determine if single-platform mode (either Twitter or Reddit disabled)
+        single_platform_mode = not settings.enable_twitter or not settings.enable_reddit
 
         # Adjust weights based on platform availability
         if single_platform_mode:
@@ -1012,53 +1012,64 @@ Return a valid JSON object with this structure:
         ]
         logger.info(f"[OK] Generated {len(self.state.search_queries)} search queries")
 
-        # Search Reddit
-        logger.info("Searching Reddit for relevant discussions...")
-        reddit_results = []
-        for search_query in self.state.search_queries:  # Use all generated queries
-            try:
-                results = self.search_tool.run(
-                    search_query=f"site:reddit.com {search_query.query}"
-                )
-                search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
-                reddit_results.extend(search_items)
-            except Exception as e:
-                logger.error(f"Reddit search failed for '{search_query.query}': {e}")
-
-        # Deduplicate results by URL
-        seen_urls = set()
-        unique_reddit_results = []
-        for result in reddit_results:
-            if result.url not in seen_urls:
-                seen_urls.add(result.url)
-                unique_reddit_results.append(result)
-
-        logger.info(f"[OK] Found {len(unique_reddit_results)} unique Reddit results from {len(self.state.search_queries)} queries")
-
-        # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
-        logger.info("Validating Reddit thread relevance...")
+        # Initialize thread relevance validator (used for both Reddit and Twitter)
         from ..utils.validation import ThreadRelevanceValidator
         validator = ThreadRelevanceValidator()
-        validated_reddit = validator.validate_batch_parallel(
-            niche_description=self.niche_description,
-            search_results=unique_reddit_results,
-            batch_size=10
-            # max_workers defaults to settings.thread_validation_max_workers (2)
-        )
 
-        # Filter to relevant results only
-        reddit_urls = [result.url for result, is_relevant in validated_reddit if is_relevant]
-        filtered_count = len(unique_reddit_results) - len(reddit_urls)
-        logger.info(f"[OK] Filtered {filtered_count} irrelevant threads, kept {len(reddit_urls)} relevant Reddit discussions")
+        # Search Reddit (conditional)
+        reddit_urls = []
+        unique_reddit_results = []
+
+        if settings.enable_reddit:
+            # Filter to Reddit-applicable queries (platform: reddit or both)
+            reddit_queries = [q for q in self.state.search_queries if q.platform in ("reddit", "both")]
+            logger.info(f"Searching Reddit for relevant discussions ({len(reddit_queries)}/{len(self.state.search_queries)} queries)...")
+            reddit_results = []
+            for search_query in reddit_queries:
+                try:
+                    results = self.search_tool.run(
+                        search_query=f"site:reddit.com {search_query.query}"
+                    )
+                    search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
+                    reddit_results.extend(search_items)
+                except Exception as e:
+                    logger.error(f"Reddit search failed for '{search_query.query}': {e}")
+
+            # Deduplicate results by URL
+            seen_urls = set()
+            for result in reddit_results:
+                if result.url not in seen_urls:
+                    seen_urls.add(result.url)
+                    unique_reddit_results.append(result)
+
+            logger.info(f"[OK] Found {len(unique_reddit_results)} unique Reddit results from {len(reddit_queries)} queries")
+
+            # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
+            logger.info("Validating Reddit thread relevance...")
+            validated_reddit = validator.validate_batch_parallel(
+                niche_description=self.niche_description,
+                search_results=unique_reddit_results,
+                batch_size=10
+                # max_workers defaults to settings.thread_validation_max_workers (2)
+            )
+
+            # Filter to relevant results only
+            reddit_urls = [result.url for result, is_relevant in validated_reddit if is_relevant]
+            filtered_count = len(unique_reddit_results) - len(reddit_urls)
+            logger.info(f"[OK] Filtered {filtered_count} irrelevant threads, kept {len(reddit_urls)} relevant Reddit discussions")
+        else:
+            logger.info("Reddit collection disabled (ENABLE_REDDIT=false) - skipping Reddit search")
 
         # Search Twitter
         twitter_urls = []
         twitter_threads = []
 
         if settings.enable_twitter:
-            logger.info("Searching Twitter/X for relevant discussions...")
+            # Filter to Twitter-applicable queries (platform: twitter or both)
+            twitter_queries = [q for q in self.state.search_queries if q.platform in ("twitter", "both")]
+            logger.info(f"Searching Twitter/X for relevant discussions ({len(twitter_queries)}/{len(self.state.search_queries)} queries)...")
             twitter_results = []
-            for search_query in self.state.search_queries:  # Use all generated queries
+            for search_query in twitter_queries:
                 try:
                     results = self.search_tool.run(
                         search_query=f"(site:twitter.com OR site:x.com) {search_query.query}"
@@ -1078,7 +1089,7 @@ Return a valid JSON object with this structure:
                     seen_urls.add(result.url)
                     unique_twitter_results.append(result)
 
-            logger.info(f"[OK] Found {len(unique_twitter_results)} unique Twitter results from {len(self.state.search_queries)} queries")
+            logger.info(f"[OK] Found {len(unique_twitter_results)} unique Twitter results from {len(twitter_queries)} queries")
 
             # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
             logger.info("Validating Twitter thread relevance...")
@@ -1095,28 +1106,51 @@ Return a valid JSON object with this structure:
             logger.info(f"[OK] Filtered {filtered_count} irrelevant threads, kept {len(twitter_urls)} relevant Twitter discussions")
 
             # Collect Reddit and Twitter content in parallel
-            logger.info("Collecting Reddit and Twitter content in parallel...")
-            from ..utils.parallel_collection import ParallelCollector
+            if settings.enable_reddit:
+                logger.info("Collecting Reddit and Twitter content in parallel...")
+                from ..utils.parallel_collection import ParallelCollector
 
-            collection_tasks = [
-                ("reddit", lambda: self.reddit_tool.collect_posts(reddit_urls)),
-                ("twitter", lambda: self.twitter_tool.collect_threads(twitter_urls))
-            ]
+                collection_tasks = [
+                    ("reddit", lambda: self.reddit_tool.collect_posts(reddit_urls)),
+                    ("twitter", lambda: self.twitter_tool.collect_threads(twitter_urls))
+                ]
 
-            results = ParallelCollector.collect_parallel(collection_tasks, max_workers=2)
-            reddit_posts = results.get("reddit", [])
-            twitter_threads = results.get("twitter", [])
+                results = ParallelCollector.collect_parallel(collection_tasks, max_workers=2)
+                reddit_posts = results.get("reddit", [])
+                twitter_threads = results.get("twitter", [])
 
-            logger.info(f"[OK] Parallel collection completed:")
-            logger.info(f"    - Reddit: {len(reddit_posts)} quality posts")
-            logger.info(f"    - Twitter: {len(twitter_threads)} quality threads")
-        else:
-            logger.info("Twitter collection disabled (ENABLE_TWITTER=false) - skipping Twitter search and collection")
+                logger.info(f"[OK] Parallel collection completed:")
+                logger.info(f"    - Reddit: {len(reddit_posts)} quality posts")
+                logger.info(f"    - Twitter: {len(twitter_threads)} quality threads")
+            else:
+                # Twitter only (Reddit disabled)
+                logger.info("Collecting Twitter threads (Reddit disabled)...")
+                reddit_posts = []
+                twitter_threads = self.twitter_tool.collect_threads(twitter_urls)
+                logger.info(f"[OK] Collected {len(twitter_threads)} quality Twitter threads")
+        elif settings.enable_reddit:
+            logger.info("Twitter collection disabled (ENABLE_TWITTER=false) - skipping Twitter search")
             # Collect Reddit content only
             logger.info("Collecting Reddit posts and comments...")
             reddit_posts = self.reddit_tool.collect_posts(reddit_urls)
             twitter_threads = []
             logger.info(f"[OK] Collected {len(reddit_posts)} quality Reddit posts")
+        else:
+            # Both disabled
+            logger.warning("Both Reddit and Twitter collection disabled - no social content will be collected")
+            reddit_posts = []
+            twitter_threads = []
+
+        # Hard stop if no social content collected from either platform
+        if len(reddit_posts) == 0 and len(twitter_threads) == 0:
+            logger.error("=" * 80)
+            logger.error("PIPELINE STOPPED: No social content collected from either platform")
+            logger.error("Cannot proceed without data. Possible causes:")
+            logger.error("  - Twitter rate limiting (most common)")
+            logger.error("  - Reddit API issues")
+            logger.error("  - No relevant content found for niche")
+            logger.error("=" * 80)
+            raise ValueError("No social content collected from either Reddit or Twitter. Cannot proceed with research pipeline.")
 
         # Token monitoring: Estimate size of collected content
         if settings.token_monitoring_enabled:

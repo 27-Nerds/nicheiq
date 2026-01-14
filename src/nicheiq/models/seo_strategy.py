@@ -141,7 +141,7 @@ class TieredKeyword(BaseModel):
     competition: str = Field(
         ..., description="Competition level (e.g., 'LOW (30)', 'MEDIUM (53)', 'VERY LOW (5)')"
     )
-    opportunity_score: Optional[int] = Field(
+    opportunity_score: Optional[float] = Field(
         default=None, description="Calculated opportunity score (volume/competition or similar metric)"
     )
     strategy: str = Field(

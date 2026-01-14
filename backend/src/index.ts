@@ -4,6 +4,8 @@ import { CONFIG, validateConfig } from './config.js';
 import { jobsRouter } from './routes/jobs.js';
 import { eventsRouter } from './routes/events.js';
 import { healthRouter } from './routes/health.js';
+import { authRouter } from './routes/auth.js';
+import { usersRouter } from './routes/users.js';
 import { prisma } from './services/db.js';
 
 // Validate configuration
@@ -27,6 +29,8 @@ if (CONFIG.isDev) {
 }
 
 // API routes
+app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/jobs', eventsRouter);
 app.use('/api', healthRouter);

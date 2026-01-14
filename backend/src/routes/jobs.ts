@@ -35,10 +35,10 @@ jobsRouter.post('/', async (req: Request, res: Response) => {
     const input = CreateJobSchema.parse(req.body);
 
     // Create job in database
-    const job = await createJob(input.email, input.niche, input.allowedProjectTypes);
+    const job = await createJob(input.email, input.niche, input.allowedProjectTypes, input.userId);
 
-    // Enqueue job for Python worker
-    await enqueueJob(job.id, input.niche, input.email, input.allowedProjectTypes);
+    // Enqueue job for Python worker (include userId for user association)
+    await enqueueJob(job.id, input.niche, input.email, input.userId, input.allowedProjectTypes);
 
     // Update status to QUEUED
     await updateJobStatus(job.id, JobStatus.QUEUED);

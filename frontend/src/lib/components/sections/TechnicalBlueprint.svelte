@@ -5,6 +5,8 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		solution: SolutionDetails;
@@ -54,7 +56,9 @@
 					</div>
 					<div class="bento-value bento-value-lg text-accent">{solution.estimated_development_time}</div>
 					<div class="bento-label">Development Time</div>
-					<div class="bento-sublabel">Estimated to MVP</div>
+					<div class="bento-sublabel inline-flex items-center gap-1">
+						Estimated to MVP <Tooltip content={getTermTooltip('MVP')} position="top" />
+					</div>
 				</div>
 			{/if}
 
@@ -176,7 +180,7 @@
 			<div class="mvp-section">
 				<h4 class="subsection-title">
 					<CheckCircle class="w-4 h-4 text-success" />
-					MVP Scope & Success Criteria
+					MVP Scope & Success Criteria <Tooltip content={getTermTooltip('MVP')} position="right" />
 				</h4>
 				<div class="markdown-content mvp-content">
 					{@html renderMarkdown(mvpScope)}
@@ -364,7 +368,7 @@
 		font-size: 0.75rem;
 		font-weight: 700;
 		color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
+		background: rgba(229, 90, 40, 0.1);
 		padding: 0.25rem 0.5rem;
 		border-radius: 0.25rem;
 	}

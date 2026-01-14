@@ -22,7 +22,7 @@
 		info: 'badge badge-info'
 	};
 
-	const sizeClass = size === 'sm' ? 'badge-sm' : '';
+	const sizeClass = $derived(size === 'sm' ? 'badge-sm' : '');
 </script>
 
 <span class="{variantClasses[variant]} {sizeClass} {className}">

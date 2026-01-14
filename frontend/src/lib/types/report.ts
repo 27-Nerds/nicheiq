@@ -13,7 +13,7 @@ export interface Report {
 	selected_solution_name: string;
 	selection_rationale: string;
 	// runner_up_solutions removed - extract names from alternative_solutions instead
-	selection_criteria_scores?: SelectionCriteriaScores;
+	selection_criteria_scores?: SelectionCriteriaScore[];
 	recommended_focus: string;
 	selected_solution_details?: SolutionDetails;
 	solution_user_journey?: string;
@@ -101,7 +101,7 @@ export interface TrafficMonetization {
 	break_even_traffic_threshold?: string;
 	monetization_rationale: string;
 	scaling_strategy: string;
-	monetization_confidence?: string;
+	monetization_confidence?: 'High' | 'Medium' | 'Low';
 	saas_alternative_viable: boolean;
 	saas_vs_traffic_recommendation: string;
 }
@@ -169,10 +169,10 @@ export interface KeyMetrics {
 	avg_pain_point_severity: number;
 	avg_willingness_to_pay: number;
 	social_evidence_threads: number;
-	market_fit_score: number;
-	competitive_advantage_score: number;
-	technical_feasibility_score: number;
-	seo_potential_score: number;
+	market_fit_score?: number | null;
+	competitive_advantage_score?: number | null;
+	technical_feasibility_score?: number | null;
+	seo_potential_score?: number | null;
 }
 
 export interface GoToMarketBlueprint {
@@ -279,8 +279,7 @@ export interface DetailedPainPoint {
 
 export interface EngagementMetric {
 	post_id: string;
-	upvotes?: number;
-	comments?: number;
+	score: number;  // Matches Python field name (upvotes/engagement score)
 }
 
 export interface SEOStrategy {
@@ -321,7 +320,7 @@ export interface Keyword {
 	keyword: string;
 	search_volume: number;
 	competition: string;
-	opportunity_score?: number;
+	opportunity_score: number;  // Required, matches Python int
 	strategy?: string;
 	intent?: string;
 }
@@ -340,28 +339,28 @@ export interface ContentStrategy {
 }
 
 export interface TopicCluster {
-	pillar_topic: string;
-	cluster_keywords: string[];
+	// Primary fields matching Python backend
+	cluster_name: string;
+	primary_keyword: string;
+	supporting_keywords: string[];
 	content_ideas?: string[];
-	// Extended fields for richer cluster data
-	cluster_name?: string;
-	primary_keyword?: string;
-	supporting_keywords?: string[];
+	total_monthly_volume?: number;
+	content_recommendation?: string;
+	estimated_traffic_potential?: string;
+	priority?: number;
 }
 
 export interface PageType {
-	page_type?: string;
-	page_type_name?: string;
-	target_keywords?: string[];
-	example_keywords?: string[];
-	target_keyword_cluster?: string;
-	url_pattern?: string;
-	primary_intent?: string;
-	estimated_page_count?: number;
-	priority?: string;
+	// Primary field matching Python backend
+	page_type_name: string;
+	url_pattern: string;
+	target_keyword_cluster: string;
+	example_keywords: string[];
+	primary_intent: string;
+	estimated_page_count: number;
+	priority: number;
 	required_schema?: string[];
 	seo_optimization_notes?: string;
-	content_focus?: string;
 }
 
 export interface ImplementationRoadmap {
@@ -439,7 +438,7 @@ export interface PricingStrategy {
 	ltv_to_cac_ratio?: string;
 	price_vs_competitors?: string;
 	value_proposition_delta?: string;
-	pricing_confidence?: number;
+	pricing_confidence?: 'High' | 'Medium' | 'Low';
 	wtp_validation?: string;
 	market_segment_pricing?: MarketSegmentPricing[];
 }
@@ -563,11 +562,11 @@ export interface ChartConfig {
 
 // RunnerUpSolution interface removed - use alternative_solutions instead
 
-export interface SelectionCriteriaScores {
-	market_fit: number;
-	technical_feasibility: number;
-	competitive_advantage: number;
-	seo_potential: number;
+// Selection criteria score - array format matching Python backend
+export interface SelectionCriteriaScore {
+	criterion: string;
+	score: number;
+	weight: number;
 }
 
 export interface SolutionDetails {
@@ -648,7 +647,7 @@ export interface AudienceMapping {
 	// Strategy
 	recommended_channels?: string[];
 	content_strategy_direction?: string;
-	early_adopter_tactics?: string[];
+	early_adopter_tactics?: string;
 
 	// Legacy fields (for backward compatibility)
 	primary_segments?: AudienceSegment[];
@@ -828,7 +827,7 @@ export interface AlternativeSolution {
 
 	// NEW: Additional scores and feasibility
 	novelty_score?: number;
-	solo_dev_feasibility?: string; // HIGH, MEDIUM, LOW
+	solo_dev_feasibility?: number; // 0-1 scale matching Python float
 
 	// NEW: Competitive landscape for this solution
 	top_competitors?: string[];
@@ -837,7 +836,7 @@ export interface AlternativeSolution {
 
 	// NEW: Economic indicators
 	estimated_development_time?: string;
-	estimated_cac_organic?: number;
+	estimated_cac_organic?: string;  // Matches Python: str format like "$15-30"
 	pricing_model?: string;
 }
 

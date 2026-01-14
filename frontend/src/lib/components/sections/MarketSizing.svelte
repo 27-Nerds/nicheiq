@@ -6,6 +6,8 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		data: MarketSizing;
@@ -162,15 +164,21 @@
 						</div>
 						<div class="grid grid-cols-3 gap-4 text-sm">
 							<div>
-								<span class="text-text-muted">TAM:</span>
+								<span class="text-text-muted inline-flex items-center gap-1">
+									TAM: <Tooltip content={getTermTooltip('TAM')} position="top" />
+								</span>
 								<span class="text-text-primary ml-1">{segment.tam_estimate}</span>
 							</div>
 							<div>
-								<span class="text-text-muted">SAM:</span>
+								<span class="text-text-muted inline-flex items-center gap-1">
+									SAM: <Tooltip content={getTermTooltip('SAM')} position="top" />
+								</span>
 								<span class="text-text-primary ml-1">{segment.sam_estimate}</span>
 							</div>
 							<div>
-								<span class="text-text-muted">SOM:</span>
+								<span class="text-text-muted inline-flex items-center gap-1">
+									SOM: <Tooltip content={getTermTooltip('SOM')} position="top" />
+								</span>
 								<span class="text-accent ml-1">{segment.som_estimate}</span>
 							</div>
 						</div>

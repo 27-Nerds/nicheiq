@@ -734,7 +734,7 @@ class PricingStrategyResult(BaseModel):
     wtp_validation: str = Field(
         ..., description="How pain point willingness-to-pay scores support this pricing"
     )
-    market_segment_pricing: Optional[dict[str, str]] = Field(
+    market_segment_pricing: Optional[dict[str, Optional[str]]] = Field(
         default=None, description="Different pricing for different market segments if applicable"
     )
 

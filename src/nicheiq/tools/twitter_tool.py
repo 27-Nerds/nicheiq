@@ -174,6 +174,69 @@ class TwitterCollectorTool(BaseTool):
             self._scraper_failed = True
             return None
 
+    def _extract_tweets_from_response(self, response: dict) -> tuple[dict | None, list[dict]]:
+        """
+        Extract main tweet and replies from nested GraphQL response structure.
+
+        The twitter-api-client returns deeply nested responses like:
+        data.threaded_conversation_with_injections_v2.instructions[].entries[]
+
+        Main tweet entries have entryId starting with "tweet-"
+        Reply entries have entryId starting with "conversationthread-" with items array
+
+        Args:
+            response: Raw API response dictionary
+
+        Returns:
+            Tuple of (main_tweet, replies_list) where:
+            - main_tweet: Tweet result dict with rest_id and legacy fields, or None
+            - replies_list: List of reply tweet dicts
+        """
+        main_tweet = None
+        replies = []
+
+        try:
+            # Navigate the GraphQL response structure
+            data = response.get('data', {})
+            conversation = data.get('threaded_conversation_with_injections_v2', {})
+            instructions = conversation.get('instructions', [])
+
+            for instruction in instructions:
+                if instruction.get('type') == 'TimelineAddEntries':
+                    entries = instruction.get('entries', [])
+                    for entry in entries:
+                        entry_id = entry.get('entryId', '')
+                        content = entry.get('content', {})
+
+                        # Main tweet: entry starts with "tweet-"
+                        if entry_id.startswith('tweet-'):
+                            item_content = content.get('itemContent', {})
+                            tweet_results = item_content.get('tweet_results', {})
+                            result = tweet_results.get('result', {})
+
+                            if result.get('__typename') == 'Tweet' and result.get('legacy'):
+                                main_tweet = result
+
+                        # Replies: entry starts with "conversationthread-"
+                        elif entry_id.startswith('conversationthread-'):
+                            items = content.get('items', [])
+                            for item in items:
+                                item_content = item.get('item', {}).get('itemContent', {})
+                                tweet_results = item_content.get('tweet_results', {})
+                                result = tweet_results.get('result', {})
+
+                                if result.get('__typename') == 'Tweet' and result.get('legacy'):
+                                    replies.append(result)
+                                    logger.debug(f"[DIAG] Found reply {result.get('rest_id')}: likes={result.get('legacy', {}).get('favorite_count')}")
+
+            if replies:
+                logger.info(f"[DIAG] Extracted {len(replies)} replies from conversation threads")
+
+            return main_tweet, replies
+        except Exception as e:
+            logger.debug(f"Failed to extract tweets from response: {e}")
+            return None, []
+
     def extract_tweet_id(self, url: str) -> str:
         """
         Extract tweet ID from Twitter URL.
@@ -201,13 +264,31 @@ class TwitterCollectorTool(BaseTool):
         Parse tweet data from twitter-api-client response.
 
         Args:
-            tweet_data: Tweet data dictionary
+            tweet_data: Tweet data dictionary (the 'result' object from GraphQL response)
             is_reply: Whether this is a reply tweet
 
         Returns:
             TwitterTweet model instance
         """
         legacy = tweet_data.get('legacy', {})
+        logger.debug(f"[DIAG] parse_tweet: legacy keys={list(legacy.keys())}, likes={legacy.get('favorite_count', 'MISSING')}, replies={legacy.get('reply_count', 'MISSING')}")
+
+        # Extract tweet text - use note_tweet for long tweets if available
+        text = legacy.get('full_text', '')
+        note_tweet = tweet_data.get('note_tweet', {})
+        if note_tweet:
+            note_text = note_tweet.get('note_tweet_results', {}).get('result', {}).get('text', '')
+            if note_text:
+                text = note_text  # Use full text from note_tweet (not truncated)
+                logger.debug(f"[DIAG] Using note_tweet text ({len(text)} chars) instead of truncated legacy.full_text")
+
+        # Extract author username from user_results (not in tweet's legacy)
+        author_username = 'unknown'
+        try:
+            user_legacy = tweet_data.get('core', {}).get('user_results', {}).get('result', {}).get('legacy', {})
+            author_username = user_legacy.get('screen_name', 'unknown')
+        except Exception:
+            pass
 
         # Extract parent tweet ID if this is a reply
         parent_id = None
@@ -226,13 +307,13 @@ class TwitterCollectorTool(BaseTool):
 
         return TwitterTweet(
             tweet_id=tweet_data.get('rest_id', ''),
-            author_username=legacy.get('screen_name', 'unknown'),
-            text=legacy.get('full_text', ''),
+            author_username=author_username,
+            text=text,
             likes=legacy.get('favorite_count', 0),
             retweets=legacy.get('retweet_count', 0),
             replies_count=legacy.get('reply_count', 0),
             created_at=created_at,
-            url=f"https://twitter.com/{legacy.get('screen_name', 'unknown')}/status/{tweet_data.get('rest_id', '')}",
+            url=f"https://twitter.com/{author_username}/status/{tweet_data.get('rest_id', '')}",
             is_reply=is_reply,
             parent_tweet_id=parent_id,
         )
@@ -291,6 +372,30 @@ class TwitterCollectorTool(BaseTool):
                 import asyncio
                 tweet_details = asyncio.run(_collect_tweets())
 
+                # Diagnostic logging to trace data flow
+                logger.info(f"[DIAG] API returned {len(tweet_details) if tweet_details else 0} raw response objects for {tweet_id}")
+                if tweet_details:
+                    first = tweet_details[0]
+                    if isinstance(first, dict):
+                        logger.debug(f"[DIAG] First response keys: {list(first.keys())}")
+                    else:
+                        logger.warning(f"[DIAG] Unexpected response type: {type(first)}")
+
+                # Extract actual tweet data and replies from nested GraphQL responses
+                extracted_main = None
+                all_replies = []
+                if tweet_details:
+                    for response in tweet_details:
+                        main_tweet, replies = self._extract_tweets_from_response(response)
+                        if main_tweet:
+                            extracted_main = main_tweet
+                            logger.debug(f"[DIAG] Extracted main tweet {main_tweet.get('rest_id')}: likes={main_tweet.get('legacy', {}).get('favorite_count')}")
+                        if replies:
+                            all_replies.extend(replies)
+                    logger.info(f"[DIAG] Extracted main tweet + {len(all_replies)} replies from {len(tweet_details)} responses")
+                    # Replace tweet_details with list containing just the main tweet for compatibility
+                    tweet_details = [extracted_main] if extracted_main else []
+
             except Exception as fetch_error:
                 error_type = type(fetch_error).__name__
                 error_msg = str(fetch_error)
@@ -345,20 +450,23 @@ class TwitterCollectorTool(BaseTool):
                 raise ValueError(f"Could not fetch tweet: {url}")
 
             logger.debug(f"Received {len(tweet_details)} tweet objects from API")
+            logger.info(f"[DIAG] Processing tweet {tweet_id}: {len(tweet_details)} objects, proceeding to parse")
 
             # The first tweet is the original
             original_data = tweet_details[0]
             original_tweet = self.parse_tweet(original_data, is_reply=False)
 
-            # Collect replies
-            # tweet_details might include some replies, but we might need to fetch more
-            # For now, we'll work with what we get from tweets_details
+            # Parse replies from extracted conversation threads
             replies = []
+            for reply_data in all_replies:
+                try:
+                    reply_tweet = self.parse_tweet(reply_data, is_reply=True)
+                    replies.append(reply_tweet)
+                except Exception as e:
+                    logger.debug(f"Failed to parse reply {reply_data.get('rest_id', 'unknown')}: {e}")
 
-            # Check if there are reply entries in the response
-            # The structure might vary, so we'll need to explore the response
-            # For simplicity, let's fetch replies separately using tweet search
-            # Note: Guest sessions have limited access to replies
+            if replies:
+                logger.info(f"[DIAG] Parsed {len(replies)} replies from conversation threads")
 
             # Calculate total engagement
             total_engagement = original_tweet.likes + original_tweet.retweets
@@ -392,12 +500,15 @@ class TwitterCollectorTool(BaseTool):
             List of TwitterThread models that meet quality thresholds
         """
         threads = []
+        consecutive_errors = 0
 
         for i, url in enumerate(urls):
             try:
-                # Rate limiting between requests
+                # Rate limiting between requests (long delay to avoid Twitter blocks)
                 if i > 0:
-                    time.sleep(1.0)
+                    import random
+                    delay = 10.0 + random.uniform(0, 5.0)  # 10-15 seconds with jitter
+                    time.sleep(delay)
 
                 thread = self.collect_thread(url)
 
@@ -418,8 +529,20 @@ class TwitterCollectorTool(BaseTool):
                         f"replies: {original.replies_count}): {original.text[:50]}..."
                     )
 
+                consecutive_errors = 0  # Reset on successful fetch
+
             except Exception as e:
-                logger.error(f"Skipping thread {url} due to error: {e}")
+                logger.error(f"Skipping thread {url} due to error: {type(e).__name__}: {e}")
+                import traceback
+                logger.debug(f"[DIAG] Full traceback:\n{traceback.format_exc()}")
+
+                consecutive_errors += 1
+                if consecutive_errors >= 5:
+                    logger.warning(
+                        f"⚠️ Stopping Twitter collection after {consecutive_errors} consecutive errors "
+                        f"(likely rate limited). Collected {len(threads)} threads from {i+1}/{len(urls)} URLs."
+                    )
+                    break
                 continue
 
         logger.info(f"Collected {len(threads)} quality Twitter threads from {len(urls)} URLs")

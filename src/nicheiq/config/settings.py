@@ -140,6 +140,10 @@ class Settings(BaseSettings):
         default=True,
         description="Enable/disable Twitter/X data collection (set to False to skip Twitter entirely)"
     )
+    enable_reddit: bool = Field(
+        default=True,
+        description="Enable/disable Reddit data collection (set to False to skip Reddit entirely)"
+    )
 
     # DataForSEO API
     dataforseo_login: str = Field(..., description="DataForSEO API login")

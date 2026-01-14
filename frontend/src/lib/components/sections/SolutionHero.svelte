@@ -1,27 +1,31 @@
 <script lang="ts">
 	import { Sparkles, Zap, Target, TrendingUp, Code, Users, DollarSign, Layers } from 'lucide-svelte';
-	import type { SolutionDetails, ExecutiveDashboard, SelectionCriteriaScores } from '$lib/types/report';
+	import type { SolutionDetails, ExecutiveDashboard, SelectionCriteriaScore } from '$lib/types/report';
 	import { formatPercent, renderMarkdown, getScoreClass, parseRationaleMetrics } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		solution: SolutionDetails;
 		dashboard: ExecutiveDashboard;
 		selectionRationale: string;
-		scores?: SelectionCriteriaScores;
+		scores?: SelectionCriteriaScore[];
 	}
 
 	let { solution, dashboard, selectionRationale, scores }: Props = $props();
 
-	const solutionName = $derived(solution.solution_name || solution.name || 'Solution');
+	const solutionName = $derived(solution.solution_name || 'Solution');
 	const snapshot = $derived(dashboard.recommended_solution_snapshot);
 	const verdict = $derived(dashboard.go_no_go_verdict);
 
-	// Score data from solution details or dashboard
-	const marketFit = $derived(solution.market_fit_score ?? scores?.market_fit ?? dashboard.key_metrics.market_fit_score);
-	const techFeasibility = $derived(solution.technical_feasibility_score ?? scores?.technical_feasibility ?? dashboard.key_metrics.technical_feasibility_score);
-	const seoScore = $derived(solution.seo_scalability_score ?? scores?.seo_potential ?? dashboard.key_metrics.seo_potential_score);
-	const noveltyScore = $derived(solution.novelty_score ?? 0);
+	// Score data from solution details ONLY (synced with selection criteria in backend)
+	// NO FALLBACKS - solution scores are now the authoritative source (synced from Stage 8.5)
+	// If null, formatPercent() displays "N/A"
+	const marketFit = $derived(solution.market_fit_score ?? null);
+	const techFeasibility = $derived(solution.technical_feasibility_score ?? null);
+	const seoScore = $derived(solution.seo_scalability_score ?? null);
+	const noveltyScore = $derived(solution.novelty_score ?? null);
 
 	// Parse metrics from rationale text
 	const parsedRationale = $derived(parseRationaleMetrics(selectionRationale));
@@ -84,7 +88,7 @@
 			<div class="score-value {getScoreClass(seoScore)}">{formatPercent(seoScore)}</div>
 			<div class="score-label">SEO Potential</div>
 		</div>
-		{#if noveltyScore > 0}
+		{#if noveltyScore != null && noveltyScore > 0}
 			<div class="score-card">
 				<div class="score-icon">
 					<Zap class="w-5 h-5" />
@@ -127,10 +131,12 @@
 				<span class="quick-stat-label">SEO Pages</span>
 			</div>
 		{/if}
-		{#if solution.estimated_cac_organic || solution.estimated_cac_organic_refined}
+		{#if solution.estimated_cac_organic}
 			<div class="quick-stat">
-				<span class="quick-stat-value">{solution.estimated_cac_organic_refined || solution.estimated_cac_organic}</span>
-				<span class="quick-stat-label">Organic CAC</span>
+				<span class="quick-stat-value">{solution.estimated_cac_organic}</span>
+				<span class="quick-stat-label inline-flex items-center gap-1">
+					Organic CAC <Tooltip content={getTermTooltip('CAC')} position="top" />
+				</span>
 			</div>
 		{/if}
 		{#if solution.solo_dev_feasibility}
@@ -197,8 +203,8 @@
 		width: 3rem;
 		height: 3rem;
 		border-radius: 0.75rem;
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(245, 158, 11, 0.05) 100%);
-		border: 1px solid rgba(245, 158, 11, 0.4);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.2) 0%, rgba(229, 90, 40, 0.05) 100%);
+		border: 1px solid rgba(229, 90, 40, 0.4);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -223,8 +229,8 @@
 
 	.solution-value-prop {
 		position: relative;
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(245, 158, 11, 0.2);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
+		border: 1px solid rgba(229, 90, 40, 0.2);
 		border-radius: 1rem;
 		padding: 1.5rem 1.5rem 1.5rem 2rem;
 		margin-bottom: 2rem;
@@ -340,7 +346,7 @@
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
+		background: rgba(229, 90, 40, 0.1);
 		padding: 0.25rem 0.5rem;
 		border-radius: 0.25rem;
 		flex-shrink: 0;
@@ -447,8 +453,8 @@
 	}
 
 	.differentiation-section {
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.06) 0%, transparent 60%);
-		border: 1px solid rgba(16, 185, 129, 0.2);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, transparent 60%);
+		border: 1px solid rgba(229, 90, 40, 0.2);
 		border-radius: 0.75rem;
 		padding: 1.5rem;
 	}

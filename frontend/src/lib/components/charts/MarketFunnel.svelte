@@ -2,6 +2,7 @@
 	import { formatCurrency } from '$lib/utils/format';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip, getTermFullName } from '$lib/stores/glossary';
 
 	interface Props {
 		tam: string;
@@ -18,8 +19,8 @@
 			id: 'tam',
 			label: 'TAM',
 			value: tam,
-			fullName: 'Total Addressable Market',
-			tooltip: 'The total market demand for your product category',
+			fullName: getTermFullName('TAM'),
+			tooltip: getTermTooltip('TAM'),
 			width: '100%',
 			delay: 0
 		},
@@ -27,8 +28,8 @@
 			id: 'sam',
 			label: 'SAM',
 			value: sam,
-			fullName: 'Serviceable Available Market',
-			tooltip: 'The portion of TAM you can realistically target',
+			fullName: getTermFullName('SAM'),
+			tooltip: getTermTooltip('SAM'),
 			width: '80%',
 			delay: 100
 		},
@@ -36,8 +37,8 @@
 			id: 'som-y1',
 			label: 'SOM Y1',
 			value: somY1,
-			fullName: 'Year 1 Obtainable Market',
-			tooltip: 'Realistic market capture in first year',
+			fullName: 'Year 1 ' + getTermFullName('SOM'),
+			tooltip: getTermTooltip('SOM') + ' (Year 1 target)',
 			width: '55%',
 			delay: 200
 		},
@@ -47,8 +48,8 @@
 						id: 'som-y3',
 						label: 'SOM Y3',
 						value: somY3,
-						fullName: 'Year 3 Obtainable Market',
-						tooltip: 'Projected market capture by year 3',
+						fullName: 'Year 3 ' + getTermFullName('SOM'),
+						tooltip: getTermTooltip('SOM') + ' (Year 3 projection)',
 						width: '35%',
 						delay: 300
 					}

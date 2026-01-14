@@ -178,13 +178,15 @@ export function getRiskClass(risk: string): string {
 	return 'badge-warning';
 }
 
-export function getScoreClass(score: number): string {
+export function getScoreClass(score: number | null | undefined): string {
+	if (score === null || score === undefined) return 'text-muted';
 	if (score >= 0.7) return 'text-success';
 	if (score >= 0.4) return 'text-warning';
 	return 'text-error';
 }
 
-export function getScoreBarClass(score: number): string {
+export function getScoreBarClass(score: number | null | undefined): string {
+	if (score === null || score === undefined) return 'score-bar-fill-muted';
 	if (score >= 0.7) return 'score-bar-fill-success';
 	if (score >= 0.4) return 'score-bar-fill-accent';
 	return 'score-bar-fill-error';
@@ -320,10 +322,11 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 	let highlightedText = text;
 
 	// Patterns to highlight with their formatted replacements
-	const highlightPatterns: Array<{ regex: RegExp; formatter: (match: string, value: string) => string }> = [
+	// Each formatter receives: full match, prefix capture group, value capture group
+	const highlightPatterns: Array<{ regex: RegExp; formatter: (match: string, prefix: string, val: string) => string }> = [
 		{
 			regex: /(market_fit_score\s*(?:of\s*)?)([\d.]+)/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseFloat(val);
 				const formatted = !isNaN(num) && num <= 1 ? `${Math.round(num * 100)}%` : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -332,7 +335,7 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 		{
 			// Handles: seo_scalability_score 0.56, seo_scalability_score is moderate (0.56), seo scores 0.84
 			regex: /(seo_scalability_score\s*(?:is\s+\w+\s*)?(?:of\s*)?\(?|seo\s+scores?\s*)([\d.]+)\)?/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseFloat(val);
 				const formatted = !isNaN(num) && num <= 1 ? `${Math.round(num * 100)}%` : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -341,7 +344,7 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 		{
 			// Handles: technical_feasibility_score 0.78, technical_feasibility_score: 0.78, (0.78)
 			regex: /(technical_feasibility_score\s*[=:\s]*\(?)([\d.]+)\)?/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseFloat(val);
 				const formatted = !isNaN(num) && num <= 1 ? `${Math.round(num * 100)}%` : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -350,7 +353,7 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 		{
 			// Handles: competitive_advantage_score 0.72, competitive_advantage_score of 0.72
 			regex: /(competitive_advantage_score\s*(?:of\s*)?[=:\s]*\(?)([\d.]+)\)?/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseFloat(val);
 				const formatted = !isNaN(num) && num <= 1 ? `${Math.round(num * 100)}%` : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -358,7 +361,7 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 		},
 		{
 			regex: /(estimated_indexable_pages\s*[=:]\s*)([\d,]+)/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseInt(val.replace(/,/g, ''));
 				const formatted = !isNaN(num) ? num.toLocaleString() : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -366,18 +369,18 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 		},
 		{
 			regex: /(estimated_cac_organic\s*(?:of\s*)?)(\$?[\d\-$\/\w]+)/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const formatted = val.startsWith('$') ? val : `$${val}`;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
 			}
 		},
 		{
 			regex: /(estimated_development_time\s*)([\d\-]+\s*weeks?)/gi,
-			formatter: (_, prefix, val) => `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${val}</span>`
+			formatter: (_match: string, prefix: string, val: string) => `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${val}</span>`
 		},
 		{
 			regex: /(composite\s*score\s*)\(?([\d.]+)\)?/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseFloat(val);
 				const formatted = !isNaN(num) && num <= 1 ? `${Math.round(num * 100)}%` : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -385,12 +388,12 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 		},
 		{
 			regex: /(reward\s*score[:\s]*)([\d.]+\/10)/gi,
-			formatter: (_, prefix, val) => `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${val}</span>`
+			formatter: (_match: string, prefix: string, val: string) => `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${val}</span>`
 		},
 		{
 			// Handles: solo_dev_feas 0.74, solo_dev_feasibility 0.74, solo_dev_feas: 0.74
 			regex: /(solo_dev_feas(?:ibility)?\s*[=:\s]*\(?)([\d.]+)\)?/gi,
-			formatter: (_, prefix, val) => {
+			formatter: (_match: string, prefix: string, val: string) => {
 				const num = parseFloat(val);
 				const formatted = !isNaN(num) && num <= 1 ? `${Math.round(num * 100)}%` : val;
 				return `<span class="inline-metric-label">${prefix}</span><span class="inline-metric">${formatted}</span>`;
@@ -399,7 +402,7 @@ export function parseRationaleMetrics(text: string): ParsedRationale {
 	];
 
 	for (const { regex, formatter } of highlightPatterns) {
-		highlightedText = highlightedText.replace(regex, formatter as unknown as string);
+		highlightedText = highlightedText.replace(regex, formatter);
 	}
 
 	return { metrics, narrative, highlightedText };

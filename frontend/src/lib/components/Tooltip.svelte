@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Info } from 'lucide-svelte';
+	import { HelpCircle } from 'lucide-svelte';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -29,7 +29,7 @@
 		{@render children()}
 	{:else}
 		<span class="tooltip-trigger" aria-label="More information">
-			<Info class="w-3.5 h-3.5" />
+			<HelpCircle class="w-3.5 h-3.5" />
 		</span>
 	{/if}
 
@@ -66,7 +66,7 @@
 	.tooltip-trigger:hover {
 		color: var(--color-accent);
 		border-color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
+		background: rgba(229, 90, 40, 0.1);
 	}
 
 	.tooltip {

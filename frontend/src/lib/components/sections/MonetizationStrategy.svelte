@@ -4,6 +4,8 @@
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		pricingData: PricingStrategy;
@@ -124,19 +126,25 @@
 	<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
 		{#if pricingData.estimated_arpu}
 			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1">Estimated ARPU</div>
+				<div class="text-sm text-text-muted mb-1 inline-flex items-center gap-1">
+					Estimated ARPU <Tooltip content={getTermTooltip('ARPU')} position="top" />
+				</div>
 				<div class="text-xl font-semibold text-text-primary">{pricingData.estimated_arpu}</div>
 			</div>
 		{/if}
 		{#if pricingData.estimated_ltv}
 			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1">Estimated LTV</div>
+				<div class="text-sm text-text-muted mb-1 inline-flex items-center gap-1">
+					Estimated LTV <Tooltip content={getTermTooltip('LTV')} position="top" />
+				</div>
 				<div class="text-xl font-semibold text-accent">{pricingData.estimated_ltv}</div>
 			</div>
 		{/if}
 		{#if pricingData.ltv_to_cac_ratio}
 			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1">LTV:CAC Ratio</div>
+				<div class="text-sm text-text-muted mb-1 inline-flex items-center gap-1">
+					LTV:CAC Ratio <Tooltip content={getTermTooltip('LTV:CAC')} position="top" />
+				</div>
 				<div class="text-xl font-semibold text-success">{pricingData.ltv_to_cac_ratio}</div>
 			</div>
 		{/if}
@@ -151,7 +159,9 @@
 	<!-- WTP Validation -->
 	{#if pricingData.wtp_validation}
 		<div class="highlight-box mb-8">
-			<h4 class="font-semibold text-text-primary mb-2">WTP Validation</h4>
+			<h4 class="font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
+				WTP Validation <Tooltip content={getTermTooltip('WTP')} position="right" />
+			</h4>
 			<div class="markdown-content narrative">
 				{@html renderMarkdown(pricingData.wtp_validation)}
 			</div>
@@ -228,7 +238,9 @@
 						</div>
 						{#if trafficData.estimated_cpm_rate}
 							<div>
-								<div class="text-xs text-text-muted">CPM Rate</div>
+								<div class="text-xs text-text-muted inline-flex items-center gap-1">
+									CPM Rate <Tooltip content={getTermTooltip('CPM')} position="top" />
+								</div>
 								<div class="text-sm text-text-secondary">{trafficData.estimated_cpm_rate}</div>
 							</div>
 						{/if}
@@ -264,7 +276,9 @@
 						{/if}
 						{#if trafficData.estimated_affiliate_ctr}
 							<div>
-								<div class="text-xs text-text-muted">Expected CTR</div>
+								<div class="text-xs text-text-muted inline-flex items-center gap-1">
+									Expected CTR <Tooltip content={getTermTooltip('CTR')} position="top" />
+								</div>
 								<div class="text-sm text-text-secondary">{trafficData.estimated_affiliate_ctr}</div>
 							</div>
 						{/if}
@@ -284,7 +298,7 @@
 				<!-- Sponsorship Revenue -->
 				<div class="card">
 					<div class="flex items-center gap-2 mb-4 pb-4 border-b border-border">
-						<Megaphone class="w-5 h-5 text-purple-500" />
+						<Megaphone class="w-5 h-5 text-secondary" />
 						<h4 class="font-semibold text-text-primary">Sponsorship</h4>
 					</div>
 					<div class="space-y-3">
@@ -428,7 +442,7 @@
 
 	.pricing-tier-recommended {
 		border-color: var(--color-accent);
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
 		position: relative;
 	}
 
@@ -450,6 +464,6 @@
 
 	.pricing-tier-pro {
 		border-color: var(--color-success);
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.05) 0%, transparent 60%);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.05) 0%, transparent 60%);
 	}
 </style>

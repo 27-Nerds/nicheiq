@@ -8,7 +8,7 @@ export const healthRouter = Router();
  * GET /api/health
  * Health check endpoint for monitoring and load balancers
  */
-healthRouter.get('/', async (req: Request, res: Response) => {
+healthRouter.get('/', async (_req: Request, res: Response) => {
   const checks = await Promise.allSettled([
     testConnection(),
     checkRedisHealth(),
@@ -44,7 +44,7 @@ healthRouter.get('/', async (req: Request, res: Response) => {
  * GET /api/health/live
  * Kubernetes liveness probe - is the service running?
  */
-healthRouter.get('/live', (req: Request, res: Response) => {
+healthRouter.get('/live', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'alive' });
 });
 
@@ -52,7 +52,7 @@ healthRouter.get('/live', (req: Request, res: Response) => {
  * GET /api/health/ready
  * Kubernetes readiness probe - is the service ready to accept traffic?
  */
-healthRouter.get('/ready', async (req: Request, res: Response) => {
+healthRouter.get('/ready', async (_req: Request, res: Response) => {
   const [dbOk, redisOk] = await Promise.all([
     testConnection().catch(() => false),
     checkRedisHealth().catch(() => false),

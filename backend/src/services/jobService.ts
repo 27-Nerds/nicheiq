@@ -8,13 +8,15 @@ import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
 export async function createJob(
   email: string,
   niche: string,
-  allowedProjectTypes?: string[]
+  allowedProjectTypes?: string[],
+  userId?: string
 ) {
   // Create job with initial progress entries for all stages
   const job = await prisma.job.create({
     data: {
       email,
       niche,
+      userId, // Associate with user if provided
       allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
       status: JobStatus.PENDING,
       totalStages: TOTAL_STAGES,

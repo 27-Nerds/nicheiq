@@ -99,11 +99,12 @@
 		left: 0;
 		right: 0;
 		z-index: 50;
-		background: rgba(8, 8, 10, 0.95);
+		background: rgba(255, 255, 255, 0.95);
 		backdrop-filter: blur(12px);
 		border-bottom: 1px solid var(--color-border);
 		transform: translateY(-100%);
 		transition: transform 0.3s var(--ease-out);
+		box-shadow: var(--shadow-sm);
 	}
 
 	.sticky-nav.visible {
@@ -161,8 +162,8 @@
 
 	.sticky-nav-item.active {
 		color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
-		border-color: rgba(245, 158, 11, 0.3);
+		background: rgba(229, 90, 40, 0.1);
+		border-color: rgba(229, 90, 40, 0.3);
 	}
 
 	.sticky-nav-label {

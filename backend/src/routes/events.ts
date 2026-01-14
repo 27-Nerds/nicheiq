@@ -1,8 +1,32 @@
 import { Router, Request, Response } from 'express';
-import { getJob, updateStageProgress, updateJobStatus, completeJob, failJob } from '../services/jobService.js';
-import { subscribeToProgress, getProgressChannel } from '../services/queueService.js';
+import { getJob, updateStageProgress, completeJob, failJob } from '../services/jobService.js';
+import { subscribeToProgress } from '../services/queueService.js';
 import { sendCompletionEmail, sendFailureEmail } from '../services/emailService.js';
 import { JobStatus, StageStatus } from '@prisma/client';
+import { prisma } from '../services/db.js';
+
+/**
+ * Get the current email address for a job.
+ * If the job has a userId, queries the User table for the current email.
+ * Falls back to the email stored at job creation time.
+ */
+async function getCurrentEmailForJob(job: { userId: string | null; email: string }): Promise<string> {
+  if (job.userId) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: job.userId },
+        select: { email: true },
+      });
+      if (user?.email) {
+        return user.email;
+      }
+    } catch (error) {
+      console.error('Failed to fetch current user email:', error);
+    }
+  }
+  // Fallback to stored email (for legacy jobs or deleted users)
+  return job.email;
+}
 
 export const eventsRouter = Router();
 
@@ -43,7 +67,7 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
   res.write(`data: ${JSON.stringify(initialData)}\n\n`);
 
   // Subscribe to Redis progress updates
-  const { subscriber, unsubscribe } = subscribeToProgress(jobId, async (progressData) => {
+  const { unsubscribe } = subscribeToProgress(jobId, async (progressData) => {
     try {
       // Update database with progress
       if (progressData.stage && progressData.status) {
@@ -68,10 +92,12 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
           progressData.landing_path as string | undefined
         );
 
-        // Send completion email
+        // Send completion email (use current user email if available)
         if (completedJob) {
-          sendCompletionEmail(completedJob.email, jobId, completedJob.niche).catch(err => {
-            console.error('Failed to send completion email:', err);
+          getCurrentEmailForJob(completedJob).then(email => {
+            sendCompletionEmail(email, jobId, completedJob.niche).catch(err => {
+              console.error('Failed to send completion email:', err);
+            });
           });
         }
       }
@@ -80,11 +106,13 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
       if (progressData.status === 'failed' && progressData.error) {
         await failJob(jobId, progressData.error as string, progressData.stage as number);
 
-        // Send failure email
+        // Send failure email (use current user email if available)
         const failedJob = await getJob(jobId);
         if (failedJob) {
-          sendFailureEmail(failedJob.email, jobId, failedJob.niche, progressData.error as string).catch(err => {
-            console.error('Failed to send failure email:', err);
+          getCurrentEmailForJob(failedJob).then(email => {
+            sendFailureEmail(email, jobId, failedJob.niche, progressData.error as string).catch(err => {
+              console.error('Failed to send failure email:', err);
+            });
           });
         }
       }

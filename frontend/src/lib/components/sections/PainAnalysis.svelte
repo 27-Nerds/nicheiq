@@ -2,13 +2,15 @@
 	import { fade } from 'svelte/transition';
 	import { Target, MessageSquare, TrendingUp, ChevronDown, ChevronUp, AlertTriangle, DollarSign, ArrowRight, CheckCircle, Sparkles } from 'lucide-svelte';
 	import type { DetailedPainPoint, PainPointAnalytics, SolutionDetails } from '$lib/types/report';
-	import { formatScore, getOpportunityClass, getScoreClass, getScoreBarClass } from '$lib/utils/format';
+	import { formatPercent, getOpportunityClass, getScoreClass, getScoreBarClass } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import MetricCard from '$lib/components/ui/MetricCard.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import PainPointMatrix from '$lib/components/charts/PainPointMatrix.svelte';
 	import FilterGroup from '$lib/components/ui/FilterGroup.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
 		painPoints: DetailedPainPoint[];
@@ -120,12 +122,16 @@
 			</div>
 			<div class="analytics-card {analytics.quadrant_distribution.high_severity_high_wtp === 0 ? 'analytics-card-error' : analytics.quadrant_distribution.high_severity_high_wtp <= 2 ? 'analytics-card-warning' : 'analytics-card-highlight'}">
 				<div class="analytics-value {analytics.quadrant_distribution.high_severity_high_wtp === 0 ? 'text-error' : analytics.quadrant_distribution.high_severity_high_wtp <= 2 ? 'text-warning' : 'text-success'}">{analytics.quadrant_distribution.high_severity_high_wtp}</div>
-				<div class="analytics-label">High Sev + High WTP</div>
+				<div class="analytics-label inline-flex items-center gap-1">
+					High Sev + High WTP <Tooltip content={getTermTooltip('WTP')} position="top" />
+				</div>
 				<div class="analytics-sublabel {analytics.quadrant_distribution.high_severity_high_wtp === 0 ? 'sublabel-error' : analytics.quadrant_distribution.high_severity_high_wtp <= 2 ? 'sublabel-warning' : ''}">Best Opportunities</div>
 			</div>
 			<div class="analytics-card">
 				<div class="analytics-value text-warning">{analytics.quadrant_distribution.high_severity_low_wtp}</div>
-				<div class="analytics-label">High Sev + Low WTP</div>
+				<div class="analytics-label inline-flex items-center gap-1">
+					High Sev + Low WTP <Tooltip content={getTermTooltip('WTP')} position="top" />
+				</div>
 			</div>
 		</div>
 	</AnimateOnScroll>
@@ -141,7 +147,7 @@
 				</div>
 				<p class="journey-intro-text">
 					Through extensive research across social platforms, we identified key pain points that users
-					experience daily. Here's how <strong>{solution.solution_name || solution.name || 'our solution'}</strong>
+					experience daily. Here's how <strong>{solution.solution_name || 'Solution'}</strong>
 					directly addresses these challenges.
 				</p>
 			</div>
@@ -214,7 +220,7 @@
 								<p class="solution-text">{solution.key_features[i]}</p>
 							{:else}
 								<p class="solution-text solution-generic">
-									{solution.value_proposition || solution.unique_value_proposition || solution.description}
+									{solution.value_proposition || solution.description}
 								</p>
 							{/if}
 						</div>
@@ -266,7 +272,9 @@
 					<span class="stat-value">
 						{Math.round((topPainPoints.reduce((sum, p) => sum + p.willingness_to_pay, 0) / topPainPoints.length) * 100)}%
 					</span>
-					<span class="stat-label">Avg. WTP Score</span>
+					<span class="stat-label inline-flex items-center gap-1">
+						Avg. WTP Score <Tooltip content={getTermTooltip('WTP')} position="top" />
+					</span>
 				</div>
 			</div>
 		</AnimateOnScroll>
@@ -360,12 +368,12 @@
 						<div class="pain-point-metrics">
 							<div class="metric-item">
 								<AlertTriangle class="w-4 h-4 text-error" />
-								<span class="metric-value">{formatScore(point.severity_score)}</span>
+								<span class="metric-value">{formatPercent(point.severity_score)}</span>
 								<span class="metric-label">Severity</span>
 							</div>
 							<div class="metric-item">
 								<DollarSign class="w-4 h-4 text-success" />
-								<span class="metric-value">{formatScore(point.willingness_to_pay)}</span>
+								<span class="metric-value">{formatPercent(point.willingness_to_pay)}</span>
 								<span class="metric-label">WTP</span>
 							</div>
 							<div class="metric-item">
@@ -467,7 +475,7 @@
 
 	.tab-button.tab-active {
 		color: var(--color-accent);
-		background: rgba(245, 158, 11, 0.1);
+		background: rgba(229, 90, 40, 0.1);
 	}
 
 	/* Analytics Grid */
@@ -498,13 +506,13 @@
 	}
 
 	.analytics-card-featured {
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
-		border-color: rgba(245, 158, 11, 0.3);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
+		border-color: rgba(229, 90, 40, 0.3);
 	}
 
 	.analytics-card-highlight {
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
-		border-color: rgba(16, 185, 129, 0.3);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
+		border-color: rgba(229, 90, 40, 0.3);
 	}
 
 	.analytics-card-error {
@@ -549,8 +557,8 @@
 
 	/* Journey Tab Styles */
 	.journey-intro {
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(245, 158, 11, 0.2);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
+		border: 1px solid rgba(229, 90, 40, 0.2);
 		border-radius: 1rem;
 		padding: 1.5rem;
 		margin-bottom: 2rem;
@@ -562,8 +570,8 @@
 		justify-content: center;
 		width: 2.5rem;
 		height: 2.5rem;
-		background: rgba(245, 158, 11, 0.1);
-		border: 1px solid rgba(245, 158, 11, 0.3);
+		background: rgba(229, 90, 40, 0.1);
+		border: 1px solid rgba(229, 90, 40, 0.3);
 		border-radius: 0.5rem;
 		margin-bottom: 1rem;
 	}
@@ -732,12 +740,12 @@
 		border: 2px solid var(--color-accent);
 		border-radius: 50%;
 		flex-shrink: 0;
-		box-shadow: 0 0 12px rgba(245, 158, 11, 0.3);
+		box-shadow: 0 0 12px rgba(229, 90, 40, 0.3);
 	}
 
 	.solution-card-enhanced {
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(16, 185, 129, 0.2);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
+		border: 1px solid rgba(229, 90, 40, 0.2);
 		border-left: 3px solid var(--color-success);
 		border-radius: 0.75rem;
 		padding: 1.25rem;
@@ -745,8 +753,8 @@
 	}
 
 	.solution-card-enhanced:hover {
-		border-color: rgba(16, 185, 129, 0.4);
-		box-shadow: 0 4px 20px rgba(16, 185, 129, 0.1);
+		border-color: rgba(229, 90, 40, 0.4);
+		box-shadow: 0 4px 20px rgba(229, 90, 40, 0.1);
 	}
 
 	.solution-header {
@@ -897,7 +905,7 @@
 
 	.pain-point-card-enhanced.opportunity-high {
 		border-left: 3px solid var(--color-success);
-		background: linear-gradient(135deg, rgba(16, 185, 129, 0.03) 0%, transparent 30%);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.03) 0%, transparent 30%);
 	}
 
 	.pain-point-card-enhanced.opportunity-medium {
@@ -959,9 +967,9 @@
 	}
 
 	.opportunity-badge-high {
-		background: rgba(16, 185, 129, 0.15);
+		background: rgba(229, 90, 40, 0.15);
 		color: var(--color-success);
-		border: 1px solid rgba(16, 185, 129, 0.3);
+		border: 1px solid rgba(229, 90, 40, 0.3);
 	}
 
 	.opportunity-badge-medium {

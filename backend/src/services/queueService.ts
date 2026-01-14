@@ -1,4 +1,4 @@
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { CONFIG } from '../config.js';
 
 // Redis connection options with retry logic
@@ -10,7 +10,7 @@ const redisOptions = {
 // Redis client for queue operations
 const redis = new Redis(CONFIG.redisUrl, redisOptions);
 
-redis.on('error', (err) => {
+redis.on('error', (err: Error) => {
   console.error('Redis connection error:', err.message);
 });
 
@@ -22,7 +22,7 @@ redis.on('connect', () => {
 export function createSubscriber(): Redis {
   const subscriber = new Redis(CONFIG.redisUrl, redisOptions);
 
-  subscriber.on('error', (err) => {
+  subscriber.on('error', (err: Error) => {
     console.error('Redis subscriber error:', err.message);
   });
 
@@ -44,12 +44,14 @@ export async function enqueueJob(
   jobId: string,
   niche: string,
   email: string,
+  userId?: string,
   allowedProjectTypes?: string[]
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
     niche,
     email,
+    user_id: userId,
     allowed_project_types: allowedProjectTypes,
     created_at: new Date().toISOString(),
   });
@@ -83,7 +85,7 @@ export function subscribeToProgress(
 
   subscriber.subscribe(channel);
 
-  subscriber.on('message', (ch, message) => {
+  subscriber.on('message', (ch: string, message: string) => {
     if (ch === channel) {
       try {
         const data = JSON.parse(message);
