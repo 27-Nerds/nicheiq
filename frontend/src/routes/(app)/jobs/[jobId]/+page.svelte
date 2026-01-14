@@ -31,6 +31,10 @@
     completedAt: string | null;
     progress: StageProgress[];
     assets: Asset[];
+    // Queue position info (for QUEUED jobs)
+    queuePosition?: number | null;
+    aheadCount?: number;
+    totalQueued?: number;
   }
 
   let job = $state<Job | null>(null);
@@ -145,26 +149,56 @@
         </div>
       </div>
 
-      <!-- Progress Bar -->
-      <div class="card p-6 mb-6">
-        <div class="flex justify-between items-center mb-2">
-          <span class="text-sm font-medium text-text-secondary">
-            {job.currentStageName || 'Initializing...'}
-          </span>
-          <span class="text-sm font-semibold text-accent">
-            {Math.round(job.progressPercent)}%
-          </span>
+      <!-- Queue Position (for QUEUED jobs) -->
+      {#if job.status === 'QUEUED' || job.status === 'PENDING'}
+        <div class="card p-6 mb-6 bg-warning/5 border-warning/20">
+          <div class="flex items-center gap-4">
+            <div class="p-3 rounded-full bg-warning/10">
+              <svg class="w-6 h-6 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+            </div>
+            <div>
+              <p class="font-semibold text-text-primary text-lg">
+                {#if job.queuePosition === 1}
+                  You're next!
+                {:else if job.queuePosition && job.aheadCount}
+                  {job.aheadCount} {job.aheadCount === 1 ? 'report' : 'reports'} ahead of you
+                {:else}
+                  Waiting in queue...
+                {/if}
+              </p>
+              {#if job.queuePosition}
+                <p class="text-sm text-text-muted mt-0.5">
+                  Position {job.queuePosition} of {job.totalQueued} in queue
+                </p>
+              {/if}
+            </div>
+          </div>
         </div>
-        <div class="w-full bg-bg-elevated rounded-full h-3 overflow-hidden">
-          <div
-            class="bg-accent h-3 rounded-full transition-all duration-500 ease-out"
-            style="width: {job.progressPercent}%"
-          ></div>
+      {:else}
+        <!-- Progress Bar (for non-queued jobs) -->
+        <div class="card p-6 mb-6">
+          <div class="flex justify-between items-center mb-2">
+            <span class="text-sm font-medium text-text-secondary">
+              {job.currentStageName || 'Initializing...'}
+            </span>
+            <span class="text-sm font-semibold text-accent">
+              {Math.round(job.progressPercent)}%
+            </span>
+          </div>
+          <div class="w-full bg-bg-elevated rounded-full h-3 overflow-hidden">
+            <div
+              class="bg-accent h-3 rounded-full transition-all duration-500 ease-out"
+              style="width: {job.progressPercent}%"
+            ></div>
+          </div>
+          <p class="mt-2 text-sm text-text-muted">
+            {job.stagesCompleted} of {job.totalStages} stages completed
+          </p>
         </div>
-        <p class="mt-2 text-sm text-text-muted">
-          {job.stagesCompleted} of {job.totalStages} stages completed
-        </p>
-      </div>
+      {/if}
 
       <!-- Error Message -->
       {#if job.errorMessage}

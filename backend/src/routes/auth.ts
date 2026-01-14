@@ -2,8 +2,12 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../services/db.js';
+import { authLimiter } from '../middleware/rateLimit.js';
 
 export const authRouter = Router();
+
+// Apply rate limiting to all auth routes
+authRouter.use(authLimiter);
 
 // Validation schemas
 const RegisterSchema = z.object({

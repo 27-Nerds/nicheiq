@@ -43,14 +43,12 @@ export function getProgressChannel(jobId: string): string {
 export async function enqueueJob(
   jobId: string,
   niche: string,
-  email: string,
   userId?: string,
   allowedProjectTypes?: string[]
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
     niche,
-    email,
     user_id: userId,
     allowed_project_types: allowedProjectTypes,
     created_at: new Date().toISOString(),
@@ -114,6 +112,60 @@ export function subscribeToProgress(
  */
 export async function getQueueLength(): Promise<number> {
   return redis.llen(QUEUE_NAME);
+}
+
+/**
+ * Get all queued job IDs in order (oldest first = next to be processed)
+ */
+export async function getQueuedJobIds(): Promise<string[]> {
+  const queue = await redis.lrange(QUEUE_NAME, 0, -1);
+  // Queue is LPUSH (newest at head/left), BRPOP (oldest at tail/right)
+  // So reverse to get oldest-first order (processing order)
+  return queue.reverse().map(item => {
+    try {
+      const parsed = JSON.parse(item);
+      return parsed.job_id;
+    } catch {
+      return null;
+    }
+  }).filter((id): id is string => id !== null);
+}
+
+/**
+ * Get position of a specific job in the queue (1-based, null if not in queue)
+ */
+export async function getJobQueuePosition(jobId: string): Promise<number | null> {
+  const queuedIds = await getQueuedJobIds();
+  const index = queuedIds.indexOf(jobId);
+  return index === -1 ? null : index + 1;
+}
+
+/**
+ * Queue stats for a specific job
+ */
+export interface QueueStats {
+  position: number | null;  // 1-based position, null if not in queue
+  totalQueued: number;      // Total jobs in queue
+  aheadCount: number;       // Jobs ahead of this one (position - 1)
+}
+
+/**
+ * Get queue stats for a specific job
+ */
+export async function getQueueStats(jobId: string): Promise<QueueStats> {
+  const queuedIds = await getQueuedJobIds();
+  const index = queuedIds.indexOf(jobId);
+  const totalQueued = queuedIds.length;
+
+  if (index === -1) {
+    return { position: null, totalQueued, aheadCount: 0 };
+  }
+
+  return {
+    position: index + 1,
+    totalQueued,
+    aheadCount: index  // Jobs ahead of this one
+  };
 }
 
 /**

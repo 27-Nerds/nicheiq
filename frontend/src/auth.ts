@@ -5,14 +5,44 @@ import Google from '@auth/core/providers/google';
 import GitHub from '@auth/core/providers/github';
 import Credentials from '@auth/core/providers/credentials';
 import { env } from '$env/dynamic/private';
+import { building } from '$app/environment';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 const prisma = new PrismaClient();
 
-export const { handle, signIn, signOut } = SvelteKitAuth({
-  adapter: PrismaAdapter(prisma),
-  providers: [
+// Validate OAuth configuration (warn in development, throw in production for deployed apps)
+function validateOAuthConfig() {
+  const isProduction = env.NODE_ENV === 'production';
+  const warnings: string[] = [];
+
+  if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
+    warnings.push('Google OAuth not configured (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET)');
+  }
+
+  if (!env.GITHUB_CLIENT_ID || !env.GITHUB_CLIENT_SECRET) {
+    warnings.push('GitHub OAuth not configured (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET)');
+  }
+
+  if (warnings.length > 0 && !building) {
+    const message = warnings.join('; ');
+    if (isProduction) {
+      console.warn(`⚠️  OAuth Warning: ${message}. OAuth providers will be disabled.`);
+    } else {
+      console.warn(`⚠️  Development: ${message}. OAuth buttons may not work.`);
+    }
+  }
+}
+
+validateOAuthConfig();
+
+// Build OAuth providers array - only include configured providers
+function buildProviders() {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const providers: any[] = [];
+
+  // Credentials provider is always available
+  providers.push(
     Credentials({
       credentials: {
         email: { label: 'Email', type: 'email' },
@@ -49,17 +79,51 @@ export const { handle, signIn, signOut } = SvelteKitAuth({
           return null;
         }
       },
-    }),
-    Google({
-      clientId: env.GOOGLE_CLIENT_ID || '',
-      clientSecret: env.GOOGLE_CLIENT_SECRET || '',
-    }),
-    GitHub({
-      clientId: env.GITHUB_CLIENT_ID || '',
-      clientSecret: env.GITHUB_CLIENT_SECRET || '',
-    }),
-  ],
-  secret: env.AUTH_SECRET || 'dev-secret-change-in-production',
+    })
+  );
+
+  // Only add Google if configured
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    providers.push(
+      Google({
+        clientId: env.GOOGLE_CLIENT_ID,
+        clientSecret: env.GOOGLE_CLIENT_SECRET,
+      })
+    );
+  }
+
+  // Only add GitHub if configured
+  if (env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET) {
+    providers.push(
+      GitHub({
+        clientId: env.GITHUB_CLIENT_ID,
+        clientSecret: env.GITHUB_CLIENT_SECRET,
+      })
+    );
+  }
+
+  return providers;
+}
+
+// Get auth secret with validation
+function getAuthSecret(): string {
+  const secret = env.AUTH_SECRET;
+
+  if (!secret) {
+    if (env.NODE_ENV === 'production') {
+      throw new Error('AUTH_SECRET must be set in production');
+    }
+    console.warn('⚠️  WARNING: AUTH_SECRET not set. Using development fallback.');
+    return 'dev-secret-change-in-production';
+  }
+
+  return secret;
+}
+
+export const { handle, signIn, signOut } = SvelteKitAuth({
+  adapter: PrismaAdapter(prisma),
+  providers: buildProviders(),
+  secret: getAuthSecret(),
   trustHost: true,
   session: {
     strategy: 'jwt', // Required for Credentials provider

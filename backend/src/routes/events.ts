@@ -1,46 +1,52 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { getJob, updateStageProgress, completeJob, failJob } from '../services/jobService.js';
-import { subscribeToProgress } from '../services/queueService.js';
+import { subscribeToProgress, getQueueStats } from '../services/queueService.js';
 import { sendCompletionEmail, sendFailureEmail } from '../services/emailService.js';
 import { JobStatus, StageStatus } from '@prisma/client';
 import { prisma } from '../services/db.js';
+import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 
 /**
  * Get the current email address for a job.
- * If the job has a userId, queries the User table for the current email.
- * Falls back to the email stored at job creation time.
+ * Queries the User table for the current email using userId.
+ * Returns null if user not found (e.g., deleted user).
  */
-async function getCurrentEmailForJob(job: { userId: string | null; email: string }): Promise<string> {
-  if (job.userId) {
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: job.userId },
-        select: { email: true },
-      });
-      if (user?.email) {
-        return user.email;
-      }
-    } catch (error) {
-      console.error('Failed to fetch current user email:', error);
-    }
+async function getCurrentEmailForJob(job: { userId: string | null }): Promise<string | null> {
+  if (!job.userId) {
+    return null;
   }
-  // Fallback to stored email (for legacy jobs or deleted users)
-  return job.email;
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: job.userId },
+      select: { email: true },
+    });
+    return user?.email || null;
+  } catch (error) {
+    console.error('Failed to fetch current user email:', error);
+    return null;
+  }
 }
 
 export const eventsRouter = Router();
 
 /**
  * GET /api/jobs/:jobId/events
- * Server-Sent Events endpoint for real-time progress updates
+ * Server-Sent Events endpoint for real-time progress updates (requires authentication and ownership)
  */
-eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
+eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   const { jobId } = req.params;
 
   // Validate job exists
   const job = await getJob(jobId);
   if (!job) {
     res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+
+  // Verify ownership
+  if (!verifyOwnership(req, job.userId)) {
+    res.status(403).json({ error: 'Not authorized to view this job' });
     return;
   }
 
@@ -62,8 +68,9 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
   res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
   res.flushHeaders();
 
-  // Send initial state
-  const initialData = formatJobForSSE(job);
+  // Send initial state with queue position if queued
+  const queueStats = job.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
+  const initialData = formatJobForSSE(job, queueStats);
   res.write(`data: ${JSON.stringify(initialData)}\n\n`);
 
   // Subscribe to Redis progress updates
@@ -95,9 +102,11 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
         // Send completion email (use current user email if available)
         if (completedJob) {
           getCurrentEmailForJob(completedJob).then(email => {
-            sendCompletionEmail(email, jobId, completedJob.niche).catch(err => {
-              console.error('Failed to send completion email:', err);
-            });
+            if (email) {
+              sendCompletionEmail(email, jobId, completedJob.niche).catch(err => {
+                console.error('Failed to send completion email:', err);
+              });
+            }
           });
         }
       }
@@ -110,9 +119,11 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
         const failedJob = await getJob(jobId);
         if (failedJob) {
           getCurrentEmailForJob(failedJob).then(email => {
-            sendFailureEmail(email, jobId, failedJob.niche, progressData.error as string).catch(err => {
-              console.error('Failed to send failure email:', err);
-            });
+            if (email) {
+              sendFailureEmail(email, jobId, failedJob.niche, progressData.error as string).catch(err => {
+                console.error('Failed to send failure email:', err);
+              });
+            }
           });
         }
       }
@@ -120,7 +131,8 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
       // Fetch updated job and send to client
       const updatedJob = await getJob(jobId);
       if (updatedJob) {
-        const data = formatJobForSSE(updatedJob);
+        const updatedQueueStats = updatedJob.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
+        const data = formatJobForSSE(updatedJob, updatedQueueStats);
         res.write(`data: ${JSON.stringify(data)}\n\n`);
 
         // Close connection if job is done
@@ -152,12 +164,14 @@ eventsRouter.get('/:jobId/events', async (req: Request, res: Response) => {
 /**
  * Format job data for SSE response
  */
-function formatJobForSSE(job: Awaited<ReturnType<typeof getJob>>) {
+function formatJobForSSE(
+  job: Awaited<ReturnType<typeof getJob>>,
+  queueStats?: { position: number | null; totalQueued: number; aheadCount: number } | null
+) {
   if (!job) return null;
 
   return {
     id: job.id,
-    email: job.email,
     niche: job.niche,
     status: job.status,
     currentStage: job.currentStage,
@@ -168,6 +182,10 @@ function formatJobForSSE(job: Awaited<ReturnType<typeof getJob>>) {
     errorMessage: job.errorMessage,
     startedAt: job.startedAt?.toISOString() || null,
     completedAt: job.completedAt?.toISOString() || null,
+    // Queue position info (only for QUEUED jobs)
+    queuePosition: queueStats?.position ?? null,
+    aheadCount: queueStats?.aheadCount ?? 0,
+    totalQueued: queueStats?.totalQueued ?? 0,
     progress: job.progress.map(p => ({
       stageNumber: p.stageNumber,
       stageName: p.stageName,

@@ -118,8 +118,6 @@ model Job {
   userId               String?
   user                 User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  // Keep email for notifications (even if user deletes account)
-  email                String      @db.VarChar(255)
   niche                String      @db.Text
   allowedProjectTypes  Json?       // Optional list of project types
 
@@ -138,6 +136,7 @@ model Job {
   // Timestamps
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
+  queuedAt             DateTime?   // When job entered queue
   startedAt            DateTime?
   completedAt          DateTime?
 
@@ -147,7 +146,6 @@ model Job {
 
   // Indexes for common queries
   @@index([userId])
-  @@index([email])
   @@index([status])
   @@index([createdAt])
 }

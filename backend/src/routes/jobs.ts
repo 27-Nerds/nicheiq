@@ -1,13 +1,16 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { z } from 'zod';
 import { createJob, getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
-import { enqueueJob } from '../services/queueService.js';
+import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueService.js';
+import { prisma } from '../services/db.js';
 import { CreateJobSchema } from '../types/job.js';
 import { JobStatus, AssetType } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
+import { jobCreationLimiter } from '../middleware/rateLimit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,21 +30,30 @@ export const jobsRouter = Router();
 
 /**
  * POST /api/jobs
- * Create a new research job
+ * Create a new research job (requires authentication)
  */
-jobsRouter.post('/', async (req: Request, res: Response) => {
+jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
     // Validate request body
     const input = CreateJobSchema.parse(req.body);
 
-    // Create job in database
-    const job = await createJob(input.email, input.niche, input.allowedProjectTypes, input.userId);
+    // Use authenticated user's ID
+    const userId = req.user!.id;
 
-    // Enqueue job for Python worker (include userId for user association)
-    await enqueueJob(job.id, input.niche, input.email, input.userId, input.allowedProjectTypes);
+    // Create job in database (always use authenticated user)
+    const job = await createJob(input.niche, input.allowedProjectTypes, userId);
 
-    // Update status to QUEUED
-    await updateJobStatus(job.id, JobStatus.QUEUED);
+    // Enqueue job for Python worker (email retrieved from DB when needed for notifications)
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes);
+
+    // Update status to QUEUED and set queuedAt timestamp
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: JobStatus.QUEUED,
+        queuedAt: new Date()
+      }
+    });
 
     // Return job info with status URL
     res.status(201).json({
@@ -66,9 +78,9 @@ jobsRouter.post('/', async (req: Request, res: Response) => {
 
 /**
  * GET /api/jobs/:jobId
- * Get job status and progress
+ * Get job status and progress (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId', async (req: Request, res: Response) => {
+jobsRouter.get('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
@@ -86,10 +98,15 @@ jobsRouter.get('/:jobId', async (req: Request, res: Response) => {
       return;
     }
 
+    // Verify ownership
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(403).json({ error: 'Not authorized to view this job' });
+      return;
+    }
+
     // Format response
     res.json({
       id: job.id,
-      email: job.email,
       niche: job.niche,
       status: job.status,
       currentStage: job.currentStage,
@@ -122,15 +139,21 @@ jobsRouter.get('/:jobId', async (req: Request, res: Response) => {
 
 /**
  * GET /api/jobs/:jobId/reportjson
- * Download the research report JSON
+ * Download the research report JSON (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId/reportjson', async (req: Request, res: Response) => {
+jobsRouter.get('/:jobId/reportjson', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
     const job = await getJob(jobId);
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Verify ownership
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(403).json({ error: 'Not authorized to access this report' });
       return;
     }
 
@@ -162,15 +185,21 @@ jobsRouter.get('/:jobId/reportjson', async (req: Request, res: Response) => {
 
 /**
  * GET /api/jobs/:jobId/landingpage
- * View or download the landing page HTML
+ * View or download the landing page HTML (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId/landingpage', async (req: Request, res: Response) => {
+jobsRouter.get('/:jobId/landingpage', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
     const job = await getJob(jobId);
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Verify ownership
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(403).json({ error: 'Not authorized to access this landing page' });
       return;
     }
 
@@ -208,15 +237,21 @@ jobsRouter.get('/:jobId/landingpage', async (req: Request, res: Response) => {
 
 /**
  * DELETE /api/jobs/:jobId
- * Cancel a pending or running job
+ * Cancel a pending or running job (requires authentication and ownership)
  */
-jobsRouter.delete('/:jobId', async (req: Request, res: Response) => {
+jobsRouter.delete('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
     const job = await getJob(jobId);
     if (!job) {
       res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Verify ownership
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(403).json({ error: 'Not authorized to cancel this job' });
       return;
     }
 
@@ -236,5 +271,50 @@ jobsRouter.delete('/:jobId', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Failed to cancel job:', error);
     res.status(500).json({ error: 'Failed to cancel job' });
+  }
+});
+
+/**
+ * GET /api/jobs/:jobId/queue-position
+ * Get queue position for a job (requires authentication and ownership)
+ */
+jobsRouter.get('/:jobId/queue-position', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await getJob(jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Verify ownership
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(403).json({ error: 'Not authorized to view this job' });
+      return;
+    }
+
+    // Only return position for QUEUED jobs
+    if (job.status !== JobStatus.QUEUED) {
+      const totalQueued = await getQueueLength();
+      res.json({
+        position: null,
+        aheadCount: 0,
+        totalQueued,
+        status: job.status
+      });
+      return;
+    }
+
+    const stats = await getQueueStats(jobId);
+    res.json({
+      position: stats.position,
+      aheadCount: stats.aheadCount,
+      totalQueued: stats.totalQueued,
+      status: job.status
+    });
+  } catch (error) {
+    console.error('Failed to get queue position:', error);
+    res.status(500).json({ error: 'Failed to get queue position' });
   }
 });

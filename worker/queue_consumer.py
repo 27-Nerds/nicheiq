@@ -66,11 +66,10 @@ def process_job(job_data: dict) -> None:
     Process a single job from the queue.
 
     Args:
-        job_data: Dict with job_id, niche, email, user_id, allowed_project_types
+        job_data: Dict with job_id, niche, user_id, allowed_project_types
     """
     job_id = job_data.get("job_id")
     niche = job_data.get("niche")
-    email = job_data.get("email")
     user_id = job_data.get("user_id")
     allowed_project_types = job_data.get("allowed_project_types")
 
@@ -82,7 +81,6 @@ def process_job(job_data: dict) -> None:
         result = run_research_job(
             job_id=job_id,
             niche=niche,
-            email=email,
             user_id=user_id,
             allowed_project_types=allowed_project_types,
         )

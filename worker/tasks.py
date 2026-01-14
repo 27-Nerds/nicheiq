@@ -25,7 +25,6 @@ from .progress import (
 def run_research_job(
     job_id: str,
     niche: str,
-    email: str,
     user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None
 ) -> dict:
@@ -34,11 +33,11 @@ def run_research_job(
 
     This task is enqueued by the Node.js backend when a user submits a job.
     Progress updates are published to Redis pub/sub for real-time SSE updates.
+    Email notifications are handled by the Node.js backend (fetched from DB).
 
     Args:
         job_id: UUID of the job (from Node.js)
         niche: User's niche description
-        email: User's email for notifications
         user_id: Optional user ID for authenticated users
         allowed_project_types: Optional constraint on project types
 
@@ -71,6 +70,9 @@ def run_research_job(
 
         # Attach progress callback to flow
         flow.progress_callback = progress_callback
+
+        # Publish "job started" event to update status from QUEUED to RUNNING
+        progress_callback(1, "Niche Analysis", "running")
 
         # Run the research pipeline (no resume for web jobs)
         logger.info(f"[Worker] Running research pipeline for job {job_id}")

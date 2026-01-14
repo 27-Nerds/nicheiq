@@ -18,19 +18,26 @@ interface Job {
   hasLandingPage: boolean;
 }
 
-export const load: PageServerLoad = async ({ parent, fetch }) => {
+export const load: PageServerLoad = async ({ parent }) => {
   const { session } = await parent();
 
   // Get the user's ID from the session
   const userId = session?.user?.id;
+  const userEmail = session?.user?.email;
 
-  if (!userId) {
+  if (!userId || !userEmail) {
     return { jobs: [] };
   }
 
   try {
-    // Fetch jobs by userId from backend
-    const response = await fetch(`${BACKEND_URL}/api/users/${userId}/jobs`);
+    // Fetch jobs by userId from backend with internal service authentication
+    const response = await fetch(`${BACKEND_URL}/api/users/${userId}/jobs`, {
+      headers: {
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+        'X-User-ID': userId,
+        'X-User-Email': userEmail,
+      },
+    });
 
     if (!response.ok) {
       console.error('Failed to fetch jobs:', response.statusText);

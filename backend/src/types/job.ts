@@ -1,11 +1,10 @@
 import { z } from 'zod';
 
 // API request schemas
+// Note: email and userId come from authenticated session, not request body
 export const CreateJobSchema = z.object({
-  email: z.string().email('Invalid email address'),
   niche: z.string().min(10, 'Niche description must be at least 10 characters'),
   allowedProjectTypes: z.array(z.string()).optional(),
-  userId: z.string().uuid().optional(), // Associate with authenticated user
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;
@@ -53,7 +52,6 @@ export const TOTAL_STAGES = PIPELINE_STAGES.length;
 // API response types
 export interface JobResponse {
   id: string;
-  email: string;
   niche: string;
   status: string;
   currentStage: number;

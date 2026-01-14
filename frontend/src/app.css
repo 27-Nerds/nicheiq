@@ -101,6 +101,8 @@
 	body {
 		font-family: var(--font-body);
 		background-color: var(--color-bg-base);
+		background-image: radial-gradient(circle at 1px 1px, var(--color-border) 1px, transparent 0);
+		background-size: 24px 24px;
 		color: var(--color-text-secondary);
 		font-size: 1.0625rem;
 		line-height: 1.65;
@@ -209,6 +211,23 @@
 
 	::-webkit-scrollbar-thumb:hover {
 		background: rgba(0, 0, 0, 0.25);
+	}
+
+	/* Status border colors for cards */
+	.border-l-success {
+		border-left-color: var(--color-success);
+	}
+	.border-l-warning {
+		border-left-color: var(--color-warning);
+	}
+	.border-l-error {
+		border-left-color: var(--color-error);
+	}
+	.border-l-secondary {
+		border-left-color: var(--color-secondary);
+	}
+	.border-l-border {
+		border-left-color: var(--color-border-emphasis);
 	}
 }
 
@@ -471,6 +490,50 @@
 		transform: scale(0.98);
 	}
 
+	/* Form Inputs */
+	.input {
+		display: block;
+		width: 100%;
+		padding: 0.75rem 1rem;
+		font-family: var(--font-body);
+		font-size: 0.875rem;
+		color: var(--color-text-primary);
+		background-color: var(--color-bg-elevated);
+		border: 1px solid var(--color-border-emphasis);
+		border-radius: 8px;
+		transition: border-color 0.2s ease, box-shadow 0.2s ease;
+	}
+
+	.input::placeholder {
+		color: var(--color-text-muted);
+	}
+
+	.input:hover {
+		border-color: var(--color-accent);
+	}
+
+	.input:focus {
+		outline: none;
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 3px rgba(229, 90, 40, 0.15);
+	}
+
+	.input:disabled {
+		background-color: var(--color-bg-surface);
+		color: var(--color-text-muted);
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.input-error {
+		border-color: var(--color-error);
+	}
+
+	.input-error:focus {
+		border-color: var(--color-error);
+		box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+	}
+
 	/* Nav item for sidebar */
 	.nav-item {
 		display: flex;
@@ -509,6 +572,7 @@
 		background-color: var(--color-bg-surface);
 		border-radius: 4px;
 		overflow: hidden;
+		position: relative;
 	}
 
 	.progress-bar-fill {
@@ -516,6 +580,46 @@
 		background: linear-gradient(90deg, var(--color-accent) 0%, var(--color-accent-light) 100%);
 		border-radius: 4px;
 		transition: width 0.4s ease;
+		position: relative;
+	}
+
+	/* Animated shimmer for active progress */
+	.progress-bar-fill.animate-shimmer::after {
+		content: '';
+		position: absolute;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: linear-gradient(
+			90deg,
+			transparent 0%,
+			rgba(255, 255, 255, 0.4) 50%,
+			transparent 100%
+		);
+		animation: shimmer 1.5s ease-in-out infinite;
+	}
+
+	@keyframes shimmer {
+		0% { transform: translateX(-100%); }
+		100% { transform: translateX(100%); }
+	}
+
+	/* Staggered card entrance animation */
+	@keyframes fadeSlideIn {
+		from {
+			opacity: 0;
+			transform: translateY(12px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.animate-fade-slide-in {
+		animation: fadeSlideIn 0.4s var(--ease-out) forwards;
+		opacity: 0;
 	}
 
 	/* Collapsible section */

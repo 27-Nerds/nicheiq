@@ -18,11 +18,7 @@
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: session?.user?.email,
-          niche,
-          userId: session?.user?.id
-        }),
+        body: JSON.stringify({ niche }),
       });
 
       const data = await res.json();

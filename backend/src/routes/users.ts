@@ -1,13 +1,14 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { prisma } from '../services/db.js';
+import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 
 export const usersRouter = Router();
 
 /**
  * GET /api/users/:userId/jobs
- * Get all jobs for a specific user
+ * Get all jobs for a specific user (requires authentication and ownership)
  */
-usersRouter.get('/:userId/jobs', async (req: Request, res: Response) => {
+usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { userId } = req.params;
 
@@ -18,14 +19,9 @@ usersRouter.get('/:userId/jobs', async (req: Request, res: Response) => {
       return;
     }
 
-    // Check if user exists
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { id: true },
-    });
-
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
+    // Verify user can only access their own jobs
+    if (req.user!.id !== userId) {
+      res.status(403).json({ error: 'Not authorized to view these jobs' });
       return;
     }
 
@@ -68,9 +64,9 @@ usersRouter.get('/:userId/jobs', async (req: Request, res: Response) => {
 
 /**
  * GET /api/users/:userId
- * Get user profile
+ * Get user profile (requires authentication and ownership)
  */
-usersRouter.get('/:userId', async (req: Request, res: Response) => {
+usersRouter.get('/:userId', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { userId } = req.params;
 
@@ -78,6 +74,12 @@ usersRouter.get('/:userId', async (req: Request, res: Response) => {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(userId)) {
       res.status(400).json({ error: 'Invalid user ID format' });
+      return;
+    }
+
+    // Verify user can only access their own profile
+    if (req.user!.id !== userId) {
+      res.status(403).json({ error: 'Not authorized to view this profile' });
       return;
     }
 

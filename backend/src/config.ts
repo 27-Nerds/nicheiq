@@ -38,14 +38,26 @@ export const CONFIG = {
 // Validate required config in production
 export function validateConfig(): void {
   if (CONFIG.nodeEnv === 'production') {
-    const required = [
+    const required: [string, string | undefined][] = [
       ['DATABASE_URL', CONFIG.databaseUrl],
       ['REDIS_URL', CONFIG.redisUrl],
+      ['AUTH_SECRET', process.env.AUTH_SECRET], // Critical for JWT verification
     ];
 
     const missing = required.filter(([, value]) => !value);
     if (missing.length > 0) {
       throw new Error(`Missing required environment variables: ${missing.map(([name]) => name).join(', ')}`);
+    }
+
+    // Validate AUTH_SECRET is strong enough
+    const authSecret = process.env.AUTH_SECRET;
+    if (authSecret && authSecret.length < 32) {
+      throw new Error('AUTH_SECRET must be at least 32 characters in production');
+    }
+  } else {
+    // Development warnings
+    if (!process.env.AUTH_SECRET) {
+      console.warn('⚠️  WARNING: AUTH_SECRET not set. Using development fallback. DO NOT USE IN PRODUCTION!');
     }
   }
 }

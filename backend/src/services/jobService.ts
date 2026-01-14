@@ -6,7 +6,6 @@ import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
  * Create a new research job
  */
 export async function createJob(
-  email: string,
   niche: string,
   allowedProjectTypes?: string[],
   userId?: string
@@ -14,7 +13,6 @@ export async function createJob(
   // Create job with initial progress entries for all stages
   const job = await prisma.job.create({
     data: {
-      email,
       niche,
       userId, // Associate with user if provided
       allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
@@ -227,15 +225,15 @@ export async function failJob(jobId: string, errorMessage: string, errorStage?: 
  * List jobs with pagination
  */
 export async function listJobs(options?: {
-  email?: string;
+  userId?: string;
   status?: JobStatus;
   limit?: number;
   offset?: number;
 }) {
-  const { email, status, limit = 20, offset = 0 } = options || {};
+  const { userId, status, limit = 20, offset = 0 } = options || {};
 
   const where: Prisma.JobWhereInput = {};
-  if (email) where.email = email;
+  if (userId) where.userId = userId;
   if (status) where.status = status;
 
   const [jobs, total] = await Promise.all([
