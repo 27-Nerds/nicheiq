@@ -1,7 +1,8 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { createJob, getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
+import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
 import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueService.js';
+import { createJobWithCreditDeduction, InsufficientCreditsError } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema } from '../types/job.js';
 import { JobStatus, AssetType } from '@prisma/client';
@@ -30,7 +31,7 @@ export const jobsRouter = Router();
 
 /**
  * POST /api/jobs
- * Create a new research job (requires authentication)
+ * Create a new research job (requires authentication and sufficient credits)
  */
 jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -40,8 +41,14 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     // Use authenticated user's ID
     const userId = req.user!.id;
 
-    // Create job in database (always use authenticated user)
-    const job = await createJob(input.niche, input.allowedProjectTypes, userId);
+    // Create job with credit deduction in atomic transaction
+    // This prevents race conditions and ensures credits are deducted BEFORE job creation
+    const { job } = await createJobWithCreditDeduction(
+      userId,
+      input.niche,
+      1, // Credit cost per job
+      input.allowedProjectTypes
+    );
 
     // Enqueue job for Python worker (email retrieved from DB when needed for notifications)
     await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes);
@@ -63,6 +70,17 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       message: 'Research job created. Check the status URL for progress.',
     });
   } catch (error) {
+    // Handle insufficient credits error
+    if (error instanceof InsufficientCreditsError) {
+      res.status(402).json({
+        error: 'Insufficient research credits',
+        code: 'INSUFFICIENT_CREDITS',
+        balance: error.currentBalance,
+        required: error.required,
+      });
+      return;
+    }
+
     if (error instanceof z.ZodError) {
       res.status(400).json({
         error: 'Validation error',

@@ -1,12 +1,13 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { signOut } from '@auth/sveltekit/client';
-  import { LogOut, LayoutDashboard, Plus } from 'lucide-svelte';
+  import { LogOut, LayoutDashboard, Plus, Coins, CreditCard } from 'lucide-svelte';
   import NewResearchModal from '$lib/components/NewResearchModal.svelte';
 
   let { children } = $props();
 
   const session = $derived($page.data.session);
+  const creditBalance = $derived($page.data.creditBalance as number ?? 0);
   let showUserMenu = $state(false);
   let showNewResearchModal = $state(false);
 
@@ -59,6 +60,19 @@
             <span class="hidden sm:inline">New Research</span>
           </button>
 
+          <!-- Credit Balance -->
+          <a
+            href="/billing"
+            class="flex items-center gap-2 ml-2 px-3 py-1.5 rounded-lg hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
+            title="Research Credits"
+          >
+            <Coins class="w-4 h-4 text-accent" />
+            <span class="text-sm font-semibold {creditBalance === 0 ? 'text-warning' : 'text-text-primary'}">
+              {creditBalance}
+            </span>
+            <span class="text-xs text-text-muted hidden sm:inline">credits</span>
+          </a>
+
           <!-- User Menu -->
           <div class="relative ml-3">
             <button
@@ -91,6 +105,16 @@
                     {session?.user?.email}
                   </p>
                 </div>
+                <a
+                  href="/billing"
+                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors"
+                >
+                  <CreditCard class="w-4 h-4" />
+                  Billing
+                  <span class="ml-auto text-xs font-medium {creditBalance === 0 ? 'text-warning' : 'text-accent'}">
+                    {creditBalance} credits
+                  </span>
+                </a>
                 <button
                   onclick={handleSignOut}
                   class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors"

@@ -36,6 +36,15 @@ enum AssetType {
   LANDING_PAGE  // Generated HTML landing page
 }
 
+// Credit transaction types
+enum CreditTransactionType {
+  PURCHASE          // Manual purchase (admin adds)
+  JOB_DEDUCTION     // Used for research job
+  PROMO_REDEMPTION  // Promo code redeemed
+  REFUND            // Job failed - tokens refunded
+  ADMIN_ADJUSTMENT  // Manual admin adjustment
+}
+
 // ============================================
 // Authentication Models (Auth.js compatible)
 // ============================================
@@ -59,6 +68,7 @@ model User {
   accounts      Account[]
   sessions      Session[]
   jobs          Job[]
+  credits       UserCredits?
 
   @@index([email])
 }
@@ -190,4 +200,87 @@ model JobAsset {
 
   @@index([jobId])
   @@unique([jobId, assetType])
+}
+
+// ============================================
+// Credits & Billing Models
+// ============================================
+
+// User credit balance (one-to-one with User)
+model UserCredits {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  balance         Int      @default(0)    // Current available credits
+  totalPurchased  Int      @default(0)    // Lifetime purchased
+  totalUsed       Int      @default(0)    // Lifetime used
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions    CreditTransaction[]
+
+  @@index([userId])
+}
+
+// Credit transaction audit trail
+model CreditTransaction {
+  id              String                @id @default(uuid())
+  userId          String
+  userCredits     UserCredits           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  type            CreditTransactionType
+  amount          Int                   // Positive = add, Negative = deduct
+  balanceBefore   Int
+  balanceAfter    Int
+
+  description     String?               @db.VarChar(500)
+  relatedJobId    String?               // Link to job that used credits
+  promoCodeId     String?               // Link to promo code if redeemed
+
+  createdAt       DateTime              @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+// Admin-generated promo codes
+model PromoCode {
+  id              String            @id @default(uuid())
+  code            String            @unique @db.VarChar(50)
+
+  creditAmount    Int               // Credits granted when redeemed
+  maxRedemptions  Int               @default(1)   // How many times can be used
+  currentUses     Int               @default(0)   // Current usage count
+
+  expiresAt       DateTime?         // Optional expiration
+  isActive        Boolean           @default(true)
+
+  description     String?           @db.VarChar(500)  // Admin notes
+  createdBy       String?           // Admin who created it
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  redemptions     PromoRedemption[]
+
+  @@index([code])
+  @@index([isActive])
+}
+
+// Track promo code redemptions
+model PromoRedemption {
+  id              String     @id @default(uuid())
+  promoCodeId     String
+  promoCode       PromoCode  @relation(fields: [promoCodeId], references: [id])
+  userId          String
+
+  creditsGranted  Int
+  redeemedAt      DateTime   @default(now())
+
+  @@unique([promoCodeId, userId])  // User can only redeem each code once
+  @@index([userId])
+  @@index([redeemedAt])
 }

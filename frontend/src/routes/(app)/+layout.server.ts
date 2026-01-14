@@ -1,5 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
+import { env } from '$env/dynamic/private';
+
+const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: LayoutServerLoad = async (event) => {
   const session = await event.locals.auth?.();
@@ -10,5 +13,24 @@ export const load: LayoutServerLoad = async (event) => {
     throw redirect(302, `/login?returnTo=${returnTo}`);
   }
 
-  return { session };
+  // Fetch user's credit balance for header display
+  let creditBalance = 0;
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/billing/balance`, {
+      headers: {
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+        'X-User-ID': session.user.id,
+        'X-User-Email': session.user.email || '',
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      creditBalance = data.balance ?? 0;
+    }
+  } catch (error) {
+    console.error('Failed to fetch credit balance:', error);
+  }
+
+  return { session, creditBalance };
 };
