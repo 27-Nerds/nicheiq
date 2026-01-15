@@ -7,7 +7,9 @@ import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { billingRouter } from './routes/billing.js';
+import { workersRouter } from './routes/workers.js';
 import { prisma } from './services/db.js';
+import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 
 // Validate configuration
 validateConfig();
@@ -35,6 +37,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/jobs', jobsRouter);
 app.use('/api/jobs', eventsRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/workers', workersRouter);
 app.use('/api', healthRouter);
 
 // Error handling middleware
@@ -54,7 +57,13 @@ app.use((_req: Request, res: Response) => {
 // Graceful shutdown
 async function shutdown() {
   console.log('Shutting down gracefully...');
+
+  // Stop the heartbeat monitor
+  stopHeartbeatMonitor();
+
+  // Disconnect from database
   await prisma.$disconnect();
+
   process.exit(0);
 }
 
@@ -67,4 +76,7 @@ app.listen(CONFIG.port, () => {
   console.log(`Environment: ${CONFIG.nodeEnv}`);
   console.log(`Database: ${CONFIG.databaseUrl.replace(/:[^:@]+@/, ':****@')}`);
   console.log(`Redis: ${CONFIG.redisUrl}`);
+
+  // Start the heartbeat monitor for worker crash detection
+  startHeartbeatMonitor();
 });

@@ -1,0 +1,239 @@
+"""
+Worker heartbeat module for crash detection and recovery.
+
+Sends periodic heartbeats to the backend to indicate the worker is alive.
+On graceful shutdown (SIGTERM/SIGINT), notifies the backend immediately.
+"""
+
+import os
+import socket
+import threading
+import time
+import uuid
+from typing import Optional
+
+import requests
+from loguru import logger
+
+# Generate unique worker ID (persists for lifetime of process)
+WORKER_ID = f"worker-{uuid.uuid4().hex[:8]}"
+
+# Heartbeat configuration
+HEARTBEAT_INTERVAL_SECONDS = 15  # Send heartbeat every 15 seconds
+HEARTBEAT_TIMEOUT_SECONDS = 5    # HTTP request timeout
+
+# Current state
+_current_job_id: Optional[str] = None
+_heartbeat_thread: Optional[threading.Thread] = None
+_shutdown_event: threading.Event = threading.Event()
+_started = False
+
+
+def get_worker_id() -> str:
+    """Get the unique worker ID for this process."""
+    return WORKER_ID
+
+
+def _get_backend_url() -> str:
+    """Get backend URL from environment."""
+    return os.environ.get("BACKEND_URL", "http://localhost:3001")
+
+
+def _get_internal_key() -> str:
+    """Get internal API key from environment."""
+    return os.environ.get("INTERNAL_API_KEY", "")
+
+
+def _send_heartbeat() -> bool:
+    """
+    Send a heartbeat to the backend.
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/heartbeat",
+            json={
+                "worker_id": WORKER_ID,
+                "job_id": _current_job_id,
+                "hostname": socket.gethostname(),
+                "process_id": os.getpid(),
+            },
+            headers={"x-internal-key": _get_internal_key()},
+            timeout=HEARTBEAT_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return True
+    except requests.exceptions.Timeout:
+        logger.warning("[Heartbeat] Heartbeat request timed out")
+        return False
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[Heartbeat] Failed to send heartbeat: {e}")
+        return False
+
+
+def _heartbeat_loop() -> None:
+    """
+    Background thread that sends periodic heartbeats.
+    Runs until shutdown_event is set.
+    """
+    logger.info(f"[Heartbeat] Starting heartbeat thread for worker {WORKER_ID}")
+
+    while not _shutdown_event.is_set():
+        _send_heartbeat()
+        # Wait for interval or until shutdown
+        _shutdown_event.wait(HEARTBEAT_INTERVAL_SECONDS)
+
+    logger.info("[Heartbeat] Heartbeat thread stopped")
+
+
+def start_heartbeat() -> None:
+    """
+    Start the background heartbeat thread.
+    Should be called once when worker starts.
+    """
+    global _heartbeat_thread, _started
+
+    if _started:
+        logger.warning("[Heartbeat] Heartbeat already started")
+        return
+
+    _shutdown_event.clear()
+    _heartbeat_thread = threading.Thread(target=_heartbeat_loop, daemon=True)
+    _heartbeat_thread.start()
+    _started = True
+
+    logger.info(f"[Heartbeat] Worker {WORKER_ID} heartbeat started")
+
+
+def stop_heartbeat() -> None:
+    """
+    Stop the background heartbeat thread.
+    Called during graceful shutdown.
+    """
+    global _started
+
+    if not _started:
+        return
+
+    _shutdown_event.set()
+
+    if _heartbeat_thread and _heartbeat_thread.is_alive():
+        _heartbeat_thread.join(timeout=2)
+
+    _started = False
+    logger.info("[Heartbeat] Heartbeat stopped")
+
+
+def set_current_job(job_id: Optional[str]) -> None:
+    """
+    Update the current job being processed.
+
+    Args:
+        job_id: The job ID, or None if idle
+    """
+    global _current_job_id
+    _current_job_id = job_id
+
+    if job_id:
+        logger.debug(f"[Heartbeat] Now processing job {job_id}")
+    else:
+        logger.debug("[Heartbeat] Worker now idle")
+
+
+def notify_job_started(job_id: str) -> bool:
+    """
+    Notify backend that this worker has started processing a job.
+
+    Args:
+        job_id: The job ID
+
+    Returns:
+        True if successful, False otherwise
+    """
+    global _current_job_id
+    _current_job_id = job_id
+
+    try:
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/job-started",
+            json={
+                "worker_id": WORKER_ID,
+                "job_id": job_id,
+            },
+            headers={"x-internal-key": _get_internal_key()},
+            timeout=HEARTBEAT_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        logger.info(f"[Heartbeat] Notified backend: job {job_id} started")
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[Heartbeat] Failed to notify job started: {e}")
+        return False
+
+
+def notify_job_completed(job_id: str) -> bool:
+    """
+    Notify backend that this worker has finished processing a job.
+
+    Args:
+        job_id: The job ID
+
+    Returns:
+        True if successful, False otherwise
+    """
+    global _current_job_id
+    _current_job_id = None
+
+    try:
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/job-completed",
+            json={
+                "worker_id": WORKER_ID,
+                "job_id": job_id,
+            },
+            headers={"x-internal-key": _get_internal_key()},
+            timeout=HEARTBEAT_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        logger.info(f"[Heartbeat] Notified backend: job {job_id} completed")
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[Heartbeat] Failed to notify job completed: {e}")
+        return False
+
+
+def notify_shutdown(reason: str = "signal") -> bool:
+    """
+    Notify backend that this worker is shutting down.
+    Called on SIGTERM/SIGINT before exiting.
+
+    Args:
+        reason: Reason for shutdown (e.g., "SIGTERM", "SIGINT")
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/shutdown",
+            json={
+                "worker_id": WORKER_ID,
+                "job_id": _current_job_id,
+                "reason": reason,
+            },
+            headers={"x-internal-key": _get_internal_key()},
+            timeout=HEARTBEAT_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        logger.info(f"[Heartbeat] Shutdown notification sent: {reason}")
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Heartbeat] Failed to notify shutdown: {e}")
+        return False
+
+
+def get_current_job_id() -> Optional[str]:
+    """Get the ID of the job currently being processed."""
+    return _current_job_id

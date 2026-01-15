@@ -5,6 +5,11 @@ Queue consumer for NicheIQ.
 Consumes jobs from the Redis queue (pushed by Node.js) and executes them.
 This bridges the Node.js backend with the Python research pipeline.
 
+Features:
+- Graceful shutdown on SIGTERM/SIGINT
+- Worker heartbeat for crash detection
+- Automatic job recovery on worker restart
+
 Usage:
     python -m worker.queue_consumer
 """
@@ -46,13 +51,31 @@ QUEUE_NAME = "nicheiq:jobs"
 
 # Graceful shutdown
 shutdown_requested = False
+current_job_id = None
 
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals."""
+    """Handle shutdown signals (SIGTERM, SIGINT)."""
     global shutdown_requested
-    logger.info("Shutdown signal received, finishing current job...")
+
+    signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
+    logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+
     shutdown_requested = True
+
+    # Immediately notify backend about shutdown
+    # This triggers job recovery if we were processing a job
+    try:
+        from .heartbeat import notify_shutdown, get_current_job_id, stop_heartbeat
+
+        job_id = get_current_job_id()
+        if job_id:
+            logger.info(f"Shutting down while processing job {job_id} - notifying backend for recovery")
+
+        notify_shutdown(signal_name)
+        stop_heartbeat()
+    except Exception as e:
+        logger.error(f"Error during shutdown notification: {e}")
 
 
 def get_redis_connection() -> redis.Redis:
@@ -68,14 +91,22 @@ def process_job(job_data: dict) -> None:
     Args:
         job_data: Dict with job_id, niche, user_id, allowed_project_types
     """
+    global current_job_id
+
     job_id = job_data.get("job_id")
     niche = job_data.get("niche")
     user_id = job_data.get("user_id")
     allowed_project_types = job_data.get("allowed_project_types")
 
+    current_job_id = job_id
     logger.info(f"Processing job {job_id} for user {user_id or 'anonymous'}: {niche[:50]}...")
 
     try:
+        # Notify backend that we're starting this job
+        from .heartbeat import notify_job_started, set_current_job
+        set_current_job(job_id)
+        notify_job_started(job_id)
+
         from .tasks import run_research_job
 
         result = run_research_job(
@@ -87,6 +118,10 @@ def process_job(job_data: dict) -> None:
 
         logger.info(f"Job {job_id} completed: {result}")
 
+        # Notify backend that job is done
+        from .heartbeat import notify_job_completed
+        notify_job_completed(job_id)
+
     except Exception as e:
         error_msg = str(e)
         error_traceback = traceback.format_exc()
@@ -95,6 +130,15 @@ def process_job(job_data: dict) -> None:
         # Publish failure to Redis
         from .progress import publish_job_failed
         publish_job_failed(job_id, error_msg)
+
+        # Notify backend job completed (failed)
+        from .heartbeat import notify_job_completed
+        notify_job_completed(job_id)
+
+    finally:
+        current_job_id = None
+        from .heartbeat import set_current_job
+        set_current_job(None)
 
 
 def run_consumer():
@@ -105,9 +149,14 @@ def run_consumer():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
+    # Start heartbeat service
+    from .heartbeat import start_heartbeat, get_worker_id
+    start_heartbeat()
+
+    worker_id = get_worker_id()
     redis_conn = get_redis_connection()
 
-    logger.info(f"NicheIQ Queue Consumer started")
+    logger.info(f"NicheIQ Queue Consumer started (Worker ID: {worker_id})")
     logger.info(f"Redis URL: {os.environ.get('REDIS_URL', 'redis://localhost:6379')}")
     logger.info(f"Queue: {QUEUE_NAME}")
     logger.info("Waiting for jobs...")
@@ -141,6 +190,10 @@ def run_consumer():
             logger.error(f"Consumer error: {e}")
             import time
             time.sleep(1)
+
+    # Cleanup
+    from .heartbeat import stop_heartbeat
+    stop_heartbeat()
 
     logger.info("Queue consumer stopped")
 

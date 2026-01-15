@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Report } from '$lib/types/report';
-	import { ArrowLeft } from 'lucide-svelte';
+	import { ArrowLeft, AlertTriangle } from 'lucide-svelte';
 
 	// Decision Gateway (Go/No-Go)
 	import ExecutiveSummary from '$lib/components/sections/ExecutiveSummary.svelte';
@@ -32,6 +32,9 @@
 
 	// UI components
 	import SectionNav from '$lib/components/ui/SectionNav.svelte';
+
+	// Header Summary
+	import HeaderSummary from '$lib/components/sections/HeaderSummary.svelte';
 
 	interface Props {
 		data: {
@@ -82,20 +85,45 @@
 				<span>Back to Job Status</span>
 			</a>
 
-			<!-- Niche Context Bar -->
-			<div class="niche-context-bar">
-				<span class="niche-label">Research Niche</span>
-				<span class="niche-value">{report.niche}</span>
-			</div>
+			<!-- Header Summary -->
+			<HeaderSummary
+				niche={report.niche}
+				nicheContext={report.niche_context}
+				researchMetadata={report.research_metadata}
+				painPointAnalytics={report.pain_point_analytics}
+				detailedPainPointsCount={report.detailed_pain_points?.length ?? 0}
+				solutionName={report.selected_solution_name}
+				solutionDescription={report.selected_solution_details?.description}
+				severityScore={report.executive_dashboard?.core_pain_point?.severity_score}
+				wtpScore={report.executive_dashboard?.core_pain_point?.willingness_to_pay_score}
+				marketFitScore={report.selected_solution_details?.market_fit_score}
+				feasibilityScore={report.selected_solution_details?.technical_feasibility_score}
+				soloDevScore={report.selected_solution_details?.solo_dev_feasibility}
+			/>
 
 			<!-- DECISION GATEWAY (Go/No-Go) -->
-			<ExecutiveSummary
-				data={report.executive_dashboard}
-				executiveSummary={report.executive_summary}
-				refinementHighlights={report.refinement_highlights}
-				seoCalculationTransparency={report.seo_calculation_transparency}
-				trends={report.trend_longevity}
-			/>
+			{#if report.executive_dashboard}
+				<ExecutiveSummary
+					data={report.executive_dashboard}
+					executiveSummary={report.executive_summary}
+					refinementHighlights={report.refinement_highlights}
+					seoCalculationTransparency={report.seo_calculation_transparency}
+					trends={report.trend_longevity}
+				/>
+			{:else}
+				<section class="report-section">
+					<div class="warning-banner">
+						<AlertTriangle class="w-5 h-5 text-warning" />
+						<div>
+							<h3 class="font-semibold text-text-primary">Executive Summary Unavailable</h3>
+							<p class="text-sm text-text-secondary">
+								The executive dashboard could not be generated for this report.
+								Some data may be missing from earlier pipeline stages.
+							</p>
+						</div>
+					</div>
+				</section>
+			{/if}
 
 			{#if report.executive_dashboard}
 				<SolutionHero
@@ -239,5 +267,15 @@
 	.niche-value {
 		font-size: 0.9375rem;
 		color: var(--color-text-secondary);
+	}
+
+	.warning-banner {
+		display: flex;
+		align-items: flex-start;
+		gap: 1rem;
+		padding: 1.25rem;
+		background: var(--color-warning-bg, rgba(234, 179, 8, 0.1));
+		border: 1px solid var(--color-warning, #eab308);
+		border-radius: 0.5rem;
 	}
 </style>

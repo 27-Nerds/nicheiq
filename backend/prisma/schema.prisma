@@ -143,6 +143,11 @@ model Job {
   errorMessage         String?     @db.Text
   errorStage           Float?
 
+  // Worker crash recovery tracking
+  workerId             String?     @db.VarChar(100)  // Which worker is processing this job
+  lastHeartbeat        DateTime?   // Last heartbeat from worker for this job
+  retryCount           Int         @default(0)       // Number of times job has been retried due to worker crash
+
   // Timestamps
   createdAt            DateTime    @default(now())
   updatedAt            DateTime    @updatedAt
@@ -158,6 +163,30 @@ model Job {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([workerId])
+  @@index([lastHeartbeat])
+}
+
+// Worker heartbeat tracking (for detecting crashed workers)
+model WorkerHeartbeat {
+  id              String    @id @default(uuid())
+  workerId        String    @unique @db.VarChar(100)  // Unique worker instance ID
+
+  // Current state
+  currentJobId    String?   // Job currently being processed (null if idle)
+  status          String    @default("active") @db.VarChar(20)  // active, idle, shutdown
+
+  // Heartbeat timing
+  lastHeartbeat   DateTime  @default(now())
+  startedAt       DateTime  @default(now())  // When worker started
+
+  // Metadata
+  hostname        String?   @db.VarChar(255)
+  processId       Int?      // OS process ID
+
+  @@index([lastHeartbeat])
+  @@index([currentJobId])
+  @@index([status])
 }
 
 // Detailed progress tracking per stage

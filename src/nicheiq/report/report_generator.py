@@ -1959,17 +1959,7 @@ It differentiates through {diff_text}.
                 channels = []  # Continue with empty list
 
             # Step 3: Generate marketing narrative (LLM - 30%)
-            try:
-                narrative = self._generate_marketing_narrative(icp=icp)
-            except Exception as e:
-                logger.warning(f"Failed to generate marketing narrative: {e}, using fallback")
-                # Inline fallback: construct simple narrative from ICP
-                from ..models.marketing_blueprint import MarketingNarrative
-                narrative = MarketingNarrative(
-                    core_marketing_message=f"Solve {icp.pain_points[0]} for {icp.persona_name}" if icp.pain_points else f"Solution for {icp.persona_name}",
-                    message_framework="Problem-Solution messaging framework",
-                    content_angles=[f"How to solve: {pp}" for pp in icp.pain_points[:3]] if icp.pain_points else ["Educational content", "Case studies", "Practical guides"]
-                )
+            narrative = self._generate_marketing_narrative(icp=icp)
 
             # Step 4: Generate 30-day playbook (LLM - 20%)
             selected_solution = self.accessor.get_selected_solution_details()

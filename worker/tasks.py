@@ -96,30 +96,23 @@ def run_research_job(
             json.dump(report_data, dst, indent=2)
 
         # Generate landing page
-        landing_path = None
-        try:
-            logger.info(f"[Worker] Generating landing page for job {job_id}")
-            progress_callback(11, "Landing Page Generation", "running")
+        logger.info(f"[Worker] Generating landing page for job {job_id}")
+        progress_callback(11, "Landing Page Generation", "running")
 
-            # Load report for landing page generation
-            report = FinalReport(**report_data)
+        # Load report for landing page generation
+        report = FinalReport(**report_data)
 
-            # Generate landing page
-            crew = LandingPageCrew()
-            result = crew.generate(report, page_mode="coming_soon")
+        # Generate landing page
+        crew = LandingPageCrew()
+        result = crew.generate(report, page_mode="coming_soon")
 
-            # Save landing page
-            job_landing_path = output_dir / "landing_page.html"
-            job_landing_path.write_text(result.html_output)
-            landing_path = str(job_landing_path)
+        # Save landing page
+        job_landing_path = output_dir / "landing_page.html"
+        job_landing_path.write_text(result.html_output)
+        landing_path = str(job_landing_path)
 
-            progress_callback(11, "Landing Page Generation", "completed")
-            logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
-
-        except Exception as e:
-            logger.warning(f"[Worker] Landing page generation failed for job {job_id}: {e}")
-            # Don't fail the whole job if landing page fails
-            progress_callback(11, "Landing Page Generation", "failed")
+        progress_callback(11, "Landing Page Generation", "completed")
+        logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
 
         # Publish completion
         publish_job_completed(job_id, str(job_report_path), landing_path)

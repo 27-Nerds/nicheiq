@@ -915,7 +915,7 @@ class ResearchFlow(Flow[ResearchState]):
             logger.info("  - Industry boundaries defined")
         except Exception as e:
             logger.error(f"Failed to generate niche context with LLM: {e}")
-            logger.warning("Proceeding without structured niche context")
+            raise RuntimeError(f"Stage 1 failed: Could not generate niche context - {e}") from e
 
         self.state.current_stage = 5
         self._mark_stage_complete(1)
@@ -1355,14 +1355,15 @@ Return a valid JSON object with this structure:
 
         # Decision: Proceed based on quality tier
         if quality_tier == "INSUFFICIENT":
-            logger.error("Pain point quality insufficient for pipeline - stopping execution")
+            error_msg = "Pain point quality insufficient for pipeline - stopping execution"
+            logger.error(error_msg)
             logger.error("Recommendation: Expand social content collection or refine niche focus")
             self.state.errors.append(
                 f"Stage 6 quality gate failed: {quality_tier} tier (confidence: {confidence_score:.2f})"
             )
             # Save checkpoint with error state
             self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
-            return  # Stop pipeline execution
+            raise RuntimeError(f"Stage 6 failed: {error_msg}")
 
         # Quality tier acceptable - proceed with pipeline
         logger.info(f"✅ Quality gate passed - proceeding with {quality_tier} tier data (confidence: {confidence_score:.2f})")
@@ -1482,10 +1483,10 @@ Return a valid JSON object with this structure:
 
         # Prerequisites check
         if not self.state.pain_point_analysis or not self.state.pain_point_analysis.pain_points:
-            logger.warning("No pain points available. Skipping solution pipeline.")
-            self.state.current_stage = 9
+            error_msg = "No pain points available - cannot proceed with solution pipeline"
+            logger.error(error_msg)
             self.checkpoint_mgr.save_stage("stage_7_skipped", {"skipped": True, "reason": "No pain points available"})
-            return
+            raise RuntimeError(f"Stage 7 failed: {error_msg}")
 
         # ANTI-HALLUCINATION CHECK: Verify pain point quality
         high_priority = [
@@ -1498,12 +1499,10 @@ Return a valid JSON object with this structure:
         ]
 
         if not high_priority and not medium_priority:
-            logger.warning(
-                "No high or medium priority pain points available - skipping solution pipeline"
-            )
-            self.state.current_stage = 9
+            error_msg = "No high or medium priority pain points available - cannot proceed with solution pipeline"
+            logger.error(error_msg)
             self.checkpoint_mgr.save_stage("stage_7_skipped", {"skipped": True, "reason": "No high/medium priority pain points"})
-            return
+            raise RuntimeError(f"Stage 7 failed: {error_msg}")
 
         logger.info(
             f"Pain point quality check: {len(high_priority)} high-priority, "
@@ -3041,8 +3040,7 @@ Return a valid JSON object with this structure:
             )
         except Exception as e:
             logger.error(f"SEO strategy generation failed: {e}")
-            self.state.seo_strategy_report = None
-            logger.warning("Continuing to final report without SEO strategy")
+            raise RuntimeError(f"Stage 9 failed: SEO strategy generation failed - {e}") from e
 
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 9.5
