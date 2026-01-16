@@ -5,35 +5,25 @@
     # Enable compression
     encode gzip zstd
 
-    # API routes - proxy to Node.js backend
-    handle /api/* {
-        reverse_proxy api:3001 {
-            # WebSocket support for real-time progress updates
-            header_up Host {host}
-            header_up X-Real-IP {http.request.header.CF-Connecting-IP}
-            header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
-            header_up X-Forwarded-Proto https
-
-            # Increase timeouts for long-running research jobs
-            transport http {
-                read_timeout 120s
-                write_timeout 120s
-            }
-        }
-    }
-
-    # Health check endpoint (direct to API)
+    # Health check endpoint (direct to backend API)
     handle /health {
         reverse_proxy api:3001
     }
 
-    # All other routes - proxy to SvelteKit frontend
+    # All routes go to SvelteKit frontend
+    # Frontend handles Auth.js (/api/auth/*) and proxies other API calls to backend
     handle {
         reverse_proxy frontend:3000 {
             header_up Host {host}
             header_up X-Real-IP {http.request.header.CF-Connecting-IP}
             header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
             header_up X-Forwarded-Proto https
+
+            # Increase timeouts for long-running requests
+            transport http {
+                read_timeout 120s
+                write_timeout 120s
+            }
         }
     }
 
