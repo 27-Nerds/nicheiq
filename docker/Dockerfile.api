@@ -23,7 +23,11 @@ COPY backend/tsconfig.json ./
 # Create output directory
 RUN mkdir -p /app/output/jobs
 
+# Copy and setup entrypoint script
+COPY docker/entrypoint-api.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
 EXPOSE 3001
 
-# Run with tsx for TypeScript support
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["npx", "tsx", "src/index.ts"]
