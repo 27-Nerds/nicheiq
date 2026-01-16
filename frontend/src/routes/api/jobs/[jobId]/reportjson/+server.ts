@@ -18,7 +18,6 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     headers: {
       'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
       'X-User-ID': session.user.id,
-      'X-User-Email': session.user.email,
     },
   });
 

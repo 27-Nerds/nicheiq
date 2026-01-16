@@ -22,7 +22,6 @@ export const POST: RequestHandler = async ({ request, locals }) => {
       'Content-Type': 'application/json',
       'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
       'X-User-ID': session.user.id,
-      'X-User-Email': session.user.email || '',
     },
     body: JSON.stringify(body),
   });

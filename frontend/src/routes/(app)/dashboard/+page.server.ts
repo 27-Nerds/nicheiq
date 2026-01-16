@@ -25,9 +25,8 @@ export const load: PageServerLoad = async ({ parent }) => {
 
   // Get the user's ID from the session
   const userId = session?.user?.id;
-  const userEmail = session?.user?.email;
 
-  if (!userId || !userEmail) {
+  if (!userId) {
     return { jobs: [] };
   }
 
@@ -37,7 +36,6 @@ export const load: PageServerLoad = async ({ parent }) => {
       headers: {
         'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
         'X-User-ID': userId,
-        'X-User-Email': userEmail,
       },
     });
 

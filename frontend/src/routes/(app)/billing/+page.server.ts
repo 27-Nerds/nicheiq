@@ -23,9 +23,8 @@ export const load: PageServerLoad = async ({ parent }) => {
   const { session } = await parent();
 
   const userId = session?.user?.id;
-  const userEmail = session?.user?.email;
 
-  if (!userId || !userEmail) {
+  if (!userId) {
     return {
       billing: {
         balance: 0,
@@ -41,7 +40,6 @@ export const load: PageServerLoad = async ({ parent }) => {
       headers: {
         'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
         'X-User-ID': userId,
-        'X-User-Email': userEmail,
       },
     });
 

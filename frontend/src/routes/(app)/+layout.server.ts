@@ -20,7 +20,6 @@ export const load: LayoutServerLoad = async (event) => {
       headers: {
         'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
         'X-User-ID': session.user.id,
-        'X-User-Email': session.user.email || '',
       },
     });
 

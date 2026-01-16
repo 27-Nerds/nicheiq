@@ -6,7 +6,7 @@ import { CONFIG } from '../config.js';
 export interface AuthenticatedRequest extends Request {
   user?: {
     id: string;
-    email: string;
+    email?: string;
     name?: string | null;
   };
 }
@@ -173,10 +173,9 @@ export function requireInternalAuth(req: AuthenticatedRequest, res: Response, ne
   // Check internal service authentication
   if (serviceSecret === expectedSecret) {
     const userId = req.headers['x-user-id'] as string;
-    const userEmail = req.headers['x-user-email'] as string;
 
-    if (userId && userEmail) {
-      req.user = { id: userId, email: userEmail };
+    if (userId) {
+      req.user = { id: userId };
       return next();
     }
   }
