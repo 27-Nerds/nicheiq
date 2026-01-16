@@ -197,6 +197,7 @@ services:
       NODE_ENV: production
       # Internal API URL for server-side requests
       PUBLIC_API_URL: http://api:3001
+      BACKEND_URL: http://api:3001
       # External API URL for client-side requests (passed at build time)
       ORIGIN: ${ORIGIN:-https://nicheiq.27n.gg}
       # Database for Auth.js
