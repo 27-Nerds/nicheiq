@@ -6,7 +6,7 @@
  * - Report graceful shutdown
  * - Register themselves
  *
- * All endpoints require INTERNAL_API_KEY authentication.
+ * All endpoints require INTERNAL_SERVICE_SECRET authentication.
  */
 
 import { Router, Request, Response } from 'express';
@@ -16,30 +16,12 @@ import {
   registerWorkerHeartbeat,
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
+import { requireInternalService } from '../middleware/auth.js';
 
 export const workersRouter = Router();
 
-// Require internal API key for all worker routes
-const requireInternalKey = (req: Request, res: Response, next: () => void): void => {
-  const internalKey = process.env.INTERNAL_API_KEY;
-  const providedKey = req.headers['x-internal-key'] as string;
-
-  // In development, allow requests without key if INTERNAL_API_KEY is not set
-  if (!internalKey && process.env.NODE_ENV !== 'production') {
-    next();
-    return;
-  }
-
-  if (!providedKey || providedKey !== internalKey) {
-    res.status(401).json({ error: 'Unauthorized' });
-    return;
-  }
-
-  next();
-};
-
-// Apply internal key middleware to all routes
-workersRouter.use(requireInternalKey);
+// Apply internal service middleware to all routes
+workersRouter.use(requireInternalService);
 
 /**
  * Heartbeat request schema

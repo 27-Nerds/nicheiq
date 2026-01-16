@@ -38,7 +38,7 @@ export const load: PageServerLoad = async ({ parent }) => {
   try {
     const response = await fetch(`${BACKEND_URL}/api/billing`, {
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
         'X-User-ID': userId,
       },
     });

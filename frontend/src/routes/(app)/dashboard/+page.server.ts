@@ -34,7 +34,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     // Fetch jobs by userId from backend with internal service authentication
     const response = await fetch(`${BACKEND_URL}/api/users/${userId}/jobs`, {
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
         'X-User-ID': userId,
       },
     });

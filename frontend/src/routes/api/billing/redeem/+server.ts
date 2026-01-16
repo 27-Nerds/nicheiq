@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
       'X-User-ID': session.user.id,
     },
     body: JSON.stringify(body),

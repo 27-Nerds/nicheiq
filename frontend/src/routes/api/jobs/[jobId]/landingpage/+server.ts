@@ -20,7 +20,7 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
 
   const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}/landingpage${queryString}`, {
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
       'X-User-ID': session.user.id,
     },
   });

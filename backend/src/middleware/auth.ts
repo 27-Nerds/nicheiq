@@ -168,7 +168,13 @@ export function verifyOwnership(
  */
 export function requireInternalAuth(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
   const serviceSecret = req.headers['x-internal-service'] as string;
-  const expectedSecret = process.env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret';
+  const expectedSecret = process.env.INTERNAL_SERVICE_SECRET;
+
+  if (!expectedSecret) {
+    console.error('INTERNAL_SERVICE_SECRET not configured');
+    res.status(500).json({ error: 'Server misconfigured' });
+    return;
+  }
 
   // Check internal service authentication
   if (serviceSecret === expectedSecret) {
@@ -182,4 +188,25 @@ export function requireInternalAuth(req: AuthenticatedRequest, res: Response, ne
 
   // Reject if internal auth fails - no fallback for security
   res.status(401).json({ error: 'Authentication required' });
+}
+
+/**
+ * Internal service authentication - for worker calls (no user ID required)
+ * Used by Python workers for heartbeats, status updates, etc.
+ */
+export function requireInternalService(req: Request, res: Response, next: NextFunction): void {
+  const serviceSecret = req.headers['x-internal-service'] as string;
+  const expectedSecret = process.env.INTERNAL_SERVICE_SECRET;
+
+  if (!expectedSecret) {
+    console.error('INTERNAL_SERVICE_SECRET not configured');
+    res.status(500).json({ error: 'Server misconfigured' });
+    return;
+  }
+
+  if (serviceSecret === expectedSecret) {
+    return next();
+  }
+
+  res.status(401).json({ error: 'Unauthorized' });
 }

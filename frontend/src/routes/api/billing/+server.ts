@@ -17,7 +17,7 @@ export const GET: RequestHandler = async ({ locals }) => {
   const response = await fetch(`${BACKEND_URL}/api/billing`, {
     method: 'GET',
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || 'dev-internal-secret',
+      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
       'X-User-ID': session.user.id,
     },
   });

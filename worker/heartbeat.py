@@ -39,9 +39,9 @@ def _get_backend_url() -> str:
     return os.environ.get("BACKEND_URL", "http://localhost:3001")
 
 
-def _get_internal_key() -> str:
-    """Get internal API key from environment."""
-    return os.environ.get("INTERNAL_API_KEY", "")
+def _get_internal_secret() -> str:
+    """Get internal service secret from environment."""
+    return os.environ.get("INTERNAL_SERVICE_SECRET", "")
 
 
 def _send_heartbeat() -> bool:
@@ -60,7 +60,7 @@ def _send_heartbeat() -> bool:
                 "hostname": socket.gethostname(),
                 "process_id": os.getpid(),
             },
-            headers={"x-internal-key": _get_internal_key()},
+            headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
@@ -162,7 +162,7 @@ def notify_job_started(job_id: str) -> bool:
                 "worker_id": WORKER_ID,
                 "job_id": job_id,
             },
-            headers={"x-internal-key": _get_internal_key()},
+            headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
@@ -193,7 +193,7 @@ def notify_job_completed(job_id: str) -> bool:
                 "worker_id": WORKER_ID,
                 "job_id": job_id,
             },
-            headers={"x-internal-key": _get_internal_key()},
+            headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
@@ -223,7 +223,7 @@ def notify_shutdown(reason: str = "signal") -> bool:
                 "job_id": _current_job_id,
                 "reason": reason,
             },
-            headers={"x-internal-key": _get_internal_key()},
+            headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()

@@ -27,13 +27,13 @@ def mark_job_running(job_id: str) -> bool:
         True on success, False on failure (non-blocking)
     """
     backend_url = os.environ.get("BACKEND_URL", "http://localhost:3001")
-    internal_key = os.environ.get("INTERNAL_API_KEY", "")
+    internal_secret = os.environ.get("INTERNAL_SERVICE_SECRET", "")
 
     try:
         response = requests.patch(
             f"{backend_url}/api/jobs/{job_id}/status",
             json={"status": "RUNNING"},
-            headers={"x-internal-key": internal_key},
+            headers={"x-internal-service": internal_secret},
             timeout=5,
         )
         response.raise_for_status()
