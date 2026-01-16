@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Install OpenSSL for Prisma
+RUN apk add --no-cache openssl
+
 # Build arguments for SvelteKit (needed at build time)
 ARG PUBLIC_API_URL=https://nicheiq.27n.gg
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
@@ -12,6 +15,10 @@ COPY package*.json ./
 
 # Install dependencies
 RUN npm ci
+
+# Copy Prisma schema and generate client
+COPY prisma ./prisma/
+RUN npx prisma generate
 
 # Copy source
 COPY . .
@@ -24,7 +31,10 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy built app
+# Install OpenSSL for Prisma runtime
+RUN apk add --no-cache openssl
+
+# Copy built app and Prisma client
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
