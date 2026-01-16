@@ -8,7 +8,7 @@ export const healthRouter = Router();
  * GET /api/health
  * Health check endpoint for monitoring and load balancers
  */
-healthRouter.get('/', async (_req: Request, res: Response) => {
+healthRouter.get('/health', async (_req: Request, res: Response) => {
   const checks = await Promise.allSettled([
     testConnection(),
     checkRedisHealth(),
