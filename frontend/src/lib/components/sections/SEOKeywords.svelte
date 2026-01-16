@@ -11,15 +11,29 @@
 		CheckCircle,
 		AlertTriangle,
 		Code,
-		BookOpen,
-		BarChart3
+		BarChart3,
+		ChevronRight,
+		ChevronDown,
+		ArrowUpRight,
+		Hash
 	} from 'lucide-svelte';
-	import type { SEOStrategy, SEOAnalytics, Keyword, ContentStrategy, ImplementationRoadmap, BudgetAllocation } from '$lib/types/report';
-	import { formatNumber, parseCompetition, getTierLabel, getTierClass, renderMarkdown, renderTechnicalContent } from '$lib/utils/format';
+	import type {
+		SEOStrategy,
+		SEOAnalytics,
+		ContentStrategy,
+		ImplementationRoadmap,
+		BudgetAllocation
+	} from '$lib/types/report';
+	import {
+		formatNumber,
+		parseCompetition,
+		getTierLabel,
+		renderMarkdown,
+		renderTechnicalContent
+	} from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
-	import MetricCard from '$lib/components/ui/MetricCard.svelte';
+	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import KeywordTierChart from '$lib/components/charts/KeywordTierChart.svelte';
-	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 
 	interface Props {
 		strategy: SEOStrategy;
@@ -28,486 +42,1492 @@
 
 	let { strategy, analytics }: Props = $props();
 
+	// Expandable sections state
 	let activeTab = $state<'tier0' | 'tier1' | 'tier2' | 'all'>('all');
+	let showKeywords = $state(false);
+	let showClusters = $state(false);
+	let showRoadmap = $state(false);
+	let showStrategyBudget = $state(false);
+	let showTechnical = $state(false);
+	let showMetrics = $state(false);
+	let showRisks = $state(false);
+	let showSchema = $state(false);
+	let showPositioning = $state(false);
+	let showConclusion = $state(false);
 
 	// Combine all keywords with tier info
-	const allKeywords = $derived([
-		...(strategy.tier_0_keywords || []).map(k => ({ ...k, tier: 0 })),
-		...(strategy.tier_1_keywords || []).map(k => ({ ...k, tier: 1 })),
-		...(strategy.tier_2_keywords || []).map(k => ({ ...k, tier: 2 }))
-	].sort((a, b) => b.search_volume - a.search_volume));
+	const allKeywords = $derived(
+		[
+			...(strategy.tier_0_keywords || []).map((k) => ({ ...k, tier: 0 })),
+			...(strategy.tier_1_keywords || []).map((k) => ({ ...k, tier: 1 })),
+			...(strategy.tier_2_keywords || []).map((k) => ({ ...k, tier: 2 }))
+		].sort((a, b) => b.search_volume - a.search_volume)
+	);
 
 	function getFilteredKeywords() {
 		if (activeTab === 'all') return allKeywords;
 		const tierNum = parseInt(activeTab.replace('tier', ''));
-		return allKeywords.filter(k => k.tier === tierNum);
+		return allKeywords.filter((k) => k.tier === tierNum);
 	}
 
-	function getDifficultyClass(difficulty: number): string {
-		if (difficulty < 0.4) return 'text-success';
-		if (difficulty < 0.6) return 'text-warning';
-		return 'text-error';
+	function getDifficultyColor(difficulty: number): string {
+		if (difficulty < 0.4) return 'var(--color-success)';
+		if (difficulty < 0.6) return 'var(--color-warning)';
+		return 'var(--color-error)';
+	}
+
+	function getTierBadgeVariant(tier: number): 'success' | 'accent' | 'muted' {
+		if (tier === 0) return 'success';
+		if (tier === 1) return 'accent';
+		return 'muted';
 	}
 
 	// Convert ContentStrategy object to markdown
 	function formatContentStrategy(cs: ContentStrategy): string {
 		const parts: string[] = [];
 		if (cs.pillar_pages?.length) {
-			parts.push('**Pillar Pages:**\n' + cs.pillar_pages.map(p => `- ${p}`).join('\n'));
+			parts.push('**Pillar Pages:**\n' + cs.pillar_pages.map((p) => `- ${p}`).join('\n'));
 		}
 		if (cs.cluster_content?.length) {
-			parts.push('**Cluster Content:**\n' + cs.cluster_content.map(c => `- ${c}`).join('\n'));
+			parts.push('**Cluster Content:**\n' + cs.cluster_content.map((c) => `- ${c}`).join('\n'));
 		}
 		if (cs.supporting_content?.length) {
-			parts.push('**Supporting Content:**\n' + cs.supporting_content.map(s => `- ${s}`).join('\n'));
+			parts.push(
+				'**Supporting Content:**\n' + cs.supporting_content.map((s) => `- ${s}`).join('\n')
+			);
 		}
 		return parts.join('\n\n') || 'No content strategy details available.';
 	}
 
-	// Convert ImplementationRoadmap object to markdown
-	function formatImplementationRoadmap(ir: ImplementationRoadmap): string {
-		const parts: string[] = [];
-		const phases = [
-			{ key: 'phase_1', phase: ir.phase_1 },
-			{ key: 'phase_2', phase: ir.phase_2 },
-			{ key: 'phase_3', phase: ir.phase_3 }
-		];
-		for (const { phase } of phases) {
-			if (phase) {
-				parts.push(`**${phase.title}** *(${phase.duration})*\n` + phase.tasks.map(t => `- ${t}`).join('\n'));
-			}
-		}
-		return parts.join('\n\n') || 'No implementation roadmap details available.';
-	}
-
-	// Convert BudgetAllocation object to markdown
-	function formatBudgetAllocation(ba: BudgetAllocation): string {
-		const items: string[] = [];
-		if (ba.content_creation) items.push(`**Content Creation:** ${ba.content_creation}`);
-		if (ba.technical_seo) items.push(`**Technical SEO:** ${ba.technical_seo}`);
-		if (ba.link_building) items.push(`**Link Building:** ${ba.link_building}`);
-		if (ba.tools) items.push(`**Tools:** ${ba.tools}`);
-		return items.join('\n\n') || 'No budget allocation details available.';
-	}
+	// Calculate opportunity score
+	const opportunityScore = $derived(
+		Math.round((analytics.high_volume_keywords / Math.max(analytics.total_keywords, 1)) * 100)
+	);
 </script>
 
-<section id="seo" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<TrendingUp class="w-5 h-5 text-accent" />
+<section id="seo" class="seo-section">
+	<!-- Section Header -->
+	<div class="section-header">
+		<div class="header-icon">
+			<TrendingUp class="icon" />
 		</div>
-		<h2 class="section-title">SEO Strategy & Keywords</h2>
+		<div>
+			<h2 class="section-title">SEO Strategy & Keywords</h2>
+			<p class="section-subtitle">Keyword opportunities and content roadmap</p>
+		</div>
 	</div>
 
-	<!-- Analytics Overview -->
-	<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-		<MetricCard
-			label="Total Keywords"
-			value={analytics.total_keywords.toString()}
-		/>
-		<MetricCard
-			label="Total Search Volume"
-			value={formatNumber(analytics.total_search_volume)}
-			variant="accent"
-		/>
-		<MetricCard
-			label="Avg Competition"
-			value={analytics.avg_competition.toFixed(0)}
-		/>
-		<MetricCard
-			label="High Volume Keywords"
-			value={analytics.high_volume_keywords.toString()}
-			variant="success"
-		/>
-	</div>
-
-	<!-- Keyword Tier Chart -->
-	<AnimateOnScroll animation="fade-up" delay={100}>
-		<div class="mb-8">
-			<KeywordTierChart
-				tier0Count={analytics.tier0_count}
-				tier1Count={analytics.tier1_count}
-				tier2Count={analytics.tier2_count}
-				tier3Count={analytics.tier3_count}
-				tier4Count={analytics.tier4_count}
+	<!-- Hero Strip -->
+	<div class="hero-strip">
+		<div class="hero-metric">
+			<ProgressRing
+				value={opportunityScore / 100}
+				size={56}
+				strokeWidth={5}
+				color="success"
+				showValue={true}
 			/>
+			<div class="hero-metric-content">
+				<span class="hero-metric-label">Opportunity</span>
+				<span class="hero-metric-value">{analytics.high_volume_keywords} high volume</span>
+			</div>
 		</div>
-	</AnimateOnScroll>
 
-	<!-- Key Findings -->
+		<div class="hero-stats">
+			<div class="hero-stat">
+				<span class="hero-stat-value">{analytics.total_keywords}</span>
+				<span class="hero-stat-label">Keywords</span>
+			</div>
+			<div class="hero-stat">
+				<span class="hero-stat-value accent">{formatNumber(analytics.total_search_volume)}</span>
+				<span class="hero-stat-label">Monthly Vol</span>
+			</div>
+			<div class="hero-stat">
+				<span
+					class="hero-stat-value"
+					style="color: {getDifficultyColor(analytics.avg_competition / 100)}"
+					>{analytics.avg_competition.toFixed(0)}</span
+				>
+				<span class="hero-stat-label">Avg Competition</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Key Findings (Always Visible) -->
 	{#if strategy.key_findings}
-		<div class="highlight-box mb-8">
-			<div class="flex items-start gap-3">
-				<Zap class="w-5 h-5 text-accent shrink-0 mt-1" />
-				<div>
-					<h4 class="font-semibold text-text-primary mb-2">Key Findings</h4>
-					<p class="text-text-secondary">{strategy.key_findings}</p>
-				</div>
+		<div class="findings-card">
+			<div class="findings-header">
+				<Zap class="findings-icon" />
+				<span class="findings-title">Key Findings</span>
 			</div>
+			<p class="findings-text">{strategy.key_findings}</p>
 		</div>
 	{/if}
 
-	<!-- Tab Navigation -->
-	<div class="flex flex-wrap gap-2 mb-6">
-		<button
-			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {activeTab === 'all' ? 'bg-accent/10 text-accent border border-accent/50' : 'bg-bg-surface text-text-muted hover:text-text-primary border border-border'}"
-			onclick={() => activeTab = 'all'}
-		>
-			All ({allKeywords.length})
-		</button>
-		<button
-			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {activeTab === 'tier0' ? 'bg-accent/10 text-accent border border-accent/50' : 'bg-bg-surface text-text-muted hover:text-text-primary border border-border'}"
-			onclick={() => activeTab = 'tier0'}
-		>
-			Premium ({strategy.tier_0_keywords?.length || 0})
-		</button>
-		<button
-			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {activeTab === 'tier1' ? 'bg-accent/10 text-accent border border-accent/50' : 'bg-bg-surface text-text-muted hover:text-text-primary border border-border'}"
-			onclick={() => activeTab = 'tier1'}
-		>
-			Quick Win ({strategy.tier_1_keywords?.length || 0})
-		</button>
-		<button
-			class="px-4 py-2 rounded-lg text-sm font-medium transition-colors {activeTab === 'tier2' ? 'bg-accent/10 text-accent border border-accent/50' : 'bg-bg-surface text-text-muted hover:text-text-primary border border-border'}"
-			onclick={() => activeTab = 'tier2'}
-		>
-			High Value ({strategy.tier_2_keywords?.length || 0})
-		</button>
+	<!-- Keyword Tier Chart (Always Visible) -->
+	<div class="chart-card">
+		<KeywordTierChart
+			tier0Count={analytics.tier0_count}
+			tier1Count={analytics.tier1_count}
+			tier2Count={analytics.tier2_count}
+			tier3Count={analytics.tier3_count}
+			tier4Count={analytics.tier4_count}
+		/>
 	</div>
 
-	<!-- Keywords Table -->
-	<div class="overflow-x-auto">
-		<table class="dark-table">
-			<thead>
-				<tr>
-					<th>Keyword</th>
-					<th class="text-right">Volume</th>
-					<th class="text-right">Competition</th>
-					<th class="text-right">Tier</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each getFilteredKeywords().slice(0, 50) as kw}
-					{@const difficulty = parseCompetition(kw.competition)}
-					<tr>
-						<td class="font-mono text-text-primary">{kw.keyword}</td>
-						<td class="text-right text-text-secondary">{formatNumber(kw.search_volume)}/mo</td>
-						<td class="text-right">
-							<span class="font-mono {getDifficultyClass(difficulty)}">{(difficulty * 100).toFixed(0)}</span>
-						</td>
-						<td class="text-right">
-							<Badge class={getTierClass(kw.tier)}>{getTierLabel(kw.tier)}</Badge>
-						</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+	<!-- Expandable: Keywords Table -->
+	<div class="expandable-section">
+		<button class="expandable-header" onclick={() => (showKeywords = !showKeywords)}>
+			<div class="expandable-title">
+				<Hash class="expandable-icon" />
+				<span>Keyword Details</span>
+				<Badge variant="muted" size="sm">{allKeywords.length} keywords</Badge>
+			</div>
+			<ChevronDown class="chevron-icon {showKeywords ? 'expanded' : ''}" />
+		</button>
+		{#if showKeywords}
+			<div class="expandable-content">
+				<!-- Tab Navigation -->
+				<div class="tabs-container">
+					<button
+						class="tab-button"
+						class:active={activeTab === 'all'}
+						onclick={() => (activeTab = 'all')}
+						type="button"
+					>
+						<span class="tab-label">All</span>
+						<span class="tab-count">{allKeywords.length}</span>
+					</button>
+					<button
+						class="tab-button"
+						class:active={activeTab === 'tier0'}
+						onclick={() => (activeTab = 'tier0')}
+						type="button"
+					>
+						<span class="tab-label">Premium</span>
+						<span class="tab-count success">{strategy.tier_0_keywords?.length || 0}</span>
+					</button>
+					<button
+						class="tab-button"
+						class:active={activeTab === 'tier1'}
+						onclick={() => (activeTab = 'tier1')}
+						type="button"
+					>
+						<span class="tab-label">Quick Win</span>
+						<span class="tab-count accent">{strategy.tier_1_keywords?.length || 0}</span>
+					</button>
+					<button
+						class="tab-button"
+						class:active={activeTab === 'tier2'}
+						onclick={() => (activeTab = 'tier2')}
+						type="button"
+					>
+						<span class="tab-label">High Value</span>
+						<span class="tab-count">{strategy.tier_2_keywords?.length || 0}</span>
+					</button>
+				</div>
 
-	{#if getFilteredKeywords().length > 50}
-		<p class="text-sm text-text-muted text-center mt-4">
-			Showing 50 of {getFilteredKeywords().length} keywords
-		</p>
-	{/if}
-
-	<!-- Topic Clusters -->
-	{#if strategy.topic_clusters && strategy.topic_clusters.length > 0}
-		<div class="mt-8">
-			<h3 class="text-lg font-semibold text-text-primary mb-4">Topic Clusters</h3>
-			<div class="grid md:grid-cols-2 gap-4">
-				{#each strategy.topic_clusters.slice(0, 6) as cluster}
-					{@const clusterKeywords = cluster.supporting_keywords || []}
-					<div class="card-surface">
-						<h4 class="font-semibold text-accent mb-2">{cluster.cluster_name}</h4>
-						{#if cluster.primary_keyword}
-							<span class="text-xs px-2 py-1 rounded bg-accent/20 text-accent mb-2 inline-block">{cluster.primary_keyword}</span>
-						{/if}
-						<div class="flex flex-wrap gap-2 mt-2">
-							{#each clusterKeywords.slice(0, 5) as keyword}
-								<span class="text-xs px-2 py-1 rounded bg-bg-hover text-text-muted">{keyword}</span>
+				<!-- Keywords Table -->
+				<div class="table-container">
+					<table class="keywords-table">
+						<thead>
+							<tr>
+								<th class="th-keyword">Keyword</th>
+								<th class="th-volume">Volume</th>
+								<th class="th-competition">Competition</th>
+								<th class="th-tier">Tier</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each getFilteredKeywords().slice(0, 30) as kw}
+								{@const difficulty = parseCompetition(kw.competition)}
+								<tr>
+									<td class="td-keyword">
+										<Hash class="keyword-icon" />
+										<span>{kw.keyword}</span>
+									</td>
+									<td class="td-volume">
+										<span class="volume-value">{formatNumber(kw.search_volume)}</span>
+										<span class="volume-unit">/mo</span>
+									</td>
+									<td class="td-competition">
+										<div class="competition-bar">
+											<div
+												class="competition-fill"
+												style="width: {difficulty * 100}%; background: {getDifficultyColor(difficulty)}"
+											></div>
+										</div>
+										<span class="competition-value" style="color: {getDifficultyColor(difficulty)}"
+											>{(difficulty * 100).toFixed(0)}</span
+										>
+									</td>
+									<td class="td-tier">
+										<Badge variant={getTierBadgeVariant(kw.tier)} size="sm"
+											>{getTierLabel(kw.tier)}</Badge
+										>
+									</td>
+								</tr>
 							{/each}
-							{#if clusterKeywords.length > 5}
-								<span class="text-xs text-text-muted">+{clusterKeywords.length - 5}</span>
-							{/if}
-						</div>
-					</div>
-				{/each}
-			</div>
-		</div>
-	{/if}
+						</tbody>
+					</table>
+				</div>
 
-	<!-- Technical SEO Recommendations -->
-	{#if strategy.technical_seo_recommendations}
-		<div class="mt-8">
-			<h3 class="text-lg font-semibold text-text-primary mb-4">Technical SEO Recommendations</h3>
-			<div class="markdown-content text-text-secondary">
-				{@html renderTechnicalContent(strategy.technical_seo_recommendations)}
+				{#if getFilteredKeywords().length > 30}
+					<p class="table-footer">Showing 30 of {getFilteredKeywords().length} keywords</p>
+				{/if}
 			</div>
-		</div>
-	{/if}
+		{/if}
+	</div>
 
-	<!-- Content Strategy -->
-	{#if strategy.content_strategy}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<FileText class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Content Strategy</h3>
+	<!-- Expandable: Topic Clusters -->
+	{#if strategy.topic_clusters && strategy.topic_clusters.length > 0}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showClusters = !showClusters)}>
+				<div class="expandable-title">
+					<Layers class="expandable-icon" />
+					<span>Topic Clusters</span>
+					<Badge variant="muted" size="sm">{strategy.topic_clusters.length} clusters</Badge>
 				</div>
-				<div class="card markdown-content narrative text-text-secondary">
-					{@html renderMarkdown(formatContentStrategy(strategy.content_strategy))}
-				</div>
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Implementation Roadmap -->
-	{#if strategy.implementation_roadmap}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<Clock class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Implementation Roadmap</h3>
-				</div>
-				<div class="card markdown-content narrative text-text-secondary">
-					{@html renderMarkdown(formatImplementationRoadmap(strategy.implementation_roadmap))}
-				</div>
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Budget Allocation -->
-	{#if strategy.budget_allocation}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<DollarSign class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Budget Allocation</h3>
-				</div>
-				<div class="card markdown-content text-text-secondary">
-					{@html renderMarkdown(formatBudgetAllocation(strategy.budget_allocation))}
-				</div>
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Key Page Types -->
-	{#if strategy.keyword_based_page_types && strategy.keyword_based_page_types.length > 0}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<Layers class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Keyword-Driven Page Types</h3>
-				</div>
-				<div class="grid md:grid-cols-2 gap-4">
-					{#each strategy.keyword_based_page_types as pageType}
-						{@const keywords = pageType.example_keywords || []}
-						<div class="card-surface">
-							<h4 class="font-medium text-accent mb-2">{pageType.page_type_name}</h4>
-							{#if pageType.target_keyword_cluster}
-								<p class="text-xs text-text-muted mb-2">{pageType.target_keyword_cluster}</p>
-							{/if}
-							{#if keywords.length > 0}
-								<div class="flex flex-wrap gap-1">
-									{#each keywords.slice(0, 5) as keyword}
-										<Badge variant="muted" size="sm">{keyword}</Badge>
-									{/each}
-									{#if keywords.length > 5}
-										<span class="text-xs text-text-muted">+{keywords.length - 5}</span>
+				<ChevronDown class="chevron-icon {showClusters ? 'expanded' : ''}" />
+			</button>
+			{#if showClusters}
+				<div class="expandable-content">
+					<div class="clusters-grid">
+						{#each strategy.topic_clusters.slice(0, 6) as cluster}
+							{@const clusterKeywords = cluster.supporting_keywords || []}
+							<div class="cluster-card">
+								<div class="cluster-header">
+									<h4 class="cluster-name">{cluster.cluster_name}</h4>
+									{#if cluster.primary_keyword}
+										<Badge variant="accent" size="sm">{cluster.primary_keyword}</Badge>
 									{/if}
 								</div>
-							{/if}
-						</div>
-					{/each}
-				</div>
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Key Metrics to Track -->
-	{#if strategy.key_metrics_to_track && strategy.key_metrics_to_track.length > 0}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<BarChart3 class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Key Metrics to Track</h3>
-				</div>
-				<div class="card">
-					<ul class="space-y-2">
-						{#each strategy.key_metrics_to_track as metric}
-							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
-								<CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
-								{metric}
-							</li>
+								<div class="cluster-keywords">
+									{#each clusterKeywords.slice(0, 5) as keyword}
+										<span class="cluster-keyword">{keyword}</span>
+									{/each}
+									{#if clusterKeywords.length > 5}
+										<span class="cluster-more">+{clusterKeywords.length - 5}</span>
+									{/if}
+								</div>
+							</div>
 						{/each}
-					</ul>
+					</div>
 				</div>
-			</div>
-		</AnimateOnScroll>
+			{/if}
+		</div>
 	{/if}
 
-	<!-- Risk Mitigation -->
-	{#if strategy.risk_mitigation}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="card border-warning/30">
-					<div class="flex items-center gap-2 mb-3">
-						<AlertTriangle class="w-5 h-5 text-warning" />
-						<h3 class="text-lg font-semibold text-warning">Risk Mitigation</h3>
+	<!-- Expandable: Implementation Roadmap -->
+	{#if strategy.implementation_roadmap}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showRoadmap = !showRoadmap)}>
+				<div class="expandable-title">
+					<Clock class="expandable-icon" />
+					<span>Implementation Roadmap</span>
+					<Badge variant="muted" size="sm">3 phases</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showRoadmap ? 'expanded' : ''}" />
+			</button>
+			{#if showRoadmap}
+				<div class="expandable-content">
+					<div class="roadmap-phases">
+						{#if strategy.implementation_roadmap.phase_1}
+							<div class="phase-card">
+								<div class="phase-indicator phase-1"></div>
+								<div class="phase-content">
+									<div class="phase-header">
+										<span class="phase-title"
+											>{strategy.implementation_roadmap.phase_1.title}</span
+										>
+										<Badge variant="success" size="sm"
+											>{strategy.implementation_roadmap.phase_1.duration}</Badge
+										>
+									</div>
+									<ul class="phase-tasks">
+										{#each strategy.implementation_roadmap.phase_1.tasks as task}
+											<li class="phase-task">
+												<ChevronRight class="task-icon" />
+												{task}
+											</li>
+										{/each}
+									</ul>
+								</div>
+							</div>
+						{/if}
+						{#if strategy.implementation_roadmap.phase_2}
+							<div class="phase-card">
+								<div class="phase-indicator phase-2"></div>
+								<div class="phase-content">
+									<div class="phase-header">
+										<span class="phase-title"
+											>{strategy.implementation_roadmap.phase_2.title}</span
+										>
+										<Badge variant="warning" size="sm"
+											>{strategy.implementation_roadmap.phase_2.duration}</Badge
+										>
+									</div>
+									<ul class="phase-tasks">
+										{#each strategy.implementation_roadmap.phase_2.tasks as task}
+											<li class="phase-task">
+												<ChevronRight class="task-icon" />
+												{task}
+											</li>
+										{/each}
+									</ul>
+								</div>
+							</div>
+						{/if}
+						{#if strategy.implementation_roadmap.phase_3}
+							<div class="phase-card">
+								<div class="phase-indicator phase-3"></div>
+								<div class="phase-content">
+									<div class="phase-header">
+										<span class="phase-title"
+											>{strategy.implementation_roadmap.phase_3.title}</span
+										>
+										<Badge variant="muted" size="sm"
+											>{strategy.implementation_roadmap.phase_3.duration}</Badge
+										>
+									</div>
+									<ul class="phase-tasks">
+										{#each strategy.implementation_roadmap.phase_3.tasks as task}
+											<li class="phase-task">
+												<ChevronRight class="task-icon" />
+												{task}
+											</li>
+										{/each}
+									</ul>
+								</div>
+							</div>
+						{/if}
 					</div>
-					<div class="markdown-content text-text-secondary text-sm">
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Expandable: Content Strategy & Budget -->
+	{#if strategy.content_strategy || strategy.budget_allocation}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showStrategyBudget = !showStrategyBudget)}>
+				<div class="expandable-title">
+					<FileText class="expandable-icon" />
+					<span>Content Strategy & Budget</span>
+				</div>
+				<ChevronDown class="chevron-icon {showStrategyBudget ? 'expanded' : ''}" />
+			</button>
+			{#if showStrategyBudget}
+				<div class="expandable-content">
+					<div class="strategy-grid">
+						{#if strategy.content_strategy}
+							<div class="strategy-card">
+								<h4 class="card-label">Content Strategy</h4>
+								<div class="strategy-content">
+									{@html renderMarkdown(formatContentStrategy(strategy.content_strategy))}
+								</div>
+							</div>
+						{/if}
+
+						{#if strategy.budget_allocation}
+							<div class="strategy-card">
+								<h4 class="card-label">Budget Allocation</h4>
+								<div class="budget-items">
+									{#if strategy.budget_allocation.content_creation}
+										<div class="budget-item">
+											<span class="budget-label">Content Creation</span>
+											<span class="budget-value"
+												>{strategy.budget_allocation.content_creation}</span
+											>
+										</div>
+									{/if}
+									{#if strategy.budget_allocation.technical_seo}
+										<div class="budget-item">
+											<span class="budget-label">Technical SEO</span>
+											<span class="budget-value">{strategy.budget_allocation.technical_seo}</span>
+										</div>
+									{/if}
+									{#if strategy.budget_allocation.link_building}
+										<div class="budget-item">
+											<span class="budget-label">Link Building</span>
+											<span class="budget-value">{strategy.budget_allocation.link_building}</span>
+										</div>
+									{/if}
+									{#if strategy.budget_allocation.tools}
+										<div class="budget-item">
+											<span class="budget-label">Tools</span>
+											<span class="budget-value">{strategy.budget_allocation.tools}</span>
+										</div>
+									{/if}
+								</div>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Expandable: Technical SEO -->
+	{#if strategy.technical_seo_recommendations}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showTechnical = !showTechnical)}>
+				<div class="expandable-title">
+					<Code class="expandable-icon" />
+					<span>Technical SEO Recommendations</span>
+				</div>
+				<ChevronDown class="chevron-icon {showTechnical ? 'expanded' : ''}" />
+			</button>
+			{#if showTechnical}
+				<div class="expandable-content">
+					<div class="technical-content">
+						{@html renderTechnicalContent(strategy.technical_seo_recommendations)}
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Expandable: Key Metrics to Track -->
+	{#if strategy.key_metrics_to_track && strategy.key_metrics_to_track.length > 0}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showMetrics = !showMetrics)}>
+				<div class="expandable-title">
+					<BarChart3 class="expandable-icon" />
+					<span>Key Metrics to Track</span>
+					<Badge variant="muted" size="sm">{strategy.key_metrics_to_track.length}</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showMetrics ? 'expanded' : ''}" />
+			</button>
+			{#if showMetrics}
+				<div class="expandable-content">
+					<div class="metrics-list">
+						{#each strategy.key_metrics_to_track as metric, i}
+							<div class="metric-item">
+								<span class="metric-number">{i + 1}</span>
+								<span class="metric-text">{metric}</span>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Expandable: Risk Mitigation -->
+	{#if strategy.risk_mitigation}
+		<div class="expandable-section warning-accent">
+			<button class="expandable-header" onclick={() => (showRisks = !showRisks)}>
+				<div class="expandable-title">
+					<AlertTriangle class="expandable-icon warning" />
+					<span>Risk Mitigation</span>
+				</div>
+				<ChevronDown class="chevron-icon {showRisks ? 'expanded' : ''}" />
+			</button>
+			{#if showRisks}
+				<div class="expandable-content">
+					<div class="risk-content">
 						{@html renderMarkdown(strategy.risk_mitigation)}
 					</div>
 				</div>
-			</div>
-		</AnimateOnScroll>
+			{/if}
+		</div>
 	{/if}
 
-	<!-- Schema Markup Strategy -->
+	<!-- Expandable: Schema Markup -->
 	{#if strategy.schema_markup_strategy}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<Code class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Schema Markup Strategy</h3>
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showSchema = !showSchema)}>
+				<div class="expandable-title">
+					<Code class="expandable-icon" />
+					<span>Schema Markup Strategy</span>
 				</div>
-				<div class="grid md:grid-cols-3 gap-4">
-					{#if strategy.schema_markup_strategy.homepage}
-						<div class="card-surface">
-							<h4 class="text-xs text-text-muted mb-1">Homepage</h4>
-							<code class="text-sm text-accent">{strategy.schema_markup_strategy.homepage}</code>
-						</div>
-					{/if}
-					{#if strategy.schema_markup_strategy.product_pages}
-						<div class="card-surface">
-							<h4 class="text-xs text-text-muted mb-1">Product Pages</h4>
-							<code class="text-sm text-success">{strategy.schema_markup_strategy.product_pages}</code>
-						</div>
-					{/if}
-					{#if strategy.schema_markup_strategy.article_pages}
-						<div class="card-surface">
-							<h4 class="text-xs text-text-muted mb-1">Article Pages</h4>
-							<code class="text-sm text-warning">{strategy.schema_markup_strategy.article_pages}</code>
-						</div>
-					{/if}
+				<ChevronDown class="chevron-icon {showSchema ? 'expanded' : ''}" />
+			</button>
+			{#if showSchema}
+				<div class="expandable-content">
+					<div class="schema-grid">
+						{#if strategy.schema_markup_strategy.homepage}
+							<div class="schema-card">
+								<span class="schema-label">Homepage</span>
+								<code class="schema-value success"
+									>{strategy.schema_markup_strategy.homepage}</code
+								>
+							</div>
+						{/if}
+						{#if strategy.schema_markup_strategy.product_pages}
+							<div class="schema-card">
+								<span class="schema-label">Product Pages</span>
+								<code class="schema-value accent"
+									>{strategy.schema_markup_strategy.product_pages}</code
+								>
+							</div>
+						{/if}
+						{#if strategy.schema_markup_strategy.article_pages}
+							<div class="schema-card">
+								<span class="schema-label">Article Pages</span>
+								<code class="schema-value warning"
+									>{strategy.schema_markup_strategy.article_pages}</code
+								>
+							</div>
+						{/if}
+					</div>
 				</div>
-			</div>
-		</AnimateOnScroll>
+			{/if}
+		</div>
 	{/if}
 
-	<!-- Competitive Positioning & Advantages -->
+	<!-- Expandable: Competitive Positioning -->
 	{#if strategy.competitive_positioning || (strategy.competitive_advantages && strategy.competitive_advantages.length > 0)}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8 grid md:grid-cols-2 gap-6 items-start">
-				{#if strategy.competitive_positioning}
-					<div class="card">
-						<div class="flex items-center gap-2 mb-3">
-							<Target class="w-5 h-5 text-accent" />
-							<h3 class="text-lg font-semibold text-text-primary">Competitive Positioning</h3>
-						</div>
-						<div class="markdown-content text-text-secondary text-sm">
-							{@html renderMarkdown(strategy.competitive_positioning)}
-						</div>
-					</div>
-				{/if}
-				{#if strategy.competitive_advantages && strategy.competitive_advantages.length > 0}
-					<div class="card">
-						<div class="flex items-center gap-2 mb-3">
-							<CheckCircle class="w-5 h-5 text-success" />
-							<h3 class="text-lg font-semibold text-text-primary">Competitive Advantages</h3>
-						</div>
-						<ul class="space-y-2">
-							{#each strategy.competitive_advantages as advantage}
-								<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
-									<span class="text-success">+</span>
-									{advantage}
-								</li>
-							{/each}
-						</ul>
-					</div>
-				{/if}
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Critical Success Factors -->
-	{#if strategy.critical_success_factors && strategy.critical_success_factors.length > 0}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="highlight-box">
-					<div class="flex items-center gap-2 mb-3">
-						<Target class="w-5 h-5 text-accent" />
-						<h3 class="text-lg font-semibold text-text-primary">Critical Success Factors</h3>
-					</div>
-					<ul class="grid md:grid-cols-2 gap-2">
-						{#each strategy.critical_success_factors as factor}
-							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
-								<CheckCircle class="w-4 h-4 text-accent mt-0.5 flex-shrink-0" />
-								{factor}
-							</li>
-						{/each}
-					</ul>
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showPositioning = !showPositioning)}>
+				<div class="expandable-title">
+					<Target class="expandable-icon" />
+					<span>Competitive Positioning</span>
 				</div>
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Long Term Strategy & Conclusion -->
-	{#if strategy.long_term_strategy || strategy.conclusion_bottom_line}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8 grid md:grid-cols-2 gap-6 items-start">
-				{#if strategy.long_term_strategy}
-					<div class="card">
-						<h3 class="text-lg font-semibold text-text-primary mb-3">Long-Term Strategy</h3>
-						<div class="markdown-content text-text-secondary text-sm">
-							{@html renderMarkdown(strategy.long_term_strategy)}
-						</div>
+				<ChevronDown class="chevron-icon {showPositioning ? 'expanded' : ''}" />
+			</button>
+			{#if showPositioning}
+				<div class="expandable-content">
+					<div class="positioning-grid">
+						{#if strategy.competitive_positioning}
+							<div class="positioning-card">
+								<h4 class="card-label">Market Position</h4>
+								<div class="positioning-content">
+									{@html renderMarkdown(strategy.competitive_positioning)}
+								</div>
+							</div>
+						{/if}
+						{#if strategy.competitive_advantages && strategy.competitive_advantages.length > 0}
+							<div class="advantages-card">
+								<h4 class="card-label success">Competitive Advantages</h4>
+								<ul class="advantages-list">
+									{#each strategy.competitive_advantages as advantage}
+										<li class="advantage-item">
+											<ArrowUpRight class="advantage-icon" />
+											{advantage}
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
 					</div>
-				{/if}
-				{#if strategy.conclusion_bottom_line}
-					<div class="card border-accent/30">
-						<h3 class="text-lg font-semibold text-accent mb-3">Bottom Line</h3>
-						<div class="markdown-content text-text-secondary text-sm">
-							{@html renderMarkdown(strategy.conclusion_bottom_line)}
-						</div>
-					</div>
-				{/if}
-			</div>
-		</AnimateOnScroll>
-	{/if}
-
-	<!-- Next Steps Checklist -->
-	{#if strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="card border-success/30">
-					<div class="flex items-center gap-2 mb-3">
-						<CheckCircle class="w-5 h-5 text-success" />
-						<h3 class="text-lg font-semibold text-success">Next Steps Checklist</h3>
-					</div>
-					<ul class="space-y-2">
-						{#each strategy.next_steps_checklist as step, i}
-							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-3">
-								<span class="flex-shrink-0 w-5 h-5 rounded-full bg-success/20 flex items-center justify-center text-xs text-success font-medium">{i + 1}</span>
-								{step}
-							</li>
-						{/each}
-					</ul>
 				</div>
-			</div>
-		</AnimateOnScroll>
+			{/if}
+		</div>
 	{/if}
 
-	<!-- Expected Timeline -->
-	{#if strategy.expected_timeline}
-		<div class="card-surface mt-6">
-			<div class="flex items-center gap-2 mb-3">
-				<Clock class="w-4 h-4 text-accent" />
-				<h4 class="text-sm font-semibold text-text-primary">Expected Timeline</h4>
-			</div>
-			<div class="markdown-content narrative text-text-secondary text-sm">
-				{@html renderMarkdown(strategy.expected_timeline)}
-			</div>
+	<!-- Expandable: Conclusion & Next Steps -->
+	{#if strategy.conclusion_bottom_line || (strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0) || (strategy.critical_success_factors && strategy.critical_success_factors.length > 0)}
+		<div class="expandable-section success-accent">
+			<button class="expandable-header" onclick={() => (showConclusion = !showConclusion)}>
+				<div class="expandable-title">
+					<CheckCircle class="expandable-icon success" />
+					<span>Conclusion & Next Steps</span>
+				</div>
+				<ChevronDown class="chevron-icon {showConclusion ? 'expanded' : ''}" />
+			</button>
+			{#if showConclusion}
+				<div class="expandable-content">
+					{#if strategy.critical_success_factors && strategy.critical_success_factors.length > 0}
+						<div class="success-factors">
+							<h4 class="card-label">Critical Success Factors</h4>
+							<div class="factors-grid">
+								{#each strategy.critical_success_factors as factor}
+									<div class="factor-item">
+										<CheckCircle class="factor-icon" />
+										<span>{factor}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/if}
+
+					<div class="conclusion-grid">
+						{#if strategy.conclusion_bottom_line}
+							<div class="bottomline-card">
+								<h4 class="card-label accent">Bottom Line</h4>
+								<div class="bottomline-content">
+									{@html renderMarkdown(strategy.conclusion_bottom_line)}
+								</div>
+							</div>
+						{/if}
+						{#if strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0}
+							<div class="nextsteps-card">
+								<h4 class="card-label success">Next Steps</h4>
+								<ol class="nextsteps-list">
+									{#each strategy.next_steps_checklist as step, i}
+										<li class="nextstep-item">
+											<span class="step-number">{i + 1}</span>
+											<span class="step-text">{step}</span>
+										</li>
+									{/each}
+								</ol>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </section>
+
+<style>
+	.seo-section {
+		padding: 1.5rem 0;
+	}
+
+	/* Section Header */
+	.section-header {
+		display: flex;
+		align-items: flex-start;
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+
+	.header-icon {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		background: rgba(229, 90, 40, 0.1);
+		border: 1px solid rgba(229, 90, 40, 0.2);
+		border-radius: 0.625rem;
+		flex-shrink: 0;
+	}
+
+	.header-icon :global(.icon) {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: var(--color-accent);
+	}
+
+	.section-title {
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		font-weight: 800;
+		color: var(--color-text-primary);
+		margin-bottom: 0.125rem;
+	}
+
+	.section-subtitle {
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
+	}
+
+	/* Hero Strip */
+	.hero-strip {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 1rem 1.25rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.hero-metric {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding-right: 1.5rem;
+		border-right: 1px solid var(--color-border);
+	}
+
+	.hero-metric-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.hero-metric-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+	}
+
+	.hero-metric-value {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.hero-stats {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		flex-wrap: wrap;
+	}
+
+	.hero-stat {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
+		gap: 0.125rem;
+	}
+
+	.hero-stat-value {
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		font-weight: 700;
+		color: var(--color-text-primary);
+	}
+
+	.hero-stat-value.accent {
+		color: var(--color-accent);
+	}
+
+	.hero-stat-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-text-muted);
+	}
+
+	/* Findings Card */
+	.findings-card {
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
+		border: 1px solid rgba(229, 90, 40, 0.25);
+		border-left: 3px solid var(--color-accent);
+		border-radius: 0.75rem;
+		padding: 1.25rem;
+		margin-bottom: 1rem;
+	}
+
+	.findings-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.findings-header :global(.findings-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: var(--color-accent);
+	}
+
+	.findings-title {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-accent);
+	}
+
+	.findings-text {
+		font-size: 0.9375rem;
+		color: var(--color-text-primary);
+		line-height: 1.6;
+		margin: 0;
+	}
+
+	/* Chart Card */
+	.chart-card {
+		background: var(--color-bg-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		padding: 1.25rem;
+		margin-bottom: 1rem;
+	}
+
+	/* Expandable Sections */
+	.expandable-section {
+		background: var(--color-bg-elevated);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		margin-bottom: 0.75rem;
+		overflow: hidden;
+	}
+
+	.expandable-section.success-accent {
+		border-color: rgba(34, 197, 94, 0.3);
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, transparent 40%);
+	}
+
+	.expandable-section.warning-accent {
+		border-color: rgba(234, 179, 8, 0.3);
+		background: linear-gradient(135deg, rgba(234, 179, 8, 0.05) 0%, transparent 40%);
+	}
+
+	.expandable-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 1rem 1.25rem;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		transition: background 0.15s ease;
+	}
+
+	.expandable-header:hover {
+		background: var(--color-bg-surface);
+	}
+
+	.expandable-title {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.expandable-title :global(.expandable-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: var(--color-accent);
+	}
+
+	.expandable-title :global(.expandable-icon.success) {
+		color: var(--color-success);
+	}
+
+	.expandable-title :global(.expandable-icon.warning) {
+		color: var(--color-warning);
+	}
+
+	:global(.chevron-icon) {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: var(--color-text-muted);
+		transition: transform 0.2s ease;
+	}
+
+	:global(.chevron-icon.expanded) {
+		transform: rotate(180deg);
+	}
+
+	.expandable-content {
+		padding: 0 1.25rem 1.25rem;
+	}
+
+	/* Tabs */
+	.tabs-container {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.tab-button {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.tab-button:hover {
+		color: var(--color-text-primary);
+		border-color: var(--color-border-hover);
+	}
+
+	.tab-button.active {
+		background: rgba(229, 90, 40, 0.1);
+		border-color: rgba(229, 90, 40, 0.5);
+		color: var(--color-accent);
+	}
+
+	.tab-label {
+		font-weight: 500;
+	}
+
+	.tab-count {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--color-bg-elevated);
+		border-radius: 0.25rem;
+	}
+
+	.tab-count.success {
+		background: rgba(34, 197, 94, 0.15);
+		color: var(--color-success);
+	}
+
+	.tab-count.accent {
+		background: rgba(229, 90, 40, 0.15);
+		color: var(--color-accent);
+	}
+
+	/* Keywords Table */
+	.table-container {
+		overflow-x: auto;
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+	}
+
+	.keywords-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 0.8125rem;
+	}
+
+	.keywords-table th {
+		padding: 0.625rem 0.875rem;
+		text-align: left;
+		font-family: var(--font-mono);
+		font-weight: 500;
+		font-size: 0.6875rem;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-text-muted);
+		background: var(--color-bg-surface);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.th-volume,
+	.th-competition,
+	.th-tier {
+		text-align: right;
+	}
+
+	.keywords-table td {
+		padding: 0.625rem 0.875rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.keywords-table tbody tr:last-child td {
+		border-bottom: none;
+	}
+
+	.keywords-table tbody tr:hover {
+		background: var(--color-bg-surface);
+	}
+
+	.td-keyword {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-family: var(--font-mono);
+		color: var(--color-text-primary);
+	}
+
+	:global(.keyword-icon) {
+		width: 0.75rem;
+		height: 0.75rem;
+		color: var(--color-text-muted);
+	}
+
+	.td-volume {
+		text-align: right;
+	}
+
+	.volume-value {
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.volume-unit {
+		color: var(--color-text-muted);
+		font-size: 0.6875rem;
+	}
+
+	.td-competition {
+		text-align: right;
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 0.5rem;
+	}
+
+	.competition-bar {
+		width: 2.5rem;
+		height: 0.25rem;
+		background: var(--color-bg-surface);
+		border-radius: 0.125rem;
+		overflow: hidden;
+	}
+
+	.competition-fill {
+		height: 100%;
+		border-radius: 0.125rem;
+	}
+
+	.competition-value {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		min-width: 1.25rem;
+	}
+
+	.td-tier {
+		text-align: right;
+	}
+
+	.table-footer {
+		text-align: center;
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin-top: 0.75rem;
+	}
+
+	/* Clusters Grid */
+	.clusters-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.cluster-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		padding: 1rem;
+	}
+
+	.cluster-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.cluster-name {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin: 0;
+	}
+
+	.cluster-keywords {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+
+	.cluster-keyword {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.125rem 0.375rem;
+		background: var(--color-bg-elevated);
+		border-radius: 0.25rem;
+		color: var(--color-text-muted);
+	}
+
+	.cluster-more {
+		font-size: 0.6875rem;
+		color: var(--color-text-muted);
+		padding: 0.125rem 0.25rem;
+	}
+
+	/* Roadmap Phases */
+	.roadmap-phases {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.phase-card {
+		display: flex;
+		gap: 0.75rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		padding: 1rem;
+	}
+
+	.phase-indicator {
+		width: 4px;
+		border-radius: 2px;
+		flex-shrink: 0;
+	}
+
+	.phase-1 {
+		background: var(--color-success);
+	}
+	.phase-2 {
+		background: var(--color-warning);
+	}
+	.phase-3 {
+		background: var(--color-text-muted);
+	}
+
+	.phase-content {
+		flex: 1;
+	}
+
+	.phase-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.phase-title {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.phase-tasks {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.phase-task {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.375rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+	}
+
+	.phase-task :global(.task-icon) {
+		width: 0.75rem;
+		height: 0.75rem;
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+		margin-top: 0.125rem;
+	}
+
+	/* Strategy Grid */
+	.strategy-grid,
+	.positioning-grid,
+	.conclusion-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.strategy-card,
+	.positioning-card,
+	.advantages-card,
+	.bottomline-card,
+	.nextsteps-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		padding: 1rem;
+	}
+
+	.card-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		margin: 0 0 0.75rem;
+	}
+
+	.card-label.success {
+		color: var(--color-success);
+	}
+
+	.card-label.accent {
+		color: var(--color-accent);
+	}
+
+	.strategy-content,
+	.positioning-content,
+	.bottomline-content {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+	}
+
+	.strategy-content :global(p),
+	.positioning-content :global(p),
+	.bottomline-content :global(p) {
+		margin: 0 0 0.5rem;
+	}
+
+	.strategy-content :global(ul),
+	.positioning-content :global(ul) {
+		margin: 0 0 0.5rem;
+		padding-left: 1rem;
+	}
+
+	/* Budget Items */
+	.budget-items {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.budget-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-bg-elevated);
+		border-radius: 0.375rem;
+	}
+
+	.budget-label {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+	}
+
+	.budget-value {
+		font-family: var(--font-display);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	/* Technical Content */
+	.technical-content {
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+	}
+
+	/* Metrics List */
+	.metrics-list {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.metric-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.625rem 0.875rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.375rem;
+	}
+
+	.metric-number {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		background: rgba(229, 90, 40, 0.15);
+		border-radius: 50%;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		color: var(--color-accent);
+		flex-shrink: 0;
+	}
+
+	.metric-text {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: 1.4;
+	}
+
+	/* Risk Content */
+	.risk-content {
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+	}
+
+	/* Schema Grid */
+	.schema-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.schema-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.375rem;
+		padding: 0.75rem;
+	}
+
+	.schema-label {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-text-muted);
+		margin-bottom: 0.375rem;
+	}
+
+	.schema-value {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+	}
+
+	.schema-value.success {
+		color: var(--color-success);
+	}
+	.schema-value.accent {
+		color: var(--color-accent);
+	}
+	.schema-value.warning {
+		color: var(--color-warning);
+	}
+
+	/* Advantages List */
+	.advantages-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.advantage-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.375rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+	}
+
+	.advantage-item :global(.advantage-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
+		color: var(--color-success);
+		flex-shrink: 0;
+		margin-top: 0.0625rem;
+	}
+
+	/* Success Factors */
+	.success-factors {
+		margin-bottom: 1rem;
+	}
+
+	.factors-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.factor-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.375rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+	}
+
+	.factor-item :global(.factor-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
+		color: var(--color-accent);
+		flex-shrink: 0;
+		margin-top: 0.0625rem;
+	}
+
+	/* Next Steps */
+	.nextsteps-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.nextstep-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+	}
+
+	.step-number {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		background: rgba(34, 197, 94, 0.15);
+		border-radius: 50%;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		color: var(--color-success);
+		flex-shrink: 0;
+	}
+
+	.step-text {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: 1.4;
+	}
+
+	/* Responsive */
+	@media (max-width: 768px) {
+		.hero-strip {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 1rem;
+		}
+
+		.hero-metric {
+			padding-right: 0;
+			border-right: none;
+			padding-bottom: 1rem;
+			border-bottom: 1px solid var(--color-border);
+			width: 100%;
+		}
+
+		.hero-stats {
+			width: 100%;
+			justify-content: space-between;
+		}
+
+		.clusters-grid,
+		.strategy-grid,
+		.positioning-grid,
+		.conclusion-grid,
+		.schema-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.section-title {
+			font-size: 1.25rem;
+		}
+
+		.expandable-header {
+			padding: 0.875rem 1rem;
+		}
+
+		.expandable-content {
+			padding: 0 1rem 1rem;
+		}
+
+		.tabs-container {
+			flex-direction: column;
+		}
+
+		.tab-button {
+			width: 100%;
+			justify-content: space-between;
+		}
+	}
+</style>

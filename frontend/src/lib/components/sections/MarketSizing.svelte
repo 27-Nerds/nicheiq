@@ -1,11 +1,21 @@
 <script lang="ts">
-	import { PieChart, TrendingUp, Database, CheckCircle, AlertTriangle, Timer, Target, Zap } from 'lucide-svelte';
+	import {
+		PieChart,
+		TrendingUp,
+		Database,
+		CheckCircle,
+		AlertTriangle,
+		Timer,
+		Target,
+		Zap,
+		ChevronDown,
+		BarChart3,
+		DollarSign
+	} from 'lucide-svelte';
 	import type { MarketSizing } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
-	import MetricCard from '$lib/components/ui/MetricCard.svelte';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
-	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
@@ -15,16 +25,22 @@
 
 	let { data }: Props = $props();
 
+	// Expandable sections state
+	let showSegments = $state(false);
+	let showDriversRisks = $state(false);
+	let showMethodology = $state(false);
+	let showStrategy = $state(false);
+
 	// Get viability verdict styling
 	const getViabilityConfig = (verdict?: string) => {
 		const v = verdict?.toLowerCase() || '';
-		if (v === 'strong') return { color: 'text-success', bg: 'bg-success/10', icon: CheckCircle };
-		if (v === 'moderate') return { color: 'text-warning', bg: 'bg-warning/10', icon: AlertTriangle };
-		return { color: 'text-error', bg: 'bg-error/10', icon: AlertTriangle };
+		if (v === 'strong') return { color: '#22C55E', variant: 'success' as const, label: 'STRONG' };
+		if (v === 'moderate') return { color: '#EAB308', variant: 'warning' as const, label: 'MODERATE' };
+		return { color: '#EF4444', variant: 'error' as const, label: 'WEAK' };
 	};
 
 	// Get saturation level styling
-	const getSaturationVariant = (level?: string) => {
+	const getSaturationVariant = (level?: string): 'success' | 'warning' | 'error' => {
 		const l = level?.toLowerCase() || '';
 		if (l === 'low') return 'success';
 		if (l === 'medium') return 'warning';
@@ -32,240 +48,862 @@
 	};
 
 	// Get timing styling
-	const getTimingVariant = (timing?: string) => {
+	const getTimingVariant = (timing?: string): 'success' | 'warning' | 'error' => {
 		const t = timing?.toLowerCase() || '';
 		if (t === 'early') return 'success';
-		if (t === 'growth') return 'accent';
-		return 'warning';
+		if (t === 'growth') return 'warning';
+		return 'error';
 	};
+
+	const viabilityConfig = $derived(getViabilityConfig(data.market_viability_verdict));
 </script>
 
-<section id="market-sizing" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<PieChart class="w-5 h-5 text-accent" />
+<section id="market-sizing" class="market-section">
+	<!-- Section Header -->
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<DollarSign class="header-icon" />
 		</div>
-		<h2 class="section-title">Market Sizing</h2>
+		<div class="header-text">
+			<h2 class="section-title">Market Sizing</h2>
+			<p class="section-subtitle">TAM/SAM/SOM analysis and growth opportunity</p>
+		</div>
 	</div>
 
-	<!-- TAM/SAM/SOM Funnel -->
-	<AnimateOnScroll animation="fade-up">
-		<div class="mb-8">
-			<MarketFunnel
-				tam={data.total_addressable_market}
-				sam={data.serviceable_available_market}
-				somY1={data.serviceable_obtainable_market_y1}
-				somY3={data.serviceable_obtainable_market_y3}
-			/>
-		</div>
-	</AnimateOnScroll>
-
-	<!-- Methodology -->
-	<div class="card mb-8">
-		<div class="flex items-center gap-2 mb-4">
-			<Database class="w-5 h-5 text-accent" />
-			<h3 class="text-lg font-semibold text-text-primary">Methodology</h3>
-			<Badge>{data.primary_methodology}</Badge>
-		</div>
-		<div class="markdown-content narrative">
-			{@html renderMarkdown(data.methodology_explanation)}
-		</div>
-
-		{#if data.data_sources_used && data.data_sources_used.length > 0}
-			<div class="mt-4 pt-4 border-t border-border">
-				<h4 class="text-sm font-semibold text-text-muted mb-2">Data Sources</h4>
-				<div class="flex flex-wrap gap-2">
-					{#each data.data_sources_used as source}
-						<span class="text-xs px-2 py-1 rounded bg-bg-surface border border-border text-text-muted">{source}</span>
-					{/each}
-				</div>
+	<!-- Hero Strip: Viability Verdict + Key Signals -->
+	<div class="hero-strip">
+		<div class="verdict-hero" style="--verdict-color: {viabilityConfig.color}">
+			<div class="verdict-indicator">
+				<CheckCircle class="verdict-icon" />
 			</div>
-		{/if}
+			<div class="verdict-content">
+				<span class="verdict-label">MARKET VIABILITY</span>
+				<span class="verdict-value">{viabilityConfig.label}</span>
+			</div>
+		</div>
+
+		<div class="hero-signals">
+			{#if data.market_growth_rate}
+				<div class="hero-signal">
+					<TrendingUp class="signal-icon success" />
+					<div class="signal-content">
+						<span class="signal-label">Growth Rate</span>
+						<span class="signal-value">{data.market_growth_rate}</span>
+					</div>
+				</div>
+			{/if}
+
+			{#if data.market_saturation_level}
+				<div class="hero-signal">
+					<div class="signal-content">
+						<span class="signal-label">Saturation</span>
+						<Badge variant={getSaturationVariant(data.market_saturation_level)} size="sm">
+							{data.market_saturation_level}
+						</Badge>
+					</div>
+				</div>
+			{/if}
+
+			{#if data.market_timing_assessment}
+				<div class="hero-signal">
+					<Timer class="signal-icon" />
+					<div class="signal-content">
+						<span class="signal-label">Timing</span>
+						<Badge variant={getTimingVariant(data.market_timing_assessment)} size="sm">
+							{data.market_timing_assessment}
+						</Badge>
+					</div>
+				</div>
+			{/if}
+		</div>
 	</div>
 
-	<!-- Market Signals -->
-	<div class="grid md:grid-cols-3 gap-4 mb-8">
+	<!-- Market Funnel Visualization -->
+	<div class="funnel-card">
+		<MarketFunnel
+			tam={data.total_addressable_market}
+			sam={data.serviceable_available_market}
+			somY1={data.serviceable_obtainable_market_y1}
+			somY3={data.serviceable_obtainable_market_y3}
+		/>
+	</div>
+
+	<!-- Stats Strip -->
+	<div class="stats-strip">
 		{#if data.keyword_demand_signal}
-			<div class="card-surface card-sm">
-				<div class="text-sm text-text-muted mb-1">Keyword Demand</div>
-				<div class="text-lg font-semibold text-text-primary">{data.keyword_demand_signal}</div>
+			<div class="stat-pill">
+				<span class="stat-label">Keyword Demand</span>
+				<span class="stat-value">{data.keyword_demand_signal}</span>
 			</div>
 		{/if}
 		{#if data.pain_point_frequency}
-			<div class="card-surface card-sm">
-				<div class="text-sm text-text-muted mb-1">Pain Point Frequency</div>
-				<div class="text-lg font-semibold text-text-primary">{data.pain_point_frequency}</div>
+			<div class="stat-pill">
+				<span class="stat-label">Pain Frequency</span>
+				<span class="stat-value">{data.pain_point_frequency}</span>
 			</div>
 		{/if}
 		{#if data.competitor_market_presence}
-			<div class="card-surface card-sm">
-				<div class="text-sm text-text-muted mb-1">Competitor Presence</div>
-				<div class="text-lg font-semibold text-text-primary">{data.competitor_market_presence}</div>
+			<div class="stat-pill">
+				<span class="stat-label">Competition</span>
+				<span class="stat-value">{data.competitor_market_presence}</span>
+			</div>
+		{/if}
+		{#if data.primary_methodology}
+			<div class="stat-pill">
+				<span class="stat-label">Method</span>
+				<span class="stat-value">{data.primary_methodology}</span>
 			</div>
 		{/if}
 	</div>
 
-	<!-- Growth Rate -->
-	{#if data.market_growth_rate}
-		<div class="highlight-box mb-8">
-			<div class="flex items-center gap-3">
-				<TrendingUp class="w-5 h-5 text-success" />
-				<div>
-					<span class="text-text-muted">Market Growth Rate:</span>
-					<span class="text-lg font-semibold text-success ml-2">{data.market_growth_rate}</span>
-				</div>
+	<!-- Entry Strategy Card (Always Visible) -->
+	{#if data.recommended_entry_strategy}
+		<div class="strategy-hero">
+			<div class="strategy-header">
+				<Zap class="strategy-icon" />
+				<span class="strategy-title">Recommended Entry Strategy</span>
 			</div>
+			<p class="strategy-text">{data.recommended_entry_strategy}</p>
 		</div>
 	{/if}
 
-	<!-- Growth Drivers & Risks -->
-	<div class="grid md:grid-cols-2 gap-6">
-		{#if data.growth_drivers && data.growth_drivers.length > 0}
-			<div class="card">
-				<h3 class="text-lg font-semibold text-success mb-4">Growth Drivers</h3>
-				<ul class="space-y-2">
-					{#each data.growth_drivers as driver}
-						<li class="text-text-secondary text-sm leading-relaxed flex items-start gap-2">
-							<span class="text-success">+</span>
-							{driver}
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
+	<!-- Expandable: Growth Drivers & Risks -->
+	{#if (data.growth_drivers && data.growth_drivers.length > 0) || (data.market_risks && data.market_risks.length > 0)}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showDriversRisks = !showDriversRisks)}>
+				<div class="expandable-title">
+					<BarChart3 class="expandable-icon" />
+					<span>Growth Drivers & Risks</span>
+					<Badge variant="muted" size="sm">
+						{(data.growth_drivers?.length || 0) + (data.market_risks?.length || 0)}
+					</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showDriversRisks ? 'expanded' : ''}" />
+			</button>
+			{#if showDriversRisks}
+				<div class="expandable-content">
+					<div class="drivers-risks-grid">
+						{#if data.growth_drivers && data.growth_drivers.length > 0}
+							<div class="drivers-card">
+								<h4 class="card-label success">
+									<TrendingUp class="label-icon" />
+									Growth Drivers
+								</h4>
+								<ul class="item-list">
+									{#each data.growth_drivers as driver}
+										<li class="item success">
+											<span class="bullet">+</span>
+											<span>{driver}</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
 
-		{#if data.market_risks && data.market_risks.length > 0}
-			<div class="card">
-				<h3 class="text-lg font-semibold text-error mb-4">Market Risks</h3>
-				<ul class="space-y-2">
-					{#each data.market_risks as risk}
-						<li class="text-text-secondary text-sm leading-relaxed flex items-start gap-2">
-							<span class="text-error">-</span>
-							{risk}
-						</li>
-					{/each}
-				</ul>
-			</div>
-		{/if}
-	</div>
+						{#if data.market_risks && data.market_risks.length > 0}
+							<div class="risks-card">
+								<h4 class="card-label error">
+									<AlertTriangle class="label-icon" />
+									Market Risks
+								</h4>
+								<ul class="item-list">
+									{#each data.market_risks as risk}
+										<li class="item error">
+											<span class="bullet">!</span>
+											<span>{risk}</span>
+										</li>
+									{/each}
+								</ul>
+							</div>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
 
-	<!-- Segment Sizing -->
+	<!-- Expandable: Segment Breakdown -->
 	{#if data.segment_sizing && data.segment_sizing.length > 0}
-		<div class="mt-8">
-			<h3 class="text-lg font-semibold text-text-primary mb-4">Segment Breakdown</h3>
-			<div class="space-y-4">
-				{#each data.segment_sizing as segment}
-					<div class="card-surface">
-						<div class="flex items-center justify-between mb-2">
-							<h4 class="font-semibold text-text-primary">{segment.segment_name}</h4>
-							<Badge variant={segment.confidence_level === 'High' ? 'success' : 'warning'}>
-								{segment.confidence_level} confidence
-							</Badge>
-						</div>
-						<div class="grid grid-cols-3 gap-4 text-sm">
-							<div>
-								<span class="text-text-muted inline-flex items-center gap-1">
-									TAM: <Tooltip content={getTermTooltip('TAM')} position="top" />
-								</span>
-								<span class="text-text-primary ml-1">{segment.tam_estimate}</span>
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showSegments = !showSegments)}>
+				<div class="expandable-title">
+					<Target class="expandable-icon" />
+					<span>Segment Breakdown</span>
+					<Badge variant="muted" size="sm">{data.segment_sizing.length}</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showSegments ? 'expanded' : ''}" />
+			</button>
+			{#if showSegments}
+				<div class="expandable-content">
+					<div class="segments-grid">
+						{#each data.segment_sizing as segment}
+							<div class="segment-card">
+								<div class="segment-header">
+									<h4 class="segment-name">{segment.segment_name}</h4>
+									<Badge
+										variant={segment.confidence_level === 'High' ? 'success' : 'warning'}
+										size="sm"
+									>
+										{segment.confidence_level}
+									</Badge>
+								</div>
+								<div class="segment-metrics">
+									<div class="metric">
+										<span class="metric-label">
+											TAM <Tooltip content={getTermTooltip('TAM')} position="top" />
+										</span>
+										<span class="metric-value">{segment.tam_estimate}</span>
+									</div>
+									<div class="metric">
+										<span class="metric-label">
+											SAM <Tooltip content={getTermTooltip('SAM')} position="top" />
+										</span>
+										<span class="metric-value">{segment.sam_estimate}</span>
+									</div>
+									<div class="metric highlight">
+										<span class="metric-label">
+											SOM <Tooltip content={getTermTooltip('SOM')} position="top" />
+										</span>
+										<span class="metric-value accent">{segment.som_estimate}</span>
+									</div>
+								</div>
+								{#if segment.sizing_methodology}
+									<p class="segment-method">{segment.sizing_methodology}</p>
+								{/if}
 							</div>
-							<div>
-								<span class="text-text-muted inline-flex items-center gap-1">
-									SAM: <Tooltip content={getTermTooltip('SAM')} position="top" />
-								</span>
-								<span class="text-text-primary ml-1">{segment.sam_estimate}</span>
-							</div>
-							<div>
-								<span class="text-text-muted inline-flex items-center gap-1">
-									SOM: <Tooltip content={getTermTooltip('SOM')} position="top" />
-								</span>
-								<span class="text-accent ml-1">{segment.som_estimate}</span>
-							</div>
-						</div>
-						<p class="text-xs text-text-muted mt-2">{segment.sizing_methodology}</p>
+						{/each}
 					</div>
-				{/each}
-			</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 
-	<!-- Market Assessment -->
-	{#if data.market_saturation_level || data.market_timing_assessment || data.market_viability_verdict}
-		<AnimateOnScroll animation="fade-up">
-			<div class="mt-8">
-				<div class="flex items-center gap-2 mb-4">
-					<Target class="w-5 h-5 text-accent" />
-					<h3 class="text-lg font-semibold text-text-primary">Market Assessment</h3>
+	<!-- Expandable: Methodology -->
+	{#if data.methodology_explanation}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showMethodology = !showMethodology)}>
+				<div class="expandable-title">
+					<Database class="expandable-icon" />
+					<span>Methodology</span>
+					{#if data.data_sources_used && data.data_sources_used.length > 0}
+						<Badge variant="muted" size="sm">{data.data_sources_used.length} sources</Badge>
+					{/if}
 				</div>
-				<div class="grid md:grid-cols-3 gap-4 mb-6">
-					{#if data.market_saturation_level}
-						<div class="card card-sm flex items-center gap-4">
-							<div class="p-3 rounded-lg bg-{getSaturationVariant(data.market_saturation_level)}/10">
-								<AlertTriangle class="w-6 h-6 text-{getSaturationVariant(data.market_saturation_level)}" />
-							</div>
-							<div>
-								<div class="text-sm text-text-muted">Saturation Level</div>
-								<Badge variant={getSaturationVariant(data.market_saturation_level)}>
-									{data.market_saturation_level}
-								</Badge>
-							</div>
-						</div>
-					{/if}
-					{#if data.market_timing_assessment}
-						<div class="card card-sm flex items-center gap-4">
-							<div class="p-3 rounded-lg bg-accent/10">
-								<Timer class="w-6 h-6 text-accent" />
-							</div>
-							<div>
-								<div class="text-sm text-text-muted">Market Timing</div>
-								<Badge variant={getTimingVariant(data.market_timing_assessment)}>
-									{data.market_timing_assessment}
-								</Badge>
-							</div>
-						</div>
-					{/if}
-					{#if data.market_viability_verdict}
-						{@const config = getViabilityConfig(data.market_viability_verdict)}
-						{@const ViabilityIcon = config.icon}
-						<div class="card card-sm flex items-center gap-4">
-							<div class="p-3 rounded-lg {config.bg}">
-								<ViabilityIcon class="w-6 h-6 {config.color}" />
-							</div>
-							<div>
-								<div class="text-sm text-text-muted">Viability Verdict</div>
-								<Badge variant={data.market_viability_verdict === 'Strong' ? 'success' : data.market_viability_verdict === 'Moderate' ? 'warning' : 'error'}>
-									{data.market_viability_verdict}
-								</Badge>
+				<ChevronDown class="chevron-icon {showMethodology ? 'expanded' : ''}" />
+			</button>
+			{#if showMethodology}
+				<div class="expandable-content">
+					<div class="methodology-content">
+						{@html renderMarkdown(data.methodology_explanation)}
+					</div>
+					{#if data.data_sources_used && data.data_sources_used.length > 0}
+						<div class="sources-row">
+							<span class="sources-label">Data Sources:</span>
+							<div class="sources-tags">
+								{#each data.data_sources_used as source}
+									<span class="source-tag">{source}</span>
+								{/each}
 							</div>
 						</div>
 					{/if}
 				</div>
-			</div>
-		</AnimateOnScroll>
+			{/if}
+		</div>
 	{/if}
 
-	<!-- Viability Rationale & Entry Strategy -->
-	{#if data.viability_rationale || data.recommended_entry_strategy}
-		<AnimateOnScroll animation="fade-up">
-			<div class="grid md:grid-cols-2 gap-6 mt-6 items-start">
-				{#if data.viability_rationale}
-					<div class="card">
-						<h3 class="text-lg font-semibold text-text-primary mb-3">Viability Rationale</h3>
-						<div class="markdown-content narrative text-sm">
-							{@html renderMarkdown(data.viability_rationale)}
-						</div>
+	<!-- Expandable: Viability Rationale -->
+	{#if data.viability_rationale}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showStrategy = !showStrategy)}>
+				<div class="expandable-title">
+					<CheckCircle class="expandable-icon" />
+					<span>Viability Rationale</span>
+				</div>
+				<ChevronDown class="chevron-icon {showStrategy ? 'expanded' : ''}" />
+			</button>
+			{#if showStrategy}
+				<div class="expandable-content">
+					<div class="rationale-content">
+						{@html renderMarkdown(data.viability_rationale)}
 					</div>
-				{/if}
-				{#if data.recommended_entry_strategy}
-					<div class="card border-accent/30">
-						<div class="flex items-center gap-2 mb-3">
-							<Zap class="w-5 h-5 text-accent" />
-							<h3 class="text-lg font-semibold text-accent">Recommended Entry Strategy</h3>
-						</div>
-						<p class="text-text-secondary">{data.recommended_entry_strategy}</p>
-					</div>
-				{/if}
-			</div>
-		</AnimateOnScroll>
+				</div>
+			{/if}
+		</div>
 	{/if}
 </section>
+
+<style>
+	/* =========================
+	   SECTION CONTAINER
+	   ========================= */
+	.market-section {
+		padding: 1.5rem;
+		background: var(--color-bg-base);
+	}
+
+	/* =========================
+	   SECTION HEADER
+	   ========================= */
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.header-icon-wrap {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		background: rgba(229, 90, 40, 0.1);
+		border-radius: 0.5rem;
+	}
+
+	:global(.header-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: #E55A28;
+	}
+
+	.header-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.section-title {
+		font-family: var(--font-display);
+		font-size: 1.375rem;
+		font-weight: 800;
+		color: #18181B;
+		margin: 0;
+	}
+
+	.section-subtitle {
+		font-size: 0.8125rem;
+		color: #A1A1AA;
+		margin: 0;
+	}
+
+	/* =========================
+	   HERO STRIP
+	   ========================= */
+	.hero-strip {
+		display: flex;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 1.125rem 1.25rem;
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
+	}
+
+	.verdict-hero {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		padding-right: 1.5rem;
+		border-right: 1px solid rgba(0, 0, 0, 0.08);
+	}
+
+	.verdict-indicator {
+		width: 2.5rem;
+		height: 2.5rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: color-mix(in srgb, var(--verdict-color) 12%, transparent);
+		border: 2px solid var(--verdict-color);
+		border-radius: 50%;
+	}
+
+	:global(.verdict-icon) {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: var(--verdict-color);
+	}
+
+	.verdict-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.verdict-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: #A1A1AA;
+	}
+
+	.verdict-value {
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		font-weight: 800;
+		color: var(--verdict-color);
+	}
+
+	.hero-signals {
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
+		flex-wrap: wrap;
+	}
+
+	.hero-signal {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	:global(.signal-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #A1A1AA;
+	}
+
+	:global(.signal-icon.success) {
+		color: #22C55E;
+	}
+
+	.signal-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.signal-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #A1A1AA;
+	}
+
+	.signal-value {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 700;
+		color: #22C55E;
+	}
+
+	/* =========================
+	   FUNNEL CARD
+	   ========================= */
+	.funnel-card {
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		padding: 1.25rem;
+		margin-bottom: 1rem;
+	}
+
+	/* =========================
+	   STATS STRIP
+	   ========================= */
+	.stats-strip {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.stat-pill {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.75rem;
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 9999px;
+	}
+
+	.stat-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: #A1A1AA;
+	}
+
+	.stat-value {
+		font-family: var(--font-display);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	/* =========================
+	   STRATEGY HERO
+	   ========================= */
+	.strategy-hero {
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, transparent 60%);
+		border: 1px solid rgba(229, 90, 40, 0.2);
+		border-left: 3px solid #E55A28;
+		border-radius: 0.75rem;
+		padding: 1.125rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.strategy-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.5rem;
+	}
+
+	:global(.strategy-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #E55A28;
+	}
+
+	.strategy-title {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.1em;
+		color: #E55A28;
+	}
+
+	.strategy-text {
+		font-size: 0.875rem;
+		color: #18181B;
+		line-height: 1.6;
+		margin: 0;
+	}
+
+	/* =========================
+	   EXPANDABLE SECTIONS
+	   ========================= */
+	.expandable-section {
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		margin-bottom: 0.75rem;
+		overflow: hidden;
+	}
+
+	.expandable-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.875rem 1rem;
+		background: #FFFFFF;
+		border: none;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.expandable-header:hover {
+		background: rgba(0, 0, 0, 0.02);
+	}
+
+	.expandable-title {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+	}
+
+	:global(.expandable-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: #E55A28;
+	}
+
+	.expandable-title span {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	:global(.chevron-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #A1A1AA;
+		transition: transform 0.2s;
+	}
+
+	:global(.chevron-icon.expanded) {
+		transform: rotate(180deg);
+	}
+
+	.expandable-content {
+		padding: 0 1rem 1rem;
+		background: #FFFFFF;
+	}
+
+	/* Drivers & Risks Grid */
+	.drivers-risks-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.drivers-card,
+	.risks-card {
+		padding: 0.875rem;
+		border-radius: 0.5rem;
+	}
+
+	.drivers-card {
+		background: rgba(34, 197, 94, 0.04);
+		border: 1px solid rgba(34, 197, 94, 0.15);
+		border-left: 3px solid #22C55E;
+	}
+
+	.risks-card {
+		background: rgba(239, 68, 68, 0.04);
+		border: 1px solid rgba(239, 68, 68, 0.15);
+		border-left: 3px solid #EF4444;
+	}
+
+	.card-label {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-family: var(--font-display);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		margin-bottom: 0.625rem;
+	}
+
+	.card-label.success {
+		color: #22C55E;
+	}
+
+	.card-label.error {
+		color: #EF4444;
+	}
+
+	:global(.label-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
+	}
+
+	.item-list {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		color: #71717A;
+		line-height: 1.5;
+	}
+
+	.item .bullet {
+		font-weight: 700;
+		flex-shrink: 0;
+	}
+
+	.item.success .bullet {
+		color: #22C55E;
+	}
+
+	.item.error .bullet {
+		color: #EF4444;
+	}
+
+	/* Segments Grid */
+	.segments-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.segment-card {
+		padding: 0.875rem;
+		background: rgba(0, 0, 0, 0.02);
+		border-radius: 0.5rem;
+		border: 1px solid rgba(0, 0, 0, 0.06);
+	}
+
+	.segment-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 0.625rem;
+	}
+
+	.segment-name {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #18181B;
+		margin: 0;
+	}
+
+	.segment-metrics {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.875rem;
+		margin-bottom: 0.5rem;
+	}
+
+	.metric {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.metric.highlight {
+		padding: 0.375rem 0.5rem;
+		background: rgba(229, 90, 40, 0.08);
+		border-radius: 0.375rem;
+	}
+
+	.metric-label {
+		font-family: var(--font-mono);
+		font-size: 0.5rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #A1A1AA;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.metric-value {
+		font-family: var(--font-display);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	.metric-value.accent {
+		color: #E55A28;
+	}
+
+	.segment-method {
+		font-size: 0.6875rem;
+		color: #A1A1AA;
+		line-height: 1.45;
+		margin: 0;
+	}
+
+	/* Methodology Content */
+	.methodology-content {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.65;
+		margin-bottom: 0.875rem;
+	}
+
+	.methodology-content :global(p) {
+		margin-bottom: 0.5rem;
+	}
+
+	.methodology-content :global(p:last-child) {
+		margin-bottom: 0;
+	}
+
+	.sources-row {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.5rem;
+		padding-top: 0.875rem;
+		border-top: 1px solid rgba(0, 0, 0, 0.06);
+	}
+
+	.sources-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #A1A1AA;
+	}
+
+	.sources-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+
+	.source-tag {
+		font-size: 0.6875rem;
+		padding: 0.25rem 0.5rem;
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-radius: 0.25rem;
+		color: #A1A1AA;
+	}
+
+	/* Rationale Content */
+	.rationale-content {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.65;
+	}
+
+	.rationale-content :global(p) {
+		margin-bottom: 0.5rem;
+	}
+
+	.rationale-content :global(p:last-child) {
+		margin-bottom: 0;
+	}
+
+	/* =========================
+	   RESPONSIVE
+	   ========================= */
+	@media (max-width: 768px) {
+		.market-section {
+			padding: 1rem;
+		}
+
+		.hero-strip {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 1rem;
+		}
+
+		.verdict-hero {
+			padding-right: 0;
+			border-right: none;
+			padding-bottom: 1rem;
+			border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+			width: 100%;
+		}
+
+		.hero-signals {
+			width: 100%;
+			justify-content: space-between;
+		}
+
+		.segment-metrics {
+			flex-direction: column;
+			gap: 0.5rem;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.section-title {
+			font-size: 1.25rem;
+		}
+
+		.funnel-card {
+			padding: 1rem;
+		}
+	}
+</style>

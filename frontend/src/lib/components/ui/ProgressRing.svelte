@@ -3,7 +3,7 @@
 		value: number;
 		size?: number;
 		strokeWidth?: number;
-		color?: 'accent' | 'success' | 'error' | 'warning' | 'auto';
+		color?: 'accent' | 'success' | 'error' | 'warning' | 'auto' | string;
 		showValue?: boolean;
 		showLabel?: boolean;
 		label?: string;
@@ -28,20 +28,24 @@
 	const progress = $derived(Math.min(Math.max(value, 0), 1));
 	const offset = $derived(circumference - progress * circumference);
 
+	// Check if color is a custom hex/rgb value
+	const isCustomColor = $derived(color.startsWith('#') || color.startsWith('rgb'));
+
 	// Auto color based on value thresholds
-	const computedColor = $derived(() => {
+	const computedColor = $derived.by(() => {
+		if (isCustomColor) return color;
 		if (color !== 'auto') return color;
 		if (value >= 0.7) return 'success';
 		if (value >= 0.4) return 'warning';
 		return 'error';
 	});
 
-	const colorVar = $derived(() => {
-		const c = computedColor();
-		if (c === 'accent') return 'var(--color-accent)';
-		if (c === 'success') return 'var(--color-success)';
-		if (c === 'error') return 'var(--color-error)';
-		if (c === 'warning') return 'var(--color-warning)';
+	const colorVar = $derived.by(() => {
+		if (isCustomColor) return computedColor;
+		if (computedColor === 'accent') return 'var(--color-accent)';
+		if (computedColor === 'success') return 'var(--color-success)';
+		if (computedColor === 'error') return 'var(--color-error)';
+		if (computedColor === 'warning') return 'var(--color-warning)';
 		return 'var(--color-accent)';
 	});
 
@@ -88,7 +92,7 @@
 			cy={size / 2}
 			r={radius}
 			fill="none"
-			stroke={colorVar()}
+			stroke={colorVar}
 			stroke-width={strokeWidth}
 			stroke-linecap="round"
 			stroke-dasharray={circumference}
@@ -100,7 +104,7 @@
 	{#if showValue || showLabel}
 		<div class="progress-ring-content">
 			{#if showValue}
-				<span class="progress-ring-value" style:color={colorVar()}>
+				<span class="progress-ring-value" style:color={colorVar}>
 					{Math.round(value * 100)}
 				</span>
 			{/if}

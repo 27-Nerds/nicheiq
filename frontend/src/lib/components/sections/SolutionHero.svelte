@@ -1,10 +1,11 @@
 <script lang="ts">
-	import { Sparkles, Zap, Target, TrendingUp, Code, Users, DollarSign, Layers } from 'lucide-svelte';
+	import { Sparkles, Zap, Target, TrendingUp, Code, Users, Layers, CheckCircle, Clock, Globe, ChevronDown, Rocket, DollarSign } from 'lucide-svelte';
 	import type { SolutionDetails, ExecutiveDashboard, SelectionCriteriaScore } from '$lib/types/report';
-	import { formatPercent, renderMarkdown, getScoreClass, parseRationaleMetrics } from '$lib/utils/format';
+	import { formatPercent, renderMarkdown, parseRationaleMetrics } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
+	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 
 	interface Props {
 		solution: SolutionDetails;
@@ -19,466 +20,720 @@
 	const snapshot = $derived(dashboard.recommended_solution_snapshot);
 	const verdict = $derived(dashboard.go_no_go_verdict);
 
-	// Score data from solution details ONLY (synced with selection criteria in backend)
-	// NO FALLBACKS - solution scores are now the authoritative source (synced from Stage 8.5)
-	// If null, formatPercent() displays "N/A"
+	// Solution scores
 	const marketFit = $derived(solution.market_fit_score ?? null);
 	const techFeasibility = $derived(solution.technical_feasibility_score ?? null);
 	const seoScore = $derived(solution.seo_scalability_score ?? null);
 	const noveltyScore = $derived(solution.novelty_score ?? null);
+	const soloDevScore = $derived(solution.solo_dev_feasibility ?? null);
 
 	// Parse metrics from rationale text
 	const parsedRationale = $derived(parseRationaleMetrics(selectionRationale));
+
+	// Expandable state
+	let showFeatures = $state(false);
+	let showRationale = $state(false);
+
+	// Score color helper
+	const getScoreClass = (score: number | null | undefined) => {
+		if (score == null) return 'muted';
+		if (score >= 0.7) return 'success';
+		if (score >= 0.5) return 'warning';
+		return 'error';
+	};
+
+	// Get verdict styling
+	const getVerdictBadge = (v: string) => {
+		if (v === 'Go') return { variant: 'success' as const, text: 'GO' };
+		if (v === 'No-Go') return { variant: 'error' as const, text: 'NO-GO' };
+		return { variant: 'warning' as const, text: v.toUpperCase() };
+	};
+	const vBadge = $derived(getVerdictBadge(verdict.verdict));
 </script>
 
-<section id="solution" class="report-section solution-hero-section">
-	<!-- Hero Header -->
-	<div class="solution-hero-header">
-		<div class="flex items-center gap-3 mb-4">
-			<div class="icon-container-large">
-				<Sparkles class="w-6 h-6 text-accent" />
+<section id="solution" class="solution-section">
+	<!-- Section Header -->
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<Rocket class="header-icon" />
+		</div>
+		<div class="header-text">
+			<h2 class="section-title">Recommended Solution</h2>
+			<p class="section-subtitle">AI-validated product opportunity</p>
+		</div>
+	</div>
+
+	<!-- Solution Hero Card -->
+	<div class="solution-hero-card">
+		<div class="hero-top">
+			<div class="hero-badges">
+				{#if snapshot.project_type}
+					<Badge variant="default">{snapshot.project_type}</Badge>
+				{/if}
+				<Badge variant={vBadge.variant}>{vBadge.text}</Badge>
 			</div>
-			{#if snapshot.project_type}
-				<Badge variant="default">{snapshot.project_type}</Badge>
-			{/if}
-			{#if verdict.verdict === 'Go'}
-				<Badge variant="success">{verdict.verdict}</Badge>
-			{:else if verdict.verdict === 'No-Go'}
-				<Badge variant="error">{verdict.verdict}</Badge>
-			{:else}
-				<Badge variant="warning">{verdict.verdict}</Badge>
-			{/if}
+			<div class="hero-sparkle">
+				<Sparkles class="sparkle-icon" />
+			</div>
 		</div>
 
-		<h1 class="solution-hero-title">{solutionName}</h1>
+		<h3 class="hero-title">{solutionName}</h3>
 
 		{#if snapshot.tagline}
-			<p class="solution-hero-tagline">{snapshot.tagline}</p>
+			<p class="hero-tagline">{snapshot.tagline}</p>
 		{/if}
-	</div>
 
-	<!-- Value Proposition -->
-	<div class="solution-value-prop">
-		<div class="value-prop-accent"></div>
-		<p class="value-prop-text">
-			{solution.value_proposition || snapshot.core_value_prop || solution.description}
-		</p>
-	</div>
+		<!-- Value Proposition -->
+		<div class="value-block">
+			<p class="value-text">
+				{solution.value_proposition || snapshot.core_value_prop || solution.description}
+			</p>
+		</div>
 
-	<!-- Key Scores Grid -->
-	<div class="solution-scores-grid">
-		<div class="score-card">
-			<div class="score-icon">
-				<Target class="w-5 h-5" />
-			</div>
-			<div class="score-value {getScoreClass(marketFit)}">{formatPercent(marketFit)}</div>
-			<div class="score-label">Market Fit</div>
-		</div>
-		<div class="score-card">
-			<div class="score-icon">
-				<Code class="w-5 h-5" />
-			</div>
-			<div class="score-value {getScoreClass(techFeasibility)}">{formatPercent(techFeasibility)}</div>
-			<div class="score-label">Tech Feasibility</div>
-		</div>
-		<div class="score-card">
-			<div class="score-icon">
-				<TrendingUp class="w-5 h-5" />
-			</div>
-			<div class="score-value {getScoreClass(seoScore)}">{formatPercent(seoScore)}</div>
-			<div class="score-label">SEO Potential</div>
-		</div>
-		{#if noveltyScore != null && noveltyScore > 0}
-			<div class="score-card">
-				<div class="score-icon">
-					<Zap class="w-5 h-5" />
+		<!-- Validation Scores -->
+		<div class="scores-grid">
+			{#if marketFit != null}
+				<div class="score-card" class:strong={getScoreClass(marketFit) === 'success'}>
+					<ProgressRing
+						value={marketFit}
+						size={44}
+						strokeWidth={3}
+						color={getScoreClass(marketFit)}
+						showValue={true}
+					/>
+					<span class="score-label">Market Fit</span>
 				</div>
-				<div class="score-value {getScoreClass(noveltyScore)}">{formatPercent(noveltyScore)}</div>
-				<div class="score-label">Novelty</div>
-			</div>
-		{/if}
+			{/if}
+
+			{#if techFeasibility != null}
+				<div class="score-card" class:strong={getScoreClass(techFeasibility) === 'success'}>
+					<ProgressRing
+						value={techFeasibility}
+						size={44}
+						strokeWidth={3}
+						color={getScoreClass(techFeasibility)}
+						showValue={true}
+					/>
+					<span class="score-label">Feasibility</span>
+				</div>
+			{/if}
+
+			{#if seoScore != null}
+				<div class="score-card" class:strong={getScoreClass(seoScore) === 'success'}>
+					<ProgressRing
+						value={seoScore}
+						size={44}
+						strokeWidth={3}
+						color={getScoreClass(seoScore)}
+						showValue={true}
+					/>
+					<span class="score-label">SEO</span>
+				</div>
+			{/if}
+
+			{#if soloDevScore != null}
+				<div class="score-card" class:strong={getScoreClass(soloDevScore) === 'success'}>
+					<ProgressRing
+						value={soloDevScore}
+						size={44}
+						strokeWidth={3}
+						color={getScoreClass(soloDevScore)}
+						showValue={true}
+					/>
+					<span class="score-label">Solo Dev</span>
+				</div>
+			{/if}
+
+			{#if noveltyScore != null && noveltyScore > 0}
+				<div class="score-card" class:strong={getScoreClass(noveltyScore) === 'success'}>
+					<ProgressRing
+						value={noveltyScore}
+						size={44}
+						strokeWidth={3}
+						color={getScoreClass(noveltyScore)}
+						showValue={true}
+					/>
+					<span class="score-label">Novelty</span>
+				</div>
+			{/if}
+		</div>
 	</div>
 
-	<!-- Core Features -->
-	{#if solution.core_features && solution.core_features.length > 0}
-		<div class="solution-features">
-			<h3 class="features-title">
-				<Layers class="w-5 h-5 text-accent" />
-				Core Features
-			</h3>
-			<div class="features-grid">
-				{#each solution.core_features.slice(0, 6) as feature, i}
-					<div class="feature-card" style="animation-delay: {i * 0.1}s">
-						<span class="feature-number">{String(i + 1).padStart(2, '0')}</span>
-						<p class="feature-text">{feature}</p>
+	<!-- Quick Stats Row -->
+	{#if solution.estimated_development_time || solution.estimated_indexable_pages || solution.estimated_cac_organic}
+		<div class="stats-row">
+			{#if solution.estimated_development_time}
+				<div class="stat-pill">
+					<Clock class="stat-icon" />
+					<div class="stat-content">
+						<span class="stat-value">{solution.estimated_development_time}</span>
+						<span class="stat-label">Dev Time</span>
+					</div>
+				</div>
+			{/if}
+
+			{#if solution.estimated_indexable_pages}
+				<div class="stat-pill">
+					<Globe class="stat-icon" />
+					<div class="stat-content">
+						<span class="stat-value">{solution.estimated_indexable_pages}</span>
+						<span class="stat-label">SEO Pages Y1</span>
+					</div>
+				</div>
+			{/if}
+
+			{#if solution.estimated_cac_organic}
+				<div class="stat-pill">
+					<DollarSign class="stat-icon" />
+					<div class="stat-content">
+						<span class="stat-value">{solution.estimated_cac_organic}</span>
+						<span class="stat-label">
+							CAC <Tooltip content={getTermTooltip('CAC')} position="top" />
+						</span>
+					</div>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Competitive Advantages - Always Visible -->
+	{#if solution.differentiation_factors && solution.differentiation_factors.length > 0}
+		<div class="advantages-card">
+			<div class="advantages-header">
+				<Zap class="advantages-icon" />
+				<span class="advantages-title">Competitive Advantages</span>
+				<Badge variant="success" size="sm">{solution.differentiation_factors.length}</Badge>
+			</div>
+			<div class="advantages-grid">
+				{#each solution.differentiation_factors.slice(0, 4) as factor}
+					<div class="advantage-item">
+						<CheckCircle class="check-icon" />
+						<span class="advantage-text">{factor}</span>
 					</div>
 				{/each}
 			</div>
 		</div>
 	{/if}
 
-	<!-- Quick Stats Row -->
-	<div class="solution-quick-stats">
-		{#if solution.estimated_development_time}
-			<div class="quick-stat">
-				<span class="quick-stat-value">{solution.estimated_development_time}</span>
-				<span class="quick-stat-label">Dev Time</span>
-			</div>
-		{/if}
-		{#if solution.estimated_indexable_pages}
-			<div class="quick-stat">
-				<span class="quick-stat-value">{solution.estimated_indexable_pages}</span>
-				<span class="quick-stat-label">SEO Pages</span>
-			</div>
-		{/if}
-		{#if solution.estimated_cac_organic}
-			<div class="quick-stat">
-				<span class="quick-stat-value">{solution.estimated_cac_organic}</span>
-				<span class="quick-stat-label inline-flex items-center gap-1">
-					Organic CAC <Tooltip content={getTermTooltip('CAC')} position="top" />
-				</span>
-			</div>
-		{/if}
-		{#if solution.solo_dev_feasibility}
-			<div class="quick-stat">
-				<span class="quick-stat-value">{formatPercent(solution.solo_dev_feasibility)}</span>
-				<span class="quick-stat-label">Solo Dev Fit</span>
-			</div>
-		{/if}
-	</div>
+	<!-- Expandable: Core Features -->
+	{#if solution.core_features && solution.core_features.length > 0}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => showFeatures = !showFeatures}>
+				<div class="expandable-title">
+					<Layers class="expandable-icon" />
+					<span>Core Features</span>
+					<Badge variant="muted" size="sm">{solution.core_features.length}</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showFeatures ? 'expanded' : ''}" />
+			</button>
 
-	<!-- Why This Solution -->
-	{#if selectionRationale}
-		<div class="solution-rationale">
-			<h4 class="rationale-title">
-				<Users class="w-4 h-4 text-accent" />
-				Why This Solution
-			</h4>
-
-			<!-- Extracted Metrics Grid -->
-			{#if parsedRationale.metrics.length > 0}
-				<div class="rationale-metrics-grid">
-					{#each parsedRationale.metrics as metric}
-						<div class="rationale-metric">
-							<span class="metric-value">{metric.value}</span>
-							<span class="metric-label">{metric.label}</span>
-						</div>
-					{/each}
+			{#if showFeatures}
+				<div class="expandable-content">
+					<div class="features-grid">
+						{#each solution.core_features.slice(0, 8) as feature, i}
+							<div class="feature-item">
+								<span class="feature-num">{String(i + 1).padStart(2, '0')}</span>
+								<span class="feature-text">{feature}</span>
+							</div>
+						{/each}
+					</div>
 				</div>
 			{/if}
-
-			<!-- Narrative Text with Highlighted Metrics -->
-			<div class="markdown-content narrative rationale-content">
-				{@html renderMarkdown(parsedRationale.highlightedText || selectionRationale)}
-			</div>
 		</div>
 	{/if}
 
-	<!-- Differentiation Factors -->
-	{#if solution.differentiation_factors && solution.differentiation_factors.length > 0}
-		<div class="differentiation-section">
-			<h4 class="diff-title">Competitive Advantages</h4>
-			<ul class="diff-list">
-				{#each solution.differentiation_factors.slice(0, 4) as factor}
-					<li class="diff-item">
-						<Zap class="w-4 h-4 text-accent shrink-0" />
-						<span>{factor}</span>
-					</li>
-				{/each}
-			</ul>
+	<!-- Expandable: Why This Solution -->
+	{#if selectionRationale}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => showRationale = !showRationale}>
+				<div class="expandable-title">
+					<Target class="expandable-icon" />
+					<span>Selection Rationale</span>
+				</div>
+				<ChevronDown class="chevron-icon {showRationale ? 'expanded' : ''}" />
+			</button>
+
+			{#if showRationale}
+				<div class="expandable-content">
+					<!-- Extracted Metrics -->
+					{#if parsedRationale.metrics.length > 0}
+						<div class="rationale-metrics">
+							{#each parsedRationale.metrics as metric}
+								<div class="metric-chip">
+									<span class="metric-value">{metric.value}</span>
+									<span class="metric-label">{metric.label}</span>
+								</div>
+							{/each}
+						</div>
+					{/if}
+
+					<!-- Narrative -->
+					<div class="rationale-text">
+						{@html renderMarkdown(parsedRationale.highlightedText || selectionRationale)}
+					</div>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </section>
 
 <style>
-	.solution-hero-section {
-		padding-bottom: 3rem;
+	/* =========================
+	   SECTION CONTAINER
+	   ========================= */
+	.solution-section {
+		padding: 1.5rem;
+		background: var(--color-bg-base);
 	}
 
-	.solution-hero-header {
-		margin-bottom: 2rem;
+	/* =========================
+	   SECTION HEADER
+	   ========================= */
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1.25rem;
 	}
 
-	.icon-container-large {
-		width: 3rem;
-		height: 3rem;
-		border-radius: 0.75rem;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.2) 0%, rgba(229, 90, 40, 0.05) 100%);
-		border: 1px solid rgba(229, 90, 40, 0.4);
+	.header-icon-wrap {
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		background: rgba(229, 90, 40, 0.1);
+		border-radius: 0.5rem;
 	}
 
-	.solution-hero-title {
+	:global(.header-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: #E55A28;
+	}
+
+	.header-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.section-title {
 		font-family: var(--font-display);
-		font-size: clamp(2rem, 5vw, 3.5rem);
+		font-size: 1.375rem;
 		font-weight: 800;
-		letter-spacing: -0.04em;
-		line-height: 1.1;
-		color: var(--color-text-primary);
-		margin-bottom: 0.75rem;
+		color: #18181B;
+		margin: 0;
 	}
 
-	.solution-hero-tagline {
-		font-size: 1.125rem;
-		color: var(--color-text-secondary);
-		max-width: 48rem;
+	.section-subtitle {
+		font-size: 0.8125rem;
+		color: #A1A1AA;
+		margin: 0;
+	}
+
+	/* =========================
+	   SOLUTION HERO CARD
+	   ========================= */
+	.solution-hero-card {
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.875rem;
+		padding: 1.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.hero-top {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 1rem;
+	}
+
+	.hero-badges {
+		display: flex;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.hero-sparkle {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.5rem;
+		height: 2.5rem;
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.12) 0%, rgba(229, 90, 40, 0.04) 100%);
+		border: 1px solid rgba(229, 90, 40, 0.25);
+		border-radius: 0.5rem;
+	}
+
+	:global(.sparkle-icon) {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: #E55A28;
+	}
+
+	.hero-title {
+		font-family: var(--font-display);
+		font-size: clamp(1.5rem, 4vw, 2rem);
+		font-weight: 800;
+		letter-spacing: -0.02em;
+		line-height: 1.2;
+		color: #18181B;
+		margin-bottom: 0.375rem;
+	}
+
+	.hero-tagline {
+		font-size: 0.9375rem;
+		color: #71717A;
+		font-style: italic;
+		margin-bottom: 1rem;
+		line-height: 1.5;
+	}
+
+	/* Value Block */
+	.value-block {
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.05) 0%, transparent 50%);
+		border: 1px solid rgba(229, 90, 40, 0.12);
+		border-left: 3px solid #E55A28;
+		border-radius: 0.5rem;
+		padding: 0.875rem 1rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.value-text {
+		font-size: 0.875rem;
+		color: #71717A;
 		line-height: 1.6;
+		margin: 0;
 	}
 
-	.solution-value-prop {
-		position: relative;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-radius: 1rem;
-		padding: 1.5rem 1.5rem 1.5rem 2rem;
-		margin-bottom: 2rem;
-	}
-
-	.value-prop-accent {
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 4px;
-		background: var(--color-accent);
-		border-radius: 1rem 0 0 1rem;
-	}
-
-	.value-prop-text {
-		font-size: 1.0625rem;
-		color: var(--color-text-secondary);
-		line-height: 1.7;
-	}
-
-	.solution-scores-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-		gap: 1rem;
-		margin-bottom: 2.5rem;
+	/* Scores Grid */
+	.scores-grid {
+		display: flex;
+		gap: 0.625rem;
+		flex-wrap: wrap;
 	}
 
 	.score-card {
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-		text-align: center;
-		transition: all 0.3s ease;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.75rem 0.875rem;
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-radius: 0.5rem;
+		min-width: 70px;
+		transition: all 0.15s ease;
 	}
 
 	.score-card:hover {
-		border-color: var(--color-border-emphasis);
-		transform: translateY(-2px);
+		border-color: rgba(0, 0, 0, 0.12);
 	}
 
-	.score-icon {
-		display: flex;
-		justify-content: center;
-		margin-bottom: 0.75rem;
-		color: var(--color-text-muted);
-	}
-
-	.score-value {
-		font-family: var(--font-display);
-		font-size: 1.75rem;
-		font-weight: 700;
-		letter-spacing: -0.02em;
+	.score-card.strong {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, transparent 60%);
+		border-color: rgba(34, 197, 94, 0.2);
 	}
 
 	.score-label {
 		font-family: var(--font-mono);
-		font-size: 0.6875rem;
+		font-size: 0.5625rem;
 		font-weight: 500;
-		letter-spacing: 0.08em;
+		color: #A1A1AA;
 		text-transform: uppercase;
-		color: var(--color-text-muted);
-		margin-top: 0.25rem;
+		letter-spacing: 0.05em;
+		text-align: center;
 	}
 
-	.solution-features {
-		margin-bottom: 2.5rem;
+	/* =========================
+	   STATS ROW
+	   ========================= */
+	.stats-row {
+		display: flex;
+		gap: 0.625rem;
+		margin-bottom: 1rem;
+		flex-wrap: wrap;
 	}
 
-	.features-title {
+	.stat-pill {
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: var(--color-text-primary);
-		margin-bottom: 1.25rem;
+		gap: 0.625rem;
+		padding: 0.625rem 1rem;
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 9999px;
 	}
 
+	:global(.stat-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #E55A28;
+	}
+
+	.stat-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0;
+	}
+
+	.stat-value {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: #18181B;
+		line-height: 1.1;
+	}
+
+	.stat-label {
+		font-size: 0.625rem;
+		color: #A1A1AA;
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	/* =========================
+	   ADVANTAGES CARD
+	   ========================= */
+	.advantages-card {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, transparent 50%);
+		border: 1px solid rgba(34, 197, 94, 0.15);
+		border-radius: 0.75rem;
+		padding: 1.125rem;
+		margin-bottom: 0.75rem;
+	}
+
+	.advantages-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.875rem;
+	}
+
+	:global(.advantages-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #22C55E;
+	}
+
+	.advantages-title {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #22C55E;
+	}
+
+	.advantages-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.advantage-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.625rem;
+		background: rgba(255, 255, 255, 0.7);
+		border: 1px solid rgba(34, 197, 94, 0.1);
+		border-radius: 0.375rem;
+	}
+
+	:global(.check-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
+		color: #22C55E;
+		flex-shrink: 0;
+		margin-top: 0.125rem;
+	}
+
+	.advantage-text {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.45;
+	}
+
+	/* =========================
+	   EXPANDABLE SECTIONS
+	   ========================= */
+	.expandable-section {
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		margin-bottom: 0.75rem;
+		overflow: hidden;
+	}
+
+	.expandable-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.875rem 1rem;
+		background: #FFFFFF;
+		border: none;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.expandable-header:hover {
+		background: rgba(0, 0, 0, 0.02);
+	}
+
+	.expandable-title {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+	}
+
+	:global(.expandable-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: #E55A28;
+	}
+
+	.expandable-title span {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	:global(.chevron-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #A1A1AA;
+		transition: transform 0.2s;
+	}
+
+	:global(.chevron-icon.expanded) {
+		transform: rotate(180deg);
+	}
+
+	.expandable-content {
+		padding: 0 1rem 1rem;
+		background: #FFFFFF;
+	}
+
+	/* Features Grid */
 	.features-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		gap: 1rem;
+		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 0.5rem;
 	}
 
-	.feature-card {
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
+	.feature-item {
 		display: flex;
-		gap: 1rem;
 		align-items: flex-start;
-		animation: fadeInUp 0.5s ease forwards;
-		opacity: 0;
+		gap: 0.5rem;
+		padding: 0.625rem 0.75rem;
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-radius: 0.375rem;
 	}
 
-	@keyframes fadeInUp {
-		from {
-			opacity: 0;
-			transform: translateY(10px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
-	}
-
-	.feature-number {
+	.feature-num {
 		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: var(--color-accent);
+		font-size: 0.5625rem;
+		font-weight: 700;
+		color: #E55A28;
 		background: rgba(229, 90, 40, 0.1);
-		padding: 0.25rem 0.5rem;
-		border-radius: 0.25rem;
+		padding: 0.1875rem 0.3125rem;
+		border-radius: 0.1875rem;
 		flex-shrink: 0;
 	}
 
 	.feature-text {
-		font-size: 0.9375rem;
-		color: var(--color-text-secondary);
-		line-height: 1.5;
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.45;
 	}
 
-	.solution-quick-stats {
+	/* Rationale */
+	.rationale-metrics {
 		display: flex;
 		flex-wrap: wrap;
-		gap: 2rem;
-		padding: 1.5rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		margin-bottom: 2rem;
-	}
-
-	.quick-stat {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.quick-stat-value {
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: var(--color-accent);
-	}
-
-	.quick-stat-label {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 500;
-		letter-spacing: 0.06em;
-		text-transform: uppercase;
-		color: var(--color-text-muted);
-	}
-
-	.solution-rationale {
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 1.5rem;
-		margin-bottom: 2rem;
-	}
-
-	.rationale-title {
-		display: flex;
-		align-items: center;
 		gap: 0.5rem;
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-		margin-bottom: 1rem;
+		margin-bottom: 0.875rem;
+		padding-bottom: 0.875rem;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.06);
 	}
 
-	.rationale-metrics-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-		gap: 0.75rem;
-		margin-bottom: 1.25rem;
-		padding-bottom: 1.25rem;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.rationale-metric {
+	.metric-chip {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		text-align: center;
-		padding: 0.75rem 0.5rem;
-		background: var(--color-bg-elevated);
-		border-radius: 0.5rem;
-		border: 1px solid var(--color-border);
+		padding: 0.5rem 0.75rem;
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-radius: 0.375rem;
+		min-width: 65px;
 	}
 
-	.rationale-metric .metric-value {
+	.metric-chip .metric-value {
 		font-family: var(--font-display);
-		font-size: 1.125rem;
+		font-size: 0.9375rem;
 		font-weight: 700;
-		color: var(--color-accent);
-		line-height: 1.2;
+		color: #E55A28;
 	}
 
-	.rationale-metric .metric-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
+	.metric-chip .metric-label {
+		font-size: 0.5rem;
 		font-weight: 500;
 		text-transform: uppercase;
-		letter-spacing: 0.06em;
-		color: var(--color-text-muted);
-		margin-top: 0.25rem;
+		letter-spacing: 0.05em;
+		color: #A1A1AA;
 	}
 
 	.rationale-text {
-		color: var(--color-text-secondary);
-		line-height: 1.7;
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.65;
 	}
 
-	.differentiation-section {
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, transparent 60%);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-radius: 0.75rem;
-		padding: 1.5rem;
+	.rationale-text :global(p) {
+		margin-bottom: 0.625rem;
 	}
 
-	.diff-title {
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 600;
-		color: var(--color-success);
-		margin-bottom: 1rem;
+	.rationale-text :global(p:last-child) {
+		margin-bottom: 0;
 	}
 
-	.diff-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
+	/* =========================
+	   RESPONSIVE
+	   ========================= */
+	@media (max-width: 768px) {
+		.solution-section {
+			padding: 1rem;
+		}
+
+		.scores-grid {
+			justify-content: center;
+		}
+
+		.stats-row {
+			justify-content: center;
+		}
+
+		.advantages-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.features-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 
-	.diff-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.75rem;
-		color: var(--color-text-secondary);
-		font-size: 0.9375rem;
-		line-height: 1.5;
+	@media (max-width: 480px) {
+		.score-card {
+			padding: 0.625rem 0.75rem;
+			min-width: 60px;
+		}
+
+		.hero-title {
+			font-size: 1.375rem;
+		}
 	}
 </style>

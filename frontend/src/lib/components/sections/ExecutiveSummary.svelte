@@ -7,11 +7,8 @@
 		TrendingUp,
 		TrendingDown,
 		Users,
-		BarChart3,
 		Search,
 		Zap,
-		Shield,
-		LineChart,
 		Lightbulb,
 		Globe,
 		Layers,
@@ -19,24 +16,25 @@
 		RefreshCw,
 		ShieldAlert,
 		Clock,
-		Timer,
-		Minus
+		Minus,
+		Quote,
+		ChevronDown,
+		Sparkles,
+		BarChart3,
+		Shield
 	} from 'lucide-svelte';
 	import type { ExecutiveDashboard, RefinementHighlights, SEOCalculationTransparency, TrendLongevity } from '$lib/types/report';
-	import { formatNumber, formatPercent, formatScore, getVerdictClass, getRiskClass, getScoreClass, getScoreBarClass, renderMarkdown } from '$lib/utils/format';
-	import MetricCard from '$lib/components/ui/MetricCard.svelte';
+	import { formatNumber, formatPercent, renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
-	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
+	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 
 	interface Props {
 		data: ExecutiveDashboard;
 		executiveSummary: string;
-		// Absorbed from VerdictRationale
 		refinementHighlights?: RefinementHighlights;
 		seoCalculationTransparency?: SEOCalculationTransparency;
-		// Absorbed from RiskTiming
 		trends?: TrendLongevity;
 	}
 
@@ -47,21 +45,17 @@
 	const corePain = $derived(data.core_pain_point);
 	const metrics = $derived(data.key_metrics);
 
-	// Calculate score improvement percentage for SEO transparency
+	// Expandable sections state
+	let showStrategicInsights = $state(false);
+	let showRiskAssessment = $state(false);
+
+	// Score improvement percentage for SEO transparency
 	const scoreImprovement = $derived.by(() => {
 		if (!seoCalculationTransparency) return null;
 		const { baseline_seo_score, refined_seo_score } = seoCalculationTransparency;
 		if (baseline_seo_score === 0) return null;
 		return ((refined_seo_score - baseline_seo_score) / baseline_seo_score * 100).toFixed(1);
 	});
-
-	// Get risk level styling
-	const getRiskConfig = (level: string) => {
-		const l = level?.toLowerCase() || '';
-		if (l === 'low') return { color: 'text-success', bg: 'bg-success/10', icon: CheckCircle };
-		if (l === 'medium') return { color: 'text-warning', bg: 'bg-warning/10', icon: AlertTriangle };
-		return { color: 'text-error', bg: 'bg-error/10', icon: ShieldAlert };
-	};
 
 	// Get trend icon
 	const getTrendIcon = (direction?: string) => {
@@ -71,10 +65,7 @@
 		return Minus;
 	};
 
-	const riskConfig = $derived(getRiskConfig(verdict.risk_level));
-	const RiskIcon = $derived(riskConfig.icon);
-
-	// Check if we have absorbed content to show
+	// Check for absorbed content
 	const hasStrategicInsights = $derived(
 		(refinementHighlights?.top_strategic_insights && refinementHighlights.top_strategic_insights.length > 0) ||
 		refinementHighlights?.geographic_priority ||
@@ -88,416 +79,1336 @@
 		trends?.trend_direction ||
 		trends?.timing_recommendation
 	);
+
+	// Score color helper
+	const getScoreClass = (score: number | null | undefined) => {
+		if (score == null) return 'muted';
+		if (score >= 0.7) return 'success';
+		if (score >= 0.5) return 'warning';
+		return 'error';
+	};
+
+	// Get verdict color class
+	const getVerdictClass = (v: string) => {
+		if (v === 'Go') return 'verdict-go';
+		if (v === 'Conditional') return 'verdict-conditional';
+		return 'verdict-nogo';
+	};
 </script>
 
-<section id="executive" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<BarChart3 class="w-5 h-5 text-accent" />
+<section id="executive" class="executive-section">
+	<!-- Section Header -->
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<BarChart3 class="header-icon" />
 		</div>
-		<h2 class="section-title">Executive Summary</h2>
+		<div class="header-text">
+			<h2 class="section-title">Executive Summary</h2>
+			<p class="section-subtitle">Key metrics and strategic insights at a glance</p>
+		</div>
 	</div>
 
-	<!-- Verdict Banner -->
-	<div class="verdict-banner mb-8 {verdict.verdict === 'Go' ? 'verdict-banner-go' : 'verdict-banner-no-go'}">
-		<div class="verdict-header">
-			<div class="verdict-main">
-				<div class="verdict-icon {verdict.verdict === 'Go' ? 'verdict-icon-go' : 'verdict-icon-no-go'}">
-					{#if verdict.verdict === 'Go'}
-						<CheckCircle class="w-8 h-8" />
-					{:else}
-						<XCircle class="w-8 h-8" />
-					{/if}
-				</div>
-				<div class="verdict-text">
-					<span class="verdict-label">{verdict.verdict.toUpperCase()}</span>
-					<span class="verdict-confidence">{formatPercent(data.confidence_score)} confidence</span>
-				</div>
+	<!-- Hero Metrics Strip - Most important numbers -->
+	<div class="hero-metrics">
+		<div class="hero-metric primary">
+			<Search class="hero-metric-icon" />
+			<div class="hero-metric-body">
+				<span class="hero-metric-value">{formatNumber(metrics.total_keyword_search_volume)}</span>
+				<span class="hero-metric-label">Monthly Search Volume</span>
 			</div>
-			<Badge variant={verdict.risk_level === 'Low' ? 'success' : verdict.risk_level === 'High' ? 'error' : 'warning'}>
-				{verdict.risk_level} Risk
-			</Badge>
+		</div>
+
+		<div class="hero-scores">
+			<div class="hero-score" class:strong={getScoreClass(metrics.market_fit_score) === 'success'}>
+				<ProgressRing
+					value={metrics.market_fit_score ?? 0}
+					size={44}
+					strokeWidth={3}
+					color={getScoreClass(metrics.market_fit_score)}
+					showValue={true}
+				/>
+				<span class="hero-score-label">Market Fit</span>
+			</div>
+
+			<div class="hero-score" class:strong={getScoreClass(metrics.technical_feasibility_score) === 'success'}>
+				<ProgressRing
+					value={metrics.technical_feasibility_score ?? 0}
+					size={44}
+					strokeWidth={3}
+					color={getScoreClass(metrics.technical_feasibility_score)}
+					showValue={true}
+				/>
+				<span class="hero-score-label">Feasibility</span>
+			</div>
+
+			<div class="hero-score" class:strong={getScoreClass(metrics.competitive_advantage_score) === 'success'}>
+				<ProgressRing
+					value={metrics.competitive_advantage_score ?? 0}
+					size={44}
+					strokeWidth={3}
+					color={getScoreClass(metrics.competitive_advantage_score)}
+					showValue={true}
+				/>
+				<span class="hero-score-label">Comp. Edge</span>
+			</div>
+
+			<div class="hero-score" class:strong={getScoreClass(metrics.seo_potential_score) === 'success'}>
+				<ProgressRing
+					value={metrics.seo_potential_score ?? 0}
+					size={44}
+					strokeWidth={3}
+					color={getScoreClass(metrics.seo_potential_score)}
+					showValue={true}
+				/>
+				<span class="hero-score-label">SEO Score</span>
+			</div>
+		</div>
+	</div>
+
+	<!-- Quick Stats Pills -->
+	<div class="quick-stats">
+		<div class="quick-stat">
+			<Search class="quick-stat-icon" />
+			<span class="quick-stat-value">{metrics.total_keyword_count}</span>
+			<span class="quick-stat-label">Keywords</span>
+		</div>
+		<div class="quick-stat">
+			<Users class="quick-stat-icon" />
+			<span class="quick-stat-value">{metrics.primary_competitor_count}</span>
+			<span class="quick-stat-label">Competitors</span>
+		</div>
+		<div class="quick-stat priority">
+			<Target class="quick-stat-icon" />
+			<span class="quick-stat-value">{metrics.high_priority_pain_points}</span>
+			<span class="quick-stat-label">High Priority Pains</span>
+		</div>
+	</div>
+
+	<!-- Two Column Layout: Pain + Solution -->
+	<div class="content-grid">
+		<!-- Core Pain Point Card -->
+		<div class="pain-card">
+			<div class="card-header">
+				<Target class="card-header-icon pain" />
+				<span class="card-badge pain">CORE PAIN POINT</span>
+			</div>
+			<h3 class="pain-title">{corePain.title}</h3>
+
+			<div class="pain-stats">
+				<div class="pain-stat">
+					<span class="pain-stat-value">{formatPercent(corePain.severity_score)}</span>
+					<span class="pain-stat-label">Severity</span>
+				</div>
+				<div class="pain-stat">
+					<span class="pain-stat-value">{formatPercent(corePain.willingness_to_pay_score)}</span>
+					<span class="pain-stat-label">
+						WTP <Tooltip content={getTermTooltip('WTP')} position="top" />
+					</span>
+				</div>
+				<Badge variant="muted" size="sm">{corePain.source_platform}</Badge>
+			</div>
+
+			<blockquote class="pain-quote">
+				<Quote class="quote-icon" />
+				<p>{corePain.representative_quote}</p>
+			</blockquote>
+		</div>
+
+		<!-- Solution Snapshot Card -->
+		<div class="solution-card">
+			<div class="card-header">
+				<Sparkles class="card-header-icon solution" />
+				<span class="card-badge solution">RECOMMENDED SOLUTION</span>
+			</div>
+			<h3 class="solution-name">{solution.name}</h3>
+			<p class="solution-tagline">{solution.tagline}</p>
+			<div class="solution-meta">
+				<Badge variant="default">{solution.project_type}</Badge>
+			</div>
+			<p class="solution-value">{solution.core_value_prop}</p>
+		</div>
+	</div>
+
+	<!-- Verdict & Risk Banner -->
+	<div class="verdict-banner {getVerdictClass(verdict.verdict)}">
+		<div class="verdict-main">
+			<div class="verdict-badge">
+				{#if verdict.verdict === 'Go'}
+					<CheckCircle class="verdict-icon" />
+				{:else if verdict.verdict === 'Conditional'}
+					<AlertTriangle class="verdict-icon" />
+				{:else}
+					<XCircle class="verdict-icon" />
+				{/if}
+				<span class="verdict-text">{verdict.verdict.toUpperCase()}</span>
+			</div>
+			<div class="verdict-info">
+				<span class="verdict-confidence">{formatPercent(data.confidence_score)} confidence</span>
+				<Badge variant={verdict.risk_level === 'Low' ? 'success' : verdict.risk_level === 'High' ? 'error' : 'warning'} size="sm">
+					{verdict.risk_level} Risk
+				</Badge>
+			</div>
 		</div>
 		<p class="verdict-rationale">{verdict.rationale}</p>
 		{#if verdict.primary_concern}
 			<div class="verdict-concern">
-				<AlertTriangle class="w-4 h-4" />
+				<AlertTriangle class="concern-icon" />
 				<span>{verdict.primary_concern}</span>
 			</div>
 		{/if}
 	</div>
 
-	<!-- Solution Snapshot -->
-	<div class="card mb-8">
-		<h3 class="text-lg font-semibold text-text-primary mb-4">Recommended Solution</h3>
-		<div class="mb-4">
-			<h4 class="text-xl font-bold text-accent">{solution.name}</h4>
-			<p class="text-text-secondary italic mt-1">{solution.tagline}</p>
+	<!-- Analysis Summary -->
+	<div class="summary-card">
+		<h3 class="summary-title">Analysis Summary</h3>
+		<div class="summary-content">
+			{@html renderMarkdown(executiveSummary)}
 		</div>
-		<div class="mb-4">
-			<Badge>{solution.project_type}</Badge>
-		</div>
-		<p class="text-text-secondary">{solution.core_value_prop}</p>
 	</div>
 
-	<!-- Bento Grid: Key Metrics & Scores -->
-	<AnimateOnScroll animation="fade-up">
-		<div class="bento-grid mb-8">
-			<!-- Featured: Search Volume (large card) -->
-			<div class="bento-card bento-featured bento-accent">
-				<div class="bento-icon-large bg-accent/10 border border-accent/30">
-					<Search class="w-6 h-6 text-accent" />
-				</div>
-				<div class="bento-value bento-value-lg text-accent">{formatNumber(metrics.total_keyword_search_volume)}</div>
-				<div class="bento-label">Total Search Volume</div>
-				<div class="bento-sublabel">Monthly keyword demand</div>
-			</div>
-
-			<!-- Market Fit Score -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<TrendingUp class="w-4 h-4 {getScoreClass(metrics.market_fit_score)}" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">Market Fit</span>
-				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.market_fit_score)}">{formatPercent(metrics.market_fit_score)}</div>
-				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.market_fit_score)}" style="width: {(metrics.market_fit_score ?? 0) * 100}%"></div>
-				</div>
-			</div>
-
-			<!-- Keywords Count -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<Search class="w-4 h-4 text-text-muted" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">Keywords</span>
-				</div>
-				<div class="stat-value text-2xl text-text-primary">{metrics.total_keyword_count}</div>
-				<div class="text-xs text-text-muted mt-1">opportunities found</div>
-			</div>
-
-			<!-- Competitive Advantage -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<Shield class="w-4 h-4 {getScoreClass(metrics.competitive_advantage_score)}" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">Competitive Edge</span>
-				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.competitive_advantage_score)}">{formatPercent(metrics.competitive_advantage_score)}</div>
-				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.competitive_advantage_score)}" style="width: {(metrics.competitive_advantage_score ?? 0) * 100}%"></div>
-				</div>
-			</div>
-
-			<!-- Competitors -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<Users class="w-4 h-4 text-text-muted" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">Competitors</span>
-				</div>
-				<div class="stat-value text-2xl text-text-primary">{metrics.primary_competitor_count}</div>
-				<div class="text-xs text-text-muted mt-1">in market</div>
-			</div>
-
-			<!-- Technical Feasibility -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<Zap class="w-4 h-4 {getScoreClass(metrics.technical_feasibility_score)}" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">Tech Feasibility</span>
-				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.technical_feasibility_score)}">{formatPercent(metrics.technical_feasibility_score)}</div>
-				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.technical_feasibility_score)}" style="width: {(metrics.technical_feasibility_score ?? 0) * 100}%"></div>
-				</div>
-			</div>
-
-			<!-- Pain Points -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<Target class="w-4 h-4 text-error" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">Pain Points</span>
-				</div>
-				<div class="stat-value text-2xl text-error">{metrics.high_priority_pain_points}</div>
-				<div class="text-xs text-text-muted mt-1">high priority</div>
-			</div>
-
-			<!-- SEO Potential -->
-			<div class="bento-card stat-card-animated">
-				<div class="flex items-center gap-2 mb-2">
-					<LineChart class="w-4 h-4 {getScoreClass(metrics.seo_potential_score)}" />
-					<span class="text-xs text-text-muted uppercase tracking-wider">SEO Potential</span>
-				</div>
-				<div class="stat-value text-2xl {getScoreClass(metrics.seo_potential_score)}">{formatPercent(metrics.seo_potential_score)}</div>
-				<div class="score-bar mt-3">
-					<div class="score-bar-fill {getScoreBarClass(metrics.seo_potential_score)}" style="width: {(metrics.seo_potential_score ?? 0) * 100}%"></div>
-				</div>
-			</div>
-		</div>
-	</AnimateOnScroll>
-
-	<!-- Core Pain Point -->
-	<AnimateOnScroll animation="fade-up" delay={100}>
-		<div class="highlight-box mb-8 card-interactive-glow">
-			<div class="flex items-start gap-4">
-				<div class="icon-container shrink-0">
-					<Target class="w-5 h-5 text-accent" />
-				</div>
-				<div class="flex-1">
-					<h4 class="font-semibold text-text-primary mb-2">Core Pain Point</h4>
-					<p class="text-lg text-text-primary mb-3">{corePain.title}</p>
-					<div class="flex flex-wrap gap-4 text-sm mb-3">
-						<span>Severity: <strong class="text-accent">{formatPercent(corePain.severity_score)}</strong></span>
-						<span class="inline-flex items-center gap-1">
-							WTP: <Tooltip content={getTermTooltip('WTP')} position="top" /> <strong class="text-accent">{formatPercent(corePain.willingness_to_pay_score)}</strong>
-						</span>
-						<span class="text-text-muted">{corePain.source_platform}</span>
-					</div>
-					<blockquote class="quote-enhanced text-sm">"{corePain.representative_quote}"</blockquote>
-				</div>
-			</div>
-		</div>
-	</AnimateOnScroll>
-
-	<!-- Executive Summary Text -->
-	<AnimateOnScroll animation="fade-up" delay={200}>
-		<div class="card card-glass mb-8">
-			<h3 class="text-lg font-semibold text-text-primary mb-4">Summary</h3>
-			<div class="markdown-content narrative">
-				{@html renderMarkdown(executiveSummary)}
-			</div>
-		</div>
-	</AnimateOnScroll>
-
-	<!-- ═══════════════════════════════════════════════════════════════
-	     ABSORBED: Strategic Insights (from VerdictRationale)
-	     ═══════════════════════════════════════════════════════════════ -->
+	<!-- Expandable: Strategic Insights -->
 	{#if hasStrategicInsights}
-		<div class="mt-8 pt-6 border-t border-border">
-			<div class="flex items-center gap-3 mb-6">
-				<Lightbulb class="w-5 h-5 text-accent" />
-				<h3 class="text-lg font-semibold text-text-primary">Strategic Rationale</h3>
-			</div>
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => showStrategicInsights = !showStrategicInsights}>
+				<div class="expandable-title">
+					<Lightbulb class="expandable-icon" />
+					<span>Strategic Rationale</span>
+					<Badge variant="muted" size="sm">
+						{refinementHighlights?.top_strategic_insights?.length ?? 0} insights
+					</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showStrategicInsights ? 'expanded' : ''}" />
+			</button>
 
-			<!-- Top Strategic Insights -->
-			{#if refinementHighlights?.top_strategic_insights && refinementHighlights.top_strategic_insights.length > 0}
-				<AnimateOnScroll animation="fade-up">
-					<div class="card mb-6">
-						<div class="flex items-center gap-2 mb-4">
-							<TrendingUp class="w-5 h-5 text-accent" />
-							<h4 class="font-semibold text-text-primary">Top Strategic Insights</h4>
-						</div>
-						<ul class="space-y-3">
+			{#if showStrategicInsights}
+				<div class="expandable-content">
+					<!-- Strategic Insights List -->
+					{#if refinementHighlights?.top_strategic_insights && refinementHighlights.top_strategic_insights.length > 0}
+						<div class="insights-list">
 							{#each refinementHighlights.top_strategic_insights as insight, i}
-								<li class="flex items-start gap-3">
-									<span class="flex-shrink-0 w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center text-xs font-bold text-accent">
-										{i + 1}
-									</span>
-									<span class="text-text-secondary">{insight}</span>
-								</li>
+								<div class="insight-item">
+									<span class="insight-num">{i + 1}</span>
+									<span class="insight-text">{insight}</span>
+								</div>
 							{/each}
-						</ul>
-					</div>
-				</AnimateOnScroll>
-			{/if}
-
-			<!-- Priority Badges -->
-			{#if refinementHighlights?.geographic_priority || refinementHighlights?.feature_priority}
-				<AnimateOnScroll animation="fade-up">
-					<div class="grid md:grid-cols-2 gap-4 mb-6">
-						{#if refinementHighlights.geographic_priority}
-							<div class="card flex items-center gap-4">
-								<div class="p-3 rounded-lg bg-blue-500/10">
-									<Globe class="w-6 h-6 text-blue-500" />
-								</div>
-								<div>
-									<div class="text-sm text-text-muted">Geographic Priority</div>
-									<div class="text-lg font-semibold text-text-primary">{refinementHighlights.geographic_priority}</div>
-								</div>
-							</div>
-						{/if}
-						{#if refinementHighlights.feature_priority}
-							<div class="card flex items-center gap-4">
-								<div class="p-3 rounded-lg bg-secondary/10">
-									<Layers class="w-6 h-6 text-secondary" />
-								</div>
-								<div>
-									<div class="text-sm text-text-muted">Feature Priority</div>
-									<div class="text-lg font-semibold text-text-primary">{refinementHighlights.feature_priority}</div>
-								</div>
-							</div>
-						{/if}
-					</div>
-				</AnimateOnScroll>
-			{/if}
-
-			<!-- Category Pivot Recommendation -->
-			{#if refinementHighlights?.category_pivot_recommendation}
-				<AnimateOnScroll animation="fade-up">
-					<div class="highlight-box mb-6 border-warning/30">
-						<div class="flex items-start gap-3">
-							<RefreshCw class="w-5 h-5 text-warning mt-0.5" />
-							<div>
-								<span class="text-warning text-sm font-semibold">Category Pivot Recommended</span>
-								<p class="text-text-primary mt-1">{refinementHighlights.category_pivot_recommendation}</p>
-							</div>
 						</div>
-					</div>
-				</AnimateOnScroll>
-			{/if}
+					{/if}
 
-			<!-- SEO Calculation Transparency -->
-			{#if seoCalculationTransparency}
-				<AnimateOnScroll animation="fade-up">
-					<div class="card">
-						<div class="flex items-center gap-2 mb-4">
-							<Calculator class="w-5 h-5 text-accent" />
-							<h4 class="font-semibold text-text-primary">SEO Score Calculation</h4>
-						</div>
-
-						<!-- Score Comparison -->
-						<div class="grid md:grid-cols-3 gap-4 mb-6">
-							<div class="card-surface text-center">
-								<div class="text-sm text-text-muted mb-1">Baseline Score</div>
-								<div class="text-2xl font-bold text-text-secondary">{(seoCalculationTransparency.baseline_seo_score * 100).toFixed(0)}%</div>
-							</div>
-							<div class="card-surface text-center border-accent/30">
-								<div class="text-sm text-text-muted mb-1">Refined Score</div>
-								<div class="text-2xl font-bold text-accent">{(seoCalculationTransparency.refined_seo_score * 100).toFixed(0)}%</div>
-							</div>
-							{#if scoreImprovement}
-								<div class="card-surface text-center">
-									<div class="text-sm text-text-muted mb-1">Improvement</div>
-									<div class="text-2xl font-bold {parseFloat(scoreImprovement || '0') >= 0 ? 'text-success' : 'text-error'}">
-										{parseFloat(scoreImprovement || '0') >= 0 ? '+' : ''}{scoreImprovement}%
+					<!-- Priority Chips -->
+					{#if refinementHighlights?.geographic_priority || refinementHighlights?.feature_priority}
+						<div class="priority-grid">
+							{#if refinementHighlights.geographic_priority}
+								<div class="priority-chip geo">
+									<Globe class="priority-icon" />
+									<div class="priority-content">
+										<span class="priority-label">Geographic Focus</span>
+										<span class="priority-value">{refinementHighlights.geographic_priority}</span>
+									</div>
+								</div>
+							{/if}
+							{#if refinementHighlights.feature_priority}
+								<div class="priority-chip feature">
+									<Layers class="priority-icon" />
+									<div class="priority-content">
+										<span class="priority-label">Feature Priority</span>
+										<span class="priority-value">{refinementHighlights.feature_priority}</span>
 									</div>
 								</div>
 							{/if}
 						</div>
+					{/if}
 
-						<!-- Calculation Factors -->
-						<div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-							<div class="text-center p-3 rounded-lg bg-surface-secondary/50">
-								<div class="text-xs text-text-muted mb-1">Volume Multiplier</div>
-								<div class="text-lg font-semibold text-text-primary">{seoCalculationTransparency.volume_multiplier}x</div>
-							</div>
-							<div class="text-center p-3 rounded-lg bg-surface-secondary/50">
-								<div class="text-xs text-text-muted mb-1">Competition Modifier</div>
-								<div class="text-lg font-semibold text-text-primary">{seoCalculationTransparency.competition_modifier}x</div>
-							</div>
-							<div class="text-center p-3 rounded-lg bg-surface-secondary/50">
-								<div class="text-xs text-text-muted mb-1">Tier 1 Multiplier</div>
-								<div class="text-lg font-semibold text-text-primary">{seoCalculationTransparency.tier1_multiplier}x</div>
-							</div>
-							<div class="text-center p-3 rounded-lg bg-surface-secondary/50">
-								<div class="text-xs text-text-muted mb-1">Est. Year 1 Pages</div>
-								<div class="text-lg font-semibold text-text-primary">{seoCalculationTransparency.estimated_year1_pages}</div>
+					<!-- Category Pivot Alert -->
+					{#if refinementHighlights?.category_pivot_recommendation}
+						<div class="pivot-alert">
+							<RefreshCw class="pivot-icon" />
+							<div class="pivot-content">
+								<span class="pivot-label">Category Pivot Recommended</span>
+								<p class="pivot-text">{refinementHighlights.category_pivot_recommendation}</p>
 							</div>
 						</div>
+					{/if}
 
-						<!-- Calculation Rationale -->
-						{#if seoCalculationTransparency.calculation_rationale}
-							<div class="p-4 rounded-lg bg-surface-secondary/30 border border-border">
-								<div class="text-sm text-text-muted mb-2">Calculation Rationale</div>
-								<p class="text-text-secondary text-sm">{seoCalculationTransparency.calculation_rationale}</p>
+					<!-- SEO Transparency -->
+					{#if seoCalculationTransparency}
+						<div class="seo-transparency">
+							<div class="seo-header">
+								<Calculator class="seo-icon" />
+								<h4 class="seo-title">SEO Score Calculation</h4>
 							</div>
-						{/if}
-					</div>
-				</AnimateOnScroll>
+
+							<div class="seo-flow">
+								<div class="seo-score baseline">
+									<span class="seo-value">{(seoCalculationTransparency.baseline_seo_score * 100).toFixed(0)}%</span>
+									<span class="seo-label">Baseline</span>
+								</div>
+								<span class="seo-arrow">→</span>
+								<div class="seo-score refined">
+									<span class="seo-value">{(seoCalculationTransparency.refined_seo_score * 100).toFixed(0)}%</span>
+									<span class="seo-label">Refined</span>
+								</div>
+								{#if scoreImprovement}
+									<div class="seo-score change" class:positive={parseFloat(scoreImprovement) >= 0}>
+										<span class="seo-value">
+											{parseFloat(scoreImprovement) >= 0 ? '+' : ''}{scoreImprovement}%
+										</span>
+										<span class="seo-label">Change</span>
+									</div>
+								{/if}
+							</div>
+
+							<div class="seo-factors">
+								<div class="seo-factor">
+									<span class="factor-value">{seoCalculationTransparency.volume_multiplier}x</span>
+									<span class="factor-label">Volume</span>
+								</div>
+								<div class="seo-factor">
+									<span class="factor-value">{seoCalculationTransparency.competition_modifier}x</span>
+									<span class="factor-label">Competition</span>
+								</div>
+								<div class="seo-factor">
+									<span class="factor-value">{seoCalculationTransparency.tier1_multiplier}x</span>
+									<span class="factor-label">Tier 1</span>
+								</div>
+								<div class="seo-factor">
+									<span class="factor-value">{seoCalculationTransparency.estimated_year1_pages}</span>
+									<span class="factor-label">Est. Pages</span>
+								</div>
+							</div>
+
+							{#if seoCalculationTransparency.calculation_rationale}
+								<p class="seo-rationale">{seoCalculationTransparency.calculation_rationale}</p>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}
 
-	<!-- ═══════════════════════════════════════════════════════════════
-	     ABSORBED: Risk Assessment (from RiskTiming)
-	     ═══════════════════════════════════════════════════════════════ -->
+	<!-- Expandable: Risk Assessment -->
 	{#if hasRiskAssessment}
-		<div class="mt-8 pt-6 border-t border-border">
-			<div class="flex items-center gap-3 mb-6">
-				<ShieldAlert class="w-5 h-5 text-accent" />
-				<h3 class="text-lg font-semibold text-text-primary">Risk Assessment & Timing</h3>
-			</div>
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => showRiskAssessment = !showRiskAssessment}>
+				<div class="expandable-title">
+					<Shield class="expandable-icon risk" />
+					<span>Risk Assessment & Timing</span>
+					{#if trends?.risk_factors?.length}
+						<Badge variant="error" size="sm">{trends.risk_factors.length} risks</Badge>
+					{/if}
+				</div>
+				<ChevronDown class="chevron-icon {showRiskAssessment ? 'expanded' : ''}" />
+			</button>
 
-			<!-- Risk Factors -->
-			{#if trends?.risk_factors && trends.risk_factors.length > 0}
-				<AnimateOnScroll animation="fade-up">
-					<div class="card border-error/30 mb-6">
-						<div class="flex items-center gap-2 mb-4">
-							<ShieldAlert class="w-5 h-5 text-error" />
-							<h4 class="font-semibold text-error">Risk Factors</h4>
+			{#if showRiskAssessment}
+				<div class="expandable-content">
+					<!-- Risk Factors -->
+					{#if trends?.risk_factors && trends.risk_factors.length > 0}
+						<div class="risk-list">
+							<h4 class="risk-list-title">Risk Factors</h4>
+							<ul class="risk-items">
+								{#each trends.risk_factors as risk}
+									<li class="risk-item">
+										<span class="risk-bullet">!</span>
+										<span>{risk}</span>
+									</li>
+								{/each}
+							</ul>
 						</div>
-						<ul class="space-y-2">
-							{#each trends.risk_factors as risk}
-								<li class="text-text-secondary text-sm leading-relaxed flex items-start gap-2">
-									<span class="text-error">!</span>
-									{risk}
-								</li>
-							{/each}
-						</ul>
-					</div>
-				</AnimateOnScroll>
-			{/if}
+					{/if}
 
-			<!-- Market Signals -->
-			{#if trends}
-				<AnimateOnScroll animation="fade-up">
-					<div class="grid md:grid-cols-2 gap-6 items-start">
-						<!-- Trend Direction -->
-						{#if trends.trend_direction}
-							{@const TrendIcon = getTrendIcon(trends.trend_direction)}
-							<div class="card">
-								<div class="flex items-center gap-2 mb-3">
-									<TrendIcon class="w-5 h-5 text-accent" />
-									<h4 class="font-semibold text-text-primary">Market Trend</h4>
-								</div>
-								<div class="space-y-2 text-sm">
-									<div class="flex justify-between">
-										<span class="text-text-muted">Direction:</span>
-										<span class="text-text-primary font-medium">{trends.trend_direction}</span>
+					<!-- Market Signals Grid -->
+					{#if trends}
+						<div class="signals-grid">
+							{#if trends.trend_direction}
+								{@const TrendIcon = getTrendIcon(trends.trend_direction)}
+								<div class="signal-card">
+									<TrendIcon class="signal-icon" />
+									<h4 class="signal-title">Market Trend</h4>
+									<div class="signal-rows">
+										<div class="signal-row">
+											<span class="signal-label">Direction:</span>
+											<span class="signal-value">{trends.trend_direction}</span>
+										</div>
+										{#if trends.momentum_score !== undefined}
+											<div class="signal-row">
+												<span class="signal-label">Momentum:</span>
+												<span class="signal-value">{Math.round(trends.momentum_score * 100)}%</span>
+											</div>
+										{/if}
+										{#if trends.longevity_verdict}
+											<div class="signal-row">
+												<span class="signal-label">Longevity:</span>
+												<Badge variant={trends.longevity_verdict.includes('Sustain') ? 'success' : trends.longevity_verdict.includes('Fad') ? 'error' : 'warning'} size="sm">
+													{trends.longevity_verdict}
+												</Badge>
+											</div>
+										{/if}
+										{#if trends.market_maturity}
+											<div class="signal-row">
+												<span class="signal-label">Maturity:</span>
+												<span class="signal-value">{trends.market_maturity}</span>
+											</div>
+										{/if}
 									</div>
-									{#if trends.momentum_score !== undefined}
-										<div class="flex justify-between">
-											<span class="text-text-muted">Momentum:</span>
-											<span class="text-text-primary font-medium">{Math.round(trends.momentum_score * 100)}%</span>
-										</div>
-									{/if}
-									{#if trends.longevity_verdict}
-										<div class="flex justify-between">
-											<span class="text-text-muted">Longevity:</span>
-											<Badge variant={trends.longevity_verdict.includes('Sustain') ? 'success' : trends.longevity_verdict.includes('Fad') ? 'error' : 'warning'} size="sm">
-												{trends.longevity_verdict}
-											</Badge>
-										</div>
-									{/if}
-									{#if trends.market_maturity}
-										<div class="flex justify-between">
-											<span class="text-text-muted">Maturity:</span>
-											<span class="text-text-primary">{trends.market_maturity}</span>
-										</div>
-									{/if}
 								</div>
-							</div>
-						{/if}
+							{/if}
 
-						<!-- Timing Details -->
-						{#if trends.timing_recommendation || trends.longevity_rationale}
-							<div class="card">
-								<div class="flex items-center gap-2 mb-3">
-									<Clock class="w-5 h-5 text-accent" />
-									<h4 class="font-semibold text-text-primary">Timing Analysis</h4>
+							{#if trends.timing_recommendation || trends.longevity_rationale}
+								<div class="signal-card">
+									<Clock class="signal-icon" />
+									<h4 class="signal-title">Timing Analysis</h4>
+									{#if trends.timing_recommendation}
+										<div class="timing-highlight">
+											<p>{trends.timing_recommendation}</p>
+										</div>
+									{/if}
+									{#if trends.longevity_rationale}
+										<div class="timing-rationale">
+											{@html renderMarkdown(trends.longevity_rationale)}
+										</div>
+									{/if}
 								</div>
-								{#if trends.timing_recommendation}
-									<div class="highlight-box mb-3">
-										<p class="text-sm text-text-primary font-medium">{trends.timing_recommendation}</p>
-									</div>
-								{/if}
-								{#if trends.longevity_rationale}
-									<div class="markdown-content text-text-secondary text-sm">
-										{@html renderMarkdown(trends.longevity_rationale)}
-									</div>
-								{/if}
-							</div>
-						{/if}
-					</div>
-				</AnimateOnScroll>
+							{/if}
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/if}
 </section>
+
+<style>
+	/* =========================
+	   SECTION CONTAINER
+	   ========================= */
+	.executive-section {
+		padding: 1.5rem;
+		background: var(--color-bg-base);
+	}
+
+	/* =========================
+	   SECTION HEADER
+	   ========================= */
+	.section-header {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		margin-bottom: 1.25rem;
+	}
+
+	.header-icon-wrap {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 2.25rem;
+		height: 2.25rem;
+		background: rgba(229, 90, 40, 0.1);
+		border-radius: 0.5rem;
+	}
+
+	:global(.header-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: #E55A28;
+	}
+
+	.header-text {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.section-title {
+		font-family: var(--font-display);
+		font-size: 1.375rem;
+		font-weight: 800;
+		color: #18181B;
+		margin: 0;
+	}
+
+	.section-subtitle {
+		font-size: 0.8125rem;
+		color: #A1A1AA;
+		margin: 0;
+	}
+
+	/* =========================
+	   HERO METRICS STRIP
+	   ========================= */
+	.hero-metrics {
+		display: flex;
+		align-items: stretch;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.hero-metric.primary {
+		flex: 0 0 auto;
+		display: flex;
+		align-items: center;
+		gap: 0.875rem;
+		padding: 1.125rem 1.5rem;
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.1) 0%, rgba(229, 90, 40, 0.03) 100%);
+		border: 1px solid rgba(229, 90, 40, 0.25);
+		border-radius: 0.75rem;
+	}
+
+	:global(.hero-metric-icon) {
+		width: 2rem;
+		height: 2rem;
+		color: #E55A28;
+	}
+
+	.hero-metric-body {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.hero-metric-value {
+		font-family: var(--font-display);
+		font-size: 1.75rem;
+		font-weight: 800;
+		color: #E55A28;
+		line-height: 1.1;
+	}
+
+	.hero-metric-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		color: #A1A1AA;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.hero-scores {
+		flex: 1;
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.625rem;
+	}
+
+	.hero-score {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 0.375rem;
+		padding: 0.875rem 0.5rem;
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.625rem;
+		transition: all 0.15s ease;
+	}
+
+	.hero-score:hover {
+		border-color: rgba(0, 0, 0, 0.15);
+	}
+
+	.hero-score.strong {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, transparent 60%);
+		border-color: rgba(34, 197, 94, 0.2);
+	}
+
+	.hero-score-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 500;
+		color: #A1A1AA;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		text-align: center;
+	}
+
+	/* =========================
+	   QUICK STATS PILLS
+	   ========================= */
+	.quick-stats {
+		display: flex;
+		gap: 0.625rem;
+		margin-bottom: 1.25rem;
+		flex-wrap: wrap;
+	}
+
+	.quick-stat {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.875rem;
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 9999px;
+	}
+
+	.quick-stat.priority {
+		border-color: rgba(239, 68, 68, 0.25);
+		background: rgba(239, 68, 68, 0.04);
+	}
+
+	.quick-stat.priority :global(.quick-stat-icon) {
+		color: #EF4444;
+	}
+
+	:global(.quick-stat-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
+		color: #A1A1AA;
+	}
+
+	.quick-stat-value {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 700;
+		color: #18181B;
+	}
+
+	.quick-stat-label {
+		font-size: 0.75rem;
+		color: #71717A;
+	}
+
+	/* =========================
+	   CONTENT GRID (Pain + Solution)
+	   ========================= */
+	.content-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	/* Card Header Pattern */
+	.card-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.625rem;
+	}
+
+	:global(.card-header-icon) {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	:global(.card-header-icon.pain) {
+		color: #E55A28;
+	}
+
+	:global(.card-header-icon.solution) {
+		color: #E55A28;
+	}
+
+	.card-badge {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 700;
+		letter-spacing: 0.1em;
+	}
+
+	.card-badge.pain {
+		color: #E55A28;
+	}
+
+	.card-badge.solution {
+		color: #E55A28;
+	}
+
+	/* Pain Card */
+	.pain-card {
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-left: 3px solid #E55A28;
+		border-radius: 0.75rem;
+		padding: 1.125rem;
+	}
+
+	.pain-title {
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 600;
+		color: #18181B;
+		line-height: 1.35;
+		margin-bottom: 0.75rem;
+	}
+
+	.pain-stats {
+		display: flex;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 0.875rem;
+		padding-bottom: 0.75rem;
+		border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+	}
+
+	.pain-stat {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.pain-stat-value {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 700;
+		color: #E55A28;
+	}
+
+	.pain-stat-label {
+		font-size: 0.625rem;
+		color: #A1A1AA;
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+	}
+
+	.pain-quote {
+		position: relative;
+		padding-left: 1.5rem;
+		font-style: italic;
+		color: #71717A;
+		font-size: 0.8125rem;
+		line-height: 1.55;
+		margin: 0;
+	}
+
+	:global(.quote-icon) {
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 1rem;
+		height: 1rem;
+		color: #E55A28;
+		opacity: 0.4;
+	}
+
+	/* Solution Card */
+	.solution-card {
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		padding: 1.125rem;
+	}
+
+	.solution-name {
+		font-family: var(--font-display);
+		font-size: 1.125rem;
+		font-weight: 700;
+		color: #E55A28;
+		margin-bottom: 0.25rem;
+	}
+
+	.solution-tagline {
+		font-style: italic;
+		color: #71717A;
+		font-size: 0.875rem;
+		margin-bottom: 0.625rem;
+	}
+
+	.solution-meta {
+		margin-bottom: 0.625rem;
+	}
+
+	.solution-value {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.55;
+		margin: 0;
+	}
+
+	/* =========================
+	   VERDICT BANNER
+	   ========================= */
+	.verdict-banner {
+		border-radius: 0.75rem;
+		padding: 1.125rem;
+		margin-bottom: 1rem;
+	}
+
+	.verdict-banner.verdict-go {
+		background: linear-gradient(135deg, rgba(34, 197, 94, 0.08) 0%, rgba(34, 197, 94, 0.02) 100%);
+		border: 1px solid rgba(34, 197, 94, 0.3);
+	}
+
+	.verdict-banner.verdict-conditional {
+		background: linear-gradient(135deg, rgba(234, 179, 8, 0.08) 0%, rgba(234, 179, 8, 0.02) 100%);
+		border: 1px solid rgba(234, 179, 8, 0.3);
+	}
+
+	.verdict-banner.verdict-nogo {
+		background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.02) 100%);
+		border: 1px solid rgba(239, 68, 68, 0.3);
+	}
+
+	.verdict-main {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		flex-wrap: wrap;
+		gap: 0.75rem;
+		margin-bottom: 0.625rem;
+	}
+
+	.verdict-badge {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.375rem 0.875rem;
+		border-radius: 0.375rem;
+		font-family: var(--font-display);
+		font-size: 1rem;
+		font-weight: 800;
+	}
+
+	.verdict-go .verdict-badge {
+		background: #22C55E;
+		color: white;
+	}
+
+	.verdict-conditional .verdict-badge {
+		background: #EAB308;
+		color: white;
+	}
+
+	.verdict-nogo .verdict-badge {
+		background: #EF4444;
+		color: white;
+	}
+
+	:global(.verdict-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+	}
+
+	.verdict-info {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+	}
+
+	.verdict-confidence {
+		font-size: 0.8125rem;
+		color: #71717A;
+	}
+
+	.verdict-rationale {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.55;
+		margin-bottom: 0.625rem;
+	}
+
+	.verdict-concern {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		background: rgba(234, 179, 8, 0.1);
+		border-radius: 0.375rem;
+		font-size: 0.75rem;
+		color: #71717A;
+	}
+
+	:global(.concern-icon) {
+		width: 0.75rem;
+		height: 0.75rem;
+		color: #EAB308;
+		flex-shrink: 0;
+		margin-top: 0.125rem;
+	}
+
+	/* =========================
+	   SUMMARY CARD
+	   ========================= */
+	.summary-card {
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		padding: 1.125rem;
+		margin-bottom: 1rem;
+	}
+
+	.summary-title {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #18181B;
+		margin-bottom: 0.625rem;
+	}
+
+	.summary-content {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.65;
+	}
+
+	.summary-content :global(p) {
+		margin-bottom: 0.625rem;
+	}
+
+	.summary-content :global(p:last-child) {
+		margin-bottom: 0;
+	}
+
+	/* =========================
+	   EXPANDABLE SECTIONS
+	   ========================= */
+	.expandable-section {
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.75rem;
+		margin-bottom: 0.75rem;
+		overflow: hidden;
+	}
+
+	.expandable-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		width: 100%;
+		padding: 0.875rem 1rem;
+		background: #FFFFFF;
+		border: none;
+		cursor: pointer;
+		transition: background-color 0.15s;
+	}
+
+	.expandable-header:hover {
+		background: rgba(0, 0, 0, 0.02);
+	}
+
+	.expandable-title {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+	}
+
+	:global(.expandable-icon) {
+		width: 1.125rem;
+		height: 1.125rem;
+		color: #E55A28;
+	}
+
+	:global(.expandable-icon.risk) {
+		color: #EF4444;
+	}
+
+	.expandable-title span {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	:global(.chevron-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #A1A1AA;
+		transition: transform 0.2s;
+	}
+
+	:global(.chevron-icon.expanded) {
+		transform: rotate(180deg);
+	}
+
+	.expandable-content {
+		padding: 0 1rem 1rem;
+		background: #FFFFFF;
+	}
+
+	/* Insights List */
+	.insights-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.insight-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.625rem;
+		padding: 0.625rem;
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-radius: 0.5rem;
+	}
+
+	.insight-num {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		background: rgba(229, 90, 40, 0.1);
+		border-radius: 50%;
+		font-size: 0.625rem;
+		font-weight: 700;
+		color: #E55A28;
+		flex-shrink: 0;
+	}
+
+	.insight-text {
+		font-size: 0.8125rem;
+		color: #71717A;
+		line-height: 1.5;
+	}
+
+	/* Priority Grid */
+	.priority-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 0.625rem;
+		margin-bottom: 1rem;
+	}
+
+	.priority-chip {
+		display: flex;
+		align-items: center;
+		gap: 0.625rem;
+		padding: 0.875rem;
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.5rem;
+	}
+
+	.priority-chip.geo :global(.priority-icon) {
+		color: #3B82F6;
+	}
+
+	.priority-chip.feature :global(.priority-icon) {
+		color: #8B5CF6;
+	}
+
+	:global(.priority-icon) {
+		width: 1.25rem;
+		height: 1.25rem;
+	}
+
+	.priority-content {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.priority-label {
+		font-size: 0.625rem;
+		color: #A1A1AA;
+	}
+
+	.priority-value {
+		font-family: var(--font-display);
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	/* Pivot Alert */
+	.pivot-alert {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.625rem;
+		padding: 0.875rem;
+		background: rgba(234, 179, 8, 0.06);
+		border: 1px solid rgba(234, 179, 8, 0.25);
+		border-radius: 0.5rem;
+		margin-bottom: 1rem;
+	}
+
+	:global(.pivot-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #EAB308;
+		flex-shrink: 0;
+	}
+
+	.pivot-label {
+		font-family: var(--font-mono);
+		font-size: 0.5625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #EAB308;
+		margin-bottom: 0.125rem;
+	}
+
+	.pivot-text {
+		font-size: 0.8125rem;
+		color: #18181B;
+		line-height: 1.5;
+		margin: 0;
+	}
+
+	/* SEO Transparency */
+	.seo-transparency {
+		background: rgba(0, 0, 0, 0.02);
+		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-radius: 0.5rem;
+		padding: 0.875rem;
+	}
+
+	.seo-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.875rem;
+	}
+
+	:global(.seo-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
+		color: #E55A28;
+	}
+
+	.seo-title {
+		font-family: var(--font-display);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: #18181B;
+		margin: 0;
+	}
+
+	.seo-flow {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 1rem;
+		margin-bottom: 0.875rem;
+	}
+
+	.seo-score {
+		text-align: center;
+	}
+
+	.seo-score .seo-value {
+		display: block;
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		font-weight: 700;
+	}
+
+	.seo-score.baseline .seo-value {
+		color: #A1A1AA;
+	}
+
+	.seo-score.refined .seo-value {
+		color: #E55A28;
+	}
+
+	.seo-score.change.positive .seo-value {
+		color: #22C55E;
+	}
+
+	.seo-arrow {
+		font-size: 1rem;
+		color: #A1A1AA;
+	}
+
+	.seo-score .seo-label {
+		font-size: 0.5625rem;
+		color: #A1A1AA;
+	}
+
+	.seo-factors {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 0.5rem;
+		margin-bottom: 0.625rem;
+	}
+
+	.seo-factor {
+		text-align: center;
+		padding: 0.5rem;
+		background: #FFFFFF;
+		border-radius: 0.375rem;
+	}
+
+	.factor-value {
+		display: block;
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: #18181B;
+	}
+
+	.factor-label {
+		font-size: 0.5625rem;
+		color: #A1A1AA;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.seo-rationale {
+		font-size: 0.75rem;
+		color: #71717A;
+		padding: 0.625rem;
+		background: #FFFFFF;
+		border-radius: 0.375rem;
+		margin: 0;
+	}
+
+	/* Risk Section */
+	.risk-list {
+		background: rgba(239, 68, 68, 0.04);
+		border: 1px solid rgba(239, 68, 68, 0.15);
+		border-radius: 0.5rem;
+		padding: 0.875rem;
+		margin-bottom: 1rem;
+	}
+
+	.risk-list-title {
+		font-family: var(--font-display);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: #EF4444;
+		margin-bottom: 0.625rem;
+	}
+
+	.risk-items {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.risk-item {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		color: #71717A;
+		line-height: 1.5;
+	}
+
+	.risk-bullet {
+		color: #EF4444;
+		font-weight: 700;
+	}
+
+	.signals-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+		gap: 0.625rem;
+	}
+
+	.signal-card {
+		background: #FFFFFF;
+		border: 1px solid rgba(0, 0, 0, 0.08);
+		border-radius: 0.5rem;
+		padding: 0.875rem;
+	}
+
+	:global(.signal-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: #E55A28;
+		margin-bottom: 0.5rem;
+	}
+
+	.signal-title {
+		font-family: var(--font-display);
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: #18181B;
+		margin-bottom: 0.625rem;
+	}
+
+	.signal-rows {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.signal-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		font-size: 0.75rem;
+	}
+
+	.signal-label {
+		color: #A1A1AA;
+	}
+
+	.signal-value {
+		color: #18181B;
+		font-weight: 500;
+	}
+
+	.timing-highlight {
+		padding: 0.625rem;
+		background: rgba(229, 90, 40, 0.06);
+		border-radius: 0.375rem;
+		margin-bottom: 0.625rem;
+	}
+
+	.timing-highlight p {
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: #18181B;
+		margin: 0;
+	}
+
+	.timing-rationale {
+		font-size: 0.75rem;
+		color: #71717A;
+		line-height: 1.55;
+	}
+
+	/* =========================
+	   RESPONSIVE ADJUSTMENTS
+	   ========================= */
+	@media (max-width: 900px) {
+		.hero-scores {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (max-width: 768px) {
+		.executive-section {
+			padding: 1rem;
+		}
+
+		.hero-metrics {
+			flex-direction: column;
+		}
+
+		.hero-metric.primary {
+			justify-content: center;
+		}
+
+		.content-grid {
+			grid-template-columns: 1fr;
+		}
+
+		.quick-stats {
+			justify-content: center;
+		}
+
+		.verdict-main {
+			flex-direction: column;
+			align-items: flex-start;
+		}
+
+		.seo-flow {
+			flex-wrap: wrap;
+		}
+
+		.seo-factors {
+			grid-template-columns: repeat(2, 1fr);
+		}
+	}
+
+	@media (max-width: 480px) {
+		.hero-scores {
+			grid-template-columns: 1fr 1fr;
+		}
+
+		.quick-stat {
+			padding: 0.375rem 0.625rem;
+		}
+
+		.quick-stat-label {
+			font-size: 0.6875rem;
+		}
+	}
+</style>

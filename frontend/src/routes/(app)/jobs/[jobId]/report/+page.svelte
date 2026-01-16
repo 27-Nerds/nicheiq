@@ -99,6 +99,9 @@
 				marketFitScore={report.selected_solution_details?.market_fit_score}
 				feasibilityScore={report.selected_solution_details?.technical_feasibility_score}
 				soloDevScore={report.selected_solution_details?.solo_dev_feasibility}
+				confidenceScore={report.executive_dashboard?.confidence_score}
+				totalKeywords={report.seo_analytics?.total_keywords ?? report.seo_strategy_report?.prioritized_keywords?.length ?? 0}
+				totalSearchVolume={report.seo_analytics?.total_search_volume ?? report.seo_strategy_report?.total_monthly_volume ?? 0}
 			/>
 
 			<!-- DECISION GATEWAY (Go/No-Go) -->
@@ -242,31 +245,6 @@
 	.back-link:hover {
 		color: var(--color-text-primary);
 		background: var(--color-bg-elevated);
-	}
-
-	.niche-context-bar {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		margin-bottom: 2rem;
-	}
-
-	.niche-label {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.08em;
-		color: var(--color-text-muted);
-	}
-
-	.niche-value {
-		font-size: 0.9375rem;
-		color: var(--color-text-secondary);
 	}
 
 	.warning-banner {

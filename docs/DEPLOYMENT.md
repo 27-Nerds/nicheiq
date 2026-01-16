@@ -4,6 +4,7 @@ This guide covers deploying NicheIQ to a production server using Docker Compose.
 
 ## Table of Contents
 
+- [DigitalOcean Deployment (Recommended)](#digitalocean-deployment-recommended)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Environment Configuration](#environment-configuration)
@@ -14,6 +15,133 @@ This guide covers deploying NicheIQ to a production server using Docker Compose.
 - [Backup & Restore](#backup--restore)
 - [Updating & Maintenance](#updating--maintenance)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## DigitalOcean Deployment (Recommended)
+
+One-command deployment to DigitalOcean with automatic HTTPS via Caddy.
+
+### Infrastructure
+
+- **Droplet**: 4 GB RAM / 2 vCPUs / Ubuntu 24.04 ($24/mo)
+- **Database**: PostgreSQL 16 (Docker)
+- **Cache/Queue**: Redis 7 (Docker)
+- **Reverse Proxy**: Caddy (automatic HTTPS)
+- **Domain**: nicheiq.27n.gg
+- **Server IP**: 207.154.199.58
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `docker/docker-compose.prod.yml` | Production orchestration with Caddy |
+| `docker/Caddyfile` | HTTPS reverse proxy configuration |
+| `.env.production.example` | Production environment template |
+| `scripts/server-setup.sh` | Server provisioning script |
+| `scripts/deploy.sh` | One-command deployment script |
+
+### Step 1: DNS Configuration
+
+Add an A record in your DNS provider:
+
+```
+Type: A
+Host: nicheiq
+Value: 207.154.199.58
+TTL: 300
+```
+
+### Step 2: Firewall Configuration
+
+Via DigitalOcean Dashboard → Networking → Firewalls:
+
+| Type | Port | Source |
+|------|------|--------|
+| SSH | 22 | Your IP |
+| HTTP | 80 | All IPv4/IPv6 |
+| HTTPS | 443 | All IPv4/IPv6 |
+
+### Step 3: Server Setup
+
+```bash
+ssh root@207.154.199.58
+
+# Run setup script
+curl -sSL https://raw.githubusercontent.com/YOUR_REPO/nicheiq/main/scripts/server-setup.sh | bash
+```
+
+Or clone first:
+
+```bash
+git clone https://github.com/YOUR_REPO/nicheiq.git /opt/nicheiq
+cd /opt/nicheiq
+bash scripts/server-setup.sh
+```
+
+### Step 4: Configure Environment
+
+```bash
+cd /opt/nicheiq
+cp .env.production.example .env
+vim .env  # Add your API keys
+```
+
+**Required variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `POSTGRES_PASSWORD` | Strong database password |
+| `AUTH_SECRET` | Generate: `openssl rand -base64 32` |
+| `OPENAI_API_KEY` | OpenAI API key |
+| `SERPER_API_KEY` | Serper.dev API key |
+| `REDDIT_CLIENT_ID` | Reddit API credentials |
+| `REDDIT_CLIENT_SECRET` | Reddit API credentials |
+| `DATAFORSEO_LOGIN` | DataForSEO credentials |
+| `DATAFORSEO_PASSWORD` | DataForSEO credentials |
+
+### Step 5: Deploy
+
+```bash
+./scripts/deploy.sh --build
+```
+
+### Step 6: Update OAuth Callbacks
+
+**Google** (https://console.cloud.google.com/apis/credentials):
+```
+https://nicheiq.27n.gg/api/auth/callback/google
+```
+
+**GitHub** (https://github.com/settings/developers):
+```
+https://nicheiq.27n.gg/api/auth/callback/github
+```
+
+### Deploy Script Commands
+
+```bash
+./scripts/deploy.sh              # Deploy/update
+./scripts/deploy.sh --build      # Rebuild and deploy
+./scripts/deploy.sh --logs       # View logs
+./scripts/deploy.sh --status     # Container status
+./scripts/deploy.sh --down       # Stop services
+./scripts/deploy.sh --restart    # Restart services
+./scripts/deploy.sh --migrate    # Run migrations only
+```
+
+### Verification Checklist
+
+- [ ] DNS A record pointing to Droplet IP
+- [ ] Firewall configured (22, 80, 443)
+- [ ] Docker installed on server
+- [ ] Repository cloned to `/opt/nicheiq`
+- [ ] `.env` configured with all API keys
+- [ ] `docker compose up -d` succeeds
+- [ ] Database migrations complete
+- [ ] https://nicheiq.27n.gg loads
+- [ ] OAuth login works
+- [ ] Job creation works
 
 ---
 

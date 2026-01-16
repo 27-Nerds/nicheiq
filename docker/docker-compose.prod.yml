@@ -1,0 +1,232 @@
+# NicheIQ Production Docker Compose
+# For deployment to DigitalOcean with Caddy reverse proxy
+#
+# Usage:
+#   docker compose -f docker/docker-compose.prod.yml up -d
+
+services:
+  # =============================================================================
+  # REVERSE PROXY - Caddy with automatic HTTPS
+  # =============================================================================
+  caddy:
+    image: caddy:2-alpine
+    container_name: nicheiq-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"  # HTTP/3 support
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - nicheiq-network
+    depends_on:
+      - api
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # DATABASE - PostgreSQL 16
+  # =============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: nicheiq-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-nicheiq}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-nicheiq}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - nicheiq-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nicheiq}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # CACHE/QUEUE - Redis 7
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: nicheiq-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - nicheiq-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # =============================================================================
+  # BACKEND API - Node.js
+  # =============================================================================
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: nicheiq-api
+    restart: unless-stopped
+    environment:
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # Node.js
+      NODE_ENV: production
+      PORT: 3001
+      # Auth
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
+      # CORS & URLs
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://nicheiq.27n.gg}
+      BASE_URL: ${BASE_URL:-https://nicheiq.27n.gg}
+      # Email (optional)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      FROM_EMAIL: ${FROM_EMAIL:-}
+      # Job settings
+      JOB_TTL_SECONDS: ${JOB_TTL_SECONDS:-604800}
+    volumes:
+      - job_output:/app/output
+    networks:
+      - nicheiq-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # PYTHON WORKER - Research Pipeline
+  # =============================================================================
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: nicheiq-worker
+    restart: unless-stopped
+    environment:
+      # Database & Redis (internal network)
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
+      REDIS_URL: redis://redis:6379
+      # Output directory
+      NICHEIQ_OUTPUT_DIR: /app/output/jobs
+      OUTPUT_DIR: /app/output
+      REPORTS_DIR: /app/output/reports
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      OPENAI_MODEL_NAME: ${OPENAI_MODEL_NAME:-gpt-4o}
+      FUNCTION_CALLING_LLM: ${FUNCTION_CALLING_LLM:-gpt-4o-mini}
+      CONTENT_ANALYSIS_LLM: ${CONTENT_ANALYSIS_LLM:-gpt-4o}
+      THREAD_VALIDATION_LLM: ${THREAD_VALIDATION_LLM:-gpt-4o-mini}
+      BRAINSTORM_LLM: ${BRAINSTORM_LLM:-gpt-4o}
+      KEYWORD_VALIDATION_LLM: ${KEYWORD_VALIDATION_LLM:-gpt-4o-mini}
+      KEYWORD_RESEARCH_LLM: ${KEYWORD_RESEARCH_LLM:-gpt-4o-mini}
+      LANDING_PAGE_LLM: ${LANDING_PAGE_LLM:-gpt-4o}
+      CHROMA_OPENAI_API_KEY: ${OPENAI_API_KEY}
+      # Serper (Google Search)
+      SERPER_API_KEY: ${SERPER_API_KEY:?SERPER_API_KEY is required}
+      # Reddit
+      ENABLE_REDDIT: ${ENABLE_REDDIT:-true}
+      REDDIT_CLIENT_ID: ${REDDIT_CLIENT_ID:-}
+      REDDIT_CLIENT_SECRET: ${REDDIT_CLIENT_SECRET:-}
+      REDDIT_USER_AGENT: ${REDDIT_USER_AGENT:-NicheIQ/1.0}
+      # Twitter (optional)
+      ENABLE_TWITTER: ${ENABLE_TWITTER:-false}
+      TWITTER_USERNAME: ${TWITTER_USERNAME:-}
+      TWITTER_PASSWORD: ${TWITTER_PASSWORD:-}
+      TWITTER_EMAIL: ${TWITTER_EMAIL:-}
+      # DataForSEO
+      DATAFORSEO_LOGIN: ${DATAFORSEO_LOGIN:-}
+      DATAFORSEO_PASSWORD: ${DATAFORSEO_PASSWORD:-}
+      # Logging & Monitoring
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TOKEN_MONITORING_ENABLED: ${TOKEN_MONITORING_ENABLED:-true}
+      COST_LOGGING_ENABLED: ${COST_LOGGING_ENABLED:-true}
+      # Search Config
+      NUM_SEARCH_QUERIES: ${NUM_SEARCH_QUERIES:-40}
+      MAX_SEARCH_RESULTS: ${MAX_SEARCH_RESULTS:-20}
+      # Python
+      PYTHONPATH: /app
+      PYTHONUNBUFFERED: 1
+    volumes:
+      - job_output:/app/output
+    networks:
+      - nicheiq-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # =============================================================================
+  # FRONTEND - SvelteKit
+  # =============================================================================
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: ../docker/Dockerfile.frontend
+      args:
+        PUBLIC_API_URL: ${PUBLIC_API_URL:-https://nicheiq.27n.gg}
+    container_name: nicheiq-frontend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      # Internal API URL for server-side requests
+      PUBLIC_API_URL: http://api:3001
+      # External API URL for client-side requests (passed at build time)
+      ORIGIN: ${ORIGIN:-https://nicheiq.27n.gg}
+    networks:
+      - nicheiq-network
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# =============================================================================
+# NETWORKS
+# =============================================================================
+networks:
+  nicheiq-network:
+    driver: bridge
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local
+  job_output:
+    driver: local
