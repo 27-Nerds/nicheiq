@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY pyproject.toml ./
+# Copy project files
+COPY pyproject.toml README.md ./
 COPY src ./src/
 COPY worker ./worker/
 
-# Install the package in development mode
-RUN pip install --no-cache-dir -e .
+# Install the package
+RUN pip install --no-cache-dir .
 
 # Create output directory
 RUN mkdir -p /app/output/jobs /app/output/logs
