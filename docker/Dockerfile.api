@@ -6,17 +6,14 @@ WORKDIR /app
 # Copy package files
 COPY backend/package*.json ./
 
-# Install dependencies
-RUN npm ci --omit=dev
+# Install dependencies (including tsx for TypeScript execution)
+RUN npm ci
 
 # Copy Prisma schema and generate client
 COPY backend/prisma ./prisma/
 RUN npx prisma generate
 
-# Copy compiled source
-COPY backend/dist ./dist/
-
-# Copy source for TypeScript (if running with tsx in dev)
+# Copy source for TypeScript execution with tsx
 COPY backend/src ./src/
 COPY backend/tsconfig.json ./
 
