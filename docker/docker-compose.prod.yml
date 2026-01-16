@@ -133,6 +133,8 @@ services:
       # Database & Redis (internal network)
       DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
       REDIS_URL: redis://redis:6379
+      # Backend API URL for status updates
+      BACKEND_URL: http://api:3001
       # Output directory
       NICHEIQ_OUTPUT_DIR: /app/output/jobs
       OUTPUT_DIR: /app/output
