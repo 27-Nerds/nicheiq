@@ -72,15 +72,13 @@ check_env() {
         exit 1
     fi
 
-    # Check for required variables
-    source "$PROJECT_ROOT/.env"
-
+    # Check for required variables using grep (avoids bash syntax issues in .env)
     local missing_vars=()
 
-    [ -z "$POSTGRES_PASSWORD" ] && missing_vars+=("POSTGRES_PASSWORD")
-    [ -z "$AUTH_SECRET" ] && missing_vars+=("AUTH_SECRET")
-    [ -z "$OPENAI_API_KEY" ] && missing_vars+=("OPENAI_API_KEY")
-    [ -z "$SERPER_API_KEY" ] && missing_vars+=("SERPER_API_KEY")
+    grep -q "^POSTGRES_PASSWORD=.\+" "$PROJECT_ROOT/.env" || missing_vars+=("POSTGRES_PASSWORD")
+    grep -q "^AUTH_SECRET=.\+" "$PROJECT_ROOT/.env" || missing_vars+=("AUTH_SECRET")
+    grep -q "^OPENAI_API_KEY=.\+" "$PROJECT_ROOT/.env" || missing_vars+=("OPENAI_API_KEY")
+    grep -q "^SERPER_API_KEY=.\+" "$PROJECT_ROOT/.env" || missing_vars+=("SERPER_API_KEY")
 
     if [ ${#missing_vars[@]} -gt 0 ]; then
         log_error "Missing required environment variables:"
