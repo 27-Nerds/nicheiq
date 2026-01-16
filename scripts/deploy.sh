@@ -19,6 +19,10 @@ NC='\033[0m' # No Color
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 COMPOSE_FILE="$PROJECT_ROOT/docker/docker-compose.prod.yml"
+ENV_FILE="$PROJECT_ROOT/.env"
+
+# Docker compose command with env file
+DC="docker compose --env-file $ENV_FILE -f $COMPOSE_FILE"
 
 # Change to project root
 cd "$PROJECT_ROOT"
@@ -95,13 +99,13 @@ run_migrations() {
     log_info "Running database migrations..."
 
     # Wait for postgres to be ready
-    docker compose -f "$COMPOSE_FILE" exec -T postgres pg_isready -U "${POSTGRES_USER:-nicheiq}" || {
+    $DC exec -T postgres pg_isready -U "${POSTGRES_USER:-nicheiq}" || {
         log_warn "Postgres not ready, waiting..."
         sleep 5
     }
 
     # Run Prisma migrations
-    docker compose -f "$COMPOSE_FILE" exec -T api npx prisma migrate deploy
+    $DC exec -T api npx prisma migrate deploy
 
     log_success "Migrations completed"
 }
@@ -116,11 +120,11 @@ deploy() {
 
     # Pull latest images
     log_info "Pulling base images..."
-    docker compose -f "$COMPOSE_FILE" pull postgres redis caddy
+    $DC pull postgres redis caddy
 
     # Build and start services
     log_info "Building and starting services..."
-    docker compose -f "$COMPOSE_FILE" up -d $BUILD_FLAG
+    $DC up -d $BUILD_FLAG
 
     # Wait for services to be healthy
     log_info "Waiting for services to be healthy..."
@@ -130,7 +134,7 @@ deploy() {
     run_migrations
 
     # Show status
-    docker compose -f "$COMPOSE_FILE" ps
+    $DC ps
 
     log_success "Deployment complete!"
     echo ""
@@ -148,27 +152,27 @@ case "${1:-}" in
         ;;
     --down)
         log_info "Stopping services..."
-        docker compose -f "$COMPOSE_FILE" down
+        $DC down
         log_success "Services stopped"
         ;;
     --logs)
-        docker compose -f "$COMPOSE_FILE" logs -f --tail=100
+        $DC logs -f --tail=100
         ;;
     --migrate)
         check_env
         run_migrations
         ;;
     --status)
-        docker compose -f "$COMPOSE_FILE" ps
+        $DC ps
         echo ""
         log_info "Container health:"
-        docker compose -f "$COMPOSE_FILE" ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+        $DC ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
         ;;
     --restart)
         log_info "Restarting services..."
-        docker compose -f "$COMPOSE_FILE" restart
+        $DC restart
         log_success "Services restarted"
-        docker compose -f "$COMPOSE_FILE" ps
+        $DC ps
         ;;
     --build)
         check_env
