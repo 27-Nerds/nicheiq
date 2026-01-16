@@ -5,6 +5,7 @@ import { sendCompletionEmail, sendFailureEmail } from '../services/emailService.
 import { JobStatus, StageStatus } from '@prisma/client';
 import { prisma } from '../services/db.js';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
+import { formatJobResponse } from '../utils/jobFormatter.js';
 
 /**
  * Get the current email address for a job.
@@ -70,7 +71,11 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
 
   // Send initial state with queue position if queued
   const queueStats = job.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
-  const initialData = formatJobForSSE(job, queueStats);
+  const initialData = formatJobResponse(job, {
+    includeProgress: true,
+    includeAssets: true,
+    queueStats,
+  });
   res.write(`data: ${JSON.stringify(initialData)}\n\n`);
 
   // Subscribe to Redis progress updates
@@ -132,7 +137,11 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
       const updatedJob = await getJob(jobId);
       if (updatedJob) {
         const updatedQueueStats = updatedJob.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
-        const data = formatJobForSSE(updatedJob, updatedQueueStats);
+        const data = formatJobResponse(updatedJob, {
+          includeProgress: true,
+          includeAssets: true,
+          queueStats: updatedQueueStats,
+        });
         res.write(`data: ${JSON.stringify(data)}\n\n`);
 
         // Close connection if job is done
@@ -160,41 +169,3 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
     console.log(`SSE connection closed for job ${jobId}`);
   });
 });
-
-/**
- * Format job data for SSE response
- */
-function formatJobForSSE(
-  job: Awaited<ReturnType<typeof getJob>>,
-  queueStats?: { position: number | null; totalQueued: number; aheadCount: number } | null
-) {
-  if (!job) return null;
-
-  return {
-    id: job.id,
-    niche: job.niche,
-    status: job.status,
-    currentStage: job.currentStage,
-    currentStageName: job.currentStageName,
-    stagesCompleted: job.stagesCompleted,
-    totalStages: job.totalStages,
-    progressPercent: job.progressPercent,
-    errorMessage: job.errorMessage,
-    startedAt: job.startedAt?.toISOString() || null,
-    completedAt: job.completedAt?.toISOString() || null,
-    // Queue position info (only for QUEUED jobs)
-    queuePosition: queueStats?.position ?? null,
-    aheadCount: queueStats?.aheadCount ?? 0,
-    totalQueued: queueStats?.totalQueued ?? 0,
-    progress: job.progress.map(p => ({
-      stageNumber: p.stageNumber,
-      stageName: p.stageName,
-      status: p.status,
-      durationSeconds: p.durationSeconds,
-    })),
-    assets: job.assets.map(a => ({
-      type: a.assetType,
-      url: `/api/jobs/${job.id}/${a.assetType.toLowerCase().replace('_', '')}`,
-    })),
-  };
-}

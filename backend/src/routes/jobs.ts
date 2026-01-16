@@ -12,6 +12,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
+import { formatJobResponse } from '../utils/jobFormatter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,33 +123,13 @@ jobsRouter.get('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest,
       return;
     }
 
-    // Format response
-    res.json({
-      id: job.id,
-      niche: job.niche,
-      status: job.status,
-      currentStage: job.currentStage,
-      currentStageName: job.currentStageName,
-      stagesCompleted: job.stagesCompleted,
-      totalStages: job.totalStages,
-      progressPercent: job.progressPercent,
-      errorMessage: job.errorMessage,
-      createdAt: job.createdAt.toISOString(),
-      startedAt: job.startedAt?.toISOString() || null,
-      completedAt: job.completedAt?.toISOString() || null,
-      progress: job.progress.map(p => ({
-        stageNumber: p.stageNumber,
-        stageName: p.stageName,
-        status: p.status,
-        startedAt: p.startedAt?.toISOString() || null,
-        completedAt: p.completedAt?.toISOString() || null,
-        durationSeconds: p.durationSeconds,
-      })),
-      assets: job.assets.map(a => ({
-        type: a.assetType,
-        url: `/api/jobs/${job.id}/${a.assetType.toLowerCase().replace('_', '')}`,
-      })),
-    });
+    // Format response using shared helper
+    res.json(formatJobResponse(job, {
+      includeCreatedAt: true,
+      includeProgress: true,
+      includeProgressTimestamps: true,
+      includeAssets: true,
+    }));
   } catch (error) {
     console.error('Failed to get job:', error);
     res.status(500).json({ error: 'Failed to get job status' });

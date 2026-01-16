@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { prisma } from '../services/db.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import { formatJobResponse } from '../utils/jobFormatter.js';
 
 export const usersRouter = Router();
 
@@ -31,30 +32,15 @@ usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedR
       orderBy: { createdAt: 'desc' },
       take: 50, // Limit for performance
       include: {
-        assets: {
-          select: {
-            assetType: true,
-          },
-        },
+        progress: true,
+        assets: true,
       },
     });
 
-    // Format response
-    const formattedJobs = jobs.map((job) => ({
-      id: job.id,
-      niche: job.niche,
-      status: job.status,
-      currentStage: job.currentStage,
-      currentStageName: job.currentStageName,
-      stagesCompleted: job.stagesCompleted,
-      totalStages: job.totalStages,
-      progressPercent: job.progressPercent,
-      errorMessage: job.errorMessage,
-      createdAt: job.createdAt.toISOString(),
-      startedAt: job.startedAt?.toISOString() || null,
-      completedAt: job.completedAt?.toISOString() || null,
-      hasReport: job.assets.some((a) => a.assetType === 'REPORT_JSON'),
-      hasLandingPage: job.assets.some((a) => a.assetType === 'LANDING_PAGE'),
+    // Format response using shared helper
+    const formattedJobs = jobs.map((job) => formatJobResponse(job, {
+      includeCreatedAt: true,
+      includeAssetFlags: true,
     }));
 
     res.json({ jobs: formattedJobs });

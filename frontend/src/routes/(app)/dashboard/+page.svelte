@@ -235,8 +235,8 @@
     const diffMins = Math.floor(diffMs / 60000);
 
     if (diffMins < 1) return 'just started';
-    if (diffMins === 1) return '1 min';
-    return `${diffMins} min`;
+    if (diffMins === 1) return '1 min elapsed';
+    return `${diffMins} min elapsed`;
   }
 
   // Retry a failed job
@@ -518,7 +518,7 @@
                       <div class="flex items-center gap-2 mb-3">
                         <Activity class="w-4 h-4 text-accent" />
                         <span class="text-sm text-accent font-medium">
-                          Stage {job.currentStage} of {totalStages}: {job.currentStageName}
+                          {job.currentStageName}
                         </span>
                       </div>
                     {:else if isQueued || isPending}
@@ -538,7 +538,7 @@
                         <div class="progress-bar">
                           <div class="progress-bar-fill animate-shimmer" style="width: {job.progressPercent}%"></div>
                         </div>
-                        <p class="text-xs text-text-muted mt-1">{Math.round(job.progressPercent)}% complete</p>
+                        <p class="text-xs text-text-muted mt-1">{job.stagesCompleted} of {totalStages} stages completed</p>
                       </div>
                     {/if}
                     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
@@ -547,7 +547,7 @@
                         {formatRelativeDate(job.createdAt)}
                       </span>
                       {#if isRunning && job.startedAt}
-                        <span class="text-accent font-medium">{formatElapsedTime(job.startedAt)} elapsed</span>
+                        <span class="text-accent font-medium">{formatElapsedTime(job.startedAt)}</span>
                       {/if}
                     </div>
                   </div>
