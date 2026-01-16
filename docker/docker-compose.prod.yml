@@ -199,6 +199,16 @@ services:
       PUBLIC_API_URL: http://api:3001
       # External API URL for client-side requests (passed at build time)
       ORIGIN: ${ORIGIN:-https://nicheiq.27n.gg}
+      # Database for Auth.js
+      DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
+      # Auth.js configuration
+      AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      AUTH_TRUST_HOST: "true"
+      # OAuth providers
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
     networks:
       - nicheiq-network
     depends_on:
