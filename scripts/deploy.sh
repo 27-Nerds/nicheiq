@@ -91,43 +91,6 @@ check_env() {
     log_success "Environment configuration validated"
 }
 
-build_frontend() {
-    log_info "Building frontend assets..."
-
-    # Build frontend with production API URL
-    cd "$PROJECT_ROOT/frontend"
-
-    # Check if node_modules exists
-    if [ ! -d "node_modules" ]; then
-        log_info "Installing frontend dependencies..."
-        npm ci
-    fi
-
-    # Build with production environment
-    PUBLIC_API_URL="${PUBLIC_API_URL:-https://nicheiq.27n.gg}" npm run build
-
-    cd "$PROJECT_ROOT"
-    log_success "Frontend built successfully"
-}
-
-build_backend() {
-    log_info "Building backend..."
-
-    cd "$PROJECT_ROOT/backend"
-
-    # Check if node_modules exists
-    if [ ! -d "node_modules" ]; then
-        log_info "Installing backend dependencies..."
-        npm ci
-    fi
-
-    # Build TypeScript
-    npm run build
-
-    cd "$PROJECT_ROOT"
-    log_success "Backend built successfully"
-}
-
 run_migrations() {
     log_info "Running database migrations..."
 
@@ -209,8 +172,6 @@ case "${1:-}" in
         ;;
     --build)
         check_env
-        build_backend
-        build_frontend
         deploy --build
         ;;
     "")
