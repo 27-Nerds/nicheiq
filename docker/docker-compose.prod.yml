@@ -89,6 +89,7 @@ services:
       PORT: 3001
       # Auth
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-prod-internal-secret-change-me}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
@@ -205,6 +206,7 @@ services:
       # Auth.js configuration
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
       AUTH_TRUST_HOST: "true"
+      INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-prod-internal-secret-change-me}
       # OAuth providers
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
