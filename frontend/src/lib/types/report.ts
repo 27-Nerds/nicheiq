@@ -515,6 +515,17 @@ export interface TrendLongevity {
 }
 
 export interface ResearchMetadata {
+	// Python backend fields (primary)
+	reddit_posts_analyzed?: number;
+	reddit_comments_analyzed?: number;
+	twitter_threads_analyzed?: number;
+	top_subreddits?: SubredditBreakdown[];
+	collection_date?: string;
+	data_size_mb?: number;
+	completed_stages?: number[];
+	fallback_stages?: number[];
+	filtering_stats?: Record<string, unknown>;
+	// Legacy/optional fields
 	research_id?: string;
 	started_at?: string;
 	completed_at?: string;
@@ -523,7 +534,11 @@ export interface ResearchMetadata {
 	data_sources?: DataSource[];
 	token_usage?: TokenUsage;
 	data_quality_summary?: DataQualitySummary;
-	fallback_stages?: string[];
+}
+
+export interface SubredditBreakdown {
+	name: string;
+	post_count: number;
 }
 
 export interface DataQualitySummary {

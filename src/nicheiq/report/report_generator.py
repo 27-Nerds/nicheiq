@@ -20,7 +20,6 @@ if TYPE_CHECKING:
         MarketAnalytics,
         PainPointAnalytics,
         SEOAnalytics,
-        VisualizationManifest,
     )
     from ..models.executive_summary import (
         CorePainPoint,
@@ -124,7 +123,10 @@ class ReportGenerator:
         logger.info("Step 3: Generating enhanced report sections (Python)...")
 
         # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
-        final_report.executive_dashboard = self._generate_executive_dashboard()
+        # Pass enriched solution from final_report (already has Stage 9.5 SEO refinements merged)
+        final_report.executive_dashboard = self._generate_executive_dashboard(
+            enriched_solution=final_report.selected_solution_details
+        )
         if final_report.executive_dashboard:
             logger.info(
                 f"[OK] Executive dashboard generated: "
@@ -143,33 +145,26 @@ class ReportGenerator:
                 f"{len(final_report.go_to_market_blueprint.example_content_angles)} content angles"
             )
 
-        # Analytics & Visualizations (Phase 3 Enhancement) - DATA-DRIVEN INSIGHTS
+        # Analytics (Phase 3 Enhancement) - DATA-DRIVEN INSIGHTS
         (
             market_analytics,
             seo_analytics,
             competitive_analytics,
             pain_point_analytics,
-            viz_manifest,
-        ) = self._generate_analytics_and_visualizations()
+        ) = self._generate_analytics()
 
         final_report.market_analytics = market_analytics
         final_report.seo_analytics = seo_analytics
         final_report.competitive_analytics = competitive_analytics
         final_report.pain_point_analytics = pain_point_analytics
-        final_report.visualization_manifest = viz_manifest
 
         if market_analytics and seo_analytics:
             logger.info(
-                f"[OK] Analytics & visualizations generated: "
+                f"[OK] Analytics generated: "
                 f"Opportunity score {market_analytics.overall_opportunity_score:.2f}, "
                 f"{seo_analytics.total_keywords} keywords, "
                 f"{competitive_analytics.competitor_count if competitive_analytics else 0} competitors, "
                 f"{pain_point_analytics.total_pain_points if pain_point_analytics else 0} pain points"
-            )
-
-        if viz_manifest and viz_manifest.pain_point_matrix_path:
-            logger.info(
-                f"[OK] Charts exported: {viz_manifest.charts_format} format"
             )
 
         final_report.research_metadata = self._generate_research_metadata()
@@ -470,6 +465,8 @@ class ReportGenerator:
 
             # Competitive analysis (summary only - full data in state.competitive_analysis)
             competitive_summary=competitive_summary,
+            # Competitive analysis (full object - for frontend Competitors component)
+            competitive_analysis=self.state.competitive_analysis,
 
             # Market validation (data-driven assessment)
             market_validation=market_validation,
@@ -658,27 +655,24 @@ class ReportGenerator:
         solution.technical_feasibility_score = score_map.get('technical_feasibility')
 
         # SEO score: prefer refined (Stage 9.5), fall back to selection criteria (Stage 8.5)
-        if solution.seo_scalability_score_refined is not None:
-            solution.seo_scalability_score = solution.seo_scalability_score_refined
-            logger.info(
-                f"[Report] Using refined SEO score: {solution.seo_scalability_score_refined:.2f}"
-            )
+        seo_refined = getattr(solution, 'seo_scalability_score_refined', None)
+        if seo_refined is not None:
+            solution.seo_scalability_score = seo_refined
+            logger.info(f"[Report] Using refined SEO score: {seo_refined:.2f}")
         else:
             solution.seo_scalability_score = score_map.get('seo_growth_potential')
 
         # Sync refined CAC to baseline (so frontend only needs one field)
-        if solution.estimated_cac_organic_refined:
-            solution.estimated_cac_organic = solution.estimated_cac_organic_refined
-            logger.info(
-                f"[Report] Using refined CAC: {solution.estimated_cac_organic_refined}"
-            )
+        cac_refined = getattr(solution, 'estimated_cac_organic_refined', None)
+        if cac_refined:
+            solution.estimated_cac_organic = cac_refined
+            logger.info(f"[Report] Using refined CAC: {cac_refined}")
 
         # Sync refined programmatic SEO opportunity to baseline
-        if solution.programmatic_seo_opportunity_refined:
-            solution.programmatic_seo_opportunity = solution.programmatic_seo_opportunity_refined
-            logger.info(
-                f"[Report] Using refined programmatic SEO: {solution.programmatic_seo_opportunity_refined[:50]}..."
-            )
+        seo_opp_refined = getattr(solution, 'programmatic_seo_opportunity_refined', None)
+        if seo_opp_refined:
+            solution.programmatic_seo_opportunity = seo_opp_refined
+            logger.info(f"[Report] Using refined programmatic SEO: {seo_opp_refined[:50]}...")
 
         logger.info(
             f"[Report] Synced solution fields: "
@@ -1460,13 +1454,21 @@ It differentiates through {diff_text}.
     # Executive Dashboard Generator (Phase 1 Enhancement)
     # ==================================================================================
 
-    def _generate_executive_dashboard(self) -> "ExecutiveDashboard | None":
+    def _generate_executive_dashboard(
+        self,
+        enriched_solution: "SolutionIdea | None" = None
+    ) -> "ExecutiveDashboard | None":
         """
         Generate executive dashboard for quick decision-making.
 
         Uses hybrid approach:
         - 90% Python: Metrics computation, data extraction
         - 10% LLM: Strategic narrative (tagline, value prop, verdict rationale)
+
+        Args:
+            enriched_solution: Pre-enriched SolutionIdea from final_report.selected_solution_details
+                               (already has Stage 9.5 SEO refinements merged). If None, falls back
+                               to accessor which returns raw BaseSolutionIdea.
 
         Returns:
             ExecutiveDashboard object with go/no-go verdict, core pain point, and metrics
@@ -1477,15 +1479,16 @@ It differentiates through {diff_text}.
                 SolutionSnapshot,
             )
 
-            # Extract selected solution details
-            selected_solution = self.accessor.get_selected_solution_details()
+            # Use enriched solution if provided, otherwise fall back to accessor (raw BaseSolutionIdea)
+            selected_solution = enriched_solution or self.accessor.get_selected_solution_details()
 
             if not selected_solution:
                 logger.warning("No selected solution found - cannot generate executive dashboard")
                 return None
 
             # Step 1: Compute metrics (Python - 60% of work)
-            key_metrics = self._compute_executive_metrics()
+            # Pass the enriched solution to ensure we have access to Stage 9.5 refined fields
+            key_metrics = self._compute_executive_metrics(enriched_solution=selected_solution)
             if not key_metrics:
                 logger.warning("Failed to compute executive metrics")
                 return None
@@ -1536,9 +1539,16 @@ It differentiates through {diff_text}.
             logger.warning(f"Failed to generate executive dashboard: {e}")
             return None
 
-    def _compute_executive_metrics(self) -> "KeyMetrics | None":
+    def _compute_executive_metrics(
+        self,
+        enriched_solution: "SolutionIdea | None" = None
+    ) -> "KeyMetrics | None":
         """
         Compute top-line metrics for executive dashboard (Python-only).
+
+        Args:
+            enriched_solution: Pre-enriched SolutionIdea with Stage 9.5 SEO refinements.
+                               Used to access seo_scalability_score_refined directly.
 
         Returns:
             KeyMetrics object with keyword stats, pain point stats, competitor counts
@@ -1604,9 +1614,10 @@ It differentiates through {diff_text}.
 
             # SEO score: prefer refined (Stage 9.5), fall back to selection criteria (Stage 8.5)
             # This ensures KeyMetrics shows the same SEO score as selected_solution_details
-            selected_solution = self.accessor.get_selected_solution_details()
-            if selected_solution and selected_solution.seo_scalability_score_refined is not None:
-                seo_potential_score = selected_solution.seo_scalability_score_refined
+            # Use enriched_solution parameter which has Stage 9.5 refinements already merged
+            seo_refined = getattr(enriched_solution, 'seo_scalability_score_refined', None) if enriched_solution else None
+            if seo_refined is not None:
+                seo_potential_score = seo_refined
             else:
                 seo_potential_score = score_map.get('seo_growth_potential')
 
@@ -1758,8 +1769,8 @@ It differentiates through {diff_text}.
                 raise ValueError("LLM narrative failed validation checks - output does not meet quality standards")
 
         except Exception as e:
-            logger.error(f"LLM narrative generation failed: {e}")
-            raise
+            logger.warning(f"LLM narrative generation failed (will use fallback): {e}")
+            return None
 
     def _validate_executive_narrative(
         self,
@@ -2299,15 +2310,15 @@ It differentiates through {diff_text}.
             raise
 
     # ==================================================================================
-    # Analytics & Visualization Generator (Phase 3 Enhancement)
+    # Analytics Generator (Phase 3 Enhancement)
     # ==================================================================================
 
-    def _generate_analytics_and_visualizations(self) -> tuple["MarketAnalytics | None", "SEOAnalytics | None", "CompetitiveAnalytics | None", "PainPointAnalytics | None", "VisualizationManifest | None"]:
+    def _generate_analytics(self) -> tuple["MarketAnalytics | None", "SEOAnalytics | None", "CompetitiveAnalytics | None", "PainPointAnalytics | None"]:
         """
-        Generate all analytics and visualizations (Python-only, no LLM).
+        Generate all analytics (Python-only, no LLM).
 
         Returns:
-            Tuple of (market_analytics, seo_analytics, competitive_analytics, pain_point_analytics, visualization_manifest)
+            Tuple of (market_analytics, seo_analytics, competitive_analytics, pain_point_analytics)
         """
 
         # Compute analytics
@@ -2316,10 +2327,7 @@ It differentiates through {diff_text}.
         competitive_analytics = self._compute_competitive_analytics()
         pain_point_analytics = self._compute_pain_point_analytics()
 
-        # Generate visualizations
-        viz_manifest = self._generate_visualizations()
-
-        return (market_analytics, seo_analytics, competitive_analytics, pain_point_analytics, viz_manifest)
+        return (market_analytics, seo_analytics, competitive_analytics, pain_point_analytics)
 
     def _compute_market_analytics(self) -> "MarketAnalytics | None":
         """Compute market opportunity analytics (Python-only)."""
@@ -2552,68 +2560,5 @@ It differentiates through {diff_text}.
 
         except Exception as e:
             logger.warning(f"Failed to compute pain point analytics: {e}")
-            return None
-
-    def _generate_visualizations(self) -> "VisualizationManifest | None":
-        """Generate all chart visualizations (Python-only)."""
-        try:
-            from datetime import datetime
-            from pathlib import Path
-
-            from ..models.analytics import VisualizationManifest
-            from ..report.visualizations import ChartGenerator
-
-            # Create output directory
-            output_dir = Path("output/visualizations")
-            generator = ChartGenerator(output_dir)
-
-            # Generate pain point matrix
-            pain_point_paths = None
-            if self.state.pain_point_analysis and self.state.pain_point_analysis.pain_points:
-                pain_point_paths = generator.generate_pain_point_matrix(
-                    self.state.pain_point_analysis.pain_points
-                )
-
-            # Generate keyword opportunity chart
-            keyword_paths = None
-            if self.state.seo_strategy_report:
-                # Get tier counts using accessor
-                counts = self.accessor.get_tier_keyword_counts()
-                tier_counts = {
-                    "Tier 0": counts["tier_0"],
-                    "Tier 1": counts["tier_1"],
-                    "Tier 2": counts["tier_2"],
-                    "Tier 3": counts["tier_3"],
-                    "Tier 4": counts["tier_4"]
-                }
-                keyword_paths = generator.generate_keyword_opportunity_chart(tier_counts)
-
-            # Generate competitive landscape
-            competitive_paths = None
-            selected_landscape = self.accessor.get_selected_landscape()
-            if selected_landscape and selected_landscape.competitors:
-                competitive_paths = generator.generate_competitive_landscape(
-                    selected_landscape.competitors
-                )
-
-            # Generate implementation timeline from GTM blueprint
-            implementation_paths = None
-            gtm_blueprint = self._generate_gtm_blueprint()
-            if gtm_blueprint and gtm_blueprint.first_30_days_playbook:
-                implementation_paths = generator.generate_implementation_timeline(
-                    gtm_blueprint.first_30_days_playbook
-                )
-
-            return VisualizationManifest(
-                pain_point_matrix_path=pain_point_paths[0] if pain_point_paths else None,
-                keyword_opportunity_path=keyword_paths[0] if keyword_paths else None,
-                competitive_landscape_path=competitive_paths[0] if competitive_paths else None,
-                implementation_timeline_path=implementation_paths[0] if implementation_paths else None,
-                charts_format="png",
-                generated_at=datetime.now().isoformat()
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to generate visualizations: {e}")
             return None
 

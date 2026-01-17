@@ -136,7 +136,7 @@
 			<span class="meta-divider">|</span>
 			<span class="meta-item">
 				<FileText class="meta-icon" />
-				{researchMetadata?.data_sources?.length ?? 0} sources
+				{researchMetadata?.top_subreddits?.length ?? 0} sources
 			</span>
 		</div>
 	</div>

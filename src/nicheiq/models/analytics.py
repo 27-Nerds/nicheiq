@@ -130,32 +130,3 @@ class PainPointAnalytics(BaseModel):
         description="Title of highest priority pain point"
     )
 
-class VisualizationManifest(BaseModel):
-    """Paths and metadata for generated visualizations."""
-
-    model_config = ConfigDict(extra='forbid')
-
-    pain_point_matrix_path: Optional[str] = Field(
-        default=None,
-        description="Path to pain point severity vs WTP scatter plot"
-    )
-    competitive_landscape_path: Optional[str] = Field(
-        default=None,
-        description="Path to competitive positioning chart"
-    )
-    keyword_opportunity_path: Optional[str] = Field(
-        default=None,
-        description="Path to keyword tier distribution chart"
-    )
-    implementation_timeline_path: Optional[str] = Field(
-        default=None,
-        description="Path to implementation roadmap chart"
-    )
-    charts_format: str = Field(
-        default="png",
-        description="Chart format: png, svg, or json (Plotly)"
-    )
-    generated_at: Optional[str] = Field(
-        default=None,
-        description="Timestamp when charts were generated"
-    )

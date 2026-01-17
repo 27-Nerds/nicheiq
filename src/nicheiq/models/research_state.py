@@ -12,7 +12,6 @@ from .analytics import (
     MarketAnalytics,
     PainPointAnalytics,
     SEOAnalytics,
-    VisualizationManifest,
 )
 from .competitor import CompetitiveAnalysisResult
 from .data_source import DataSourceResearchResult
@@ -421,10 +420,6 @@ class FinalReport(BaseModel):
         default=None,
         description="Pain point priority analytics: total count, high-priority count, quadrant distribution, average severity/WTP scores"
     )
-    visualization_manifest: Optional[VisualizationManifest] = Field(
-        default=None,
-        description="Paths to generated visualization charts: pain point matrix, competitive landscape, keyword opportunity, implementation timeline"
-    )
 
     # Data Quality & Pipeline Transparency (Phase 6)
     data_quality_summary: Optional[DataQualitySummary] = Field(
@@ -510,6 +505,10 @@ class FinalReport(BaseModel):
     # Competitive Section
     competitive_summary: str = Field(
         ..., description="Summary of competitive landscape and positioning opportunities"
+    )
+    competitive_analysis: Optional[CompetitiveAnalysisResult] = Field(
+        default=None,
+        description="Complete competitive analysis: solution landscapes, top opportunities, strategic recommendations (from Stage 7)"
     )
 
     # Market Validation

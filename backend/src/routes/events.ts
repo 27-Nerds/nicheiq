@@ -74,6 +74,8 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
   const initialData = formatJobResponse(job, {
     includeProgress: true,
     includeAssets: true,
+    includeCreatedAt: true,
+    includeAssetFlags: true,
     queueStats,
   });
   res.write(`data: ${JSON.stringify(initialData)}\n\n`);
@@ -140,6 +142,8 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
         const data = formatJobResponse(updatedJob, {
           includeProgress: true,
           includeAssets: true,
+          includeCreatedAt: true,
+          includeAssetFlags: true,
           queueStats: updatedQueueStats,
         });
         res.write(`data: ${JSON.stringify(data)}\n\n`);

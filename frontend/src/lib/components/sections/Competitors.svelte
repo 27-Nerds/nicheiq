@@ -29,9 +29,10 @@
 		analysis: CompetitiveAnalysis;
 		analytics: CompetitiveAnalytics;
 		landscapeMatrix?: CompetitiveLandscapeMatrix;
+		summary?: string;
 	}
 
-	let { profiles, analysis, analytics, landscapeMatrix }: Props = $props();
+	let { profiles, analysis, analytics, landscapeMatrix, summary }: Props = $props();
 
 	// Expandable sections state
 	let showOpportunities = $state(false);
@@ -148,6 +149,13 @@
 	{#if profiles.length > 0}
 		<div class="chart-card">
 			<CompetitorStrengthChart competitors={profiles} />
+		</div>
+	{/if}
+
+	<!-- Competitive Summary (if available) -->
+	{#if summary}
+		<div class="summary-card">
+			<p class="summary-text">{@html renderMarkdown(summary)}</p>
 		</div>
 	{/if}
 
@@ -606,6 +614,30 @@
 		border-radius: 0.75rem;
 		padding: 1.25rem;
 		margin-bottom: 1rem;
+	}
+
+	/* Summary Card */
+	.summary-card {
+		padding: 1rem 1.25rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		margin-bottom: 1rem;
+	}
+
+	.summary-text {
+		font-size: 0.9375rem;
+		color: var(--color-text-secondary);
+		line-height: 1.7;
+		margin: 0;
+	}
+
+	.summary-text :global(p) {
+		margin: 0 0 0.75rem;
+	}
+
+	.summary-text :global(p:last-child) {
+		margin-bottom: 0;
 	}
 
 	/* Expandable Sections */
