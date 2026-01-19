@@ -16,7 +16,7 @@ export const GET: RequestHandler = async ({ params, locals }) => {
 
   const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}`, {
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
+      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });
@@ -38,7 +38,7 @@ export const DELETE: RequestHandler = async ({ params, locals }) => {
   const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}`, {
     method: 'DELETE',
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
+      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });

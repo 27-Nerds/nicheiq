@@ -47,16 +47,17 @@
 <div class="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
   <div class="w-full max-w-md space-y-8">
     <div class="text-center">
-      <h1 class="text-3xl font-bold text-text-primary">Welcome back</h1>
-      <p class="mt-2 text-text-secondary">Sign in to your account to continue</p>
+      <h1 class="text-3xl font-display font-bold text-text-primary tracking-tight">Welcome back</h1>
+      <p class="mt-2 text-text-muted">Sign in to your account to continue</p>
     </div>
 
-    <div class="bg-bg-surface border border-border rounded-xl p-8 shadow-lg">
+    <div class="bg-bg-surface border border-border rounded-xl p-8 shadow-lg border-l-4 border-l-accent animate-fade-slide-in">
       <!-- OAuth Buttons -->
       <div class="space-y-3">
         <button
           onclick={() => handleOAuthLogin('google')}
-          class="w-full flex items-center justify-center gap-3 px-4 py-3 bg-bg-elevated hover:bg-bg-base border border-border rounded-lg transition-colors"
+          aria-label="Sign in with Google"
+          class="w-full flex items-center justify-center gap-3 px-4 py-3 bg-bg-elevated hover:bg-bg-hover border border-border hover:border-border-emphasis rounded-lg transition-colors"
         >
           <svg class="w-5 h-5" viewBox="0 0 24 24">
             <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -69,7 +70,8 @@
 
         <button
           onclick={() => handleOAuthLogin('github')}
-          class="w-full flex items-center justify-center gap-3 px-4 py-3 bg-bg-elevated hover:bg-bg-base border border-border rounded-lg transition-colors"
+          aria-label="Sign in with GitHub"
+          class="w-full flex items-center justify-center gap-3 px-4 py-3 bg-bg-elevated hover:bg-bg-hover border border-border hover:border-border-emphasis rounded-lg transition-colors"
         >
           <Github class="w-5 h-5" />
           <span class="text-text-primary font-medium">Continue with GitHub</span>
@@ -78,7 +80,7 @@
 
       <div class="relative my-6">
         <div class="absolute inset-0 flex items-center">
-          <div class="w-full border-t border-border"></div>
+          <div class="w-full h-px bg-gradient-to-r from-transparent via-border-emphasis to-transparent"></div>
         </div>
         <div class="relative flex justify-center text-sm">
           <span class="px-2 bg-bg-surface text-text-muted">Or continue with email</span>

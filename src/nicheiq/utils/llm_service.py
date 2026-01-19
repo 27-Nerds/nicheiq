@@ -96,6 +96,10 @@ def build_llm_kwargs(
             if param in extra_kwargs:
                 kwargs[param] = extra_kwargs.pop(param)
 
+    # Convert max_tokens to max_completion_tokens (OpenAI API change for newer models)
+    if "max_tokens" in extra_kwargs:
+        extra_kwargs["max_completion_tokens"] = extra_kwargs.pop("max_tokens")
+
     # Add remaining kwargs
     kwargs.update(extra_kwargs)
 

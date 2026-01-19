@@ -2,6 +2,20 @@
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
   import { SSE_BASE } from '$lib/api';
+  import Badge from '$lib/components/ui/Badge.svelte';
+  import {
+    Loader2,
+    AlertTriangle,
+    XCircle,
+    Clock,
+    CheckCircle,
+    X,
+    FileText,
+    ExternalLink,
+    Minus,
+    ArrowRight,
+    Activity
+  } from 'lucide-svelte';
 
   interface StageProgress {
     stageNumber: number;
@@ -115,13 +129,13 @@
     eventSource?.close();
   });
 
-  function getStatusColor(status: string): string {
+  function getStatusVariant(status: string): 'success' | 'warning' | 'error' | 'muted' | 'info' {
     switch (status) {
-      case 'COMPLETED': return 'text-success';
-      case 'RUNNING': return 'text-info';
-      case 'FAILED': return 'text-error';
-      case 'CANCELLED': return 'text-text-muted';
-      default: return 'text-warning';
+      case 'COMPLETED': return 'success';
+      case 'RUNNING': return 'info';
+      case 'FAILED': return 'error';
+      case 'CANCELLED': return 'muted';
+      default: return 'warning'; // PENDING, QUEUED
     }
   }
 
@@ -141,62 +155,56 @@
 <div class="py-8">
   <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
     {#if loading}
-      <div class="text-center py-12">
-        <svg class="animate-spin h-10 w-10 text-accent mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-        </svg>
+      <div class="text-center py-12 animate-fade-slide-in">
+        <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
         <p class="mt-4 text-text-secondary">Loading job status...</p>
       </div>
     {:else if error}
-      <div class="card p-8 text-center">
-        <svg class="h-12 w-12 text-error mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        </svg>
+      <div class="card p-8 text-center animate-fade-slide-in">
+        <div class="p-3 rounded-xl bg-error/10 border border-error/20 w-fit mx-auto">
+          <AlertTriangle class="w-8 h-8 text-error" />
+        </div>
         <h2 class="mt-4 text-xl font-semibold text-text-primary">Error</h2>
         <p class="mt-2 text-text-secondary">{error}</p>
         <a href="/jobs/new" class="mt-6 btn-primary inline-block">Start New Research</a>
       </div>
     {:else if job}
       <!-- Header -->
-      <div class="mb-8">
+      <div class="mb-8 animate-fade-slide-in">
         <div class="flex items-center justify-between">
-          <div>
-            <h1 class="text-2xl font-bold text-text-primary">Research Progress</h1>
-            <p class="mt-1 text-sm text-text-muted truncate max-w-xl" title={job.niche}>
-              {job.niche.length > 100 ? job.niche.substring(0, 100) + '...' : job.niche}
-            </p>
+          <div class="flex items-center gap-4">
+            <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
+              <Activity class="w-5 h-5 text-accent" />
+            </div>
+            <div>
+              <h1 class="text-2xl font-bold text-text-primary">Research Progress</h1>
+              <p class="mt-1 text-sm text-text-muted truncate max-w-xl" title={job.niche}>
+                {job.niche.length > 100 ? job.niche.substring(0, 100) + '...' : job.niche}
+              </p>
+            </div>
           </div>
           <div class="flex items-center gap-3">
             {#if ['QUEUED', 'PENDING', 'RUNNING'].includes(job.status)}
               <button
                 onclick={cancelJob}
                 disabled={cancelling}
-                class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium text-error border border-error/30 hover:bg-error/10 hover:border-error transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {#if cancelling}
-                  <svg class="animate-spin -ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 class="w-4 h-4 animate-spin" />
                   Cancelling...
                 {:else}
-                  <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  Cancel Research
+                  <X class="w-4 h-4" />
+                  Cancel
                 {/if}
               </button>
             {/if}
-            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {getStatusColor(job.status)} {job.status === 'COMPLETED' ? 'bg-success/20' : job.status === 'RUNNING' ? 'bg-info/20' : job.status === 'FAILED' ? 'bg-error/20' : job.status === 'CANCELLED' ? 'bg-bg-elevated' : 'bg-bg-elevated'}">
+            <Badge variant={getStatusVariant(job.status)}>
               {#if job.status === 'RUNNING'}
-                <svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
+                <Loader2 class="w-3.5 h-3.5 animate-spin" />
               {/if}
               {job.status}
-            </span>
+            </Badge>
           </div>
         </div>
         {#if cancelError}
@@ -206,13 +214,10 @@
 
       <!-- Queue Position (for QUEUED jobs) -->
       {#if job.status === 'QUEUED' || job.status === 'PENDING'}
-        <div class="card p-6 mb-6 bg-warning/5 border-warning/20">
+        <div class="card p-6 mb-6 bg-warning/5 border-warning/20 animate-fade-slide-in" style="animation-delay: 100ms;">
           <div class="flex items-center gap-4">
-            <div class="p-3 rounded-full bg-warning/10">
-              <svg class="w-6 h-6 text-warning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
+            <div class="p-3 rounded-full bg-warning/10 border border-warning/20">
+              <Clock class="w-6 h-6 text-warning" />
             </div>
             <div>
               <p class="font-semibold text-text-primary text-lg">
@@ -234,8 +239,8 @@
         </div>
       {:else}
         <!-- Progress Bar (for non-queued jobs) -->
-        <div class="card p-6 mb-6">
-          <div class="flex justify-between items-center mb-2">
+        <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 100ms;">
+          <div class="flex justify-between items-center mb-3">
             <span class="text-sm font-medium text-text-secondary">
               {job.currentStageName || 'Initializing...'}
             </span>
@@ -243,13 +248,13 @@
               {Math.round(job.progressPercent)}%
             </span>
           </div>
-          <div class="w-full bg-bg-elevated rounded-full h-3 overflow-hidden">
+          <div class="progress-bar h-3">
             <div
-              class="bg-accent h-3 rounded-full transition-all duration-500 ease-out"
+              class="progress-bar-fill {job.status === 'RUNNING' ? 'animate-shimmer' : ''}"
               style="width: {job.progressPercent}%"
             ></div>
           </div>
-          <p class="mt-2 text-sm text-text-muted">
+          <p class="mt-3 text-sm text-text-muted">
             {job.stagesCompleted} of {job.totalStages} stages completed
           </p>
         </div>
@@ -257,21 +262,17 @@
 
       <!-- Cancelled Message -->
       {#if job.status === 'CANCELLED'}
-        <div class="rounded-lg bg-bg-elevated p-4 mb-6 border border-border">
-          <div class="flex">
-            <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
-              </svg>
+        <div class="p-4 rounded-lg bg-bg-elevated border border-border mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
+          <div class="flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-text-muted/10 shrink-0">
+              <XCircle class="w-5 h-5 text-text-muted" />
             </div>
-            <div class="ml-3">
+            <div class="flex-1">
               <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
               <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credit has been refunded.</p>
-              <a href="/jobs/new" class="mt-3 inline-flex items-center text-sm font-medium text-accent hover:text-accent-hover">
+              <a href="/jobs/new" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
                 Start new research
-                <svg class="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                </svg>
+                <ArrowRight class="w-4 h-4" />
               </a>
             </div>
           </div>
@@ -280,14 +281,12 @@
 
       <!-- Error Message (only show for permanently failed jobs) -->
       {#if job.errorMessage && job.status === 'FAILED'}
-        <div class="rounded-lg bg-error/10 p-4 mb-6 border border-error/30">
-          <div class="flex">
-            <div class="flex-shrink-0">
-              <svg class="h-5 w-5 text-error" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
-              </svg>
+        <div class="p-4 rounded-lg bg-error/5 border border-error/20 mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
+          <div class="flex items-start gap-3">
+            <div class="p-2 rounded-lg bg-error/10 shrink-0">
+              <XCircle class="w-5 h-5 text-error" />
             </div>
-            <div class="ml-3">
+            <div class="flex-1">
               <h3 class="text-sm font-medium text-error">Error</h3>
               <p class="mt-1 text-sm text-error/80">{job.errorMessage}</p>
             </div>
@@ -296,50 +295,44 @@
       {/if}
 
       <!-- Stage List -->
-      <div class="card mb-6">
+      <div class="card mb-6 p-0 animate-fade-slide-in" style="animation-delay: 200ms;">
         <div class="px-6 py-4 border-b border-border">
           <h2 class="text-lg font-medium text-text-primary">Pipeline Stages</h2>
         </div>
         <ul class="divide-y divide-border">
-          {#each job.progress as stage}
-            <li class="px-6 py-4 flex items-center justify-between {stage.status === 'RUNNING' ? 'bg-info/10' : ''}">
-              <div class="flex items-center">
+          {#each job.progress as stage, index}
+            <li
+              class="px-6 py-4 flex items-center justify-between transition-colors hover:bg-bg-hover {stage.status === 'RUNNING' ? 'bg-info/5' : ''}"
+              style="animation-delay: {250 + index * 50}ms;"
+            >
+              <div class="flex items-center gap-3">
                 {#if stage.status === 'COMPLETED'}
-                  <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-success/20 text-success">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
-                    </svg>
+                  <span class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-success/15 border border-success/20 text-success">
+                    <CheckCircle class="w-4 h-4" />
                   </span>
                 {:else if stage.status === 'RUNNING'}
-                  <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-info/20 text-info">
-                    <svg class="animate-spin w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
+                  <span class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-info/15 border border-info/20 text-info">
+                    <Loader2 class="w-4 h-4 animate-spin" />
                   </span>
                 {:else if stage.status === 'FAILED'}
-                  <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-error/20 text-error">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                    </svg>
+                  <span class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-error/15 border border-error/20 text-error">
+                    <XCircle class="w-4 h-4" />
                   </span>
                 {:else if stage.status === 'SKIPPED'}
-                  <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-bg-elevated text-text-muted">
-                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                      <path fill-rule="evenodd" d="M3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
-                    </svg>
+                  <span class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-bg-elevated border border-border text-text-muted">
+                    <Minus class="w-4 h-4" />
                   </span>
                 {:else}
-                  <span class="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-bg-elevated text-text-muted">
-                    <span class="w-2 h-2 rounded-full bg-current"></span>
+                  <span class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-bg-elevated border border-border text-text-muted">
+                    <span class="w-2 h-2 rounded-full bg-current opacity-50"></span>
                   </span>
                 {/if}
-                <span class="ml-3 text-sm font-medium {stage.status === 'RUNNING' ? 'text-info' : 'text-text-primary'}">
+                <span class="text-sm font-medium {stage.status === 'RUNNING' ? 'text-info' : stage.status === 'COMPLETED' ? 'text-text-primary' : 'text-text-secondary'}">
                   {stage.stageName}
                 </span>
               </div>
               {#if stage.durationSeconds}
-                <span class="text-sm text-text-muted">
+                <span class="text-sm text-text-muted font-mono">
                   {formatDuration(stage.durationSeconds)}
                 </span>
               {/if}
@@ -350,19 +343,17 @@
 
       <!-- Download Links -->
       {#if job.status === 'COMPLETED' && job.assets.length > 0}
-        <div class="card p-6">
+        <div class="card p-6 animate-fade-slide-in" style="animation-delay: 300ms;">
           <h2 class="text-lg font-medium text-text-primary mb-4">Your Results</h2>
-          <div class="flex flex-wrap gap-6">
+          <div class="flex flex-wrap gap-4">
             {#each job.assets as asset}
               {#if asset.type === 'REPORT_JSON'}
                 <div class="flex flex-col items-start">
                   <a
                     href="/jobs/{job.id}/report"
-                    class="btn-primary inline-flex items-center"
+                    class="btn-primary"
                   >
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                    <FileText class="w-5 h-5" />
                     View Report
                   </a>
                   <a
@@ -378,11 +369,9 @@
                   <a
                     href={asset.url}
                     target="_blank"
-                    class="btn-secondary inline-flex items-center"
+                    class="btn-secondary"
                   >
-                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
+                    <ExternalLink class="w-5 h-5" />
                     View Landing Page
                   </a>
                   <a
@@ -400,14 +389,16 @@
       {/if}
 
       <!-- Meta Info -->
-      <div class="mt-6 text-center text-sm text-text-muted">
-        <p>Job ID: {job.id}</p>
-        {#if job.startedAt}
-          <p>Started: {new Date(job.startedAt).toLocaleString()}</p>
-        {/if}
-        {#if job.completedAt}
-          <p>Completed: {new Date(job.completedAt).toLocaleString()}</p>
-        {/if}
+      <div class="mt-6 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in" style="animation-delay: 350ms;">
+        <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-text-muted">
+          <span class="font-mono text-xs">ID: {job.id.substring(0, 8)}...</span>
+          {#if job.startedAt}
+            <span>Started: {new Date(job.startedAt).toLocaleString()}</span>
+          {/if}
+          {#if job.completedAt}
+            <span>Completed: {new Date(job.completedAt).toLocaleString()}</span>
+          {/if}
+        </div>
       </div>
     {/if}
   </div>

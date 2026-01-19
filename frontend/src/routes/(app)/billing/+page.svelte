@@ -166,6 +166,7 @@
     <button
       onclick={refreshData}
       disabled={isRefreshing}
+      aria-label="Refresh billing data"
       class="btn-secondary"
       title="Refresh"
     >
@@ -174,20 +175,22 @@
   </div>
 
   <!-- Balance Card -->
-  <div class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 mb-8">
+  <div class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 mb-8 border-l-4 border-l-accent">
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
       <div>
-        <p class="text-sm text-text-muted mb-1">Available Credits</p>
+        <p class="text-xs font-mono uppercase tracking-wider text-text-muted mb-2">Available Credits</p>
         <div class="flex items-baseline gap-2">
-          <span class="text-5xl font-bold text-text-primary">{billing.balance}</span>
+          <span class="text-5xl font-display font-bold text-text-primary">{billing.balance}</span>
           <span class="text-lg text-text-muted">credits</span>
         </div>
         <div class="flex items-center gap-4 mt-3 text-sm">
           <span class="text-text-muted">
-            <span class="font-medium text-success">{billing.totalPurchased}</span> earned
+            <span class="font-display font-bold text-success">{billing.totalPurchased}</span>
+            <span class="text-xs uppercase tracking-wide">earned</span>
           </span>
           <span class="text-text-muted">
-            <span class="font-medium text-warning">{billing.totalUsed}</span> used
+            <span class="font-display font-bold text-warning">{billing.totalUsed}</span>
+            <span class="text-xs uppercase tracking-wide">used</span>
           </span>
         </div>
       </div>
@@ -217,15 +220,13 @@
   <div class="grid gap-8 md:grid-cols-2">
     <!-- Promo Code Section -->
     <div class="card">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="p-2 rounded-lg bg-secondary/10 border border-secondary/20">
-          <Gift class="w-5 h-5 text-secondary" />
-        </div>
-        <div>
-          <h2 class="text-lg font-semibold text-text-primary">Redeem Promo Code</h2>
-          <p class="text-sm text-text-muted">Enter your code to receive credits</p>
-        </div>
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-1 h-6 rounded-full bg-secondary"></div>
+        <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+          Redeem Promo Code
+        </h2>
       </div>
+      <p class="text-sm text-text-muted mb-4">Enter your code to receive credits</p>
 
       <div class="space-y-4">
         <div>
@@ -272,15 +273,13 @@
 
     <!-- Recent Transactions -->
     <div class="card">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="p-2 rounded-lg bg-accent/10 border border-accent/20">
-          <History class="w-5 h-5 text-accent" />
-        </div>
-        <div>
-          <h2 class="text-lg font-semibold text-text-primary">Recent Activity</h2>
-          <p class="text-sm text-text-muted">Your latest transactions</p>
-        </div>
+      <div class="flex items-center gap-3 mb-2">
+        <div class="w-1 h-6 rounded-full bg-accent"></div>
+        <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+          Recent Activity
+        </h2>
       </div>
+      <p class="text-sm text-text-muted mb-4">Your latest transactions</p>
 
       {#if billing.recentTransactions.length === 0}
         <div class="text-center py-8 text-text-muted">
@@ -289,10 +288,13 @@
         </div>
       {:else}
         <div class="space-y-3">
-          {#each billing.recentTransactions as tx}
+          {#each billing.recentTransactions as tx, i}
             {@const txInfo = getTransactionIcon(tx.type)}
             {@const TxIcon = txInfo.icon}
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated/50 border border-border/50">
+            <div
+              class="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated/50 border border-border/50 animate-fade-slide-in"
+              style="animation-delay: {i * 50}ms"
+            >
               <div class="p-2 rounded-lg {txInfo.class}">
                 <TxIcon class="w-4 h-4" />
               </div>
@@ -321,8 +323,13 @@
     </div>
   </div>
 
+  <!-- Gradient Divider -->
+  <div class="my-8">
+    <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
+  </div>
+
   <!-- How It Works -->
-  <div class="mt-8 card bg-bg-elevated/50">
+  <div class="card bg-bg-elevated/50">
     <h3 class="text-lg font-semibold text-text-primary mb-4">How Credits Work</h3>
     <div class="grid gap-4 sm:grid-cols-3">
       <div class="flex items-start gap-3">

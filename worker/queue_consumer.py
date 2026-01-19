@@ -138,9 +138,8 @@ def process_job(job_data: dict) -> None:
         error_traceback = traceback.format_exc()
         logger.error(f"Job {job_id} failed: {error_msg}\n{error_traceback}")
 
-        # Publish failure to Redis
-        from .progress import publish_job_failed
-        publish_job_failed(job_id, error_msg)
+        # NOTE: publish_job_failed() is already called in run_research_job()
+        # with stage context - don't call it again here to avoid duplicate refunds
 
         # Notify backend job completed (failed)
         notify_job_completed(job_id)

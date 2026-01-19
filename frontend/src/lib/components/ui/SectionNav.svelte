@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { BarChart3, Sparkles, Target, Search, Users, DollarSign, Briefcase, Code, TrendingUp, Lightbulb, UserCheck, MessageSquare, FileText, Database, ClipboardList } from 'lucide-svelte';
+	import { BarChart3, Sparkles, Target, Search, Users, DollarSign, Briefcase, Code, TrendingUp, Lightbulb, UserCheck, MessageSquare, FileText, Database, ClipboardList, Check } from 'lucide-svelte';
 	import type { Report } from '$lib/types/report';
 
 	interface Section {
@@ -67,6 +67,12 @@
 	let activeSection = $state('executive');
 	let scrollProgress = $state(0);
 	let isOpen = $state(false);
+	let viewedSections = $state<Set<string>>(new Set(['executive']));
+
+	// Progress tracking
+	const viewedCount = $derived(viewedSections.size);
+	const totalCount = $derived(sections.length);
+	const progressPercentage = $derived(Math.round((viewedCount / totalCount) * 100));
 
 	function scrollToSection(id: string) {
 		const element = document.getElementById(id);
@@ -84,7 +90,7 @@
 			const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
 			scrollProgress = Math.min(window.scrollY / scrollHeight, 1);
 
-			// Find active section
+			// Find active section and track viewed sections
 			const sectionElements = sections
 				.map((s) => ({ id: s.id, el: document.getElementById(s.id) }))
 				.filter((s) => s.el !== null);
@@ -95,6 +101,10 @@
 					const rect = section.el.getBoundingClientRect();
 					if (rect.top <= 150) {
 						activeSection = section.id;
+						// Mark as viewed when scrolled into view
+						if (!viewedSections.has(section.id)) {
+							viewedSections = new Set([...viewedSections, section.id]);
+						}
 						break;
 					}
 				}
@@ -110,6 +120,12 @@
 
 <!-- Desktop Sidebar -->
 <nav class="section-nav-desktop">
+	<!-- Progress header -->
+	<div class="nav-progress-header">
+		<span class="nav-progress-text">{viewedCount}/{totalCount}</span>
+		<span class="nav-progress-label">sections</span>
+	</div>
+
 	<!-- Progress bar -->
 	<div class="nav-progress-track">
 		<div class="nav-progress-fill" style:height="{scrollProgress * 100}%"></div>
@@ -118,12 +134,20 @@
 	<div class="nav-items">
 		{#each sections as section}
 			{@const Icon = section.icon}
+			{@const isViewed = viewedSections.has(section.id)}
+			{@const isActive = activeSection === section.id}
 			<button
 				class="nav-item"
-				class:active={activeSection === section.id}
+				class:active={isActive}
+				class:viewed={isViewed && !isActive}
 				onclick={() => scrollToSection(section.id)}
 				title={section.label}
 			>
+				{#if isViewed && !isActive}
+					<div class="nav-item-check">
+						<Check class="w-3 h-3" />
+					</div>
+				{/if}
 				<Icon class="w-4 h-4" />
 				<span class="nav-item-label">{section.label}</span>
 			</button>
@@ -135,8 +159,11 @@
 <nav class="section-nav-mobile" class:open={isOpen}>
 	<!-- Toggle button -->
 	<button class="nav-mobile-toggle" onclick={() => (isOpen = !isOpen)}>
-		<div class="nav-mobile-progress">
-			<div class="nav-mobile-progress-fill" style:width="{scrollProgress * 100}%"></div>
+		<div class="nav-mobile-header">
+			<span class="nav-mobile-progress-count">{viewedCount}/{totalCount}</span>
+			<div class="nav-mobile-progress">
+				<div class="nav-mobile-progress-fill" style:width="{scrollProgress * 100}%"></div>
+			</div>
 		</div>
 		<span class="nav-mobile-current">
 			{sections.find((s) => s.id === activeSection)?.label || 'Navigate'}
@@ -148,12 +175,19 @@
 		<div class="nav-mobile-menu">
 			{#each sections as section}
 				{@const Icon = section.icon}
+				{@const isViewed = viewedSections.has(section.id)}
+				{@const isActive = activeSection === section.id}
 				<button
 					class="nav-mobile-item"
-					class:active={activeSection === section.id}
+					class:active={isActive}
+					class:viewed={isViewed && !isActive}
 					onclick={() => scrollToSection(section.id)}
 				>
-					<Icon class="w-4 h-4" />
+					{#if isViewed && !isActive}
+						<Check class="w-3 h-3 check-icon" />
+					{:else}
+						<Icon class="w-4 h-4" />
+					{/if}
 					<span>{section.label}</span>
 				</button>
 			{/each}
@@ -186,11 +220,32 @@
 		}
 	}
 
+	.nav-progress-header {
+		display: flex;
+		align-items: baseline;
+		gap: 0.25rem;
+		padding: 0 0.5rem 0.5rem;
+		margin-bottom: 0.25rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.nav-progress-text {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-accent);
+	}
+
+	.nav-progress-label {
+		font-size: 0.625rem;
+		color: var(--color-text-muted);
+	}
+
 	.nav-progress-track {
 		position: absolute;
 		left: 0;
-		top: 0;
-		bottom: 0;
+		top: 3.5rem;
+		bottom: 0.75rem;
 		width: 3px;
 		background: var(--color-bg-surface);
 		border-radius: 2px;
@@ -212,6 +267,7 @@
 	}
 
 	.nav-item {
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
@@ -234,7 +290,24 @@
 
 	.nav-item.active {
 		color: var(--color-accent);
-		background: rgba(229, 90, 40, 0.1);
+		background: var(--color-accent-subtle);
+	}
+
+	.nav-item.viewed {
+		color: var(--color-success-dark);
+	}
+
+	.nav-item-check {
+		position: absolute;
+		left: -0.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1rem;
+		height: 1rem;
+		background: rgba(34, 197, 94, 0.15);
+		border-radius: 50%;
+		color: var(--color-success);
 	}
 
 	.nav-item-label {
@@ -285,8 +358,21 @@
 		box-shadow: var(--shadow-md);
 	}
 
+	.nav-mobile-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.nav-mobile-progress-count {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		color: var(--color-accent);
+	}
+
 	.nav-mobile-progress {
-		width: 100px;
+		width: 60px;
 		height: 3px;
 		background: var(--color-bg-surface);
 		border-radius: 2px;
@@ -357,6 +443,14 @@
 
 	.nav-mobile-item.active {
 		color: var(--color-accent);
-		background: rgba(229, 90, 40, 0.1);
+		background: var(--color-accent-subtle);
+	}
+
+	.nav-mobile-item.viewed {
+		color: var(--color-success-dark);
+	}
+
+	.nav-mobile-item :global(.check-icon) {
+		color: var(--color-success);
 	}
 </style>

@@ -134,11 +134,16 @@
     {@render children()}
   </main>
 
-  <footer class="bg-bg-surface border-t border-border py-6">
+  <footer class="bg-bg-surface border-t border-border py-4">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <p class="text-center text-sm text-text-muted">
-        NicheIQ - AI-Powered Market Research
-      </p>
+      <div class="flex flex-col sm:flex-row items-center justify-between gap-2 text-sm text-text-muted">
+        <p>NicheIQ - AI-Powered Market Research</p>
+        <div class="flex items-center gap-4">
+          <a href="mailto:support@nicheiq.com" class="hover:text-accent transition-colors">Support</a>
+          <span class="text-border-emphasis">·</span>
+          <span>© {new Date().getFullYear()}</span>
+        </div>
+      </div>
     </div>
   </footer>
 </div>

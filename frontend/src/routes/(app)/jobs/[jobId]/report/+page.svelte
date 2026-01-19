@@ -32,6 +32,7 @@
 
 	// UI components
 	import SectionNav from '$lib/components/ui/SectionNav.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	// Header Summary
 	import HeaderSummary from '$lib/components/sections/HeaderSummary.svelte';
@@ -66,11 +67,13 @@
 
 {#if !report}
 	<div class="min-h-screen flex items-center justify-center">
-		<div class="text-center">
-			<h1 class="text-2xl font-bold text-text-primary mb-4">Report Not Found</h1>
-			<p class="text-text-secondary mb-6">The requested report could not be loaded.</p>
+		<EmptyState
+			icon={AlertTriangle}
+			title="Report Not Found"
+			description="The requested report could not be loaded. It may have been deleted or you may not have permission to view it."
+		>
 			<a href="/jobs/{jobId}" class="btn-primary">Back to Job Status</a>
-		</div>
+		</EmptyState>
 	</div>
 {:else}
 	<div class="report-layout">
@@ -100,132 +103,142 @@
 				feasibilityScore={report.selected_solution_details?.technical_feasibility_score}
 				soloDevScore={report.selected_solution_details?.solo_dev_feasibility}
 				confidenceScore={report.executive_dashboard?.confidence_score}
-				totalKeywords={report.seo_analytics?.total_keywords ?? report.seo_strategy_report?.prioritized_keywords?.length ?? 0}
+				totalKeywords={report.seo_analytics?.total_keywords ?? report.seo_strategy_report?.total_keywords_analyzed ?? 0}
 				totalSearchVolume={report.seo_analytics?.total_search_volume ?? report.seo_strategy_report?.total_monthly_volume ?? 0}
 			/>
 
-			<!-- DECISION GATEWAY (Go/No-Go) -->
-			{#if report.executive_dashboard}
-				<ExecutiveSummary
-					data={report.executive_dashboard}
-					executiveSummary={report.executive_summary}
-					refinementHighlights={report.refinement_highlights}
-					seoCalculationTransparency={report.seo_calculation_transparency}
-					trends={report.trend_longevity}
-				/>
-			{:else}
-				<section class="report-section">
-					<div class="warning-banner">
-						<AlertTriangle class="w-5 h-5 text-warning" />
-						<div>
-							<h3 class="font-semibold text-text-primary">Executive Summary Unavailable</h3>
-							<p class="text-sm text-text-secondary">
-								The executive dashboard could not be generated for this report.
-								Some data may be missing from earlier pipeline stages.
-							</p>
-						</div>
-					</div>
-				</section>
-			{/if}
+			<!-- PHASE 1: DECISION GATEWAY (Go/No-Go) -->
+			<div class="phase-section phase-decision">
+				<div class="phase-label">Decision Gateway</div>
+				{#if report.executive_dashboard}
+					<ExecutiveSummary
+						data={report.executive_dashboard}
+						executiveSummary={report.executive_summary}
+						refinementHighlights={report.refinement_highlights}
+						seoCalculationTransparency={report.seo_calculation_transparency}
+						trends={report.trend_longevity}
+					/>
+				{:else}
+					<section class="report-section">
+						<EmptyState
+							icon={AlertTriangle}
+							title="Executive Summary Unavailable"
+							description="The executive dashboard could not be generated for this report. Some data may be missing from earlier pipeline stages."
+							variant="warning"
+						/>
+					</section>
+				{/if}
 
-			{#if report.executive_dashboard}
-				<SolutionHero
-					solution={solutionDetails}
-					dashboard={report.executive_dashboard}
-					selectionRationale={report.selection_rationale || ''}
-					scores={report.selection_criteria_scores}
-				/>
-			{/if}
+				{#if report.executive_dashboard}
+					<SolutionHero
+						solution={solutionDetails}
+						dashboard={report.executive_dashboard}
+						selectionRationale={report.selection_rationale || ''}
+						scores={report.selection_criteria_scores}
+					/>
+				{/if}
+			</div>
 
-			<!-- CUSTOMER & PROBLEM (Who & Why) -->
-			{#if report.audience_mapping}
-				<AudienceSection data={report.audience_mapping} />
-			{/if}
+			<!-- PHASE 2: CUSTOMER & PROBLEM (Who & Why) -->
+			<div class="phase-section phase-customer">
+				<div class="phase-label">Customer & Problem</div>
+				{#if report.audience_mapping}
+					<AudienceSection data={report.audience_mapping} />
+				{/if}
 
-			{#if report.detailed_pain_points && report.detailed_pain_points.length > 0}
-				<PainAnalysis
-					painPoints={report.detailed_pain_points}
-					analytics={report.pain_point_analytics}
-					solution={solutionDetails}
-				/>
-			{/if}
+				{#if report.detailed_pain_points && report.detailed_pain_points.length > 0}
+					<PainAnalysis
+						painPoints={report.detailed_pain_points}
+						analytics={report.pain_point_analytics}
+						solution={solutionDetails}
+					/>
+				{/if}
 
-			{#if report.content_categorization || report.overall_competitive_insights}
-				<ContentInsights
-					contentCategorization={report.content_categorization}
-					overallCompetitiveInsights={report.overall_competitive_insights}
-				/>
-			{/if}
+				{#if report.content_categorization || report.overall_competitive_insights}
+					<ContentInsights
+						contentCategorization={report.content_categorization}
+						overallCompetitiveInsights={report.overall_competitive_insights}
+					/>
+				{/if}
+			</div>
 
-			<!-- MARKET VIABILITY (Is It Worth It?) -->
-			<MarketSizing data={report.market_sizing} />
+			<!-- PHASE 3: MARKET VIABILITY (Is It Worth It?) -->
+			<div class="phase-section phase-market">
+				<div class="phase-label">Market Viability</div>
+				<MarketSizing data={report.market_sizing} />
 
-			{#if report.pricing_strategy || report.traffic_monetization}
-				<MonetizationStrategy
-					pricingData={report.pricing_strategy}
-					trafficData={report.traffic_monetization}
-				/>
-			{/if}
+				{#if report.pricing_strategy || report.traffic_monetization}
+					<MonetizationStrategy
+						pricingData={report.pricing_strategy}
+						trafficData={report.traffic_monetization}
+					/>
+				{/if}
 
-			{#if report.competitive_analytics}
-				<Competitors
-					profiles={report.competitor_profiles || []}
-					analysis={report.competitive_analysis}
-					analytics={report.competitive_analytics}
-					landscapeMatrix={report.competitive_landscape_matrix}
-					summary={report.competitive_summary}
-				/>
-			{/if}
+				{#if report.competitive_analytics}
+					<Competitors
+						profiles={report.competitor_profiles || []}
+						analysis={report.competitive_analysis}
+						analytics={report.competitive_analytics}
+						landscapeMatrix={report.competitive_landscape_matrix}
+						summary={report.competitive_summary}
+					/>
+				{/if}
 
-			{#if report.trend_longevity}
-				<TrendSection data={report.trend_longevity} />
-			{/if}
+				{#if report.trend_longevity}
+					<TrendSection data={report.trend_longevity} />
+				{/if}
+			</div>
 
-			<!-- BUILD SPECIFICATION (How) -->
-			{#if solutionDetails}
-				<TechnicalBlueprint
-					solution={solutionDetails}
-					implementationOverview={report.solution_implementation_overview}
-					mvpScope={report.mvp_scope_definition}
-					userJourney={report.solution_user_journey}
-					dataInfrastructureRoadmap={report.data_infrastructure_roadmap}
-				/>
-			{/if}
+			<!-- PHASE 4: BUILD & EXECUTE -->
+			<div class="phase-section phase-build">
+				<div class="phase-label">Build & Execute</div>
+				{#if solutionDetails}
+					<TechnicalBlueprint
+						solution={solutionDetails}
+						implementationOverview={report.solution_implementation_overview}
+						mvpScope={report.mvp_scope_definition}
+						userJourney={report.solution_user_journey}
+						dataInfrastructureRoadmap={report.data_infrastructure_roadmap}
+					/>
+				{/if}
 
-			{#if report.seo_strategy_report}
-				<SEOKeywords
-					strategy={report.seo_strategy_report}
-					analytics={report.seo_analytics}
-				/>
-			{/if}
+				{#if report.seo_strategy_report}
+					<SEOKeywords
+						strategy={report.seo_strategy_report}
+						analytics={report.seo_analytics}
+					/>
+				{/if}
 
-			<!-- EXECUTION (Launch) -->
-			{#if report.go_to_market_blueprint}
-				<GTMPlaybook
-					gtmData={report.go_to_market_blueprint}
-					nextSteps={report.next_steps}
-				/>
-			{/if}
+				{#if report.go_to_market_blueprint}
+					<GTMPlaybook
+						gtmData={report.go_to_market_blueprint}
+						nextSteps={report.next_steps}
+					/>
+				{/if}
 
-			{#if report.data_source_research_full}
-				<DataInfrastructure data={report.data_source_research_full} />
-			{/if}
+				{#if report.data_source_research_full}
+					<DataInfrastructure data={report.data_source_research_full} />
+				{/if}
+			</div>
 
-			<!-- REFERENCE (Appendix) -->
-			{#if report.alternative_solutions && report.alternative_solutions.length > 0}
-				<AlternativesSection data={report.alternative_solutions} />
-			{/if}
+			<!-- PHASE 5: REFERENCE (Appendix) -->
+			<div class="phase-section phase-reference">
+				<div class="phase-label">Reference</div>
+				{#if report.alternative_solutions && report.alternative_solutions.length > 0}
+					<AlternativesSection data={report.alternative_solutions} />
+				{/if}
 
-			{#if report.evidence_appendix}
-				<EvidenceAppendix data={report.evidence_appendix} />
-			{/if}
+				{#if report.evidence_appendix}
+					<EvidenceAppendix data={report.evidence_appendix} />
+				{/if}
 
-			{#if report.research_metadata}
-				<ResearchMetadata
-					metadata={report.research_metadata}
-					overallConfidence={report.executive_dashboard?.confidence_score}
-				/>
-			{/if}
+				{#if report.research_metadata}
+					<ResearchMetadata
+						metadata={report.research_metadata}
+						overallConfidence={report.executive_dashboard?.confidence_score}
+					/>
+				{/if}
+			</div>
 		</main>
 	</div>
 {/if}
@@ -248,13 +261,91 @@
 		background: var(--color-bg-elevated);
 	}
 
-	.warning-banner {
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-		padding: 1.25rem;
-		background: var(--color-warning-bg, rgba(234, 179, 8, 0.1));
-		border: 1px solid var(--color-warning, #eab308);
-		border-radius: 0.5rem;
+	/* Phase Section Styling */
+	.phase-section {
+		position: relative;
+		padding: 2rem 0;
+		margin-bottom: 1rem;
+		border-radius: 1rem;
+		background: var(--phase-tint, transparent);
+	}
+
+	.phase-section::before {
+		content: '';
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 4px;
+		border-radius: 2px;
+		background: var(--phase-accent, var(--color-border));
+	}
+
+	.phase-label {
+		position: absolute;
+		top: 0;
+		left: 1rem;
+		transform: translateY(-50%);
+		padding: 0.25rem 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--phase-text, var(--color-text-muted));
+		background: var(--phase-label-bg, var(--color-bg-base));
+		border: 1px solid var(--phase-accent, var(--color-border));
+		border-radius: 2rem;
+	}
+
+	/* Phase-specific colors */
+	.phase-decision {
+		--phase-tint: rgba(229, 90, 40, 0.02);
+		--phase-accent: var(--color-accent);
+		--phase-text: var(--color-accent);
+		--phase-label-bg: rgba(229, 90, 40, 0.08);
+	}
+
+	.phase-customer {
+		--phase-tint: rgba(99, 102, 241, 0.02);
+		--phase-accent: var(--color-secondary);
+		--phase-text: var(--color-secondary);
+		--phase-label-bg: rgba(99, 102, 241, 0.08);
+	}
+
+	.phase-market {
+		--phase-tint: rgba(34, 197, 94, 0.02);
+		--phase-accent: var(--color-success);
+		--phase-text: var(--color-success-dark);
+		--phase-label-bg: rgba(34, 197, 94, 0.08);
+	}
+
+	.phase-build {
+		--phase-tint: rgba(139, 92, 246, 0.02);
+		--phase-accent: #8B5CF6;
+		--phase-text: #7C3AED;
+		--phase-label-bg: rgba(139, 92, 246, 0.08);
+	}
+
+	.phase-reference {
+		--phase-tint: rgba(100, 116, 139, 0.02);
+		--phase-accent: var(--color-text-muted);
+		--phase-text: var(--color-text-muted);
+		--phase-label-bg: rgba(100, 116, 139, 0.08);
+	}
+
+	@media (max-width: 768px) {
+		.phase-section {
+			padding: 1.5rem 0;
+		}
+
+		.phase-section::before {
+			width: 3px;
+		}
+
+		.phase-label {
+			font-size: 0.5625rem;
+			padding: 0.1875rem 0.5rem;
+		}
 	}
 </style>

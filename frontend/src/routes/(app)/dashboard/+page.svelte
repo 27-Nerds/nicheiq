@@ -15,9 +15,14 @@
     RotateCcw,
     ChevronDown,
     ChevronUp,
-    Globe,
     Sparkles,
-    X
+    X,
+    AlertCircle,
+    FolderOpen,
+    ShieldCheck,
+    RefreshCw,
+    MoreVertical,
+    Download
   } from 'lucide-svelte';
 
   interface Job {
@@ -35,6 +40,7 @@
     completedAt: string | null;
     hasReport: boolean;
     hasLandingPage: boolean;
+    creditRefunded?: boolean;
     // Queue position info (for QUEUED jobs)
     queuePosition?: number | null;
     aheadCount?: number;
@@ -130,6 +136,18 @@
 
   // Search input ref for keyboard shortcut
   let searchInput = $state<HTMLInputElement | null>(null);
+
+  // Overflow menu state for completed job cards
+  let openMenuId = $state<string | null>(null);
+
+  function toggleMenu(jobId: string, event: MouseEvent) {
+    event.stopPropagation();
+    openMenuId = openMenuId === jobId ? null : jobId;
+  }
+
+  function closeMenu() {
+    openMenuId = null;
+  }
 
   // Total filtered count for search results indicator
   const totalFilteredCount = $derived(
@@ -317,23 +335,161 @@
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
     });
   }
+
+  // Translate raw API errors into user-friendly messages
+  function getHumanReadableError(errorMessage: string | null): { summary: string; suggestion: string } {
+    if (!errorMessage) {
+      return { summary: 'Research failed', suggestion: 'Try again or contact support.' };
+    }
+
+    const error = errorMessage.toLowerCase();
+
+    // === USER-ACTIONABLE ERRORS ===
+
+    // Empty/invalid niche input
+    if (error.includes('cannot be empty') || error.includes('niche description')) {
+      return {
+        summary: 'Invalid niche',
+        suggestion: 'Please provide a more descriptive niche.'
+      };
+    }
+
+    // No social content found (common for obscure niches)
+    if (error.includes('no social content') || error.includes('no reddit') || error.includes('no twitter')) {
+      return {
+        summary: 'No discussions found',
+        suggestion: 'Try a broader or more popular niche topic.'
+      };
+    }
+
+    // Cancelled by user
+    if (error.includes('cancelled') || error.includes('canceled')) {
+      return {
+        summary: 'Cancelled',
+        suggestion: 'You cancelled this research.'
+      };
+    }
+
+    // Insufficient credits (shouldn't happen but handle gracefully)
+    if (error.includes('insufficient') && error.includes('credit')) {
+      return {
+        summary: 'Insufficient credits',
+        suggestion: 'Purchase more credits to continue researching.'
+      };
+    }
+
+    // Timeout errors
+    if (error.includes('timeout') || error.includes('timed out')) {
+      return {
+        summary: 'Research took too long',
+        suggestion: 'Try with a more specific niche.'
+      };
+    }
+
+    // No results found (generic)
+    if (error.includes('no results') || error.includes('not found') || error.includes('no data')) {
+      return {
+        summary: 'No data found for this niche',
+        suggestion: 'Try a different or broader niche.'
+      };
+    }
+
+    // === SYSTEM ERRORS (not user's fault) ===
+
+    // Quality gate failures (internal threshold not met)
+    if (error.includes('quality gate') || error.includes('confidence') || error.includes('threshold')) {
+      return {
+        summary: 'Quality check failed',
+        suggestion: "The research didn't meet quality standards. Your credit was refunded."
+      };
+    }
+
+    // Stage prerequisite errors (internal pipeline issue)
+    if (error.includes('requires') && error.includes('stage')) {
+      return {
+        summary: 'Pipeline error',
+        suggestion: 'An internal error occurred. Your credit was refunded.'
+      };
+    }
+
+    // DataForSEO API errors
+    if (error.includes('dataforseo')) {
+      return {
+        summary: 'SEO data unavailable',
+        suggestion: 'External SEO service issue. Try again later.'
+      };
+    }
+
+    // Rate limiting / quota errors
+    if (error.includes('rate limit') || error.includes('quota') || error.includes('429')) {
+      return {
+        summary: 'Service temporarily busy',
+        suggestion: 'Wait a few minutes and try again.'
+      };
+    }
+
+    // API configuration errors (400 errors)
+    if (error.includes('400') || error.includes('invalid_request') || error.includes('unsupported_parameter')) {
+      return {
+        summary: 'Configuration issue',
+        suggestion: 'This is on our end. Your credit was refunded automatically.'
+      };
+    }
+
+    // Authentication / API key errors
+    if (error.includes('401') || error.includes('403') || error.includes('authentication') || error.includes('api key')) {
+      return {
+        summary: 'Service connection issue',
+        suggestion: 'This is on our end. Try again later.'
+      };
+    }
+
+    // Server errors
+    if (error.includes('500') || error.includes('502') || error.includes('503') || error.includes('server')) {
+      return {
+        summary: 'Server error',
+        suggestion: 'Our systems are having issues. Try again later.'
+      };
+    }
+
+    // Default fallback
+    return {
+      summary: 'Research failed',
+      suggestion: 'Try again or contact support if the issue persists.'
+    };
+  }
 </script>
 
 <svelte:head>
   <title>Dashboard - NicheIQ</title>
 </svelte:head>
 
-<!-- Keyboard shortcut for search -->
-<svelte:window onkeydown={(e) => {
-  if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-    e.preventDefault();
-    searchInput?.focus();
-  }
-  if (e.key === 'Escape' && document.activeElement === searchInput) {
-    searchInput?.blur();
-    searchQuery = '';
-  }
-}} />
+<!-- Keyboard shortcut for search + close menus on outside click -->
+<svelte:window
+  onkeydown={(e) => {
+    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+      e.preventDefault();
+      searchInput?.focus();
+    }
+    if (e.key === 'Escape') {
+      if (openMenuId) {
+        closeMenu();
+      } else if (document.activeElement === searchInput) {
+        searchInput?.blur();
+        searchQuery = '';
+      }
+    }
+  }}
+  onclick={(e) => {
+    // Close overflow menu when clicking outside
+    if (openMenuId) {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-menu-container]')) {
+        closeMenu();
+      }
+    }
+  }}
+/>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <!-- Header -->
@@ -393,46 +549,36 @@
 
   <!-- Stats Overview -->
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-    <div class="card hover:shadow-md hover:border-accent/30 transition-all duration-200 cursor-default">
-      <div class="flex items-center gap-3">
-        <div class="p-2.5 rounded-xl bg-accent/8 border border-accent/15">
-          <svg class="w-5 h-5 text-accent" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 7V17C3 18.1046 3.89543 19 5 19H19C20.1046 19 21 18.1046 21 17V9C21 7.89543 20.1046 7 19 7H13L11 5H5C3.89543 5 3 5.89543 3 7Z" />
-            <path d="M8 13H16" />
-            <path d="M8 16H13" />
-          </svg>
+    <div class="card hover:shadow-md hover:border-accent/30 transition-all duration-200 cursor-default border-l-4 border-l-accent">
+      <div class="flex items-center gap-4">
+        <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
+          <FolderOpen class="w-5 h-5 text-accent" />
         </div>
         <div>
-          <p class="text-2xl font-bold text-text-primary">{jobs.length}</p>
-          <p class="text-sm text-text-muted">Total</p>
+          <p class="text-4xl font-display font-bold text-text-primary tracking-tight">{jobs.length}</p>
+          <p class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1">Total Research</p>
         </div>
       </div>
     </div>
-    <div class="card hover:shadow-md hover:border-emerald-500/30 transition-all duration-200 cursor-default">
-      <div class="flex items-center gap-3">
-        <div class="p-2.5 rounded-xl bg-emerald-500/8 border border-emerald-500/15">
-          <svg class="w-5 h-5 text-emerald-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22C12 22 20 18 20 12V5L12 2L4 5V12C4 18 12 22 12 22Z" />
-            <path d="M9 12L11 14L15 10" />
-          </svg>
+    <div class="card hover:shadow-md hover:border-success/30 transition-all duration-200 cursor-default border-l-4 border-l-success">
+      <div class="flex items-center gap-4">
+        <div class="p-2.5 rounded-xl bg-success/10 border border-success/20">
+          <ShieldCheck class="w-5 h-5 text-success" />
         </div>
         <div>
-          <p class="text-2xl font-bold text-text-primary">{completedCount}</p>
-          <p class="text-sm text-text-muted">Completed</p>
+          <p class="text-4xl font-display font-bold text-text-primary tracking-tight">{completedCount}</p>
+          <p class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1">Completed</p>
         </div>
       </div>
     </div>
-    <div class="card hover:shadow-md hover:border-amber-500/30 transition-all duration-200 cursor-default">
-      <div class="flex items-center gap-3">
-        <div class="p-2.5 rounded-xl bg-amber-500/8 border border-amber-500/15">
-          <svg class="w-5 h-5 text-amber-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C14.8273 3 17.35 4.30367 19 6.34267" />
-            <path d="M21 3V9H15" />
-          </svg>
+    <div class="card hover:shadow-md hover:border-warning/30 transition-all duration-200 cursor-default border-l-4 border-l-warning">
+      <div class="flex items-center gap-4">
+        <div class="p-2.5 rounded-xl bg-warning/10 border border-warning/20">
+          <RefreshCw class="w-5 h-5 text-warning" />
         </div>
         <div>
-          <p class="text-2xl font-bold text-text-primary">{inProgressCount}</p>
-          <p class="text-sm text-text-muted">In Progress</p>
+          <p class="text-4xl font-display font-bold text-text-primary tracking-tight">{inProgressCount}</p>
+          <p class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1">In Progress</p>
         </div>
       </div>
     </div>
@@ -447,19 +593,20 @@
           type="text"
           bind:this={searchInput}
           bind:value={searchQuery}
-          placeholder="Search research by niche..."
-          class="input pl-10 pr-20 w-full sm:w-80"
+          placeholder="Search research..."
+          class="input input-with-icon w-full sm:w-72"
         />
         <div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
           {#if searchQuery}
             <button
               onclick={() => searchQuery = ''}
+              aria-label="Clear search"
               class="text-text-muted hover:text-text-primary transition-colors"
             >
               <XCircle class="w-4 h-4" />
             </button>
           {:else}
-            <kbd class="hidden sm:inline-flex items-center px-1.5 py-0.5 text-xs font-mono text-text-muted bg-bg-surface border border-border rounded">/</kbd>
+            <kbd class="hidden sm:inline-flex items-center justify-center w-5 h-5 text-[10px] font-mono text-text-muted bg-bg-elevated border border-border rounded shadow-sm">/</kbd>
           {/if}
         </div>
       </div>
@@ -479,7 +626,7 @@
       <div class="absolute bottom-0 left-0 w-48 h-48 bg-secondary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
 
       <div class="relative">
-        <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 flex items-center justify-center shadow-lg">
+        <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 flex items-center justify-center shadow-lg animate-float">
           <Search class="w-10 h-10 text-accent" />
         </div>
         <h2 class="text-2xl font-bold text-text-primary mb-3">
@@ -516,92 +663,111 @@
       <!-- Active Jobs Section -->
       {#if filteredActiveJobs.length > 0}
         <div class="space-y-4">
-          <h2 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-warning/5 border border-warning/10">
-            <Activity class="w-4 h-4 text-warning" />
-            <span class="text-sm font-semibold text-text-primary">In Progress</span>
-            <span class="text-xs font-medium text-warning bg-warning/10 px-1.5 py-0.5 rounded">{filteredActiveJobs.length}</span>
-          </h2>
-          <div class="grid gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-1 h-6 rounded-full bg-warning"></div>
+            <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+              In Progress
+            </h2>
+            <span class="text-xs font-mono text-warning bg-warning/10 px-2 py-0.5 rounded-full">
+              {filteredActiveJobs.length}
+            </span>
+          </div>
+          <div class="grid gap-3">
             {#each filteredActiveJobs as job, i}
-              {@const statusBadge = getStatusBadge(job.status)}
-              {@const StatusIcon = statusBadge.icon}
               {@const isRunning = job.status.toUpperCase() === 'RUNNING'}
               {@const isPending = job.status.toUpperCase() === 'PENDING'}
               {@const isQueued = job.status.toUpperCase() === 'QUEUED'}
               {@const totalStages = job.totalStages || TOTAL_STAGES}
-              <div
-                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-4 animate-fade-slide-in {statusBadge.borderClass}"
-                style="animation-delay: {i * 50}ms"
-              >
-                <div class="flex flex-col sm:flex-row sm:items-start gap-4">
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3 mb-2">
-                      <h3 class="text-lg font-semibold text-text-primary truncate">
+
+              {#if isRunning}
+                <!-- RUNNING Card: Compact with inline progress -->
+                <div
+                  class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-warning animate-fade-slide-in"
+                  style="animation-delay: {i * 50}ms"
+                >
+                  <!-- Header row -->
+                  <div class="flex items-center justify-between gap-4 mb-3">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <span class="w-2 h-2 rounded-full bg-warning animate-pulse shrink-0"></span>
+                      <h3 class="text-base font-semibold text-text-primary truncate">
                         {formatNicheTitle(job.niche)}
                       </h3>
-                      <span class="badge {statusBadge.class} flex items-center gap-1.5 shrink-0">
-                        <StatusIcon class="w-3 h-3 {isRunning ? 'animate-spin' : ''}" />
-                        {statusBadge.text}
-                      </span>
                     </div>
-                    {#if isRunning && job.currentStageName}
-                      <div class="flex items-center gap-2 mb-3">
-                        <Activity class="w-4 h-4 text-accent" />
-                        <span class="text-sm text-accent font-medium">
-                          {job.currentStageName}
-                        </span>
-                      </div>
-                    {:else if isQueued || isPending}
-                      <p class="text-sm text-text-muted mb-3">
-                        {#if job.queuePosition === 1}
-                          <span class="text-accent font-medium">Next in queue</span>
-                        {:else if job.queuePosition && job.aheadCount}
-                          <span class="font-medium">{job.aheadCount} {job.aheadCount === 1 ? 'report' : 'reports'} ahead</span>
-                          <span class="text-text-muted/70"> &middot; Position {job.queuePosition}</span>
-                        {:else}
-                          <span class="italic">Waiting to start...</span>
-                        {/if}
-                      </p>
-                    {/if}
-                    {#if isRunning && job.progressPercent > 0}
-                      <div class="mb-3">
-                        <div class="progress-bar">
-                          <div class="progress-bar-fill animate-shimmer" style="width: {job.progressPercent}%"></div>
-                        </div>
-                        <p class="text-xs text-text-muted mt-1">{job.stagesCompleted} of {totalStages} stages completed</p>
-                      </div>
-                    {/if}
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
-                      <span class="flex items-center gap-1" title={formatDate(job.createdAt)}>
-                        <Clock class="w-3.5 h-3.5" />
-                        {formatRelativeDate(job.createdAt)}
+                    {#if job.startedAt}
+                      <span class="text-xs font-medium text-warning shrink-0">
+                        {formatElapsedTime(job.startedAt)}
                       </span>
-                      {#if isRunning && job.startedAt}
-                        <span class="text-accent font-medium">{formatElapsedTime(job.startedAt)}</span>
-                      {/if}
-                    </div>
+                    {/if}
                   </div>
-                  <div class="flex items-center gap-2 shrink-0">
-                    <button
-                      onclick={() => cancelJob(job)}
-                      disabled={cancellingJobs.has(job.id)}
-                      class="btn-secondary text-error border-error/30 hover:border-error hover:bg-error/5 flex items-center gap-1.5"
-                      title="Cancel this research"
-                    >
-                      {#if cancellingJobs.has(job.id)}
-                        <Loader2 class="w-4 h-4 animate-spin" />
-                      {:else}
-                        <X class="w-4 h-4" />
-                      {/if}
-                      Cancel
-                    </button>
-                    <a href="/jobs/{job.id}" class="btn-secondary">
-                      {isRunning ? 'View Progress' : 'View Status'}
-                      <ArrowRight class="w-4 h-4" />
-                    </a>
+
+                  <!-- Progress row -->
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-1.5 bg-bg-surface rounded-full overflow-hidden">
+                      <div class="h-full bg-warning rounded-full transition-all duration-300 animate-shimmer" style="width: {job.progressPercent}%"></div>
+                    </div>
+                    <span class="text-xs text-text-muted whitespace-nowrap">
+                      {job.currentStageName || 'Starting'} ({job.stagesCompleted}/{totalStages})
+                    </span>
+                    <div class="flex items-center gap-1 shrink-0">
+                      <button
+                        onclick={() => cancelJob(job)}
+                        disabled={cancellingJobs.has(job.id)}
+                        class="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/5 transition-colors"
+                        title="Cancel"
+                        aria-label="Cancel research"
+                      >
+                        {#if cancellingJobs.has(job.id)}
+                          <Loader2 class="w-4 h-4 animate-spin" />
+                        {:else}
+                          <X class="w-4 h-4" />
+                        {/if}
+                      </button>
+                      <a href="/jobs/{job.id}" class="btn-secondary text-sm py-1.5 px-3">
+                        View <ArrowRight class="w-3.5 h-3.5" />
+                      </a>
+                    </div>
                   </div>
                 </div>
-              </div>
+
+              {:else}
+                <!-- QUEUED/PENDING Card: Simplified single-row -->
+                <div
+                  class="card hover:shadow-md transition-all duration-200 border-l-2 border-l-secondary/60 bg-bg-surface/50 animate-fade-slide-in"
+                  style="animation-delay: {i * 50}ms"
+                >
+                  <div class="flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                      <Clock class="w-4 h-4 text-secondary shrink-0" />
+                      <h3 class="text-base font-medium text-text-secondary truncate">
+                        {formatNicheTitle(job.niche)}
+                      </h3>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                      <span class="text-xs text-text-muted">
+                        {#if job.queuePosition === 1}
+                          Next up
+                        {:else if job.queuePosition}
+                          Position {job.queuePosition}
+                        {:else}
+                          Queued
+                        {/if}
+                      </span>
+                      <button
+                        onclick={() => cancelJob(job)}
+                        disabled={cancellingJobs.has(job.id)}
+                        class="text-xs px-2 py-0.5 rounded text-text-muted bg-bg-surface border border-border/50 hover:text-error hover:bg-error/10 hover:border-error/20 transition-colors"
+                        aria-label="Cancel research"
+                      >
+                        {#if cancellingJobs.has(job.id)}
+                          <Loader2 class="w-3 h-3 animate-spin inline" />
+                        {:else}
+                          Cancel
+                        {/if}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              {/if}
             {/each}
           </div>
         </div>
@@ -610,43 +776,67 @@
       <!-- Failed Jobs Section -->
       {#if filteredFailedJobs.length > 0}
         {#if filteredActiveJobs.length > 0}
-          <div class="border-t border-border/50 pt-2"></div>
+          <div class="my-6">
+            <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
+          </div>
         {/if}
         <div class="space-y-4">
-          <h2 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-error/5 border border-error/10">
-            <XCircle class="w-4 h-4 text-error" />
-            <span class="text-sm font-semibold text-text-primary">Failed</span>
-            <span class="text-xs font-medium text-error bg-error/10 px-1.5 py-0.5 rounded">{filteredFailedJobs.length}</span>
-          </h2>
-          <div class="grid gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-1 h-6 rounded-full bg-error"></div>
+            <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+              Failed
+            </h2>
+            <span class="text-xs font-mono text-error bg-error/10 px-2 py-0.5 rounded-full">
+              {filteredFailedJobs.length}
+            </span>
+          </div>
+          <div class="grid gap-3">
             {#each filteredFailedJobs as job, i}
-              {@const statusBadge = getStatusBadge(job.status)}
-              {@const StatusIcon = statusBadge.icon}
+              {@const humanError = getHumanReadableError(job.errorMessage)}
               <div
-                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-4 animate-fade-slide-in {statusBadge.borderClass}"
+                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-error animate-fade-slide-in"
                 style="animation-delay: {i * 50}ms"
               >
                 <div class="flex flex-col sm:flex-row sm:items-start gap-4">
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3 mb-2">
-                      <h3 class="text-lg font-semibold text-text-primary truncate">
+                    <!-- Title Row with dot indicator -->
+                    <div class="flex items-center gap-2.5 mb-2">
+                      <span class="w-2 h-2 rounded-full bg-error shrink-0"></span>
+                      <h3 class="text-base font-semibold text-text-primary truncate">
                         {formatNicheTitle(job.niche)}
                       </h3>
-                      <span class="badge {statusBadge.class} flex items-center gap-1.5 shrink-0">
-                        <StatusIcon class="w-3 h-3" />
-                        {statusBadge.text}
-                      </span>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
-                      <span class="flex items-center gap-1" title={formatDate(job.createdAt)}>
-                        <Clock class="w-3.5 h-3.5" />
+                      <span class="text-xs text-text-muted ml-auto" title={formatDate(job.createdAt)}>
                         {formatRelativeDate(job.createdAt)}
                       </span>
-                      {#if job.errorMessage && job.status.toUpperCase() === 'FAILED'}
-                        <span class="text-error truncate max-w-xs" title={job.errorMessage}>{job.errorMessage}</span>
-                      {/if}
                     </div>
+
+                    <!-- User-Friendly Error Container -->
+                    {#if job.errorMessage}
+                      <div class="mt-3 p-3 rounded-lg bg-error/5 border border-error/10">
+                        <div class="flex items-start gap-2">
+                          <AlertCircle class="w-4 h-4 text-error shrink-0 mt-0.5" />
+                          <div class="flex-1">
+                            <p class="text-sm font-medium text-error">
+                              {humanError.summary}
+                            </p>
+                            <p class="text-xs text-text-muted mt-0.5">
+                              {humanError.suggestion}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    {/if}
+
+                    <!-- Credit Refund Indicator -->
+                    {#if job.creditRefunded}
+                      <div class="flex items-center gap-1.5 mt-2">
+                        <CheckCircle class="w-3.5 h-3.5 text-success" />
+                        <span class="text-xs text-success font-medium">Credit refunded</span>
+                      </div>
+                    {/if}
                   </div>
+
+                  <!-- Action Buttons -->
                   <div class="flex items-center gap-2 shrink-0">
                     <button
                       onclick={() => retryJob(job)}
@@ -657,7 +847,7 @@
                       <RotateCcw class="w-4 h-4 {retryingJobs.has(job.id) ? 'animate-spin' : ''}" />
                       {retryingJobs.has(job.id) ? 'Retrying...' : 'Retry'}
                     </button>
-                    <a href="/jobs/{job.id}" class="btn-secondary text-error border-error/30 hover:border-error hover:bg-error/5">
+                    <a href="/jobs/{job.id}" class="btn-secondary">
                       Details
                       <ArrowRight class="w-4 h-4" />
                     </a>
@@ -672,86 +862,86 @@
       <!-- Completed Jobs Section -->
       {#if filteredCompletedJobs.length > 0}
         {#if filteredActiveJobs.length > 0 || filteredFailedJobs.length > 0}
-          <div class="border-t border-border/50 pt-2"></div>
+          <div class="my-6">
+            <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
+          </div>
         {/if}
         <div class="space-y-4">
-          <h2 class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-success/5 border border-success/10">
-            <CheckCircle class="w-4 h-4 text-success" />
-            <span class="text-sm font-semibold text-text-primary">Completed</span>
-            <span class="text-xs font-medium text-success bg-success/10 px-1.5 py-0.5 rounded">{filteredCompletedJobs.length}</span>
-          </h2>
-          <div class="grid gap-4">
+          <div class="flex items-center gap-3">
+            <div class="w-1 h-6 rounded-full bg-success"></div>
+            <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+              Completed
+            </h2>
+            <span class="text-xs font-mono text-success bg-success/10 px-2 py-0.5 rounded-full">
+              {filteredCompletedJobs.length}
+            </span>
+          </div>
+          <div class="grid gap-3">
             {#each filteredVisibleCompleted as job, i}
-              {@const statusBadge = getStatusBadge(job.status)}
-              {@const StatusIcon = statusBadge.icon}
               <div
-                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-4 animate-fade-slide-in {statusBadge.borderClass}"
+                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-success animate-fade-slide-in"
                 style="animation-delay: {i * 50}ms"
               >
-                <div class="flex flex-col sm:flex-row sm:items-start gap-4">
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-3 mb-2">
-                      <h3 class="text-lg font-semibold text-text-primary truncate">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <!-- Left: Title + timestamp -->
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2.5">
+                      <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
+                      <h3 class="text-base font-semibold text-text-primary truncate">
                         {formatNicheTitle(job.niche)}
                       </h3>
-                      <span class="badge {statusBadge.class} flex items-center gap-1.5 shrink-0">
-                        <StatusIcon class="w-3 h-3" />
-                        {statusBadge.text}
-                      </span>
-                      {#if job.hasLandingPage}
-                        <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-secondary/10 text-secondary border border-secondary/20" title="Landing page available">
-                          <Globe class="w-3 h-3" />
-                        </span>
-                      {/if}
                     </div>
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
-                      <span class="flex items-center gap-1" title={formatDate(job.createdAt)}>
-                        <Clock class="w-3.5 h-3.5" />
-                        {formatRelativeDate(job.createdAt)}
-                      </span>
-                      {#if job.completedAt}
-                        <span class="text-success">
-                          Completed {formatRelativeDate(job.completedAt)}
-                        </span>
-                      {/if}
-                    </div>
+                    <p class="text-xs text-text-muted mt-1 ml-[18px]">
+                      Completed {formatRelativeDate(job.completedAt || job.createdAt)}
+                    </p>
                   </div>
-                  <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0 w-full sm:w-auto">
-                    <!-- Report actions -->
-                    <div class="flex flex-col items-center">
-                      <a href="/jobs/{job.id}/report" class="btn-primary justify-center w-full">
-                        View Report
-                        <ArrowRight class="w-4 h-4" />
-                      </a>
-                      <a
-                        href="/api/jobs/{job.id}/reportjson"
-                        download
-                        class="mt-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
-                      >
-                        Download JSON
-                      </a>
-                    </div>
-                    <!-- Landing page actions -->
+
+                  <!-- Right: Actions -->
+                  <div class="flex items-center gap-2 shrink-0">
+                    <a href="/jobs/{job.id}/report" class="btn-primary text-sm py-2 px-4">
+                      View Report
+                    </a>
                     {#if job.hasLandingPage}
-                      <div class="flex flex-col items-center">
-                        <a
-                          href="/api/jobs/{job.id}/landingpage"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="btn-secondary justify-center w-full"
-                        >
-                          Landing Page
-                          <ExternalLink class="w-4 h-4" />
-                        </a>
-                        <a
-                          href="/api/jobs/{job.id}/landingpage?download=true"
-                          download
-                          class="mt-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
-                        >
-                          Download HTML
-                        </a>
-                      </div>
+                      <a
+                        href="/api/jobs/{job.id}/landingpage"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn-secondary text-sm py-2 px-4"
+                      >
+                        Landing Page
+                        <ExternalLink class="w-3.5 h-3.5" />
+                      </a>
                     {/if}
+                    <!-- Overflow menu for downloads -->
+                    <div class="relative" data-menu-container>
+                      <button
+                        onclick={(e) => toggleMenu(job.id, e)}
+                        class="p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                        aria-label="More options"
+                      >
+                        <MoreVertical class="w-4 h-4" />
+                      </button>
+                      {#if openMenuId === job.id}
+                        <div class="absolute right-0 top-full mt-1 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-10">
+                          <a
+                            href="/api/jobs/{job.id}/reportjson"
+                            download
+                            class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+                          >
+                            <Download class="w-4 h-4" /> Export JSON
+                          </a>
+                          {#if job.hasLandingPage}
+                            <a
+                              href="/api/jobs/{job.id}/landingpage?download=true"
+                              download
+                              class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
+                            >
+                              <Download class="w-4 h-4" /> Export HTML
+                            </a>
+                          {/if}
+                        </div>
+                      {/if}
+                    </div>
                   </div>
                 </div>
               </div>

@@ -22,7 +22,7 @@ export const GET: RequestHandler = async ({ locals, url }) => {
     {
       method: 'GET',
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
       },
     }

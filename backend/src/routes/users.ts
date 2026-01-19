@@ -34,6 +34,10 @@ usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedR
       include: {
         progress: true,
         assets: true,
+        creditTransactions: {
+          where: { type: 'REFUND' },
+          select: { id: true, amount: true },
+        },
       },
     });
 

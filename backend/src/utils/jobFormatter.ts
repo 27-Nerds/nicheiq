@@ -3,6 +3,7 @@ import { Job, JobProgress, JobAsset } from '@prisma/client';
 type JobWithRelations = Job & {
   progress: JobProgress[];
   assets: JobAsset[];
+  creditTransactions?: { id: string; amount: number }[];
 };
 
 interface FormatOptions {
@@ -39,6 +40,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
   if (options.includeAssetFlags) {
     result.hasReport = job.assets.some(a => a.assetType === 'REPORT_JSON');
     result.hasLandingPage = job.assets.some(a => a.assetType === 'LANDING_PAGE');
+    result.creditRefunded = (job.creditTransactions?.length ?? 0) > 0;
   }
 
   if (options.queueStats) {

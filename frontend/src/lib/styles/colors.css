@@ -1,0 +1,159 @@
+/* ========================================
+   NicheIQ Color System
+   Unified Light Theme with Orange (#E55A28) Accent
+   ======================================== */
+
+:root {
+	/* ========================================
+	   Background Colors
+	   Clean, professional light theme
+	   ======================================== */
+	--color-bg-base: #FAFAFA;
+	--color-bg-elevated: #FFFFFF;
+	--color-bg-surface: #F5F5F5;
+	--color-bg-hover: #EBEBEB;
+	--color-bg-subtle: #F0F0F0;
+
+	/* ========================================
+	   Text Colors
+	   Dark on light for readability
+	   ======================================== */
+	--color-text-primary: #18181B;
+	--color-text-secondary: #52525B;
+	--color-text-muted: #71717A;      /* WCAG AA compliant */
+	--color-text-inverse: #FAFAFA;
+
+	/* ========================================
+	   Primary Accent - Warm Orange
+	   Brand color used for CTAs, links, highlights
+	   ======================================== */
+	--color-accent: #E55A28;
+	--color-accent-hover: #CC4E22;
+	--color-accent-light: #F07850;
+	--color-accent-dark: #B84420;
+	--color-accent-subtle: rgba(229, 90, 40, 0.08);
+	--color-accent-glow: rgba(229, 90, 40, 0.15);
+	--color-accent-glow-strong: rgba(229, 90, 40, 0.3);
+
+	/* ========================================
+	   Secondary - Indigo
+	   Used for secondary actions, info states
+	   ======================================== */
+	--color-secondary: #6366F1;
+	--color-secondary-light: #818CF8;
+	--color-secondary-dark: #4F46E5;
+	--color-secondary-subtle: rgba(99, 102, 241, 0.08);
+
+	/* ========================================
+	   Semantic Colors
+	   Success, Warning, Error states
+	   ======================================== */
+	/* Success - Green */
+	--color-success: #22C55E;
+	--color-success-dark: #16A34A;
+	--color-success-light: #34D399;
+	--color-success-subtle: rgba(34, 197, 94, 0.1);
+
+	/* Warning - Amber */
+	--color-warning: #F59E0B;
+	--color-warning-dark: #B45309;
+	--color-warning-light: #FCD34D;
+	--color-warning-subtle: rgba(245, 158, 11, 0.08);
+
+	/* Error - Red */
+	--color-error: #EF4444;
+	--color-error-dark: #DC2626;
+	--color-error-light: #F87171;
+	--color-error-subtle: rgba(239, 68, 68, 0.06);
+
+	/* Info - Blue */
+	--color-info: #3B82F6;
+	--color-info-dark: #2563EB;
+	--color-info-light: #60A5FA;
+	--color-info-subtle: rgba(59, 130, 246, 0.08);
+
+	/* ========================================
+	   Border Colors
+	   Subtle, professional borders
+	   ======================================== */
+	--color-border: rgba(0, 0, 0, 0.07);
+	--color-border-emphasis: rgba(0, 0, 0, 0.12);
+	--color-border-accent: rgba(229, 90, 40, 0.3);
+	--color-border-success: rgba(34, 197, 94, 0.3);
+	--color-border-warning: rgba(245, 158, 11, 0.2);
+	--color-border-error: rgba(239, 68, 68, 0.2);
+
+	/* ========================================
+	   Shadow Colors
+	   Soft, professional shadows
+	   ======================================== */
+	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+	--shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+	--shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+	--shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.15);
+	--shadow-glow: 0 0 20px rgba(229, 90, 40, 0.15);
+	--shadow-glow-lg: 0 0 40px rgba(229, 90, 40, 0.2);
+	--shadow-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+
+	/* ========================================
+	   Data Visualization Colors
+	   Consistent palette for charts/graphs
+	   ======================================== */
+	--viz-cat-1: #E55A28;    /* Primary accent */
+	--viz-cat-2: #6366F1;    /* Secondary/Indigo */
+	--viz-cat-3: #F59E0B;    /* Warning/Amber */
+	--viz-cat-4: #8B5CF6;    /* Purple */
+	--viz-cat-5: #64748B;    /* Slate/Neutral */
+	--viz-cat-6: #22C55E;    /* Success/Green */
+
+	/* ========================================
+	   Tier Colors
+	   Used for keyword tiers, priority levels
+	   ======================================== */
+	--tier-0-color: #E55A28;
+	--tier-0-bg: rgba(229, 90, 40, 0.1);
+	--tier-0-border: rgba(229, 90, 40, 0.3);
+
+	--tier-1-color: #3B82F6;
+	--tier-1-bg: rgba(59, 130, 246, 0.1);
+	--tier-1-border: rgba(59, 130, 246, 0.3);
+
+	--tier-2-color: #F59E0B;
+	--tier-2-bg: rgba(245, 158, 11, 0.1);
+	--tier-2-border: rgba(245, 158, 11, 0.3);
+
+	--tier-3-color: #8B5CF6;
+	--tier-3-bg: rgba(139, 92, 246, 0.1);
+	--tier-3-border: rgba(139, 92, 246, 0.3);
+
+	--tier-4-color: #71717A;
+	--tier-4-bg: rgba(113, 113, 122, 0.1);
+	--tier-4-border: rgba(113, 113, 122, 0.3);
+
+	/* ========================================
+	   Quadrant Backgrounds
+	   Used for matrix/quadrant charts
+	   ======================================== */
+	--quadrant-high-high: rgba(229, 90, 40, 0.08);
+	--quadrant-high-low: rgba(239, 68, 68, 0.06);
+	--quadrant-low-high: rgba(99, 102, 241, 0.06);
+	--quadrant-low-low: rgba(100, 116, 139, 0.04);
+
+	/* ========================================
+	   Funnel Stage Colors
+	   TAM/SAM/SOM visualization
+	   ======================================== */
+	--funnel-tam: rgba(229, 90, 40, 0.1);
+	--funnel-sam: rgba(99, 102, 241, 0.1);
+	--funnel-som: rgba(245, 158, 11, 0.1);
+	--funnel-target: rgba(139, 92, 246, 0.1);
+
+	/* ========================================
+	   Landing Page Specific Colors
+	   Extended palette for landing pages
+	   ======================================== */
+	--color-landing-copper: #C87533;
+	--color-landing-copper-light: #E8A066;
+	--color-landing-sand: #F5F2ED;
+	--color-landing-paper: #FFFFFF;
+}

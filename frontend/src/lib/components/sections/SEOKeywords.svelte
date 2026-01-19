@@ -55,6 +55,12 @@
 	let showPositioning = $state(false);
 	let showConclusion = $state(false);
 
+	// Keyword search and display state
+	let searchQuery = $state('');
+	let showAllKeywords = $state(false);
+	const INITIAL_KEYWORD_LIMIT = 15;
+	const EXPANDED_KEYWORD_LIMIT = 50;
+
 	// Combine all keywords with tier info
 	const allKeywords = $derived(
 		[
@@ -64,11 +70,32 @@
 		].sort((a, b) => b.search_volume - a.search_volume)
 	);
 
+	// Top keywords for preview (always visible)
+	const previewKeywords = $derived({
+		tier0: allKeywords.filter(k => k.tier === 0).slice(0, 3),
+		tier1: allKeywords.filter(k => k.tier === 1).slice(0, 3),
+		tier2: allKeywords.filter(k => k.tier === 2).slice(0, 3)
+	});
+
 	function getFilteredKeywords() {
-		if (activeTab === 'all') return allKeywords;
-		const tierNum = parseInt(activeTab.replace('tier', ''));
-		return allKeywords.filter((k) => k.tier === tierNum);
+		let keywords = allKeywords;
+
+		// Filter by tab
+		if (activeTab !== 'all') {
+			const tierNum = parseInt(activeTab.replace('tier', ''));
+			keywords = keywords.filter((k) => k.tier === tierNum);
+		}
+
+		// Filter by search query
+		if (searchQuery.trim()) {
+			const query = searchQuery.toLowerCase().trim();
+			keywords = keywords.filter((k) => k.keyword.toLowerCase().includes(query));
+		}
+
+		return keywords;
 	}
+
+	const displayLimit = $derived(showAllKeywords ? EXPANDED_KEYWORD_LIMIT : INITIAL_KEYWORD_LIMIT);
 
 	function getDifficultyColor(difficulty: number): string {
 		if (difficulty < 0.4) return 'var(--color-success)';
@@ -175,6 +202,58 @@
 		/>
 	</div>
 
+	<!-- Keyword Preview (Always Visible) -->
+	<div class="keyword-preview-card">
+		<div class="preview-header">
+			<span class="preview-title">Top Keywords by Tier</span>
+			<button class="preview-expand-btn" onclick={() => (showKeywords = true)}>
+				View All {allKeywords.length}
+				<ChevronRight class="w-4 h-4" />
+			</button>
+		</div>
+		<div class="preview-tiers">
+			{#if previewKeywords.tier0.length > 0}
+				<div class="preview-tier">
+					<span class="tier-label success">Premium</span>
+					<div class="tier-pills">
+						{#each previewKeywords.tier0 as kw}
+							<span class="keyword-pill success">{kw.keyword}</span>
+						{/each}
+						{#if (strategy.tier_0_keywords?.length || 0) > 3}
+							<span class="pill-more">+{(strategy.tier_0_keywords?.length || 0) - 3}</span>
+						{/if}
+					</div>
+				</div>
+			{/if}
+			{#if previewKeywords.tier1.length > 0}
+				<div class="preview-tier">
+					<span class="tier-label accent">Quick Win</span>
+					<div class="tier-pills">
+						{#each previewKeywords.tier1 as kw}
+							<span class="keyword-pill accent">{kw.keyword}</span>
+						{/each}
+						{#if (strategy.tier_1_keywords?.length || 0) > 3}
+							<span class="pill-more">+{(strategy.tier_1_keywords?.length || 0) - 3}</span>
+						{/if}
+					</div>
+				</div>
+			{/if}
+			{#if previewKeywords.tier2.length > 0}
+				<div class="preview-tier">
+					<span class="tier-label muted">High Value</span>
+					<div class="tier-pills">
+						{#each previewKeywords.tier2 as kw}
+							<span class="keyword-pill muted">{kw.keyword}</span>
+						{/each}
+						{#if (strategy.tier_2_keywords?.length || 0) > 3}
+							<span class="pill-more">+{(strategy.tier_2_keywords?.length || 0) - 3}</span>
+						{/if}
+					</div>
+				</div>
+			{/if}
+		</div>
+	</div>
+
 	<!-- Expandable: Keywords Table -->
 	<div class="expandable-section">
 		<button class="expandable-header" onclick={() => (showKeywords = !showKeywords)}>
@@ -187,45 +266,70 @@
 		</button>
 		{#if showKeywords}
 			<div class="expandable-content">
-				<!-- Tab Navigation -->
-				<div class="tabs-container">
-					<button
-						class="tab-button"
-						class:active={activeTab === 'all'}
-						onclick={() => (activeTab = 'all')}
-						type="button"
-					>
-						<span class="tab-label">All</span>
-						<span class="tab-count">{allKeywords.length}</span>
-					</button>
-					<button
-						class="tab-button"
-						class:active={activeTab === 'tier0'}
-						onclick={() => (activeTab = 'tier0')}
-						type="button"
-					>
-						<span class="tab-label">Premium</span>
-						<span class="tab-count success">{strategy.tier_0_keywords?.length || 0}</span>
-					</button>
-					<button
-						class="tab-button"
-						class:active={activeTab === 'tier1'}
-						onclick={() => (activeTab = 'tier1')}
-						type="button"
-					>
-						<span class="tab-label">Quick Win</span>
-						<span class="tab-count accent">{strategy.tier_1_keywords?.length || 0}</span>
-					</button>
-					<button
-						class="tab-button"
-						class:active={activeTab === 'tier2'}
-						onclick={() => (activeTab = 'tier2')}
-						type="button"
-					>
-						<span class="tab-label">High Value</span>
-						<span class="tab-count">{strategy.tier_2_keywords?.length || 0}</span>
-					</button>
+				<!-- Search and Tabs Row -->
+				<div class="keyword-controls">
+					<div class="search-input-wrapper">
+						<Search class="search-icon" />
+						<input
+							type="text"
+							class="search-input"
+							placeholder="Search keywords..."
+							bind:value={searchQuery}
+						/>
+						{#if searchQuery}
+							<button class="search-clear" onclick={() => (searchQuery = '')}>
+								&times;
+							</button>
+						{/if}
+					</div>
+
+					<!-- Tab Navigation -->
+					<div class="tabs-container">
+						<button
+							class="tab-button"
+							class:active={activeTab === 'all'}
+							onclick={() => (activeTab = 'all')}
+							type="button"
+						>
+							<span class="tab-label">All</span>
+							<span class="tab-count">{allKeywords.length}</span>
+						</button>
+						<button
+							class="tab-button"
+							class:active={activeTab === 'tier0'}
+							onclick={() => (activeTab = 'tier0')}
+							type="button"
+						>
+							<span class="tab-label">Premium</span>
+							<span class="tab-count success">{strategy.tier_0_keywords?.length || 0}</span>
+						</button>
+						<button
+							class="tab-button"
+							class:active={activeTab === 'tier1'}
+							onclick={() => (activeTab = 'tier1')}
+							type="button"
+						>
+							<span class="tab-label">Quick Win</span>
+							<span class="tab-count accent">{strategy.tier_1_keywords?.length || 0}</span>
+						</button>
+						<button
+							class="tab-button"
+							class:active={activeTab === 'tier2'}
+							onclick={() => (activeTab = 'tier2')}
+							type="button"
+						>
+							<span class="tab-label">High Value</span>
+							<span class="tab-count">{strategy.tier_2_keywords?.length || 0}</span>
+						</button>
+					</div>
 				</div>
+
+				<!-- Search results count -->
+				{#if searchQuery}
+					<p class="search-results-count">
+						Found {getFilteredKeywords().length} keywords matching "{searchQuery}"
+					</p>
+				{/if}
 
 				<!-- Keywords Table -->
 				<div class="table-container">
@@ -239,7 +343,7 @@
 							</tr>
 						</thead>
 						<tbody>
-							{#each getFilteredKeywords().slice(0, 30) as kw}
+							{#each getFilteredKeywords().slice(0, displayLimit) as kw}
 								{@const difficulty = parseCompetition(kw.competition)}
 								<tr>
 									<td class="td-keyword">
@@ -272,8 +376,23 @@
 					</table>
 				</div>
 
-				{#if getFilteredKeywords().length > 30}
-					<p class="table-footer">Showing 30 of {getFilteredKeywords().length} keywords</p>
+				<!-- Show More / Show Less -->
+				{#if getFilteredKeywords().length > INITIAL_KEYWORD_LIMIT}
+					{@const filteredCount = getFilteredKeywords().length}
+					<div class="table-footer-actions">
+						<p class="table-footer">
+							Showing {Math.min(displayLimit, filteredCount)} of {filteredCount} keywords
+						</p>
+						{#if !showAllKeywords}
+							<button class="show-more-btn" onclick={() => (showAllKeywords = true)}>
+								Show More Keywords
+							</button>
+						{:else}
+							<button class="show-more-btn" onclick={() => (showAllKeywords = false)}>
+								Show Less
+							</button>
+						{/if}
+					</div>
 				{/if}
 			</div>
 		{/if}
@@ -1478,6 +1597,226 @@
 		line-height: 1.4;
 	}
 
+	/* Keyword Preview Card */
+	.keyword-preview-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.75rem;
+		padding: 1rem 1.25rem;
+		margin-bottom: 1rem;
+	}
+
+	.preview-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.75rem;
+	}
+
+	.preview-title {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+	}
+
+	.preview-expand-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		padding: 0.25rem 0.625rem;
+		background: transparent;
+		border: 1px solid var(--color-border);
+		border-radius: 1rem;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: var(--color-accent);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.preview-expand-btn:hover {
+		background: rgba(229, 90, 40, 0.1);
+		border-color: rgba(229, 90, 40, 0.3);
+	}
+
+	.preview-tiers {
+		display: flex;
+		flex-direction: column;
+		gap: 0.625rem;
+	}
+
+	.preview-tier {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+	}
+
+	.tier-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		min-width: 5rem;
+	}
+
+	.tier-label.success {
+		color: var(--color-success);
+	}
+
+	.tier-label.accent {
+		color: var(--color-accent);
+	}
+
+	.tier-label.muted {
+		color: var(--color-text-muted);
+	}
+
+	.tier-pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+
+	.keyword-pill {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.25rem 0.5rem;
+		border-radius: 0.25rem;
+		background: var(--color-bg-elevated);
+		color: var(--color-text-secondary);
+		border: 1px solid var(--color-border);
+	}
+
+	.keyword-pill.success {
+		background: rgba(34, 197, 94, 0.1);
+		border-color: rgba(34, 197, 94, 0.2);
+		color: var(--color-success-dark);
+	}
+
+	.keyword-pill.accent {
+		background: rgba(229, 90, 40, 0.1);
+		border-color: rgba(229, 90, 40, 0.2);
+		color: var(--color-accent);
+	}
+
+	.keyword-pill.muted {
+		background: var(--color-bg-surface);
+	}
+
+	.pill-more {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.25rem 0.375rem;
+		color: var(--color-text-muted);
+	}
+
+	/* Keyword Controls */
+	.keyword-controls {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 1rem;
+		margin-bottom: 1rem;
+	}
+
+	.search-input-wrapper {
+		position: relative;
+		flex: 1;
+		min-width: 180px;
+		max-width: 280px;
+	}
+
+	.search-input-wrapper :global(.search-icon) {
+		position: absolute;
+		left: 0.75rem;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 0.875rem;
+		height: 0.875rem;
+		color: var(--color-text-muted);
+		pointer-events: none;
+	}
+
+	.search-input {
+		width: 100%;
+		padding: 0.5rem 2rem 0.5rem 2.25rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-primary);
+		transition: border-color 0.15s ease;
+	}
+
+	.search-input:focus {
+		outline: none;
+		border-color: var(--color-accent);
+	}
+
+	.search-input::placeholder {
+		color: var(--color-text-muted);
+	}
+
+	.search-clear {
+		position: absolute;
+		right: 0.5rem;
+		top: 50%;
+		transform: translateY(-50%);
+		width: 1.25rem;
+		height: 1.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: var(--color-bg-elevated);
+		border: none;
+		border-radius: 50%;
+		font-size: 0.875rem;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.search-clear:hover {
+		background: var(--color-bg-hover);
+		color: var(--color-text-primary);
+	}
+
+	.search-results-count {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
+		margin: 0 0 0.75rem;
+	}
+
+	/* Table Footer Actions */
+	.table-footer-actions {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 0.75rem;
+	}
+
+	.show-more-btn {
+		padding: 0.5rem 1rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-accent);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.show-more-btn:hover {
+		background: rgba(229, 90, 40, 0.1);
+		border-color: rgba(229, 90, 40, 0.3);
+	}
+
 	/* Responsive */
 	@media (max-width: 768px) {
 		.hero-strip {
@@ -1505,6 +1844,25 @@
 		.conclusion-grid,
 		.schema-grid {
 			grid-template-columns: 1fr;
+		}
+
+		.keyword-controls {
+			flex-direction: column;
+			align-items: stretch;
+		}
+
+		.search-input-wrapper {
+			max-width: none;
+		}
+
+		.preview-tier {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.375rem;
+		}
+
+		.tier-pills {
+			padding-left: 0;
 		}
 	}
 

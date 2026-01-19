@@ -18,7 +18,7 @@ export const load: LayoutServerLoad = async (event) => {
   try {
     const response = await fetch(`${BACKEND_URL}/api/billing/balance`, {
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET,
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
       },
     });

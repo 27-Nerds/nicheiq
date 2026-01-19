@@ -87,7 +87,8 @@
         <h2 class="text-lg font-semibold text-text-primary">Start New Research</h2>
         <button
           onclick={() => (open = false)}
-          class="p-1 rounded-lg hover:bg-bg-secondary text-text-muted hover:text-text-primary transition-colors"
+          aria-label="Close modal"
+          class="p-1 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors"
         >
           <X class="w-5 h-5" />
         </button>
