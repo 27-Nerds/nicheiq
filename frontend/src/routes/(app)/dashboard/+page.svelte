@@ -129,7 +129,7 @@
   }
 
   // Search input ref for keyboard shortcut
-  let searchInput: HTMLInputElement;
+  let searchInput = $state<HTMLInputElement | null>(null);
 
   // Total filtered count for search results indicator
   const totalFilteredCount = $derived(
@@ -261,6 +261,36 @@
       console.error('Retry failed:', err);
     } finally {
       retryingJobs.delete(job.id);
+    }
+  }
+
+  // Cancel an active job
+  let cancellingJobs = $state<Set<string>>(new Set());
+
+  async function cancelJob(job: Job) {
+    if (cancellingJobs.has(job.id)) return;
+
+    cancellingJobs.add(job.id);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/cancel`, {
+        method: 'POST',
+      });
+
+      if (res.ok) {
+        // Update local state to reflect cancellation
+        jobUpdates.set(job.id, { ...job, status: 'CANCELLED', errorMessage: 'Cancelled by user' });
+
+        // Close SSE connection for this job
+        const es = eventSources.get(job.id);
+        if (es) {
+          es.close();
+          eventSources.delete(job.id);
+        }
+      }
+    } catch (err) {
+      console.error('Cancel failed:', err);
+    } finally {
+      cancellingJobs.delete(job.id);
     }
   }
 
@@ -551,7 +581,20 @@
                       {/if}
                     </div>
                   </div>
-                  <div class="flex items-center gap-3 shrink-0">
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button
+                      onclick={() => cancelJob(job)}
+                      disabled={cancellingJobs.has(job.id)}
+                      class="btn-secondary text-error border-error/30 hover:border-error hover:bg-error/5 flex items-center gap-1.5"
+                      title="Cancel this research"
+                    >
+                      {#if cancellingJobs.has(job.id)}
+                        <Loader2 class="w-4 h-4 animate-spin" />
+                      {:else}
+                        <X class="w-4 h-4" />
+                      {/if}
+                      Cancel
+                    </button>
                     <a href="/jobs/{job.id}" class="btn-secondary">
                       {isRunning ? 'View Progress' : 'View Status'}
                       <ArrowRight class="w-4 h-4" />

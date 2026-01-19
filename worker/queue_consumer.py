@@ -123,6 +123,17 @@ def process_job(job_data: dict) -> None:
         notify_job_completed(job_id)
 
     except Exception as e:
+        # Import here to avoid circular imports
+        from .heartbeat import JobCancelledException, notify_job_completed
+
+        # Handle user-initiated cancellation gracefully
+        if isinstance(e, JobCancelledException):
+            logger.info(f"Job {job_id} cancelled by user - stopping gracefully")
+            # Don't publish failure - backend already knows job is CANCELLED
+            # Don't need to notify completion as status is already set
+            notify_job_completed(job_id)
+            return
+
         error_msg = str(e)
         error_traceback = traceback.format_exc()
         logger.error(f"Job {job_id} failed: {error_msg}\n{error_traceback}")
@@ -132,7 +143,6 @@ def process_job(job_data: dict) -> None:
         publish_job_failed(job_id, error_msg)
 
         # Notify backend job completed (failed)
-        from .heartbeat import notify_job_completed
         notify_job_completed(job_id)
 
     finally:

@@ -28,6 +28,37 @@ _heartbeat_thread: Optional[threading.Thread] = None
 _shutdown_event: threading.Event = threading.Event()
 _started = False
 
+# Cancellation state (set by heartbeat response, checked by worker)
+_cancellation_requested: bool = False
+_cancellation_lock: threading.Lock = threading.Lock()
+
+
+class JobCancelledException(Exception):
+    """Exception raised when a job is cancelled by user."""
+    pass
+
+
+def is_cancellation_requested() -> bool:
+    """Check if cancellation was requested for the current job."""
+    with _cancellation_lock:
+        return _cancellation_requested
+
+
+def clear_cancellation_flag() -> None:
+    """Clear the cancellation flag (called when starting a new job)."""
+    global _cancellation_requested
+    with _cancellation_lock:
+        _cancellation_requested = False
+
+
+def check_cancellation() -> None:
+    """
+    Check if cancellation was requested and raise exception if so.
+    Call this at stage transitions to allow graceful cancellation.
+    """
+    if is_cancellation_requested():
+        raise JobCancelledException("Job cancelled by user")
+
 
 def get_worker_id() -> str:
     """Get the unique worker ID for this process."""
@@ -46,11 +77,13 @@ def _get_internal_secret() -> str:
 
 def _send_heartbeat() -> bool:
     """
-    Send a heartbeat to the backend.
+    Send a heartbeat to the backend and check for cancellation.
 
     Returns:
         True if successful, False otherwise
     """
+    global _cancellation_requested
+
     try:
         response = requests.post(
             f"{_get_backend_url()}/api/workers/heartbeat",
@@ -64,6 +97,17 @@ def _send_heartbeat() -> bool:
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+
+        # Check for cancellation signal from backend
+        try:
+            data = response.json()
+            if data.get("shouldCancel", False):
+                with _cancellation_lock:
+                    _cancellation_requested = True
+                logger.warning(f"[Heartbeat] Received cancellation signal for job {_current_job_id}")
+        except (ValueError, KeyError):
+            pass  # Response parsing failed, ignore
+
         return True
     except requests.exceptions.Timeout:
         logger.warning("[Heartbeat] Heartbeat request timed out")
@@ -137,6 +181,8 @@ def set_current_job(job_id: Optional[str]) -> None:
     _current_job_id = job_id
 
     if job_id:
+        # Clear cancellation flag when starting a new job
+        clear_cancellation_flag()
         logger.debug(f"[Heartbeat] Now processing job {job_id}")
     else:
         logger.debug("[Heartbeat] Worker now idle")

@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
 import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueService.js';
-import { createJobWithCreditDeduction, InsufficientCreditsError } from '../services/creditService.js';
+import { createJobWithCreditDeduction, InsufficientCreditsError, refundCreditsForJob } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema } from '../types/job.js';
 import { JobStatus, AssetType } from '@prisma/client';
@@ -267,6 +267,69 @@ jobsRouter.delete('/:jobId', requireInternalAuth, async (req: AuthenticatedReque
     await updateJobStatus(jobId, JobStatus.CANCELLED);
 
     res.json({ message: 'Job cancelled' });
+  } catch (error) {
+    console.error('Failed to cancel job:', error);
+    res.status(500).json({ error: 'Failed to cancel job' });
+  }
+});
+
+/**
+ * POST /api/jobs/:jobId/cancel
+ * Cancel a queued or running job with credit refund (requires authentication and ownership)
+ * This endpoint is preferred for user-initiated cancellations as it handles credit refunds
+ */
+jobsRouter.post('/:jobId/cancel', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Check if job can be cancelled (only PENDING, QUEUED, RUNNING allowed)
+    const cancellableStatuses: JobStatus[] = [JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING];
+    if (!cancellableStatuses.includes(job.status)) {
+      res.status(400).json({
+        error: 'Job already finished',
+        status: job.status,
+      });
+      return;
+    }
+
+    // Update job status to CANCELLED
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.CANCELLED,
+        errorMessage: 'Cancelled by user',
+        completedAt: new Date(),
+      },
+    });
+
+    // Refund credit to user using the credit service
+    let creditRefunded = 0;
+    try {
+      const refund = await refundCreditsForJob(jobId, 1);
+      if (refund) {
+        creditRefunded = 1;
+        console.log(`[Jobs] Job ${jobId} cancelled by user ${userId}, credit refunded`);
+      }
+    } catch (refundError) {
+      // Log but don't fail the cancellation
+      console.error(`[Jobs] Failed to refund credit for cancelled job ${jobId}:`, refundError);
+    }
+
+    res.json({
+      status: 'cancelled',
+      message: creditRefunded ? 'Job cancelled and credit refunded' : 'Job cancelled',
+      creditRefunded,
+    });
   } catch (error) {
     console.error('Failed to cancel job:', error);
     res.status(500).json({ error: 'Failed to cancel job' });

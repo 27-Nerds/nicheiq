@@ -72,15 +72,23 @@ STAGE_NAMES = {
 }
 
 
-def create_progress_callback(job_id: str) -> Callable[[float, str, str], None]:
+def create_progress_callback(
+    job_id: str,
+    check_cancellation: bool = True
+) -> Callable[[float, str, str], None]:
     """
     Create a progress callback function for ResearchFlow.
 
     This callback publishes stage updates to Redis, which the Node.js
     backend receives and forwards to connected SSE clients.
 
+    If check_cancellation is True, also checks for cancellation at each
+    stage transition (running -> completed) and raises JobCancelledException
+    if the job was cancelled by the user.
+
     Args:
         job_id: The job UUID
+        check_cancellation: If True, check for cancellation at stage transitions
 
     Returns:
         Callback function that takes (stage_num, stage_name, status)
@@ -94,6 +102,12 @@ def create_progress_callback(job_id: str) -> Callable[[float, str, str], None]:
             stage_name: Human-readable stage name
             status: 'running', 'completed', or 'failed'
         """
+        # Check for cancellation at stage transitions (when a stage starts running)
+        # This is the best point to stop as it's between stages
+        if check_cancellation and status == "running":
+            from .heartbeat import check_cancellation as check_cancel
+            check_cancel()  # Raises JobCancelledException if cancelled
+
         publish_progress(job_id, {
             "stage": stage_num,
             "name": stage_name,

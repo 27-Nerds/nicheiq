@@ -36,6 +36,7 @@ const HeartbeatSchema = z.object({
 /**
  * POST /api/workers/heartbeat
  * Worker sends periodic heartbeat to indicate it's alive
+ * Returns shouldCancel: true if the job has been cancelled by user
  */
 workersRouter.post('/heartbeat', async (req: Request, res: Response) => {
   try {
@@ -49,12 +50,29 @@ workersRouter.post('/heartbeat', async (req: Request, res: Response) => {
       data.process_id
     );
 
-    // If processing a job, also update the job's heartbeat
+    // Check if job should be cancelled
+    let shouldCancel = false;
     if (data.job_id) {
       await updateJobHeartbeat(data.job_id, data.worker_id);
+
+      // Check job status for cancellation
+      const { prisma } = await import('../services/db.js');
+      const job = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true },
+      });
+
+      // Signal worker to stop if job was cancelled
+      if (job?.status === 'CANCELLED') {
+        shouldCancel = true;
+      }
     }
 
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      shouldCancel,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });

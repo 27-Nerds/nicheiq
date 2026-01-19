@@ -18,6 +18,7 @@ import { sendFailureEmail } from './emailService.js';
 const STALE_THRESHOLD_MS = 90 * 1000; // 90 seconds - detect stale jobs within this window
 const CHECK_INTERVAL_MS = 30 * 1000;  // 30 seconds - how often to check for stale jobs
 const MAX_RETRIES = 2;                 // Maximum retry attempts for crashed jobs
+const MAX_RUNTIME_MS = parseInt(process.env.MAX_JOB_RUNTIME_HOURS || '4', 10) * 60 * 60 * 1000; // Absolute max runtime (default 4 hours)
 
 let checkInterval: NodeJS.Timeout | null = null;
 let isRunning = false;
@@ -119,7 +120,7 @@ export async function markWorkerShutdown(workerId: string): Promise<void> {
 }
 
 /**
- * Find jobs that are stuck in RUNNING status with stale heartbeats
+ * Find jobs that are stuck in RUNNING status with stale heartbeats or exceeded max runtime
  */
 async function findStaleJobs(): Promise<Array<{
   id: string;
@@ -130,13 +131,17 @@ async function findStaleJobs(): Promise<Array<{
   lastHeartbeat: Date | null;
   startedAt: Date | null;
   allowedProjectTypes: unknown;
+  exceededMaxRuntime: boolean;
 }>> {
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
+  const maxRuntimeThreshold = new Date(Date.now() - MAX_RUNTIME_MS);
 
   // Find jobs that are:
   // 1. In RUNNING status
-  // 2. AND (lastHeartbeat is null OR lastHeartbeat < staleThreshold)
-  // 3. AND (startedAt is null OR startedAt < staleThreshold) - gives initial grace period
+  // 2. AND one of:
+  //    a) lastHeartbeat is stale (worker crash)
+  //    b) Job never received heartbeat but was started long enough ago
+  //    c) Job has exceeded absolute max runtime (safety net)
   const staleJobs = await prisma.job.findMany({
     where: {
       status: JobStatus.RUNNING,
@@ -154,6 +159,12 @@ async function findStaleJobs(): Promise<Array<{
             lt: staleThreshold,
           },
         },
+        // Job exceeded absolute max runtime (safety net - catches all edge cases)
+        {
+          startedAt: {
+            lt: maxRuntimeThreshold,
+          },
+        },
       ],
     },
     select: {
@@ -168,11 +179,16 @@ async function findStaleJobs(): Promise<Array<{
     },
   });
 
-  return staleJobs;
+  // Mark jobs that exceeded max runtime (they should be failed immediately, not retried)
+  return staleJobs.map(job => ({
+    ...job,
+    exceededMaxRuntime: job.startedAt ? job.startedAt < maxRuntimeThreshold : false,
+  }));
 }
 
 /**
  * Re-queue a job for retry
+ * Returns true if successful, false if failed
  */
 async function requeueJobForRetry(job: {
   id: string;
@@ -180,33 +196,54 @@ async function requeueJobForRetry(job: {
   userId: string | null;
   retryCount: number;
   allowedProjectTypes: unknown;
-}): Promise<void> {
+}): Promise<boolean> {
   const newRetryCount = job.retryCount + 1;
 
   console.log(`[Heartbeat] Re-queuing job ${job.id} for retry (attempt ${newRetryCount}/${MAX_RETRIES})`);
 
-  // Reset job to QUEUED status with incremented retry count
-  await prisma.job.update({
-    where: { id: job.id },
-    data: {
-      status: JobStatus.QUEUED,
-      workerId: null,
-      lastHeartbeat: null,
-      retryCount: newRetryCount,
-      errorMessage: `Worker crashed - retry attempt ${newRetryCount}`,
-      queuedAt: new Date(),
-    },
-  });
+  try {
+    // First enqueue to Redis (if this fails, don't change job status)
+    await enqueueJob(
+      job.id,
+      job.niche,
+      job.userId || undefined,
+      job.allowedProjectTypes as string[] | undefined
+    );
 
-  // Re-enqueue job to Redis
-  await enqueueJob(
-    job.id,
-    job.niche,
-    job.userId || undefined,
-    job.allowedProjectTypes as string[] | undefined
-  );
+    // Only update job status AFTER successful queue
+    await prisma.job.update({
+      where: { id: job.id },
+      data: {
+        status: JobStatus.QUEUED,
+        workerId: null,
+        lastHeartbeat: null,
+        retryCount: newRetryCount,
+        errorMessage: `Worker crashed - retry attempt ${newRetryCount}`,
+        queuedAt: new Date(),
+      },
+    });
 
-  console.log(`[Heartbeat] Job ${job.id} re-queued successfully`);
+    console.log(`[Heartbeat] Job ${job.id} re-queued successfully`);
+    return true;
+  } catch (enqueueError) {
+    // If re-queue fails, fail the job immediately instead of leaving it stuck
+    console.error(`[Heartbeat] Failed to re-queue job ${job.id}:`, enqueueError);
+
+    try {
+      const errorMessage = `Recovery failed: Unable to re-queue job - ${enqueueError instanceof Error ? enqueueError.message : 'Unknown error'}`;
+      await failJob(job.id, errorMessage);
+
+      // Send failure email
+      const email = await getUserEmail(job.userId);
+      if (email) {
+        await sendFailureEmail(email, job.id, job.niche, errorMessage);
+      }
+    } catch (failError) {
+      console.error(`[Heartbeat] Also failed to mark job ${job.id} as failed:`, failError);
+    }
+
+    return false;
+  }
 }
 
 /**
@@ -244,8 +281,9 @@ export async function checkAndRecoverStaleJobs(): Promise<{
   checked: number;
   requeued: number;
   failed: number;
+  timedOut: number;
 }> {
-  const stats = { checked: 0, requeued: 0, failed: 0 };
+  const stats = { checked: 0, requeued: 0, failed: 0, timedOut: 0 };
 
   try {
     const staleJobs = await findStaleJobs();
@@ -259,10 +297,32 @@ export async function checkAndRecoverStaleJobs(): Promise<{
 
     for (const job of staleJobs) {
       try {
-        if (job.retryCount < MAX_RETRIES) {
+        // Jobs that exceeded absolute max runtime are failed immediately (no retry)
+        if (job.exceededMaxRuntime) {
+          const runtimeHours = MAX_RUNTIME_MS / (60 * 60 * 1000);
+          const errorMessage = `Job exceeded maximum runtime of ${runtimeHours} hours`;
+          console.log(`[Heartbeat] Job ${job.id} exceeded max runtime, failing immediately`);
+
+          await failJob(job.id, errorMessage);
+
+          const email = await getUserEmail(job.userId);
+          if (email) {
+            try {
+              await sendFailureEmail(email, job.id, job.niche, errorMessage);
+            } catch (emailError) {
+              console.error(`[Heartbeat] Failed to send timeout email for job ${job.id}:`, emailError);
+            }
+          }
+
+          stats.timedOut++;
+        } else if (job.retryCount < MAX_RETRIES) {
           // Can retry - re-queue the job
-          await requeueJobForRetry(job);
-          stats.requeued++;
+          const success = await requeueJobForRetry(job);
+          if (success) {
+            stats.requeued++;
+          } else {
+            stats.failed++;
+          }
         } else {
           // Max retries exceeded - mark as permanently failed
           await markJobPermanentlyFailed(job);
@@ -273,8 +333,8 @@ export async function checkAndRecoverStaleJobs(): Promise<{
       }
     }
 
-    if (stats.requeued > 0 || stats.failed > 0) {
-      console.log(`[Heartbeat] Recovery complete: ${stats.requeued} requeued, ${stats.failed} failed`);
+    if (stats.requeued > 0 || stats.failed > 0 || stats.timedOut > 0) {
+      console.log(`[Heartbeat] Recovery complete: ${stats.requeued} requeued, ${stats.failed} failed, ${stats.timedOut} timed out`);
     }
   } catch (error) {
     console.error('[Heartbeat] Error checking for stale jobs:', error);
@@ -292,7 +352,7 @@ export async function performStartupRecovery(): Promise<void> {
 
   try {
     const stats = await checkAndRecoverStaleJobs();
-    console.log(`[Heartbeat] Startup recovery: found ${stats.checked} stale jobs, requeued ${stats.requeued}, failed ${stats.failed}`);
+    console.log(`[Heartbeat] Startup recovery: found ${stats.checked} stale jobs, requeued ${stats.requeued}, failed ${stats.failed}, timed out ${stats.timedOut}`);
 
     // Also clean up any workers that haven't sent heartbeats (they're probably dead)
     const staleWorkerThreshold = new Date(Date.now() - STALE_THRESHOLD_MS * 2); // 3 minutes for workers

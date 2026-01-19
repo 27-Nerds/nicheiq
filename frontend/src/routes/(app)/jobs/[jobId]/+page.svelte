@@ -41,8 +41,38 @@
   let loading = $state(true);
   let error = $state('');
   let eventSource: EventSource | null = null;
+  let cancelling = $state(false);
+  let cancelError = $state('');
 
   const jobId = $derived($page.params.jobId);
+
+  async function cancelJob() {
+    if (!job || cancelling) return;
+
+    cancelling = true;
+    cancelError = '';
+
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/cancel`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to cancel job');
+      }
+
+      // Update local state
+      job = { ...job, status: 'CANCELLED', errorMessage: 'Cancelled by user' };
+
+      // Close SSE connection
+      eventSource?.close();
+    } catch (e) {
+      cancelError = e instanceof Error ? e.message : 'Failed to cancel job';
+    } finally {
+      cancelling = false;
+    }
+  }
 
   onMount(async () => {
     // Initial fetch
@@ -137,16 +167,41 @@
               {job.niche.length > 100 ? job.niche.substring(0, 100) + '...' : job.niche}
             </p>
           </div>
-          <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {getStatusColor(job.status)} {job.status === 'COMPLETED' ? 'bg-success/20' : job.status === 'RUNNING' ? 'bg-info/20' : job.status === 'FAILED' ? 'bg-error/20' : 'bg-bg-elevated'}">
-            {#if job.status === 'RUNNING'}
-              <svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
+          <div class="flex items-center gap-3">
+            {#if ['QUEUED', 'PENDING', 'RUNNING'].includes(job.status)}
+              <button
+                onclick={cancelJob}
+                disabled={cancelling}
+                class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium text-error border border-error/30 hover:bg-error/10 hover:border-error transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {#if cancelling}
+                  <svg class="animate-spin -ml-0.5 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Cancelling...
+                {:else}
+                  <svg class="-ml-0.5 mr-1.5 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                  Cancel Research
+                {/if}
+              </button>
             {/if}
-            {job.status}
-          </span>
+            <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium {getStatusColor(job.status)} {job.status === 'COMPLETED' ? 'bg-success/20' : job.status === 'RUNNING' ? 'bg-info/20' : job.status === 'FAILED' ? 'bg-error/20' : job.status === 'CANCELLED' ? 'bg-bg-elevated' : 'bg-bg-elevated'}">
+              {#if job.status === 'RUNNING'}
+                <svg class="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              {/if}
+              {job.status}
+            </span>
+          </div>
         </div>
+        {#if cancelError}
+          <div class="mt-3 text-sm text-error">{cancelError}</div>
+        {/if}
       </div>
 
       <!-- Queue Position (for QUEUED jobs) -->
@@ -197,6 +252,29 @@
           <p class="mt-2 text-sm text-text-muted">
             {job.stagesCompleted} of {job.totalStages} stages completed
           </p>
+        </div>
+      {/if}
+
+      <!-- Cancelled Message -->
+      {#if job.status === 'CANCELLED'}
+        <div class="rounded-lg bg-bg-elevated p-4 mb-6 border border-border">
+          <div class="flex">
+            <div class="flex-shrink-0">
+              <svg class="h-5 w-5 text-text-muted" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+              </svg>
+            </div>
+            <div class="ml-3">
+              <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
+              <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credit has been refunded.</p>
+              <a href="/jobs/new" class="mt-3 inline-flex items-center text-sm font-medium text-accent hover:text-accent-hover">
+                Start new research
+                <svg class="ml-1 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                </svg>
+              </a>
+            </div>
+          </div>
         </div>
       {/if}
 

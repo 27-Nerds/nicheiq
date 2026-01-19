@@ -125,6 +125,14 @@ def run_research_job(
         }
 
     except Exception as e:
+        # Import here to avoid circular imports
+        from .heartbeat import JobCancelledException
+
+        # Re-raise cancellation exceptions for the queue_consumer to handle
+        if isinstance(e, JobCancelledException):
+            logger.info(f"[Worker] Job {job_id} cancelled by user during execution")
+            raise
+
         error_msg = str(e)
         error_traceback = traceback.format_exc()
         logger.error(f"[Worker] Job {job_id} failed: {error_msg}\n{error_traceback}")
