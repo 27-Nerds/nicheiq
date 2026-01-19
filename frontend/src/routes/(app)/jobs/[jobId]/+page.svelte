@@ -200,8 +200,8 @@
         </div>
       {/if}
 
-      <!-- Error Message -->
-      {#if job.errorMessage}
+      <!-- Error Message (only show for permanently failed jobs) -->
+      {#if job.errorMessage && job.status === 'FAILED'}
         <div class="rounded-lg bg-error/10 p-4 mb-6 border border-error/30">
           <div class="flex">
             <div class="flex-shrink-0">

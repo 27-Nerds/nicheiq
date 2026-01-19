@@ -444,6 +444,7 @@ class PainPointCrew:
 
         Uses low-moderate temperature (0.3) for consistent pattern extraction with flexibility.
         Has knowledge_sources attached for RAG-based quote retrieval.
+        Uses max_tokens=16000 to prevent truncation of large pain point outputs.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -453,6 +454,7 @@ class PainPointCrew:
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.3,  # Low-moderate (ignored for reasoning models)
+                max_tokens=16000,  # Prevent truncation of large pain point outputs
             )),
             knowledge_sources=self.knowledge_sources,  # RAG for quote retrieval
             verbose=True,

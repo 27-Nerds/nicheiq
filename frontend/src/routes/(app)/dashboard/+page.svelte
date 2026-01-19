@@ -599,7 +599,7 @@
                         <Clock class="w-3.5 h-3.5" />
                         {formatRelativeDate(job.createdAt)}
                       </span>
-                      {#if job.errorMessage}
+                      {#if job.errorMessage && job.status.toUpperCase() === 'FAILED'}
                         <span class="text-error truncate max-w-xs" title={job.errorMessage}>{job.errorMessage}</span>
                       {/if}
                     </div>

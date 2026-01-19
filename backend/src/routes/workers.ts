@@ -191,6 +191,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
         lastHeartbeat: new Date(),
         status: JobStatus.RUNNING,
         startedAt: new Date(),
+        errorMessage: null, // Clear any retry messages from previous attempts
       },
     });
 

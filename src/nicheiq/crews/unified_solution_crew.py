@@ -45,7 +45,7 @@ from ..utils.crew_helpers import (
     prepare_competitor_intelligence,
     prepare_pain_point_content,
 )
-from ..utils.validation import create_diversity_guardrail
+from ..utils.validation import create_diversity_guardrail, validate_competitive_analysis
 
 
 @CrewBase
@@ -228,6 +228,7 @@ class UnifiedSolutionCrew:
         Uses CompetitorQueryTool for context-aware query generation.
         Uses SerperDevTool for market intelligence.
         Uses function_calling_llm for cost-efficient tool calls.
+        Uses max_tokens=30000 to prevent truncation of large CompetitiveAnalysisResult.
         """
         return Agent(
             config=self.agents_config["competitive_researcher"],
@@ -235,6 +236,7 @@ class UnifiedSolutionCrew:
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.3,
+                max_tokens=30000,  # Prevent truncation of large CompetitiveAnalysisResult
             )),
             function_calling_llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.function_calling_llm,
@@ -356,12 +358,16 @@ class UnifiedSolutionCrew:
         Task 4: Analyze competitive landscape for solutions.
         Depends on: solution_refinement_task (via context)
         Output: CompetitiveAnalysisResult with per-solution landscapes.
+
+        Guardrail validates JSON completeness to catch truncation from large outputs.
         """
         return Task(
             config=self.tasks_config["competitive_analysis"],
             agent=self.competitive_researcher(),
             context=[self.solution_refinement_task()],
             output_pydantic=CompetitiveAnalysisResult,
+            guardrail=validate_competitive_analysis,
+            guardrail_max_retries=2,  # Allow 2 retries on truncation
         )
 
     @task

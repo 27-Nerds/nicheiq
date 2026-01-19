@@ -4,6 +4,7 @@ from .checkpoint_validator import CheckpointValidator
 from .crew_guardrails import (
     create_diversity_guardrail,
     detect_similarity,
+    validate_competitive_analysis,
     validate_diversity,
 )
 from .keyword_validator import KeywordRelevanceValidator
@@ -21,8 +22,9 @@ __all__ = [
     "CheckpointValidator",
     # Social content validation
     "SocialContentValidator",
-    # Crew guardrails (only diversity validation remains - others migrated to Pydantic validators)
+    # Crew guardrails
     "validate_diversity",
+    "validate_competitive_analysis",
     "detect_similarity",
     "create_diversity_guardrail",
 ]

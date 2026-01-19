@@ -11,6 +11,7 @@ from typing import Any
 
 from loguru import logger
 
+from ...models.competitor import CompetitiveAnalysisResult
 from ...models.solution_idea import IdeaGenerationResult
 from ..parsing.json_extractor import clean_llm_response
 
@@ -234,3 +235,83 @@ def create_diversity_guardrail(allowed_project_types: list[str] | None = None):
         return validate_diversity(task_output, allowed_project_types)
 
     return guardrail
+
+
+def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for competitive_analysis_task to detect truncated JSON output.
+
+    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    Must parse from .raw and return (True, raw_string) on success.
+
+    Validates:
+    1. JSON is complete and parseable (catches truncation)
+    2. Has solution_landscapes list with at least 1 entry
+    3. Each landscape has minimum required competitors and gaps
+    4. top_opportunities and strategic_recommendations present
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    try:
+        # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+        result = task_output.pydantic
+        if result is None:
+            if not hasattr(task_output, 'raw') or not task_output.raw:
+                return (False, "Competitive analysis returned empty output (no pydantic or raw)")
+
+            try:
+                # Clean and parse JSON from raw output
+                cleaned_raw = clean_llm_response(task_output.raw)
+                raw_json = json.loads(cleaned_raw)
+                result = CompetitiveAnalysisResult.model_validate(raw_json)
+                logger.debug("Competitive analysis guardrail: Parsed from .raw")
+            except json.JSONDecodeError as e:
+                # This catches truncation errors like "EOF while parsing"
+                logger.warning(f"Truncated JSON detected in competitive analysis: {e}")
+                return (
+                    False,
+                    f"Output appears truncated - JSON parse error at line {e.lineno}: {e.msg}. "
+                    "Reduce output size: limit to 3-4 competitors per solution with shorter descriptions."
+                )
+            except Exception as e:
+                logger.warning(f"Failed to validate CompetitiveAnalysisResult: {e}")
+                return (False, f"Failed to parse CompetitiveAnalysisResult: {e}")
+
+        if not isinstance(result, CompetitiveAnalysisResult):
+            return (
+                False,
+                f"Invalid type: expected CompetitiveAnalysisResult, got {type(result)}"
+            )
+
+        # Validate structure completeness
+        if len(result.solution_landscapes) < 1:
+            return (False, "Need at least 1 solution landscape in solution_landscapes")
+
+        for landscape in result.solution_landscapes:
+            if len(landscape.competitors) < 2:
+                return (
+                    False,
+                    f"Landscape '{landscape.solution_name}' needs at least 2 competitors, got {len(landscape.competitors)}"
+                )
+            if len(landscape.market_gaps) < 2:
+                return (
+                    False,
+                    f"Landscape '{landscape.solution_name}' needs at least 2 market gaps, got {len(landscape.market_gaps)}"
+                )
+
+        if not result.top_opportunities:
+            return (False, "Missing top_opportunities list - provide 3-5 differentiation opportunities")
+
+        if not result.strategic_recommendations or len(result.strategic_recommendations) < 50:
+            return (
+                False,
+                f"strategic_recommendations too short ({len(result.strategic_recommendations or '')} chars, minimum 50)"
+            )
+
+        logger.info(f"✓ Competitive analysis guardrail passed: {len(result.solution_landscapes)} landscapes")
+        # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
+        return (True, task_output.raw)
+
+    except Exception as e:
+        return (False, f"Competitive analysis validation error: {str(e)}")

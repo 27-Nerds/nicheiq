@@ -38,6 +38,10 @@ def _patch_tiktoken_models():
             # o4 series
             "o4": "o200k_base",
             "o4-mini-deep-research": "o200k_base",
+            # GPT-4.1 series (uses o200k_base like GPT-4o)
+            "gpt-4.1": "o200k_base",
+            "gpt-4.1-mini": "o200k_base",
+            "gpt-4.1-nano": "o200k_base",
         }
 
         for model, encoding in new_models.items():

@@ -156,12 +156,14 @@ class LandingPageCrew:
         """
         Generates complete HTML pages with Tailwind CSS.
         Uses execution LLM (gpt-5.1-codex-max) for reliable code generation.
+        Uses max_output_tokens=30000 to prevent truncation of large HTML output.
         """
         return Agent(
             config=self.agents_config["html_developer"],
             llm=build_llm(
                 model=settings.landing_page_execution_llm,
                 reasoning_effort=settings.landing_page_execution_reasoning_effort,
+                max_output_tokens=30000,  # Prevent truncation of large HTML output
             ),
             verbose=True,
         )
@@ -171,12 +173,14 @@ class LandingPageCrew:
         """
         Enhances HTML with premium animations and micro-interactions.
         Uses execution LLM (gpt-5.1-codex-max) for reliable code generation.
+        Uses max_output_tokens=30000 to prevent truncation of large HTML output.
         """
         return Agent(
             config=self.agents_config["animation_enhancer"],
             llm=build_llm(
                 model=settings.landing_page_execution_llm,
                 reasoning_effort=settings.landing_page_execution_reasoning_effort,
+                max_output_tokens=30000,  # Prevent truncation of large HTML output
             ),
             verbose=True,
         )
@@ -186,12 +190,14 @@ class LandingPageCrew:
         """
         QA Reviewer agent - validates and fixes visual design issues.
         Uses execution LLM with low reasoning effort for structured validation.
+        Uses max_output_tokens=30000 to prevent truncation of fixed HTML output.
         """
         return Agent(
             config=self.agents_config["qa_reviewer"],
             llm=build_llm(
                 model=settings.landing_page_execution_llm,
                 reasoning_effort=settings.landing_page_validation_reasoning_effort,
+                max_output_tokens=30000,  # Prevent truncation of fixed HTML output
             ),
             verbose=True,
         )

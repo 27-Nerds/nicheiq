@@ -260,6 +260,7 @@ class SEOStrategyCrew:
 
         Uses moderate temperature (0.4) to balance technical precision with creative customization.
         Slightly higher than 0.3 to encourage solution-specific examples while maintaining accuracy.
+        Uses max_tokens=20000 to prevent truncation of large SEO strategy outputs.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -270,6 +271,7 @@ class SEOStrategyCrew:
                 model=settings.openai_model_name,
                 temperature=0.4,  # Moderate temperature (ignored for reasoning models)
                 timeout=180,
+                max_tokens=20000,  # Prevent truncation of large SEO strategy outputs
             )),
             verbose=True,
         )
