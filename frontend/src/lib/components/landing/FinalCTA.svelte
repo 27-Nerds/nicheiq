@@ -35,34 +35,33 @@
 	<div class="relative max-w-4xl mx-auto px-6 lg:px-12 text-center">
 		{#if isVisible}
 			<!-- Badge -->
-			<div class="animate-fade-in flex flex-wrap justify-center gap-3 mb-8">
-				<div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent/10 border border-accent/30">
-					<Sparkles class="w-4 h-4 text-accent" />
-					<span class="text-sm font-medium text-accent">$49 per report</span>
+			<div class="animate-fade-in flex flex-wrap justify-center gap-3 mb-6 sm:mb-8">
+				<div class="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-accent/10 border border-accent/30">
+					<Sparkles class="w-3.5 sm:w-4 h-3.5 sm:h-4 text-accent" />
+					<span class="text-xs sm:text-sm font-medium text-accent">$49 per report</span>
 				</div>
 			</div>
 
-			<!-- Headline -->
-			<h2 class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl lg:text-6xl font-bold text-text-primary tracking-tight mb-6">
+			<!-- Headline - Mobile optimized -->
+			<h2 class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-text-primary tracking-tight mb-4 sm:mb-6">
 				Validate With
-				<br />
-				<span class="text-gradient italic">Confidence.</span>
+				<br class="hidden sm:block" /><span class="sm:hidden"> </span><span class="text-gradient italic">Confidence.</span>
 			</h2>
 
-			<!-- Subheadline -->
-			<p class="animate-fade-in delay-200 text-xl text-text-muted mb-2 max-w-2xl mx-auto">
-				Verified data from real sources. 12 minutes.
+			<!-- Subheadline - Mobile optimized -->
+			<p class="animate-fade-in delay-200 text-lg sm:text-xl text-text-muted mb-2 max-w-2xl mx-auto">
+				Real data. Real sources. 12 minutes.
 			</p>
-			<p class="animate-fade-in delay-300 text-xl text-text-primary font-medium mb-12 max-w-2xl mx-auto">
+			<p class="animate-fade-in delay-300 text-lg sm:text-xl text-text-primary font-medium mb-8 sm:mb-12 max-w-2xl mx-auto">
 				Then get back to building.
 			</p>
 
-			<!-- CTA Buttons -->
-			<div class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-4 mb-8">
+			<!-- CTA Buttons - Mobile optimized with full width on small screens -->
+			<div class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-6 sm:mb-8">
 				{#if session?.user}
 					<a
 						href="/dashboard"
-						class="btn-primary px-8 py-4 text-base"
+						class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
 					>
 						Go to Dashboard
 						<ArrowRight class="w-5 h-5" />
@@ -70,27 +69,21 @@
 				{:else}
 					<a
 						href="/register"
-						class="btn-primary px-8 py-4 text-base"
+						class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
 					>
-						Get Started Free
+						Get My First Report
 						<ArrowRight class="w-5 h-5" />
-					</a>
-					<a
-						href="/login"
-						class="btn-secondary px-6 py-3"
-					>
-						Sign In
 					</a>
 				{/if}
 			</div>
 
-			<!-- Trust badges -->
-			<div class="animate-fade-in delay-500 flex flex-wrap justify-center gap-6 text-sm text-text-muted">
-				<span class="flex items-center gap-2">
+			<!-- Trust badges - Mobile optimized -->
+			<div class="animate-fade-in delay-500 flex flex-col sm:flex-row flex-wrap justify-center gap-4 sm:gap-6 text-xs sm:text-sm text-text-muted">
+				<span class="flex items-center justify-center gap-2">
 					<Shield class="w-4 h-4 text-success" />
 					Zero hallucination guarantee
 				</span>
-				<span class="flex items-center gap-2">
+				<span class="flex items-center justify-center gap-2">
 					<Link2 class="w-4 h-4 text-success" />
 					Every claim links to source
 				</span>

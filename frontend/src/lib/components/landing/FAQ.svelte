@@ -25,12 +25,12 @@
 		{
 			question: "How do I know the AI isn't making this up?",
 			answer:
-				"Every pain point in your report links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. Our hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination."
+				"Every pain point in your report links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination."
 		},
 		{
 			question: "How is this different from Perplexity Deep Research?",
 			answer:
-				"Perplexity searches the open web for indexed social pages. NicheIQ connects directly to social platforms, accessing real-time posts, comments, and engagement data that web crawlers miss. Plus, we validate keywords with real search APIs - actual volumes, not estimates. And you get a structured 34-field report, not chat responses."
+				"Perplexity searches the open web for indexed social pages. NicheIQ connects directly to social platforms, accessing real-time posts, comments, and engagement data that web crawlers miss. Plus, NicheIQ validates keywords with real search APIs - actual volumes, not estimates. And you get a structured 34-field report, not chat responses."
 		},
 		{
 			question: "Why not just use Grok's DeepSearch?",
@@ -50,22 +50,22 @@
 		{
 			question: 'How do you calculate market size?',
 			answer:
-				'We calculate TAM (Total Addressable Market), SAM (Serviceable Addressable Market), and SOM (Serviceable Obtainable Market) using real keyword search volumes and market data. These are data-driven estimates based on actual search demand, not AI guesses. The report shows the methodology so you can verify the numbers.'
+				'NicheIQ calculates TAM (Total Addressable Market), SAM (Serviceable Addressable Market), and SOM (Serviceable Obtainable Market) using real keyword search volumes and market data. These are data-driven estimates based on actual search demand, not AI guesses. The report shows the methodology so you can verify the numbers.'
 		},
 		{
 			question: 'Where does pricing data come from?',
 			answer:
-				'Pricing recommendations are based on two sources: competitor pricing analysis (what similar tools charge) and willingness-to-pay signals extracted from real customer discussions. We look at what people say they would pay, what they complain about current pricing, and map it against the competitive landscape.'
+				'Pricing recommendations are based on two sources: competitor pricing analysis (what similar tools charge) and willingness-to-pay signals extracted from real customer discussions. It looks at what people say they would pay, what they complain about current pricing, and map it against the competitive landscape.'
 		},
 		{
 			question: 'Can I get a refund?',
 			answer:
-				"Yes - Zero-Risk Research Guarantee. If your report doesn't deliver at least 5 validated pain points with verifiable sources, we refund 100% plus a $25 Amazon gift card for your time. Email support@nicheiq.com within 48 hours with your report ID."
+				"Yes - Zero-Risk Research Guarantee. If your report doesn't deliver at least 5 validated pain points with verifiable sources, I refund 100% plus a $25 Amazon gift card for your time. Email support@nicheiq.com within 48 hours with your report ID."
 		},
 		{
 			question: 'What if my niche is too specialized?',
 			answer:
-				"NicheIQ works best when there's active social discussion about your niche. Consumer SaaS, developer tools, and creator tools typically have great coverage. For highly specialized B2B niches, you might get fewer data points. Our guarantee covers this: less than 5 validated pain points = full refund + $25."
+				"NicheIQ works best when there's active social discussion about your niche. Consumer SaaS, developer tools, and creator tools typically have great coverage. For highly specialized B2B niches, you might get fewer data points. The guarantee covers this: less than 5 validated pain points = full refund + $25."
 		},
 		{
 			question: 'What formats do reports come in?',
@@ -75,7 +75,7 @@
 		{
 			question: 'Can competitors see my research?',
 			answer:
-				"No. Your research reports are 100% private. No shared database, no data sharing between customers, no marketing use of your niche ideas. We're a tool, not a marketplace."
+				"No. Your research reports are 100% private. No shared database, no data sharing between customers, no marketing use of your niche ideas. NicheIQ is a tool, not a marketplace."
 		}
 	];
 </script>

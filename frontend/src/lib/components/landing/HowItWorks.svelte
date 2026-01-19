@@ -47,21 +47,21 @@
 			icon: MousePointer,
 			title: 'Enter Your Niche',
 			time: '30 seconds',
-			description: "Pick any niche you want to explore—we'll validate it"
+			description: "Pick any niche you want to explore—NicheIQ validates it for you"
 		},
 		{
 			number: '2',
 			icon: Cpu,
 			title: 'NicheIQ Does Everything',
 			time: '~12 minutes',
-			description: 'Our AI system searches social communities, validates keywords, and analyzes your market'
+			description: 'NicheIQ searches social communities, validates keywords, and analyzes your market'
 		},
 		{
 			number: '3',
 			icon: Download,
 			title: 'Get Personal Business Blueprint',
 			time: 'Instant download',
-			description: 'Receive validated pain points, solution opportunities, SEO keywords, competitive analysis, and a clear go/no-go verdict — and more to build fast and generate revenue.'
+			description: 'Get validated pain points, solution opportunities, 150+ SEO keywords, and a clear go/no-go verdict. Everything you need to build fast.'
 		},
 		{
 			number: '4',
@@ -160,36 +160,36 @@
 <section id="how-it-works" class="section">
 	<div class="max-w-6xl mx-auto px-6 lg:px-12">
 		{#if isVisible}
-			<!-- Section Header -->
-			<div class="mb-16">
+			<!-- Section Header - Mobile optimized -->
+			<div class="mb-10 sm:mb-16">
 				<span class="section-label animate-fade-in">The Process</span>
-				<h2 class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6">
+				<h2 class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6">
 					How It <span class="text-gradient italic">Works</span>
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
-				<p class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl">
-					Three steps from choosing a niche to having everything you need to build and launch: validated opportunity, step-by-step roadmap, and ready-to-use landing page. No research or prompting skills required.
+				<p class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl">
+					Enter a niche. Get validated research. Start building.
 				</p>
 			</div>
 
-			<!-- Steps Grid -->
-			<div class="animate-fade-in delay-300 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-16">
+			<!-- Steps Grid - Mobile optimized -->
+			<div class="animate-fade-in delay-300 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-10 sm:mb-16">
 				{#each userSteps as step}
-					<div class="relative p-6 bg-bg-elevated border border-border rounded-xl hover:border-border-accent transition-all group">
-						<div class="absolute -top-4 left-6 bg-accent text-bg-base px-4 py-1 rounded-full text-sm font-bold">
+					<div class="relative p-5 sm:p-6 bg-bg-elevated border border-border rounded-xl hover:border-border-accent transition-all group">
+						<div class="absolute -top-3 sm:-top-4 left-4 sm:left-6 bg-accent text-bg-base px-3 sm:px-4 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-bold">
 							Step {step.number}
 						</div>
-						<div class="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center mb-4 group-hover:bg-accent/20 transition-colors">
-							<step.icon class="w-6 h-6 text-accent" />
+						<div class="w-10 sm:w-12 h-10 sm:h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center mb-3 sm:mb-4 group-hover:bg-accent/20 transition-colors">
+							<step.icon class="w-5 sm:w-6 h-5 sm:h-6 text-accent" />
 						</div>
-						<h3 class="font-display font-semibold text-xl text-text-primary mb-2">
+						<h3 class="font-display font-semibold text-lg sm:text-xl text-text-primary mb-2">
 							{step.title}
 						</h3>
-						<div class="flex items-center gap-2 mb-3">
-							<Clock class="w-4 h-4 text-text-muted" />
-							<span class="text-sm text-accent font-medium">{step.time}</span>
+						<div class="flex items-center gap-2 mb-2 sm:mb-3">
+							<Clock class="w-3.5 sm:w-4 h-3.5 sm:h-4 text-text-muted" />
+							<span class="text-xs sm:text-sm text-accent font-medium">{step.time}</span>
 						</div>
-						<p class="text-text-secondary leading-relaxed">
+						<p class="text-text-secondary leading-relaxed text-sm sm:text-base">
 							{step.description}
 						</p>
 					</div>
@@ -200,37 +200,37 @@
 			<div class="animate-fade-in delay-500">
 				<button
 					onclick={() => (showStages = !showStages)}
-					class="w-full flex items-center justify-center gap-3 py-4 text-text-secondary hover:text-accent transition-colors group"
+					class="w-full flex items-center justify-center gap-3 py-3 sm:py-4 text-text-secondary hover:text-accent transition-colors group"
 				>
-					<span class="font-medium">See what happens under the hood</span>
+					<span class="font-medium text-sm sm:text-base">See what happens under the hood</span>
 					<ChevronDown
-						class="w-5 h-5 transition-transform duration-300
+						class="w-4 sm:w-5 h-4 sm:h-5 transition-transform duration-300
 						{showStages ? 'rotate-180' : ''}"
 					/>
 				</button>
 
 				{#if showStages}
-					<div transition:slide={{ duration: 400 }} class="mt-8">
+					<div transition:slide={{ duration: 400 }} class="mt-6 sm:mt-8">
 						<!-- Section Header for Stages -->
-						<div class="text-center mb-12">
-							<h3 class="font-display text-2xl font-semibold text-text-primary mb-2">
+						<div class="text-center mb-8 sm:mb-12">
+							<h3 class="font-display text-xl sm:text-2xl font-semibold text-text-primary mb-2">
 								10-Stage Autonomous Pipeline
 							</h3>
-							<p class="text-text-muted text-sm">
+							<p class="text-text-muted text-xs sm:text-sm">
 								Each stage is built with validation and quality checks
 							</p>
 						</div>
 
-						<!-- Timeline of Stages -->
+						<!-- Timeline of Stages - Mobile optimized -->
 						<div class="relative">
-							<!-- Vertical Line with glow -->
+							<!-- Vertical Line with glow - hidden on mobile -->
 							<div class="hidden lg:block absolute left-8 top-0 bottom-0 w-px bg-gradient-to-b from-accent/50 via-border-emphasis to-border"></div>
 
 							<!-- Stages -->
 							<div class="space-y-0">
 								{#each stages as stage, i}
 									<div class="relative">
-										<!-- Stage Number (Desktop) -->
+										<!-- Stage Number (Desktop only) -->
 										<div class="hidden lg:flex absolute left-0 top-6 w-16 h-16 items-center justify-center">
 											<span class="font-display text-4xl font-bold text-text-muted/30">{stage.id}</span>
 										</div>
@@ -239,31 +239,31 @@
 										<div class="lg:ml-24 border-b border-border">
 											<button
 												onclick={() => (expandedStage = expandedStage === i ? null : i)}
-												class="w-full text-left py-6 group"
+												class="w-full text-left py-4 sm:py-6 group"
 											>
-												<div class="flex items-start gap-5">
+												<div class="flex items-start gap-3 sm:gap-5">
 													<!-- Icon -->
-													<div class="flex-shrink-0 w-10 h-10 rounded-lg border flex items-center justify-center transition-all
+													<div class="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 rounded-lg border flex items-center justify-center transition-all
 														{expandedStage === i
 															? 'border-border-accent bg-accent/10'
 															: 'border-border bg-bg-elevated group-hover:border-border-emphasis'}">
-														<stage.icon class="w-5 h-5 {expandedStage === i ? 'text-accent' : 'text-text-muted'}" />
+														<stage.icon class="w-4 sm:w-5 h-4 sm:h-5 {expandedStage === i ? 'text-accent' : 'text-text-muted'}" />
 													</div>
 
 													<!-- Content -->
 													<div class="flex-1 min-w-0">
-														<div class="flex items-center gap-4 mb-1">
-															<span class="lg:hidden text-xs font-mono text-text-muted">Stage {stage.id}</span>
-															<span class="text-xs text-accent font-semibold uppercase tracking-wider">
+														<div class="flex items-center gap-2 sm:gap-4 mb-1">
+															<span class="lg:hidden text-[10px] sm:text-xs font-mono text-text-muted">Stage {stage.id}</span>
+															<span class="text-[10px] sm:text-xs text-accent font-semibold uppercase tracking-wider">
 																{stage.metric}
 															</span>
 														</div>
 
-														<h4 class="font-display font-semibold text-lg text-text-primary mb-1 group-hover:text-accent transition-colors">
+														<h4 class="font-display font-semibold text-base sm:text-lg text-text-primary mb-1 group-hover:text-accent transition-colors">
 															{stage.name}
 														</h4>
 
-														<p class="text-text-secondary text-sm leading-relaxed">
+														<p class="text-text-secondary text-xs sm:text-sm leading-relaxed">
 															{stage.description}
 														</p>
 													</div>
@@ -278,8 +278,8 @@
 
 											<!-- Expanded Details -->
 											{#if expandedStage === i}
-												<div transition:slide={{ duration: 300 }} class="pb-6 lg:ml-15">
-													<p class="text-text-muted leading-relaxed font-mono text-xs bg-bg-surface border border-border p-4 rounded-lg">
+												<div transition:slide={{ duration: 300 }} class="pb-4 sm:pb-6 lg:ml-15">
+													<p class="text-text-muted leading-relaxed font-mono text-[11px] sm:text-xs bg-bg-surface border border-border p-3 sm:p-4 rounded-lg">
 														{stage.details}
 													</p>
 												</div>

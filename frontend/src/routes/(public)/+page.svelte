@@ -4,6 +4,7 @@
     Hero,
     SocialProof,
     HowItWorks,
+    AboutMaker,
     SampleReport,
     WhoItsFor,
     BusinessIntelligence,
@@ -27,6 +28,7 @@
   <Hero {session} />
   <SocialProof />
   <HowItWorks />
+  <AboutMaker />
   <SampleReport />
   <WhoItsFor />
   <BusinessIntelligence />

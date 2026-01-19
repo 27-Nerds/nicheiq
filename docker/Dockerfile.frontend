@@ -23,6 +23,9 @@ RUN npx prisma generate
 # Copy source
 COPY . .
 
+# Generate SvelteKit files (prevents tsconfig extends warning)
+RUN npx svelte-kit sync
+
 # Build the app with production environment
 RUN npm run build
 

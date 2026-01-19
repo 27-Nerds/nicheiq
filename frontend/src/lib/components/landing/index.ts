@@ -9,6 +9,7 @@ export { default as Accordion } from './ui/Accordion.svelte';
 export { default as Hero } from './Hero.svelte';
 export { default as SocialProof } from './SocialProof.svelte';
 export { default as HowItWorks } from './HowItWorks.svelte';
+export { default as AboutMaker } from './AboutMaker.svelte';
 export { default as SampleReport } from './SampleReport.svelte';
 export { default as WhoItsFor } from './WhoItsFor.svelte';
 export { default as BusinessIntelligence } from './BusinessIntelligence.svelte';

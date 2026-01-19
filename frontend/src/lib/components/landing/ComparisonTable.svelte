@@ -140,7 +140,7 @@
 			<div class="mb-16">
 				<span class="section-label animate-fade-in">The Comparison</span>
 				<h2 class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6">
-					How We <span class="text-gradient italic">Stack Up</span>
+					How NicheIQ <span class="text-gradient italic">Compares</span>
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl">
