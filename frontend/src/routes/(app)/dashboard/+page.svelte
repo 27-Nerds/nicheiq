@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { onDestroy } from 'svelte';
   import { browser } from '$app/environment';
+  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import {
     Plus,
     Clock,
@@ -55,8 +56,8 @@
   const initialJobs = $derived(data.jobs as Job[]);
 
   // Track SSE connections and live job updates
-  let eventSources = $state<Map<string, EventSource>>(new Map());
-  let jobUpdates = $state<Map<string, Job>>(new Map());
+  let eventSources = new SvelteMap<string, EventSource>();
+  let jobUpdates = new SvelteMap<string, Job>();
 
   // Merge initial jobs with live updates and sort by priority
   const jobs = $derived(
@@ -258,7 +259,7 @@
   }
 
   // Retry a failed job
-  let retryingJobs = $state<Set<string>>(new Set());
+  let retryingJobs = new SvelteSet<string>();
 
   async function retryJob(job: Job) {
     if (retryingJobs.has(job.id)) return;
@@ -283,7 +284,7 @@
   }
 
   // Cancel an active job
-  let cancellingJobs = $state<Set<string>>(new Set());
+  let cancellingJobs = new SvelteSet<string>();
 
   async function cancelJob(job: Job) {
     if (cancellingJobs.has(job.id)) return;
