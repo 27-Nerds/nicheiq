@@ -454,7 +454,7 @@ class PainPointCrew:
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.3,  # Low-moderate (ignored for reasoning models)
-                max_completion_tokens=16000,  # Prevent truncation of large pain point outputs
+                # max_completion_tokens=16000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
             )),
             knowledge_sources=self.knowledge_sources,  # RAG for quote retrieval
             verbose=True,

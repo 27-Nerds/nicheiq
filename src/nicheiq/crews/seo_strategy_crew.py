@@ -271,7 +271,7 @@ class SEOStrategyCrew:
                 model=settings.openai_model_name,
                 temperature=0.4,  # Moderate temperature (ignored for reasoning models)
                 timeout=180,
-                max_completion_tokens=20000,  # Prevent truncation of large SEO strategy outputs
+                # max_completion_tokens=20000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
             )),
             verbose=True,
         )

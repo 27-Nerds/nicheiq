@@ -236,7 +236,7 @@ class UnifiedSolutionCrew:
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
                 temperature=0.3,
-                max_completion_tokens=30000,  # Prevent truncation of large CompetitiveAnalysisResult
+                # max_completion_tokens=30000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
             )),
             function_calling_llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.function_calling_llm,
