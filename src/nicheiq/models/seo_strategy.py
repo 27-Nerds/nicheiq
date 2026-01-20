@@ -691,7 +691,7 @@ class KeywordAnalysisResult(BaseModel):
     tiered opportunity structure with competitive positioning.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
 
     # Tier 0: Premium opportunities (opp_score > 200)
     tier_0_keywords: Optional[list[TieredKeyword]] = Field(
@@ -806,7 +806,7 @@ class ContentStrategyResult(BaseModel):
     and technical SEO recommendations based on keyword analysis.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
 
     # Content strategy
     content_strategy: str = Field(
@@ -841,7 +841,7 @@ class ImplementationPlanResult(BaseModel):
     metrics, timeline, budget, and risk mitigation strategies.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
 
     # Implementation
     implementation_roadmap: str = Field(
@@ -873,7 +873,7 @@ class FinalSynthesis(BaseModel):
     outputs from Tasks 1-3. These fields will be merged with Tasks 1-3 via Python.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
 
     long_term_strategy: str = Field(
         ...,
