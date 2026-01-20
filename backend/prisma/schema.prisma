@@ -276,6 +276,7 @@ model CreditTransaction {
   @@index([createdAt])
   @@index([type])
   @@index([relatedJobId])
+  @@unique([relatedJobId, type], name: "unique_job_transaction_type")
 }
 
 // Admin-generated promo codes

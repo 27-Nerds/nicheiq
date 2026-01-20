@@ -187,42 +187,55 @@ export async function refundCreditsForJob(
 
   if (existingRefund) {
     // Already refunded
+    console.log(`[CreditService] Job ${jobId} already has a refund transaction`);
     return existingRefund;
   }
 
   // Perform refund in transaction
-  return prisma.$transaction(async (tx) => {
-    const credits = await tx.userCredits.findUnique({
-      where: { userId: job.userId! },
-    });
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const credits = await tx.userCredits.findUnique({
+        where: { userId: job.userId! },
+      });
 
-    if (!credits) {
-      // No credits record - shouldn't happen but handle gracefully
-      return null;
+      if (!credits) {
+        // No credits record - shouldn't happen but handle gracefully
+        return null;
+      }
+
+      // Add credits back
+      const updatedCredits = await tx.userCredits.update({
+        where: { userId: job.userId! },
+        data: {
+          balance: { increment: creditAmount },
+          totalUsed: { decrement: creditAmount },
+        },
+      });
+
+      // Log the refund transaction
+      return tx.creditTransaction.create({
+        data: {
+          userId: job.userId!,
+          type: CreditTransactionType.REFUND,
+          amount: creditAmount,
+          balanceBefore: credits.balance,
+          balanceAfter: updatedCredits.balance,
+          relatedJobId: jobId,
+          description: `Refund for failed job: ${job.niche?.substring(0, 100)}`,
+        },
+      });
+    });
+  } catch (error) {
+    // Handle unique constraint violation (race condition where two refunds tried simultaneously)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      console.log(`[CreditService] Job ${jobId} refund race condition detected - returning existing refund`);
+      // Return the existing refund that won the race
+      return prisma.creditTransaction.findFirst({
+        where: { relatedJobId: jobId, type: CreditTransactionType.REFUND },
+      });
     }
-
-    // Add credits back
-    const updatedCredits = await tx.userCredits.update({
-      where: { userId: job.userId! },
-      data: {
-        balance: { increment: creditAmount },
-        totalUsed: { decrement: creditAmount },
-      },
-    });
-
-    // Log the refund transaction
-    return tx.creditTransaction.create({
-      data: {
-        userId: job.userId!,
-        type: CreditTransactionType.REFUND,
-        amount: creditAmount,
-        balanceBefore: credits.balance,
-        balanceAfter: updatedCredits.balance,
-        relatedJobId: jobId,
-        description: `Refund for failed job: ${job.niche?.substring(0, 100)}`,
-      },
-    });
-  });
+    throw error;
+  }
 }
 
 /**

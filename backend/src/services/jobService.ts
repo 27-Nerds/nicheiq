@@ -211,8 +211,27 @@ export async function completeJob(
 /**
  * Fail a job with error message
  * Automatically refunds the research credit to the user
+ *
+ * This function is IDEMPOTENT - safe to call multiple times for the same job.
+ * If the job is already FAILED, it returns the existing job without making changes.
  */
 export async function failJob(jobId: string, errorMessage: string, errorStage?: number) {
+  // Check if job is already FAILED (idempotency)
+  const existingJob = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { status: true },
+  });
+
+  if (!existingJob) {
+    console.log(`[JobService] Job ${jobId} not found`);
+    return null;
+  }
+
+  if (existingJob.status === JobStatus.FAILED) {
+    console.log(`[JobService] Job ${jobId} is already FAILED, skipping duplicate failJob() call`);
+    return prisma.job.findUnique({ where: { id: jobId } });
+  }
+
   // Update job status to FAILED
   const job = await prisma.job.update({
     where: { id: jobId },
@@ -227,11 +246,11 @@ export async function failJob(jobId: string, errorMessage: string, errorStage?: 
   try {
     const refund = await refundCreditsForJob(jobId, 1);
     if (refund) {
-      console.log(`Auto-refunded 1 credit for failed job ${jobId}`);
+      console.log(`[JobService] Auto-refunded 1 credit for failed job ${jobId}`);
     }
   } catch (refundError) {
     // Log but don't fail the failJob operation
-    console.error(`Failed to auto-refund credit for job ${jobId}:`, refundError);
+    console.error(`[JobService] Failed to auto-refund credit for job ${jobId}:`, refundError);
   }
 
   return job;

@@ -16,6 +16,7 @@ import {
   registerWorkerHeartbeat,
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
+import { failJob } from '../services/jobService.js';
 import { requireInternalService } from '../middleware/auth.js';
 
 export const workersRouter = Router();
@@ -257,6 +258,48 @@ workersRouter.post('/job-completed', async (req: Request, res: Response) => {
       return;
     }
     console.error('Job completed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Job failed request schema
+ */
+const JobFailedSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  error_message: z.string(),
+  error_stage: z.number().int().nullable().optional(),
+});
+
+/**
+ * POST /api/workers/job-failed
+ * Worker reports that a job has failed.
+ * This endpoint is IDEMPOTENT - safe to call multiple times for the same job.
+ * The backend's failJob() function handles idempotency and auto-refunds.
+ */
+workersRouter.post('/job-failed', async (req: Request, res: Response) => {
+  try {
+    const data = JobFailedSchema.parse(req.body);
+
+    console.log(`[Workers] Job ${data.job_id} failed reported by worker ${data.worker_id}: ${data.error_message.substring(0, 100)}`);
+
+    // failJob is idempotent - safe to call multiple times
+    const job = await failJob(data.job_id, data.error_message, data.error_stage ?? undefined);
+
+    // Clear worker's current job
+    await registerWorkerHeartbeat(data.worker_id, null);
+
+    res.json({
+      success: true,
+      job_id: data.job_id,
+      status: job?.status ?? 'unknown',
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid request', details: error.errors });
+    }
+    console.error('[Workers] Error processing job-failed:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

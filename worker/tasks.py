@@ -17,7 +17,6 @@ from rq import get_current_job
 from .progress import (
     create_progress_callback,
     publish_job_completed,
-    publish_job_failed,
     publish_progress,
 )
 from .status import mark_job_running
@@ -137,15 +136,14 @@ def run_research_job(
         error_traceback = traceback.format_exc()
         logger.error(f"[Worker] Job {job_id} failed: {error_msg}\n{error_traceback}")
 
-        # Try to determine which stage failed
+        # Try to determine which stage failed and attach to exception
+        # so queue_consumer can access it for the failure notification
         failed_stage = None
         if hasattr(flow, 'state') and flow.state:
             failed_stage = flow.state.current_stage
+        e.failed_stage = failed_stage  # type: ignore
 
-        # Publish failure
-        publish_job_failed(job_id, error_msg, failed_stage)
-
-        # Re-raise for RQ to mark as failed
+        # Re-raise - queue_consumer handles all failure notification via notify_job_failed()
         raise
 
 
@@ -201,5 +199,7 @@ def run_landing_page_only(
 
     except Exception as e:
         logger.error(f"[Worker] Landing page generation failed for job {job_id}: {e}")
-        publish_job_failed(job_id, str(e), 11)
+        # Attach stage 11 (Landing Page Generation) to exception for queue_consumer
+        e.failed_stage = 11  # type: ignore
+        # Re-raise - queue_consumer handles all failure notification via notify_job_failed()
         raise

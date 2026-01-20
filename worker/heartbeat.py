@@ -250,6 +250,44 @@ def notify_job_completed(job_id: str) -> bool:
         return False
 
 
+def notify_job_failed(job_id: str, error_message: str, error_stage: Optional[int] = None) -> bool:
+    """
+    Notify backend that a job has failed.
+    This is the ONLY place worker should notify about job failures.
+
+    The backend endpoint is idempotent - safe to call multiple times.
+
+    Args:
+        job_id: The job ID
+        error_message: Error description
+        error_stage: Optional stage number where failure occurred
+
+    Returns:
+        True if successful, False otherwise
+    """
+    global _current_job_id
+    _current_job_id = None
+
+    try:
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/job-failed",
+            json={
+                "worker_id": WORKER_ID,
+                "job_id": job_id,
+                "error_message": error_message,
+                "error_stage": error_stage,
+            },
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=HEARTBEAT_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        logger.info(f"[Heartbeat] Notified backend: job {job_id} failed")
+        return True
+    except requests.exceptions.RequestException as e:
+        logger.warning(f"[Heartbeat] Failed to notify job failed: {e}")
+        return False
+
+
 def notify_shutdown(reason: str = "signal") -> bool:
     """
     Notify backend that this worker is shutting down.

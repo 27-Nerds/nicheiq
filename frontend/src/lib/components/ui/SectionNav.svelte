@@ -120,12 +120,6 @@
 
 <!-- Desktop Sidebar -->
 <nav class="section-nav-desktop">
-	<!-- Progress header -->
-	<div class="nav-progress-header">
-		<span class="nav-progress-text">{viewedCount}/{totalCount}</span>
-		<span class="nav-progress-label">sections</span>
-	</div>
-
 	<!-- Progress bar -->
 	<div class="nav-progress-track">
 		<div class="nav-progress-fill" style:height="{scrollProgress * 100}%"></div>
@@ -160,7 +154,6 @@
 	<!-- Toggle button -->
 	<button class="nav-mobile-toggle" onclick={() => (isOpen = !isOpen)}>
 		<div class="nav-mobile-header">
-			<span class="nav-mobile-progress-count">{viewedCount}/{totalCount}</span>
 			<div class="nav-mobile-progress">
 				<div class="nav-mobile-progress-fill" style:width="{scrollProgress * 100}%"></div>
 			</div>
@@ -220,31 +213,10 @@
 		}
 	}
 
-	.nav-progress-header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.25rem;
-		padding: 0 0.5rem 0.5rem;
-		margin-bottom: 0.25rem;
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	.nav-progress-text {
-		font-family: var(--font-mono);
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: var(--color-accent);
-	}
-
-	.nav-progress-label {
-		font-size: 0.625rem;
-		color: var(--color-text-muted);
-	}
-
 	.nav-progress-track {
 		position: absolute;
 		left: 0;
-		top: 3.5rem;
+		top: 0.75rem;
 		bottom: 0.75rem;
 		width: 3px;
 		background: var(--color-bg-surface);
@@ -362,13 +334,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-	}
-
-	.nav-mobile-progress-count {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 600;
-		color: var(--color-accent);
 	}
 
 	.nav-mobile-progress {

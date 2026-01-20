@@ -124,13 +124,12 @@ def process_job(job_data: dict) -> None:
 
     except Exception as e:
         # Import here to avoid circular imports
-        from .heartbeat import JobCancelledException, notify_job_completed
+        from .heartbeat import JobCancelledException, notify_job_completed, notify_job_failed
 
         # Handle user-initiated cancellation gracefully
         if isinstance(e, JobCancelledException):
             logger.info(f"Job {job_id} cancelled by user - stopping gracefully")
             # Don't publish failure - backend already knows job is CANCELLED
-            # Don't need to notify completion as status is already set
             notify_job_completed(job_id)
             return
 
@@ -138,11 +137,12 @@ def process_job(job_data: dict) -> None:
         error_traceback = traceback.format_exc()
         logger.error(f"Job {job_id} failed: {error_msg}\n{error_traceback}")
 
-        # NOTE: publish_job_failed() is already called in run_research_job()
-        # with stage context - don't call it again here to avoid duplicate refunds
+        # Extract stage from exception if available (set by tasks.py)
+        failed_stage = getattr(e, 'failed_stage', None)
 
-        # Notify backend job completed (failed)
-        notify_job_completed(job_id)
+        # Single point of failure notification - calls idempotent backend endpoint
+        # This handles status update, refund, and clears worker's current job
+        notify_job_failed(job_id, error_msg, failed_stage)
 
     finally:
         current_job_id = None

@@ -34,9 +34,6 @@
 	import SectionNav from '$lib/components/ui/SectionNav.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
-	// Header Summary
-	import HeaderSummary from '$lib/components/sections/HeaderSummary.svelte';
-
 	interface Props {
 		data: {
 			report: Report;
@@ -87,25 +84,6 @@
 				<ArrowLeft class="w-4 h-4" />
 				<span>Back to Job Status</span>
 			</a>
-
-			<!-- Header Summary -->
-			<HeaderSummary
-				niche={report.niche}
-				nicheContext={report.niche_context}
-				researchMetadata={report.research_metadata}
-				painPointAnalytics={report.pain_point_analytics}
-				detailedPainPointsCount={report.detailed_pain_points?.length ?? 0}
-				solutionName={report.selected_solution_name}
-				solutionDescription={report.selected_solution_details?.description}
-				severityScore={report.executive_dashboard?.core_pain_point?.severity_score}
-				wtpScore={report.executive_dashboard?.core_pain_point?.willingness_to_pay_score}
-				marketFitScore={report.selected_solution_details?.market_fit_score}
-				feasibilityScore={report.selected_solution_details?.technical_feasibility_score}
-				soloDevScore={report.selected_solution_details?.solo_dev_feasibility}
-				confidenceScore={report.executive_dashboard?.confidence_score}
-				totalKeywords={report.seo_analytics?.total_keywords ?? report.seo_strategy_report?.total_keywords_analyzed ?? 0}
-				totalSearchVolume={report.seo_analytics?.total_search_volume ?? report.seo_strategy_report?.total_monthly_volume ?? 0}
-			/>
 
 			<!-- PHASE 1: DECISION GATEWAY (Go/No-Go) -->
 			<div class="phase-section phase-decision">

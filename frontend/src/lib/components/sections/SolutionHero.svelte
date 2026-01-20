@@ -205,7 +205,7 @@
 				<Badge variant="success" size="sm">{solution.differentiation_factors.length}</Badge>
 			</div>
 			<div class="advantages-grid">
-				{#each solution.differentiation_factors.slice(0, 4) as factor}
+				{#each solution.differentiation_factors as factor}
 					<div class="advantage-item">
 						<CheckCircle class="check-icon" />
 						<span class="advantage-text">{factor}</span>
@@ -230,7 +230,7 @@
 			{#if showFeatures}
 				<div class="expandable-content">
 					<div class="features-grid">
-						{#each solution.core_features.slice(0, 8) as feature, i}
+						{#each solution.core_features as feature, i}
 							<div class="feature-item">
 								<span class="feature-num">{String(i + 1).padStart(2, '0')}</span>
 								<span class="feature-text">{feature}</span>
@@ -341,6 +341,12 @@
 		border-radius: 0.875rem;
 		padding: 1.5rem;
 		margin-bottom: 1rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+		transition: box-shadow 0.2s ease;
+	}
+
+	.solution-hero-card:hover {
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 	}
 
 	.hero-top {
@@ -362,15 +368,17 @@
 		justify-content: center;
 		width: 2.5rem;
 		height: 2.5rem;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.12) 0%, rgba(229, 90, 40, 0.04) 100%);
-		border: 1px solid rgba(229, 90, 40, 0.25);
+		background: linear-gradient(135deg, rgba(229, 90, 40, 0.15) 0%, rgba(229, 90, 40, 0.06) 100%);
+		border: 1px solid rgba(229, 90, 40, 0.3);
 		border-radius: 0.5rem;
+		box-shadow: 0 0 12px rgba(229, 90, 40, 0.15);
 	}
 
 	:global(.sparkle-icon) {
 		width: 1.25rem;
 		height: 1.25rem;
 		color: #E55A28;
+		filter: drop-shadow(0 0 2px rgba(229, 90, 40, 0.4));
 	}
 
 	.hero-title {
@@ -411,7 +419,7 @@
 	/* Scores Grid */
 	.scores-grid {
 		display: flex;
-		gap: 0.625rem;
+		gap: 1rem;
 		flex-wrap: wrap;
 	}
 
@@ -423,18 +431,23 @@
 		padding: 0.75rem 0.875rem;
 		background: rgba(0, 0, 0, 0.02);
 		border: 1px solid rgba(0, 0, 0, 0.06);
+		border-top: 3px solid transparent;
 		border-radius: 0.5rem;
 		min-width: 70px;
-		transition: all 0.15s ease;
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+		transition: all 0.2s ease;
 	}
 
 	.score-card:hover {
+		transform: scale(1.02);
 		border-color: rgba(0, 0, 0, 0.12);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 	}
 
 	.score-card.strong {
 		background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, transparent 60%);
 		border-color: rgba(34, 197, 94, 0.2);
+		border-top-color: #22C55E;
 	}
 
 	.score-label {
@@ -452,7 +465,7 @@
 	   ========================= */
 	.stats-row {
 		display: flex;
-		gap: 0.625rem;
+		gap: 1rem;
 		margin-bottom: 1rem;
 		flex-wrap: wrap;
 	}
@@ -465,6 +478,12 @@
 		background: #FFFFFF;
 		border: 1px solid rgba(0, 0, 0, 0.08);
 		border-radius: 9999px;
+		transition: all 0.15s ease;
+	}
+
+	.stat-pill:hover {
+		background: rgba(0, 0, 0, 0.02);
+		border-color: rgba(0, 0, 0, 0.12);
 	}
 
 	:global(.stat-icon) {
@@ -539,7 +558,15 @@
 		padding: 0.625rem;
 		background: rgba(255, 255, 255, 0.7);
 		border: 1px solid rgba(34, 197, 94, 0.1);
+		border-left: 2px solid transparent;
 		border-radius: 0.375rem;
+		transition: all 0.15s ease;
+	}
+
+	.advantage-item:hover {
+		background: rgba(34, 197, 94, 0.08);
+		border-left-color: #22C55E;
+		transform: scale(1.01);
 	}
 
 	:global(.check-icon) {
@@ -582,6 +609,11 @@
 		background: rgba(0, 0, 0, 0.02);
 	}
 
+	.expandable-header:focus-visible {
+		outline: 2px solid var(--color-accent, #E55A28);
+		outline-offset: 2px;
+	}
+
 	.expandable-title {
 		display: flex;
 		align-items: center;
@@ -615,6 +647,18 @@
 	.expandable-content {
 		padding: 0 1rem 1rem;
 		background: #FFFFFF;
+		animation: fadeSlideIn 0.2s ease-out;
+	}
+
+	@keyframes fadeSlideIn {
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
 	}
 
 	/* Features Grid */
