@@ -13,7 +13,7 @@
 		Wrench,
 		User
 	} from 'lucide-svelte';
-	import Badge from '$lib/components/ui/Badge.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
 	// PHASE 1: DECISION (Go/No-Go verdict)
 	import ExecutiveSummary from '$lib/components/sections/ExecutiveSummary.svelte';
@@ -109,6 +109,23 @@
 	const nicheName = $derived(report?.niche_context?.niche_input ?? report?.niche?.slice(0, 60) ?? 'Unknown Niche');
 	const nicheDescription = $derived(report?.niche_context?.niche_description ?? report?.niche ?? '');
 
+	// Expandable description state
+	let descriptionExpanded = $state(false);
+
+	// Tooltip content definitions
+	const tooltips = {
+		verdict: {
+			go: "Strong opportunity with favorable market conditions. Proceed with confidence.",
+			conditional: "Promising opportunity with some caveats. Review risk factors before proceeding.",
+			nogo: "Unfavorable conditions detected. Consider pivoting or choosing an alternative."
+		},
+		confidence: "How certain the AI is about this verdict, based on data quality and signal strength.",
+		opportunity: "Overall market opportunity score combining demand signals, growth potential, and monetization viability.",
+		trend: "Market momentum direction based on search trends, social mentions, and competitive activity.",
+		saturation: "How crowded the market is. Low = blue ocean, High = intense competition.",
+		risk: "Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats."
+	};
+
 	// Helper Functions
 	function formatPercent(value: number): string {
 		return `${Math.round(value * 100)}%`;
@@ -142,6 +159,24 @@
 		if (risk === 'Low') return 'success';
 		if (risk === 'High') return 'error';
 		return 'warning';
+	}
+
+	function getTrendClass(trend: string | null | undefined): string {
+		if (trend?.toLowerCase().includes('grow')) return 'success';
+		if (trend?.toLowerCase().includes('declin')) return 'error';
+		return 'warning';
+	}
+
+	function getRiskClass(risk: string): 'success' | 'warning' | 'error' {
+		if (risk === 'Low') return 'success';
+		if (risk === 'High') return 'error';
+		return 'warning';
+	}
+
+	function getVerdictTooltip(v: string | null): string {
+		if (v === 'Go') return tooltips.verdict.go;
+		if (v === 'Conditional') return tooltips.verdict.conditional;
+		return tooltips.verdict.nogo;
 	}
 </script>
 
@@ -182,45 +217,77 @@
 				<div class="header-hero">
 					<!-- Verdict Badge -->
 					<div class="hero-main">
-						<div class="verdict-badge {getVerdictClass(verdict)}">
-							{#if verdict === 'Go'}
-								<CheckCircle class="verdict-icon" size={20} />
-							{:else if verdict === 'Conditional'}
-								<AlertTriangle class="verdict-icon" size={20} />
-							{:else}
-								<XCircle class="verdict-icon" size={20} />
-							{/if}
-							<span class="verdict-text">{verdict?.toUpperCase() ?? 'ANALYZING'}</span>
-							<span class="verdict-confidence">{formatPercent(confidenceScore)}</span>
+						<div class="verdict-wrapper">
+							<div class="verdict-badge {getVerdictClass(verdict)}">
+								{#if verdict === 'Go'}
+									<CheckCircle class="verdict-icon" size={20} />
+								{:else if verdict === 'Conditional'}
+									<AlertTriangle class="verdict-icon" size={20} />
+								{:else}
+									<XCircle class="verdict-icon" size={20} />
+								{/if}
+								<span class="verdict-text">{verdict?.toUpperCase() ?? 'ANALYZING'}</span>
+								<span class="verdict-confidence" title={tooltips.confidence}>{formatPercent(confidenceScore)}</span>
+							</div>
+							<Tooltip content={getVerdictTooltip(verdict)} position="bottom" />
 						</div>
 					</div>
 					<!-- Niche Name + Description -->
 					<div class="hero-niche-container">
 						<h1 class="hero-niche">{nicheName}</h1>
-						<p class="hero-description">{nicheDescription}</p>
+						<span
+							class="hero-description"
+							class:expanded={descriptionExpanded}
+							onclick={() => descriptionExpanded = !descriptionExpanded}
+							role="button"
+							tabindex="0"
+							onkeydown={(e) => e.key === 'Enter' && (descriptionExpanded = !descriptionExpanded)}
+						>
+							{nicheDescription}
+						</span>
+						{#if !descriptionExpanded && nicheDescription?.length > 150}
+							<button class="expand-btn" onclick={() => descriptionExpanded = true}>
+								Show more
+							</button>
+						{/if}
 					</div>
 
 					<!-- Quick Signals -->
 					<div class="hero-signals">
-						<div class="signal-chip">
+						<!-- Opportunity -->
+						<div class="signal-chip" title={tooltips.opportunity}>
 							<span class="signal-value">{formatPercent(opportunityScore)}</span>
 							<span class="signal-label">Opportunity</span>
 						</div>
-						<div class="signal-chip trend">
-							{#if trendDirection?.toLowerCase().includes('grow')}
-								<TrendingUp size={16} class="trend-icon trend-up" />
-							{:else if trendDirection?.toLowerCase().includes('declin')}
-								<TrendingDown size={16} class="trend-icon trend-down" />
-							{:else}
-								<Minus size={16} class="trend-icon trend-stable" />
-							{/if}
-							<span class="signal-value">{trendDirection}</span>
+
+						<!-- Trend - now vertical with icon inline -->
+						<div class="signal-chip" title={tooltips.trend}>
+							<span class="signal-value {getTrendClass(trendDirection)}-text">
+								{#if trendDirection?.toLowerCase().includes('grow')}
+									<TrendingUp size={14} class="value-icon" />
+								{:else if trendDirection?.toLowerCase().includes('declin')}
+									<TrendingDown size={14} class="value-icon" />
+								{:else}
+									<Minus size={14} class="value-icon" />
+								{/if}
+								{trendDirection}
+							</span>
+							<span class="signal-label">Trend</span>
 						</div>
-						<div class="signal-chip">
-							<span class="signal-value {getSaturationClass(saturationScore)}-text">{getSaturationLabel(saturationScore)}</span>
+
+						<!-- Saturation -->
+						<div class="signal-chip" title={tooltips.saturation}>
+							<span class="signal-value {getSaturationClass(saturationScore)}-text">
+								{getSaturationLabel(saturationScore)}
+							</span>
 							<span class="signal-label">Saturation</span>
 						</div>
-						<Badge variant={getRiskVariant(riskLevel)} size="sm">{riskLevel} Risk</Badge>
+
+						<!-- Risk - NOW uses signal-chip instead of Badge -->
+						<div class="signal-chip" title={tooltips.risk}>
+							<span class="signal-value {getRiskClass(riskLevel)}-text">{riskLevel}</span>
+							<span class="signal-label">Risk</span>
+						</div>
 					</div>
 				</div>
 
@@ -653,6 +720,33 @@
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+		cursor: pointer;
+		transition: color 0.15s ease;
+	}
+
+	.hero-description:hover {
+		color: rgba(255, 255, 255, 0.95);
+	}
+
+	.hero-description.expanded {
+		-webkit-line-clamp: unset;
+		display: block;
+	}
+
+	.expand-btn {
+		background: transparent;
+		border: none;
+		color: rgba(255, 255, 255, 0.7);
+		font-size: 0.75rem;
+		cursor: pointer;
+		padding: 0.25rem 0;
+		text-decoration: underline;
+		margin-top: 0.25rem;
+		transition: color 0.15s ease;
+	}
+
+	.expand-btn:hover {
+		color: white;
 	}
 
 	/* Hero Signals */
@@ -673,7 +767,8 @@
 		-webkit-backdrop-filter: blur(8px);
 		border: 1px solid rgba(255, 255, 255, 0.12);
 		border-radius: 0.5rem;
-		min-width: 70px;
+		min-width: 80px;
+		cursor: help;
 		transition: background 0.15s ease, border-color 0.15s ease;
 	}
 
@@ -682,16 +777,19 @@
 		border-color: rgba(255, 255, 255, 0.2);
 	}
 
-	.signal-chip.trend {
-		flex-direction: row;
-		gap: 0.375rem;
-	}
-
+	/* Icon inline with value */
 	.signal-value {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
 		font-size: 0.9375rem;
 		font-weight: 700;
 		color: white;
 		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+	}
+
+	:global(.value-icon) {
+		flex-shrink: 0;
 	}
 
 	.signal-label {
@@ -702,39 +800,31 @@
 		font-weight: 500;
 	}
 
-	:global(.trend-icon) { color: white; }
-	:global(.trend-up) { color: var(--color-success-light, #86efac); }
-	:global(.trend-down) { color: var(--color-error-light, #fca5a5); }
-	:global(.trend-stable) { color: var(--color-warning-light, #fde047); }
-
 	.success-text { color: var(--color-success-light, #86efac) !important; }
 	.warning-text { color: var(--color-warning-light, #fde047) !important; }
 	.error-text { color: var(--color-error-light, #fca5a5) !important; }
 
-	/* Badge styling in hero context */
-	.hero-signals :global(.badge) {
-		backdrop-filter: blur(8px);
-		-webkit-backdrop-filter: blur(8px);
-		border: 1px solid rgba(255, 255, 255, 0.15);
-		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+	/* Verdict wrapper for tooltip */
+	.verdict-wrapper {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
 	}
 
-	.hero-signals :global(.badge-success) {
-		background: rgba(34, 197, 94, 0.2);
-		color: #86efac;
-		border-color: rgba(34, 197, 94, 0.3);
+	.verdict-wrapper :global(.tooltip-wrapper) {
+		display: flex;
+		align-items: center;
 	}
 
-	.hero-signals :global(.badge-warning) {
-		background: rgba(245, 158, 11, 0.2);
-		color: #fde047;
-		border-color: rgba(245, 158, 11, 0.3);
+	.verdict-wrapper :global(.tooltip-trigger) {
+		color: rgba(255, 255, 255, 0.6);
+		border-color: rgba(255, 255, 255, 0.3);
 	}
 
-	.hero-signals :global(.badge-error) {
-		background: rgba(239, 68, 68, 0.2);
-		color: #fca5a5;
-		border-color: rgba(239, 68, 68, 0.3);
+	.verdict-wrapper :global(.tooltip-trigger:hover) {
+		color: white;
+		border-color: rgba(255, 255, 255, 0.5);
+		background: rgba(255, 255, 255, 0.1);
 	}
 
 	/* Header Content */

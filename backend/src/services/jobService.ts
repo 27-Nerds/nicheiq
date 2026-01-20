@@ -289,3 +289,33 @@ export async function listJobs(options?: {
 
   return { jobs, total, limit, offset };
 }
+
+/**
+ * Reset all progress records for a job to PENDING
+ * Used when a job is retried after worker crash/shutdown
+ */
+export async function resetJobProgress(jobId: string) {
+  await prisma.jobProgress.updateMany({
+    where: { jobId },
+    data: {
+      status: StageStatus.PENDING,
+      startedAt: null,
+      completedAt: null,
+      durationSeconds: null,
+      errorMessage: null,
+    },
+  });
+
+  // Also reset job-level progress counters
+  await prisma.job.update({
+    where: { id: jobId },
+    data: {
+      currentStage: 0,
+      currentStageName: null,
+      stagesCompleted: 0,
+      progressPercent: 0,
+    },
+  });
+
+  console.log(`[JobService] Reset progress for job ${jobId}`);
+}

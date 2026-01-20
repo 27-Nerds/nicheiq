@@ -16,7 +16,7 @@ import {
   registerWorkerHeartbeat,
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
-import { failJob } from '../services/jobService.js';
+import { failJob, resetJobProgress } from '../services/jobService.js';
 import { requireInternalService } from '../middleware/auth.js';
 
 export const workersRouter = Router();
@@ -146,6 +146,9 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
             job.userId || undefined,
             job.allowedProjectTypes as string[] | undefined
           );
+
+          // Reset progress records so retry starts fresh
+          await resetJobProgress(data.job_id);
 
           console.log(`[Workers] Job ${data.job_id} immediately re-queued for retry (attempt ${newRetryCount}/${MAX_RETRIES})`);
         } else {

@@ -11,7 +11,7 @@
 import { prisma } from './db.js';
 import { JobStatus } from '@prisma/client';
 import { enqueueJob } from './queueService.js';
-import { failJob } from './jobService.js';
+import { failJob, resetJobProgress } from './jobService.js';
 import { sendFailureEmail } from './emailService.js';
 
 // Configuration
@@ -222,6 +222,9 @@ async function requeueJobForRetry(job: {
         queuedAt: new Date(),
       },
     });
+
+    // Reset progress records so retry starts fresh
+    await resetJobProgress(job.id);
 
     console.log(`[Heartbeat] Job ${job.id} re-queued successfully`);
     return true;

@@ -202,11 +202,9 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info("Starting fresh research run")
         self.kickoff()
 
-        # Generate final report path
-        if self.state.final_report:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            report_filename = f"final_report_{timestamp}.json"
-            return str(settings.output_dir / report_filename)
+        # Return the actual report path stored during stage 10
+        if hasattr(self, 'report_path') and self.report_path:
+            return self.report_path
 
         return ""
 
@@ -856,11 +854,9 @@ class ResearchFlow(Flow[ResearchState]):
             if current <= 10:
                 self.stage_10_generate_report()
 
-            # Generate final report path
-            if self.state.final_report:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                report_filename = f"final_report_{timestamp}.json"
-                return str(settings.output_dir / report_filename)
+            # Return the actual report path stored during stage 10
+            if hasattr(self, 'report_path') and self.report_path:
+                return self.report_path
 
         except Exception as e:
             logger.error(f"Error during stage execution: {e}")

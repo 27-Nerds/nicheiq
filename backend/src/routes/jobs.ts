@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
 import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueService.js';
@@ -10,7 +10,7 @@ import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
+import { requireInternalAuth, requireInternalService, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
 
@@ -341,7 +341,7 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, async (req: Authenticated
  * Update job status (internal only - called by Python worker)
  * Used to mark job as RUNNING when worker picks it up from queue
  */
-jobsRouter.patch('/:jobId/status', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.patch('/:jobId/status', requireInternalService, async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const { status } = req.body;
