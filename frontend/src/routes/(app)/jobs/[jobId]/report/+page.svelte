@@ -105,6 +105,10 @@
 	const feasibilityScore = $derived(report?.selected_solution_details?.technical_feasibility_score ?? 0);
 	const soloDevScore = $derived(report?.selected_solution_details?.solo_dev_feasibility ?? 0);
 
+	// Niche display values
+	const nicheName = $derived(report?.niche_context?.niche_input ?? report?.niche?.slice(0, 60) ?? 'Unknown Niche');
+	const nicheDescription = $derived(report?.niche_context?.niche_description ?? report?.niche ?? '');
+
 	// Helper Functions
 	function formatPercent(value: number): string {
 		return `${Math.round(value * 100)}%`;
@@ -176,7 +180,7 @@
 			<!-- Report Header -->
 			<header class="report-header">
 				<div class="header-hero">
-					<!-- Verdict + Niche -->
+					<!-- Verdict Badge -->
 					<div class="hero-main">
 						<div class="verdict-badge {getVerdictClass(verdict)}">
 							{#if verdict === 'Go'}
@@ -189,7 +193,11 @@
 							<span class="verdict-text">{verdict?.toUpperCase() ?? 'ANALYZING'}</span>
 							<span class="verdict-confidence">{formatPercent(confidenceScore)}</span>
 						</div>
-						<h1 class="hero-niche">{report.niche}</h1>
+					</div>
+					<!-- Niche Name + Description -->
+					<div class="hero-niche-container">
+						<h1 class="hero-niche">{nicheName}</h1>
+						<p class="hero-description">{nicheDescription}</p>
 					</div>
 
 					<!-- Quick Signals -->
@@ -521,55 +529,130 @@
 		margin-bottom: 2rem;
 	}
 
-	/* Hero Redesign */
+	/* Hero Redesign - Premium Gradient with Texture */
 	.header-hero {
-		background: var(--color-accent);
+		background:
+			linear-gradient(
+				135deg,
+				#1e293b 0%,
+				#334155 25%,
+				#78350f 60%,
+				#E55A28 100%
+			);
 		padding: 1.5rem 2rem;
 		border-radius: 1rem 1rem 0 0;
+		position: relative;
+		overflow: hidden;
+	}
+
+	/* Subtle noise texture overlay */
+	.header-hero::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+		opacity: 0.03;
+		pointer-events: none;
+	}
+
+	/* Ensure content is above texture */
+	.header-hero > * {
+		position: relative;
+		z-index: 1;
 	}
 
 	.hero-main {
 		display: flex;
 		align-items: center;
-		gap: 1.25rem;
-		margin-bottom: 1rem;
+		gap: 1rem;
+		margin-bottom: 0.75rem;
 	}
 
 	.verdict-badge {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
-		padding: 0.5rem 1rem;
-		border-radius: 0.5rem;
-		background: rgba(255, 255, 255, 0.15);
-		border: 2px solid;
+		gap: 0.625rem;
+		padding: 0.625rem 1.25rem;
+		border-radius: 0.75rem;
+		background: rgba(255, 255, 255, 0.12);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		box-shadow:
+			0 4px 16px rgba(0, 0, 0, 0.15),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+		transition: transform 0.2s ease, box-shadow 0.2s ease;
 	}
 
-	.verdict-badge.verdict-go { border-color: var(--color-success); }
-	.verdict-badge.verdict-conditional { border-color: var(--color-warning); }
-	.verdict-badge.verdict-nogo { border-color: var(--color-error); }
+	.verdict-badge:hover {
+		transform: translateY(-1px);
+	}
+
+	/* Verdict-specific glows */
+	.verdict-badge.verdict-go {
+		border-color: rgba(34, 197, 94, 0.5);
+		box-shadow:
+			0 4px 16px rgba(0, 0, 0, 0.15),
+			0 0 20px rgba(34, 197, 94, 0.25),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+	}
+
+	.verdict-badge.verdict-conditional {
+		border-color: rgba(245, 158, 11, 0.5);
+		box-shadow:
+			0 4px 16px rgba(0, 0, 0, 0.15),
+			0 0 20px rgba(245, 158, 11, 0.25),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+	}
+
+	.verdict-badge.verdict-nogo {
+		border-color: rgba(239, 68, 68, 0.5);
+		box-shadow:
+			0 4px 16px rgba(0, 0, 0, 0.15),
+			0 0 20px rgba(239, 68, 68, 0.25),
+			inset 0 1px 0 rgba(255, 255, 255, 0.1);
+	}
 
 	:global(.verdict-badge .verdict-icon) { color: white; }
 
 	.verdict-text {
-		font-size: 1rem;
+		font-size: 0.9375rem;
 		font-weight: 800;
 		color: white;
-		letter-spacing: 0.02em;
+		letter-spacing: 0.05em;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
 	}
 
 	.verdict-confidence {
-		font-size: 0.75rem;
-		color: rgba(255, 255, 255, 0.8);
-		font-weight: 600;
+		font-size: 0.8125rem;
+		color: rgba(255, 255, 255, 0.9);
+		font-weight: 700;
+		padding-left: 0.5rem;
+		border-left: 1px solid rgba(255, 255, 255, 0.2);
+	}
+
+	.hero-niche-container {
+		margin-bottom: 1rem;
 	}
 
 	.hero-niche {
-		font-size: 1.5rem;
+		font-size: 1.625rem;
 		font-weight: 700;
 		color: white;
-		line-height: 1.2;
-		flex: 1;
+		line-height: 1.25;
+		margin-bottom: 0.5rem;
+		text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+	}
+
+	.hero-description {
+		font-size: 0.875rem;
+		color: rgba(255, 255, 255, 0.8);
+		line-height: 1.6;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 	}
 
 	/* Hero Signals */
@@ -584,28 +667,39 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 0.375rem 0.75rem;
-		background: rgba(255, 255, 255, 0.15);
-		border-radius: 0.375rem;
-		min-width: 65px;
+		padding: 0.5rem 0.875rem;
+		background: rgba(255, 255, 255, 0.08);
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 0.5rem;
+		min-width: 70px;
+		transition: background 0.15s ease, border-color 0.15s ease;
+	}
+
+	.signal-chip:hover {
+		background: rgba(255, 255, 255, 0.12);
+		border-color: rgba(255, 255, 255, 0.2);
 	}
 
 	.signal-chip.trend {
 		flex-direction: row;
-		gap: 0.25rem;
+		gap: 0.375rem;
 	}
 
 	.signal-value {
-		font-size: 0.875rem;
+		font-size: 0.9375rem;
 		font-weight: 700;
 		color: white;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 	}
 
 	.signal-label {
 		font-size: 0.5625rem;
-		color: rgba(255, 255, 255, 0.7);
+		color: rgba(255, 255, 255, 0.65);
 		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: 0.08em;
+		font-weight: 500;
 	}
 
 	:global(.trend-icon) { color: white; }
@@ -616,6 +710,32 @@
 	.success-text { color: var(--color-success-light, #86efac) !important; }
 	.warning-text { color: var(--color-warning-light, #fde047) !important; }
 	.error-text { color: var(--color-error-light, #fca5a5) !important; }
+
+	/* Badge styling in hero context */
+	.hero-signals :global(.badge) {
+		backdrop-filter: blur(8px);
+		-webkit-backdrop-filter: blur(8px);
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+	}
+
+	.hero-signals :global(.badge-success) {
+		background: rgba(34, 197, 94, 0.2);
+		color: #86efac;
+		border-color: rgba(34, 197, 94, 0.3);
+	}
+
+	.hero-signals :global(.badge-warning) {
+		background: rgba(245, 158, 11, 0.2);
+		color: #fde047;
+		border-color: rgba(245, 158, 11, 0.3);
+	}
+
+	.hero-signals :global(.badge-error) {
+		background: rgba(239, 68, 68, 0.2);
+		color: #fca5a5;
+		border-color: rgba(239, 68, 68, 0.3);
+	}
 
 	/* Header Content */
 	.header-content {
@@ -760,7 +880,17 @@
 
 	/* Mobile Responsive */
 	@media (max-width: 768px) {
-		.header-hero { padding: 1.25rem; }
+		.header-hero {
+			padding: 1.25rem;
+			background:
+				linear-gradient(
+					160deg,
+					#1e293b 0%,
+					#334155 30%,
+					#78350f 70%,
+					#E55A28 100%
+				);
+		}
 
 		.hero-main {
 			flex-direction: column;
@@ -768,13 +898,26 @@
 			gap: 0.75rem;
 		}
 
-		.hero-niche { font-size: 1.25rem; }
+		.verdict-badge {
+			padding: 0.5rem 1rem;
+		}
+
+		.verdict-text {
+			font-size: 0.875rem;
+		}
+
+		.hero-niche { font-size: 1.375rem; }
+
+		.hero-description {
+			font-size: 0.8125rem;
+			-webkit-line-clamp: 3;
+		}
 
 		.hero-signals { gap: 0.5rem; }
 
 		.signal-chip {
-			padding: 0.25rem 0.5rem;
-			min-width: 55px;
+			padding: 0.375rem 0.625rem;
+			min-width: 60px;
 		}
 
 		.header-content {
