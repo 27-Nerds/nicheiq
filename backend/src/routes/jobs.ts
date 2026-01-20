@@ -337,6 +337,68 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, async (req: Authenticated
 });
 
 /**
+ * POST /api/jobs/:jobId/resume
+ * Resume a failed job from checkpoint (requires authentication and ownership)
+ * No credit charge - user already paid for the original job
+ */
+jobsRouter.post('/:jobId/resume', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+
+    // Get job and verify ownership
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Only failed jobs can be resumed
+    if (job.status !== JobStatus.FAILED) {
+      res.status(400).json({
+        error: 'Only failed jobs can be resumed',
+        status: job.status,
+      });
+      return;
+    }
+
+    // Reset job status to QUEUED (no credit charge)
+    await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.QUEUED,
+        errorMessage: null,
+        errorStage: null,
+        queuedAt: new Date(),
+      },
+    });
+
+    // Re-enqueue with resume flag
+    await enqueueJob(
+      job.id,
+      job.niche,
+      userId,
+      job.allowedProjectTypes as string[] | undefined,
+      true // resume = true
+    );
+
+    console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}`);
+
+    res.json({
+      message: 'Job queued for resume',
+      jobId,
+      status: 'queued',
+    });
+  } catch (error) {
+    console.error('Failed to resume job:', error);
+    res.status(500).json({ error: 'Failed to resume job' });
+  }
+});
+
+/**
  * PATCH /api/jobs/:jobId/status
  * Update job status (internal only - called by Python worker)
  * Used to mark job as RUNNING when worker picks it up from queue

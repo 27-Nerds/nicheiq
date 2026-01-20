@@ -14,7 +14,8 @@
     ExternalLink,
     Minus,
     ArrowRight,
-    Activity
+    Activity,
+    RotateCw
   } from 'lucide-svelte';
 
   interface StageProgress {
@@ -57,8 +58,58 @@
   let eventSource: EventSource | null = null;
   let cancelling = $state(false);
   let cancelError = $state('');
+  let isResuming = $state(false);
+  let resumeError = $state('');
 
   const jobId = $derived($page.params.jobId);
+
+  async function resumeJob() {
+    if (!job || isResuming) return;
+
+    isResuming = true;
+    resumeError = '';
+
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/resume`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to resume job');
+      }
+
+      // Update local state to show it's queued again
+      // Reset any FAILED stages to PENDING for proper visual feedback
+      const updatedProgress = job.progress.map(stage =>
+        stage.status === 'FAILED' ? { ...stage, status: 'PENDING' as const } : stage
+      );
+      job = { ...job, status: 'QUEUED', errorMessage: null, progress: updatedProgress };
+
+      // Reconnect SSE for real-time updates
+      eventSource?.close();
+      eventSource = new EventSource(`${SSE_BASE}/jobs/${jobId}/events`);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.id) {
+            job = data;
+          }
+        } catch (e) {
+          console.error('Failed to parse SSE data:', e);
+        }
+      };
+
+      eventSource.onerror = () => {
+        eventSource?.close();
+      };
+    } catch (e) {
+      resumeError = e instanceof Error ? e.message : 'Failed to resume job';
+    } finally {
+      isResuming = false;
+    }
+  }
 
   async function cancelJob() {
     if (!job || cancelling) return;
@@ -291,6 +342,29 @@
               <p class="mt-1 text-sm text-error/80">{job.errorMessage}</p>
             </div>
           </div>
+        </div>
+      {/if}
+
+      <!-- Resume Button for Failed Jobs -->
+      {#if job.status === 'FAILED'}
+        <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 175ms;">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-medium text-text-primary">Resume from Checkpoint</h3>
+              <p class="mt-1 text-sm text-text-muted">Continue where you left off - no additional credit charge.</p>
+            </div>
+            <button
+              onclick={resumeJob}
+              disabled={isResuming}
+              class="btn-primary flex items-center gap-2"
+            >
+              <RotateCw class="w-4 h-4 {isResuming ? 'animate-spin' : ''}" />
+              {isResuming ? 'Resuming...' : 'Resume'}
+            </button>
+          </div>
+          {#if resumeError}
+            <p class="mt-3 text-sm text-error">{resumeError}</p>
+          {/if}
         </div>
       {/if}
 

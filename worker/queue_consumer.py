@@ -97,9 +97,10 @@ def process_job(job_data: dict) -> None:
     niche = job_data.get("niche")
     user_id = job_data.get("user_id")
     allowed_project_types = job_data.get("allowed_project_types")
+    resume = job_data.get("resume", False)
 
     current_job_id = job_id
-    logger.info(f"Processing job {job_id} for user {user_id or 'anonymous'}: {niche[:50]}...")
+    logger.info(f"Processing job {job_id} for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume})")
 
     try:
         # Notify backend that we're starting this job
@@ -114,6 +115,7 @@ def process_job(job_data: dict) -> None:
             niche=niche,
             user_id=user_id,
             allowed_project_types=allowed_project_types,
+            resume=resume,
         )
 
         logger.info(f"Job {job_id} completed: {result}")

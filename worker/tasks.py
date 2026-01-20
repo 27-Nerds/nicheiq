@@ -26,7 +26,8 @@ def run_research_job(
     job_id: str,
     niche: str,
     user_id: Optional[str] = None,
-    allowed_project_types: Optional[list[str]] = None
+    allowed_project_types: Optional[list[str]] = None,
+    resume: bool = False,
 ) -> dict:
     """
     Main RQ task - runs the complete research pipeline + landing page generation.
@@ -78,9 +79,9 @@ def run_research_job(
         # Publish "job started" event for SSE clients
         progress_callback(1, "Niche Analysis", "running")
 
-        # Run the research pipeline (no resume for web jobs)
-        logger.info(f"[Worker] Running research pipeline for job {job_id}")
-        report_path = flow.run_with_resume(auto_resume=False)
+        # Run the research pipeline (resume from checkpoint if requested)
+        logger.info(f"[Worker] Running research pipeline for job {job_id} (resume={resume})")
+        report_path = flow.run_with_resume(auto_resume=resume)
 
         if not report_path or not Path(report_path).exists():
             raise RuntimeError("Research flow did not produce a report")

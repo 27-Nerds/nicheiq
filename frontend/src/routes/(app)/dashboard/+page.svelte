@@ -13,7 +13,7 @@
     Search,
     ExternalLink,
     Activity,
-    RotateCcw,
+    RotateCw,
     ChevronDown,
     ChevronUp,
     Sparkles,
@@ -258,28 +258,29 @@
     return `${diffMins} min elapsed`;
   }
 
-  // Retry a failed job
-  let retryingJobs = new SvelteSet<string>();
+  // Resume a failed job from checkpoint (no credit charge)
+  let resumingJobs = new SvelteSet<string>();
 
-  async function retryJob(job: Job) {
-    if (retryingJobs.has(job.id)) return;
+  async function resumeJob(job: Job) {
+    if (resumingJobs.has(job.id)) return;
 
-    retryingJobs.add(job.id);
+    resumingJobs.add(job.id);
     try {
-      const res = await fetch('/api/jobs', {
+      const res = await fetch(`/api/jobs/${job.id}/resume`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ niche: job.niche }),
       });
 
       if (res.ok) {
+        // Redirect to job page to see progress
+        window.location.href = `/jobs/${job.id}`;
+      } else {
         const data = await res.json();
-        window.location.href = `/jobs/${data.id}`;
+        console.error('Resume failed:', data.error || 'Unknown error');
       }
     } catch (err) {
-      console.error('Retry failed:', err);
+      console.error('Resume failed:', err);
     } finally {
-      retryingJobs.delete(job.id);
+      resumingJobs.delete(job.id);
     }
   }
 
@@ -840,13 +841,13 @@
                   <!-- Action Buttons -->
                   <div class="flex items-center gap-2 shrink-0">
                     <button
-                      onclick={() => retryJob(job)}
-                      disabled={retryingJobs.has(job.id)}
+                      onclick={() => resumeJob(job)}
+                      disabled={resumingJobs.has(job.id)}
                       class="btn-primary flex items-center gap-2"
-                      title="Start a new research with the same niche"
+                      title="Resume from last checkpoint (no credit charge)"
                     >
-                      <RotateCcw class="w-4 h-4 {retryingJobs.has(job.id) ? 'animate-spin' : ''}" />
-                      {retryingJobs.has(job.id) ? 'Retrying...' : 'Retry'}
+                      <RotateCw class="w-4 h-4 {resumingJobs.has(job.id) ? 'animate-spin' : ''}" />
+                      {resumingJobs.has(job.id) ? 'Resuming...' : 'Resume'}
                     </button>
                     <a href="/jobs/{job.id}" class="btn-secondary">
                       Details
