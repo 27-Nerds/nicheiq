@@ -1,6 +1,19 @@
 <script lang="ts">
 	import type { Report } from '$lib/types/report';
-	import { ArrowLeft, AlertTriangle } from 'lucide-svelte';
+	import {
+		ArrowLeft,
+		AlertTriangle,
+		CheckCircle,
+		XCircle,
+		TrendingUp,
+		TrendingDown,
+		Minus,
+		Target,
+		DollarSign,
+		Wrench,
+		User
+	} from 'lucide-svelte';
+	import Badge from '$lib/components/ui/Badge.svelte';
 
 	// PHASE 1: DECISION (Go/No-Go verdict)
 	import ExecutiveSummary from '$lib/components/sections/ExecutiveSummary.svelte';
@@ -48,18 +61,21 @@
 		solution_name: report?.selected_solution_name
 	});
 
-	// Get severity label (HIGH/MEDIUM/LOW)
-	function getSeverityLabel(score: number | undefined): string {
-		if (!score) return '';
-		if (score >= 0.7) return 'HIGH';
-		if (score >= 0.4) return 'MEDIUM';
-		return 'LOW';
-	}
+	// Filtering pipeline stats
+	const urlsScanned = $derived(
+		(report?.research_metadata?.filtering_stats as Record<string, number>)?.reddit_urls_searched || 0
+	);
 
-	// Calculate total discussions analyzed
-	const totalDiscussions = $derived(
-		(report?.research_metadata?.reddit_posts_analyzed || 0) +
-		(report?.research_metadata?.twitter_threads_analyzed || 0)
+	const urlsRelevant = $derived(
+		(report?.research_metadata?.filtering_stats as Record<string, number>)?.reddit_urls_relevant || 0
+	);
+
+	const postsAnalyzed = $derived(
+		report?.research_metadata?.reddit_posts_analyzed || 0
+	);
+
+	const commentsAnalyzed = $derived(
+		report?.research_metadata?.reddit_comments_analyzed || 0
 	);
 
 	// Get pain point count
@@ -67,6 +83,62 @@
 		report?.pain_point_analytics?.total_pain_points ||
 		report?.detailed_pain_points?.length || 0
 	);
+
+	// Verdict and Confidence
+	const verdict = $derived(report?.executive_dashboard?.go_no_go_verdict?.verdict ?? null);
+	const confidenceScore = $derived(report?.executive_dashboard?.confidence_score ?? 0);
+	const riskLevel = $derived(report?.executive_dashboard?.go_no_go_verdict?.risk_level ?? 'Unknown');
+
+	// Market Opportunity
+	const opportunityScore = $derived(report?.market_analytics?.overall_opportunity_score ?? 0);
+
+	// Trend Data
+	const trendDirection = $derived(report?.trend_longevity?.trend_direction ?? 'Unknown');
+
+	// Competitive Data
+	const saturationScore = $derived(report?.competitive_analytics?.market_saturation_score ?? 0);
+
+	// Solution scores
+	const severityScore = $derived(report?.executive_dashboard?.core_pain_point?.severity_score ?? 0);
+	const wtpScore = $derived(report?.executive_dashboard?.core_pain_point?.willingness_to_pay_score ?? 0);
+	const marketFitScore = $derived(report?.selected_solution_details?.market_fit_score ?? 0);
+	const feasibilityScore = $derived(report?.selected_solution_details?.technical_feasibility_score ?? 0);
+	const soloDevScore = $derived(report?.selected_solution_details?.solo_dev_feasibility ?? 0);
+
+	// Helper Functions
+	function formatPercent(value: number): string {
+		return `${Math.round(value * 100)}%`;
+	}
+
+	function getScoreClass(score: number): 'success' | 'warning' | 'error' {
+		if (score >= 0.7) return 'success';
+		if (score >= 0.4) return 'warning';
+		return 'error';
+	}
+
+	function getVerdictClass(v: string | null): string {
+		if (v === 'Go') return 'verdict-go';
+		if (v === 'Conditional') return 'verdict-conditional';
+		return 'verdict-nogo';
+	}
+
+	function getSaturationLabel(score: number): string {
+		if (score <= 0.3) return 'Low';
+		if (score <= 0.6) return 'Medium';
+		return 'High';
+	}
+
+	function getSaturationClass(score: number): 'success' | 'warning' | 'error' {
+		if (score <= 0.3) return 'success';
+		if (score <= 0.6) return 'warning';
+		return 'error';
+	}
+
+	function getRiskVariant(risk: string): 'success' | 'warning' | 'error' {
+		if (risk === 'Low') return 'success';
+		if (risk === 'High') return 'error';
+		return 'warning';
+	}
 </script>
 
 <svelte:head>
@@ -104,17 +176,68 @@
 			<!-- Report Header -->
 			<header class="report-header">
 				<div class="header-hero">
-					<h1 class="header-headline">WE DELIVER LAUNCH-READY<br/>BUSINESS SOLUTION.</h1>
+					<!-- Verdict + Niche -->
+					<div class="hero-main">
+						<div class="verdict-badge {getVerdictClass(verdict)}">
+							{#if verdict === 'Go'}
+								<CheckCircle class="verdict-icon" size={20} />
+							{:else if verdict === 'Conditional'}
+								<AlertTriangle class="verdict-icon" size={20} />
+							{:else}
+								<XCircle class="verdict-icon" size={20} />
+							{/if}
+							<span class="verdict-text">{verdict?.toUpperCase() ?? 'ANALYZING'}</span>
+							<span class="verdict-confidence">{formatPercent(confidenceScore)}</span>
+						</div>
+						<h1 class="hero-niche">{report.niche}</h1>
+					</div>
+
+					<!-- Quick Signals -->
+					<div class="hero-signals">
+						<div class="signal-chip">
+							<span class="signal-value">{formatPercent(opportunityScore)}</span>
+							<span class="signal-label">Opportunity</span>
+						</div>
+						<div class="signal-chip trend">
+							{#if trendDirection?.toLowerCase().includes('grow')}
+								<TrendingUp size={16} class="trend-icon trend-up" />
+							{:else if trendDirection?.toLowerCase().includes('declin')}
+								<TrendingDown size={16} class="trend-icon trend-down" />
+							{:else}
+								<Minus size={16} class="trend-icon trend-stable" />
+							{/if}
+							<span class="signal-value">{trendDirection}</span>
+						</div>
+						<div class="signal-chip">
+							<span class="signal-value {getSaturationClass(saturationScore)}-text">{getSaturationLabel(saturationScore)}</span>
+							<span class="signal-label">Saturation</span>
+						</div>
+						<Badge variant={getRiskVariant(riskLevel)} size="sm">{riskLevel} Risk</Badge>
+					</div>
 				</div>
 
 				<div class="header-content">
-					<!-- Niche & Research Stats -->
-					<div class="research-summary">
-						<p class="niche-label">Researched Niche</p>
-						<p class="niche-name">{report.niche}</p>
-						<p class="research-stats">
-							We analyzed {totalDiscussions} real discussions from Reddit{#if report.research_metadata?.twitter_threads_analyzed}, Twitter,{/if} and online communities and identified {painPointCount} mentions of specific problems.
-						</p>
+					<!-- Compact Research Stats -->
+					<div class="research-stats-compact">
+						<div class="stat-item">
+							<span class="stat-num">{urlsScanned}</span>
+							<span class="stat-label">Scanned</span>
+						</div>
+						<span class="stat-divider">→</span>
+						<div class="stat-item">
+							<span class="stat-num">{urlsRelevant}</span>
+							<span class="stat-label">Relevant</span>
+						</div>
+						<span class="stat-divider">→</span>
+						<div class="stat-item">
+							<span class="stat-num">{postsAnalyzed}</span>
+							<span class="stat-label">Analyzed</span>
+						</div>
+						<span class="stat-divider">→</span>
+						<div class="stat-item highlight">
+							<span class="stat-num">{painPointCount}</span>
+							<span class="stat-label">Problems</span>
+						</div>
 					</div>
 
 					<!-- Solution Card -->
@@ -125,32 +248,52 @@
 							{report.selected_solution_details?.description || report.executive_summary?.slice(0, 300)}
 						</p>
 
-						<!-- Metrics Badges -->
+						<!-- Color-Coded Metrics -->
 						<div class="metrics-grid">
-							{#if report.executive_dashboard?.core_pain_point?.severity_score}
-								<span class="metric-badge">
-									SEVERITY: {(report.executive_dashboard.core_pain_point.severity_score).toFixed(2)} ({getSeverityLabel(report.executive_dashboard.core_pain_point.severity_score)})
-								</span>
+							{#if severityScore}
+								<div class="metric-badge {getScoreClass(severityScore)}">
+									<AlertTriangle size={14} />
+									<div class="metric-content">
+										<span class="metric-value">{formatPercent(severityScore)}</span>
+										<span class="metric-label">Severity</span>
+									</div>
+								</div>
 							{/if}
-							{#if report.executive_dashboard?.core_pain_point?.willingness_to_pay_score}
-								<span class="metric-badge">
-									WTP: {(report.executive_dashboard.core_pain_point.willingness_to_pay_score).toFixed(2)} {getSeverityLabel(report.executive_dashboard.core_pain_point.willingness_to_pay_score)}
-								</span>
+							{#if wtpScore}
+								<div class="metric-badge {getScoreClass(wtpScore)}">
+									<DollarSign size={14} />
+									<div class="metric-content">
+										<span class="metric-value">{formatPercent(wtpScore)}</span>
+										<span class="metric-label">WTP</span>
+									</div>
+								</div>
 							{/if}
-							{#if report.selected_solution_details?.market_fit_score}
-								<span class="metric-badge">
-									MARKET FIT: {Math.round(report.selected_solution_details.market_fit_score * 100)}%
-								</span>
+							{#if marketFitScore}
+								<div class="metric-badge {getScoreClass(marketFitScore)}">
+									<Target size={14} />
+									<div class="metric-content">
+										<span class="metric-value">{formatPercent(marketFitScore)}</span>
+										<span class="metric-label">Market Fit</span>
+									</div>
+								</div>
 							{/if}
-							{#if report.selected_solution_details?.technical_feasibility_score}
-								<span class="metric-badge">
-									FEASIBILITY: {Math.round(report.selected_solution_details.technical_feasibility_score * 100)}%
-								</span>
+							{#if feasibilityScore}
+								<div class="metric-badge {getScoreClass(feasibilityScore)}">
+									<Wrench size={14} />
+									<div class="metric-content">
+										<span class="metric-value">{formatPercent(feasibilityScore)}</span>
+										<span class="metric-label">Feasibility</span>
+									</div>
+								</div>
 							{/if}
-							{#if report.selected_solution_details?.solo_dev_feasibility}
-								<span class="metric-badge">
-									SOLO DEV: {Math.round(report.selected_solution_details.solo_dev_feasibility * 100)}%
-								</span>
+							{#if soloDevScore}
+								<div class="metric-badge {getScoreClass(soloDevScore)}">
+									<User size={14} />
+									<div class="metric-content">
+										<span class="metric-value">{formatPercent(soloDevScore)}</span>
+										<span class="metric-label">Solo Dev</span>
+									</div>
+								</div>
 							{/if}
 						</div>
 					</div>
@@ -378,54 +521,147 @@
 		margin-bottom: 2rem;
 	}
 
+	/* Hero Redesign */
 	.header-hero {
 		background: var(--color-accent);
-		padding: 3rem 2rem;
+		padding: 1.5rem 2rem;
 		border-radius: 1rem 1rem 0 0;
 	}
 
-	.header-headline {
-		font-size: 2.5rem;
-		font-weight: 800;
-		color: white;
-		line-height: 1.1;
-		text-transform: uppercase;
+	.hero-main {
+		display: flex;
+		align-items: center;
+		gap: 1.25rem;
+		margin-bottom: 1rem;
 	}
 
+	.verdict-badge {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 1rem;
+		border-radius: 0.5rem;
+		background: rgba(255, 255, 255, 0.15);
+		border: 2px solid;
+	}
+
+	.verdict-badge.verdict-go { border-color: var(--color-success); }
+	.verdict-badge.verdict-conditional { border-color: var(--color-warning); }
+	.verdict-badge.verdict-nogo { border-color: var(--color-error); }
+
+	:global(.verdict-badge .verdict-icon) { color: white; }
+
+	.verdict-text {
+		font-size: 1rem;
+		font-weight: 800;
+		color: white;
+		letter-spacing: 0.02em;
+	}
+
+	.verdict-confidence {
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.8);
+		font-weight: 600;
+	}
+
+	.hero-niche {
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: white;
+		line-height: 1.2;
+		flex: 1;
+	}
+
+	/* Hero Signals */
+	.hero-signals {
+		display: flex;
+		align-items: center;
+		gap: 0.75rem;
+		flex-wrap: wrap;
+	}
+
+	.signal-chip {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0.375rem 0.75rem;
+		background: rgba(255, 255, 255, 0.15);
+		border-radius: 0.375rem;
+		min-width: 65px;
+	}
+
+	.signal-chip.trend {
+		flex-direction: row;
+		gap: 0.25rem;
+	}
+
+	.signal-value {
+		font-size: 0.875rem;
+		font-weight: 700;
+		color: white;
+	}
+
+	.signal-label {
+		font-size: 0.5625rem;
+		color: rgba(255, 255, 255, 0.7);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	:global(.trend-icon) { color: white; }
+	:global(.trend-up) { color: var(--color-success-light, #86efac); }
+	:global(.trend-down) { color: var(--color-error-light, #fca5a5); }
+	:global(.trend-stable) { color: var(--color-warning-light, #fde047); }
+
+	.success-text { color: var(--color-success-light, #86efac) !important; }
+	.warning-text { color: var(--color-warning-light, #fde047) !important; }
+	.error-text { color: var(--color-error-light, #fca5a5) !important; }
+
+	/* Header Content */
 	.header-content {
 		background: var(--color-bg-elevated);
-		padding: 2rem;
+		padding: 1.5rem 2rem;
 		border-radius: 0 0 1rem 1rem;
 		border: 1px solid var(--color-border);
 		border-top: none;
 	}
 
-	.research-summary {
-		margin-bottom: 1.5rem;
-		padding-bottom: 1.5rem;
+	/* Compact Research Stats */
+	.research-stats-compact {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.75rem;
+		padding: 0.75rem 0;
 		border-bottom: 1px solid var(--color-border);
+		margin-bottom: 1rem;
 	}
 
-	.niche-label {
-		font-size: 0.75rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-		margin-bottom: 0.25rem;
+	.stat-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
 
-	.niche-name {
-		font-size: 1.25rem;
-		font-weight: 600;
+	.stat-num {
+		font-size: 1.125rem;
+		font-weight: 700;
 		color: var(--color-text-primary);
-		margin-bottom: 0.75rem;
 	}
 
-	.research-stats {
-		font-size: 0.9rem;
-		color: var(--color-text-secondary);
-		line-height: 1.5;
+	.stat-label {
+		font-size: 0.625rem;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+	}
+
+	.stat-item.highlight .stat-num {
+		color: var(--color-accent);
+	}
+
+	.stat-divider {
+		color: var(--color-text-muted);
+		font-size: 0.75rem;
 	}
 
 	/* Solution Card */
@@ -466,6 +702,7 @@
 		margin-bottom: 1.25rem;
 	}
 
+	/* Color-Coded Metric Badges */
 	.metrics-grid {
 		display: flex;
 		flex-wrap: wrap;
@@ -473,41 +710,88 @@
 	}
 
 	.metric-badge {
-		display: inline-block;
-		padding: 0.625rem 1rem;
-		background: var(--color-bg-dark, #1a1a1a);
-		color: white;
-		font-size: 0.75rem;
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		border-radius: 0.375rem;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: 0.5rem 0.75rem;
+		border-radius: 0.5rem;
+		border: 1px solid;
+		transition: transform 0.15s ease;
 	}
 
-	/* Mobile responsive for header */
+	.metric-badge:hover {
+		transform: translateY(-1px);
+	}
+
+	.metric-badge.success {
+		background: var(--color-success-subtle, rgba(34, 197, 94, 0.1));
+		border-color: var(--color-success);
+		color: var(--color-success-dark, #166534);
+	}
+
+	.metric-badge.warning {
+		background: var(--color-warning-subtle, rgba(234, 179, 8, 0.1));
+		border-color: var(--color-warning);
+		color: var(--color-warning-dark, #a16207);
+	}
+
+	.metric-badge.error {
+		background: var(--color-error-subtle, rgba(239, 68, 68, 0.1));
+		border-color: var(--color-error);
+		color: var(--color-error-dark, #991b1b);
+	}
+
+	.metric-content {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.metric-value {
+		font-size: 0.875rem;
+		font-weight: 700;
+	}
+
+	.metric-badge .metric-label {
+		font-size: 0.5625rem;
+		color: inherit;
+		opacity: 0.8;
+		text-transform: uppercase;
+	}
+
+	/* Mobile Responsive */
 	@media (max-width: 768px) {
-		.header-hero {
-			padding: 2rem 1.25rem;
+		.header-hero { padding: 1.25rem; }
+
+		.hero-main {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.75rem;
 		}
 
-		.header-headline {
-			font-size: 1.75rem;
+		.hero-niche { font-size: 1.25rem; }
+
+		.hero-signals { gap: 0.5rem; }
+
+		.signal-chip {
+			padding: 0.25rem 0.5rem;
+			min-width: 55px;
 		}
 
 		.header-content {
 			padding: 1.25rem;
 		}
 
+		.research-stats-compact { flex-wrap: wrap; gap: 0.5rem; }
+
 		.solution-name {
 			font-size: 1.35rem;
 		}
 
-		.metrics-grid {
-			gap: 0.375rem;
-		}
+		.metrics-grid { gap: 0.375rem; }
 
 		.metric-badge {
-			padding: 0.5rem 0.75rem;
-			font-size: 0.7rem;
+			padding: 0.375rem 0.5rem;
+			gap: 0.375rem;
 		}
 	}
 </style>
