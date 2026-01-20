@@ -25,6 +25,7 @@
     MoreVertical,
     Download
   } from 'lucide-svelte';
+  import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
   interface Job {
     id: string;
@@ -514,13 +515,13 @@
         </p>
       </div>
       {#if jobs.length > 0 && inProgressCount === 0}
-        <a
-          href="/jobs/new"
+        <button
+          onclick={() => ($showNewResearchModal = true)}
           class="btn-primary hidden sm:inline-flex"
         >
           <Plus class="w-4 h-4" />
           New Research
-        </a>
+        </button>
       {/if}
     </div>
   </div>
@@ -637,10 +638,10 @@
         <p class="text-text-secondary mb-8 max-w-lg mx-auto leading-relaxed">
           NicheIQ analyzes Reddit discussions, identifies pain points, and generates a comprehensive market research report in minutes.
         </p>
-        <a href="/jobs/new" class="btn-primary inline-flex text-base px-6 py-3">
+        <button onclick={() => ($showNewResearchModal = true)} class="btn-primary inline-flex text-base px-6 py-3">
           <Plus class="w-5 h-5" />
           Start Your First Research
-        </a>
+        </button>
         <p class="text-xs text-text-muted mt-4">
           Average research takes 5-10 minutes to complete
         </p>

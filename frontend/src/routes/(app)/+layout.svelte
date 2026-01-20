@@ -3,13 +3,13 @@
   import { signOut } from '@auth/sveltekit/client';
   import { LogOut, LayoutDashboard, Plus, Coins, CreditCard } from 'lucide-svelte';
   import NewResearchModal from '$lib/components/NewResearchModal.svelte';
+  import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
   let { children } = $props();
 
   const session = $derived($page.data.session);
   const creditBalance = $derived($page.data.creditBalance as number ?? 0);
   let showUserMenu = $state(false);
-  let showNewResearchModal = $state(false);
 
   function handleSignOut() {
     signOut({ callbackUrl: '/' });
@@ -53,7 +53,7 @@
           </a>
 
           <button
-            onclick={() => (showNewResearchModal = true)}
+            onclick={() => ($showNewResearchModal = true)}
             class="btn-primary flex items-center gap-2 ml-1"
           >
             <Plus class="w-4 h-4" />
@@ -155,4 +155,4 @@
   }
 }} />
 
-<NewResearchModal bind:open={showNewResearchModal} />
+<NewResearchModal bind:open={$showNewResearchModal} />

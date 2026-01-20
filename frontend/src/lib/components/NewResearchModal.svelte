@@ -124,18 +124,18 @@
         {:else}
           <div>
             <label for="niche" class="block text-sm font-medium text-text-primary mb-2">
-              Describe your niche or idea
+              Describe a niche or audience
             </label>
             <textarea
               id="niche"
               bind:value={niche}
               rows={4}
               class="input resize-none w-full"
-              placeholder="AI expense tracking for freelancers who struggle with categorizing costs..."
+              placeholder="Freelancers struggling to categorize expenses and prepare for taxes..."
               disabled={loading}
             ></textarea>
             <p class="text-xs text-text-muted mt-1.5">
-              Be specific. Include target audience, problem, and your proposed solution.
+              We'll find pain points and generate solution ideas for this market.
             </p>
           </div>
         {/if}

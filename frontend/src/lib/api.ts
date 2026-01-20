@@ -3,8 +3,8 @@
  */
 
 export const API_BASE = '/api';
-// Use direct backend URL for SSE (Vite proxy doesn't handle streaming well)
-export const SSE_BASE = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
+// SSE uses the same proxy - SvelteKit +server.ts handles streaming and adds auth headers
+export const SSE_BASE = '/api';
 
 export interface CreateJobRequest {
   email: string;

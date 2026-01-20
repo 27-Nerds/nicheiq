@@ -17,6 +17,7 @@
     Activity,
     RotateCw
   } from 'lucide-svelte';
+  import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
   interface StageProgress {
     stageNumber: number;
@@ -217,7 +218,7 @@
         </div>
         <h2 class="mt-4 text-xl font-semibold text-text-primary">Error</h2>
         <p class="mt-2 text-text-secondary">{error}</p>
-        <a href="/jobs/new" class="mt-6 btn-primary inline-block">Start New Research</a>
+        <button onclick={() => ($showNewResearchModal = true)} class="mt-6 btn-primary inline-block">Start New Research</button>
       </div>
     {:else if job}
       <!-- Header -->
@@ -321,10 +322,10 @@
             <div class="flex-1">
               <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
               <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credit has been refunded.</p>
-              <a href="/jobs/new" class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
+              <button onclick={() => ($showNewResearchModal = true)} class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
                 Start new research
                 <ArrowRight class="w-4 h-4" />
-              </a>
+              </button>
             </div>
           </div>
         </div>

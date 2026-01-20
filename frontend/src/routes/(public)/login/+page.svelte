@@ -108,7 +108,7 @@
               bind:value={email}
               required
               placeholder="you@example.com"
-              class="input pl-10"
+              class="input input-with-icon"
             />
           </div>
         </div>
@@ -125,7 +125,7 @@
               bind:value={password}
               required
               placeholder="Enter your password"
-              class="input pl-10"
+              class="input input-with-icon"
             />
           </div>
         </div>

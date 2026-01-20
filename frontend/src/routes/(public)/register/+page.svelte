@@ -134,7 +134,7 @@
               id="name"
               bind:value={name}
               placeholder="Your name"
-              class="input pl-10"
+              class="input input-with-icon"
             />
           </div>
         </div>
@@ -151,7 +151,7 @@
               bind:value={email}
               required
               placeholder="you@example.com"
-              class="input pl-10"
+              class="input input-with-icon"
             />
           </div>
         </div>
@@ -169,7 +169,7 @@
               required
               minlength={8}
               placeholder="At least 8 characters"
-              class="input pl-10"
+              class="input input-with-icon"
             />
           </div>
         </div>
@@ -186,7 +186,7 @@
               bind:value={confirmPassword}
               required
               placeholder="Confirm your password"
-              class="input pl-10"
+              class="input input-with-icon"
             />
           </div>
         </div>

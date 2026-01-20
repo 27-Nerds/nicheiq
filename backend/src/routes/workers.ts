@@ -16,8 +16,12 @@ import {
   registerWorkerHeartbeat,
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
-import { failJob, resetJobProgress } from '../services/jobService.js';
+import { failJob, updateStageProgress, completeJob, getJob } from '../services/jobService.js';
+import { broadcastProgress } from '../services/progressBroadcastService.js';
+import { sendCompletionEmail, sendFailureEmail } from '../services/emailService.js';
 import { requireInternalService } from '../middleware/auth.js';
+import { StageStatus } from '@prisma/client';
+import { PIPELINE_STAGES } from '../types/job.js';
 
 export const workersRouter = Router();
 
@@ -96,6 +100,7 @@ const ShutdownSchema = z.object({
 /**
  * POST /api/workers/shutdown
  * Worker reports graceful shutdown (SIGTERM/SIGINT)
+ * Job will be marked as failed - user can resume via checkpoint
  */
 workersRouter.post('/shutdown', async (req: Request, res: Response) => {
   try {
@@ -106,69 +111,33 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
     // Mark worker as shutdown
     await markWorkerShutdown(data.worker_id);
 
-    // If worker was processing a job, handle immediate re-queue or failure
+    // If worker was processing a job, mark it as failed
     if (data.job_id) {
-      const { failJob } = await import('../services/jobService.js');
       const { prisma } = await import('../services/db.js');
       const { JobStatus } = await import('@prisma/client');
-      const { enqueueJob } = await import('../services/queueService.js');
       const { sendFailureEmail } = await import('../services/emailService.js');
 
-      // Check if job is still running (hasn't been completed)
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
-        select: { status: true, retryCount: true, niche: true, userId: true, allowedProjectTypes: true },
+        select: { status: true, niche: true, userId: true },
       });
 
       if (job && job.status === JobStatus.RUNNING) {
-        const MAX_RETRIES = 2;
+        const errorMessage = `Worker shutdown: ${data.reason || 'graceful shutdown'}. Use checkpoint resume to continue.`;
+        await failJob(data.job_id, errorMessage);
+        console.log(`[Workers] Job ${data.job_id} marked as failed due to worker shutdown`);
 
-        if (job.retryCount < MAX_RETRIES) {
-          // Immediately re-queue for retry (don't wait for heartbeat checker)
-          const newRetryCount = job.retryCount + 1;
-
-          await prisma.job.update({
-            where: { id: data.job_id },
-            data: {
-              status: JobStatus.QUEUED,
-              workerId: null,
-              lastHeartbeat: null,
-              retryCount: newRetryCount,
-              errorMessage: `Worker shutdown - retry attempt ${newRetryCount}`,
-              queuedAt: new Date(),
-            },
+        // Send failure email
+        if (job.userId) {
+          const user = await prisma.user.findUnique({
+            where: { id: job.userId },
+            select: { email: true },
           });
-
-          // Re-enqueue job to Redis immediately
-          await enqueueJob(
-            data.job_id,
-            job.niche,
-            job.userId || undefined,
-            job.allowedProjectTypes as string[] | undefined
-          );
-
-          // Reset progress records so retry starts fresh
-          await resetJobProgress(data.job_id);
-
-          console.log(`[Workers] Job ${data.job_id} immediately re-queued for retry (attempt ${newRetryCount}/${MAX_RETRIES})`);
-        } else {
-          // Max retries exceeded - fail the job
-          const errorMessage = 'Worker shutdown - max retries exceeded';
-          await failJob(data.job_id, errorMessage);
-          console.log(`[Workers] Job ${data.job_id} failed - max retries exceeded`);
-
-          // Send failure email
-          if (job.userId) {
-            const user = await prisma.user.findUnique({
-              where: { id: job.userId },
-              select: { email: true },
-            });
-            if (user?.email) {
-              try {
-                await sendFailureEmail(user.email, data.job_id, job.niche, errorMessage);
-              } catch (emailError) {
-                console.error(`[Workers] Failed to send failure email for job ${data.job_id}:`, emailError);
-              }
+          if (user?.email) {
+            try {
+              await sendFailureEmail(user.email, data.job_id, job.niche, errorMessage);
+            } catch (emailError) {
+              console.error(`[Workers] Failed to send failure email for job ${data.job_id}:`, emailError);
             }
           }
         }
@@ -290,6 +259,18 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
     // failJob is idempotent - safe to call multiple times
     const job = await failJob(data.job_id, data.error_message, data.error_stage ?? undefined);
 
+    // Broadcast failure to SSE clients
+    try {
+      broadcastProgress(data.job_id, {
+        stage: data.error_stage ?? 1,
+        name: 'Failed',
+        status: 'failed',
+        error: data.error_message,
+      });
+    } catch (broadcastErr) {
+      console.error('[Workers] Broadcast failed but DB updated:', broadcastErr);
+    }
+
     // Clear worker's current job
     await registerWorkerHeartbeat(data.worker_id, null);
 
@@ -303,6 +284,149 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Invalid request', details: error.errors });
     }
     console.error('[Workers] Error processing job-failed:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * Progress update request schema
+ */
+const VALID_STAGE_NUMBERS: number[] = PIPELINE_STAGES.map(s => s.number);
+
+const ProgressSchema = z.object({
+  worker_id: z.string().min(1).max(100),
+  job_id: z.string().uuid(),
+  stage: z.number().refine(n => Number.isFinite(n) && VALID_STAGE_NUMBERS.includes(n), {
+    message: `Stage must be one of: ${VALID_STAGE_NUMBERS.join(', ')}`,
+  }),
+  name: z.string().min(1).max(100),
+  status: z.enum(['running', 'completed', 'failed']),
+  error: z.string().max(10000).optional(),
+  report_path: z.string().max(500).optional(),
+  landing_path: z.string().max(500).optional(),
+});
+
+/**
+ * Get the current email address for a job's user.
+ */
+async function getCurrentEmailForJob(job: { userId: string | null }): Promise<string | null> {
+  if (!job.userId) {
+    return null;
+  }
+
+  try {
+    const { prisma } = await import('../services/db.js');
+    const user = await prisma.user.findUnique({
+      where: { id: job.userId },
+      select: { email: true },
+    });
+    return user?.email || null;
+  } catch (error) {
+    console.error('Failed to fetch current user email:', error);
+    return null;
+  }
+}
+
+/**
+ * POST /api/workers/progress
+ * Worker reports stage progress. This is the single source of truth for progress updates.
+ *
+ * This endpoint:
+ * 1. Updates stage progress in the database
+ * 2. Handles job completion (when report_path is provided)
+ * 3. Handles job failure (when error is provided with status='failed')
+ * 4. Broadcasts to SSE clients via EventEmitter
+ * 5. Returns shouldCancel flag for cancellation detection
+ */
+workersRouter.post('/progress', async (req: Request, res: Response) => {
+  try {
+    const data = ProgressSchema.parse(req.body);
+
+    // Convert status string to StageStatus enum
+    const stageStatus = data.status === 'running' ? StageStatus.RUNNING
+      : data.status === 'completed' ? StageStatus.COMPLETED
+      : data.status === 'failed' ? StageStatus.FAILED
+      : StageStatus.PENDING;
+
+    // 1. Update stage progress in database
+    await updateStageProgress(
+      data.job_id,
+      data.stage,
+      stageStatus,
+      data.error
+    );
+
+    // 2. Handle job completion (report_path indicates final success)
+    if (data.status === 'completed' && data.report_path) {
+      const completedJob = await completeJob(
+        data.job_id,
+        data.report_path,
+        data.landing_path
+      );
+
+      // Send completion email
+      if (completedJob) {
+        const email = await getCurrentEmailForJob(completedJob);
+        if (email) {
+          sendCompletionEmail(email, data.job_id, completedJob.niche).catch(err => {
+            console.error('Failed to send completion email:', err);
+          });
+        }
+      }
+
+      console.log(`[Workers] Job ${data.job_id} completed - report: ${data.report_path}`);
+    }
+
+    // 3. Handle job failure
+    if (data.status === 'failed' && data.error) {
+      await failJob(data.job_id, data.error, data.stage);
+
+      // Send failure email
+      const failedJob = await getJob(data.job_id);
+      if (failedJob) {
+        const email = await getCurrentEmailForJob(failedJob);
+        if (email) {
+          sendFailureEmail(email, data.job_id, failedJob.niche, data.error).catch(err => {
+            console.error('Failed to send failure email:', err);
+          });
+        }
+      }
+    }
+
+    // 4. Broadcast to SSE clients via EventEmitter
+    try {
+      broadcastProgress(data.job_id, {
+        stage: data.stage,
+        name: data.name,
+        status: data.status,
+        error: data.error,
+        report_path: data.report_path,
+        landing_path: data.landing_path,
+      });
+    } catch (broadcastErr) {
+      // DB is already updated, broadcast failure is non-critical
+      console.error('[Workers] Broadcast failed but DB updated:', broadcastErr);
+    }
+
+    // 5. Check if job should be cancelled
+    const { prisma } = await import('../services/db.js');
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { status: true },
+    });
+
+    const shouldCancel = job?.status === 'CANCELLED';
+
+    res.json({
+      shouldCancel,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Progress update error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

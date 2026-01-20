@@ -700,6 +700,39 @@ class ResearchFlow(Flow[ResearchState]):
                 f"pain points to audience segments"
             )
 
+    def _replay_completed_stages_progress(self, completed_stages: list[str]) -> None:
+        """
+        Emit progress updates for stages completed in previous runs.
+
+        When resuming from checkpoint (manual or after crash/retry), the backend
+        database may have been reset. This method replays "completed" status for
+        all previously-completed stages to sync DB with checkpoint state.
+        """
+        # Map checkpoint stage names to (stage_number, display_name)
+        stage_mapping = {
+            "stage_1_niche_context": (1, "Niche Validation"),
+            "stage_5_discussions": (5, "Search & Discovery"),
+            "stage_6_pain_points": (6, "Pain Point Analysis"),
+            "stage_6_5_audience_mapping": (6.5, "Audience Mapping"),
+            "stage_7_6_selection": (7, "Solution Pipeline"),
+            "stage_8_pricing": (8, "Pricing Validation"),
+            "stage_8_5_keyword_validation": (8.5, "Keyword Validation"),
+            "stage_8_55_traffic_monetization": (8.55, "Traffic Monetization"),
+            "stage_8_6_market_sizing": (8.6, "Market Sizing"),
+            "stage_8_7_solution_refinement": (8.7, "Solution Refinement"),
+            "stage_9_seo_strategy": (9, "SEO Strategy"),
+            "stage_9_5_trend_longevity": (9.5, "Trend Analysis"),
+            "stage_9_6_seo_refinement": (9.6, "SEO Score Refinement"),
+            "stage_9_7_data_sources": (9.7, "Data Source Research"),
+            "stage_10_report": (10, "Report Generation"),
+        }
+
+        for checkpoint_name in completed_stages:
+            if checkpoint_name in stage_mapping:
+                stage_num, stage_name = stage_mapping[checkpoint_name]
+                logger.info(f"[Resume] Replaying completed status for stage {stage_num}: {stage_name}")
+                self._emit_progress(stage_num, stage_name, "completed")
+
     def _execute_remaining_stages(self) -> str:
         """
         Execute remaining stages after checkpoint resume.
@@ -711,6 +744,10 @@ class ResearchFlow(Flow[ResearchState]):
 
         # Get list of completed stages to avoid re-running listener stages
         completed_stages = self.checkpoint_mgr.get_completed_stages()
+
+        # Replay progress for stages completed in previous runs
+        # This syncs the backend database with checkpoint state
+        self._replay_completed_stages_progress(completed_stages)
 
         # Stage mapping: (stage_number, method_name)
         # We need to execute stages >= current_stage

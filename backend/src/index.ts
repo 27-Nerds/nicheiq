@@ -1,5 +1,6 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import { Socket } from 'net';
 import { CONFIG, validateConfig } from './config.js';
 import { jobsRouter } from './routes/jobs.js';
 import { eventsRouter } from './routes/events.js';
@@ -54,12 +55,41 @@ app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
 });
 
+// Track active connections for cleanup on shutdown
+const activeConnections = new Set<Socket>();
+
+// Start server
+const server = app.listen(CONFIG.port, () => {
+  console.log(`NicheIQ API running on port ${CONFIG.port}`);
+  console.log(`Environment: ${CONFIG.nodeEnv}`);
+  console.log(`Database: ${CONFIG.databaseUrl.replace(/:[^:@]+@/, ':****@')}`);
+  console.log(`Redis: ${CONFIG.redisUrl}`);
+
+  // Start the heartbeat monitor for worker crash detection
+  startHeartbeatMonitor();
+});
+
+// Track connections for graceful shutdown
+server.on('connection', (socket: Socket) => {
+  activeConnections.add(socket);
+  socket.on('close', () => activeConnections.delete(socket));
+});
+
 // Graceful shutdown
 async function shutdown() {
   console.log('Shutting down gracefully...');
 
   // Stop the heartbeat monitor
   stopHeartbeatMonitor();
+
+  // Stop accepting new connections
+  server.close();
+
+  // Destroy all active connections (including SSE)
+  console.log(`Closing ${activeConnections.size} active connection(s)...`);
+  for (const socket of activeConnections) {
+    socket.destroy();
+  }
 
   // Disconnect from database
   await prisma.$disconnect();
@@ -69,14 +99,3 @@ async function shutdown() {
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
-
-// Start server
-app.listen(CONFIG.port, () => {
-  console.log(`NicheIQ API running on port ${CONFIG.port}`);
-  console.log(`Environment: ${CONFIG.nodeEnv}`);
-  console.log(`Database: ${CONFIG.databaseUrl.replace(/:[^:@]+@/, ':****@')}`);
-  console.log(`Redis: ${CONFIG.redisUrl}`);
-
-  // Start the heartbeat monitor for worker crash detection
-  startHeartbeatMonitor();
-});

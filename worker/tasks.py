@@ -17,7 +17,6 @@ from rq import get_current_job
 from .progress import (
     create_progress_callback,
     publish_job_completed,
-    publish_progress,
 )
 from .status import mark_job_running
 

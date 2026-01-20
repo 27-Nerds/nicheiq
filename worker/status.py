@@ -1,9 +1,8 @@
 """
 Status update module for direct database updates via backend API.
 
-This module provides reliable job status updates by calling the backend API directly,
-avoiding race conditions with Redis pub/sub where messages can be lost if the
-SSE connection isn't established yet.
+This module provides job status updates by calling the backend API directly.
+Stage progress updates are handled by the progress module (POST /api/workers/progress).
 """
 
 import os
@@ -17,8 +16,10 @@ def mark_job_running(job_id: str) -> bool:
     Mark job as RUNNING via backend API.
 
     This ensures the job status is updated in the database immediately when
-    the worker starts processing, regardless of whether the frontend's SSE
-    connection is established.
+    the worker starts processing.
+
+    Note: Stage progress updates are handled separately by the progress module
+    via POST /api/workers/progress.
 
     Args:
         job_id: The job UUID

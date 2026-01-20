@@ -190,12 +190,34 @@ export async function getJobAsset(jobId: string, assetType: AssetType) {
 
 /**
  * Complete a job with assets
+ *
+ * This function is IDEMPOTENT - safe to call multiple times for the same job.
+ * If the job is already COMPLETED, it returns the existing job without changes.
  */
 export async function completeJob(
   jobId: string,
   reportPath: string,
   landingPath?: string
 ) {
+  // Check if job is already COMPLETED (idempotency)
+  const existingJob = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { status: true },
+  });
+
+  if (!existingJob) {
+    console.log(`[JobService] Job ${jobId} not found`);
+    return null;
+  }
+
+  if (existingJob.status === JobStatus.COMPLETED) {
+    console.log(`[JobService] Job ${jobId} is already COMPLETED, skipping duplicate completeJob() call`);
+    return prisma.job.findUnique({
+      where: { id: jobId },
+      include: { progress: { orderBy: { stageNumber: 'asc' } }, assets: true },
+    });
+  }
+
   // Add report asset
   await addJobAsset(jobId, AssetType.REPORT_JSON, reportPath);
 
@@ -290,32 +312,3 @@ export async function listJobs(options?: {
   return { jobs, total, limit, offset };
 }
 
-/**
- * Reset all progress records for a job to PENDING
- * Used when a job is retried after worker crash/shutdown
- */
-export async function resetJobProgress(jobId: string) {
-  await prisma.jobProgress.updateMany({
-    where: { jobId },
-    data: {
-      status: StageStatus.PENDING,
-      startedAt: null,
-      completedAt: null,
-      durationSeconds: null,
-      errorMessage: null,
-    },
-  });
-
-  // Also reset job-level progress counters
-  await prisma.job.update({
-    where: { id: jobId },
-    data: {
-      currentStage: 0,
-      currentStageName: null,
-      stagesCompleted: 0,
-      progressPercent: 0,
-    },
-  });
-
-  console.log(`[JobService] Reset progress for job ${jobId}`);
-}

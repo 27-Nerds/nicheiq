@@ -400,8 +400,10 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, async (req: Authenticated
 
 /**
  * PATCH /api/jobs/:jobId/status
- * Update job status (internal only - called by Python worker)
- * Used to mark job as RUNNING when worker picks it up from queue
+ * Update job status to RUNNING (internal only - called by Python worker)
+ *
+ * This endpoint is ONLY for the initial QUEUED -> RUNNING transition.
+ * Stage updates are handled by POST /api/workers/progress.
  */
 jobsRouter.patch('/:jobId/status', requireInternalService, async (req: Request, res: Response) => {
   try {
@@ -415,7 +417,7 @@ jobsRouter.patch('/:jobId/status', requireInternalService, async (req: Request, 
       return;
     }
 
-    // Only allow RUNNING status transition (from QUEUED)
+    // Only RUNNING status is allowed
     if (status !== 'RUNNING') {
       res.status(400).json({ error: 'Invalid status. Only RUNNING is allowed.' });
       return;
@@ -423,15 +425,22 @@ jobsRouter.patch('/:jobId/status', requireInternalService, async (req: Request, 
 
     // Only transition from QUEUED to RUNNING
     if (job.status !== JobStatus.QUEUED) {
-      // Job already transitioned, return current status (idempotent)
-      res.json({ id: job.id, status: job.status });
+      res.json({ id: job.id, status: job.status, currentStage: job.currentStage });
       return;
     }
 
-    const updatedJob = await updateJobStatus(jobId, JobStatus.RUNNING);
+    // Perform update
+    const updatedJob = await prisma.job.update({
+      where: { id: jobId },
+      data: {
+        status: JobStatus.RUNNING,
+        startedAt: new Date(),
+      },
+    });
+
     console.log(`Job ${jobId} status updated to RUNNING by worker`);
 
-    res.json({ id: updatedJob.id, status: updatedJob.status });
+    res.json({ id: updatedJob.id, status: updatedJob.status, currentStage: updatedJob.currentStage });
   } catch (error) {
     console.error('Failed to update job status:', error);
     res.status(500).json({ error: 'Failed to update job status' });
