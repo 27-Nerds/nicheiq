@@ -738,8 +738,8 @@
 	}
 
 	/* Raise z-index when card contains a hovered tooltip */
-	.segment-card:has(.tooltip-wrapper:hover),
-	.segment-card:has(.tooltip-wrapper:focus-within) {
+	.segment-card:has(:global(.tooltip-wrapper:hover)),
+	.segment-card:has(:global(.tooltip-wrapper:focus-within)) {
 		z-index: 10;
 	}
 
