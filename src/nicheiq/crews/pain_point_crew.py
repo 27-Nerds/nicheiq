@@ -444,7 +444,7 @@ class PainPointCrew:
 
         Uses low-moderate temperature (0.3) for consistent pattern extraction with flexibility.
         Has knowledge_sources attached for RAG-based quote retrieval.
-        Uses max_tokens=16000 to prevent truncation of large pain point outputs.
+        Uses dedicated pain_point_validation_llm (non-reasoning) to allow max_tokens.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -452,9 +452,9 @@ class PainPointCrew:
         return Agent(
             config=self.agents_config["pain_point_analyst"],
             llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
-                temperature=0.3,  # Low-moderate (ignored for reasoning models)
-                # max_completion_tokens=16000,  # Disabled: CrewAI doesn't forward this properly for reasoning models
+                model=settings.pain_point_validation_llm,  # Non-reasoning model (gpt-4o)
+                temperature=0.3,  # Low-moderate for consistent pattern extraction
+                max_tokens=16000,  # Prevent truncation of large extraction outputs
             )),
             knowledge_sources=self.knowledge_sources,  # RAG for quote retrieval
             verbose=True,
@@ -468,6 +468,7 @@ class PainPointCrew:
 
         Uses low temperature (0.2) for objective, consistent scoring.
         Has knowledge_sources attached for RAG-based evidence validation.
+        Uses dedicated pain_point_validation_llm (non-reasoning) to allow max_tokens.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -475,8 +476,9 @@ class PainPointCrew:
         return Agent(
             config=self.agents_config["pain_point_validator"],
             llm=ChatOpenAI(**build_llm_kwargs(
-                model=settings.openai_model_name,
-                temperature=0.2,  # Low temperature (ignored for reasoning models)
+                model=settings.pain_point_validation_llm,  # Non-reasoning model (gpt-4o)
+                temperature=0.2,  # Low temperature for consistent scoring
+                max_tokens=8192,  # Prevent truncation of large validation outputs
             )),
             knowledge_sources=self.knowledge_sources,  # RAG for evidence validation
             verbose=True,

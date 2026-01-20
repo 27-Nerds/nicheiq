@@ -97,6 +97,10 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="Model to use for keyword research crew in Stage 8.8 (gpt-4o-mini for cost efficiency, gpt-4o for better quality)"
     )
+    pain_point_validation_llm: str = Field(
+        default="gpt-4.1-mini",
+        description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
+    )
     landing_page_llm: str = Field(
         default="gpt-5.2",
         description="Model to use for landing page generation (gpt-5.2 recommended for high-quality creative output)"

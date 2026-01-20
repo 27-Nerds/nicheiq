@@ -96,9 +96,29 @@ def build_llm_kwargs(
             if param in extra_kwargs:
                 kwargs[param] = extra_kwargs.pop(param)
 
-    # Convert max_tokens to max_completion_tokens (OpenAI API change for newer models)
+    # Handle max_tokens/max_completion_tokens
+    # For reasoning models: CrewAI/LiteLLM doesn't forward max_completion_tokens properly,
+    # so we exclude it entirely to avoid truncation issues. Use non-reasoning models for
+    # tasks requiring large outputs.
+    # For non-reasoning models: Convert max_tokens to max_completion_tokens (OpenAI API change)
     if "max_tokens" in extra_kwargs:
-        extra_kwargs["max_completion_tokens"] = extra_kwargs.pop("max_tokens")
+        if is_reasoning_model(model):
+            # Remove max_tokens for reasoning models - CrewAI can't handle it
+            extra_kwargs.pop("max_tokens")
+            logger.warning(
+                f"max_tokens ignored for reasoning model '{model}'. "
+                f"Use a non-reasoning model (gpt-4o) for tasks requiring large outputs."
+            )
+        else:
+            extra_kwargs["max_completion_tokens"] = extra_kwargs.pop("max_tokens")
+
+    # Also check if max_completion_tokens was passed directly
+    if "max_completion_tokens" in extra_kwargs and is_reasoning_model(model):
+        extra_kwargs.pop("max_completion_tokens")
+        logger.warning(
+            f"max_completion_tokens ignored for reasoning model '{model}'. "
+            f"CrewAI doesn't forward this parameter properly."
+        )
 
     # Add remaining kwargs
     kwargs.update(extra_kwargs)
