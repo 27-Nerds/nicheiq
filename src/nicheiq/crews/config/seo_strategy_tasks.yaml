@@ -663,7 +663,7 @@ create_implementation_guide:
     - title_tag_example: Real example applying formula to {selected_solution_name}
     - meta_description_example: Real example
     - h1_structure: H1 format pattern
-    - h2_structure: 3-6 recommended H2 sections
+    - h2_structure: List of 3-6 recommended H2 section headings (must be array of strings)
     - schema_types: Required schema types (e.g., ["Service", "Breadcrumb", "FAQ"])
     - internal_linking_strategy: How to link to/from this page type
     - content_guidelines: Min/optimal word count, required sections
@@ -1038,7 +1038,7 @@ create_implementation_guide:
     2. page_type_implementations: List[PageTypeImplementation]
        - 4-6 page types with complete SEO templates
        - Each with: page_type name, url_pattern, target_keywords (3-5), title_tag_example, meta_description_example,
-         h1_structure, h2_structure (3-6 sections), schema_types (required types), internal_linking_strategy,
+         h1_structure, h2_structure (list of 3-6 section headings), schema_types (required types), internal_linking_strategy,
          content_guidelines (word count, required sections)
 
     3. schema_markup_strategy: SchemaMarkupStrategy

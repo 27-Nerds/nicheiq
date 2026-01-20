@@ -405,7 +405,7 @@ export interface PageTypeImplementation {
 	title_tag_example?: string;
 	meta_description_example?: string;
 	h1_structure?: string;
-	h2_structure?: string;
+	h2_structure?: string[] | string; // Support both old (string) and new (array) formats
 	schema_types?: string[];
 	internal_linking_strategy?: string;
 	content_guidelines?: string;

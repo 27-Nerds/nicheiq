@@ -4,6 +4,7 @@
 		Search,
 		Zap,
 		FileText,
+		FileCode,
 		Layers,
 		Target,
 		Clock,
@@ -50,6 +51,7 @@
 	let showMetrics = $state(false);
 	let showRisks = $state(false);
 	let showSchema = $state(false);
+	let showPageTypes = $state(false);
 	let showPositioning = $state(false);
 	let showConclusion = $state(false);
 
@@ -119,6 +121,21 @@
 			schema !== null &&
 			('why_schema_matters' in schema || 'schema_examples' in schema || 'priority_schema_types' in schema)
 		);
+	}
+
+	// Helper to normalize h2_structure from old string format or new array format
+	function getH2StructureItems(h2: string | string[] | undefined): string[] {
+		if (!h2) return [];
+		if (Array.isArray(h2)) return h2;
+		// Old format: try to split by newlines or return as single item
+		return h2.split('\n').map(s => s.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+	}
+
+	// Helper to get priority badge variant
+	function getPriorityVariant(priority: string | undefined): 'success' | 'warning' | 'muted' {
+		if (priority === 'High') return 'success';
+		if (priority === 'Medium') return 'warning';
+		return 'muted';
 	}
 </script>
 
@@ -611,6 +628,121 @@
 							{@html renderMarkdown(String(strategy.schema_markup_strategy))}
 						</div>
 					{/if}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Expandable: Page Type Implementations -->
+	{#if strategy.page_type_implementations && strategy.page_type_implementations.length > 0}
+		<div class="expandable-section">
+			<button class="expandable-header" onclick={() => (showPageTypes = !showPageTypes)}>
+				<div class="expandable-title">
+					<FileCode class="expandable-icon" />
+					<span>Page Type Implementations</span>
+					<Badge variant="muted" size="sm">{strategy.page_type_implementations.length} types</Badge>
+				</div>
+				<ChevronDown class="chevron-icon {showPageTypes ? 'expanded' : ''}" />
+			</button>
+			{#if showPageTypes}
+				<div class="expandable-content">
+					<div class="page-types-grid">
+						{#each strategy.page_type_implementations as pageType}
+							<div class="page-type-card">
+								<div class="page-type-header">
+									<h4 class="page-type-name">{pageType.page_type}</h4>
+									{#if pageType.priority}
+										<Badge variant={getPriorityVariant(pageType.priority)} size="sm">{pageType.priority}</Badge>
+									{/if}
+								</div>
+
+								{#if pageType.url_pattern}
+									<div class="page-type-section">
+										<span class="page-type-label">URL Pattern</span>
+										<code class="page-type-url">{pageType.url_pattern}</code>
+									</div>
+								{/if}
+
+								{#if pageType.target_keywords && pageType.target_keywords.length > 0}
+									<div class="page-type-section">
+										<span class="page-type-label">Target Keywords</span>
+										<div class="page-type-keywords">
+											{#each pageType.target_keywords.slice(0, 5) as keyword}
+												<span class="cluster-keyword">{keyword}</span>
+											{/each}
+											{#if pageType.target_keywords.length > 5}
+												<span class="cluster-more">+{pageType.target_keywords.length - 5}</span>
+											{/if}
+										</div>
+									</div>
+								{/if}
+
+								{#if pageType.title_tag_example}
+									<div class="page-type-section">
+										<span class="page-type-label">Title Example</span>
+										<code class="page-type-example">{pageType.title_tag_example}</code>
+									</div>
+								{/if}
+
+								{#if pageType.meta_description_example}
+									<div class="page-type-section">
+										<span class="page-type-label">Meta Description</span>
+										<code class="page-type-example">{pageType.meta_description_example}</code>
+									</div>
+								{/if}
+
+								{#if pageType.h1_structure}
+									<div class="page-type-section">
+										<span class="page-type-label">H1 Structure</span>
+										<code class="page-type-example">{pageType.h1_structure}</code>
+									</div>
+								{/if}
+
+								{#if pageType.h2_structure}
+									{@const h2Items = getH2StructureItems(pageType.h2_structure)}
+									{#if h2Items.length > 0}
+										<div class="page-type-section">
+											<span class="page-type-label">H2 Sections</span>
+											<ul class="h2-list">
+												{#each h2Items as h2}
+													<li>{h2}</li>
+												{/each}
+											</ul>
+										</div>
+									{/if}
+								{/if}
+
+								{#if pageType.schema_types && pageType.schema_types.length > 0}
+									<div class="page-type-section">
+										<span class="page-type-label">Schema Types</span>
+										<div class="schema-type-tags">
+											{#each pageType.schema_types as schemaType}
+												<code class="schema-type-tag">{schemaType}</code>
+											{/each}
+										</div>
+									</div>
+								{/if}
+
+								{#if pageType.internal_linking_strategy}
+									<div class="page-type-section">
+										<span class="page-type-label">Internal Linking</span>
+										<div class="page-type-text markdown-content">
+											{@html renderMarkdown(pageType.internal_linking_strategy)}
+										</div>
+									</div>
+								{/if}
+
+								{#if pageType.content_guidelines}
+									<div class="page-type-section">
+										<span class="page-type-label">Content Guidelines</span>
+										<div class="page-type-text markdown-content">
+											{@html renderMarkdown(pageType.content_guidelines)}
+										</div>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -1817,5 +1949,116 @@
 	.schema-content {
 		max-height: 500px;
 		overflow-y: auto;
+	}
+
+	/* Page Type Implementations */
+	.page-types-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.page-type-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.page-type-header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.page-type-name {
+		font-family: var(--font-display);
+		font-size: 0.9375rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin: 0;
+	}
+
+	.page-type-section {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.page-type-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+	}
+
+	.page-type-url {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		padding: 0.375rem 0.5rem;
+		background: var(--color-bg-elevated);
+		border-radius: 0.25rem;
+		color: var(--color-accent);
+		word-break: break-all;
+	}
+
+	.page-type-keywords {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+	}
+
+	.page-type-example {
+		display: block;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		padding: 0.5rem;
+		background: var(--color-bg-base);
+		border: 1px solid var(--color-border);
+		border-radius: 0.25rem;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	.page-type-text {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+	}
+
+	.page-type-text :global(p) {
+		margin: 0 0 0.375rem;
+	}
+
+	.page-type-text :global(ul) {
+		margin: 0 0 0.375rem;
+		padding-left: 1rem;
+	}
+
+	.h2-list {
+		list-style: disc;
+		margin: 0;
+		padding-left: 1.25rem;
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+	}
+
+	.h2-list li {
+		margin-bottom: 0.125rem;
+		line-height: 1.4;
+	}
+
+	@media (max-width: 768px) {
+		.page-types-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

@@ -412,9 +412,9 @@ class PageTypeImplementation(BaseModel):
         ...,
         description="H1 format pattern (e.g., '[Service] in [Location] - [Value Prop]')"
     )
-    h2_structure: str = Field(
+    h2_structure: list[str] = Field(
         ...,
-        description="Recommended H2 sections (3-6 suggestions, markdown list)"
+        description="Recommended H2 section headings (3-6 headings)"
     )
     schema_types: list[str] = Field(
         ...,

@@ -75,7 +75,7 @@ STAGE_NAMES = {
 def create_progress_callback(
     job_id: str,
     check_cancellation: bool = True
-) -> Callable[[float, str, str], None]:
+) -> Callable[[float, Optional[str], str], None]:
     """
     Create a progress callback function for ResearchFlow.
 
@@ -93,13 +93,13 @@ def create_progress_callback(
     Returns:
         Callback function that takes (stage_num, stage_name, status)
     """
-    def callback(stage_num: float, stage_name: str, status: str) -> None:
+    def callback(stage_num: float, stage_name: Optional[str], status: str) -> None:
         """
         Progress callback for ResearchFlow stages.
 
         Args:
             stage_num: Stage number (e.g., 1, 5, 6.5, 8.5)
-            stage_name: Human-readable stage name
+            stage_name: Human-readable stage name (optional - looked up from STAGE_NAMES if None)
             status: 'running', 'completed', or 'failed'
         """
         # Check for cancellation at stage transitions (when a stage starts running)
@@ -108,9 +108,12 @@ def create_progress_callback(
             from .heartbeat import check_cancellation as check_cancel
             check_cancel()  # Raises JobCancelledException if cancelled
 
+        # Look up stage name if not provided
+        name = stage_name if stage_name else STAGE_NAMES.get(stage_num, f"Stage {stage_num}")
+
         publish_progress(job_id, {
             "stage": stage_num,
-            "name": stage_name,
+            "name": name,
             "status": status,
         })
 

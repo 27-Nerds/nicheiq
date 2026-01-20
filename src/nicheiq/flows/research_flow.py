@@ -136,7 +136,7 @@ class ResearchFlow(Flow[ResearchState]):
         if last_exception:
             raise last_exception
 
-    def _emit_progress(self, stage_num: float, stage_name: str, status: str) -> None:
+    def _emit_progress(self, stage_num: float, stage_name: str | None, status: str) -> None:
         """
         Emit progress update via callback if set.
 
@@ -144,7 +144,7 @@ class ResearchFlow(Flow[ResearchState]):
 
         Args:
             stage_num: Stage number (e.g., 1, 5, 6.5, 8.5)
-            stage_name: Human-readable stage name
+            stage_name: Human-readable stage name (None to let callback look it up)
             status: 'running', 'completed', or 'failed'
         """
         if self.progress_callback:
@@ -196,6 +196,11 @@ class ResearchFlow(Flow[ResearchState]):
         # Try to resume from checkpoint
         if auto_resume and self.resume_from_checkpoint():
             logger.info("Resuming from checkpoint - skipping completed stages")
+
+            # Emit progress for the stage we're resuming from
+            # Pass None for stage_name - the callback will look it up from STAGE_NAMES
+            self._emit_progress(self.state.current_stage, None, "running")
+
             return self._execute_remaining_stages()
 
         # No checkpoint or resume failed - run normal flow

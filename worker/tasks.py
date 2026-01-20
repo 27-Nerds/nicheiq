@@ -76,8 +76,10 @@ def run_research_job(
         # This ensures status is updated even if SSE connection isn't established yet
         mark_job_running(job_id)
 
-        # Publish "job started" event for SSE clients
-        progress_callback(1, "Niche Analysis", "running")
+        # Publish "job started" event for SSE clients (only for fresh runs)
+        # For resume, the flow will emit the correct stage after loading checkpoint
+        if not resume:
+            progress_callback(1, "Niche Analysis", "running")
 
         # Run the research pipeline (resume from checkpoint if requested)
         logger.info(f"[Worker] Running research pipeline for job {job_id} (resume={resume})")

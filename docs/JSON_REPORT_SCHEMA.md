@@ -1007,7 +1007,7 @@ Overall market validation conclusion.
   "title_tag_example": "string",
   "meta_description_example": "string",
   "h1_structure": "string",
-  "h2_structure": "string",
+  "h2_structure": ["H2 Section 1", "H2 Section 2"],
   "schema_types": ["Product", "FAQPage"],
   "internal_linking_strategy": "string",
   "content_guidelines": "string",
