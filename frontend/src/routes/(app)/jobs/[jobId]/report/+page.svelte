@@ -809,6 +809,8 @@
 		display: flex;
 		align-items: center;
 		gap: 0.375rem;
+		position: relative;
+		z-index: 10;  /* Above sibling elements so tooltip appears on top */
 	}
 
 	.verdict-wrapper :global(.tooltip-wrapper) {

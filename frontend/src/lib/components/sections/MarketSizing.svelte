@@ -734,6 +734,13 @@
 		background: rgba(0, 0, 0, 0.02);
 		border-radius: 0.5rem;
 		border: 1px solid rgba(0, 0, 0, 0.06);
+		position: relative;
+	}
+
+	/* Raise z-index when card contains a hovered tooltip */
+	.segment-card:has(.tooltip-wrapper:hover),
+	.segment-card:has(.tooltip-wrapper:focus-within) {
+		z-index: 10;
 	}
 
 	.segment-header {
