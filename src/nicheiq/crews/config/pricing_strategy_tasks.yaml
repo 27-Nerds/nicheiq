@@ -50,10 +50,34 @@ pricing_strategy_analysis:
     - Justify pricing based on differentiation score
 
     ### 3. Pricing Model Recommendation
-    - Evaluate best pricing model: Freemium, Pure Subscription, Hybrid, or One-time
+
+    **PRICING MODEL DIVERSITY - Consider ALL viable models:**
+
+    | Model | When to Use | Example |
+    |-------|-------------|---------|
+    | **Freemium (3-tier)** | High WTP (0.6+), clear feature differentiation | SaaS with Starter $19/Pro $49/Enterprise custom |
+    | **Freemium-Lite (2-tier)** | Moderate WTP, simple feature set | Free + Pro $29/mo (no enterprise) |
+    | **Pure Subscription** | B2B focus, no free tier viable | $49/mo flat, annual discount |
+    | **Usage-Based** | API/tool with variable consumption | $0.01/API call, volume discounts |
+    | **One-Time Purchase** | Tools, templates, digital products | $99 lifetime access |
+    | **Ad-Supported-Free** | High traffic potential, low WTP (<0.3), directory/aggregator | Free tool with display ads |
+    | **Affiliate-Only** | Purchase-intent traffic, product comparisons | Free comparisons with affiliate links |
+
+    **DO NOT default to 3-tier Freemium.** Match model to:
+    1. WTP scores from pain point analysis (low WTP = ad/affiliate model)
+    2. Project type (SaaS vs directory vs tool vs aggregator)
+    3. Target audience purchasing behavior
+    4. Competitive landscape pricing models
+
+    **For directories/aggregators/comparison-tools with WTP < 0.3:**
+    - PREFER Ad-Supported-Free or Affiliate-Only models
+    - These can be 100% FREE to users with SEO-driven traffic monetization
+    - Example: "Free tool monetized by display ads (target: $5-15 CPM) and affiliate links"
+
+    - Evaluate best pricing model based on the table above
     - Consider market standards and customer acquisition strategy
-    - Recommend tier structure (Free/Starter/Pro/Enterprise)
-    - Define features per tier to drive upgrades
+    - Only recommend tier structure (Free/Starter/Pro/Enterprise) if subscription model is appropriate
+    - Define features per tier to drive upgrades (if subscription model)
 
     ### 4. Unit Economics Validation
     - Estimate ARPU (Average Revenue Per User) based on tier mix
@@ -108,9 +132,13 @@ pricing_strategy_analysis:
     - Includes white-label, custom integrations, SLA
     - For large organizations with specific requirements
 
-    **ARPU Estimation:**
-    - Assume 60% Starter, 35% Pro, 5% Enterprise mix for new SaaS
-    - Calculate: (Starter × 0.6) + (Pro × 0.35) + (Enterprise × 0.05)
+    **ARPU Estimation (adapt to chosen model):**
+    - **3-tier Freemium**: Estimate tier distribution based on competitive analysis (typical: 60% Starter, 35% Pro, 5% Enterprise)
+    - **2-tier Freemium-Lite**: Typically 80% free, 20% paid
+    - **Pure Subscription**: 100% at subscription price
+    - **Usage-Based**: Estimate average monthly usage from comparable tools
+    - **Ad-Supported-Free**: RPM × estimated monthly pageviews ÷ 1000 (use ARPU format like "$0.01-0.02 per pageview")
+    - **Affiliate-Only**: CTR × conversion rate × average commission (use ARPU format like "$0.005-0.015 per visit")
 
     **LTV Calculation:**
     - Conservative: 12 months retention × ARPU
@@ -131,17 +159,19 @@ pricing_strategy_analysis:
 
     **EXPECTED OUTPUT FORMAT:**
 
-    You MUST provide ALL required fields in the PricingStrategyResult model:
+    You MUST provide fields based on the chosen pricing model.
+
+    **FOR SUBSCRIPTION MODELS (Freemium, Freemium-Lite, Subscription, Hybrid, One-time, Usage-Based):**
 
     - **solution_name:** {solution_name}
-    - **recommended_starter_price:** e.g., "$19/month"
-    - **recommended_pro_price:** e.g., "$49/month"
+    - **recommended_starter_price:** e.g., "$19/month" (null for ad/affiliate models)
+    - **recommended_pro_price:** e.g., "$49/month" (null for ad/affiliate models)
     - **recommended_enterprise_price:** e.g., "$199/month" or null if not applicable
-    - **pricing_model:** "Freemium", "Subscription", "Hybrid", or "One-time"
+    - **pricing_model:** One of: "Freemium", "Freemium-Lite", "Subscription", "Hybrid", "One-time", "Usage-Based", "Ad-Supported-Free", "Affiliate-Only"
     - **pricing_rationale:** 2-3 sentences explaining why this pricing strategy
     - **free_tier_features:** Array of features (if freemium) or null
-    - **starter_tier_features:** Array of 3-5 core features
-    - **pro_tier_features:** Array of 5-8 advanced features
+    - **starter_tier_features:** Array of 3-5 core features (null for ad/affiliate models)
+    - **pro_tier_features:** Array of 5-8 advanced features (null for ad/affiliate models)
     - **estimated_arpu:** e.g., "$32/month"
     - **estimated_ltv:** e.g., "$384 - $960 (12-30mo retention)"
     - **ltv_to_cac_ratio:** e.g., "12:1 to 48:1"
@@ -150,6 +180,48 @@ pricing_strategy_analysis:
     - **pricing_confidence:** "High", "Medium", or "Low"
     - **wtp_validation:** 1-2 sentences on how WTP scores support this pricing
     - **market_segment_pricing:** Dict of segment-specific pricing or null
+
+    **FOR AD/AFFILIATE MODELS (Ad-Supported-Free, Affiliate-Only):**
+
+    - **solution_name:** {solution_name}
+    - **recommended_starter_price:** null (Free tool)
+    - **recommended_pro_price:** null (Free tool)
+    - **recommended_enterprise_price:** null
+    - **pricing_model:** "Ad-Supported-Free" or "Affiliate-Only"
+    - **pricing_rationale:** 2-3 sentences explaining traffic monetization strategy
+    - **free_tier_features:** null (all features are free)
+    - **starter_tier_features:** null (no tiers)
+    - **pro_tier_features:** null (no tiers)
+    - **estimated_monthly_ad_revenue:** e.g., "$400-800/month at 50K pageviews"
+    - **estimated_monthly_affiliate_revenue:** e.g., "$200-400/month at 3% CTR"
+    - **estimated_cpm_rate:** e.g., "$5-15 CPM"
+    - **recommended_ad_networks:** e.g., ["Google AdSense", "Ezoic", "Mediavine"]
+    - **estimated_arpu:** e.g., "$0.012 per pageview" (revenue per user visit)
+    - **estimated_ltv:** e.g., "N/A - traffic-based model"
+    - **ltv_to_cac_ratio:** e.g., "N/A - SEO-driven traffic acquisition"
+    - **price_vs_competitors:** e.g., "Free vs competitor freemium models"
+    - **value_proposition_delta:** e.g., "100% free tool with no feature limitations"
+    - **pricing_confidence:** "High", "Medium", or "Low"
+    - **wtp_validation:** Explain why ad/affiliate is appropriate given low WTP scores
+    - **market_segment_pricing:** null
+
+    **EXAMPLE: Ad-Supported Free Tool**
+
+    solution_name: "PlumbingCostCalc"
+    pricing_model: "Ad-Supported-Free"
+    pricing_rationale: "100% free tool. WTP score of 0.22 indicates users won't pay for this utility.
+      Monetized via display ads targeting homeowner intent traffic with high purchase intent.
+      Target 50,000 monthly pageviews at $8 CPM = $400/month. Affiliate links to plumbing
+      services add estimated $200/month at 3% CTR and $15 avg commission."
+    recommended_starter_price: null
+    recommended_pro_price: null
+    estimated_monthly_ad_revenue: "$400-600/month"
+    estimated_monthly_affiliate_revenue: "$150-300/month"
+    estimated_cpm_rate: "$6-10 CPM (home services niche)"
+    recommended_ad_networks: ["Google AdSense", "Ezoic"]
+    estimated_arpu: "$0.012 per pageview (ads + affiliate)"
+    pricing_confidence: "Medium"
+    wtp_validation: "Low WTP (0.22) confirms users seek free tools; monetization through ads aligns with user expectations"
 
 
     **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
@@ -175,17 +247,28 @@ pricing_strategy_analysis:
 
 
     **CRITICAL RULES (REMINDER - RECENCY BIAS):**
-    - All prices must be exact dollar amounts (e.g., "$19/month" NOT "$15-25/month")
-    - LTV/CAC ratio ≥2:1 is MANDATORY
-    - Pricing must align with WTP scores (never exceed customer willingness-to-pay)
-    - Include ALL required fields in PricingStrategyResult
+    - For subscription models: All prices must be exact dollar amounts (e.g., "$19/month" NOT "$15-25/month")
+    - For subscription models: LTV/CAC ratio ≥2:1 is MANDATORY
+    - For ad/affiliate models: Set tier prices to null, provide ad/affiliate revenue estimates instead
+    - Pricing model must align with WTP scores (low WTP → ad/affiliate, high WTP → subscription)
+    - DO NOT default to 3-tier Freemium - evaluate all models
+    - Include ALL required fields for the chosen pricing model in PricingStrategyResult
 
   expected_output: >
-    A complete PricingStrategyResult object with all required fields populated:
-    - Recommended pricing tiers (Starter, Pro, Enterprise)
-    - Pricing model (Freemium/Subscription/Hybrid/One-time)
+    A complete PricingStrategyResult object with fields populated based on chosen model:
+
+    **For subscription models (Freemium, Freemium-Lite, Subscription, Hybrid, One-time, Usage-Based):**
+    - Recommended pricing tiers (Starter, Pro, Enterprise as applicable)
     - Feature allocation across tiers
     - Unit economics (ARPU, LTV, LTV/CAC ratio)
     - Competitive positioning analysis
     - WTP validation
-    - High confidence pricing strategy backed by competitor benchmarks and pain point data
+
+    **For ad/affiliate models (Ad-Supported-Free, Affiliate-Only):**
+    - Pricing fields set to null (free tool)
+    - Ad revenue estimates (monthly ad revenue, CPM rate, recommended networks)
+    - Affiliate revenue estimates (monthly affiliate revenue, CTR)
+    - ARPU expressed as revenue per pageview/visit
+    - WTP validation explaining why ad/affiliate is appropriate
+
+    High confidence pricing strategy backed by competitor benchmarks, pain point WTP data, and project type

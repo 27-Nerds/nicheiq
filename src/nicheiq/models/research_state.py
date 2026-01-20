@@ -686,27 +686,54 @@ class PricingStrategyResult(BaseModel):
 
     solution_name: str = Field(..., description="Name of the solution being priced")
 
-    # Recommended Pricing
-    recommended_starter_price: str = Field(..., description="Starter tier price (e.g., '$19/month')")
-    recommended_pro_price: str = Field(..., description="Pro tier price (e.g., '$49/month')")
+    # Recommended Pricing (optional for Ad-Supported-Free/Affiliate-Only models)
+    recommended_starter_price: Optional[str] = Field(
+        default=None, description="Starter tier price (e.g., '$19/month') - null for ad/affiliate models"
+    )
+    recommended_pro_price: Optional[str] = Field(
+        default=None, description="Pro tier price (e.g., '$49/month') - null for ad/affiliate models"
+    )
     recommended_enterprise_price: Optional[str] = Field(
         default=None, description="Enterprise tier price if applicable"
     )
 
-    pricing_model: Literal["Freemium", "Subscription", "Hybrid", "One-time"] = Field(
-        ..., description="Pricing model: 'Freemium', 'Subscription', 'Hybrid', 'One-time'"
+    pricing_model: Literal[
+        "Freemium",           # Free tier + paid upgrades (typically 3-tier: Free/Pro/Enterprise)
+        "Freemium-Lite",      # Free + single paid tier (2-tier: Free/Pro, no enterprise)
+        "Subscription",       # Pure subscription (no free tier)
+        "Hybrid",             # Subscription + usage-based
+        "One-time",           # Single purchase
+        "Usage-Based",        # Pay-per-use (API calls, credits)
+        "Ad-Supported-Free",  # Free tool, monetized by ads only
+        "Affiliate-Only",     # Free tool, monetized by affiliate links only
+    ] = Field(
+        ..., description="Pricing model type - select based on solution type and WTP scores"
     )
     pricing_rationale: str = Field(..., description="Why this pricing strategy was chosen")
 
-    # Feature Tiers
+    # Feature Tiers (optional for Ad-Supported-Free/Affiliate-Only models)
     free_tier_features: Optional[list[str]] = Field(
         default=None, description="Features included in free tier (if freemium)"
     )
-    starter_tier_features: list[str] = Field(
-        ..., min_length=1, description="Features in starter tier (minimum 1)"
+    starter_tier_features: Optional[list[str]] = Field(
+        default=None, description="Features in starter tier - null for ad/affiliate models"
     )
-    pro_tier_features: list[str] = Field(
-        ..., min_length=1, description="Features in pro tier (minimum 1)"
+    pro_tier_features: Optional[list[str]] = Field(
+        default=None, description="Features in pro tier - null for ad/affiliate models"
+    )
+
+    # Ad/Affiliate Revenue Fields (for Ad-Supported-Free/Affiliate-Only models)
+    estimated_monthly_ad_revenue: Optional[str] = Field(
+        default=None, description="Estimated monthly ad revenue (e.g., '$400-800') - for ad-supported models"
+    )
+    estimated_monthly_affiliate_revenue: Optional[str] = Field(
+        default=None, description="Estimated monthly affiliate revenue (e.g., '$200-400') - for affiliate models"
+    )
+    estimated_cpm_rate: Optional[str] = Field(
+        default=None, description="Estimated CPM rate (e.g., '$5-15 CPM') - for ad-supported models"
+    )
+    recommended_ad_networks: Optional[list[str]] = Field(
+        default=None, description="Recommended ad networks (e.g., ['AdSense', 'Mediavine']) - for ad-supported models"
     )
 
     # Economics

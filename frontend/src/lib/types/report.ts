@@ -450,17 +450,43 @@ export interface CompetitorProfile {
 
 export interface PricingStrategy {
 	solution_name: string;
-	recommended_starter_price: string;
-	recommended_pro_price: string;
-	recommended_enterprise_price: string | null;
-	pricing_model: string;
+
+	// Standard tier prices (optional for Ad-Supported-Free/Affiliate-Only models)
+	recommended_starter_price?: string | null;
+	recommended_pro_price?: string | null;
+	recommended_enterprise_price?: string | null;
+
+	// Pricing model type (expanded to support diverse models)
+	pricing_model:
+		| 'Freemium'          // Free tier + paid upgrades (3-tier)
+		| 'Freemium-Lite'     // Free + single paid tier (2-tier)
+		| 'Subscription'      // Pure subscription (no free tier)
+		| 'Hybrid'            // Subscription + usage-based
+		| 'One-time'          // Single purchase
+		| 'Usage-Based'       // Pay-per-use (API calls, credits)
+		| 'Ad-Supported-Free' // Free tool, monetized by ads only
+		| 'Affiliate-Only'    // Free tool, monetized by affiliate links only
+		| string;             // Fallback for backward compatibility
+
 	pricing_rationale: string;
-	free_tier_features: string[];
-	starter_tier_features: string[];
-	pro_tier_features: string[];
+
+	// Feature tiers (optional for Ad-Supported-Free/Affiliate-Only models)
+	free_tier_features?: string[];
+	starter_tier_features?: string[];
+	pro_tier_features?: string[];
+
+	// Ad/Affiliate revenue fields (for Ad-Supported-Free/Affiliate-Only models)
+	estimated_monthly_ad_revenue?: string;
+	estimated_monthly_affiliate_revenue?: string;
+	estimated_cpm_rate?: string;
+	recommended_ad_networks?: string[];
+
+	// Unit economics
 	estimated_arpu?: string;
 	estimated_ltv?: string;
 	ltv_to_cac_ratio?: string;
+
+	// Competitive positioning
 	price_vs_competitors?: string;
 	value_proposition_delta?: string;
 	pricing_confidence?: 'High' | 'Medium' | 'Low';

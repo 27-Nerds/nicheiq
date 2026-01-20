@@ -37,7 +37,13 @@
 	     ═══════════════════════════════════════════════════════════════════ -->
 
 	<div class="subsection-header mb-6">
-		<h3 class="text-lg font-semibold text-text-primary">SaaS Pricing Model</h3>
+		<h3 class="text-lg font-semibold text-text-primary">
+			{#if pricingData.pricing_model === 'Ad-Supported-Free' || pricingData.pricing_model === 'Affiliate-Only'}
+				Traffic Monetization Model
+			{:else}
+				SaaS Pricing Model
+			{/if}
+		</h3>
 		<div class="flex items-center gap-4">
 			<Badge>{pricingData.pricing_model}</Badge>
 			{#if pricingData.pricing_confidence}
@@ -48,70 +54,186 @@
 		</div>
 	</div>
 
-	<!-- Pricing Tiers -->
-	<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
-		<!-- Free Tier -->
-		{#if pricingData.free_tier_features && pricingData.free_tier_features.length > 0}
+	<!-- Conditional Pricing Display based on pricing_model -->
+	{#if pricingData.pricing_model === 'Ad-Supported-Free' || pricingData.pricing_model === 'Affiliate-Only'}
+		<!-- Ad-Supported / Affiliate-Only: Single "Free" display with revenue projections -->
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 items-start">
+			<!-- Free Tool Card -->
+			<div class="pricing-tier pricing-tier-recommended">
+				<div class="text-center mb-4 pt-2">
+					<div class="text-sm text-text-muted mb-1">Free Tool</div>
+					<div class="text-3xl font-bold text-accent">$0</div>
+					<div class="text-xs text-text-muted mt-1">
+						{#if pricingData.pricing_model === 'Ad-Supported-Free'}
+							Monetized via display ads
+						{:else}
+							Monetized via affiliate links
+						{/if}
+					</div>
+				</div>
+				<div class="text-sm text-text-secondary text-center">
+					All features included for free
+				</div>
+			</div>
+
+			<!-- Revenue Projections Card -->
 			<div class="pricing-tier">
 				<div class="text-center mb-4">
-					<div class="text-sm text-text-muted mb-1">Free</div>
-					<div class="text-3xl font-bold text-text-primary">$0</div>
-					<div class="text-xs text-text-muted">forever</div>
+					<div class="text-sm text-text-muted mb-1">Revenue Projections</div>
 				</div>
-				<ul class="space-y-2">
-					{#each pricingData.free_tier_features as feature}
-						<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
-							<CheckCircle class="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
-							{feature}
-						</li>
-					{/each}
-				</ul>
+				<div class="space-y-3">
+					{#if pricingData.estimated_monthly_ad_revenue}
+						<div class="flex justify-between items-center">
+							<span class="text-sm text-text-muted">Monthly Ad Revenue</span>
+							<span class="text-sm font-semibold text-accent">{pricingData.estimated_monthly_ad_revenue}</span>
+						</div>
+					{/if}
+					{#if pricingData.estimated_monthly_affiliate_revenue}
+						<div class="flex justify-between items-center">
+							<span class="text-sm text-text-muted">Monthly Affiliate Revenue</span>
+							<span class="text-sm font-semibold text-success">{pricingData.estimated_monthly_affiliate_revenue}</span>
+						</div>
+					{/if}
+					{#if pricingData.estimated_cpm_rate}
+						<div class="flex justify-between items-center">
+							<span class="text-sm text-text-muted">CPM Rate</span>
+							<span class="text-sm text-text-secondary">{pricingData.estimated_cpm_rate}</span>
+						</div>
+					{/if}
+					{#if pricingData.recommended_ad_networks && pricingData.recommended_ad_networks.length > 0}
+						<div class="pt-2 border-t border-border">
+							<div class="text-xs text-text-muted mb-2">Recommended Ad Networks</div>
+							<div class="flex flex-wrap gap-1">
+								{#each pricingData.recommended_ad_networks as network}
+									<Badge variant="default" size="sm">{network}</Badge>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</div>
+			</div>
+		</div>
+
+	{:else if pricingData.pricing_model === 'Freemium-Lite'}
+		<!-- Freemium-Lite: 2-tier display (Free + Pro only, no Starter/Enterprise) -->
+		<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 items-start">
+			<!-- Free Tier -->
+			{#if pricingData.free_tier_features && pricingData.free_tier_features.length > 0}
+				<div class="pricing-tier">
+					<div class="text-center mb-4">
+						<div class="text-sm text-text-muted mb-1">Free</div>
+						<div class="text-3xl font-bold text-text-primary">$0</div>
+						<div class="text-xs text-text-muted">forever</div>
+					</div>
+					<ul class="space-y-2">
+						{#each pricingData.free_tier_features as feature}
+							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
+								<CheckCircle class="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+								{feature}
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+
+			<!-- Pro Tier (Recommended for Freemium-Lite) -->
+			<div class="pricing-tier pricing-tier-recommended">
+				<div class="text-center mb-4 pt-2">
+					<div class="text-sm text-text-muted mb-1">Pro</div>
+					<div class="text-3xl font-bold text-accent">{pricingData.recommended_pro_price || pricingData.recommended_starter_price}</div>
+				</div>
+				{#if pricingData.pro_tier_features && pricingData.pro_tier_features.length > 0}
+					<ul class="space-y-2">
+						{#each pricingData.pro_tier_features as feature}
+							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
+								<CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
+								{feature}
+							</li>
+						{/each}
+					</ul>
+				{:else if pricingData.starter_tier_features && pricingData.starter_tier_features.length > 0}
+					<ul class="space-y-2">
+						{#each pricingData.starter_tier_features as feature}
+							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
+								<CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
+								{feature}
+							</li>
+						{/each}
+					</ul>
+				{/if}
+			</div>
+		</div>
+
+	{:else}
+		<!-- Standard 3-tier display (Freemium, Subscription, Hybrid, etc.) -->
+		<div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 items-start">
+			<!-- Free Tier -->
+			{#if pricingData.free_tier_features && pricingData.free_tier_features.length > 0}
+				<div class="pricing-tier">
+					<div class="text-center mb-4">
+						<div class="text-sm text-text-muted mb-1">Free</div>
+						<div class="text-3xl font-bold text-text-primary">$0</div>
+						<div class="text-xs text-text-muted">forever</div>
+					</div>
+					<ul class="space-y-2">
+						{#each pricingData.free_tier_features as feature}
+							<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
+								<CheckCircle class="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
+								{feature}
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+
+			<!-- Starter Tier (Recommended) -->
+			{#if pricingData.recommended_starter_price}
+				<div class="pricing-tier pricing-tier-recommended">
+					<div class="text-center mb-4 pt-2">
+						<div class="text-sm text-text-muted mb-1">Starter</div>
+						<div class="text-3xl font-bold text-accent">{pricingData.recommended_starter_price}</div>
+					</div>
+					{#if pricingData.starter_tier_features && pricingData.starter_tier_features.length > 0}
+						<ul class="space-y-2">
+							{#each pricingData.starter_tier_features as feature}
+								<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
+									<CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
+									{feature}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Pro Tier -->
+			{#if pricingData.recommended_pro_price}
+				<div class="pricing-tier pricing-tier-pro">
+					<div class="text-center mb-4">
+						<div class="text-sm text-text-muted mb-1">Pro</div>
+						<div class="text-3xl font-bold text-success">{pricingData.recommended_pro_price}</div>
+					</div>
+					{#if pricingData.pro_tier_features && pricingData.pro_tier_features.length > 0}
+						<ul class="space-y-2">
+							{#each pricingData.pro_tier_features as feature}
+								<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
+									<CheckCircle class="w-4 h-4 text-success shrink-0 mt-0.5" />
+									{feature}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</div>
+			{/if}
+		</div>
+
+		<!-- Enterprise -->
+		{#if pricingData.recommended_enterprise_price}
+			<div class="text-center mb-8">
+				<span class="text-text-muted">Enterprise:</span>
+				<span class="text-text-primary font-semibold ml-2">{pricingData.recommended_enterprise_price}</span>
 			</div>
 		{/if}
-
-		<!-- Starter Tier (Recommended) -->
-		<div class="pricing-tier pricing-tier-recommended">
-			<div class="text-center mb-4 pt-2">
-				<div class="text-sm text-text-muted mb-1">Starter</div>
-				<div class="text-3xl font-bold text-accent">{pricingData.recommended_starter_price}</div>
-			</div>
-			{#if pricingData.starter_tier_features && pricingData.starter_tier_features.length > 0}
-				<ul class="space-y-2">
-					{#each pricingData.starter_tier_features as feature}
-						<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
-							<CheckCircle class="w-4 h-4 text-accent shrink-0 mt-0.5" />
-							{feature}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</div>
-
-		<!-- Pro Tier -->
-		<div class="pricing-tier pricing-tier-pro">
-			<div class="text-center mb-4">
-				<div class="text-sm text-text-muted mb-1">Pro</div>
-				<div class="text-3xl font-bold text-success">{pricingData.recommended_pro_price}</div>
-			</div>
-			{#if pricingData.pro_tier_features && pricingData.pro_tier_features.length > 0}
-				<ul class="space-y-2">
-					{#each pricingData.pro_tier_features as feature}
-						<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-2">
-							<CheckCircle class="w-4 h-4 text-success shrink-0 mt-0.5" />
-							{feature}
-						</li>
-					{/each}
-				</ul>
-			{/if}
-		</div>
-	</div>
-
-	<!-- Enterprise -->
-	{#if pricingData.recommended_enterprise_price}
-		<div class="text-center mb-8">
-			<span class="text-text-muted">Enterprise:</span>
-			<span class="text-text-primary font-semibold ml-2">{pricingData.recommended_enterprise_price}</span>
-		</div>
 	{/if}
 
 	<!-- Pricing Rationale -->

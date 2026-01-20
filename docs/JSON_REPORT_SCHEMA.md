@@ -480,7 +480,11 @@ Actionable GTM strategy for immediate execution.
 
 ## 6. Pricing & Monetization
 
-### `pricing_strategy: object` (17 keys)
+### `pricing_strategy: object` (21 keys)
+
+The pricing strategy supports multiple monetization models, with different fields populated based on the chosen model.
+
+#### Subscription Models Example (Freemium, Freemium-Lite, Subscription, Hybrid, One-time, Usage-Based)
 
 ```json
 {
@@ -509,25 +513,72 @@ Actionable GTM strategy for immediate execution.
 }
 ```
 
+#### Ad/Affiliate Models Example (Ad-Supported-Free, Affiliate-Only)
+
+```json
+{
+  "solution_name": "PlumbingCostCalc",
+  "recommended_starter_price": null,
+  "recommended_pro_price": null,
+  "recommended_enterprise_price": null,
+  "pricing_model": "Ad-Supported-Free",
+  "pricing_rationale": "100% free tool. WTP score of 0.22 indicates users won't pay. Monetized via display ads targeting homeowner intent traffic.",
+  "free_tier_features": null,
+  "starter_tier_features": null,
+  "pro_tier_features": null,
+  "estimated_monthly_ad_revenue": "$400-600/month",
+  "estimated_monthly_affiliate_revenue": "$150-300/month",
+  "estimated_cpm_rate": "$6-10 CPM (home services niche)",
+  "recommended_ad_networks": ["Google AdSense", "Ezoic"],
+  "estimated_arpu": "$0.012 per pageview (ads + affiliate)",
+  "estimated_ltv": "N/A - traffic-based model",
+  "ltv_to_cac_ratio": "N/A - SEO-driven traffic acquisition",
+  "price_vs_competitors": "Free vs competitor freemium models",
+  "value_proposition_delta": "100% free tool with no feature limitations",
+  "pricing_confidence": "Medium",
+  "wtp_validation": "Low WTP (0.22) confirms users seek free tools; monetization through ads aligns with user expectations",
+  "market_segment_pricing": null
+}
+```
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `solution_name` | `string` | Solution being priced |
-| `recommended_starter_price` | `string` | Starter tier price |
-| `recommended_pro_price` | `string` | Pro tier price |
-| `recommended_enterprise_price` | `string` | Enterprise tier |
-| `pricing_model` | `"Freemium" \| "Subscription" \| "Hybrid" \| "One-time"` | Model type |
+| `recommended_starter_price` | `string \| null` | Starter tier price (null for ad/affiliate models) |
+| `recommended_pro_price` | `string \| null` | Pro tier price (null for ad/affiliate models) |
+| `recommended_enterprise_price` | `string \| null` | Enterprise tier (null if not applicable) |
+| `pricing_model` | `PricingModel` | Model type (see Type Reference) |
 | `pricing_rationale` | `string` | Why this strategy |
-| `free_tier_features` | `array[string]` | Free tier features |
-| `starter_tier_features` | `array[string]` | Starter features |
-| `pro_tier_features` | `array[string]` | Pro features |
-| `estimated_arpu` | `string` | Average revenue per user |
-| `estimated_ltv` | `string` | Lifetime value range |
-| `ltv_to_cac_ratio` | `string` | LTV:CAC ratio estimate |
+| `free_tier_features` | `array[string] \| null` | Free tier features (null for ad/affiliate) |
+| `starter_tier_features` | `array[string] \| null` | Starter features (null for ad/affiliate) |
+| `pro_tier_features` | `array[string] \| null` | Pro features (null for ad/affiliate) |
+| `estimated_monthly_ad_revenue` | `string \| null` | Monthly ad revenue estimate (ad-supported models only) |
+| `estimated_monthly_affiliate_revenue` | `string \| null` | Monthly affiliate revenue (affiliate models only) |
+| `estimated_cpm_rate` | `string \| null` | CPM rate estimate (ad-supported models only) |
+| `recommended_ad_networks` | `array[string] \| null` | Recommended ad networks (ad-supported models only) |
+| `estimated_arpu` | `string` | Average revenue per user (or per pageview for traffic models) |
+| `estimated_ltv` | `string` | Lifetime value range (or "N/A" for traffic models) |
+| `ltv_to_cac_ratio` | `string` | LTV:CAC ratio estimate (or "N/A" for SEO-driven traffic) |
 | `price_vs_competitors` | `string` | Competitive positioning |
 | `value_proposition_delta` | `string` | Value vs price comparison |
 | `pricing_confidence` | `"High" \| "Medium" \| "Low"` | Confidence level |
 | `wtp_validation` | `string` | WTP evidence |
-| `market_segment_pricing` | `object` | Segment-specific pricing |
+| `market_segment_pricing` | `object \| null` | Segment-specific pricing |
+
+#### Pricing Model Selection Guidance
+
+The pricing model is selected based on WTP scores and project type:
+
+| Pricing Model | When Used | Typical Fields Populated |
+|---------------|-----------|-------------------------|
+| **Freemium** | High WTP (>0.6), clear feature differentiation | All tier prices, tier features |
+| **Freemium-Lite** | Moderate WTP, simple feature set | Free + Pro prices only (no Starter/Enterprise) |
+| **Subscription** | B2B focus, no free tier viable | Starter/Pro/Enterprise prices |
+| **Hybrid** | Subscription + usage-based | Tier prices + usage metrics |
+| **One-time** | Tools, templates, digital products | Single price |
+| **Usage-Based** | API/tool with variable consumption | Usage-based pricing |
+| **Ad-Supported-Free** | Low WTP (<0.3), high traffic potential, directories/aggregators | Ad revenue fields, null tier prices |
+| **Affiliate-Only** | Purchase-intent traffic, product comparisons | Affiliate revenue fields, null tier prices |
 
 ### `traffic_monetization: object` (22 keys)
 
@@ -1342,7 +1393,7 @@ Array of 7 recommended next steps.
 | `LongevityVerdict` | `"Sustainable"`, `"Risky"`, `"Fad"` |
 | `TimingRecommendation` | `"Enter Now"`, `"Monitor & Wait"`, `"Missed Window"` |
 | `CompetitorType` | `"DIRECT"`, `"PARTIAL"`, `"INDIRECT"` |
-| `PricingModel` | `"Freemium"`, `"Subscription"`, `"Hybrid"`, `"One-time"` |
+| `PricingModel` | `"Freemium"`, `"Freemium-Lite"`, `"Subscription"`, `"Hybrid"`, `"One-time"`, `"Usage-Based"`, `"Ad-Supported-Free"`, `"Affiliate-Only"` |
 | `MonetizationModel` | `"Ad-Supported"`, `"Affiliate"`, `"Hybrid-Traffic"`, `"Lead-Gen"` |
 | `DataQualityTier` | `"EXCELLENT"`, `"GOOD"`, `"MINIMAL"`, `"INSUFFICIENT"` |
 | `PainPointQualityTier` | `"GOLD"`, `"SILVER"`, `"BRONZE"`, `"INSUFFICIENT"` |
@@ -1433,6 +1484,14 @@ Array of 7 recommended next steps.
 ---
 
 ## Version History
+
+- **v2.1** - Expanded pricing strategy diversity
+  - Added 4 new pricing models: `Freemium-Lite`, `Usage-Based`, `Ad-Supported-Free`, `Affiliate-Only`
+  - Made tier price fields optional (`null` for ad/affiliate models)
+  - Added ad/affiliate revenue fields: `estimated_monthly_ad_revenue`, `estimated_monthly_affiliate_revenue`, `estimated_cpm_rate`, `recommended_ad_networks`
+  - Added pricing model selection guidance table
+  - Updated `pricing_strategy` field count from 17 to 21 keys
+  - Added Ad/Affiliate Models JSON example
 
 - **v2.0** - Complete rewrite grounded exclusively on actual JSON report data
   - Removed all TypeScript/frontend references
