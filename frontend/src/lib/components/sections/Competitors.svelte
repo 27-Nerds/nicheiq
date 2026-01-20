@@ -340,9 +340,9 @@
 									<div class="profile-name-row">
 										<span class="profile-name">{competitor.name}</span>
 										<Badge
-											variant={competitor.competitor_type === 'direct'
+											variant={competitor.competitor_type === 'DIRECT'
 												? 'error'
-												: competitor.competitor_type === 'indirect'
+												: competitor.competitor_type === 'INDIRECT'
 													? 'warning'
 													: 'muted'}
 											size="sm"

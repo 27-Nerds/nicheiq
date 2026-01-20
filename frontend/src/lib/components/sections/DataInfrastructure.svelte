@@ -249,23 +249,23 @@
 								<div class="grid grid-cols-5 gap-2 mb-3">
 									<div class="text-center">
 										<div class="text-xs text-text-muted">Fresh</div>
-										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.freshness}/10</div>
+										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.freshness ?? 'N/A'}</div>
 									</div>
 									<div class="text-center">
 										<div class="text-xs text-text-muted">Cover</div>
-										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.coverage}/10</div>
+										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.coverage_score ?? 'N/A'}</div>
 									</div>
 									<div class="text-center">
-										<div class="text-xs text-text-muted">Accur</div>
-										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.accuracy}/10</div>
+										<div class="text-xs text-text-muted">Integ</div>
+										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.integration_complexity ?? 'N/A'}</div>
 									</div>
 									<div class="text-center">
-										<div class="text-xs text-text-muted">Access</div>
-										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.accessibility}/10</div>
+										<div class="text-xs text-text-muted">Cost</div>
+										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.cost_viability ?? 'N/A'}</div>
 									</div>
 									<div class="text-center">
-										<div class="text-xs text-text-muted">Consist</div>
-										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.consistency}/10</div>
+										<div class="text-xs text-text-muted">Quality</div>
+										<div class="text-sm font-medium text-text-primary">{source.quality_metrics.quality_assessment ?? 'N/A'}</div>
 									</div>
 								</div>
 							{/if}

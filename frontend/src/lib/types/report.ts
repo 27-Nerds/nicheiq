@@ -31,7 +31,6 @@ export interface Report {
 	competitive_summary?: string;
 	competitive_analysis: CompetitiveAnalysis;
 	market_validation?: MarketValidation;
-	seo_strategy: SEOStrategy;
 	acquisition_strategy_summary?: string;
 	estimated_cac_breakdown?: CACBreakdown;
 	keyword_validation_overview?: string;
@@ -254,6 +253,9 @@ export interface PainPointAnalytics {
 	total_pain_points: number;
 	high_priority_count: number;
 	quadrant_distribution: QuadrantDistribution;
+	avg_severity?: number;
+	avg_willingness_to_pay?: number;
+	top_pain_point_title?: string;
 }
 
 export interface QuadrantDistribution {
@@ -275,6 +277,7 @@ export interface DetailedPainPoint {
 	categories: string[];
 	source_post_ids: string[];
 	source_engagement_metrics: EngagementMetric[];
+	affected_segments?: string[];
 }
 
 export interface EngagementMetric {
@@ -283,10 +286,10 @@ export interface EngagementMetric {
 }
 
 export interface SEOStrategy {
-	seed_keywords_generated?: number;
+	seed_keywords_generated?: string[];
 	total_keywords_analyzed: number;
 	total_monthly_volume: number;
-	key_findings?: string;
+	key_findings?: string[];
 	tier_0_keywords: Keyword[];
 	tier_0_strategy?: string;
 	tier_1_keywords: Keyword[];
@@ -294,17 +297,17 @@ export interface SEOStrategy {
 	tier_2_keywords: Keyword[];
 	tier_2_strategy?: string;
 	tier_3_geographic_groups?: KeywordGroup[];
-	tier_4_category_groups?: KeywordGroup[];
-	content_strategy?: ContentStrategy;
+	tier_4_category_groups?: CategoryKeywordGroup[];
+	content_strategy?: string;
 	topic_clusters?: TopicCluster[];
 	technical_seo_recommendations?: string;
-	keyword_driven_site_architecture?: string;
+	keyword_driven_site_architecture?: SiteArchitecture;
 	keyword_based_page_types?: PageType[];
 	competitive_positioning?: string;
-	implementation_roadmap?: ImplementationRoadmap;
+	implementation_roadmap?: string;
 	key_metrics_to_track?: string[];
 	risk_mitigation?: string;
-	budget_allocation?: BudgetAllocation;
+	budget_allocation?: string;
 	long_term_strategy?: string;
 	conclusion_bottom_line?: string;
 	competitive_advantages?: string[];
@@ -323,6 +326,8 @@ export interface Keyword {
 	opportunity_score: number;  // Required, matches Python int
 	strategy?: string;
 	intent?: string;
+	tier?: number;
+	tier_rationale?: string;
 }
 
 export interface KeywordGroup {
@@ -332,10 +337,30 @@ export interface KeywordGroup {
 	strategy?: string;
 }
 
-export interface ContentStrategy {
-	pillar_pages?: string[];
-	cluster_content?: string[];
-	supporting_content?: string[];
+export interface CategoryKeyword {
+	keyword_name: string;
+	search_volume: number;
+	competition: string;
+	cpc?: number;
+}
+
+export interface CategoryKeywordGroup {
+	category_name: string;
+	total_volume: number;
+	keywords: CategoryKeyword[];
+	strategy_recommendation?: string;
+}
+
+export interface SectionKeywordMapping {
+	section_path: string;
+	keyword_cluster: string;
+}
+
+export interface SiteArchitecture {
+	url_hierarchy_diagram?: string;
+	section_keyword_mapping?: SectionKeywordMapping[];
+	total_pages_from_keywords?: number;
+	keyword_coverage_explanation?: string;
 }
 
 export interface TopicCluster {
@@ -343,7 +368,6 @@ export interface TopicCluster {
 	cluster_name: string;
 	primary_keyword: string;
 	supporting_keywords: string[];
-	content_ideas?: string[];
 	total_monthly_volume?: number;
 	content_recommendation?: string;
 	estimated_traffic_potential?: string;
@@ -363,41 +387,42 @@ export interface PageType {
 	seo_optimization_notes?: string;
 }
 
-export interface ImplementationRoadmap {
-	phase_1?: RoadmapPhase;
-	phase_2?: RoadmapPhase;
-	phase_3?: RoadmapPhase;
-}
-
-export interface RoadmapPhase {
-	title: string;
-	duration: string;
-	tasks: string[];
-}
-
-export interface BudgetAllocation {
-	content_creation?: string;
-	technical_seo?: string;
-	link_building?: string;
-	tools?: string;
-}
 
 export interface UniversalSEOElements {
-	title_tag_template?: string;
-	meta_description_template?: string;
-	heading_structure?: string[];
+	title_tag_formula?: string;
+	title_tag_guidelines?: string;
+	meta_description_guidelines?: string;
+	canonical_url_strategy?: string;
+	open_graph_tags?: string;
+	robots_meta_guidelines?: string;
+	robots_meta_guidelines_note?: string | null;
 }
 
 export interface PageTypeImplementation {
 	page_type: string;
-	url_structure?: string;
-	required_elements?: string[];
+	url_pattern?: string;
+	target_keywords?: string[];
+	title_tag_example?: string;
+	meta_description_example?: string;
+	h1_structure?: string;
+	h2_structure?: string;
+	schema_types?: string[];
+	internal_linking_strategy?: string;
+	content_guidelines?: string;
+	priority?: 'High' | 'Medium' | 'Low';
+}
+
+export interface SchemaExample {
+	schema_type: string;
+	json_ld_code: string;
 }
 
 export interface SchemaMarkupStrategy {
-	homepage?: string;
-	product_pages?: string;
-	article_pages?: string;
+	why_schema_matters?: string;
+	priority_schema_types?: string[];
+	implementation_method?: string;
+	schema_examples?: SchemaExample[];
+	testing_validation?: string;
 }
 
 export interface CompetitiveAnalysis {
@@ -415,7 +440,7 @@ export interface SolutionLandscape {
 export interface CompetitorProfile {
 	name: string;
 	url: string;
-	competitor_type: 'direct' | 'indirect' | 'potential';
+	competitor_type: 'DIRECT' | 'PARTIAL' | 'INDIRECT';
 	description: string;
 	key_features: string[];
 	pricing_model: string;
@@ -463,7 +488,7 @@ export interface MarketSizing {
 	competitor_market_presence?: string;
 	market_growth_rate?: string;
 	growth_drivers?: string[];
-	market_risks?: string[];
+	risk_factors?: string[];
 	// Market assessment fields
 	market_saturation_level?: string; // Low, Medium, High
 	market_timing_assessment?: string; // Early, Growth, Mature
@@ -484,18 +509,22 @@ export interface SegmentSizing {
 export interface TrendLongevity {
 	// Core trend indicators
 	trend_direction?: string; // Growing | Stable | Declining
+	trend_confidence?: 'High' | 'Medium' | 'Low';
 	momentum_score?: number;
 	keyword_volume_trend?: string;
+	volume_growth_rate?: string;
+	trend_duration?: string;
 	discussion_frequency_trend?: string;
 
 	// Community and market signals
 	community_growth_indicators?: string[];
 	new_entrants_trend?: string;
 	competitive_activity_level?: string;
+	discussion_recency?: 'Recent' | 'Moderate' | 'Dated';
 
 	// Seasonality
-	seasonal_patterns?: string;
-	peak_periods?: string[];
+	seasonal_pattern?: string;
+	peak_periods?: string | null;
 
 	// Assessment
 	market_maturity?: string;
@@ -581,7 +610,7 @@ export interface ChartConfig {
 export interface SelectionCriteriaScore {
 	criterion: string;
 	score: number;
-	weight: number;
+	justification: string;
 }
 
 export interface SolutionDetails {
@@ -645,6 +674,7 @@ export interface AudienceMapping {
 	// Core segments
 	audience_segments?: AudienceSegment[];
 	primary_target_segment?: string;
+	segment_prioritization_rationale?: string;
 
 	// Influencers and community
 	key_influencers?: Influencer[];
@@ -657,7 +687,7 @@ export interface AudienceMapping {
 
 	// Existing tools and frustrations
 	tools_currently_used?: string[];
-	frustrations_with_existing_solutions?: string[];
+	frustrations_with_existing?: string[];
 
 	// Strategy
 	recommended_channels?: string[];
@@ -676,6 +706,7 @@ export interface Influencer {
 	relevance_score?: number;
 	engagement_level?: string;
 	outreach_priority?: string;
+	content_focus?: string;
 }
 
 export interface AudienceSegment {
@@ -786,11 +817,11 @@ export interface EvaluatedDataSource {
 }
 
 export interface DataQualityMetrics {
-	freshness: number;
-	coverage: number;
-	accuracy: number;
-	accessibility: number;
-	consistency: number;
+	coverage_score?: string;
+	freshness?: string;
+	integration_complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW-MEDIUM' | 'MEDIUM-HIGH';
+	cost_viability?: string;
+	quality_assessment?: string;
 }
 
 export interface DataRoadmapPhase {

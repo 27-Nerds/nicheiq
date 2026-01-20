@@ -168,14 +168,14 @@
 	{/if}
 
 	<!-- Expandable: Growth Drivers & Risks -->
-	{#if (data.growth_drivers && data.growth_drivers.length > 0) || (data.market_risks && data.market_risks.length > 0)}
+	{#if (data.growth_drivers && data.growth_drivers.length > 0) || (data.risk_factors && data.risk_factors.length > 0)}
 		<div class="expandable-section">
 			<button class="expandable-header" onclick={() => (showDriversRisks = !showDriversRisks)}>
 				<div class="expandable-title">
 					<BarChart3 class="expandable-icon" />
 					<span>Growth Drivers & Risks</span>
 					<Badge variant="muted" size="sm">
-						{(data.growth_drivers?.length || 0) + (data.market_risks?.length || 0)}
+						{(data.growth_drivers?.length || 0) + (data.risk_factors?.length || 0)}
 					</Badge>
 				</div>
 				<ChevronDown class="chevron-icon {showDriversRisks ? 'expanded' : ''}" />
@@ -200,14 +200,14 @@
 							</div>
 						{/if}
 
-						{#if data.market_risks && data.market_risks.length > 0}
+						{#if data.risk_factors && data.risk_factors.length > 0}
 							<div class="risks-card">
 								<h4 class="card-label error">
 									<AlertTriangle class="label-icon" />
 									Market Risks
 								</h4>
 								<ul class="item-list">
-									{#each data.market_risks as risk}
+									{#each data.risk_factors as risk}
 										<li class="item error">
 											<span class="bullet">!</span>
 											<span>{risk}</span>

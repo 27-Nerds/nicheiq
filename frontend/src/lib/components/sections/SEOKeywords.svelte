@@ -20,9 +20,6 @@
 	import type {
 		SEOStrategy,
 		SEOAnalytics,
-		ContentStrategy,
-		ImplementationRoadmap,
-		BudgetAllocation,
 		SchemaMarkupStrategy
 	} from '$lib/types/report';
 	import {
@@ -110,61 +107,17 @@
 		return 'muted';
 	}
 
-	// Convert ContentStrategy object to markdown
-	function formatContentStrategy(cs: ContentStrategy): string {
-		const parts: string[] = [];
-		if (cs.pillar_pages?.length) {
-			parts.push('**Pillar Pages:**\n' + cs.pillar_pages.map((p) => `- ${p}`).join('\n'));
-		}
-		if (cs.cluster_content?.length) {
-			parts.push('**Cluster Content:**\n' + cs.cluster_content.map((c) => `- ${c}`).join('\n'));
-		}
-		if (cs.supporting_content?.length) {
-			parts.push(
-				'**Supporting Content:**\n' + cs.supporting_content.map((s) => `- ${s}`).join('\n')
-			);
-		}
-		return parts.join('\n\n') || 'No content strategy details available.';
-	}
-
 	// Calculate opportunity score
 	const opportunityScore = $derived(
 		Math.round((analytics.high_volume_keywords / Math.max(analytics.total_keywords, 1)) * 100)
 	);
 
-	// Type guards to check data format
-	function isStructuredRoadmap(roadmap: unknown): roadmap is ImplementationRoadmap {
-		return (
-			typeof roadmap === 'object' &&
-			roadmap !== null &&
-			('phase_1' in roadmap || 'phase_2' in roadmap || 'phase_3' in roadmap)
-		);
-	}
-
-	function isStructuredContentStrategy(cs: unknown): cs is ContentStrategy {
-		return (
-			typeof cs === 'object' &&
-			cs !== null &&
-			('pillar_pages' in cs || 'cluster_content' in cs || 'supporting_content' in cs)
-		);
-	}
-
-	function isStructuredBudget(budget: unknown): budget is BudgetAllocation {
-		return (
-			typeof budget === 'object' &&
-			budget !== null &&
-			('content_creation' in budget ||
-				'technical_seo' in budget ||
-				'link_building' in budget ||
-				'tools' in budget)
-		);
-	}
-
+	// Type guard to check schema markup format
 	function isStructuredSchemaMarkup(schema: unknown): schema is SchemaMarkupStrategy {
 		return (
 			typeof schema === 'object' &&
 			schema !== null &&
-			('homepage' in schema || 'product_pages' in schema || 'article_pages' in schema)
+			('why_schema_matters' in schema || 'schema_examples' in schema || 'priority_schema_types' in schema)
 		);
 	}
 </script>
@@ -481,99 +434,14 @@
 				<div class="expandable-title">
 					<Clock class="expandable-icon" />
 					<span>Implementation Roadmap</span>
-					{#if isStructuredRoadmap(strategy.implementation_roadmap)}
-						{@const count =
-							(strategy.implementation_roadmap.phase_1 ? 1 : 0) +
-							(strategy.implementation_roadmap.phase_2 ? 1 : 0) +
-							(strategy.implementation_roadmap.phase_3 ? 1 : 0)}
-						{#if count > 0}
-							<Badge variant="muted" size="sm">{count} phases</Badge>
-						{/if}
-					{/if}
 				</div>
 				<ChevronDown class="chevron-icon {showRoadmap ? 'expanded' : ''}" />
 			</button>
 			{#if showRoadmap}
 				<div class="expandable-content">
-					{#if isStructuredRoadmap(strategy.implementation_roadmap)}
-						<!-- Structured object format -->
-						<div class="roadmap-phases">
-							{#if strategy.implementation_roadmap.phase_1}
-								<div class="phase-card">
-									<div class="phase-indicator phase-1"></div>
-									<div class="phase-content">
-										<div class="phase-header">
-											<span class="phase-title"
-												>{strategy.implementation_roadmap.phase_1.title}</span
-											>
-											<Badge variant="success" size="sm"
-												>{strategy.implementation_roadmap.phase_1.duration}</Badge
-											>
-										</div>
-										<ul class="phase-tasks">
-											{#each strategy.implementation_roadmap.phase_1.tasks as task}
-												<li class="phase-task">
-													<ChevronRight class="task-icon" />
-													{task}
-												</li>
-											{/each}
-										</ul>
-									</div>
-								</div>
-							{/if}
-							{#if strategy.implementation_roadmap.phase_2}
-								<div class="phase-card">
-									<div class="phase-indicator phase-2"></div>
-									<div class="phase-content">
-										<div class="phase-header">
-											<span class="phase-title"
-												>{strategy.implementation_roadmap.phase_2.title}</span
-											>
-											<Badge variant="warning" size="sm"
-												>{strategy.implementation_roadmap.phase_2.duration}</Badge
-											>
-										</div>
-										<ul class="phase-tasks">
-											{#each strategy.implementation_roadmap.phase_2.tasks as task}
-												<li class="phase-task">
-													<ChevronRight class="task-icon" />
-													{task}
-												</li>
-											{/each}
-										</ul>
-									</div>
-								</div>
-							{/if}
-							{#if strategy.implementation_roadmap.phase_3}
-								<div class="phase-card">
-									<div class="phase-indicator phase-3"></div>
-									<div class="phase-content">
-										<div class="phase-header">
-											<span class="phase-title"
-												>{strategy.implementation_roadmap.phase_3.title}</span
-											>
-											<Badge variant="muted" size="sm"
-												>{strategy.implementation_roadmap.phase_3.duration}</Badge
-											>
-										</div>
-										<ul class="phase-tasks">
-											{#each strategy.implementation_roadmap.phase_3.tasks as task}
-												<li class="phase-task">
-													<ChevronRight class="task-icon" />
-													{task}
-												</li>
-											{/each}
-										</ul>
-									</div>
-								</div>
-							{/if}
-						</div>
-					{:else}
-						<!-- String/markdown format fallback -->
-						<div class="roadmap-content markdown-content">
-							{@html renderMarkdown(String(strategy.implementation_roadmap))}
-						</div>
-					{/if}
+					<div class="roadmap-content markdown-content">
+						{@html renderMarkdown(String(strategy.implementation_roadmap))}
+					</div>
 				</div>
 			{/if}
 		</div>
@@ -595,12 +463,8 @@
 						{#if strategy.content_strategy}
 							<div class="strategy-card">
 								<h4 class="card-label">Content Strategy</h4>
-								<div class="strategy-content">
-									{#if isStructuredContentStrategy(strategy.content_strategy)}
-										{@html renderMarkdown(formatContentStrategy(strategy.content_strategy))}
-									{:else}
-										{@html renderMarkdown(String(strategy.content_strategy))}
-									{/if}
+								<div class="strategy-content markdown-content">
+									{@html renderMarkdown(String(strategy.content_strategy))}
 								</div>
 							</div>
 						{/if}
@@ -608,44 +472,9 @@
 						{#if strategy.budget_allocation}
 							<div class="strategy-card">
 								<h4 class="card-label">Budget Allocation</h4>
-								{#if isStructuredBudget(strategy.budget_allocation)}
-									<div class="budget-items">
-										{#if strategy.budget_allocation.content_creation}
-											<div class="budget-item">
-												<span class="budget-label">Content Creation</span>
-												<span class="budget-value"
-													>{strategy.budget_allocation.content_creation}</span
-												>
-											</div>
-										{/if}
-										{#if strategy.budget_allocation.technical_seo}
-											<div class="budget-item">
-												<span class="budget-label">Technical SEO</span>
-												<span class="budget-value"
-													>{strategy.budget_allocation.technical_seo}</span
-												>
-											</div>
-										{/if}
-										{#if strategy.budget_allocation.link_building}
-											<div class="budget-item">
-												<span class="budget-label">Link Building</span>
-												<span class="budget-value"
-													>{strategy.budget_allocation.link_building}</span
-												>
-											</div>
-										{/if}
-										{#if strategy.budget_allocation.tools}
-											<div class="budget-item">
-												<span class="budget-label">Tools</span>
-												<span class="budget-value">{strategy.budget_allocation.tools}</span>
-											</div>
-										{/if}
-									</div>
-								{:else}
-									<div class="budget-content markdown-content">
-										{@html renderMarkdown(String(strategy.budget_allocation))}
-									</div>
-								{/if}
+								<div class="budget-content markdown-content">
+									{@html renderMarkdown(String(strategy.budget_allocation))}
+								</div>
 							</div>
 						{/if}
 					</div>
@@ -733,27 +562,49 @@
 			{#if showSchema}
 				<div class="expandable-content">
 					{#if isStructuredSchemaMarkup(strategy.schema_markup_strategy)}
-						<!-- Structured object format -->
-						<div class="schema-grid">
-							{#if strategy.schema_markup_strategy.homepage}
-								<div class="schema-card">
-									<span class="schema-label">Homepage</span>
-									<code class="schema-value success">{strategy.schema_markup_strategy.homepage}</code>
+						{#if strategy.schema_markup_strategy.why_schema_matters}
+							<div class="schema-intro">
+								<p>{strategy.schema_markup_strategy.why_schema_matters}</p>
+							</div>
+						{/if}
+
+						{#if strategy.schema_markup_strategy.priority_schema_types?.length}
+							<div class="schema-types">
+								<span class="schema-types-label">Priority Schema Types</span>
+								<div class="schema-type-tags">
+									{#each strategy.schema_markup_strategy.priority_schema_types as schemaType}
+										<code class="schema-type-tag">{schemaType}</code>
+									{/each}
 								</div>
-							{/if}
-							{#if strategy.schema_markup_strategy.product_pages}
-								<div class="schema-card">
-									<span class="schema-label">Product Pages</span>
-									<code class="schema-value accent">{strategy.schema_markup_strategy.product_pages}</code>
+							</div>
+						{/if}
+
+						{#if strategy.schema_markup_strategy.schema_examples?.length}
+							<div class="schema-examples">
+								<span class="schema-examples-label">Implementation Examples</span>
+								<div class="schema-examples-grid">
+									{#each strategy.schema_markup_strategy.schema_examples as example}
+										<div class="schema-example-card">
+											<span class="schema-example-type">{example.schema_type}</span>
+											<pre class="schema-code"><code>{example.json_ld_code}</code></pre>
+										</div>
+									{/each}
 								</div>
-							{/if}
-							{#if strategy.schema_markup_strategy.article_pages}
-								<div class="schema-card">
-									<span class="schema-label">Article Pages</span>
-									<code class="schema-value warning">{strategy.schema_markup_strategy.article_pages}</code>
-								</div>
-							{/if}
-						</div>
+							</div>
+						{/if}
+
+						{#if strategy.schema_markup_strategy.implementation_method}
+							<div class="schema-method markdown-content">
+								{@html renderMarkdown(strategy.schema_markup_strategy.implementation_method)}
+							</div>
+						{/if}
+
+						{#if strategy.schema_markup_strategy.testing_validation}
+							<div class="schema-testing">
+								<span class="schema-testing-label">Testing & Validation</span>
+								<p>{strategy.schema_markup_strategy.testing_validation}</p>
+							</div>
+						{/if}
 					{:else}
 						<!-- String/markdown format fallback -->
 						<div class="schema-content markdown-content">
@@ -1322,82 +1173,6 @@
 		padding: 0.125rem 0.25rem;
 	}
 
-	/* Roadmap Phases */
-	.roadmap-phases {
-		display: flex;
-		flex-direction: column;
-		gap: 0.75rem;
-	}
-
-	.phase-card {
-		display: flex;
-		gap: 0.75rem;
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		padding: 1rem;
-	}
-
-	.phase-indicator {
-		width: 4px;
-		border-radius: 2px;
-		flex-shrink: 0;
-	}
-
-	.phase-1 {
-		background: var(--color-success);
-	}
-	.phase-2 {
-		background: var(--color-warning);
-	}
-	.phase-3 {
-		background: var(--color-text-muted);
-	}
-
-	.phase-content {
-		flex: 1;
-	}
-
-	.phase-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.phase-title {
-		font-family: var(--font-display);
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.phase-tasks {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.phase-task {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.375rem;
-		font-size: 0.8125rem;
-		color: var(--color-text-secondary);
-	}
-
-	.phase-task :global(.task-icon) {
-		width: 0.75rem;
-		height: 0.75rem;
-		color: var(--color-text-muted);
-		flex-shrink: 0;
-		margin-top: 0.125rem;
-	}
-
 	/* Strategy Grid */
 	.strategy-grid,
 	.positioning-grid,
@@ -1456,34 +1231,6 @@
 		padding-left: 1rem;
 	}
 
-	/* Budget Items */
-	.budget-items {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.budget-item {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		padding: 0.5rem 0.75rem;
-		background: var(--color-bg-elevated);
-		border-radius: 0.375rem;
-	}
-
-	.budget-label {
-		font-size: 0.8125rem;
-		color: var(--color-text-secondary);
-	}
-
-	.budget-value {
-		font-family: var(--font-display);
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
 	/* Technical Content */
 	.technical-content {
 		font-size: 0.875rem;
@@ -1536,44 +1283,110 @@
 		line-height: 1.6;
 	}
 
-	/* Schema Grid */
-	.schema-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-		gap: 0.75rem;
+	/* Rich Schema Format Styles */
+	.schema-intro {
+		margin-bottom: 1rem;
 	}
 
-	.schema-card {
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.375rem;
-		padding: 0.75rem;
+	.schema-intro p {
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+		margin: 0;
 	}
 
-	.schema-label {
+	.schema-types {
+		margin-bottom: 1rem;
+	}
+
+	.schema-types-label,
+	.schema-examples-label,
+	.schema-testing-label {
 		display: block;
 		font-family: var(--font-mono);
 		font-size: 0.625rem;
-		font-weight: 500;
+		font-weight: 600;
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.05em;
 		color: var(--color-text-muted);
-		margin-bottom: 0.375rem;
+		margin-bottom: 0.5rem;
 	}
 
-	.schema-value {
+	.schema-type-tags {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+	}
+
+	.schema-type-tag {
 		font-family: var(--font-mono);
-		font-size: 0.8125rem;
-	}
-
-	.schema-value.success {
-		color: var(--color-success);
-	}
-	.schema-value.accent {
+		font-size: 0.75rem;
+		padding: 0.25rem 0.5rem;
+		background: rgba(229, 90, 40, 0.1);
+		border: 1px solid rgba(229, 90, 40, 0.2);
+		border-radius: 0.25rem;
 		color: var(--color-accent);
 	}
-	.schema-value.warning {
-		color: var(--color-warning);
+
+	.schema-examples {
+		margin-bottom: 1rem;
+	}
+
+	.schema-examples-grid {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.schema-example-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		overflow: hidden;
+	}
+
+	.schema-example-type {
+		display: block;
+		padding: 0.5rem 0.75rem;
+		background: var(--color-bg-elevated);
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-accent);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.schema-code {
+		margin: 0;
+		padding: 0.75rem;
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		line-height: 1.5;
+		overflow-x: auto;
+		max-height: 200px;
+		background: var(--color-bg-base);
+	}
+
+	.schema-code code {
+		white-space: pre-wrap;
+		word-break: break-word;
+	}
+
+	.schema-method {
+		margin-bottom: 1rem;
+	}
+
+	.schema-testing {
+		padding: 0.75rem;
+		background: rgba(34, 197, 94, 0.05);
+		border: 1px solid rgba(34, 197, 94, 0.2);
+		border-radius: 0.5rem;
+	}
+
+	.schema-testing p {
+		margin: 0;
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
 	}
 
 	/* Advantages List */
@@ -1910,8 +1723,7 @@
 		.clusters-grid,
 		.strategy-grid,
 		.positioning-grid,
-		.conclusion-grid,
-		.schema-grid {
+		.conclusion-grid {
 			grid-template-columns: 1fr;
 		}
 

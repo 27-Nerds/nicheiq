@@ -16,25 +16,23 @@
 
 	// Sections ordered by UX-optimized decision workflow (16 sections total)
 	const allSections: Section[] = [
-		// Decision Gateway (Go/No-Go)
+		// PHASE 1: DECISION (Go/No-Go verdict)
 		{ id: 'executive', label: 'Executive', icon: BarChart3 },
 		{ id: 'solution', label: 'Solution', icon: Sparkles },
-		// Customer & Problem (Who & Why)
-		{ id: 'audience', label: 'Audience', icon: UserCheck },
+		// PHASE 2: VALIDATE (Is the opportunity real?)
 		{ id: 'pain-analysis', label: 'Pain Points', icon: Target },
-		{ id: 'content-insights', label: 'Content', icon: MessageSquare },
-		// Market Viability (Is It Worth It?)
 		{ id: 'market-sizing', label: 'Market', icon: DollarSign },
 		{ id: 'monetization', label: 'Monetization', icon: DollarSign },
-		{ id: 'competitors', label: 'Competitors', icon: Users },
 		{ id: 'trends', label: 'Trends', icon: TrendingUp },
-		// Build Specification (How)
-		{ id: 'technical', label: 'Technical', icon: Code },
-		{ id: 'seo', label: 'SEO', icon: Search },
-		// Execution (Launch)
+		{ id: 'competitors', label: 'Competitors', icon: Users },
+		// PHASE 3: EXECUTE (How to launch & build)
+		{ id: 'audience', label: 'Audience', icon: UserCheck },
+		{ id: 'content-insights', label: 'Content', icon: MessageSquare },
 		{ id: 'gtm-playbook', label: 'GTM', icon: Briefcase },
+		{ id: 'seo', label: 'SEO', icon: Search },
+		{ id: 'technical', label: 'Technical', icon: Code },
 		{ id: 'data-infrastructure', label: 'Data', icon: Database },
-		// Reference (Appendix)
+		// PHASE 4: REFERENCE (Appendix)
 		{ id: 'alternatives', label: 'Alternatives', icon: Lightbulb },
 		{ id: 'evidence-appendix', label: 'Evidence', icon: ClipboardList },
 		{ id: 'research-metadata', label: 'Research', icon: FileText }

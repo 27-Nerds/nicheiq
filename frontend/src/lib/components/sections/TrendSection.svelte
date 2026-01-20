@@ -151,21 +151,19 @@
 	</div>
 
 	<!-- Seasonality Card (Always Visible if present) -->
-	{#if data.seasonal_patterns || (data.peak_periods && data.peak_periods.length > 0)}
+	{#if data.seasonal_pattern || data.peak_periods}
 		<div class="seasonality-card">
 			<div class="seasonality-header">
 				<Calendar class="seasonality-icon" />
 				<span class="seasonality-title">Seasonality</span>
 			</div>
-			{#if data.seasonal_patterns}
-				<p class="seasonality-text">{data.seasonal_patterns}</p>
+			{#if data.seasonal_pattern}
+				<p class="seasonality-text">{data.seasonal_pattern}</p>
 			{/if}
-			{#if data.peak_periods && data.peak_periods.length > 0}
+			{#if data.peak_periods}
 				<div class="peak-periods">
 					<span class="periods-label">Peak Periods:</span>
-					{#each data.peak_periods as period}
-						<Badge variant="muted" size="sm">{period}</Badge>
-					{/each}
+					<Badge variant="muted" size="sm">{data.peak_periods}</Badge>
 				</div>
 			{/if}
 		</div>

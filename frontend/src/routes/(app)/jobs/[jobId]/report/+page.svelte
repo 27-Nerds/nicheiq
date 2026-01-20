@@ -2,30 +2,26 @@
 	import type { Report } from '$lib/types/report';
 	import { ArrowLeft, AlertTriangle } from 'lucide-svelte';
 
-	// Decision Gateway (Go/No-Go)
+	// PHASE 1: DECISION (Go/No-Go verdict)
 	import ExecutiveSummary from '$lib/components/sections/ExecutiveSummary.svelte';
 	import SolutionHero from '$lib/components/sections/SolutionHero.svelte';
 
-	// Customer & Problem (Who & Why)
-	import AudienceSection from '$lib/components/sections/AudienceSection.svelte';
+	// PHASE 2: VALIDATE (Is the opportunity real?)
 	import PainAnalysis from '$lib/components/sections/PainAnalysis.svelte';
-	import ContentInsights from '$lib/components/sections/ContentInsights.svelte';
-
-	// Market Viability (Is It Worth It?)
 	import MarketSizing from '$lib/components/sections/MarketSizing.svelte';
 	import MonetizationStrategy from '$lib/components/sections/MonetizationStrategy.svelte';
-	import Competitors from '$lib/components/sections/Competitors.svelte';
 	import TrendSection from '$lib/components/sections/TrendSection.svelte';
+	import Competitors from '$lib/components/sections/Competitors.svelte';
 
-	// Build Specification (How)
-	import TechnicalBlueprint from '$lib/components/sections/TechnicalBlueprint.svelte';
-	import SEOKeywords from '$lib/components/sections/SEOKeywords.svelte';
-
-	// Execution (Launch)
+	// PHASE 3: EXECUTE (How to launch & build)
+	import AudienceSection from '$lib/components/sections/AudienceSection.svelte';
+	import ContentInsights from '$lib/components/sections/ContentInsights.svelte';
 	import GTMPlaybook from '$lib/components/sections/GTMPlaybook.svelte';
+	import SEOKeywords from '$lib/components/sections/SEOKeywords.svelte';
+	import TechnicalBlueprint from '$lib/components/sections/TechnicalBlueprint.svelte';
 	import DataInfrastructure from '$lib/components/sections/DataInfrastructure.svelte';
 
-	// Reference (Appendix)
+	// PHASE 4: REFERENCE (Appendix)
 	import AlternativesSection from '$lib/components/sections/AlternativesSection.svelte';
 	import EvidenceAppendix from '$lib/components/sections/EvidenceAppendix.svelte';
 	import ResearchMetadata from '$lib/components/sections/ResearchMetadata.svelte';
@@ -51,6 +47,26 @@
 		description: report?.executive_summary || '',
 		solution_name: report?.selected_solution_name
 	});
+
+	// Get severity label (HIGH/MEDIUM/LOW)
+	function getSeverityLabel(score: number | undefined): string {
+		if (!score) return '';
+		if (score >= 0.7) return 'HIGH';
+		if (score >= 0.4) return 'MEDIUM';
+		return 'LOW';
+	}
+
+	// Calculate total discussions analyzed
+	const totalDiscussions = $derived(
+		(report?.research_metadata?.reddit_posts_analyzed || 0) +
+		(report?.research_metadata?.twitter_threads_analyzed || 0)
+	);
+
+	// Get pain point count
+	const painPointCount = $derived(
+		report?.pain_point_analytics?.total_pain_points ||
+		report?.detailed_pain_points?.length || 0
+	);
 </script>
 
 <svelte:head>
@@ -85,9 +101,65 @@
 				<span>Back to Job Status</span>
 			</a>
 
-			<!-- PHASE 1: DECISION GATEWAY (Go/No-Go) -->
+			<!-- Report Header -->
+			<header class="report-header">
+				<div class="header-hero">
+					<h1 class="header-headline">WE DELIVER LAUNCH-READY<br/>BUSINESS SOLUTION.</h1>
+				</div>
+
+				<div class="header-content">
+					<!-- Niche & Research Stats -->
+					<div class="research-summary">
+						<p class="niche-label">Researched Niche</p>
+						<p class="niche-name">{report.niche}</p>
+						<p class="research-stats">
+							We analyzed {totalDiscussions} real discussions from Reddit{#if report.research_metadata?.twitter_threads_analyzed}, Twitter,{/if} and online communities and identified {painPointCount} mentions of specific problems.
+						</p>
+					</div>
+
+					<!-- Solution Card -->
+					<div class="solution-card">
+						<div class="solution-badge">SOLUTION</div>
+						<h2 class="solution-name">{report.selected_solution_name}</h2>
+						<p class="solution-description">
+							{report.selected_solution_details?.description || report.executive_summary?.slice(0, 300)}
+						</p>
+
+						<!-- Metrics Badges -->
+						<div class="metrics-grid">
+							{#if report.executive_dashboard?.core_pain_point?.severity_score}
+								<span class="metric-badge">
+									SEVERITY: {(report.executive_dashboard.core_pain_point.severity_score).toFixed(2)} ({getSeverityLabel(report.executive_dashboard.core_pain_point.severity_score)})
+								</span>
+							{/if}
+							{#if report.executive_dashboard?.core_pain_point?.willingness_to_pay_score}
+								<span class="metric-badge">
+									WTP: {(report.executive_dashboard.core_pain_point.willingness_to_pay_score).toFixed(2)} {getSeverityLabel(report.executive_dashboard.core_pain_point.willingness_to_pay_score)}
+								</span>
+							{/if}
+							{#if report.selected_solution_details?.market_fit_score}
+								<span class="metric-badge">
+									MARKET FIT: {Math.round(report.selected_solution_details.market_fit_score * 100)}%
+								</span>
+							{/if}
+							{#if report.selected_solution_details?.technical_feasibility_score}
+								<span class="metric-badge">
+									FEASIBILITY: {Math.round(report.selected_solution_details.technical_feasibility_score * 100)}%
+								</span>
+							{/if}
+							{#if report.selected_solution_details?.solo_dev_feasibility}
+								<span class="metric-badge">
+									SOLO DEV: {Math.round(report.selected_solution_details.solo_dev_feasibility * 100)}%
+								</span>
+							{/if}
+						</div>
+					</div>
+				</div>
+			</header>
+
+			<!-- PHASE 1: DECISION (Go/No-Go verdict) -->
 			<div class="phase-section phase-decision">
-				<div class="phase-label">Decision Gateway</div>
+				<div class="phase-label">Decision</div>
 				{#if report.executive_dashboard}
 					<ExecutiveSummary
 						data={report.executive_dashboard}
@@ -117,13 +189,9 @@
 				{/if}
 			</div>
 
-			<!-- PHASE 2: CUSTOMER & PROBLEM (Who & Why) -->
-			<div class="phase-section phase-customer">
-				<div class="phase-label">Customer & Problem</div>
-				{#if report.audience_mapping}
-					<AudienceSection data={report.audience_mapping} />
-				{/if}
-
+			<!-- PHASE 2: VALIDATE (Is the opportunity real?) -->
+			<div class="phase-section phase-validate">
+				<div class="phase-label">Validate</div>
 				{#if report.detailed_pain_points && report.detailed_pain_points.length > 0}
 					<PainAnalysis
 						painPoints={report.detailed_pain_points}
@@ -132,17 +200,6 @@
 					/>
 				{/if}
 
-				{#if report.content_categorization || report.overall_competitive_insights}
-					<ContentInsights
-						contentCategorization={report.content_categorization}
-						overallCompetitiveInsights={report.overall_competitive_insights}
-					/>
-				{/if}
-			</div>
-
-			<!-- PHASE 3: MARKET VIABILITY (Is It Worth It?) -->
-			<div class="phase-section phase-market">
-				<div class="phase-label">Market Viability</div>
 				<MarketSizing data={report.market_sizing} />
 
 				{#if report.pricing_strategy || report.traffic_monetization}
@@ -150,6 +207,10 @@
 						pricingData={report.pricing_strategy}
 						trafficData={report.traffic_monetization}
 					/>
+				{/if}
+
+				{#if report.trend_longevity}
+					<TrendSection data={report.trend_longevity} />
 				{/if}
 
 				{#if report.competitive_analytics}
@@ -161,29 +222,19 @@
 						summary={report.competitive_summary}
 					/>
 				{/if}
-
-				{#if report.trend_longevity}
-					<TrendSection data={report.trend_longevity} />
-				{/if}
 			</div>
 
-			<!-- PHASE 4: BUILD & EXECUTE -->
-			<div class="phase-section phase-build">
-				<div class="phase-label">Build & Execute</div>
-				{#if solutionDetails}
-					<TechnicalBlueprint
-						solution={solutionDetails}
-						implementationOverview={report.solution_implementation_overview}
-						mvpScope={report.mvp_scope_definition}
-						userJourney={report.solution_user_journey}
-						dataInfrastructureRoadmap={report.data_infrastructure_roadmap}
-					/>
+			<!-- PHASE 3: EXECUTE (How to launch & build) -->
+			<div class="phase-section phase-execute">
+				<div class="phase-label">Execute</div>
+				{#if report.audience_mapping}
+					<AudienceSection data={report.audience_mapping} />
 				{/if}
 
-				{#if report.seo_strategy_report}
-					<SEOKeywords
-						strategy={report.seo_strategy_report}
-						analytics={report.seo_analytics}
+				{#if report.content_categorization || report.overall_competitive_insights}
+					<ContentInsights
+						contentCategorization={report.content_categorization}
+						overallCompetitiveInsights={report.overall_competitive_insights}
 					/>
 				{/if}
 
@@ -194,12 +245,29 @@
 					/>
 				{/if}
 
+				{#if report.seo_strategy_report}
+					<SEOKeywords
+						strategy={report.seo_strategy_report}
+						analytics={report.seo_analytics}
+					/>
+				{/if}
+
+				{#if solutionDetails}
+					<TechnicalBlueprint
+						solution={solutionDetails}
+						implementationOverview={report.solution_implementation_overview}
+						mvpScope={report.mvp_scope_definition}
+						userJourney={report.solution_user_journey}
+						dataInfrastructureRoadmap={report.data_infrastructure_roadmap}
+					/>
+				{/if}
+
 				{#if report.data_source_research_full}
 					<DataInfrastructure data={report.data_source_research_full} />
 				{/if}
 			</div>
 
-			<!-- PHASE 5: REFERENCE (Appendix) -->
+			<!-- PHASE 4: REFERENCE (Appendix) -->
 			<div class="phase-section phase-reference">
 				<div class="phase-label">Reference</div>
 				{#if report.alternative_solutions && report.alternative_solutions.length > 0}
@@ -248,17 +316,6 @@
 		background: var(--phase-tint, transparent);
 	}
 
-	.phase-section::before {
-		content: '';
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 4px;
-		border-radius: 2px;
-		background: var(--phase-accent, var(--color-border));
-	}
-
 	.phase-label {
 		position: absolute;
 		top: 0;
@@ -284,25 +341,18 @@
 		--phase-label-bg: rgba(229, 90, 40, 0.08);
 	}
 
-	.phase-customer {
-		--phase-tint: rgba(99, 102, 241, 0.02);
-		--phase-accent: var(--color-secondary);
-		--phase-text: var(--color-secondary);
-		--phase-label-bg: rgba(99, 102, 241, 0.08);
-	}
-
-	.phase-market {
+	.phase-validate {
 		--phase-tint: rgba(34, 197, 94, 0.02);
 		--phase-accent: var(--color-success);
 		--phase-text: var(--color-success-dark);
 		--phase-label-bg: rgba(34, 197, 94, 0.08);
 	}
 
-	.phase-build {
-		--phase-tint: rgba(139, 92, 246, 0.02);
-		--phase-accent: #8B5CF6;
-		--phase-text: #7C3AED;
-		--phase-label-bg: rgba(139, 92, 246, 0.08);
+	.phase-execute {
+		--phase-tint: rgba(99, 102, 241, 0.02);
+		--phase-accent: var(--color-secondary);
+		--phase-text: var(--color-secondary);
+		--phase-label-bg: rgba(99, 102, 241, 0.08);
 	}
 
 	.phase-reference {
@@ -317,13 +367,147 @@
 			padding: 1.5rem 0;
 		}
 
-		.phase-section::before {
-			width: 3px;
-		}
-
 		.phase-label {
 			font-size: 0.5625rem;
 			padding: 0.1875rem 0.5rem;
+		}
+	}
+
+	/* Report Header */
+	.report-header {
+		margin-bottom: 2rem;
+	}
+
+	.header-hero {
+		background: var(--color-accent);
+		padding: 3rem 2rem;
+		border-radius: 1rem 1rem 0 0;
+	}
+
+	.header-headline {
+		font-size: 2.5rem;
+		font-weight: 800;
+		color: white;
+		line-height: 1.1;
+		text-transform: uppercase;
+	}
+
+	.header-content {
+		background: var(--color-bg-elevated);
+		padding: 2rem;
+		border-radius: 0 0 1rem 1rem;
+		border: 1px solid var(--color-border);
+		border-top: none;
+	}
+
+	.research-summary {
+		margin-bottom: 1.5rem;
+		padding-bottom: 1.5rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	.niche-label {
+		font-size: 0.75rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		margin-bottom: 0.25rem;
+	}
+
+	.niche-name {
+		font-size: 1.25rem;
+		font-weight: 600;
+		color: var(--color-text-primary);
+		margin-bottom: 0.75rem;
+	}
+
+	.research-stats {
+		font-size: 0.9rem;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+	}
+
+	/* Solution Card */
+	.solution-card {
+		background: white;
+		padding: 1.5rem;
+		border-radius: 0.75rem;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+	}
+
+	.solution-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.35rem;
+		font-size: 0.75rem;
+		font-weight: 700;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-success);
+		margin-bottom: 0.5rem;
+	}
+
+	.solution-badge::before {
+		content: '\2705';
+	}
+
+	.solution-name {
+		font-size: 1.75rem;
+		font-weight: 700;
+		color: var(--color-success);
+		margin-bottom: 0.75rem;
+	}
+
+	.solution-description {
+		font-size: 0.95rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+		margin-bottom: 1.25rem;
+	}
+
+	.metrics-grid {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.metric-badge {
+		display: inline-block;
+		padding: 0.625rem 1rem;
+		background: var(--color-bg-dark, #1a1a1a);
+		color: white;
+		font-size: 0.75rem;
+		font-weight: 600;
+		letter-spacing: 0.02em;
+		border-radius: 0.375rem;
+	}
+
+	/* Mobile responsive for header */
+	@media (max-width: 768px) {
+		.header-hero {
+			padding: 2rem 1.25rem;
+		}
+
+		.header-headline {
+			font-size: 1.75rem;
+		}
+
+		.header-content {
+			padding: 1.25rem;
+		}
+
+		.solution-name {
+			font-size: 1.35rem;
+		}
+
+		.metrics-grid {
+			gap: 0.375rem;
+		}
+
+		.metric-badge {
+			padding: 0.5rem 0.75rem;
+			font-size: 0.7rem;
 		}
 	}
 </style>
