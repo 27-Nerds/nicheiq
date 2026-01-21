@@ -170,7 +170,7 @@
 
 	<!-- Key Findings (Always Visible) -->
 	{#if strategy.key_findings}
-		<div class="findings-card">
+		<div class="insight-card insight-card--accent findings-card">
 			<div class="findings-header">
 				<Zap class="findings-icon" />
 				<span class="findings-title">Key Findings</span>
@@ -905,11 +905,6 @@
 
 	/* Findings Card */
 	.findings-card {
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(229, 90, 40, 0.25);
-		border-left: 3px solid var(--color-accent);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
 		margin-bottom: 1rem;
 	}
 

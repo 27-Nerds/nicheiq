@@ -20,6 +20,7 @@
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import HeroStat from '$lib/components/ui/HeroStat.svelte';
+	import QuoteBlock from '$lib/components/ui/QuoteBlock.svelte';
 
 	interface Props {
 		data: EvidenceAppendix;
@@ -304,7 +305,7 @@
 										<div class="quote-group-content">
 											{#each source.quotes_with_sources as quote}
 												<div class="quote-item">
-													<blockquote class="quote-text">"{quote.quote}"</blockquote>
+													<QuoteBlock text={quote.quote} variant="card" class="evidence-quote" />
 													<div class="quote-meta">
 														<span class="quote-source">r/{quote.subreddit}</span>
 														<span class="quote-score">
@@ -830,14 +831,8 @@
 		padding-bottom: 0;
 	}
 
-	.quote-text {
-		font-size: 0.875rem;
-		font-style: italic;
-		color: var(--color-text-secondary);
-		line-height: 1.6;
-		padding-left: 1rem;
-		border-left: 2px solid rgba(229, 90, 40, 0.3);
-		margin: 0 0 0.5rem;
+	:global(.evidence-quote) {
+		margin-bottom: 0.5rem;
 	}
 
 	.quote-meta {

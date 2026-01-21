@@ -5,6 +5,7 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import QuoteBlock from '$lib/components/ui/QuoteBlock.svelte';
 
 	interface Props {
 		contentCategorization?: ContentCategorization;
@@ -57,7 +58,7 @@
 
 	<!-- Overall Competitive Insights - Hero Card -->
 	{#if overallCompetitiveInsights}
-		<div class="insight-hero">
+		<div class="insight-card insight-card--accent insight-hero">
 			<div class="insight-icon">
 				<Shield class="icon-lg" />
 			</div>
@@ -164,7 +165,7 @@
 												</span>
 												<div class="quotes-list">
 													{#each category.representative_quotes.slice(0, 3) as quote}
-														<blockquote class="theme-quote">"{quote}"</blockquote>
+														<QuoteBlock text={quote} variant="card" class="theme-quote-block" />
 													{/each}
 													{#if category.representative_quotes.length > 3}
 														<span class="quotes-more">+{category.representative_quotes.length - 3} more</span>
@@ -264,11 +265,6 @@
 	.insight-hero {
 		display: flex;
 		gap: 1rem;
-		padding: 1.25rem;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, rgba(229, 90, 40, 0.02) 100%);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-left: 3px solid var(--color-accent);
-		border-radius: 0.75rem;
 		margin-bottom: 1.5rem;
 	}
 
@@ -665,13 +661,12 @@
 		gap: 0.375rem;
 	}
 
-	.theme-quote {
+	:global(.theme-quote-block) {
+		padding: 0.625rem 0.75rem;
+	}
+
+	:global(.theme-quote-block .quote-text) {
 		font-size: 0.75rem;
-		color: var(--color-text-secondary);
-		font-style: italic;
-		line-height: 1.5;
-		padding-left: 0.625rem;
-		border-left: 2px solid rgba(229, 90, 40, 0.3);
 	}
 
 	.quotes-more {

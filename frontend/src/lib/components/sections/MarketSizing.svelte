@@ -181,7 +181,7 @@
 				<div class="expandable-content">
 					<div class="drivers-risks-grid">
 						{#if data.growth_drivers && data.growth_drivers.length > 0}
-							<div class="drivers-card">
+							<div class="insight-card insight-card--success">
 								<h4 class="card-label success">
 									<TrendingUp class="label-icon" />
 									Growth Drivers
@@ -198,7 +198,7 @@
 						{/if}
 
 						{#if data.risk_factors && data.risk_factors.length > 0}
-							<div class="risks-card">
+							<div class="insight-card insight-card--error">
 								<h4 class="card-label error">
 									<AlertTriangle class="label-icon" />
 									Market Risks
@@ -593,23 +593,6 @@
 		gap: 0.75rem;
 	}
 
-	.drivers-card,
-	.risks-card {
-		padding: 0.875rem;
-		border-radius: 0.5rem;
-	}
-
-	.drivers-card {
-		background: rgba(34, 197, 94, 0.04);
-		border: 1px solid rgba(34, 197, 94, 0.15);
-		border-left: 3px solid #22C55E;
-	}
-
-	.risks-card {
-		background: rgba(239, 68, 68, 0.04);
-		border: 1px solid rgba(239, 68, 68, 0.15);
-		border-left: 3px solid #EF4444;
-	}
 
 	.card-label {
 		display: flex;

@@ -6,6 +6,7 @@
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import HeroStat from '$lib/components/ui/HeroStat.svelte';
+	import MetaItem from '$lib/components/ui/MetaItem.svelte';
 
 	interface Props {
 		data: AudienceMapping;
@@ -96,25 +97,19 @@
 							</div>
 						{/if}
 
-						<div class="segment-meta">
+						<div class="insight-card__meta insight-card__meta--top-only">
 							{#if segment.expertise_level}
-								<div class="meta-item">
-									<Briefcase class="meta-icon" />
-									<span>{segment.expertise_level}</span>
-								</div>
+								<MetaItem icon={Briefcase} value={segment.expertise_level} label="" iconClass="w-3 h-3 text-muted" />
 							{/if}
 							{#if segment.budget_sensitivity}
-								<div class="meta-item">
-									<DollarSign class="meta-icon" />
-									<span>{segment.budget_sensitivity}</span>
-								</div>
+								<MetaItem icon={DollarSign} value={segment.budget_sensitivity} label="" iconClass="w-3 h-3 text-muted" />
 							{/if}
 						</div>
 
 						{#if segment.discovery_channels && segment.discovery_channels.length > 0}
-							<div class="segment-channels">
+							<div class="insight-card__tags">
 								{#each segment.discovery_channels as channel}
-									<span class="channel-tag">{channel}</span>
+									<span class="insight-card__tag">{channel}</span>
 								{/each}
 							</div>
 						{/if}
@@ -431,47 +426,6 @@
 		color: #E55A28;
 	}
 
-	.segment-meta {
-		display: flex;
-		gap: 0.75rem;
-		padding: 0.5rem 0;
-		border-top: 1px solid rgba(0, 0, 0, 0.06);
-		border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-		margin-bottom: 0.625rem;
-	}
-
-	.meta-item {
-		display: flex;
-		align-items: center;
-		gap: 0.25rem;
-	}
-
-	:global(.meta-icon) {
-		width: 0.75rem;
-		height: 0.75rem;
-		color: #A1A1AA;
-	}
-
-	.meta-item span {
-		font-size: 0.6875rem;
-		color: #71717A;
-	}
-
-	.segment-channels {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.25rem;
-	}
-
-	.channel-tag {
-		font-family: var(--font-mono);
-		font-size: 0.5625rem;
-		padding: 0.125rem 0.375rem;
-		background: rgba(0, 0, 0, 0.03);
-		border: 1px solid rgba(0, 0, 0, 0.06);
-		border-radius: 0.25rem;
-		color: #A1A1AA;
-	}
 
 	/* =========================
 	   COMMUNITIES STRIP
@@ -762,11 +716,6 @@
 	}
 
 	@media (max-width: 480px) {
-		.segment-meta {
-			flex-direction: column;
-			gap: 0.375rem;
-		}
-
 		.hero-stats {
 			gap: 1rem;
 		}

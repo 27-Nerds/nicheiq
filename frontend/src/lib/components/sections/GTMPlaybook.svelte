@@ -144,7 +144,7 @@
 	</div>
 
 	<!-- Core Message Hero - Always Visible -->
-	<div class="message-hero">
+	<div class="insight-card insight-card--accent message-hero">
 		<div class="message-header">
 			<Megaphone class="message-icon" />
 			<span class="message-label">Core Marketing Message</span>
@@ -347,8 +347,8 @@
 						<div class="channels-grid">
 							{#each gtmData.recommended_channels as channel}
 								<div
-									class="channel-card"
-									style="--priority-color: {getChannelColor(channel.priority)}"
+									class="insight-card insight-card--dynamic channel-card"
+									style="--card-accent-color: {getChannelColor(channel.priority)}"
 								>
 									<div class="channel-header">
 										<div class="channel-info">
@@ -558,15 +558,6 @@
 
 	/* Message Hero */
 	.message-hero {
-		background: linear-gradient(
-			135deg,
-			rgba(229, 90, 40, 0.08) 0%,
-			rgba(229, 90, 40, 0.02) 100%
-		);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-left: 4px solid var(--color-accent);
-		border-radius: 0.75rem;
-		padding: 1.5rem;
 		margin-bottom: 1.5rem;
 	}
 
@@ -1005,11 +996,7 @@
 	}
 
 	.channel-card {
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-left: 3px solid var(--priority-color);
-		border-radius: 0.5rem;
-		padding: 1.25rem;
+		/* Additional channel-specific styling beyond insight-card */
 	}
 
 	.channel-header {

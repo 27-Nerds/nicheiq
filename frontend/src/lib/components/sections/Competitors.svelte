@@ -96,7 +96,7 @@
 
 	<!-- Key Competitors Strip (Always Visible) -->
 	{#if landscapeMatrix?.selected_solution_competitors && landscapeMatrix.selected_solution_competitors.length > 0}
-		<div class="key-competitors-strip">
+		<div class="insight-card insight-card--accent key-competitors-strip">
 			<Target class="strip-icon" />
 			<span class="strip-label">Key Competitors:</span>
 			<div class="strip-badges">
@@ -415,11 +415,6 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding: 0.875rem 1.25rem;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(229, 90, 40, 0.25);
-		border-left: 3px solid var(--color-accent);
-		border-radius: 0.75rem;
 		margin-bottom: 1rem;
 		flex-wrap: wrap;
 	}

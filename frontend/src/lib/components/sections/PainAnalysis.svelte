@@ -12,6 +12,8 @@
 	import FilterGroup from '$lib/components/ui/FilterGroup.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import QuoteBlock from '$lib/components/ui/QuoteBlock.svelte';
+	import MetaItem from '$lib/components/ui/MetaItem.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
@@ -168,9 +170,7 @@
 							<p class="pain-description">{painPoint.description}</p>
 
 							{#if painPoint.representative_quotes && painPoint.representative_quotes.length > 0}
-								<div class="quote-card">
-									<p class="quote-card-text">{painPoint.representative_quotes[0]}</p>
-								</div>
+								<QuoteBlock text={painPoint.representative_quotes[0]} variant="card" class="mb-4" />
 							{/if}
 
 							{#if painPoint.source_platforms && painPoint.source_platforms.length > 0}
@@ -353,22 +353,10 @@
 						<p class="pain-point-description">{point.description}</p>
 
 						<!-- Metrics Row -->
-						<div class="pain-point-metrics">
-							<div class="metric-item">
-								<AlertTriangle class="w-4 h-4 text-error" />
-								<span class="metric-value">{formatPercent(point.severity_score)}</span>
-								<span class="metric-label">Severity</span>
-							</div>
-							<div class="metric-item">
-								<DollarSign class="w-4 h-4 text-success" />
-								<span class="metric-value">{formatPercent(point.willingness_to_pay)}</span>
-								<span class="metric-label">WTP</span>
-							</div>
-							<div class="metric-item">
-								<MessageSquare class="w-4 h-4 text-accent" />
-								<span class="metric-value">{point.mention_count}</span>
-								<span class="metric-label">Mentions</span>
-							</div>
+						<div class="insight-card__meta">
+							<MetaItem icon={AlertTriangle} value={formatPercent(point.severity_score)} label="Severity" iconClass="w-4 h-4 text-error" />
+							<MetaItem icon={DollarSign} value={formatPercent(point.willingness_to_pay)} label="WTP" iconClass="w-4 h-4 text-success" />
+							<MetaItem icon={MessageSquare} value={point.mention_count} label="Mentions" iconClass="w-4 h-4 text-accent" />
 						</div>
 
 						<!-- Categories -->
@@ -399,10 +387,7 @@
 								{#if expandedQuotes[index]}
 									<div class="quotes-list">
 										{#each point.representative_quotes as quote, qi}
-											<div class="quote-card-enhanced" style="animation-delay: {qi * 50}ms">
-												<div class="quote-mark">"</div>
-												<p class="quote-text-enhanced">{quote}</p>
-											</div>
+											<QuoteBlock text={quote} variant="enhanced" class="quote-animated" style="animation-delay: {qi * 50}ms" />
 										{/each}
 									</div>
 								{/if}
@@ -676,34 +661,6 @@
 		color: var(--color-text-muted);
 	}
 
-	.quote-card {
-		background: var(--color-bg-elevated);
-		border-left: 3px solid var(--color-text-muted);
-		border-radius: 0 0.5rem 0.5rem 0;
-		padding: 0.875rem 1rem;
-		margin-bottom: 1rem;
-		position: relative;
-	}
-
-	.quote-card::before {
-		content: '"';
-		position: absolute;
-		top: -0.25rem;
-		left: 0.5rem;
-		font-family: var(--font-display);
-		font-size: 2rem;
-		color: var(--color-text-muted);
-		opacity: 0.3;
-		line-height: 1;
-	}
-
-	.quote-card-text {
-		font-size: 0.9375rem;
-		font-style: italic;
-		color: var(--color-text-muted);
-		line-height: 1.7;
-		padding-left: 1rem;
-	}
 
 	.flow-connector-wrapper {
 		display: flex;
@@ -1000,33 +957,6 @@
 		margin-bottom: 1rem;
 	}
 
-	.pain-point-metrics {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 1.5rem;
-		padding: 1rem;
-		background: var(--color-bg-elevated);
-		border-radius: 0.5rem;
-		margin-bottom: 1rem;
-	}
-
-	.metric-item {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	.metric-value {
-		font-family: var(--font-mono);
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.metric-label {
-		font-size: 0.75rem;
-		color: var(--color-text-muted);
-	}
 
 	.pain-point-categories {
 		display: flex;
@@ -1074,14 +1004,10 @@
 		margin-top: 1rem;
 	}
 
-	.quote-card-enhanced {
-		position: relative;
-		background: var(--color-bg-elevated);
-		border-left: 3px solid var(--color-text-muted);
-		border-radius: 0 0.5rem 0.5rem 0;
-		padding: 1rem 1rem 1rem 2.5rem;
-		animation: fadeInUp 0.3s ease forwards;
+	/* Quote animation support */
+	:global(.quote-animated) {
 		opacity: 0;
+		animation: fadeInUp 0.3s ease forwards;
 	}
 
 	@keyframes fadeInUp {
@@ -1093,24 +1019,6 @@
 			opacity: 1;
 			transform: translateY(0);
 		}
-	}
-
-	.quote-mark {
-		position: absolute;
-		top: 0.5rem;
-		left: 0.75rem;
-		font-family: var(--font-display);
-		font-size: 1.5rem;
-		color: var(--color-text-muted);
-		opacity: 0.4;
-		line-height: 1;
-	}
-
-	.quote-text-enhanced {
-		font-size: 0.9375rem;
-		font-style: italic;
-		color: var(--color-text-secondary);
-		line-height: 1.7;
 	}
 
 	.source-ids {
