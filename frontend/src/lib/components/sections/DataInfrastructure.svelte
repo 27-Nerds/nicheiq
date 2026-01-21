@@ -17,6 +17,7 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
@@ -55,15 +56,11 @@
 </script>
 
 <section id="data-infrastructure" class="report-section">
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Database class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Data Infrastructure Roadmap</h2>
-			<p class="section-subtitle">Data sources, integrations, and implementation phases</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Database}
+		title="Data Infrastructure Roadmap"
+		subtitle="Data sources, integrations, and implementation phases"
+	/>
 
 	<!-- Cost Overview -->
 	{#if data.estimated_monthly_cost || data.source_evaluation?.total_mvp_cost}

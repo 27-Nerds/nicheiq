@@ -6,6 +6,7 @@
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
@@ -25,15 +26,11 @@
 </script>
 
 <section id="technical" class="report-section">
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Code class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Technical Blueprint</h2>
-			<p class="section-subtitle">Implementation approach and architecture</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Code}
+		title="Technical Blueprint"
+		subtitle="Implementation approach and architecture"
+	/>
 
 	<!-- Tech Stack Overview -->
 	{#if solution.technical_approach}

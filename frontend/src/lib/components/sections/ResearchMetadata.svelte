@@ -16,7 +16,9 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import { formatDate } from '$lib/utils/format';
+	import { getTierVariant, getQualityConfig } from '$lib/utils/variantHelpers';
 
 	interface Props {
 		metadata: ResearchMetadataType;
@@ -24,30 +26,6 @@
 	}
 
 	let { metadata, overallConfidence }: Props = $props();
-
-	// Get quality tier badge variant
-	const getTierVariant = (tier?: string) => {
-		const t = tier?.toUpperCase() || '';
-		if (t === 'EXCELLENT' || t === 'GOLD' || t === 'HIGH') return 'success';
-		if (t === 'GOOD' || t === 'SILVER' || t === 'MEDIUM') return 'accent';
-		if (t === 'MINIMAL' || t === 'BRONZE' || t === 'LOW') return 'warning';
-		return 'error';
-	};
-
-	// Get quality tier icon and color
-	const getQualityConfig = (tier?: string) => {
-		const t = tier?.toUpperCase() || '';
-		if (t === 'HIGH' || t === 'EXCELLENT' || t === 'GOLD') {
-			return { color: 'text-success', bg: 'bg-success/10' };
-		}
-		if (t === 'MEDIUM' || t === 'GOOD' || t === 'SILVER') {
-			return { color: 'text-accent', bg: 'bg-accent/10' };
-		}
-		if (t === 'LOW' || t === 'MINIMAL' || t === 'BRONZE') {
-			return { color: 'text-warning', bg: 'bg-warning/10' };
-		}
-		return { color: 'text-error', bg: 'bg-error/10' };
-	};
 
 	// Calculate confidence percentage
 	const confidencePercent = $derived.by(() => {
@@ -69,15 +47,11 @@
 </script>
 
 <section id="research-metadata" class="report-section">
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Shield class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Research Quality & Metadata</h2>
-			<p class="section-subtitle">Data sources, confidence scores, and quality metrics</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Shield}
+		title="Research Quality & Metadata"
+		subtitle="Data sources, confidence scores, and quality metrics"
+	/>
 
 	<!-- Quality Overview Grid -->
 	<AnimateOnScroll animation="fade-up">

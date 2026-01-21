@@ -15,6 +15,8 @@
 	import type { MarketSizing } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
@@ -59,16 +61,11 @@
 </script>
 
 <section id="market-sizing" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<DollarSign class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Market Sizing</h2>
-			<p class="section-subtitle">TAM/SAM/SOM analysis and growth opportunity</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={DollarSign}
+		title="Market Sizing"
+		subtitle="TAM/SAM/SOM analysis and growth opportunity"
+	/>
 
 	<!-- Hero Strip: Viability Verdict + Key Signals -->
 	<div class="hero-strip">

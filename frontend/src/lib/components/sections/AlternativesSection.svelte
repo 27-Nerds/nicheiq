@@ -6,6 +6,7 @@
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
@@ -31,15 +32,11 @@
 </script>
 
 <section id="alternatives" class="report-section">
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Lightbulb class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Alternative Solutions</h2>
-			<p class="section-subtitle">{data.length} options analyzed as pivot considerations</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Lightbulb}
+		title="Alternative Solutions"
+		subtitle="{data.length} options analyzed as pivot considerations"
+	/>
 
 	<p class="text-text-secondary mb-8">
 		These alternative solutions were evaluated during the ideation process. Each offers a different approach with unique trade-offs.

@@ -27,6 +27,9 @@
 	import { formatNumber, formatPercent, renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 
@@ -97,16 +100,11 @@
 </script>
 
 <section id="executive" class="executive-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<BarChart3 class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Executive Summary</h2>
-			<p class="section-subtitle">Key metrics and strategic insights at a glance</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={BarChart3}
+		title="Executive Summary"
+		subtitle="Key metrics and strategic insights at a glance"
+	/>
 
 	<!-- Hero Metrics Strip - Most important numbers -->
 	<div class="hero-metrics">

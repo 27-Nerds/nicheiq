@@ -16,6 +16,8 @@
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 
 	interface Props {
 		data: TrendLongevity;
@@ -56,16 +58,11 @@
 </script>
 
 <section id="trends" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Activity class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Market Trends & Longevity</h2>
-			<p class="section-subtitle">Trend analysis and market timing</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Activity}
+		title="Market Trends & Longevity"
+		subtitle="Trend analysis and market timing"
+	/>
 
 	<!-- Hero Strip -->
 	<div class="hero-strip">

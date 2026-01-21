@@ -236,60 +236,12 @@
 	animation: pulseGlow 3s ease-in-out infinite;
 }
 
-/* Stagger delays for children */
-.stagger-1 { transition-delay: 0.1s; }
-.stagger-2 { transition-delay: 0.2s; }
-.stagger-3 { transition-delay: 0.3s; }
-.stagger-4 { transition-delay: 0.4s; }
-.stagger-5 { transition-delay: 0.5s; }
-.stagger-6 { transition-delay: 0.6s; }
-.stagger-7 { transition-delay: 0.7s; }
-.stagger-8 { transition-delay: 0.8s; }
-
-/* Animation delays */
-.delay-100 { animation-delay: 100ms; }
-.delay-200 { animation-delay: 200ms; }
-.delay-300 { animation-delay: 300ms; }
-.delay-400 { animation-delay: 400ms; }
-.delay-500 { animation-delay: 500ms; }
-.delay-600 { animation-delay: 600ms; }
-.delay-700 { animation-delay: 700ms; }
-.delay-800 { animation-delay: 800ms; }
-
 /* ========================================
    Status Border Colors
    ======================================== */
 
 .border-l-success {
 	border-left-color: var(--color-success);
-}
-.border-l-warning {
-	border-left-color: var(--color-warning);
-}
-.border-l-error {
-	border-left-color: var(--color-error);
-}
-.border-l-secondary {
-	border-left-color: var(--color-secondary);
-}
-.border-l-border {
-	border-left-color: var(--color-border-emphasis);
-}
-
-/* ========================================
-   Priority Borders
-   ======================================== */
-
-.priority-high {
-	border-left: 3px solid var(--color-success);
-}
-
-.priority-medium {
-	border-left: 3px solid var(--color-accent);
-}
-
-.priority-low {
-	border-left: 3px solid var(--color-text-muted);
 }
 
 /* ========================================

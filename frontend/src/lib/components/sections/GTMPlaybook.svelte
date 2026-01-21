@@ -25,6 +25,9 @@
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 
 	interface Props {
 		gtmData: GoToMarketBlueprint;
@@ -98,16 +101,11 @@
 </script>
 
 <section id="gtm-playbook" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Rocket class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Go-to-Market Playbook</h2>
-			<p class="section-subtitle">Launch strategy and customer acquisition</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Rocket}
+		title="Go-to-Market Playbook"
+		subtitle="Launch strategy and customer acquisition"
+	/>
 
 	<!-- Hero Strip -->
 	<div class="hero-strip">

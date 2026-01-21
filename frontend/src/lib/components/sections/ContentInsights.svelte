@@ -3,6 +3,8 @@
 	import type { ContentCategorization } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 
 	interface Props {
 		contentCategorization?: ContentCategorization;
@@ -47,15 +49,11 @@
 </script>
 
 <section id="content-insights" class="report-section">
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<MessageSquare class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Content & Competitive Insights</h2>
-			<p class="section-subtitle">Discussion analysis and market intelligence</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={MessageSquare}
+		title="Content & Competitive Insights"
+		subtitle="Discussion analysis and market intelligence"
+	/>
 
 	<!-- Overall Competitive Insights - Hero Card -->
 	{#if overallCompetitiveInsights}

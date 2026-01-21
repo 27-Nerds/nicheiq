@@ -17,6 +17,9 @@
 	import type { EvidenceAppendix, RedditThread, PainPointQuoteSource } from '$lib/types/report';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 
 	interface Props {
 		data: EvidenceAppendix;
@@ -115,16 +118,11 @@
 </script>
 
 <section id="evidence-appendix" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<FileText class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Evidence Appendix</h2>
-			<p class="section-subtitle">Supporting research data and sources</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={FileText}
+		title="Evidence Appendix"
+		subtitle="Supporting research data and sources"
+	/>
 
 	<!-- Hero Strip -->
 	<div class="hero-strip">

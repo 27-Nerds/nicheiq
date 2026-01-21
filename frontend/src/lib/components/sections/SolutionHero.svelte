@@ -4,6 +4,7 @@
 	import { formatPercent, renderMarkdown, parseRationaleMetrics } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 
@@ -66,16 +67,11 @@
 </script>
 
 <section id="solution" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Rocket class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Recommended Solution</h2>
-			<p class="section-subtitle">AI-validated product opportunity</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Rocket}
+		title="Recommended Solution"
+		subtitle="AI-validated product opportunity"
+	/>
 
 	<!-- Solution Hero Card -->
 	<div class="solution-hero-card">

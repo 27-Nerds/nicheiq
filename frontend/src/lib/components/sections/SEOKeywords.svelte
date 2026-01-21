@@ -30,8 +30,12 @@
 		renderMarkdown,
 		renderTechnicalContent
 	} from '$lib/utils/format';
+	import { getDifficultyColor, getKeywordTierVariant, getPriorityVariant } from '$lib/utils/variantHelpers';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 	import KeywordTierChart from '$lib/components/charts/KeywordTierChart.svelte';
 
 	interface Props {
@@ -97,18 +101,6 @@
 
 	const displayLimit = $derived(showAllKeywords ? EXPANDED_KEYWORD_LIMIT : INITIAL_KEYWORD_LIMIT);
 
-	function getDifficultyColor(difficulty: number): string {
-		if (difficulty < 0.4) return 'var(--color-success)';
-		if (difficulty < 0.6) return 'var(--color-warning)';
-		return 'var(--color-error)';
-	}
-
-	function getTierBadgeVariant(tier: number): 'success' | 'accent' | 'muted' {
-		if (tier === 0) return 'success';
-		if (tier === 1) return 'accent';
-		return 'muted';
-	}
-
 	// Calculate opportunity score
 	const opportunityScore = $derived(
 		Math.round((analytics.high_volume_keywords / Math.max(analytics.total_keywords, 1)) * 100)
@@ -131,25 +123,14 @@
 		return h2.split('\n').map(s => s.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
 	}
 
-	// Helper to get priority badge variant
-	function getPriorityVariant(priority: string | undefined): 'success' | 'warning' | 'muted' {
-		if (priority === 'High') return 'success';
-		if (priority === 'Medium') return 'warning';
-		return 'muted';
-	}
 </script>
 
 <section id="seo" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<TrendingUp class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">SEO Strategy & Keywords</h2>
-			<p class="section-subtitle">Keyword opportunities and content roadmap</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={TrendingUp}
+		title="SEO Strategy & Keywords"
+		subtitle="Keyword opportunities and content roadmap"
+	/>
 
 	<!-- Hero Strip -->
 	<div class="hero-strip">
@@ -373,7 +354,7 @@
 										>
 									</td>
 									<td class="td-tier">
-										<Badge variant={getTierBadgeVariant(kw.tier)} size="sm"
+										<Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
 											>{getTierLabel(kw.tier)}</Badge
 										>
 									</td>

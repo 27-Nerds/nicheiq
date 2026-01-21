@@ -3,6 +3,9 @@
 	import type { AudienceMapping } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 
 	interface Props {
 		data: AudienceMapping;
@@ -30,16 +33,11 @@
 </script>
 
 <section id="audience" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Users class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Audience Intelligence</h2>
-			<p class="section-subtitle">Target segments and engagement strategy</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Users}
+		title="Audience Intelligence"
+		subtitle="Target segments and engagement strategy"
+	/>
 
 	<!-- Hero Strip: Primary Target + Stats -->
 	<div class="hero-strip">

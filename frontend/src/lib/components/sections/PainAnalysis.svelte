@@ -3,6 +3,7 @@
 	import { Target, MessageSquare, TrendingUp, ChevronDown, ChevronUp, AlertTriangle, DollarSign, ArrowRight, CheckCircle, Sparkles } from 'lucide-svelte';
 	import type { DetailedPainPoint, PainPointAnalytics, SolutionDetails } from '$lib/types/report';
 	import { formatPercent, getOpportunityClass, getScoreClass, getScoreBarClass } from '$lib/utils/format';
+	import { getOpportunityVariant, getPlatformVariant } from '$lib/utils/variantHelpers';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import MetricCard from '$lib/components/ui/MetricCard.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
@@ -10,6 +11,7 @@
 	import PainPointMatrix from '$lib/components/charts/PainPointMatrix.svelte';
 	import FilterGroup from '$lib/components/ui/FilterGroup.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
@@ -42,19 +44,6 @@
 		expandedQuotes[index] = !expandedQuotes[index];
 	}
 
-	function getOpportunityBadgeVariant(level: string): 'success' | 'warning' | 'muted' {
-		if (level === 'high') return 'success';
-		if (level === 'medium') return 'warning';
-		return 'muted';
-	}
-
-	function getPlatformColor(platform: string): 'default' | 'success' | 'warning' | 'error' | 'muted' {
-		const p = platform.toLowerCase();
-		if (p.includes('reddit')) return 'warning';
-		if (p.includes('twitter') || p.includes('x.com')) return 'default';
-		return 'muted';
-	}
-
 	// Filter options for analysis tab
 	const opportunityOptions = $derived([
 		{ value: 'high', label: 'High', count: painPoints.filter(p => p.opportunity_level === 'high').length },
@@ -76,16 +65,11 @@
 </script>
 
 <section id="pain-analysis" class="report-section">
-	<!-- Section Header -->
-	<div class="section-header">
-		<div class="header-icon-wrap">
-			<Target class="header-icon" />
-		</div>
-		<div class="header-text">
-			<h2 class="section-title">Pain Point Analysis</h2>
-			<p class="section-subtitle">User frustrations and monetization signals</p>
-		</div>
-	</div>
+	<SectionHeader
+		icon={Target}
+		title="Pain Point Analysis"
+		subtitle="User frustrations and monetization signals"
+	/>
 
 	<!-- Tab Navigation -->
 	<div class="tab-navigation mb-6" role="tablist">
@@ -192,7 +176,7 @@
 							{#if painPoint.source_platforms && painPoint.source_platforms.length > 0}
 								<div class="pain-platforms">
 									{#each painPoint.source_platforms.slice(0, 2) as platform}
-										<Badge variant={getPlatformColor(platform)} size="sm">{platform}</Badge>
+										<Badge variant={getPlatformVariant(platform)} size="sm">{platform}</Badge>
 									{/each}
 									{#if painPoint.mention_count > 0}
 										<span class="mention-count">{painPoint.mention_count} mentions</span>
