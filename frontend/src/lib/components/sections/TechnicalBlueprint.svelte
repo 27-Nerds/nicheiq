@@ -25,11 +25,14 @@
 </script>
 
 <section id="technical" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<Code class="w-5 h-5 text-accent" />
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<Code class="header-icon" />
 		</div>
-		<h2 class="section-title">Technical Blueprint</h2>
+		<div class="header-text">
+			<h2 class="section-title">Technical Blueprint</h2>
+			<p class="section-subtitle">Implementation approach and architecture</p>
+		</div>
 	</div>
 
 	<!-- Tech Stack Overview -->

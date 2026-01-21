@@ -55,13 +55,13 @@
 	);
 </script>
 
-<section id="trends" class="trends-section">
+<section id="trends" class="report-section">
 	<!-- Section Header -->
 	<div class="section-header">
-		<div class="header-icon">
-			<Activity class="icon" />
+		<div class="header-icon-wrap">
+			<Activity class="header-icon" />
 		</div>
-		<div>
+		<div class="header-text">
 			<h2 class="section-title">Market Trends & Longevity</h2>
 			<p class="section-subtitle">Trend analysis and market timing</p>
 		</div>
@@ -261,49 +261,6 @@
 </section>
 
 <style>
-	.trends-section {
-		padding: 1.5rem 0;
-	}
-
-	/* Section Header */
-	.section-header {
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.header-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		background: rgba(229, 90, 40, 0.1);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-radius: 0.625rem;
-		flex-shrink: 0;
-	}
-
-	.header-icon :global(.icon) {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--color-accent);
-	}
-
-	.section-title {
-		font-family: var(--font-display);
-		font-size: 1.5rem;
-		font-weight: 800;
-		color: var(--color-text-primary);
-		margin-bottom: 0.125rem;
-	}
-
-	.section-subtitle {
-		font-size: 0.875rem;
-		color: var(--color-text-muted);
-	}
-
 	/* Hero Strip */
 	.hero-strip {
 		display: flex;

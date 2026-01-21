@@ -29,7 +29,7 @@
 	const totalCommunities = $derived(data.community_hubs?.length ?? 0);
 </script>
 
-<section id="audience" class="audience-section">
+<section id="audience" class="report-section">
 	<!-- Section Header -->
 	<div class="section-header">
 		<div class="header-icon-wrap">
@@ -250,60 +250,6 @@
 </section>
 
 <style>
-	/* =========================
-	   SECTION CONTAINER
-	   ========================= */
-	.audience-section {
-		padding: 1.5rem;
-		background: var(--color-bg-base);
-	}
-
-	/* =========================
-	   SECTION HEADER
-	   ========================= */
-	.section-header {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		margin-bottom: 1.25rem;
-	}
-
-	.header-icon-wrap {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.25rem;
-		height: 2.25rem;
-		background: rgba(229, 90, 40, 0.1);
-		border-radius: 0.5rem;
-	}
-
-	:global(.header-icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: #E55A28;
-	}
-
-	.header-text {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.section-title {
-		font-family: var(--font-display);
-		font-size: 1.375rem;
-		font-weight: 800;
-		color: #18181B;
-		margin: 0;
-	}
-
-	.section-subtitle {
-		font-size: 0.8125rem;
-		color: #A1A1AA;
-		margin: 0;
-	}
-
 	/* =========================
 	   HERO STRIP
 	   ========================= */
@@ -790,10 +736,6 @@
 	   RESPONSIVE
 	   ========================= */
 	@media (max-width: 768px) {
-		.audience-section {
-			padding: 1rem;
-		}
-
 		.hero-strip {
 			flex-direction: column;
 			align-items: stretch;

@@ -2347,6 +2347,23 @@ Return a valid JSON object with this structure:
                     f"{next((s.keyword_demand_score for s in all_scores if s.solution_name == original_winner), None) or 0.0:.2f} "
                     f"for {original_winner})."
                 )
+
+                # Update runner_up_solutions to reflect new ranking after pivot
+                new_runner_ups = []
+                for score in ranked_solutions[1:]:  # Skip position 0 (new winner)
+                    if score.solution_name not in new_runner_ups:
+                        new_runner_ups.append(score.solution_name)
+                    if len(new_runner_ups) >= 3:  # Keep top 3 runner-ups
+                        break
+
+                # Add original winner if not already in list (it should be a runner-up now)
+                if original_winner not in new_runner_ups:
+                    new_runner_ups.insert(0, original_winner)
+                    if len(new_runner_ups) > 3:
+                        new_runner_ups = new_runner_ups[:3]
+
+                self.state.solution_selection.runner_up_solutions = new_runner_ups
+                logger.info(f"[Stage 8.5] Updated runner-ups after pivot: {new_runner_ups}")
             else:
                 logger.info(f"[Stage 8.5] Winner confirmed by keyword validation: {new_winner}")
 

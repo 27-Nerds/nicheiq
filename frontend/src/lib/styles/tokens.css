@@ -48,19 +48,14 @@
 	--ease-out: cubic-bezier(0.33, 1, 0.68, 1);
 	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
 	--ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-	--ease-data-viz: cubic-bezier(0.4, 0, 0.2, 1);
 
 	/* ========================================
 	   Opacity Scale
 	   ======================================== */
 	--opacity-0: 0;
-	--opacity-hover: 0.08;
-	--opacity-active: 0.12;
 	--opacity-disabled: 0.5;
-	--opacity-overlay: 0.6;
 	--opacity-muted: 0.7;
 	--opacity-subtle: 0.04;
-	--opacity-full: 1;
 
 	/* ========================================
 	   Font Families
@@ -116,22 +111,10 @@
 	/* ========================================
 	   Z-Index Scale
 	   ======================================== */
-	--z-base: 0;
-	--z-above: 1;
 	--z-dropdown: 10;
-	--z-sticky: 20;
 	--z-overlay: 30;
 	--z-modal: 40;
 	--z-popover: 50;
 	--z-tooltip: 60;
-	--z-max: 9999;
 
-	/* ========================================
-	   Container Widths
-	   ======================================== */
-	--container-sm: 640px;
-	--container-md: 768px;
-	--container-lg: 1024px;
-	--container-xl: 1200px;
-	--container-2xl: 1400px;
 }

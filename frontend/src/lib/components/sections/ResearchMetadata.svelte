@@ -69,11 +69,14 @@
 </script>
 
 <section id="research-metadata" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<Shield class="w-5 h-5 text-accent" />
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<Shield class="header-icon" />
 		</div>
-		<h2 class="section-title">Research Quality & Metadata</h2>
+		<div class="header-text">
+			<h2 class="section-title">Research Quality & Metadata</h2>
+			<p class="section-subtitle">Data sources, confidence scores, and quality metrics</p>
+		</div>
 	</div>
 
 	<!-- Quality Overview Grid -->

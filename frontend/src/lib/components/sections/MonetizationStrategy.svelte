@@ -25,11 +25,15 @@
 </script>
 
 <section id="monetization" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<DollarSign class="w-5 h-5 text-accent" />
+	<!-- Section Header -->
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<DollarSign class="header-icon" />
 		</div>
-		<h2 class="section-title">Monetization Strategy</h2>
+		<div class="header-text">
+			<h2 class="section-title">Monetization Strategy</h2>
+			<p class="section-subtitle">Pricing model and revenue projections</p>
+		</div>
 	</div>
 
 	<!-- ═══════════════════════════════════════════════════════════════════

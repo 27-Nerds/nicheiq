@@ -256,8 +256,8 @@ analyze_keywords_and_tier:
     - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords (should be 150-250+ keywords)
     - [ ] Tier 4 category groups average 15+ keywords per group (aim for 20-100+)
     - [ ] Calculated EXACT keyword utilization: tiered_keywords / relevant_keywords ≥ 80%
-    - [ ] key_findings includes filtering stats (e.g., "Filtered 620/1603 (39%) - strict domain filtering")
-    - [ ] key_findings includes tier distribution stats (Tier 0=A, Tier 1=B, Tier 2=C, Tier 3=D, Tier 4=E)
+    - [ ] key_findings includes keyword relevance insight (qualitative - e.g., "High relevance - minimal cross-domain noise" or "Moderate filtering required for domain focus")
+    - [ ] key_findings includes tier distribution insight (qualitative - e.g., "Strong premium opportunities in [themes]" not raw counts)
     - [ ] Avoided fabricating search volumes (used EXACT values from CSV)
     - [ ] Geographic keywords have city/country names in keyword text itself
 
@@ -268,7 +268,7 @@ analyze_keywords_and_tier:
           - Filtering rate: 39% (adaptive, quality-focused) ✓
 
     4. **Position Analysis** → Competitor gaps and differentiation angles
-    5. **Key Findings** → 3-5 data-driven insights (volume patterns, competition gaps, tier distribution stats)
+    5. **Key Findings** → 3-5 strategic insights (keyword alignment, opportunity themes, competitive gaps) - qualitative, not raw stats
 
     **TIER ASSIGNMENT CRITERIA:**
 
@@ -299,7 +299,7 @@ analyze_keywords_and_tier:
 
     ═══ CRITICAL RULES (Read Last) ═══
     ✓ RELEVANT keywords MUST be distributed across tiers - filtered keywords should NOT be tiered
-    ✓ Report filtering stats in key_findings (e.g., "Filtered 620/1603 (39%) - strict domain filtering")
+    ✓ Report keyword relevance qualitatively in key_findings (e.g., "High niche alignment - keywords map directly to solution use cases" NOT raw numbers like "Filtered 0/318")
     ✓ AIM for 80-90% coverage of RELEVANT keywords after filtering - create enough Tier 4 categories
     ✓ Tier 3/4 grouping is WHERE MOST KEYWORDS GO - these tiers should contain hundreds of keywords, not dozens
     ✓ Create 8-15 diverse Tier 4 categories to maximize programmatic SEO coverage
@@ -385,11 +385,12 @@ analyze_keywords_and_tier:
 
     **Metadata**:
     - total_keywords_analyzed, total_monthly_volume
-    - key_findings (3-5 bullets MUST include:
-      * Filtering stats: "Filtered X/Y (Z%) - [reason]"
-      * Tier distribution: "Tiered A keywords (B% of relevant): Tier 0=X, Tier 1=C, Tier 2=D, Tier 3=E, Tier 4=F"
-      * Coverage assessment: "Overall coverage: (filtered + tiered) / total = G%"
-      * Category insights: "Created H Tier 4 categories covering [themes]")
+    - key_findings (3-5 bullets with QUALITATIVE insights, NOT raw numbers:
+      * Keyword relevance: Describe alignment quality (e.g., "High niche alignment with minimal cross-domain noise" or "Required filtering for domain focus")
+      * Tier distribution: Describe opportunity quality (e.g., "Strong premium tier with quick-win opportunities in [themes]")
+      * Coverage assessment: Describe scope (e.g., "Comprehensive coverage across major use cases")
+      * Category insights: "Key opportunity clusters: [top 3-4 themes]"
+      AVOID: Raw counts like "Filtered 0/318", "Tier 0=10, Tier 1=5", percentages)
     - competitive_positioning (markdown, 2-4 sections)
 
     MUST use exact enriched keyword data - no fabrication.

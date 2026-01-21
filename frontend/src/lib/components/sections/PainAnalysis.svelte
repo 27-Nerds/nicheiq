@@ -76,11 +76,15 @@
 </script>
 
 <section id="pain-analysis" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<Target class="w-5 h-5 text-accent" />
+	<!-- Section Header -->
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<Target class="header-icon" />
 		</div>
-		<h2 class="section-title">Pain Point Analysis</h2>
+		<div class="header-text">
+			<h2 class="section-title">Pain Point Analysis</h2>
+			<p class="section-subtitle">User frustrations and monetization signals</p>
+		</div>
 	</div>
 
 	<!-- Tab Navigation -->

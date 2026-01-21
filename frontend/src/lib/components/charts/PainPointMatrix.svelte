@@ -105,7 +105,7 @@
 					y={0}
 					width={innerWidth / 2}
 					height={innerHeight / 2}
-					fill="var(--quadrant-high-high)"
+					fill="var(--color-accent-subtle)"
 					class="quadrant"
 				/>
 				<rect

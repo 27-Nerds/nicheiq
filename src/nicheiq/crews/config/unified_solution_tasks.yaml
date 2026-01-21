@@ -603,6 +603,8 @@ competitive_refinement:
     **6. overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs)
        - Summarize key competitive themes across ALL solutions
        - Highlight market opportunities and positioning strategies
+       - CRITICAL: Do NOT state which solution is "strongest" or "best" - that decision is made in Task 4
+       - Present competitive analysis neutrally, discussing each solution's unique positioning
 
     **WORKFLOW:**
 
@@ -617,7 +619,7 @@ competitive_refinement:
        - new_differentiation_factors (2-3 new factors)
        - Optional updates (only if warranted)
 
-    3. Write overall_competitive_insights covering all solutions
+    3. Write overall_competitive_insights covering all solutions NEUTRALLY (no "strongest" or "best" recommendations)
 
     **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
@@ -655,6 +657,9 @@ competitive_refinement:
     ✗ overall_competitive_insights not covering all solutions → Incomplete synthesis
       ❌ Example: Insights discuss only 1 of 3 solutions (ignores 2 solutions)
       ✅ Example: Insights synthesize competitive themes across all 3 solutions with cross-cutting patterns
+    ✗ overall_competitive_insights recommending one solution as "strongest" or "best" → Premature selection
+      ❌ Example: "Competitive evidence is strongest for Solution A" (biased before Task 4 selection)
+      ✅ Example: "Solution A has pricing transparency advantages; Solution B excels at community features; Solution C offers unique privacy positioning" (neutral comparison)
 
     **EXAMPLE OUTPUT:**
 
@@ -689,7 +694,7 @@ competitive_refinement:
     - pricing_strategy_update: Optional refined pricing
     - market_fit_score_adjustment: Optional ±0.1 adjustment
 
-    **overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs)
+    **overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs) - MUST be neutral, no "strongest/best" recommendations
 
     NOTE: Task 1 base solution fields will be merged automatically by Python. Focus on generating excellent enhancements.
 

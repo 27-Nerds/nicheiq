@@ -46,16 +46,14 @@
 	const segmentsCount = $derived(contentCategorization?.user_segments?.length ?? 0);
 </script>
 
-<section id="content-insights" class="content-section">
+<section id="content-insights" class="report-section">
 	<div class="section-header">
-		<div class="header-left">
-			<div class="section-icon">
-				<MessageSquare class="icon" />
-			</div>
-			<div class="header-text">
-				<h2 class="section-title">Content & Competitive Insights</h2>
-				<p class="section-subtitle">Discussion analysis and market intelligence</p>
-			</div>
+		<div class="header-icon-wrap">
+			<MessageSquare class="header-icon" />
+		</div>
+		<div class="header-text">
+			<h2 class="section-title">Content & Competitive Insights</h2>
+			<p class="section-subtitle">Discussion analysis and market intelligence</p>
 		</div>
 	</div>
 
@@ -262,54 +260,6 @@
 </section>
 
 <style>
-	.content-section {
-		padding: 2rem 0;
-	}
-
-	/* =========================
-	   SECTION HEADER
-	   ========================= */
-	.section-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		margin-bottom: 1.5rem;
-	}
-
-	.header-left {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.section-icon {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.25rem;
-		height: 2.25rem;
-		background: rgba(229, 90, 40, 0.1);
-		border-radius: 0.5rem;
-	}
-
-	.section-icon :global(.icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: var(--color-accent);
-	}
-
-	.section-title {
-		font-family: var(--font-display);
-		font-size: 1.375rem;
-		font-weight: 800;
-		color: var(--color-text-primary);
-	}
-
-	.section-subtitle {
-		font-size: 0.8125rem;
-		color: var(--color-text-muted);
-	}
-
 	/* =========================
 	   INSIGHT HERO
 	   ========================= */

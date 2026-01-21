@@ -100,10 +100,10 @@
 <section id="gtm-playbook" class="report-section">
 	<!-- Section Header -->
 	<div class="section-header">
-		<div class="icon-container">
-			<Rocket class="icon" />
+		<div class="header-icon-wrap">
+			<Rocket class="header-icon" />
 		</div>
-		<div>
+		<div class="header-text">
 			<h2 class="section-title">Go-to-Market Playbook</h2>
 			<p class="section-subtitle">Launch strategy and customer acquisition</p>
 		</div>
@@ -488,50 +488,6 @@
 </section>
 
 <style>
-	.report-section {
-		padding: 2rem 0;
-	}
-
-	/* Section Header */
-	.section-header {
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-
-	.icon-container {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 2.5rem;
-		height: 2.5rem;
-		background: rgba(229, 90, 40, 0.1);
-		border-radius: 0.5rem;
-		flex-shrink: 0;
-	}
-
-	:global(.icon-container .icon) {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--color-accent);
-	}
-
-	.section-title {
-		font-family: var(--font-display);
-		font-size: 1.5rem;
-		font-weight: 700;
-		color: var(--color-text-primary);
-		margin: 0;
-		line-height: 1.2;
-	}
-
-	.section-subtitle {
-		font-size: 0.875rem;
-		color: var(--color-text-muted);
-		margin-top: 0.25rem;
-	}
-
 	/* Hero Strip */
 	.hero-strip {
 		display: flex;

@@ -55,11 +55,14 @@
 </script>
 
 <section id="data-infrastructure" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<Database class="w-5 h-5 text-accent" />
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<Database class="header-icon" />
 		</div>
-		<h2 class="section-title">Data Infrastructure Roadmap</h2>
+		<div class="header-text">
+			<h2 class="section-title">Data Infrastructure Roadmap</h2>
+			<p class="section-subtitle">Data sources, integrations, and implementation phases</p>
+		</div>
 	</div>
 
 	<!-- Cost Overview -->

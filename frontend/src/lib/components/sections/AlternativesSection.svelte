@@ -31,12 +31,14 @@
 </script>
 
 <section id="alternatives" class="report-section">
-	<div class="flex items-center gap-4 mb-6">
-		<div class="icon-container">
-			<Lightbulb class="w-5 h-5 text-accent" />
+	<div class="section-header">
+		<div class="header-icon-wrap">
+			<Lightbulb class="header-icon" />
 		</div>
-		<h2 class="section-title">Alternative Solutions</h2>
-		<Badge variant="muted">{data.length} options analyzed</Badge>
+		<div class="header-text">
+			<h2 class="section-title">Alternative Solutions</h2>
+			<p class="section-subtitle">{data.length} options analyzed as pivot considerations</p>
+		</div>
 	</div>
 
 	<p class="text-text-secondary mb-8">
