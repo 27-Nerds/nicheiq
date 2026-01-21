@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class SEORefinementMetadata(BaseModel):
     """Metadata about SEO refinement process for transparency."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     baseline_volume_used: Optional[int] = Field(
         default=None, description="Baseline search volume used for calculations"
@@ -46,7 +46,7 @@ class SolutionSEORefinement(BaseModel):
     Used in unified enrichment pattern where each stage outputs only its additions,
     then report generator merges all enrichments into complete SolutionIdea.
     """
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of solution being refined")
 
@@ -78,7 +78,7 @@ class SolutionSEORefinement(BaseModel):
 class SolutionEvaluation(BaseModel):
     """Evaluation scores and analysis for a single solution."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution being evaluated")
     technical_feasibility_score: float = Field(
@@ -110,7 +110,7 @@ class SolutionEvaluation(BaseModel):
 class EvaluationResult(BaseModel):
     """Complete evaluation results for all solutions."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     evaluations: list[SolutionEvaluation] = Field(
         ..., description="Evaluation for each solution"
@@ -135,7 +135,7 @@ class BaseSolutionIdea(BaseModel):
     using separate output models (SolutionRefinement, SolutionSEORefinement).
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the proposed product")
     description: str = Field(
@@ -426,7 +426,7 @@ class IdeaGenerationResult(BaseModel):
     later via Python merging in report_generator._merge_solution_enrichments().
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_ideas: list[BaseSolutionIdea] = Field(
         ..., min_length=3, description="Generated solution concepts (minimum 3)"
@@ -460,7 +460,7 @@ class IdeaGenerationResult(BaseModel):
 class SolutionEnhancement(BaseModel):
     """Enhancement data for a single solution from competitive analysis."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Solution name (must match Task 1)")
     new_core_features: list[str] = Field(
@@ -494,7 +494,7 @@ class CompetitiveEnhancements(BaseModel):
     These enhancements will be merged with Task 1 solutions via Python.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_enhancements: list[SolutionEnhancement] = Field(
         ...,
@@ -531,7 +531,7 @@ class RawConcept(BaseModel):
     Each concept should be generated using one of the forced ideation techniques.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     concept_name: str = Field(
         ...,
@@ -587,7 +587,7 @@ class RawConceptList(BaseModel):
     No evaluation or scoring at this stage - quantity and variety over quality.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     concepts: list[RawConcept] = Field(
         ...,
@@ -613,7 +613,7 @@ class FilteredConceptList(BaseModel):
     Includes transparency about what was removed and why.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     concepts: list[RawConcept] = Field(
         ...,

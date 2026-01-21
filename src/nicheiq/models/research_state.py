@@ -34,7 +34,7 @@ from .solution_selection import SelectionCriteriaScore, SolutionSelection
 class NicheContext(BaseModel):
     """Initial niche understanding (Stage 1)."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     niche_input: str = Field(..., description="User's niche input")
     niche_description: str = Field(..., description="LLM-generated niche description")
@@ -44,7 +44,7 @@ class NicheContext(BaseModel):
 class SearchQuery(BaseModel):
     """A single search query."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     query: str = Field(..., description="Search query text")
     query_type: str = Field(
@@ -55,7 +55,7 @@ class SearchQuery(BaseModel):
 class SearchResultItem(BaseModel):
     """A single search result with metadata for relevance validation."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     url: str = Field(..., description="URL of the search result")
     title: str = Field(..., description="Title of the page/post")
@@ -64,7 +64,7 @@ class SearchResultItem(BaseModel):
 class ThreadRelevanceValidation(BaseModel):
     """Validation result for thread relevance to niche."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     is_relevant: bool = Field(..., description="Whether thread is relevant to niche")
     confidence: float = Field(..., description="Confidence score 0-1")
@@ -73,7 +73,7 @@ class ThreadRelevanceValidation(BaseModel):
 class SubredditBreakdown(BaseModel):
     """Breakdown of posts by subreddit."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     name: str = Field(..., description="Subreddit name (without r/ prefix)")
     post_count: int = Field(..., description="Number of posts from this subreddit")
@@ -84,7 +84,7 @@ class SubredditBreakdown(BaseModel):
 class DataQualitySummary(BaseModel):
     """Data quality assessment summary for report transparency."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     social_content_quality_tier: Optional[str] = Field(
         default=None,
@@ -116,7 +116,7 @@ class DataQualitySummary(BaseModel):
 class RefinementHighlights(BaseModel):
     """Key strategic insights from Stage 8.7 solution refinement."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     top_strategic_insights: list[str] = Field(
         default_factory=list,
@@ -139,7 +139,7 @@ class RefinementHighlights(BaseModel):
 class StageTimingSummary(BaseModel):
     """Pipeline execution timing summary."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     total_duration_seconds: float = Field(
         ...,
@@ -162,7 +162,7 @@ class StageTimingSummary(BaseModel):
 class SEOCalculationTransparency(BaseModel):
     """Transparency into SEO score calculations from Stage 9.6."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     baseline_seo_score: Optional[float] = Field(
         default=None,
@@ -197,7 +197,7 @@ class SEOCalculationTransparency(BaseModel):
 class ResearchMetadata(BaseModel):
     """Metadata about the research data collection process."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     reddit_posts_analyzed: int = Field(..., description="Total Reddit posts collected")
     reddit_comments_analyzed: int = Field(..., description="Total Reddit comments analyzed")
@@ -225,7 +225,7 @@ class ResearchMetadata(BaseModel):
 class AlternativeSolution(BaseModel):
     """Enhanced alternative solution with competitive analysis details."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # Core identification
     solution_name: str = Field(..., description="Name of the alternative solution")
@@ -266,7 +266,7 @@ class AlternativeSolution(BaseModel):
 class CompetitorMatrixEntry(BaseModel):
     """Single competitor entry showing which solutions it competes against."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     competitor_name: str = Field(..., description="Name of the competitor")
     solutions_competed: list[str] = Field(..., description="List of solution names this competitor appears in")
@@ -277,7 +277,7 @@ class CompetitorMatrixEntry(BaseModel):
 class CompetitorCard(BaseModel):
     """Detailed competitor profile for report - preserves full competitor data."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     name: str = Field(..., description="Name of the competitor")
     url: Optional[str] = Field(default=None, description="Website URL")
@@ -291,7 +291,7 @@ class CompetitorCard(BaseModel):
 class CompetitiveIntensityEntry(BaseModel):
     """Competitive intensity for a single solution."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution")
     intensity: str = Field(..., description="Competitive intensity: Low, Medium, or High")
@@ -299,7 +299,7 @@ class CompetitiveIntensityEntry(BaseModel):
 class CompetitiveLandscapeMatrix(BaseModel):
     """Cross-solution competitive analysis showing overlap and patterns."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     all_solutions_analyzed: list[str] = Field(..., description="Names of all solutions analyzed")
     selected_solution_competitors: list[str] = Field(
@@ -319,7 +319,7 @@ class CompetitiveLandscapeMatrix(BaseModel):
 class TopRedditThread(BaseModel):
     """Summary of a high-engagement Reddit thread for evidence appendix."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     post_id: str = Field(..., description="Reddit post ID")
     title: str = Field(..., description="Post title")
@@ -332,7 +332,7 @@ class TopRedditThread(BaseModel):
 class QuoteSource(BaseModel):
     """Single quote with source attribution."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     quote: str = Field(..., description="The quote text")
     post_id: str = Field(..., description="Post ID where quote was found")
@@ -342,7 +342,7 @@ class QuoteSource(BaseModel):
 class PainPointEvidence(BaseModel):
     """Evidence linking pain point quotes to original Reddit posts."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     pain_point_title: str = Field(..., description="Pain point title")
     quotes_with_sources: list[QuoteSource] = Field(
@@ -352,7 +352,7 @@ class PainPointEvidence(BaseModel):
 class EvidenceAppendix(BaseModel):
     """Appendix containing evidence traceability for research validation."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     top_reddit_threads: list[TopRedditThread] = Field(
         ..., description="Top 10 most engaging Reddit discussions analyzed"
@@ -364,7 +364,7 @@ class EvidenceAppendix(BaseModel):
 class DataInfrastructurePhase(BaseModel):
     """Single phase of data infrastructure implementation."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     phase_number: int = Field(..., description="Phase number (1, 2, or 3)")
     phase_name: str = Field(..., description="Phase name (e.g., 'MVP', 'Growth', 'Scale')")
@@ -376,7 +376,7 @@ class DataInfrastructurePhase(BaseModel):
 class DataInfrastructureRoadmap(BaseModel):
     """Complete data infrastructure implementation roadmap."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     phases: list[DataInfrastructurePhase] = Field(..., description="3-phase implementation plan")
     cost_scaling_insight: str = Field(
@@ -386,7 +386,7 @@ class DataInfrastructureRoadmap(BaseModel):
 class FinalReport(BaseModel):
     """Final comprehensive research report (Stage 10)."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     niche: str = Field(..., description="Niche analyzed")
     executive_summary: str = Field(..., description="High-level executive summary")
@@ -682,7 +682,7 @@ class FinalReport(BaseModel):
 class PricingStrategyResult(BaseModel):
     """Pricing strategy validation result from Stage 8.7."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution being priced")
 
@@ -769,7 +769,7 @@ class PricingStrategyResult(BaseModel):
 class TrafficMonetizationResult(BaseModel):
     """Traffic-based monetization strategy for directories/aggregators."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
     monetization_model: Literal["Ad-Supported", "Affiliate", "Hybrid-Traffic", "Lead-Gen"] = Field(
@@ -857,7 +857,7 @@ class TrafficMonetizationResult(BaseModel):
 class AudienceSegment(BaseModel):
     """Individual audience segment with characteristics."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     segment_name: str = Field(..., description="Name of audience segment (e.g., 'Solo Founders', 'Marketing Managers')")
     size_estimate: str = Field(..., description="Estimated size: 'Large', 'Medium', 'Small'")
@@ -872,7 +872,7 @@ class AudienceSegment(BaseModel):
 class InfluencerProfile(BaseModel):
     """Influencer or community leader in the niche."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     name: str = Field(..., description="Username or community name")
     platform: str = Field(..., description="Platform: 'Reddit', 'Twitter', 'YouTube', etc.")
@@ -886,7 +886,7 @@ class InfluencerProfile(BaseModel):
 class AudienceMappingResult(BaseModel):
     """Complete audience mapping analysis result from Stage 6.5."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # Audience Segments
     audience_segments: list[AudienceSegment] = Field(
@@ -922,7 +922,7 @@ class AudienceMappingResult(BaseModel):
 class MarketSegmentSizing(BaseModel):
     """Market size breakdown for a specific segment."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     segment_name: str = Field(..., description="Market segment name (e.g., 'Small SaaS Companies', 'Solo Developers')")
     tam_estimate: str = Field(..., description="Total Addressable Market size (e.g., '$500M', '2M users')")
@@ -935,7 +935,7 @@ class MarketSegmentSizing(BaseModel):
 class MarketSizingResult(BaseModel):
     """Complete market sizing and validation analysis from Stage 8.6."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # Overall Market Sizing (TAM/SAM/SOM)
     total_addressable_market: str = Field(..., description="TAM estimate across all segments (e.g., '$2.5B', '10M users')")
@@ -977,7 +977,7 @@ class MarketSizingResult(BaseModel):
 class TrendLongevityResult(BaseModel):
     """Trend longevity and market momentum analysis from Stage 9.2."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # Overall Trend Assessment
     trend_direction: Literal["Growing", "Stable", "Declining"] = Field(
@@ -1049,7 +1049,7 @@ class ResearchState(BaseModel):
     """Complete state for the research flow."""
 
     model_config = ConfigDict(
-        extra='forbid',
+        extra='ignore',
         json_schema_extra={
             "example": {
                 "niche_context": {},

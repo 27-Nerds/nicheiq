@@ -94,6 +94,684 @@ expand_keywords_conceptually:
     - 12-15 targeted keywords (3-5 words) validated directly for high-intent commercial terms
     - Total discovery: ~15,000-40,000 keyword opportunities from 40-50 strategic inputs
 
+# ========================================
+# SPLIT KEYWORD ANALYSIS TASKS (Tasks 1a-1d)
+# ========================================
+# These 4 tasks replace the single analyze_keywords_and_tier task
+# Each produces smaller, more manageable JSON output
+
+analyze_premium_tiers:
+  description: >
+    **Task 1a: Premium Tier Analysis (Tiers 0, 1, 2)**
+
+    Analyze {enriched_keywords_count} pre-enriched keywords and select ALL keywords
+    with opportunity score >= 50 into Tiers 0, 1, and 2.
+
+    **ENRICHED KEYWORDS DATA (CSV Format):**
+
+    ```csv
+    {enriched_keywords_csv}
+    ```
+
+    **CSV COLUMNS:**
+    - keyword, search_volume, competition_index, competition_level
+    - cpc, opportunity_score, tier
+    - trend_direction, trend_score, seasonality, is_evergreen
+
+    **TIER DEFINITIONS (Priority Order: 0 → 1 → 2):**
+    - **TIER_0_PREMIUM**: opportunity_score > 200 (EXCEPTIONAL - unicorn keywords)
+    - **TIER_1_QUICK_WIN**: opportunity_score 100-200 (High volume, low competition)
+    - **TIER_2_STRATEGIC**: opportunity_score 50-100 (Medium volume, moderate competition)
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+    - Core Features: {core_features}
+    - Known Competitors: {competitor_names}
+    - Top Pain Points: {top_pain_points}
+
+    **WORKFLOW:**
+
+    1. **STEP 0: Relevance Filtering (MANDATORY)**
+       Apply 3-rule filtering BEFORE tier assignment:
+       - Rule 1: Context Match (relates to {niche} + {selected_solution_description})
+       - Rule 2: Ambiguity Filter (generic terms need niche context)
+       - Rule 3: Cross-Domain Exclusion (exclude unrelated domains)
+       - Target: Filter only 10-20% as truly irrelevant
+
+    2. **Select Premium Keywords:**
+       - Tier 0: ALL keywords with opp_score > 200
+       - Tier 1: ALL keywords with opp_score 100-200
+       - Tier 2: ALL keywords with opp_score 50-100
+       - ⚠️ DO NOT limit to 3-5 per tier — include ALL qualifying keywords
+
+    3. **Create Strategy Narratives:**
+       - tier_0_strategy (if Tier 0 exists): 1-2 paragraphs on premium opportunity approach
+       - tier_1_quick_win_strategy: 1-2 paragraphs on quick-win implementation
+       - tier_2_strategy (if Tier 2 exists): 1-2 paragraphs on strategic growth approach
+
+    4. **Track Counts:**
+       - premium_keywords_count: Total T0 + T1 + T2 keywords
+       - filtered_keywords_count: Keywords excluded in STEP 0
+
+    **TREND-AWARE PRIORITIZATION:**
+    - Prioritize **rising** keywords (trend_direction = "rising")
+    - Prefer **is_evergreen = True** for sustainable traffic
+    - Note **seasonal** keywords (seasonality > 0.3) for timing recommendations
+
+    **ANTI-PATTERNS:**
+    ❌ Limiting Tier 1 to exactly 5 keywords when 18 qualify
+    ❌ Filtering >30% of keywords as irrelevant (too aggressive)
+    ❌ Returning JSON Schema instead of actual data
+    ❌ Rounding search volumes (use EXACT values from CSV)
+
+  expected_output: >
+    PremiumTierResult Pydantic model with:
+
+    - tier_0_keywords: Optional[List[TieredKeyword]] (ALL with opp_score >200)
+    - tier_0_strategy: Optional[str] (1-2 paragraphs if Tier 0 exists)
+    - tier_1_keywords: List[TieredKeyword] (ALL with opp_score 100-200, REQUIRED)
+    - tier_1_quick_win_strategy: str (1-2 paragraphs, REQUIRED)
+    - tier_2_keywords: Optional[List[TieredKeyword]] (ALL with opp_score 50-100)
+    - tier_2_strategy: Optional[str] (1-2 paragraphs if Tier 2 exists)
+    - premium_keywords_count: int (Total T0 + T1 + T2)
+    - filtered_keywords_count: int (Count excluded in STEP 0)
+
+    Each TieredKeyword includes: keyword, search_volume, competition, opportunity_score,
+    strategy, intent, tier (0/1/2), tier_rationale
+
+analyze_geographic_tier:
+  description: >
+    **Task 1b: Geographic Tier Analysis (Tier 3)**
+
+    From the remaining keywords NOT selected in Task 1a (Tiers 0-2), identify and group
+    keywords containing EXPLICIT location mentions (city/country names IN keyword text).
+
+    **ENRICHED KEYWORDS DATA (CSV Format - Same as Task 1a):**
+
+    ```csv
+    {enriched_keywords_csv}
+    ```
+
+    **CONTEXT FROM TASK 1a (Premium Tiers):**
+    Task 1a selected premium keywords (opp_score >= 50). Your job is to find GEOGRAPHIC
+    keywords from the REMAINING keywords (opp_score < 50 OR not selected as premium).
+
+    **GEOGRAPHIC KEYWORD CRITERIA:**
+    - Keyword text must contain EXPLICIT location name (city, country, region)
+    - ✓ VALID: "expat insurance spain", "moving to bangkok", "london relocation services"
+    - ✗ INVALID: "international moving", "global health insurance" (no specific location)
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Top Pain Points: {top_pain_points}
+
+    **WORKFLOW:**
+
+    1. **Identify Geographic Keywords:**
+       - Scan remaining keywords (opp_score < 50 or not in premium tiers)
+       - Select ONLY keywords with explicit location mentions in text
+       - ⚠️ NEVER hallucinate city names — only use locations that appear in keyword
+
+    2. **Group by Region:**
+       Create GeographicKeywordGroup for each region:
+       - region_name: "Spanish-Speaking Markets", "UK Markets", "Southeast Asia", etc.
+       - total_volume: Sum of all keyword volumes in group
+       - competition_level: Overall assessment ("LOW", "MEDIUM", "HIGH")
+       - keywords: List of GeographicKeywordEntry (city, keyword, search_volume, notes)
+       - strategy_notes: 1-3 sentences on market strategy
+
+    3. **Track Count:**
+       - geographic_keywords_count: Total keywords across all geographic groups
+
+    **ANTI-PATTERNS:**
+    ❌ Assigning "international moving" to geographic tier (no specific location)
+    ❌ Hallucinating city names not present in keyword text
+    ❌ Including premium keywords (opp_score >= 50) — those belong in Task 1a
+
+  expected_output: >
+    GeographicTierResult Pydantic model with:
+
+    - tier_3_geographic_groups: Optional[List[GeographicKeywordGroup]]
+      Each group has: region_name, total_volume, competition_level, keywords[], strategy_notes
+    - geographic_strategy_notes: Optional[str] (1-2 paragraphs overall geographic strategy)
+    - geographic_keywords_count: int (Total keywords in geographic groups)
+
+    NOTE: If no geographic keywords found (no explicit location mentions), return:
+    - tier_3_geographic_groups: null
+    - geographic_keywords_count: 0
+
+analyze_category_tier:
+  description: >
+    **Task 1c: Category Tier Analysis (Tier 4)**
+
+    From the remaining keywords NOT selected in Tasks 1a (Premium) or 1b (Geographic),
+    organize ALL remaining keywords into thematic category groups for programmatic SEO.
+
+    **ENRICHED KEYWORDS DATA (CSV Format - Same as Tasks 1a/1b):**
+
+    ```csv
+    {enriched_keywords_csv}
+    ```
+
+    **CONTEXT FROM TASKS 1a + 1b:**
+    - Task 1a selected premium keywords (opp_score >= 50)
+    - Task 1b selected geographic keywords (explicit location mentions)
+    - Your job: Categorize ALL REMAINING keywords into Tier 4 groups
+
+    **CRITICAL: ONLY USE KEYWORDS FROM CSV**
+    - Most keywords should end up in Tier 4 — this is NOT a "reject pile"
+    - Tier 4 is the foundation of programmatic SEO
+    - Target: 80%+ utilization of remaining keywords
+    - Do NOT create empty categories (keywords: [] is forbidden)
+    - Do NOT fabricate keywords that aren't in the input
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+    - Core Features: {core_features}
+    - Topic Clusters: {topic_clusters_summary}
+
+    **WORKFLOW:**
+
+    1. **Identify Remaining Keywords:**
+       - Exclude keywords selected in Task 1a (opp_score >= 50)
+       - Exclude keywords selected in Task 1b (geographic with explicit locations)
+       - ALL remaining keywords belong in Tier 4
+
+    2. **Create Category Groups:**
+       Create {min_category_groups} to {max_category_groups} thematic category groups.
+
+       For each category:
+       - category_name: Theme (e.g., "Health Insurance Options", "Document Translation", "Cost Comparisons")
+       - total_volume: Sum of keyword volumes
+       - keywords: List of CategoryKeywordEntry (MUST have at least 1 keyword from CSV)
+       - strategy_recommendation: 2-4 sentences on targeting this category
+
+    3. **Rules:**
+       - Every category MUST have at least 1 keyword from the CSV
+       - Do NOT create empty categories (keywords: [] is forbidden)
+       - Do NOT fabricate keywords that aren't in the input
+
+    4. **Category Themes to Consider:**
+       - Product/service types
+       - User concerns/pain points
+       - Price/budget tiers
+       - Comparison keywords
+       - How-to/guide keywords
+       - Miscellaneous (catch-all for outliers)
+
+    5. **Track Count:**
+       - category_keywords_count: Total keywords across all category groups
+
+  expected_output: >
+    CategoryTierResult Pydantic model with:
+
+    - tier_4_category_groups: Optional[List[CategoryKeywordGroup]]
+      Each group has: category_name, total_volume, keywords[], strategy_recommendation
+      CRITICAL: Every group MUST have at least 1 keyword - no empty groups allowed
+    - category_strategy_notes: Optional[str] (1-2 paragraphs overall category strategy)
+    - category_keywords_count: int (Total keywords in category groups)
+
+    **VALIDATION BEFORE SUBMISSION:**
+    - ☐ Between {min_category_groups} and {max_category_groups} category groups
+    - ☐ Every category has at least 1 keyword from CSV
+    - ☐ NO empty categories (keywords: [] is NOT allowed)
+
+synthesize_keyword_summary:
+  description: >
+    **Task 1d: Summary & Synthesis**
+
+    Synthesize findings from Tasks 1a (Premium), 1b (Geographic), and 1c (Category)
+    into aggregate metrics, key findings, competitive positioning insights, AND
+    extract sample keywords for downstream tasks (Task 2 needs actual keywords).
+
+    **CONTEXT FROM TASKS 1a, 1b, 1c:**
+    Access the outputs from previous tasks via CrewAI context chaining:
+    - Task 1a: PremiumTierResult (tier 0-2 keywords, premium_keywords_count)
+    - Task 1b: GeographicTierResult (tier 3 groups, geographic_keywords_count)
+    - Task 1c: CategoryTierResult (tier 4 groups, category_keywords_count)
+
+    **ENRICHED KEYWORDS DATA (for volume calculation):**
+
+    ```csv
+    {enriched_keywords_csv}
+    ```
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Known Competitors: {competitor_names}
+    - Top Pain Points: {top_pain_points}
+
+    **WORKFLOW:**
+
+    1. **Synthesize Key Findings (3-5 QUALITATIVE bullets):**
+       Focus on strategic themes, NOT raw statistics:
+       - ✓ "Strong quick-win opportunities in [theme] with low competition"
+       - ✓ "Geographic expansion potential in [regions] with combined 50K monthly volume"
+       - ✓ "Comprehensive category coverage enables programmatic SEO across [X] themes"
+       - ✗ "Filtered 0/318 keywords" (avoid raw counts)
+       - ✗ "Tier 0=10, Tier 1=5, Tier 2=8" (avoid raw stats)
+
+    2. **Competitive Positioning (2-4 sections, markdown):**
+       - What keyword gaps exist vs. competitors?
+       - What unique positioning angles does this keyword landscape enable?
+       - What moats can be built through comprehensive keyword coverage?
+
+    3. **EXTRACT SAMPLE KEYWORDS FOR DOWNSTREAM TASKS (CRITICAL):**
+
+       From your context (Tasks 1a-1c outputs), extract ACTUAL keyword strings:
+
+       - **top_tier_0_keywords**: List top 3-5 Tier 0 keyword strings
+         (from Task 1a PremiumTierResult.tier_0_keywords[].keyword)
+         Example: ["budget expat health insurance", "cheap international health coverage"]
+
+       - **top_tier_1_keywords**: List top 5-10 Tier 1 keyword strings
+         (from Task 1a PremiumTierResult.tier_1_keywords[].keyword)
+         Example: ["expat insurance comparison", "digital nomad health plans"]
+
+       - **top_tier_2_keywords**: List top 5-10 Tier 2 keyword strings
+         (from Task 1a PremiumTierResult.tier_2_keywords[].keyword)
+         Example: ["international health insurance for families", "expat medical coverage options"]
+
+       - **sample_geographic_regions**: List 3-5 region names from Tier 3 groups
+         (from Task 1b GeographicTierResult.tier_3_geographic_groups[].region_name)
+         Example: ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
+
+       - **sample_category_themes**: List 5-8 category names from Tier 4 groups
+         (from Task 1c CategoryTierResult.tier_4_category_groups[].category_name)
+         Example: ["Health Insurance Options", "Cost Comparisons", "Coverage Types"]
+
+       **WHY THIS MATTERS:**
+       Task 2 (Content Strategy) needs REAL keywords to create topic clusters.
+       Without these sample keywords, Task 2 will output placeholders like
+       <TIER_1_KEYWORD_1> instead of actual keywords like "budget expat insurance".
+
+       **RULES:**
+       - Extract ONLY actual keyword strings that appear in your context
+       - Do NOT invent or fabricate keywords
+       - If a tier has no keywords in context, set that field to null
+       - Prioritize highest-volume keywords when selecting samples
+
+    **KEY FINDINGS GUIDELINES:**
+    - Focus on OPPORTUNITY THEMES, not counts
+    - Describe STRATEGIC IMPLICATIONS, not just data
+    - Connect keywords to BUSINESS OUTCOMES
+    - Highlight COMPETITIVE ADVANTAGES revealed by keyword analysis
+
+  expected_output: >
+    KeywordSummaryResult Pydantic model with:
+
+    - key_findings: List[str] (3-5 QUALITATIVE strategic insights)
+    - competitive_positioning: str (markdown, 2-4 sections on positioning strategy)
+    - top_tier_0_keywords: Optional[List[str]] (3-5 Tier 0 keyword strings from context, or null)
+    - top_tier_1_keywords: Optional[List[str]] (5-10 Tier 1 keyword strings from context, or null)
+    - top_tier_2_keywords: Optional[List[str]] (5-10 Tier 2 keyword strings from context, or null)
+    - sample_geographic_regions: Optional[List[str]] (3-5 region names from Tier 3 groups, or null)
+    - sample_category_themes: Optional[List[str]] (5-8 category names from Tier 4 groups, or null)
+
+    **CRITICAL:** The sample keyword fields enable Task 2 to create content strategy
+    with REAL keywords instead of placeholders. Extract actual keyword strings from context.
+
+    NOTE: This task completes the 4-task keyword analysis split. Python will merge
+    outputs from Tasks 1a-1d into the combined KeywordAnalysisResult.
+
+# ========================================
+# PARALLEL KEYWORD ANALYSIS TASKS (Tasks 1a-1e)
+# ========================================
+# These tasks use async_execution=True for ~4x faster keyword analysis
+# Keywords are PRE-FILTERED by Python before being passed to each task
+
+analyze_high_priority_tiers:
+  description: >
+    **Task 1a (Parallel): High Priority Keywords (Tier 0 + Tier 1)**
+
+    Analyze {high_priority_keywords_count} PRE-FILTERED high-priority keywords.
+    These keywords have opp_score > 100 (Tier 0 + Tier 1).
+
+    **HIGH PRIORITY KEYWORDS CSV:**
+
+    ```csv
+    {high_priority_keywords_csv}
+    ```
+
+    **CRITICAL: NO FILTERING NEEDED**
+    These keywords are PRE-FILTERED by Python. Your job is to:
+    1. Analyze 100% of provided keywords
+    2. Assign each to Tier 0 (opp_score >200) or Tier 1 (opp_score 100-200)
+    3. Create strategies for each tier
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+    - Core Features: {core_features}
+
+    **TIER DEFINITIONS:**
+    - **TIER_0_PREMIUM**: opportunity_score > 200 (EXCEPTIONAL - unicorn keywords)
+    - **TIER_1_QUICK_WIN**: opportunity_score 100-200 (High volume, low competition)
+
+    **WORKFLOW:**
+
+    1. **Analyze ALL Keywords:**
+       - Every keyword in the CSV belongs to Tier 0 or Tier 1
+       - Assign based on opportunity_score threshold (200 for T0, 100-200 for T1)
+
+    2. **Create Strategy Narratives:**
+       - tier_0_strategy (if T0 exists): 1-2 paragraphs on premium opportunity approach
+       - tier_1_quick_win_strategy: 1-2 paragraphs on quick-win implementation
+
+    3. **Track Count:**
+       - high_priority_count: Total T0 + T1 keywords (should equal {high_priority_keywords_count})
+
+    **TREND-AWARE PRIORITIZATION:**
+    - Prioritize **rising** keywords (trend_direction = "rising")
+    - Prefer **is_evergreen = True** for sustainable traffic
+
+  expected_output: >
+    HighPriorityTierResult Pydantic model with:
+
+    - tier_0_keywords: Optional[List[TieredKeyword]] (ALL with opp_score >200)
+    - tier_0_strategy: Optional[str] (1-2 paragraphs if Tier 0 exists)
+    - tier_1_keywords: List[TieredKeyword] (ALL with opp_score 100-200, REQUIRED)
+    - tier_1_quick_win_strategy: str (1-2 paragraphs, REQUIRED)
+    - high_priority_count: int (Total T0 + T1)
+
+    Each TieredKeyword includes: keyword, search_volume, competition, opportunity_score,
+    strategy, intent, tier (0/1), tier_rationale
+
+analyze_tier_0_premium:
+  description: >
+    **Task 1a-i (Parallel): Tier 0 Premium Keywords**
+
+    Select ALL {tier_0_keywords_count} keywords from the CSV below.
+    These are PRE-FILTERED Tier 0 keywords (opp_score > 200).
+
+    **TIER 0 KEYWORDS CSV:**
+    ```csv
+    {tier_0_keywords_csv}
+    ```
+
+    **YOUR JOB (Simplified - Python Hydration Pattern):**
+    1. Include ALL keywords from CSV (already filtered)
+    2. Add brief strategy (1-2 sentences) for each
+    3. Add intent classification for each
+    4. Write 1 paragraph tier_0_strategy narrative
+
+    **NOTE:** You do NOT need to include search_volume, competition, or
+    opportunity_score - Python will add these automatically from CSV.
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+
+  expected_output: >
+    Tier0LightResult Pydantic model with:
+
+    - tier_0_keywords: List of lightweight keyword selections (ALL {tier_0_keywords_count})
+      Each with ONLY: keyword (exact match from CSV), strategy (1-2 sentences), intent (optional)
+    - tier_0_strategy: str (1 paragraph narrative)
+
+
+analyze_tier_1_quick_wins:
+  description: >
+    **Task 1a-ii (Parallel): Tier 1 Quick Win Keywords**
+
+    Select ALL {tier_1_keywords_count} keywords from the CSV below.
+    These are PRE-FILTERED Tier 1 keywords (opp_score 100-200).
+
+    **TIER 1 KEYWORDS CSV:**
+    ```csv
+    {tier_1_keywords_csv}
+    ```
+
+    **YOUR JOB (Simplified - Python Hydration Pattern):**
+    1. Include ALL keywords from CSV (already filtered)
+    2. Add brief strategy (1-2 sentences) for each
+    3. Add intent classification for each
+    4. Write 1 paragraph tier_1_quick_win_strategy narrative
+
+    **NOTE:** You do NOT need to include search_volume, competition, or
+    opportunity_score - Python will add these automatically from CSV.
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+
+  expected_output: >
+    Tier1LightResult Pydantic model with:
+
+    - tier_1_keywords: List of lightweight keyword selections (ALL {tier_1_keywords_count})
+      Each with ONLY: keyword (exact match from CSV), strategy (1-2 sentences), intent (optional)
+    - tier_1_quick_win_strategy: str (1 paragraph narrative)
+
+
+analyze_strategic_tier:
+  description: >
+    **Task 1b (Parallel): Strategic Keywords (Tier 2)**
+
+    Select ALL {strategic_keywords_count} keywords from the CSV below.
+    These are PRE-FILTERED Tier 2 keywords (opp_score 50-100).
+
+    **STRATEGIC KEYWORDS CSV:**
+    ```csv
+    {strategic_keywords_csv}
+    ```
+
+    **YOUR JOB (Simplified - Python Hydration Pattern):**
+    1. Include ALL keywords from CSV (already filtered)
+    2. Add brief strategy (1-2 sentences) for each
+    3. Add intent classification for each
+    4. Write 1-2 paragraph tier_2_strategy narrative
+
+    **NOTE:** You do NOT need to include search_volume, competition, or
+    opportunity_score - Python will add these automatically from CSV.
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+    - Core Features: {core_features}
+
+    **STRATEGIC CONSIDERATIONS:**
+    - These keywords require 3-6 months to rank
+    - Focus on building topical authority
+    - Connect keyword themes to business positioning
+
+  expected_output: >
+    StrategicLightResult Pydantic model with:
+
+    - tier_2_keywords: List of lightweight keyword selections (ALL {strategic_keywords_count}, or null if empty)
+      Each with ONLY: keyword (exact match from CSV), strategy (1-2 sentences), intent (optional)
+    - tier_2_strategy: str (1-2 paragraphs, or null if empty)
+
+analyze_geographic_tier_parallel:
+  description: >
+    **Task 1c (Parallel): Geographic Keywords (Tier 3)**
+
+    Group {geographic_keywords_count} PRE-FILTERED geographic keywords by region.
+    These keywords contain explicit location mentions (city/country names).
+
+    **GEOGRAPHIC KEYWORDS CSV:**
+    ```csv
+    {geographic_keywords_csv}
+    ```
+
+    **YOUR JOB (Simplified - Python Hydration Pattern):**
+    1. Group ALL keywords by region (e.g., "Spanish-Speaking Markets", "Southeast Asia")
+    2. For each keyword, extract the city/location name from the keyword text
+    3. Add optional notes per keyword
+    4. Write strategy_notes per region (1-3 sentences)
+    5. Assess overall competition_level per region ("LOW"/"MEDIUM"/"HIGH")
+    6. Write geographic_strategy_notes (1-2 paragraphs overall)
+
+    **NOTE:** You do NOT need to include search_volume or total_volume -
+    Python will calculate these automatically from CSV.
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Top Pain Points: {top_pain_points}
+
+    **NOTE:** If CSV is empty (0 geographic keywords), return:
+    - tier_3_geographic_groups: null
+    - geographic_strategy_notes: null
+
+  expected_output: >
+    GeographicLightResult Pydantic model with:
+
+    - tier_3_geographic_groups: List of groups, each with:
+      - region_name: str (e.g., "Spanish-Speaking Markets")
+      - keywords: List of {keyword (exact from CSV), city (extracted from keyword), notes (optional)}
+      - strategy_notes: str (1-3 sentences)
+      - competition_level: str ("LOW"/"MEDIUM"/"HIGH")
+    - geographic_strategy_notes: str (1-2 paragraphs overall, or null)
+
+analyze_category_tier_parallel:
+  description: >
+    **Task 1d (Parallel): Category Keywords (Tier 4)**
+
+    Group {category_keywords_count} PRE-FILTERED category keywords by theme.
+    These are remaining keywords after high-priority, strategic, and geographic filtering.
+
+    **CATEGORY KEYWORDS CSV:**
+    ```csv
+    {category_keywords_csv}
+    ```
+
+    **YOUR JOB (Simplified - Python Hydration Pattern):**
+    1. Create {min_category_groups} to {max_category_groups} thematic category groups
+    2. Assign each keyword to ONE category (no duplicates)
+    3. Write strategy_recommendation per category (2-4 sentences)
+    4. Write category_strategy_notes (1-2 paragraphs overall)
+
+    **NOTE:** You do NOT need to include search_volume, competition, cpc, or total_volume -
+    Python will add these automatically from CSV.
+
+    **CRITICAL RULES:**
+    - Every category MUST have at least 1 keyword from the CSV
+    - Do NOT create empty categories
+    - Do NOT fabricate keywords not in the CSV
+    - Use ONLY keyword strings from the CSV
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Description: {selected_solution_description}
+    - Core Features: {core_features}
+    - Topic Clusters: {topic_clusters_summary}
+
+    **CATEGORY THEMES TO CONSIDER:**
+    - Product/service types
+    - User concerns/pain points
+    - Comparison keywords
+    - How-to/guide keywords
+    - Miscellaneous (catch-all)
+
+  expected_output: >
+    CategoryLightResult Pydantic model with:
+
+    - tier_4_category_groups: List of groups, each with:
+      - category_name: str
+      - keywords: List of {keyword_name (exact from CSV)}
+      - strategy_recommendation: str (2-4 sentences)
+    - category_strategy_notes: str (1-2 paragraphs overall, or null)
+
+synthesize_keyword_summary_parallel:
+  description: >
+    **Task 1e (Parallel): Summary & Synthesis**
+
+    Synthesize findings from Tasks 1a-1d into strategic insights AND extract sample
+    keywords for downstream tasks (Task 2 Content Strategy needs actual keywords).
+
+    **CONTEXT FROM PARALLEL TASKS 1a-1d (Lightweight Models):**
+    Access outputs via CrewAI context chaining:
+    - Task 1a-i: Tier0LightResult (tier 0 keyword selections with strategies)
+    - Task 1a-ii: Tier1LightResult (tier 1 keyword selections with strategies)
+    - Task 1b: StrategicLightResult (tier 2 keyword selections, strategy)
+    - Task 1c: GeographicLightResult (tier 3 groups, geographic strategy)
+    - Task 1d: CategoryLightResult (tier 4 groups, category strategy)
+
+    **CONTEXT:**
+    - Niche: {niche}
+    - Solution: {selected_solution_name}
+    - Known Competitors: {competitor_names}
+    - Top Pain Points: {top_pain_points}
+
+    **WORKFLOW:**
+
+    1. **Synthesize Key Findings (3-5 QUALITATIVE bullets):**
+       Based on Tasks 1a-1d results from context:
+       - High-priority opportunities (from Task 1a context)
+       - Strategic growth potential (from Task 1b context)
+       - Geographic expansion possibilities (from Task 1c context)
+       - Category/programmatic SEO potential (from Task 1d context)
+
+    2. **Competitive Positioning (2-4 sections, markdown):**
+       - Keyword gaps vs competitors
+       - Unique positioning angles
+       - Defensible moats from keyword coverage
+
+    3. **EXTRACT SAMPLE KEYWORDS FOR DOWNSTREAM TASKS (CRITICAL):**
+
+       From your context (Tasks 1a-1d outputs), extract ACTUAL keyword strings:
+
+       - **top_tier_0_keywords**: List top 3-5 Tier 0 keyword strings
+         (from Task 1a-i Tier0LightResult.tier_0_keywords[].keyword)
+         Example: ["budget expat health insurance", "cheap international health coverage"]
+
+       - **top_tier_1_keywords**: List top 5-10 Tier 1 keyword strings
+         (from Task 1a-ii Tier1LightResult.tier_1_keywords[].keyword)
+         Example: ["expat insurance comparison", "digital nomad health plans"]
+
+       - **top_tier_2_keywords**: List top 5-10 Tier 2 keyword strings
+         (from Task 1b StrategicLightResult.tier_2_keywords[].keyword)
+         Example: ["international health insurance for families", "expat medical coverage options"]
+
+       - **sample_geographic_regions**: List 3-5 region names from Tier 3 groups
+         (from Task 1c GeographicLightResult.tier_3_geographic_groups[].region_name)
+         Example: ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
+
+       - **sample_category_themes**: List 5-8 category names from Tier 4 groups
+         (from Task 1d CategoryLightResult.tier_4_category_groups[].category_name)
+         Example: ["Health Insurance Options", "Cost Comparisons", "Coverage Types"]
+
+       **WHY THIS MATTERS:**
+       Task 2 (Content Strategy) needs REAL keywords to create topic clusters.
+       Without these sample keywords, Task 2 will output placeholders like
+       <TIER_1_KEYWORD_1> instead of actual keywords like "budget expat insurance".
+
+       **RULES:**
+       - Extract ONLY actual keyword strings that appear in your context
+       - Do NOT invent or fabricate keywords
+       - If a tier has no keywords in context, set that field to null
+       - Prioritize highest-volume keywords when selecting samples
+
+  expected_output: >
+    KeywordSummaryResult Pydantic model with:
+
+    - key_findings: List[str] (3-5 QUALITATIVE strategic insights from Tasks 1a-1d)
+    - competitive_positioning: str (markdown, 2-4 sections on positioning strategy)
+    - top_tier_0_keywords: Optional[List[str]] (3-5 Tier 0 keyword strings from context, or null)
+    - top_tier_1_keywords: Optional[List[str]] (5-10 Tier 1 keyword strings from context, or null)
+    - top_tier_2_keywords: Optional[List[str]] (5-10 Tier 2 keyword strings from context, or null)
+    - sample_geographic_regions: Optional[List[str]] (3-5 region names from Tier 3 groups, or null)
+    - sample_category_themes: Optional[List[str]] (5-8 category names from Tier 4 groups, or null)
+
+    **CRITICAL:** The sample keyword fields enable Task 2 to create content strategy
+    with REAL keywords instead of placeholders. Extract actual keyword strings from context.
+
+# ========================================
+# LEGACY: SINGLE KEYWORD ANALYSIS TASK
+# ========================================
+# Kept for backward compatibility — use split tasks (1a-1d) for new implementations
+
 analyze_keywords_and_tier:
   description: >
     **Task 1: Keyword Analysis & Tiering**
@@ -193,12 +871,7 @@ analyze_keywords_and_tier:
 
     ═══ KEYWORD UTILIZATION MANDATE ═══
     You are analyzing {enriched_keywords_count} keywords. Your output MUST tier a MINIMUM of 80% of relevant keywords (after filtering).
-
-    **Math Example**: If you analyze 336 keywords and filter 100 as irrelevant → you have 236 relevant keywords remaining.
-    You MUST tier at least 189 keywords (80% of 236) across Tier 0-4.
-
-    ⚠️  If your output contains <150 tiered keywords from 336 input keywords → INCOMPLETE OUTPUT.
-    ⚠️  Tier 3-4 groups should contain HUNDREDS of keywords, not dozens.
+    Tier 3-4 groups should contain the majority of keywords.
 
     1. **Select Premium Tier** → IF TIER_0_PREMIUM keywords exist: Select ALL (exceptional opportunities, opp_score >200)
 
@@ -220,17 +893,13 @@ analyze_keywords_and_tier:
           - ⚠️ NO hallucinated city names - only group if location is IN keyword text
 
        b. **Tier 4 (Category) - CRITICAL - Most Keywords Go Here:**
-          - MINIMUM: 8 category groups (aim for 10-15)
-          - MINIMUM: 15 keywords per category group (aim for 20-100+)
-          - If you have 150+ remaining keywords → create 12+ categories
-          - Category themes: ingredient, product type, user concern, price tier, comparison, review, misc, brand, format, audience
-          - ⚠️ WHEN IN DOUBT about a keyword's relevance → PUT IT IN TIER 4
+          - Create {min_category_groups} to {max_category_groups} category groups
+          - Each category MUST have at least 1 keyword (no empty categories)
+          - Category themes: product type, user concern, price tier, comparison, misc
 
-          ❌ CRITICAL FAILURE: Tier 4 has <8 categories
-          ❌ CRITICAL FAILURE: Tier 4 categories average <15 keywords each
-          ❌ CRITICAL FAILURE: Total utilization <70% of input keywords
-          ✅ SUCCESS: Tier 4 has 10-15 categories with 20-100 keywords each
-          ⚠️ Your Tier 4 groups should contain HUNDREDS of keywords total
+          ❌ CRITICAL FAILURE: Creating empty categories (keywords: [])
+          ❌ CRITICAL FAILURE: Fabricating keywords not in the input
+          ✅ SUCCESS: Every category has real keywords from the input
 
        c. **Self-Check BEFORE submitting:**
           ```
@@ -252,20 +921,14 @@ analyze_keywords_and_tier:
     - [ ] Selected ALL Tier 1 keywords meeting threshold (opp_score >100) - NOT limited to 3-5
     - [ ] Selected ALL Tier 2 keywords meeting threshold (opp_score 50-100) - NOT limited to 3-5
     - [ ] Tier 3 geographic groups ONLY contain keywords with explicit location mentions
-    - [ ] Tier 4 has MINIMUM 8 category groups (aim for 10-15)
-    - [ ] Tier 4 category groups cover 80-90% of remaining RELEVANT keywords (should be 150-250+ keywords)
-    - [ ] Tier 4 category groups average 15+ keywords per group (aim for 20-100+)
+    - [ ] Tier 4 has between {min_category_groups} and {max_category_groups} category groups
+    - [ ] Every Tier 4 category has at least 1 keyword (NO empty categories)
+    - [ ] NO fabricated keywords - only use keywords from the CSV
     - [ ] Calculated EXACT keyword utilization: tiered_keywords / relevant_keywords ≥ 80%
-    - [ ] key_findings includes keyword relevance insight (qualitative - e.g., "High relevance - minimal cross-domain noise" or "Moderate filtering required for domain focus")
-    - [ ] key_findings includes tier distribution insight (qualitative - e.g., "Strong premium opportunities in [themes]" not raw counts)
+    - [ ] key_findings includes keyword relevance insight (qualitative)
+    - [ ] key_findings includes tier distribution insight (qualitative)
     - [ ] Avoided fabricating search volumes (used EXACT values from CSV)
     - [ ] Geographic keywords have city/country names in keyword text itself
-
-          **Example of GOOD Distribution:**
-          Input: 1,603 keywords → Filtered 620 (39%, strict filtering) → Tiered 890 relevant keywords (90%)
-          - 5 Tier 1 + 5 Tier 2 + 320 Tier 3 + 560 Tier 4 = 890 total ✓
-          - 12 diverse Tier 4 category groups with 20-80 keywords each ✓
-          - Filtering rate: 39% (adaptive, quality-focused) ✓
 
     4. **Position Analysis** → Competitor gaps and differentiation angles
     5. **Key Findings** → 3-5 strategic insights (keyword alignment, opportunity themes, competitive gaps) - qualitative, not raw stats
@@ -411,23 +1074,41 @@ develop_content_technical_strategy:
   description: >
     **Task 2: Content & Technical Strategy**
 
-    **HOW TO ACCESS CONTEXT (IMPORTANT):**
+    **HOW TO ACCESS KEYWORD DATA (from Task 1e context):**
 
-    Task 1 output (KeywordAnalysisResult) is available in your context via CrewAI context chaining.
-    Extract and use the following fields from Task 1:
-    - tier_1_keywords, tier_2_keywords (for content prioritization)
-    - tier_3_geographic_groups, tier_4_category_groups (for programmatic templates)
-    - total_monthly_volume, total_keywords_analyzed (for scale assessment)
-    - competitive_positioning (for differentiation angles)
-    - key_findings (for insights to build upon)
+    Task 1e (KeywordSummaryResult) provides sample keywords for your strategy via CrewAI context chaining.
+    Use these ACTUAL keyword strings when building topic clusters and content recommendations:
 
-    **DO NOT fabricate keyword data** - use ONLY what Task 1 provided.
+    - **top_tier_0_keywords**: Premium keywords for immediate targeting (if present)
+      Example: ["budget expat health insurance", "cheap international coverage"]
+
+    - **top_tier_1_keywords**: Quick-win keywords for first 30 days
+      Example: ["expat insurance comparison", "digital nomad health plans"]
+
+    - **top_tier_2_keywords**: Strategic keywords for content pillars
+      Example: ["international health insurance for families", "expat medical coverage"]
+
+    - **sample_geographic_regions**: Regional targeting opportunities
+      Example: ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
+
+    - **sample_category_themes**: Category clusters for programmatic SEO
+      Example: ["Health Insurance Options", "Cost Comparisons", "Coverage Types"]
+
+    - **key_findings**: Strategic insights to build upon
+    - **competitive_positioning**: Differentiation angles
+
+    **CRITICAL RULES:**
+    - Use the ACTUAL keyword strings from Task 1e context in your topic clusters
+    - DO NOT create placeholder syntax like <TIER_1_KEYWORD_1> or [KEYWORD_HERE]
+    - Reference specific keywords when building topic clusters (e.g., "budget expat health insurance" not "<tier_1_keyword>")
+    - If a tier has no keywords (field is null), note "None identified" and focus on other tiers
+    - DO NOT fabricate keywords - use ONLY what Task 1e provided
 
     **CONTENT STRATEGY** (4-6 numbered sections, markdown):
 
-    1. **Content Prioritization** → Map Tier 1/2 keywords to content types
-    2. **Topic Cluster Architecture** → 3-5 pillar hubs with supporting articles
-    3. **Content Calendar** → First 90 days (Tier 1 weeks 1-4, Tier 2 weeks 5-8)
+    1. **Content Prioritization** → Map keywords from top_tier_1_keywords and top_tier_2_keywords to content types
+    2. **Topic Cluster Architecture** → 3-5 pillar hubs using ACTUAL keywords from Task 1e context
+    3. **Content Calendar** → First 90 days (Tier 1 keywords weeks 1-4, Tier 2 keywords weeks 5-8)
     4. **Content Formats** → Match to search intent (guides, comparisons, FAQs)
     5. **Conversion Integration** → CTAs and conversion paths per content type
 
@@ -435,11 +1116,27 @@ develop_content_technical_strategy:
 
     | Element | Specification |
     |---------|--------------|
-    | cluster_name | Content pillar theme from Tier 1/2 |
-    | primary_keyword | High-volume core keyword |
-    | supporting_keywords | Related long-tail terms |
-    | total_monthly_volume | Sum of cluster keyword volumes |
+    | cluster_name | Content pillar theme derived from Task 1e keywords |
+    | primary_keyword | Use ACTUAL keyword string from top_tier_1_keywords or top_tier_2_keywords |
+    | supporting_keywords | Related terms from same tier or sample_category_themes |
+    | total_monthly_volume | Estimate based on tier (high for T1, medium for T2) |
     | priority | 1 (critical), 2 (important), 3 (nice-to-have) |
+
+    **Example Topic Cluster (CORRECT - uses actual keywords):**
+    ```
+    cluster_name: "Budget Health Insurance for Expats"
+    primary_keyword: "budget expat health insurance"  ← From top_tier_1_keywords
+    supporting_keywords: ["cheap international coverage", "affordable expat plans"]
+    total_monthly_volume: 5000
+    priority: 1
+    ```
+
+    **Example Topic Cluster (WRONG - uses placeholders):**
+    ```
+    cluster_name: "Tier 1 Quick Wins"
+    primary_keyword: "<TIER_1_KEYWORD_1>"  ← NEVER DO THIS
+    supporting_keywords: ["<TIER_1_KEYWORD_2>", "<TIER_1_KEYWORD_3>"]
+    ```
 
     **TECHNICAL SEO** (markdown, 3-5 sections with code):
 
@@ -474,10 +1171,14 @@ develop_content_technical_strategy:
     ContentStrategyResult Pydantic model:
 
     - content_strategy: str (4-6 numbered paragraphs, markdown)
-    - topic_clusters: Optional[List[TopicCluster]] (3-5 pillars)
+    - topic_clusters: Optional[List[TopicCluster]] (3-5 pillars with primary_keyword, supporting_keywords, total_monthly_volume, priority)
     - technical_seo_recommendations: str (markdown, 3-5 sections, code examples)
-    - keyword_driven_site_architecture: Optional (site structure by clusters)
-    - keyword_based_page_types: Optional[List] (4-8 scalable templates)
+    - keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] with fields:
+        - url_hierarchy_diagram: str (ASCII/markdown site hierarchy)
+        - section_keyword_mapping: list of {section_path, keyword_cluster_name, target_tier}
+        - total_pages_from_keywords: int (numeric count, e.g., 420)
+        - keyword_coverage_explanation: str (2-3 sentences on page coverage)
+    - keyword_based_page_types: Optional[List[KeywordBasedPageType]] (4-8 scalable templates)
 
 create_implementation_plan:
   description: >

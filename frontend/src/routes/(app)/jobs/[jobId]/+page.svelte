@@ -194,8 +194,11 @@
   function formatDuration(seconds: number | null): string {
     if (!seconds) return '';
     if (seconds < 60) return `${Math.round(seconds)}s`;
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.round(seconds % 60);
+
+    // Use floor for both to avoid "60s" issue from rounding
+    const totalSeconds = Math.round(seconds);
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
     return `${mins}m ${secs}s`;
   }
 </script>
@@ -352,7 +355,7 @@
           <div class="flex items-center justify-between">
             <div>
               <h3 class="text-sm font-medium text-text-primary">Resume from Checkpoint</h3>
-              <p class="mt-1 text-sm text-text-muted">Continue where you left off - no additional credit charge.</p>
+              <p class="mt-1 text-sm text-text-muted">Continue where you left off. Your refund will be reversed (1 credit).</p>
             </div>
             <button
               onclick={resumeJob}

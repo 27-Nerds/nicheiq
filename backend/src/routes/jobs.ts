@@ -5,7 +5,7 @@ import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueServ
 import { createJobWithCreditDeduction, InsufficientCreditsError, refundCreditsForJob } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema } from '../types/job.js';
-import { JobStatus, AssetType } from '@prisma/client';
+import { JobStatus, AssetType, CreditTransactionType } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import path from 'path';
@@ -365,7 +365,51 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, async (req: Authenticated
       return;
     }
 
-    // Reset job status to QUEUED (no credit charge)
+    // Check if job was refunded - if so, we need to charge again
+    const refundTransaction = await prisma.creditTransaction.findFirst({
+      where: {
+        relatedJobId: jobId,
+        type: CreditTransactionType.REFUND,
+      },
+    });
+
+    if (refundTransaction) {
+      // Job was refunded, need to charge a credit to resume
+      const credits = await prisma.userCredits.findUnique({
+        where: { userId },
+      });
+
+      if (!credits || credits.balance < 1) {
+        res.status(402).json({
+          error: 'Insufficient credits to resume job',
+          code: 'INSUFFICIENT_CREDITS',
+          balance: credits?.balance ?? 0,
+          required: 1,
+        });
+        return;
+      }
+
+      // Reverse the refund: delete transaction AND deduct from balance (atomic)
+      await prisma.$transaction(async (tx) => {
+        // 1. Delete the refund transaction record
+        await tx.creditTransaction.delete({
+          where: { id: refundTransaction.id },
+        });
+
+        // 2. Deduct credit from user's balance (reverses the refund amount)
+        await tx.userCredits.update({
+          where: { userId },
+          data: {
+            balance: { decrement: 1 },      // Take back the refunded credit
+            totalUsed: { increment: 1 },    // Restore usage count
+          },
+        });
+      });
+
+      console.log(`[Jobs] Refund reversed for resuming job ${jobId} (balance decremented)`);
+    }
+
+    // Reset job status to QUEUED
     await prisma.job.update({
       where: { id: jobId },
       data: {
@@ -385,12 +429,14 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, async (req: Authenticated
       true // resume = true
     );
 
-    console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}`);
+    const creditCharged = refundTransaction ? 1 : 0;
+    console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}${creditCharged ? ' (credit charged)' : ''}`);
 
     res.json({
-      message: 'Job queued for resume',
+      message: creditCharged ? 'Job queued for resume (credit charged)' : 'Job queued for resume',
       jobId,
       status: 'queued',
+      creditCharged,
     });
   } catch (error) {
     console.error('Failed to resume job:', error);

@@ -26,7 +26,7 @@ class MarketSaturation(str, Enum):
 class Competitor(BaseModel):
     """Represents a competitive product or service."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     name: str = Field(..., description="Name of the competitor")
     url: Optional[str] = Field(default=None, description="Website URL")
@@ -42,7 +42,7 @@ class Competitor(BaseModel):
 class CompetitiveLandscape(BaseModel):
     """Complete competitive analysis for a solution idea."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
     competitors: list[Competitor] = Field(
@@ -67,7 +67,7 @@ class CompetitiveLandscape(BaseModel):
 class CompetitiveAnalysisResult(BaseModel):
     """Complete result of competitive analysis for all solution ideas."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_landscapes: list[CompetitiveLandscape] = Field(
         ..., min_length=1, description="Competitive landscape for each solution idea (at least 1)"

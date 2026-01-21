@@ -65,7 +65,7 @@ class SolutionSelection(BaseModel):
     keyword research, SEO strategy, and MVP development.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     selected_solution_name: str = Field(
         ...,

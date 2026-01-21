@@ -12,7 +12,7 @@ from .keyword_data import OpportunityLevel
 class EngagementMetric(BaseModel):
     """Engagement metric for a single post."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     post_id: str = Field(..., description="Post ID")
     score: int = Field(..., description="Engagement score (upvotes, likes, etc.)")
@@ -20,7 +20,7 @@ class EngagementMetric(BaseModel):
 class UnvalidatedPainPoint(BaseModel):
     """Pain point extracted by analyst without severity/WTP scores yet."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
@@ -42,7 +42,7 @@ class UnvalidatedPainPoint(BaseModel):
 class ThemeCategory(BaseModel):
     """Single theme category from content categorization."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     category_name: str = Field(..., description="Theme category name")
     definition: str = Field(..., description="What this category represents")
@@ -58,7 +58,7 @@ class ThemeCategory(BaseModel):
 class UserSegment(BaseModel):
     """User segment identified in categorization."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     segment_name: str = Field(..., description="User segment name")
     primary_concerns: list[str] = Field(
@@ -69,7 +69,7 @@ class UserSegment(BaseModel):
 class ContentCategorizationReport(BaseModel):
     """Complete categorization report from Task 1."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     executive_summary: str = Field(..., description="2-3 sentence overview")
     theme_categories: list[ThemeCategory] = Field(
@@ -100,7 +100,7 @@ class ContentCategorizationReport(BaseModel):
 class PainPointExtraction(BaseModel):
     """Output from pain_point_analyst before validation."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     niche: str = Field(..., description="The niche being analyzed")
     extracted_pain_points: list[UnvalidatedPainPoint] = Field(
@@ -117,7 +117,7 @@ class PainPointScoring(BaseModel):
     Python will merge this with UnvalidatedPainPoint to create the final PainPoint.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     pain_point_title: str = Field(
         ..., description="Title reference key to match with UnvalidatedPainPoint"
@@ -138,7 +138,7 @@ class PainPointScoring(BaseModel):
 class ValidationResult(BaseModel):
     """Task 3 output: Validation scores for all pain points (ONLY new scoring data)."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     niche: str = Field(..., description="The niche being analyzed")
     pain_point_scores: list[PainPointScoring] = Field(
@@ -151,7 +151,7 @@ class ValidationResult(BaseModel):
 class PainPoint(BaseModel):
     """Represents a user pain point discovered from social discussions."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
@@ -198,7 +198,7 @@ class PainPoint(BaseModel):
 class PainPointAnalysisResult(BaseModel):
     """Complete result of pain point analysis."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     niche: str = Field(..., description="The niche being analyzed")
     pain_points: list[PainPoint] = Field(..., description="List of discovered pain points")

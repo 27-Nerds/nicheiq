@@ -95,7 +95,22 @@ export async function updateStageProgress(
 ) {
   const now = new Date();
 
-  // Update the specific stage
+  // Get current stage status to avoid overwriting historical data on resume
+  const currentStage = await prisma.jobProgress.findUnique({
+    where: { jobId_stageNumber: { jobId, stageNumber } },
+    select: { status: true, startedAt: true, completedAt: true, durationSeconds: true },
+  });
+
+  // Skip update if stage is already completed (preserve historical timestamps during resume)
+  if (currentStage?.status === StageStatus.COMPLETED && status === StageStatus.COMPLETED) {
+    // Stage already completed - don't overwrite timestamps
+    const existingProgress = await prisma.jobProgress.findUnique({
+      where: { jobId_stageNumber: { jobId, stageNumber } },
+    });
+    return existingProgress;
+  }
+
+  // Only set timestamps for new transitions (not already set)
   const progress = await prisma.jobProgress.update({
     where: {
       jobId_stageNumber: {
@@ -105,14 +120,14 @@ export async function updateStageProgress(
     },
     data: {
       status,
-      startedAt: status === StageStatus.RUNNING ? now : undefined,
-      completedAt: status === StageStatus.COMPLETED || status === StageStatus.FAILED ? now : undefined,
+      startedAt: status === StageStatus.RUNNING && !currentStage?.startedAt ? now : undefined,
+      completedAt: (status === StageStatus.COMPLETED || status === StageStatus.FAILED) && !currentStage?.completedAt ? now : undefined,
       errorMessage,
     },
   });
 
-  // Calculate duration if completed
-  if (progress.startedAt && progress.completedAt) {
+  // Only calculate duration if not already set
+  if (progress.startedAt && progress.completedAt && !currentStage?.durationSeconds) {
     await prisma.jobProgress.update({
       where: { id: progress.id },
       data: {

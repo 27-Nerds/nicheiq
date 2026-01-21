@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class FeaturePriority(BaseModel):
     """Recommended priority for a specific feature based on keyword demand."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     feature_name: str = Field(..., description="Name of the feature")
     priority: float = Field(..., ge=1, le=10, description="Priority rank (1 = highest priority)")
@@ -24,7 +24,7 @@ class FeaturePriority(BaseModel):
 class SolutionRefinement(BaseModel):
     """Strategic refinement recommendations based on keyword validation insights."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     geographic_priorities: list[str] = Field(
         ...,

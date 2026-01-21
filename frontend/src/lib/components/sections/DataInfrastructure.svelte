@@ -67,13 +67,15 @@
 		<AnimateOnScroll animation="fade-up">
 			<div class="grid md:grid-cols-3 gap-4 mb-8">
 				{#if data.estimated_monthly_cost}
-					<div class="card card-sm flex items-center gap-4">
-						<div class="p-3 rounded-lg bg-accent/10">
+					<div class="card card-sm flex items-start gap-4">
+						<div class="p-3 rounded-lg bg-accent/10 flex-shrink-0">
 							<DollarSign class="w-6 h-6 text-accent" />
 						</div>
-						<div>
+						<div class="min-w-0">
 							<div class="text-sm text-text-muted">Est. Monthly Cost</div>
-							<div class="text-lg font-semibold text-text-primary">{data.estimated_monthly_cost}</div>
+							<div class="text-sm text-text-primary whitespace-pre-line">
+								{@html renderMarkdown(data.estimated_monthly_cost)}
+							</div>
 						</div>
 					</div>
 				{/if}

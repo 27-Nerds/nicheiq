@@ -7,7 +7,6 @@
 		Sparkles,
 		Layers,
 		AlertTriangle,
-		Shield,
 		TrendingUp,
 		Target,
 		ChevronDown,
@@ -39,9 +38,10 @@
 		analytics: CompetitiveAnalytics;
 		landscapeMatrix?: CompetitiveLandscapeMatrix;
 		summary?: string;
+		selectedSolutionName?: string;
 	}
 
-	let { profiles, analysis, analytics, landscapeMatrix, summary }: Props = $props();
+	let { profiles, analysis, analytics, landscapeMatrix, summary, selectedSolutionName }: Props = $props();
 
 	// Expandable sections state
 	let showProfiles = $state(false);
@@ -62,6 +62,30 @@
 	const saturationPercent = $derived(Math.round(analytics.market_saturation_score * 100));
 	const opportunityPercent = $derived(100 - saturationPercent);
 	const diffConfig = $derived(getDifferentiationConfig(analytics.differentiation_strength));
+
+	// Get competitive intensity for the selected solution
+	const selectedIntensity = $derived.by(() => {
+		if (!landscapeMatrix?.competitive_intensity_by_solution || !selectedSolutionName) return null;
+		return landscapeMatrix.competitive_intensity_by_solution.find(
+			item => item.solution_name === selectedSolutionName
+		);
+	});
+	const selectedIntensityParsed = $derived(selectedIntensity ? parseIntensity(selectedIntensity.intensity) : null);
+	const selectedIntensityDescription = $derived(selectedIntensity ? parseIntensityDescription(selectedIntensity.intensity) : '');
+
+	// Parse intensity text to extract description (after the dash)
+	function parseIntensityDescription(intensity: string): string {
+		const dashIndex = intensity.indexOf('—');
+		if (dashIndex !== -1) {
+			return intensity.substring(dashIndex + 1).trim();
+		}
+		// Also try regular hyphen
+		const hyphenIndex = intensity.indexOf(' - ');
+		if (hyphenIndex !== -1) {
+			return intensity.substring(hyphenIndex + 3).trim();
+		}
+		return '';
+	}
 </script>
 
 <section id="competitors" class="report-section">
@@ -103,7 +127,15 @@
 				{#each landscapeMatrix.selected_solution_competitors as competitor}
 					<Badge variant="accent">{competitor}</Badge>
 				{/each}
+				{#if selectedIntensityParsed}
+					<Badge variant={selectedIntensityParsed.label === 'Low' ? 'success' : selectedIntensityParsed.label === 'High' ? 'error' : 'warning'}>
+						{selectedIntensityParsed.label} Competition
+					</Badge>
+				{/if}
 			</div>
+			{#if selectedIntensityDescription}
+				<p class="strip-description">{selectedIntensityDescription}</p>
+			{/if}
 		</div>
 	{/if}
 
@@ -176,30 +208,6 @@
 									<Badge variant="muted" size="sm">{solution}</Badge>
 								{/each}
 							</div>
-						</div>
-					</div>
-				{/each}
-			</div>
-		</ExpandableSection>
-	{/if}
-
-	<!-- Expandable: Competitive Intensity -->
-	{#if landscapeMatrix?.competitive_intensity_by_solution && landscapeMatrix.competitive_intensity_by_solution.length > 0}
-		<ExpandableSection
-			title="Competitive Intensity"
-			icon={Shield}
-			count={landscapeMatrix.competitive_intensity_by_solution.length}
-		>
-			<div class="intensity-list">
-				{#each landscapeMatrix.competitive_intensity_by_solution as item}
-					{@const parsed = parseIntensity(item.intensity)}
-					<div class="intensity-item">
-						<div class="intensity-indicator" style="background: {parsed.color}"></div>
-						<div class="intensity-content">
-							<span class="intensity-name">{item.solution_name}</span>
-							<span class="intensity-level" style="color: {parsed.color}"
-								>{parsed.label} Competition</span
-							>
 						</div>
 					</div>
 				{/each}
@@ -440,6 +448,14 @@
 		gap: 0.375rem;
 	}
 
+	.strip-description {
+		width: 100%;
+		margin: 0.5rem 0 0 0;
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+	}
+
 	/* Chart Card */
 	.chart-card {
 		background: var(--color-bg-elevated);
@@ -567,48 +583,6 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.375rem;
-	}
-
-	/* Intensity List */
-	.intensity-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.intensity-item {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding: 0.75rem 1rem;
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-	}
-
-	.intensity-indicator {
-		width: 4px;
-		height: 1.75rem;
-		border-radius: 2px;
-	}
-
-	.intensity-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.intensity-name {
-		font-family: var(--font-display);
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.intensity-level {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 500;
 	}
 
 	/* Feature Table */

@@ -26,7 +26,7 @@ class LandingStrategy(BaseModel):
     will make the page unforgettable.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     primary_persona: str = Field(
         ...,
@@ -91,7 +91,7 @@ class CreativeDirection(BaseModel):
     market context. Downstream agents (Brand Designer, HTML Developer) MUST follow.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # Visual Identity
     design_archetype: str = Field(
@@ -155,7 +155,7 @@ class CardTreatment(BaseModel):
     enabling varied treatments across the page.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     card_type: str = Field(
         ...,
@@ -182,7 +182,7 @@ class MemorableElementVisual(BaseModel):
     This model defines HOW it should look visually.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     implementation_type: str = Field(
         ...,
@@ -213,7 +213,7 @@ class VisualSurprise(BaseModel):
     Each surprise documents what convention is being broken and why.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     convention_broken: str = Field(
         ...,
@@ -237,7 +237,7 @@ class VisualDesignSpec(BaseModel):
     and concrete implementation.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # Card Strategy
     card_treatments: list[CardTreatment] = Field(
@@ -309,7 +309,7 @@ class BrandIdentity(BaseModel):
     every choice must be justified by the specific product.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     color_primary: str = Field(
         ...,
@@ -368,7 +368,7 @@ class LandingPageSection(BaseModel):
     the solution type and what will convert best.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     section_type: str = Field(
         ...,
@@ -400,7 +400,7 @@ class LandingPageCopy(BaseModel):
     is based on what will convert best for this specific product.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     product_name: str = Field(
         ...,
@@ -436,7 +436,7 @@ class HTMLPageResult(BaseModel):
     on the design mood.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     html_content: str = Field(
         ...,
@@ -463,7 +463,7 @@ class AnimatedHTMLResult(BaseModel):
     - Micro-interactions (button feedback, form focus)
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     html_content: str = Field(
         ...,
@@ -482,7 +482,7 @@ class AnimatedHTMLResult(BaseModel):
 class QAIssue(BaseModel):
     """Individual QA issue found during visual design review."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     issue_type: str = Field(
         ...,
@@ -513,7 +513,7 @@ class QAReviewResult(BaseModel):
     identifies issues, and applies fixes to ensure professional quality output.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     html_content: str = Field(
         ...,
@@ -550,7 +550,7 @@ class LandingPageResult(BaseModel):
     containing strategy, brand identity, copy, HTML, and animations.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     landing_strategy: LandingStrategy = Field(
         ...,

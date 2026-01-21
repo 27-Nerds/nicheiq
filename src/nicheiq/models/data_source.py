@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class DataSource(BaseModel):
     """Represents a single data source (API, database, provider)."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     provider: str = Field(..., description="Provider name (e.g., 'Adzuna API', 'Indeed', 'RemoteOK')")
     url: Optional[str] = Field(default=None, description="URL to API documentation or provider website")
@@ -58,7 +58,7 @@ class DataSource(BaseModel):
 class DataPartnership(BaseModel):
     """Represents a potential data partnership or manual data collection need."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     partner_type: str = Field(..., description="Type: 'direct-partnership', 'web-scraping', 'manual-curation', 'user-generated'")
     description: str = Field(..., description="What data would come from this partnership/method")
@@ -69,7 +69,7 @@ class DataPartnership(BaseModel):
 class DataQualityMetrics(BaseModel):
     """5D Data Quality Matrix scores for a data source."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     coverage_score: str = Field(..., description="Coverage % or description (e.g., '80% market coverage')")
     freshness: str = Field(..., description="Update frequency: real-time, hourly, daily, weekly, monthly")
@@ -80,7 +80,7 @@ class DataQualityMetrics(BaseModel):
 class EvaluatedDataSource(BaseModel):
     """Data source with full evaluation from Task 2."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     provider: str = Field(..., description="Provider name")
     url: Optional[str] = Field(default=None, description="API documentation URL")
@@ -105,7 +105,7 @@ class EvaluatedDataSource(BaseModel):
 class SourceEvaluationReport(BaseModel):
     """Complete evaluation output from Task 2."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     high_priority_sources: list[EvaluatedDataSource] = Field(
         ..., min_length=1, description="1-3 HIGH priority sources (minimum 1)"
@@ -140,7 +140,7 @@ class SourceEvaluationReport(BaseModel):
 class RoadmapPhase(BaseModel):
     """Structured phase in implementation roadmap."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     phase_number: int = Field(..., description="1, 2, or 3")
     phase_name: str = Field(..., description="MVP, Growth, or Scale")
@@ -164,7 +164,7 @@ class DataImplementationPlan(BaseModel):
     Python will merge this with SourceEvaluationReport to create DataSourceResearchResult.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     implementation_phases: list[RoadmapPhase] = Field(
         ...,
@@ -196,7 +196,7 @@ class DataImplementationPlan(BaseModel):
 class DataSourceResearchResult(BaseModel):
     """Complete result of data source research for selected solution."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of solution this research is for")
     primary_data_sources: list[DataSource] = Field(

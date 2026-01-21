@@ -72,7 +72,7 @@ class ConceptualKeyword(BaseModel):
     Includes strategic context and cluster assignment for intelligent enrichment.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     keyword: str = Field(..., description="The keyword phrase")
     cluster: str = Field(..., description="Topic cluster this keyword belongs to")
@@ -98,7 +98,7 @@ class ConceptualKeyword(BaseModel):
 class ConceptualTopicCluster(BaseModel):
     """Topic cluster for organizing keywords strategically (Phase 9.5a output)."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     name: str = Field(..., description="Cluster name (e.g., 'International Shipping', 'Customs')")
     description: str = Field(..., description="Brief description of this topic area")
@@ -114,7 +114,7 @@ class ExpandedKeywordList(BaseModel):
     - 30% Targeted Keywords (12-15 keywords, 3-5 words)
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     keywords: list[ConceptualKeyword] = Field(
         ..., description="Hybrid seed keywords (40-50 total): 70% broad seeds (1-2 words) + 30% targeted keywords (3-5 words)"
@@ -134,7 +134,7 @@ class TieredKeyword(BaseModel):
     | Keyword | Search Volume | Competition | Opportunity Score | Strategy |
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     keyword: str = Field(..., description="The keyword phrase")
     search_volume: int = Field(..., description="Average monthly search volume from DataForSEO (single value)")
@@ -155,8 +155,8 @@ class TieredKeyword(BaseModel):
     tier: Optional[int] = Field(
         default=None,
         ge=0,
-        le=4,
-        description="Keyword tier (0=premium, 1=quick_win, 2=strategic, 3=geographic, 4=categorical)"
+        le=5,
+        description="Keyword tier (0=premium, 1=quick_win, 2=strategic, 3=geographic, 4=categorical, 5=untiered)"
     )
     tier_rationale: Optional[str] = Field(
         default=None,
@@ -174,7 +174,7 @@ class TieredKeyword(BaseModel):
 class GeographicKeywordEntry(BaseModel):
     """Individual geographic keyword entry."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     city: str = Field(..., description="City or location name")
     keyword: str = Field(..., description="The keyword phrase")
@@ -190,7 +190,7 @@ class GeographicKeywordEntry(BaseModel):
 class CategoryKeywordEntry(BaseModel):
     """Individual category keyword entry."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     keyword_name: str = Field(..., description="Keyword name (document type, service name, etc.)")
     search_volume: int = Field(..., description="Average monthly search volume from DataForSEO")
@@ -218,7 +218,7 @@ class GeographicKeywordGroup(BaseModel):
     Example: Spanish-Speaking Markets, UK Markets, etc.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     region_name: str = Field(..., description="Region/country name (e.g., 'Spanish-Speaking Markets')")
     total_volume: int = Field(..., description="Combined monthly search volume")
@@ -237,7 +237,7 @@ class CategoryKeywordGroup(BaseModel):
     Example: Education Documents, Immigration Documents, etc.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     category_name: str = Field(..., description="Category name (e.g., 'Education Documents')")
     total_volume: int = Field(..., description="Combined monthly search volume")
@@ -248,10 +248,18 @@ class CategoryKeywordGroup(BaseModel):
         ..., description="Strategic recommendation for this category (2-4 sentences)"
     )
 
+    @field_validator('keywords')
+    @classmethod
+    def keywords_not_empty(cls, v: list[CategoryKeywordEntry]) -> list[CategoryKeywordEntry]:
+        """Ensure category has at least 1 keyword to prevent empty/hallucinated categories."""
+        if v is not None and len(v) == 0:
+            raise ValueError("Category must have at least 1 keyword - empty categories are not allowed")
+        return v
+
 class TopicCluster(BaseModel):
     """Content pillar with grouped keywords."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     cluster_name: str = Field(..., description="Name of the content cluster/pillar")
     primary_keyword: str = Field(..., description="Main keyword for this cluster")
@@ -291,7 +299,7 @@ class TopicCluster(BaseModel):
 class KeywordBasedPageType(BaseModel):
     """Page type definition derived from keyword clusters and search intent."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     page_type_name: str = Field(
         ..., description="Name of page type based on keyword intent (e.g., 'Problem Solution Pages', 'Geographic Landing Pages')"
@@ -327,7 +335,7 @@ class KeywordBasedPageType(BaseModel):
 class SectionKeywordMapping(BaseModel):
     """Mapping of a site section to its keyword cluster."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     section_path: str = Field(..., description="URL path of the section (e.g., '/tools/', '/compare/')")
     keyword_cluster: str = Field(..., description="Keyword cluster description (e.g., 'Tier 1 problem-solving keywords')")
@@ -335,7 +343,7 @@ class SectionKeywordMapping(BaseModel):
 class KeywordDrivenSiteArchitecture(BaseModel):
     """Site structure organized by keyword clusters and search intent patterns."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     url_hierarchy_diagram: Optional[str] = Field(
         default=None, description="ASCII/markdown hierarchy showing how keyword clusters map to site sections"
@@ -353,7 +361,7 @@ class KeywordDrivenSiteArchitecture(BaseModel):
 class UniversalSEOElements(BaseModel):
     """Universal SEO elements that appear on every page."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     title_tag_formula: str = Field(
         ...,
@@ -386,7 +394,7 @@ class UniversalSEOElements(BaseModel):
 class PageTypeImplementation(BaseModel):
     """SEO implementation template for specific page type."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     page_type: str = Field(
         ...,
@@ -435,7 +443,7 @@ class PageTypeImplementation(BaseModel):
 class SchemaExample(BaseModel):
     """Individual schema markup code example."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     schema_type: str = Field(
         ...,
@@ -449,7 +457,7 @@ class SchemaExample(BaseModel):
 class SchemaMarkupStrategy(BaseModel):
     """Schema markup implementation guide with code examples."""
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     why_schema_matters: str = Field(
         ...,
@@ -480,7 +488,7 @@ class SEOStrategyReport(BaseModel):
     narrative markdown sections for the final report's SEO section.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     # ========================================
     # METADATA
@@ -552,6 +560,14 @@ class SEOStrategyReport(BaseModel):
     tier_4_category_groups: Optional[list[CategoryKeywordGroup]] = Field(
         default=None,
         description="Category-based keyword groups (document types, service categories)"
+    )
+
+    # ========================================
+    # TIER 5: UNTIERED KEYWORDS (FORCE-ADDED)
+    # ========================================
+    untiered_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Keywords from CSV not selected by LLM - force-added for completeness"
     )
 
     # ========================================
@@ -683,6 +699,434 @@ class SEOStrategyReport(BaseModel):
 # INTERMEDIATE MODELS FOR MULTI-TASK FLOW
 # ========================================
 
+# ----------------------------------------
+# Stage 9 Split Task Models (Tasks 1a-1d)
+# ----------------------------------------
+
+class PremiumTierResult(BaseModel):
+    """
+    Task 1a: Premium Tier Analysis (Tiers 0, 1, 2).
+
+    Analyzes keywords with high opportunity scores and creates strategic
+    targeting recommendations for quick-win and high-value opportunities.
+
+    Output size: ~30-50 keywords, ~50-80 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    # Tier 0: Premium opportunities (opp_score > 200)
+    tier_0_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Premium keywords with exceptional opportunity scores (>200). Select ALL keywords meeting this threshold."
+    )
+    tier_0_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 0 premium keywords (1-2 paragraphs, markdown)"
+    )
+
+    # Tier 1: Quick wins (opp_score > 100)
+    tier_1_keywords: list[TieredKeyword] = Field(
+        ...,
+        min_length=1,
+        description="High volume + low competition keywords (3-5 keywords, minimum 1)"
+    )
+    tier_1_quick_win_strategy: str = Field(
+        ..., description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
+    )
+
+    # Tier 2: Strategic keywords (opp_score 50-100)
+    tier_2_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None, description="High value keywords with medium competition (3-5 keywords)"
+    )
+    tier_2_strategy: Optional[str] = Field(
+        default=None, description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, markdown)"
+    )
+
+    # Tracking for merge validation
+    premium_keywords_count: int = Field(
+        ..., description="Total count of T0 + T1 + T2 keywords"
+    )
+    filtered_keywords_count: int = Field(
+        default=0, description="Count of keywords filtered as irrelevant in STEP 0"
+    )
+
+
+class HighPriorityTierResult(BaseModel):
+    """
+    Task 1a (Parallel): High Priority Keywords (Tier 0 + Tier 1).
+
+    Analyzes pre-filtered keywords with opp_score > 100 for immediate SEO wins.
+    This task runs in parallel with Tasks 1b, 1c, 1d.
+
+    Output size: ~10-30 keywords, ~30-50 lines JSON
+
+    NOTE: This model is kept for backward compatibility. For new implementations,
+    use Tier0PremiumResult and Tier1QuickWinResult for better token management.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    # Tier 0: Premium opportunities (opp_score > 200)
+    tier_0_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Premium keywords with exceptional opportunity scores (>200). Select ALL keywords meeting this threshold."
+    )
+    tier_0_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 0 premium keywords (1-2 paragraphs, markdown)"
+    )
+
+    # Tier 1: Quick wins (opp_score 100-200)
+    tier_1_keywords: list[TieredKeyword] = Field(
+        ...,
+        min_length=1,
+        description="High volume + low competition keywords (opp_score 100-200, minimum 1)"
+    )
+    tier_1_quick_win_strategy: str = Field(
+        ..., description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
+    )
+
+    # Tracking
+    high_priority_count: int = Field(
+        ..., description="Total count of T0 + T1 keywords"
+    )
+
+
+# ========================================
+# LIGHTWEIGHT OUTPUT MODELS FOR PYTHON HYDRATION
+# ========================================
+# These models capture only LLM-generated content (keyword selections + strategies).
+# Python hydrates full objects with stats from CSV lookup.
+
+
+class LightweightKeywordSelection(BaseModel):
+    """Minimal keyword selection - Python will hydrate with stats from CSV."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    keyword: str = Field(..., description="The keyword phrase (must match CSV exactly)")
+    strategy: str = Field(..., description="Brief targeting strategy (1-2 sentences)")
+    intent: Optional[str] = Field(default=None, description="Search intent classification")
+
+
+class Tier0LightResult(BaseModel):
+    """
+    Lightweight Task 1a-i output - Python hydrates stats from CSV.
+
+    LLM outputs only keyword selections + strategies, not stats.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_0_keywords: list[LightweightKeywordSelection] = Field(
+        ...,
+        min_length=1,
+        description="Premium keyword selections. Include ALL keywords from CSV."
+    )
+    tier_0_strategy: str = Field(
+        ..., description="Strategy narrative for Tier 0 premium keywords (1 paragraph max)"
+    )
+
+
+class Tier1LightResult(BaseModel):
+    """
+    Lightweight Task 1a-ii output - Python hydrates stats from CSV.
+
+    LLM outputs only keyword selections + strategies, not stats.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_1_keywords: list[LightweightKeywordSelection] = Field(
+        ...,
+        min_length=1,
+        description="Quick win keyword selections. Include ALL keywords from CSV."
+    )
+    tier_1_quick_win_strategy: str = Field(
+        ..., description="Strategy narrative for Tier 1 quick wins (1 paragraph max)"
+    )
+
+
+class StrategicLightResult(BaseModel):
+    """
+    Lightweight Task 1b output - Python hydrates stats from CSV.
+
+    LLM outputs only keyword selections + strategies, not stats.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_2_keywords: Optional[list[LightweightKeywordSelection]] = Field(
+        default=None,
+        description="Strategic keyword selections (or null if empty)"
+    )
+    tier_2_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, or null if empty)"
+    )
+
+
+class GeographicLightEntry(BaseModel):
+    """Lightweight geographic entry - Python hydrates search_volume from CSV."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    keyword: str = Field(..., description="The keyword phrase (must match CSV exactly)")
+    city: str = Field(..., description="City/location extracted from keyword text")
+    notes: Optional[str] = Field(default=None, description="Optional notes about this keyword")
+
+
+class GeographicLightGroup(BaseModel):
+    """Lightweight geographic group - Python calculates total_volume from CSV."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    region_name: str = Field(..., description="Region name (e.g., 'Spanish-Speaking Markets')")
+    keywords: list[GeographicLightEntry] = Field(
+        ..., description="Geographic keyword entries"
+    )
+    strategy_notes: str = Field(
+        ..., description="Strategic notes for this geographic market (1-3 sentences)"
+    )
+    competition_level: str = Field(
+        ..., description="LLM assessment: 'LOW', 'MEDIUM', or 'HIGH'"
+    )
+
+
+class GeographicLightResult(BaseModel):
+    """
+    Lightweight Task 1c output - Python hydrates stats from CSV.
+
+    LLM outputs only keyword selections + groupings, not stats.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_3_geographic_groups: Optional[list[GeographicLightGroup]] = Field(
+        default=None, description="Geographic keyword groups (or null if none)"
+    )
+    geographic_strategy_notes: Optional[str] = Field(
+        default=None, description="Overall geographic strategy (1-2 paragraphs, or null)"
+    )
+
+
+class CategoryLightEntry(BaseModel):
+    """Lightweight category entry - Python hydrates stats from CSV."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    keyword_name: str = Field(..., description="Keyword phrase (must match CSV exactly)")
+
+
+class CategoryLightGroup(BaseModel):
+    """Lightweight category group - Python calculates total_volume from CSV."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    category_name: str = Field(..., description="Category theme name")
+    keywords: list[CategoryLightEntry] = Field(
+        ..., min_length=1, description="Keywords in this category (at least 1)"
+    )
+    strategy_recommendation: str = Field(
+        ..., description="Strategy recommendation for this category (2-4 sentences)"
+    )
+
+
+class CategoryLightResult(BaseModel):
+    """
+    Lightweight Task 1d output - Python hydrates stats from CSV.
+
+    LLM outputs only keyword selections + groupings, not stats.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_4_category_groups: Optional[list[CategoryLightGroup]] = Field(
+        default=None, description="Category groups (or null if empty)"
+    )
+    category_strategy_notes: Optional[str] = Field(
+        default=None, description="Overall category strategy (1-2 paragraphs, or null)"
+    )
+
+
+# ========================================
+# ORIGINAL (FULL) OUTPUT MODELS - KEPT FOR BACKWARD COMPATIBILITY
+# ========================================
+
+
+class Tier0PremiumResult(BaseModel):
+    """
+    Task 1a-i (Parallel): Tier 0 Premium Keywords.
+
+    Analyzes pre-filtered keywords with opp_score > 200 (exceptional opportunities).
+    This task runs in parallel with Tasks 1a-ii, 1b, 1c, 1d.
+
+    Output size: ~50-200 keywords, ~100-300 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_0_keywords: list[TieredKeyword] = Field(
+        ...,
+        min_length=1,
+        description="Premium keywords with opp_score >200. Include ALL keywords from CSV."
+    )
+    tier_0_strategy: str = Field(
+        ..., description="Strategy narrative for Tier 0 premium keywords (1 paragraph max)"
+    )
+    tier_0_count: int = Field(..., description="Total count of Tier 0 keywords")
+
+
+class Tier1QuickWinResult(BaseModel):
+    """
+    Task 1a-ii (Parallel): Tier 1 Quick Win Keywords.
+
+    Analyzes pre-filtered keywords with opp_score 100-200 (quick wins).
+    This task runs in parallel with Tasks 1a-i, 1b, 1c, 1d.
+
+    Output size: ~10-50 keywords, ~30-80 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_1_keywords: list[TieredKeyword] = Field(
+        ...,
+        min_length=1,
+        description="Quick win keywords with opp_score 100-200. Include ALL keywords from CSV."
+    )
+    tier_1_quick_win_strategy: str = Field(
+        ..., description="Strategy narrative for Tier 1 quick wins (1 paragraph max)"
+    )
+    tier_1_count: int = Field(..., description="Total count of Tier 1 keywords")
+
+
+class StrategicTierResult(BaseModel):
+    """
+    Task 1b (Parallel): Strategic Keywords (Tier 2).
+
+    Analyzes pre-filtered keywords with opp_score 50-100 for medium-term SEO growth.
+    This task runs in parallel with Tasks 1a, 1c, 1d.
+
+    Output size: ~10-30 keywords, ~20-40 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    # Tier 2: Strategic keywords (opp_score 50-100)
+    tier_2_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Strategic keywords with medium competition (opp_score 50-100)"
+    )
+    tier_2_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, markdown)"
+    )
+
+    # Tracking
+    strategic_count: int = Field(
+        default=0, description="Total count of Tier 2 keywords"
+    )
+
+
+class GeographicTierResult(BaseModel):
+    """
+    Task 1b: Geographic Tier Analysis (Tier 3).
+
+    Groups keywords containing explicit location mentions (city/country names)
+    by region for geographic SEO strategy.
+
+    Output size: ~20-50 keywords grouped, ~40-60 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_3_geographic_groups: Optional[list[GeographicKeywordGroup]] = Field(
+        default=None, description="Geographic keyword opportunities grouped by region"
+    )
+    geographic_strategy_notes: Optional[str] = Field(
+        default=None, description="Strategic notes for geographic keyword targeting (1-2 paragraphs, markdown)"
+    )
+    geographic_keywords_count: int = Field(
+        default=0, description="Total count of keywords in geographic groups"
+    )
+
+
+class CategoryTierResult(BaseModel):
+    """
+    Task 1c: Category Tier Analysis (Tier 4).
+
+    Organizes remaining keywords (after premium + geographic selection) into
+    thematic category groups for programmatic SEO.
+
+    Output size: ~100-200 keywords grouped, ~100-150 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    tier_4_category_groups: Optional[list[CategoryKeywordGroup]] = Field(
+        default=None, description="Category-based keyword groups (document types, service categories)"
+    )
+    category_strategy_notes: Optional[str] = Field(
+        default=None, description="Strategic notes for category-based keyword targeting (1-2 paragraphs, markdown)"
+    )
+    category_keywords_count: int = Field(
+        default=0, description="Total count of keywords in category groups"
+    )
+
+
+class KeywordSummaryResult(BaseModel):
+    """
+    Task 1e: Summary & Synthesis with sample keywords for downstream tasks.
+
+    Synthesizes findings from Tasks 1a-1d into key findings and competitive
+    positioning insights. Also extracts sample keywords from each tier for
+    Task 2 (Content Strategy) to use in topic cluster creation.
+
+    Aggregate metrics (total_keywords_analyzed, total_monthly_volume) are
+    calculated by Python in the merge step.
+
+    Output size: ~30-50 lines JSON
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    key_findings: list[str] = Field(
+        ...,
+        min_length=1,
+        description="3-5 bullet points highlighting key SEO findings (minimum 1)"
+    )
+    competitive_positioning: str = Field(
+        ..., description="Keyword gaps to exploit, unique positioning angles (markdown, 2-4 sections)"
+    )
+
+    # Sample keywords for downstream tasks (Task 2+)
+    top_tier_0_keywords: Optional[list[str]] = Field(
+        default=None,
+        description="Top 3-5 Tier 0 premium keyword strings (from Task 1a-i context)"
+    )
+    top_tier_1_keywords: Optional[list[str]] = Field(
+        default=None,
+        description="Top 5-10 Tier 1 quick-win keyword strings (from Task 1a-ii context)"
+    )
+    top_tier_2_keywords: Optional[list[str]] = Field(
+        default=None,
+        description="Top 5-10 Tier 2 strategic keyword strings (from Task 1b context)"
+    )
+    sample_geographic_regions: Optional[list[str]] = Field(
+        default=None,
+        description="Key geographic region names from Tier 3 groups (from Task 1c context)"
+    )
+    sample_category_themes: Optional[list[str]] = Field(
+        default=None,
+        description="Key category theme names from Tier 4 groups (from Task 1d context)"
+    )
+
+
+# ----------------------------------------
+# Combined Keyword Analysis Result
+# ----------------------------------------
+
 class KeywordAnalysisResult(BaseModel):
     """
     Intermediate result from Task 1: Keyword Analysis & Tiering.
@@ -725,6 +1169,13 @@ class KeywordAnalysisResult(BaseModel):
         default=None, description="Category-based keyword groups (document types, service categories)"
     )
 
+    # Untiered keywords (in CSV but not selected by LLM)
+    untiered_keywords: Optional[list[TieredKeyword]] = Field(
+        default=None,
+        description="Keywords from CSV that were not tiered by LLM analysis. "
+                    "Force-added to ensure 100% keyword utilization."
+    )
+
     # Metadata and findings
     total_keywords_analyzed: int = Field(..., description="Total number of keywords analyzed")
     total_monthly_volume: int = Field(..., description="Total monthly search volume across all keywords")
@@ -754,6 +1205,9 @@ class KeywordAnalysisResult(BaseModel):
         - ERROR: <50% utilization (critical keyword loss)
         - WARNING: <70% utilization (below target)
         - INFO: >=70% utilization (success)
+
+        NOTE: Untiered keywords (tier 5) are included in total but logged separately.
+        With recovery enabled, utilization should always reach 100%.
         """
         tier_0_count = len(self.tier_0_keywords) if self.tier_0_keywords else 0
         tier_1_count = len(self.tier_1_keywords) if self.tier_1_keywords else 0
@@ -769,31 +1223,44 @@ class KeywordAnalysisResult(BaseModel):
             for group in self.tier_4_category_groups:
                 tier_4_count += len(group.keywords)
 
-        total_tiered = tier_0_count + tier_1_count + tier_2_count + tier_3_count + tier_4_count
+        untiered_count = len(self.untiered_keywords) if self.untiered_keywords else 0
+
+        # LLM-selected keywords (Tiers 0-4)
+        llm_selected = tier_0_count + tier_1_count + tier_2_count + tier_3_count + tier_4_count
+        # Total including recovered untiered
+        total_with_recovery = llm_selected + untiered_count
 
         # Tiered logging levels for visibility (no pipeline failure)
         if self.total_keywords_analyzed > 50:
-            keyword_utilization = total_tiered / self.total_keywords_analyzed
+            llm_utilization = llm_selected / self.total_keywords_analyzed
+            final_utilization = total_with_recovery / self.total_keywords_analyzed
             tier_breakdown = (
                 f"[T0: {tier_0_count}, T1: {tier_1_count}, T2: {tier_2_count}, "
-                f"T3: {tier_3_count}, T4: {tier_4_count}]"
+                f"T3: {tier_3_count}, T4: {tier_4_count}, Untiered: {untiered_count}]"
             )
 
-            if keyword_utilization < 0.5:
+            if llm_utilization < 0.5:
                 logger.error(
-                    f"⚠️ CRITICAL KEYWORD LOSS: Only {keyword_utilization:.1%} utilization "
-                    f"({total_tiered}/{self.total_keywords_analyzed} keywords tiered). "
-                    f"Task 1 filtering was too aggressive - expand Tier 4 categories. {tier_breakdown}"
+                    f"⚠️ CRITICAL LLM SELECTION GAP: Only {llm_utilization:.1%} selected by LLM "
+                    f"({llm_selected}/{self.total_keywords_analyzed}). "
+                    f"{untiered_count} keywords force-added via recovery. {tier_breakdown}"
                 )
-            elif keyword_utilization < 0.7:
+            elif llm_utilization < 0.7:
                 logger.warning(
-                    f"⚠️ Keyword utilization low: {total_tiered}/{self.total_keywords_analyzed} "
-                    f"({keyword_utilization:.1%}). Consider expanding Tier 4 categories. {tier_breakdown}"
+                    f"⚠️ LLM selection low: {llm_selected}/{self.total_keywords_analyzed} "
+                    f"({llm_utilization:.1%}). {untiered_count} keywords recovered. {tier_breakdown}"
                 )
             else:
                 logger.info(
-                    f"✅ Keyword utilization: {keyword_utilization:.1%} "
-                    f"({total_tiered}/{self.total_keywords_analyzed} keywords tiered). {tier_breakdown}"
+                    f"✅ LLM keyword selection: {llm_utilization:.1%} "
+                    f"({llm_selected}/{self.total_keywords_analyzed}). {tier_breakdown}"
+                )
+
+            # Final utilization should be 100% with recovery
+            if final_utilization >= 0.999:
+                logger.info(
+                    f"✅ Final keyword utilization: {final_utilization:.1%} "
+                    f"({total_with_recovery}/{self.total_keywords_analyzed} keywords)"
                 )
 
         return self
@@ -904,7 +1371,7 @@ class ImplementationGuide(BaseModel):
     These fields will be merged with Task 4 output via Python.
     """
 
-    model_config = ConfigDict(extra='forbid')
+    model_config = ConfigDict(extra='ignore')
 
     universal_seo_elements: UniversalSEOElements = Field(
         ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"

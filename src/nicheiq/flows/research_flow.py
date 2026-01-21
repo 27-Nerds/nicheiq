@@ -5,6 +5,7 @@ Combines Flow-based orchestration with specialized Crews for complex analysis.
 
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -861,10 +862,13 @@ class ResearchFlow(Flow[ResearchState]):
             elif "stage_8_7_solution_refinement" in completed_stages:
                 logger.info("Skipping Stage 8.7 (Solution Refinement) - already completed")
 
-            if current <= 9 and self._validate_stage_prerequisites(9):
-                self.stage_9_generate_seo_strategy()
-            elif current <= 9:
-                logger.info("Skipping Stage 9 (SEO Strategy) - prerequisites not met")
+            if current <= 9 and "stage_9_seo_strategy" not in completed_stages:
+                if self._validate_stage_prerequisites(9):
+                    self.stage_9_generate_seo_strategy()
+                else:
+                    logger.info("Skipping Stage 9 (SEO Strategy) - prerequisites not met")
+            elif "stage_9_seo_strategy" in completed_stages:
+                logger.info("Skipping Stage 9 (SEO Strategy) - already completed")
 
             # Stage 9.5: Only run if not already completed (listener stage)
             if current <= 9.5 and "stage_9_5_trend_longevity" not in completed_stages:
@@ -1297,15 +1301,90 @@ Return a valid JSON object with this structure:
         # Checkpoint: Save social content
         self.checkpoint_mgr.save_stage("stage_5_social_content", self.state.social_content)
 
+    def _run_pain_point_crew(self) -> dict:
+        """
+        Helper method to run PainPointCrew in parallel execution context.
+
+        Returns:
+            Dict with 'result' (PainPointAnalysisResult) and 'usage_metrics'
+        """
+        logger.info("[Parallel] Starting PainPointCrew...")
+
+        pain_point_crew = PainPointCrew(
+            reddit_posts=self.state.social_content.reddit_posts,
+            twitter_threads=self.state.social_content.twitter_threads,
+            niche_description=self.niche_description,
+            market_segments=self.state.niche_context.market_segments,
+            industry_boundaries=self.state.niche_context.industry_boundaries
+        )
+
+        result = pain_point_crew.analyze()
+        logger.info(f"[Parallel] PainPointCrew complete: {len(result.pain_points) if result else 0} pain points")
+
+        return {
+            "result": result,
+            "usage_metrics": pain_point_crew.usage_metrics
+        }
+
+    def _run_audience_mapping_crew(self, pain_point_analysis=None) -> dict:
+        """
+        Helper method to run AudienceMappingCrew in parallel execution context.
+
+        Args:
+            pain_point_analysis: Optional pain point analysis for segment alignment.
+                                 Can be None when running in parallel (alignment done later).
+
+        Returns:
+            Dict with 'result' (AudienceMappingResult) and 'usage_metrics'
+        """
+        from ..crews import AudienceMappingCrew
+        from ..models.pain_point import PainPointAnalysisResult
+
+        logger.info("[Parallel] Starting AudienceMappingCrew...")
+
+        audience_crew = AudienceMappingCrew(
+            reddit_posts=self.state.social_content.reddit_posts if self.state.social_content else [],
+            twitter_threads=self.state.social_content.twitter_threads if self.state.social_content else [],
+            niche_description=self.niche_description
+        )
+
+        # Use provided pain_point_analysis or create empty placeholder for parallel execution
+        # When running in parallel, pain points aren't available yet - alignment done in post-processing
+        if pain_point_analysis is None:
+            pain_point_analysis = PainPointAnalysisResult(
+                niche=self.niche_description,
+                pain_points=[],
+                total_mentions=0,
+                top_categories=[],
+                analysis_summary="Placeholder for parallel execution"
+            )
+
+        result = audience_crew.analyze(
+            pain_point_analysis=pain_point_analysis,
+            niche_description=self.niche_description
+        )
+
+        logger.info(f"[Parallel] AudienceMappingCrew complete: {len(result.audience_segments) if result else 0} segments")
+
+        return {
+            "result": result,
+            "usage_metrics": audience_crew.usage_metrics
+        }
+
     @listen(stage_5_search_and_discover)
     def stage_6_analyze_pain_points(self):
         """
-        Stage 6: Pain Point Analysis
+        Stage 6: Pain Point Analysis + Audience Mapping (Parallel Execution)
 
-        Uses PainPointCrew to analyze social content and extract validated pain points.
+        Runs PainPointCrew and AudienceMappingCrew in parallel for ~30-50% time savings.
+        Both crews process the same social content independently:
+        - PainPointCrew extracts validated pain points
+        - AudienceMappingCrew identifies audience segments and influencers
+
+        Post-processing aligns pain points to segments after both complete.
         """
         logger.info("=" * 80)
-        logger.info("STAGE 6: Pain Point Analysis")
+        logger.info("STAGE 6: Pain Point Analysis + Audience Mapping (PARALLEL)")
         logger.info("=" * 80)
         self._emit_progress(6, "Pain Point Analysis", "running")
 
@@ -1350,29 +1429,54 @@ Return a valid JSON object with this structure:
                 "Ensure Stage 1 completed successfully before running Stage 6."
             )
 
-        # Initialize and run PainPointCrew
-        pain_point_crew = PainPointCrew(
-            reddit_posts=self.state.social_content.reddit_posts,
-            twitter_threads=self.state.social_content.twitter_threads,
-            niche_description=self.niche_description,
-            market_segments=self.state.niche_context.market_segments,
-            industry_boundaries=self.state.niche_context.industry_boundaries
-        )
+        # Run PainPointCrew and AudienceMappingCrew in parallel
+        logger.info("[Stage 6] Running PainPointCrew and AudienceMappingCrew in PARALLEL...")
 
-        logger.info("Running pain point analysis crew...")
-        self.state.pain_point_analysis = pain_point_crew.analyze()
+        pain_point_result = None
+        audience_result = None
+        pain_point_usage = None
+        audience_usage = None
 
-        # Record crew cost
-        if pain_point_crew.usage_metrics:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Submit both crews for parallel execution
+            futures = {
+                executor.submit(self._run_pain_point_crew): "pain_points",
+                executor.submit(self._run_audience_mapping_crew, None): "audience"  # Pass None - alignment done later
+            }
+
+            # Collect results as they complete
+            for future in as_completed(futures):
+                task_name = futures[future]
+                try:
+                    result_dict = future.result()
+                    if task_name == "pain_points":
+                        pain_point_result = result_dict["result"]
+                        pain_point_usage = result_dict["usage_metrics"]
+                        logger.info("[Parallel] PainPointCrew finished successfully")
+                    else:  # audience
+                        audience_result = result_dict["result"]
+                        audience_usage = result_dict["usage_metrics"]
+                        logger.info("[Parallel] AudienceMappingCrew finished successfully")
+                except Exception as e:
+                    logger.error(f"[Parallel] {task_name} crew failed: {e}")
+                    if task_name == "pain_points":
+                        raise RuntimeError(f"PainPointCrew failed: {e}")
+                    # Audience mapping failure is non-fatal - continue without it
+
+        # Store pain point analysis result
+        self.state.pain_point_analysis = pain_point_result
+
+        # Record PainPointCrew cost
+        if pain_point_usage:
             self.cost_tracker.record_crew_usage(
                 stage="Stage 6 - Pain Point Analysis",
-                usage_metrics=pain_point_crew.usage_metrics,
+                usage_metrics=pain_point_usage,
                 model=settings.content_analysis_llm
             )
 
+        # Log pain point results
         logger.info(f"[OK] Identified {len(self.state.pain_point_analysis.pain_points)} pain points")
         logger.info(f"[OK] Total mentions: {self.state.pain_point_analysis.total_mentions}")
-        # Ensure top_categories contains strings
         top_cats = [str(c) for c in self.state.pain_point_analysis.top_categories[:3]] if self.state.pain_point_analysis.top_categories else []
         logger.info(f"[OK] Top categories: {', '.join(top_cats)}")
 
@@ -1404,33 +1508,72 @@ Return a valid JSON object with this structure:
             raise RuntimeError(f"Stage 6 failed: {error_msg}")
 
         # Quality tier acceptable - proceed with pipeline
-        logger.info(f"✅ Quality gate passed - proceeding with {quality_tier} tier data (confidence: {confidence_score:.2f})")
+        logger.info(f"Quality gate passed - proceeding with {quality_tier} tier data (confidence: {confidence_score:.2f})")
 
-        # Update stage first, then checkpoint (so resume skips this stage)
-        self.state.current_stage = 6.5
-
-        # Mark stage complete with tracking
-        # In single-platform mode, BRONZE is expected (not fallback)
-        # Only mark as fallback if BRONZE with Twitter enabled (cross-platform was possible)
+        # Mark Stage 6 complete
         is_fallback = (quality_tier == "BRONZE" and settings.enable_twitter)
         self._mark_stage_complete(6, used_fallback=is_fallback)
 
         # Checkpoint: Save pain point analysis
         self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
 
+        # Store audience mapping result (from parallel execution)
+        if audience_result:
+            self.state.audience_mapping = audience_result
+
+            # Record AudienceMappingCrew cost
+            if audience_usage:
+                self.cost_tracker.record_crew_usage(
+                    stage="Stage 6.5 - Audience Mapping",
+                    usage_metrics=audience_usage,
+                    model=settings.openai_model_name
+                )
+
+            # Post-processing: Map pain points to audience segments
+            # This alignment happens AFTER both crews complete
+            if self.state.pain_point_analysis and audience_result.audience_segments:
+                self._map_pain_points_to_segments(audience_result)
+
+            # Mark Stage 6.5 complete
+            self._mark_stage_complete(6.5)
+
+            # Checkpoint: Save audience mapping
+            self.checkpoint_mgr.save_stage("stage_6_5_audience_mapping", audience_result)
+
+            logger.info("[Stage 6.5] Audience Mapping Complete (parallel)")
+            logger.info(f"  Audience Segments: {len(audience_result.audience_segments)}")
+            logger.info(f"  Primary Target: {audience_result.primary_target_segment}")
+            logger.info(f"  Key Influencers: {len(audience_result.key_influencers)}")
+            logger.info(f"  Community Hubs: {len(audience_result.community_hubs)}")
+            logger.info(f"  Recommended Channels: {', '.join(audience_result.recommended_channels[:3])}")
+        else:
+            logger.warning("[Stage 6.5] Audience mapping failed (parallel) - continuing without audience data")
+
+        # Update stage - both 6 and 6.5 are now complete
+        self.state.current_stage = 7
+        self._emit_progress(6.5, "Audience Mapping", "completed")
+
+        logger.info("[Stage 6] Parallel execution complete - PainPointCrew + AudienceMappingCrew")
+
     @listen(stage_6_analyze_pain_points)
     def stage_6_5_audience_mapping(self):
         """
-        Stage 6.5: Audience & Influence Mapping
+        Stage 6.5: Audience & Influence Mapping (Pass-through)
 
-        Analyzes social media discussions to identify:
-        - Distinct audience segments with characteristics
-        - Key influencers and community hubs
-        - Common vocabulary and messaging frameworks
-        - Optimal marketing channels and content strategy
+        NOTE: Audience mapping now runs in parallel with Stage 6 for performance.
+        This method is a pass-through that verifies results are available.
+
+        If audience mapping failed in parallel execution, this stage can retry sequentially.
         """
+        # Check if audience mapping was already completed in parallel
+        if self.state.audience_mapping:
+            logger.info("[Stage 6.5] Audience mapping already completed (parallel execution)")
+            self.state.current_stage = 7
+            return
+
+        # Fallback: Run sequentially if parallel execution failed
         logger.info("=" * 80)
-        logger.info("STAGE 6.5: Audience & Influence Mapping")
+        logger.info("STAGE 6.5: Audience & Influence Mapping (Sequential Fallback)")
         logger.info("=" * 80)
         self._emit_progress(6.5, "Audience Mapping", "running")
 
@@ -1445,27 +1588,18 @@ Return a valid JSON object with this structure:
             self.state.current_stage = 7
             return
 
-        # Initialize and run audience mapping crew
-        from ..crews import AudienceMappingCrew
+        # Run audience mapping crew sequentially (fallback)
+        logger.info(f"[Stage 6.5] Running AudienceMappingCrew sequentially (fallback)...")
 
-        logger.info(f"[Stage 6.5] Analyzing audience segments for: {self.niche_description}")
-
-        audience_crew = AudienceMappingCrew(
-            reddit_posts=self.state.social_content.reddit_posts if self.state.social_content else [],
-            twitter_threads=self.state.social_content.twitter_threads if self.state.social_content else [],
-            niche_description=self.niche_description
-        )
-
-        audience_result = audience_crew.analyze(
-            pain_point_analysis=self.state.pain_point_analysis,
-            niche_description=self.niche_description
-        )
+        result_dict = self._run_audience_mapping_crew(self.state.pain_point_analysis)
+        audience_result = result_dict["result"]
+        audience_usage = result_dict["usage_metrics"]
 
         # Record crew cost
-        if audience_crew.usage_metrics:
+        if audience_usage:
             self.cost_tracker.record_crew_usage(
-                stage="Stage 6.5 - Audience Mapping",
-                usage_metrics=audience_crew.usage_metrics,
+                stage="Stage 6.5 - Audience Mapping (fallback)",
+                usage_metrics=audience_usage,
                 model=settings.openai_model_name
             )
 
@@ -1479,8 +1613,7 @@ Return a valid JSON object with this structure:
         self.state.audience_mapping = audience_result
         self.state.current_stage = 7
 
-        # Phase 3: Map pain points to audience segments (enriches PainPoint.affected_segments)
-        # This connects pain points to target segments for better solution positioning
+        # Post-processing: Map pain points to audience segments
         if self.state.pain_point_analysis and audience_result.audience_segments:
             self._map_pain_points_to_segments(audience_result)
 
@@ -1490,7 +1623,7 @@ Return a valid JSON object with this structure:
         # Save checkpoint
         self.checkpoint_mgr.save_stage("stage_6_5_audience_mapping", audience_result)
 
-        logger.info("[Stage 6.5] Audience Mapping Complete")
+        logger.info("[Stage 6.5] Audience Mapping Complete (fallback)")
         logger.info(f"  Audience Segments: {len(audience_result.audience_segments)}")
         logger.info(f"  Primary Target: {audience_result.primary_target_segment}")
         logger.info(f"  Key Influencers: {len(audience_result.key_influencers)}")
@@ -1936,13 +2069,66 @@ Return a valid JSON object with this structure:
         coverage = len(clusters_with_keywords) / len(topic_clusters)
         return coverage
 
+    def _validate_solution_pricing(self, solution_name: str) -> dict:
+        """
+        Helper method to validate pricing for a single solution (thread-safe).
+
+        Creates a new PricingStrategyCrew instance per call for thread safety.
+
+        Args:
+            solution_name: Name of the solution to validate
+
+        Returns:
+            Dict with 'solution_name', 'result' (PricingStrategyResult), and 'usage_metrics'
+        """
+        from ..crews import PricingStrategyCrew
+
+        logger.info(f"[Parallel] Starting pricing validation for: {solution_name}")
+
+        # Find full solution object
+        solution = find_solution_by_name(
+            solution_name,
+            self.state.idea_generation.solution_ideas
+        )
+
+        if not solution:
+            logger.warning(f"[Parallel] Solution '{solution_name}' not found in idea generation")
+            return {
+                "solution_name": solution_name,
+                "result": None,
+                "usage_metrics": None
+            }
+
+        # Create new PricingStrategyCrew instance for thread safety
+        pricing_crew = PricingStrategyCrew()
+
+        # Run pricing analysis
+        pricing_result = pricing_crew.analyze(
+            selected_solution=solution,
+            pain_point_analysis=self.state.pain_point_analysis,
+            competitive_analysis=self.state.competitive_analysis,
+            niche_description=self.niche_description,
+            allowed_project_types=self.state.allowed_project_types
+        )
+
+        if pricing_result:
+            logger.info(f"[Parallel] Pricing complete for {solution_name}: Starter {pricing_result.recommended_starter_price}")
+        else:
+            logger.warning(f"[Parallel] Pricing failed for {solution_name}")
+
+        return {
+            "solution_name": solution_name,
+            "result": pricing_result,
+            "usage_metrics": pricing_crew.usage_metrics
+        }
+
     @listen(stage_7_unified_solution_pipeline)
     def stage_8_pricing_validation(self):
         """
-        Stage 8: Pricing Strategy Validation for Top N Solutions
+        Stage 8: Pricing Strategy Validation for Top N Solutions (Parallel Execution)
 
-        Validates monetization strategy for top N solutions (like keyword validation)
-        so any potential winner has pricing data after re-ranking in Stage 8.6.
+        Validates monetization strategy for top N solutions in parallel for ~50% time savings.
+        Each solution's pricing analysis runs independently.
 
         Analyzes:
         - Competitor pricing benchmarks from competitive analysis
@@ -1950,7 +2136,7 @@ Return a valid JSON object with this structure:
         - Solution features and positioning
         """
         logger.info("=" * 80)
-        logger.info("STAGE 8: Pricing Strategy Validation")
+        logger.info("STAGE 8: Pricing Strategy Validation (PARALLEL)")
         logger.info("=" * 80)
         self._emit_progress(8, "Pricing Validation", "running")
 
@@ -1988,7 +2174,7 @@ Return a valid JSON object with this structure:
         # Sort by composite score and take top N (configurable)
         top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
 
-        logger.info(f"[Stage 8] Analyzing pricing for top {len(top_n_scores)} solutions")
+        logger.info(f"[Stage 8] Analyzing pricing for top {len(top_n_scores)} solutions (PARALLEL)")
 
         # Resume support: track already validated solutions
         pricing_results = []
@@ -1999,60 +2185,60 @@ Return a valid JSON object with this structure:
             if already_validated:
                 logger.info(f"[Stage 8] Resuming - {len(already_validated)} solutions already validated: {already_validated}")
 
-        # Initialize pricing crew once
-        from ..crews import PricingStrategyCrew
-        pricing_crew = PricingStrategyCrew()
+        # Filter solutions that need validation
+        solutions_to_validate = [
+            solution_score.solution_name
+            for solution_score in top_n_scores
+            if solution_score.solution_name not in already_validated
+        ]
 
-        # Loop through each solution
-        for idx, solution_score in enumerate(top_n_scores, 1):
-            solution_name = solution_score.solution_name
+        if not solutions_to_validate:
+            logger.info("[Stage 8] All solutions already validated - skipping")
+            self.state.current_stage = 8.5
+            self._mark_stage_complete(8)
+            return
 
-            # Skip if already validated (resume support)
-            if solution_name in already_validated:
-                logger.info(f"[Stage 8] ({idx}/{len(top_n_scores)}) Skipping {solution_name} - already validated")
-                continue
+        logger.info(f"[Stage 8] Validating {len(solutions_to_validate)} solutions in parallel (max_workers=2)")
 
-            logger.info(f"[Stage 8] ({idx}/{len(top_n_scores)}) Analyzing pricing: {solution_name}")
+        # Run pricing validation in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Submit all pricing validation tasks
+            futures = {
+                executor.submit(self._validate_solution_pricing, solution_name): solution_name
+                for solution_name in solutions_to_validate
+            }
 
-            # Find full solution object
-            solution = find_solution_by_name(
-                solution_name,
-                self.state.idea_generation.solution_ideas
-            )
+            # Collect results as they complete
+            for future in as_completed(futures):
+                solution_name = futures[future]
+                try:
+                    result_dict = future.result()
+                    pricing_result = result_dict["result"]
+                    usage_metrics = result_dict["usage_metrics"]
 
-            if not solution:
-                logger.warning(f"[Stage 8] Solution '{solution_name}' not found in idea generation")
-                continue
+                    # Record crew cost
+                    if usage_metrics:
+                        self.cost_tracker.record_crew_usage(
+                            stage=f"Stage 8 - Pricing Strategy ({solution_name})",
+                            usage_metrics=usage_metrics,
+                            model=settings.openai_model_name
+                        )
 
-            # Run pricing analysis
-            pricing_result = pricing_crew.analyze(
-                selected_solution=solution,
-                pain_point_analysis=self.state.pain_point_analysis,
-                competitive_analysis=self.state.competitive_analysis,
-                niche_description=self.niche_description,
-                allowed_project_types=self.state.allowed_project_types
-            )
+                    if pricing_result:
+                        pricing_results.append(pricing_result)
+                        logger.info(f"[Stage 8] Pricing validation complete: {solution_name}")
 
-            # Record crew cost
-            if pricing_crew.usage_metrics:
-                self.cost_tracker.record_crew_usage(
-                    stage=f"Stage 8 - Pricing Strategy ({solution_name})",
-                    usage_metrics=pricing_crew.usage_metrics,
-                    model=settings.openai_model_name
-                )
+                        # Incremental checkpoint (thread-safe: append only)
+                        self.state.pricing_strategies = pricing_results
+                        self.checkpoint_mgr.save_stage(
+                            "stage_8_pricing_validation",
+                            [p.model_dump() for p in pricing_results]
+                        )
+                    else:
+                        logger.warning(f"[Stage 8] Pricing validation failed: {solution_name}")
 
-            if pricing_result:
-                pricing_results.append(pricing_result)
-                logger.info(f"[Stage 8] ✓ {solution_name}: Starter {pricing_result.recommended_starter_price}, Pro {pricing_result.recommended_pro_price}")
-
-                # Save incremental checkpoint after each successful analysis
-                self.state.pricing_strategies = pricing_results
-                self.checkpoint_mgr.save_stage(
-                    "stage_8_pricing_validation",
-                    [p.model_dump() for p in pricing_results]
-                )
-            else:
-                logger.warning(f"[Stage 8] ✗ {solution_name}: Pricing analysis failed")
+                except Exception as e:
+                    logger.error(f"[Stage 8] Pricing validation error for {solution_name}: {e}")
 
         # Store final results
         self.state.pricing_strategies = pricing_results
@@ -2061,20 +2247,136 @@ Return a valid JSON object with this structure:
         # Mark stage complete with tracking
         self._mark_stage_complete(8)
 
-        logger.info(f"[Stage 8] Pricing Strategy Validation Complete - {len(pricing_results)}/{len(top_n_scores)} solutions analyzed")
+        logger.info(f"[Stage 8] Pricing Strategy Validation Complete - {len(pricing_results)}/{len(top_n_scores)} solutions analyzed (PARALLEL)")
+
+    def _validate_solution_keywords(self, solution_name: str, audience_vocab: list | None) -> dict:
+        """
+        Helper method to validate keywords for a single solution (thread-safe).
+
+        Creates new SeedGenerator instance per call for thread safety.
+
+        Args:
+            solution_name: Name of the solution to validate
+            audience_vocab: Audience vocabulary from Stage 6.5
+
+        Returns:
+            Dict with 'solution_name', 'validation_result' (dict), 'attempts_made',
+            'best_relevance_score', 'accumulated_keywords_count'
+        """
+        logger.info(f"[Parallel] Starting keyword validation for: {solution_name}")
+
+        # Find the full solution object
+        solution = find_solution_by_name(
+            solution_name,
+            self.state.idea_generation.solution_ideas
+        )
+
+        if not solution:
+            logger.warning(f"[Parallel] Solution '{solution_name}' not found in idea generation")
+            return {
+                "solution_name": solution_name,
+                "validation_result": None,
+                "attempts_made": 0,
+                "best_relevance_score": 0.0,
+                "accumulated_keywords_count": 0
+            }
+
+        # Initialize seed generator for this solution (new instance for thread safety)
+        seed_generator = SeedGenerator(
+            state=self.state,
+            niche_context=self.state.niche_context if hasattr(self.state, 'niche_context') else None,
+            pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None,
+            audience_vocabulary=audience_vocab
+        )
+
+        # Adaptive keyword generation with pivot strategies
+        accumulated_good_keywords = []
+        accumulated_keyword_strings = set()
+        best_relevance_score = 0.0
+        best_validation_result = None
+        max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 4)
+        relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.6)
+        keyword_validation_cache: dict[str, tuple] = {}
+        final_attempt = 0
+
+        for attempt in range(1, max_attempts + 1):
+            final_attempt = attempt
+            logger.info(f"[Parallel] {solution_name} - Attempt {attempt}/{max_attempts}")
+
+            # Generate seeds with current strategy
+            seeds = seed_generator.generate_seeds_with_strategy(solution, attempt, count=20)
+
+            if not seeds:
+                logger.warning(f"[Parallel] {solution_name} - Attempt {attempt}: No seeds generated")
+                continue
+
+            # Validate seeds with DataForSEO
+            validation_result = seed_generator.validate_seeds_with_dataforseo(seeds, solution_name)
+
+            # Quick expansion for relevance testing
+            expanded_keywords = seed_generator.expand_seeds_quick(
+                seeds,
+                target_size=getattr(settings, 'keyword_quick_expansion_size', 50)
+            )
+
+            # Check relevance
+            niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
+            relevance_score, good_keywords, issues = check_keyword_relevance(
+                expanded_keywords,
+                solution,
+                niche_context=niche_context,
+                validation_cache=keyword_validation_cache,
+                audience_vocabulary=audience_vocab
+            )
+
+            # Accumulate good keywords across attempts
+            if good_keywords:
+                new_good = [
+                    kw for kw in good_keywords
+                    if kw.get('keyword', '').lower() not in accumulated_keyword_strings
+                ]
+                accumulated_good_keywords.extend(new_good)
+                accumulated_keyword_strings.update(kw.get('keyword', '').lower() for kw in new_good)
+
+            # Track best result
+            if relevance_score > best_relevance_score:
+                best_relevance_score = relevance_score
+                best_validation_result = validation_result
+
+            # Check if we have good enough keywords
+            if relevance_score >= relevance_threshold:
+                logger.info(f"[Parallel] {solution_name} - SUCCESS at attempt {attempt}")
+                break
+
+        # Return result
+        if best_validation_result:
+            best_validation_result["attempts_made"] = final_attempt
+            best_validation_result["best_relevance_score"] = best_relevance_score
+            best_validation_result["accumulated_keywords_count"] = len(accumulated_good_keywords)
+            logger.info(f"[Parallel] {solution_name} complete: {final_attempt} attempts, relevance={best_relevance_score:.2f}")
+        else:
+            logger.warning(f"[Parallel] {solution_name} - All attempts failed")
+
+        return {
+            "solution_name": solution_name,
+            "validation_result": best_validation_result,
+            "attempts_made": final_attempt,
+            "best_relevance_score": best_relevance_score,
+            "accumulated_keywords_count": len(accumulated_good_keywords)
+        }
 
     @listen(stage_8_pricing_validation)
     def stage_8_5_keyword_validation(self):
         """
-        Stage 8.5: Quick Keyword Validation for Top N Solutions
+        Stage 8.5: Quick Keyword Validation for Top N Solutions (Parallel Execution)
 
-        Validates keyword demand for top N solutions using hybrid seed generation
-        (10 programmatic + 10 LLM seeds) to inform final selection decision.
+        Validates keyword demand for top N solutions in parallel for ~50% time savings.
+        Each solution's keyword validation (including adaptive pivot strategies) runs independently.
 
         Adjusts composite scores based on actual market search behavior.
         """
         logger.info("=" * 80)
-        logger.info("STAGE 8.5: Keyword Demand Validation")
+        logger.info("STAGE 8.5: Keyword Demand Validation (PARALLEL)")
         logger.info("=" * 80)
         self._emit_progress(8.5, "Keyword Validation", "running")
 
@@ -2101,180 +2403,84 @@ Return a valid JSON object with this structure:
         top_n_scores = sorted(all_scores, key=lambda s: s.composite_score, reverse=True)[:settings.top_solutions_for_validation]
 
         # Phase 2.2: Always include selected solution for validation (prevents data loss)
-        # The selected solution may not be in top N if Stage 7.6 used different scoring criteria
         selected_name = self.state.solution_selection.selected_solution_name
         top_n_names = {s.solution_name for s in top_n_scores}
         if selected_name and selected_name not in top_n_names:
-            # Find selected solution's score object and add it to validation set
             selected_score = next(
                 (s for s in all_scores if s.solution_name == selected_name),
                 None
             )
             if selected_score:
                 top_n_scores.append(selected_score)
-                logger.info(f"[Stage 8.5] Added selected solution '{selected_name}' to validation set (not in top {settings.top_solutions_for_validation})")
+                logger.info(f"[Stage 8.5] Added selected solution '{selected_name}' to validation set")
 
-        logger.info(f"[Stage 8.5] Validating keyword demand for {len(top_n_scores)} solutions")
+        logger.info(f"[Stage 8.5] Validating keyword demand for {len(top_n_scores)} solutions (PARALLEL)")
 
-        # Resume support: Load existing validation results if available
-        # This allows incremental processing - skip solutions already validated
+        # Resume support: Load existing validation results
         validation_results = []
         already_validated = set()
         if self.state.keyword_validation_results:
             validation_results = list(self.state.keyword_validation_results)
             already_validated = {v.solution_name for v in validation_results}
             if already_validated:
-                logger.info(f"[Stage 8.5] Resuming - {len(already_validated)} solutions already validated: {already_validated}")
+                logger.info(f"[Stage 8.5] Resuming - {len(already_validated)} solutions already validated")
 
-        # Extract audience vocabulary for keyword grounding (Stage 6.5 data)
+        # Extract audience vocabulary for keyword grounding
         audience_vocab = (
             self.state.audience_mapping.common_vocabulary
             if self.state.audience_mapping else None
         )
         if audience_vocab:
-            logger.info(f"[Stage 8.5] Using {len(audience_vocab)} audience vocabulary terms for keyword validation")
+            logger.info(f"[Stage 8.5] Using {len(audience_vocab)} audience vocabulary terms")
 
-        for idx, solution_score in enumerate(top_n_scores, 1):
-            solution_name = solution_score.solution_name
+        # Filter solutions that need validation
+        solutions_to_validate = [
+            solution_score.solution_name
+            for solution_score in top_n_scores
+            if solution_score.solution_name not in already_validated
+        ]
 
-            # Skip if already validated (resume support)
-            if solution_name in already_validated:
-                logger.info(f"[Stage 8.5] ({idx}/{len(top_n_scores)}) Skipping {solution_name} - already validated")
-                continue
+        if not solutions_to_validate:
+            logger.info("[Stage 8.5] All solutions already validated - skipping to post-processing")
+        else:
+            logger.info(f"[Stage 8.5] Validating {len(solutions_to_validate)} solutions in parallel (max_workers=2)")
 
-            logger.info(f"[Stage 8.5] ({idx}/{len(top_n_scores)}) Validating: {solution_name}")
+            # Run keyword validation in parallel
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                # Submit all keyword validation tasks
+                futures = {
+                    executor.submit(self._validate_solution_keywords, solution_name, audience_vocab): solution_name
+                    for solution_name in solutions_to_validate
+                }
 
-            # Find the full solution object
-            solution = find_solution_by_name(
-                solution_name,
-                self.state.idea_generation.solution_ideas
-            )
+                # Collect results as they complete
+                for future in as_completed(futures):
+                    solution_name = futures[future]
+                    try:
+                        result_dict = future.result()
+                        validation_result = result_dict["validation_result"]
 
-            if not solution:
-                logger.warning(f"[Stage 8.5] Solution '{solution_name}' not found in idea generation")
-                continue
+                        if validation_result:
+                            # Convert dict to Pydantic object
+                            validation_obj = CrewKeywordValidationResult(**validation_result)
+                            validation_results.append(validation_obj)
 
-            # Initialize seed generator for this solution
-            seed_generator = SeedGenerator(
-                state=self.state,
-                niche_context=self.state.niche_context if hasattr(self.state, 'niche_context') else None,
-                pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None,
-                audience_vocabulary=audience_vocab
-            )
+                            logger.info(
+                                f"[Stage 8.5] Keyword validation complete: {solution_name} "
+                                f"({result_dict['attempts_made']} attempts, relevance={result_dict['best_relevance_score']:.2f})"
+                            )
 
-            # Adaptive keyword generation with pivot strategies
-            # Try up to 4 attempts with different strategies until relevant keywords found
-            accumulated_good_keywords = []
-            accumulated_keyword_strings = set()  # Track for deduplication across attempts
-            best_relevance_score = 0.0
-            best_validation_result = None
-            max_attempts = getattr(settings, 'keyword_pivot_max_attempts', 4)
-            relevance_threshold = getattr(settings, 'keyword_relevance_threshold', 0.6)
-            # Cache for keyword validation across attempts (avoids re-validating same keywords)
-            keyword_validation_cache: dict[str, tuple] = {}
+                            # Incremental checkpoint (thread-safe: append only)
+                            self.state.keyword_validation_results = validation_results
+                            self.checkpoint_mgr.save_stage(
+                                "stage_8_5_keyword_validation_partial",
+                                [v.model_dump() for v in validation_results]
+                            )
+                        else:
+                            logger.warning(f"[Stage 8.5] Keyword validation failed: {solution_name}")
 
-            for attempt in range(1, max_attempts + 1):
-                logger.info(f"[Stage 8.5] Attempt {attempt}/{max_attempts} for {solution_name}")
-
-                # Generate seeds with current strategy
-                seeds = seed_generator.generate_seeds_with_strategy(solution, attempt, count=20)
-
-                if not seeds:
-                    logger.warning(f"[Stage 8.5] Attempt {attempt}: No seeds generated - skipping")
-                    continue
-
-                logger.debug(f"[Stage 8.5] Attempt {attempt} seeds ({len(seeds)}): {seeds[:5]}...")
-
-                # Validate seeds with DataForSEO
-                validation_result = seed_generator.validate_seeds_with_dataforseo(seeds, solution_name)
-
-                # Quick expansion for relevance testing
-                expanded_keywords = seed_generator.expand_seeds_quick(
-                    seeds,
-                    target_size=getattr(settings, 'keyword_quick_expansion_size', 50)
-                )
-
-                # Check relevance
-                niche_context = self.state.niche_context if hasattr(self.state, 'niche_context') else None
-                relevance_score, good_keywords, issues = check_keyword_relevance(
-                    expanded_keywords,
-                    solution,
-                    niche_context=niche_context,
-                    validation_cache=keyword_validation_cache,
-                    audience_vocabulary=audience_vocab
-                )
-
-                # Accumulate good keywords across attempts (with deduplication)
-                if good_keywords:
-                    # Filter duplicates from this attempt (case-insensitive)
-                    new_good = [
-                        kw for kw in good_keywords
-                        if kw.get('keyword', '').lower() not in accumulated_keyword_strings
-                    ]
-                    duplicates_filtered = len(good_keywords) - len(new_good)
-                    accumulated_good_keywords.extend(new_good)
-                    accumulated_keyword_strings.update(kw.get('keyword', '').lower() for kw in new_good)
-                    logger.info(
-                        f"[Stage 8.5] Attempt {attempt}: Found {len(new_good)} unique good keywords "
-                        f"({duplicates_filtered} duplicates filtered), "
-                        f"total accumulated: {len(accumulated_good_keywords)}"
-                    )
-
-                # Track best result
-                if relevance_score > best_relevance_score:
-                    best_relevance_score = relevance_score
-                    best_validation_result = validation_result
-                    logger.info(
-                        f"[Stage 8.5] Attempt {attempt}: New best relevance score: {relevance_score:.2f}"
-                    )
-
-                # Check if we have good enough keywords
-                if relevance_score >= relevance_threshold:
-                    logger.info(
-                        f"[Stage 8.5] Attempt {attempt}: SUCCESS - relevance {relevance_score:.2f} "
-                        f">= threshold {relevance_threshold:.2f}"
-                    )
-                    break
-                else:
-                    logger.warning(
-                        f"[Stage 8.5] Attempt {attempt}: PIVOT needed - relevance {relevance_score:.2f} "
-                        f"< threshold {relevance_threshold:.2f}. Issues: {', '.join(issues)}"
-                    )
-
-                    # If this is the last attempt, accept what we have
-                    if attempt == max_attempts:
-                        logger.warning(
-                            f"[Stage 8.5] Max attempts reached - proceeding with best result "
-                            f"(relevance: {best_relevance_score:.2f})"
-                        )
-
-            # Use best validation result
-            if best_validation_result:
-                # Enhance with accumulated keywords metadata
-                best_validation_result["attempts_made"] = attempt
-                best_validation_result["best_relevance_score"] = best_relevance_score
-                best_validation_result["accumulated_keywords_count"] = len(accumulated_good_keywords)
-
-                # Convert dict to Pydantic object for type safety
-                validation_obj = CrewKeywordValidationResult(**best_validation_result)
-                validation_results.append(validation_obj)
-
-                logger.info(
-                    f"[Stage 8.5] Final result for {solution_name}: "
-                    f"{attempt} attempts, relevance={best_relevance_score:.2f}, "
-                    f"{len(accumulated_good_keywords)} good keywords accumulated"
-                )
-
-                # Incremental save: Update state and checkpoint after each solution
-                # This ensures we don't lose progress if pipeline crashes mid-loop
-                self.state.keyword_validation_results = validation_results
-                self.checkpoint_mgr.save_stage(
-                    "stage_8_5_keyword_validation_partial",
-                    [v.model_dump() for v in validation_results]
-                )
-                logger.debug(f"[Stage 8.5] Incremental checkpoint saved ({len(validation_results)} solutions)")
-            else:
-                logger.error(f"[Stage 8.5] All attempts failed for {solution_name} - no validation result")
+                    except Exception as e:
+                        logger.error(f"[Stage 8.5] Keyword validation error for {solution_name}: {e}")
 
         # Store validation results in state
         self.state.keyword_validation_results = validation_results
@@ -2387,13 +2593,73 @@ Return a valid JSON object with this structure:
 
         logger.info(f"[Stage 8.5] Keyword validation complete - {len(validation_results)} solutions validated")
 
+    def _analyze_traffic_monetization(self, solution_name: str) -> dict:
+        """
+        Helper method to analyze traffic monetization for a single solution (thread-safe).
+
+        Creates a new TrafficMonetizationCrew instance per call for thread safety.
+
+        Args:
+            solution_name: Name of the solution to analyze
+
+        Returns:
+            Dict with 'solution_name', 'result' (TrafficMonetizationResult), and 'usage_metrics'
+        """
+        logger.info(f"[Parallel] Starting traffic monetization for: {solution_name}")
+
+        # Find full solution object
+        solution = find_solution_by_name(
+            solution_name,
+            self.state.idea_generation.solution_ideas
+        )
+
+        if not solution:
+            logger.warning(f"[Parallel] Solution '{solution_name}' not found in idea generation")
+            return {
+                "solution_name": solution_name,
+                "result": None,
+                "usage_metrics": None
+            }
+
+        # Create new TrafficMonetizationCrew instance for thread safety
+        traffic_crew = TrafficMonetizationCrew()
+
+        try:
+            # Run traffic monetization analysis
+            result = traffic_crew.analyze(
+                selected_solution=solution,
+                keyword_validation_results=self.state.keyword_validation_results,
+                competitive_analysis=self.state.competitive_analysis,
+                niche_description=self.niche_description
+            )
+
+            if result:
+                logger.info(f"[Parallel] Traffic monetization complete for {solution_name}: {result.monetization_model}")
+            else:
+                logger.warning(f"[Parallel] Traffic monetization failed for {solution_name}")
+
+            return {
+                "solution_name": solution_name,
+                "result": result,
+                "usage_metrics": traffic_crew.usage_metrics
+            }
+
+        except Exception as e:
+            logger.error(f"[Parallel] Error analyzing {solution_name}: {str(e)}")
+            return {
+                "solution_name": solution_name,
+                "result": None,
+                "usage_metrics": None
+            }
+
     @listen(stage_8_5_keyword_validation)
     def stage_8_55_traffic_monetization(self):
         """
-        Stage 8.55: Traffic Monetization Analysis (for directories/aggregators)
+        Stage 8.55: Traffic Monetization Analysis (Parallel Execution)
 
         For traffic-based project types (directory, aggregator, comparison-tool),
         provides traffic monetization strategy instead of SaaS pricing.
+        Runs in parallel for ~50% time savings.
 
         Uses keyword data from Stage 8.5 to estimate:
         - Traffic potential (monthly pageviews)
@@ -2402,7 +2668,7 @@ Return a valid JSON object with this structure:
         - Sponsored listing potential
         """
         logger.info("=" * 80)
-        logger.info("STAGE 8.55: Traffic Monetization Analysis")
+        logger.info("STAGE 8.55: Traffic Monetization Analysis (PARALLEL)")
         logger.info("=" * 80)
         self._emit_progress(8.55, "Traffic Monetization", "running")
 
@@ -2451,7 +2717,7 @@ Return a valid JSON object with this structure:
             )
             return
 
-        logger.info(f"[Stage 8.55] Analyzing {len(traffic_solutions)} traffic-based solutions")
+        logger.info(f"[Stage 8.55] Analyzing {len(traffic_solutions)} traffic-based solutions (PARALLEL)")
 
         # Initialize results list (support resume)
         traffic_results = []
@@ -2461,54 +2727,62 @@ Return a valid JSON object with this structure:
             already_analyzed = {r.solution_name for r in traffic_results}
             logger.info(f"[Stage 8.55] Resuming - {len(already_analyzed)} solutions already analyzed")
 
-        # Initialize Traffic Monetization Crew
-        traffic_crew = TrafficMonetizationCrew()
+        # Filter solutions that need analysis
+        solutions_to_analyze = [
+            solution.solution_name
+            for score, solution in traffic_solutions
+            if solution.solution_name not in already_analyzed
+        ]
 
-        for idx, (score, solution) in enumerate(traffic_solutions, 1):
-            solution_name = solution.solution_name
+        if not solutions_to_analyze:
+            logger.info("[Stage 8.55] All solutions already analyzed - skipping")
+            self._mark_stage_complete(8.55)
+            return
 
-            # Skip if already analyzed (resume support)
-            if solution_name in already_analyzed:
-                logger.info(f"[Stage 8.55] ({idx}/{len(traffic_solutions)}) Skipping {solution_name} - already analyzed")
-                continue
+        logger.info(f"[Stage 8.55] Analyzing {len(solutions_to_analyze)} solutions in parallel (max_workers=2)")
 
-            logger.info(f"[Stage 8.55] ({idx}/{len(traffic_solutions)}) Analyzing: {solution_name}")
+        # Run traffic monetization in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            # Submit all traffic monetization tasks
+            futures = {
+                executor.submit(self._analyze_traffic_monetization, solution_name): solution_name
+                for solution_name in solutions_to_analyze
+            }
 
-            try:
-                # Run traffic monetization analysis
-                result = traffic_crew.analyze(
-                    selected_solution=solution,
-                    keyword_validation_results=self.state.keyword_validation_results,
-                    competitive_analysis=self.state.competitive_analysis,
-                    niche_description=self.niche_description
-                )
+            # Collect results as they complete
+            for future in as_completed(futures):
+                solution_name = futures[future]
+                try:
+                    result_dict = future.result()
+                    result = result_dict["result"]
+                    usage_metrics = result_dict["usage_metrics"]
 
-                # Record crew cost
-                if traffic_crew.usage_metrics:
-                    self.cost_tracker.record_crew_usage(
-                        stage=f"Stage 8.55 - Traffic Monetization ({solution_name})",
-                        usage_metrics=traffic_crew.usage_metrics,
-                        model=settings.openai_model_name
-                    )
+                    # Record crew cost
+                    if usage_metrics:
+                        self.cost_tracker.record_crew_usage(
+                            stage=f"Stage 8.55 - Traffic Monetization ({solution_name})",
+                            usage_metrics=usage_metrics,
+                            model=settings.openai_model_name
+                        )
 
-                if result:
-                    traffic_results.append(result)
-                    logger.info(
-                        f"[Stage 8.55] ✓ {solution_name}: {result.monetization_model} model, "
-                        f"Est. Revenue: {result.estimated_monthly_revenue_range}"
-                    )
+                    if result:
+                        traffic_results.append(result)
+                        logger.info(
+                            f"[Stage 8.55] Traffic monetization complete: {solution_name} "
+                            f"({result.monetization_model}, {result.estimated_monthly_revenue_range})"
+                        )
 
-                    # Incremental checkpoint
-                    self.state.traffic_monetization_results = traffic_results
-                    self.checkpoint_mgr.save_stage(
-                        "stage_8_55_traffic_monetization_partial",
-                        [r.model_dump() for r in traffic_results]
-                    )
-                else:
-                    logger.warning(f"[Stage 8.55] ✗ {solution_name}: Traffic monetization analysis failed")
+                        # Incremental checkpoint (thread-safe: append only)
+                        self.state.traffic_monetization_results = traffic_results
+                        self.checkpoint_mgr.save_stage(
+                            "stage_8_55_traffic_monetization_partial",
+                            [r.model_dump() for r in traffic_results]
+                        )
+                    else:
+                        logger.warning(f"[Stage 8.55] Traffic monetization failed: {solution_name}")
 
-            except Exception as e:
-                logger.error(f"[Stage 8.55] Error analyzing {solution_name}: {str(e)}")
+                except Exception as e:
+                    logger.error(f"[Stage 8.55] Traffic monetization error for {solution_name}: {e}")
 
         # Store final results
         self.state.traffic_monetization_results = traffic_results
@@ -2525,7 +2799,7 @@ Return a valid JSON object with this structure:
 
         logger.info(
             f"[Stage 8.55] Traffic Monetization Analysis Complete - "
-            f"{len(traffic_results)}/{len(traffic_solutions)} solutions analyzed"
+            f"{len(traffic_results)}/{len(traffic_solutions)} solutions analyzed (PARALLEL)"
         )
 
     @listen(stage_8_55_traffic_monetization)
@@ -2801,6 +3075,12 @@ Return a valid JSON object with this structure:
         logger.info("STAGE 9: Integrated Keyword Research + SEO Strategy")
         logger.info("=" * 80)
         self._emit_progress(9, "SEO Strategy", "running")
+
+        # Early exit if SEO strategy already exists from checkpoint
+        if self.state.seo_strategy_report is not None:
+            logger.info("✓ SEO strategy already loaded from checkpoint - skipping Stage 9")
+            self._emit_progress(9, "SEO Strategy", "completed")
+            return
 
         # Check if we have solution selection
         if not self.state.solution_selection:

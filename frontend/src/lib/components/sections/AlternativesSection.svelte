@@ -57,9 +57,15 @@
 						<div class="flex flex-wrap gap-2">
 							{#if solution.solo_dev_feasibility != null}
 								{@const feasibility = solution.solo_dev_feasibility}
-								<Badge variant={feasibility >= 0.7 ? 'success' : feasibility >= 0.4 ? 'warning' : 'error'} size="sm">
-									Solo Dev: {Math.round(feasibility * 100)}%
-								</Badge>
+								{#if typeof feasibility === 'number' && Number.isFinite(feasibility)}
+									<Badge variant={feasibility >= 0.7 ? 'success' : feasibility >= 0.4 ? 'warning' : 'error'} size="sm">
+										Solo Dev: {Math.round(feasibility * 100)}%
+									</Badge>
+								{:else if typeof feasibility === 'string' && feasibility}
+									<Badge variant={feasibility.toUpperCase() === 'HIGH' ? 'success' : feasibility.toUpperCase() === 'LOW' ? 'error' : 'warning'} size="sm">
+										Solo Dev: {feasibility}
+									</Badge>
+								{/if}
 							{/if}
 							{#if solution.competitive_intensity}
 								<Badge variant="muted" size="sm">

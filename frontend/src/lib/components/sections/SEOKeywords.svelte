@@ -16,7 +16,9 @@
 		ChevronRight,
 		ChevronDown,
 		ArrowUpRight,
-		Hash
+		Hash,
+		Table,
+		Lightbulb
 	} from 'lucide-svelte';
 	import type {
 		SEOStrategy,
@@ -121,6 +123,19 @@
 		if (Array.isArray(h2)) return h2;
 		// Old format: try to split by newlines or return as single item
 		return h2.split('\n').map(s => s.replace(/^[-*]\s*/, '').trim()).filter(Boolean);
+	}
+
+	// View mode for keywords section
+	let viewMode = $state<'table' | 'insights'>('table');
+
+	// Helper to get intent badge variant
+	function getIntentVariant(intent: string | undefined): 'success' | 'accent' | 'muted' | 'info' {
+		if (!intent) return 'muted';
+		const lower = intent.toLowerCase();
+		if (lower.includes('conversion') || lower.includes('transactional')) return 'success';
+		if (lower.includes('commercial')) return 'accent';
+		if (lower.includes('informational')) return 'info';
+		return 'muted';
 	}
 
 </script>
@@ -254,6 +269,26 @@
 		</button>
 		{#if showKeywords}
 			<div class="expandable-content">
+				<!-- View Toggle -->
+				<div class="view-toggle">
+					<button
+						class="view-toggle-btn"
+						class:active={viewMode === 'table'}
+						onclick={() => viewMode = 'table'}
+					>
+						<Table class="toggle-icon" />
+						Table
+					</button>
+					<button
+						class="view-toggle-btn"
+						class:active={viewMode === 'insights'}
+						onclick={() => viewMode = 'insights'}
+					>
+						<Lightbulb class="toggle-icon" />
+						Insights
+					</button>
+				</div>
+
 				<!-- Search and Tabs Row -->
 				<div class="keyword-controls">
 					<div class="search-input-wrapper">
@@ -319,50 +354,93 @@
 					</p>
 				{/if}
 
-				<!-- Keywords Table -->
-				<div class="table-container">
-					<table class="keywords-table">
-						<thead>
-							<tr>
-								<th class="th-keyword">Keyword</th>
-								<th class="th-volume">Volume</th>
-								<th class="th-competition">Competition</th>
-								<th class="th-tier">Tier</th>
-							</tr>
-						</thead>
-						<tbody>
-							{#each getFilteredKeywords().slice(0, displayLimit) as kw}
-								{@const difficulty = parseCompetition(kw.competition)}
+				{#if viewMode === 'table'}
+					<!-- Keywords Table -->
+					<div class="table-container">
+						<table class="keywords-table">
+							<thead>
 								<tr>
-									<td class="td-keyword">
-										<Hash class="keyword-icon" />
-										<span>{kw.keyword}</span>
-									</td>
-									<td class="td-volume">
-										<span class="volume-value">{formatNumber(kw.search_volume)}</span>
-										<span class="volume-unit">/mo</span>
-									</td>
-									<td class="td-competition">
-										<div class="competition-bar">
-											<div
-												class="competition-fill"
-												style="width: {difficulty * 100}%; background: {getDifficultyColor(difficulty)}"
-											></div>
-										</div>
-										<span class="competition-value" style="color: {getDifficultyColor(difficulty)}"
-											>{(difficulty * 100).toFixed(0)}</span
-										>
-									</td>
-									<td class="td-tier">
-										<Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
-											>{getTierLabel(kw.tier)}</Badge
-										>
-									</td>
+									<th class="th-keyword">Keyword</th>
+									<th class="th-volume">Volume</th>
+									<th class="th-competition">Competition</th>
+									<th class="th-tier">Tier</th>
 								</tr>
-							{/each}
-						</tbody>
-					</table>
-				</div>
+							</thead>
+							<tbody>
+								{#each getFilteredKeywords().slice(0, displayLimit) as kw}
+									{@const difficulty = parseCompetition(kw.competition)}
+									<tr>
+										<td class="td-keyword">
+											<Hash class="keyword-icon" />
+											<span>{kw.keyword}</span>
+										</td>
+										<td class="td-volume">
+											<span class="volume-value">{formatNumber(kw.search_volume)}</span>
+											<span class="volume-unit">/mo</span>
+										</td>
+										<td class="td-competition">
+											<div class="competition-bar">
+												<div
+													class="competition-fill"
+													style="width: {difficulty * 100}%; background: {getDifficultyColor(difficulty)}"
+												></div>
+											</div>
+											<span class="competition-value" style="color: {getDifficultyColor(difficulty)}"
+												>{(difficulty * 100).toFixed(0)}</span
+											>
+										</td>
+										<td class="td-tier">
+											<Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
+												>{getTierLabel(kw.tier)}</Badge
+											>
+										</td>
+									</tr>
+								{/each}
+							</tbody>
+						</table>
+					</div>
+				{:else}
+					<!-- Insights cards view -->
+					<div class="insights-grid">
+						{#each getFilteredKeywords().slice(0, displayLimit) as kw}
+							{@const difficulty = parseCompetition(kw.competition)}
+							<div class="insight-card">
+								<div class="insight-header">
+									<span class="insight-keyword">{kw.keyword}</span>
+									<Badge variant={getKeywordTierVariant(kw.tier)} size="sm">{getTierLabel(kw.tier)}</Badge>
+								</div>
+								<div class="insight-metrics">
+									<div class="metric">
+										<span class="metric-value">{formatNumber(kw.search_volume)}</span>
+										<span class="metric-label">Volume/mo</span>
+									</div>
+									<div class="metric">
+										<span class="metric-value" style="color: {getDifficultyColor(difficulty)}">{(difficulty * 100).toFixed(0)}</span>
+										<span class="metric-label">Competition</span>
+									</div>
+								</div>
+								{#if kw.intent}
+									<div class="insight-intent">
+										<Badge variant={getIntentVariant(kw.intent)} size="sm">{kw.intent}</Badge>
+										<span class="insight-label">Intent</span>
+									</div>
+								{/if}
+								{#if kw.strategy}
+									<div class="insight-strategy">
+										<span class="insight-label">Strategy</span>
+										<p class="insight-text">{kw.strategy}</p>
+									</div>
+								{/if}
+								{#if kw.tier_rationale}
+									<div class="insight-rationale">
+										<span class="insight-label">Why this tier?</span>
+										<p class="insight-text muted">{kw.tier_rationale}</p>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
+				{/if}
 
 				<!-- Show More / Show Less -->
 				{#if getFilteredKeywords().length > INITIAL_KEYWORD_LIMIT}
@@ -1180,6 +1258,137 @@
 		text-align: right;
 	}
 
+	/* View Toggle */
+	.view-toggle {
+		display: flex;
+		gap: 0.25rem;
+		padding: 0.25rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		width: fit-content;
+		margin-bottom: 1rem;
+	}
+
+	.view-toggle-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+		padding: 0.375rem 0.75rem;
+		background: transparent;
+		border: none;
+		border-radius: 0.375rem;
+		font-size: 0.8125rem;
+		font-weight: 500;
+		color: var(--color-text-muted);
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.view-toggle-btn:hover {
+		color: var(--color-text-primary);
+	}
+
+	.view-toggle-btn.active {
+		background: var(--color-bg-elevated);
+		color: var(--color-accent);
+	}
+
+	.view-toggle-btn :global(.toggle-icon) {
+		width: 1rem;
+		height: 1rem;
+	}
+
+	/* Insights Grid */
+	.insights-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+		gap: 0.75rem;
+	}
+
+	.insight-card {
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
+		border-radius: 0.5rem;
+		padding: 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.insight-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.insight-keyword {
+		font-family: var(--font-mono);
+		font-weight: 600;
+		color: var(--color-text-primary);
+	}
+
+	.insight-metrics {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 1rem;
+	}
+
+	.insight-metrics .metric {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.insight-metrics .metric-value {
+		font-family: var(--font-display);
+		font-weight: 600;
+		font-size: 1rem;
+		color: var(--color-text-primary);
+	}
+
+	.insight-metrics .metric-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		text-transform: uppercase;
+		color: var(--color-text-muted);
+	}
+
+	.insight-intent {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.insight-strategy,
+	.insight-rationale {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.insight-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+	}
+
+	.insight-text {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+		margin: 0;
+	}
+
+	.insight-text.muted {
+		color: var(--color-text-muted);
+		font-style: italic;
+	}
+
 	.table-footer {
 		text-align: center;
 		font-size: 0.75rem;
@@ -1797,6 +2006,10 @@
 			align-items: stretch;
 		}
 
+		.insights-grid {
+			grid-template-columns: 1fr;
+		}
+
 		.search-input-wrapper {
 			max-width: none;
 		}
@@ -1832,6 +2045,15 @@
 		.tab-button {
 			width: 100%;
 			justify-content: space-between;
+		}
+
+		.view-toggle {
+			width: 100%;
+		}
+
+		.view-toggle-btn {
+			flex: 1;
+			justify-content: center;
 		}
 	}
 

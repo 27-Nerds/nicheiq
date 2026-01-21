@@ -114,6 +114,7 @@ def sample_pain_point_analysis():
     ]
 
     return PainPointAnalysisResult(
+        niche="test niche",
         pain_points=pain_points,
         total_mentions=50,
         top_categories=["workflow", "integration"],

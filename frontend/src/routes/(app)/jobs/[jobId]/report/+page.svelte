@@ -163,6 +163,7 @@
 						analytics={report.competitive_analytics}
 						landscapeMatrix={report.competitive_landscape_matrix}
 						summary={report.competitive_summary}
+						selectedSolutionName={report.selected_solution_name}
 					/>
 				{/if}
 			</div>

@@ -20,7 +20,7 @@ export function renderTechnicalContent(content: string | undefined | null): stri
 
 	// 1. Wrap JSON-LD blocks in code fences
 	// Find JSON-LD patterns starting with {"@ and extract complete balanced JSON
-	const jsonLdPattern = /\{"@/g;
+	const jsonLdPattern = /\{\s*"@/g;
 	let jsonMatch;
 	while ((jsonMatch = jsonLdPattern.exec(processed)) !== null) {
 		const startIdx = jsonMatch.index;
