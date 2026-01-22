@@ -128,11 +128,17 @@ extract_pain_points:
 
     1. Review categorization report → identify high/medium-frequency categories
     2. For each category → extract 2-5 specific pain points with supporting evidence
-    3. Query knowledge sources → find ≥3 direct quotes per pain point (MANDATORY)
-    4. Identify severity indicators → "frustrating", "critical", "showstopper"
-    5. Note current solutions/workarounds users mention
-    6. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
-    7. Validate: If <3 quotes found → EXCLUDE pain point (quality over quota)
+    3. **COUNT ALL UNIQUE DISCUSSIONS FIRST** → Query knowledge sources for ALL posts mentioning this problem pattern. Count every unique [source: ID] you find. This count becomes mention_count.
+    4. **THEN SELECT REPRESENTATIVE QUOTES** → From those mentions, select 3-5 best quotes. The quote count will be MUCH SMALLER than mention_count.
+    5. Identify severity indicators → "frustrating", "critical", "showstopper"
+    6. Note current solutions/workarounds users mention
+    7. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
+    8. Validate: If <3 quotes found → EXCLUDE pain point (quality over quota)
+
+    **CRITICAL**: mention_count and quote count are DIFFERENT:
+    - mention_count = ALL unique posts discussing this problem (typically 10-50+)
+    - representative_quotes = 3-5 SELECTED examples from those mentions
+    - If mention_count equals quote count, you're doing it wrong
 
     **CATEGORY COVERAGE REQUIREMENT** (Prevents Missing High-WTP Pain Points):
 
@@ -232,7 +238,7 @@ extract_pain_points:
     **extracted_pain_points**: List of UnvalidatedPainPoint objects (10-20 pain points), each containing:
        - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
        - **description**: 2-3 sentence clear articulation of the specific problem in user language
-       - **mention_count**: Total number of UNIQUE discussions/posts where this problem was mentioned (count distinct source posts, NOT quote count - a pain point may have 20+ mentions but only 3-5 representative quotes selected)
+       - **mention_count**: Count of ALL unique discussions/posts mentioning this problem (search knowledge sources comprehensively, count every unique [source: ID]). This should be LARGER than the number of representative_quotes. Example: If you found 18 posts discussing "slow onboarding", mention_count = 18, even if you only selected 4 representative quotes.
        - **representative_quotes**: 3-5 direct user quotes (MUST include [source: ID] suffix)
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to

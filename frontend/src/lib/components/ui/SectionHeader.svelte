@@ -1,19 +1,19 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
+	import type { ComponentType } from 'svelte';
 
 	interface Props {
-		icon: Component;
+		icon: ComponentType;
 		title: string;
 		subtitle: string;
 		id?: string;
 	}
 
-	let { icon, title, subtitle, id }: Props = $props();
+	let { icon: Icon, title, subtitle, id }: Props = $props();
 </script>
 
 <div class="section-header" {id}>
 	<div class="header-icon-wrap">
-		<svelte:component this={icon} class="header-icon" />
+		<Icon class="header-icon" />
 	</div>
 	<div class="header-text">
 		<h2 class="section-title">{title}</h2>

@@ -17,6 +17,8 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
@@ -68,52 +70,42 @@
 	/>
 
 	<!-- Hero Strip: Viability Verdict + Key Signals -->
-	<div class="hero-strip">
-		<div class="verdict-hero" style="--verdict-color: {viabilityConfig.color}">
-			<div class="verdict-indicator">
-				<CheckCircle class="verdict-icon" />
+	<HeroStrip>
+		{#snippet primary()}
+			<div class="verdict-hero" style="--verdict-color: {viabilityConfig.color}">
+				<div class="verdict-indicator">
+					<CheckCircle class="verdict-icon" />
+				</div>
+				<div class="verdict-content">
+					<span class="verdict-label">MARKET VIABILITY</span>
+					<span class="verdict-value">{viabilityConfig.label}</span>
+				</div>
 			</div>
-			<div class="verdict-content">
-				<span class="verdict-label">MARKET VIABILITY</span>
-				<span class="verdict-value">{viabilityConfig.label}</span>
-			</div>
-		</div>
-
-		<div class="hero-signals">
-			{#if data.market_growth_rate}
-				<div class="hero-signal">
-					<TrendingUp class="signal-icon success" />
-					<div class="signal-content">
-						<span class="signal-label">Growth Rate</span>
-						<span class="signal-value">{data.market_growth_rate}</span>
-					</div>
-				</div>
-			{/if}
-
-			{#if data.market_saturation_level}
-				<div class="hero-signal">
-					<div class="signal-content">
-						<span class="signal-label">Saturation</span>
-						<Badge variant={getSaturationVariant(data.market_saturation_level)} size="sm">
-							{data.market_saturation_level}
-						</Badge>
-					</div>
-				</div>
-			{/if}
-
-			{#if data.market_timing_assessment}
-				<div class="hero-signal">
-					<Timer class="signal-icon" />
-					<div class="signal-content">
-						<span class="signal-label">Timing</span>
-						<Badge variant={getTimingVariant(data.market_timing_assessment)} size="sm">
-							{data.market_timing_assessment}
-						</Badge>
-					</div>
-				</div>
-			{/if}
-		</div>
-	</div>
+		{/snippet}
+		{#if data.market_growth_rate}
+			<HeroMetric
+				value={data.market_growth_rate}
+				label="Growth Rate"
+				icon={TrendingUp}
+				color="success"
+			/>
+		{/if}
+		{#if data.market_saturation_level}
+			<HeroMetric
+				value={data.market_saturation_level}
+				label="Saturation"
+				color={getSaturationVariant(data.market_saturation_level)}
+			/>
+		{/if}
+		{#if data.market_timing_assessment}
+			<HeroMetric
+				value={data.market_timing_assessment}
+				label="Timing"
+				icon={Timer}
+				color={getTimingVariant(data.market_timing_assessment)}
+			/>
+		{/if}
+	</HeroStrip>
 
 	<!-- Market Funnel Visualization -->
 	<div class="funnel-card">
@@ -331,26 +323,12 @@
 
 <style>
 	/* =========================
-	   HERO STRIP
+	   VERDICT HERO (inside HeroStrip primary)
 	   ========================= */
-	.hero-strip {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		padding: 1.125rem 1.25rem;
-		background: #FFFFFF;
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		border-radius: 0.75rem;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
-	}
-
 	.verdict-hero {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding-right: 1.5rem;
-		border-right: 1px solid rgba(0, 0, 0, 0.08);
 	}
 
 	.verdict-indicator {
@@ -382,7 +360,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.1em;
-		color: #A1A1AA;
+		color: var(--color-text-muted);
 	}
 
 	.verdict-value {
@@ -390,51 +368,6 @@
 		font-size: 1.25rem;
 		font-weight: 800;
 		color: var(--verdict-color);
-	}
-
-	.hero-signals {
-		display: flex;
-		align-items: center;
-		gap: 1.25rem;
-		flex-wrap: wrap;
-	}
-
-	.hero-signal {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	:global(.signal-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: #A1A1AA;
-	}
-
-	:global(.signal-icon.success) {
-		color: #22C55E;
-	}
-
-	.signal-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.signal-label {
-		font-family: var(--font-mono);
-		font-size: 0.5625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: #A1A1AA;
-	}
-
-	.signal-value {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 700;
-		color: #22C55E;
 	}
 
 	/* =========================
@@ -801,25 +734,6 @@
 	   RESPONSIVE
 	   ========================= */
 	@media (max-width: 768px) {
-		.hero-strip {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 1rem;
-		}
-
-		.verdict-hero {
-			padding-right: 0;
-			border-right: none;
-			padding-bottom: 1rem;
-			border-bottom: 1px solid rgba(0, 0, 0, 0.06);
-			width: 100%;
-		}
-
-		.hero-signals {
-			width: 100%;
-			justify-content: space-between;
-		}
-
 		.segment-metrics {
 			flex-direction: column;
 			gap: 0.5rem;

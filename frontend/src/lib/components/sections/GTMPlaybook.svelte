@@ -27,7 +27,9 @@
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
-	import HeroStat from '$lib/components/ui/HeroStat.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import HeroPrimary from '$lib/components/ui/HeroPrimary.svelte';
+	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 
 	interface Props {
 		gtmData: GoToMarketBlueprint;
@@ -108,40 +110,34 @@
 	/>
 
 	<!-- Hero Strip -->
-	<div class="hero-strip">
-		<div class="hero-metric">
-			<ProgressRing
-				value={Math.min(totalActions / 20, 1)}
-				size={56}
-				strokeWidth={5}
-				color="accent"
-				showValue={false}
-			/>
-			<div class="hero-metric-content">
-				<span class="hero-metric-value">{totalActions}</span>
-				<span class="hero-metric-label">Actions</span>
+	<HeroStrip>
+		{#snippet primary()}
+			<div class="gtm-hero-primary">
+				<ProgressRing
+					value={Math.min(totalActions / 20, 1)}
+					size={72}
+					strokeWidth={6}
+					color="accent"
+					showValue={false}
+					glow={true}
+					thick={true}
+				/>
+				<div class="gtm-hero-primary-content">
+					<span class="gtm-hero-primary-value">{totalActions}</span>
+					<span class="gtm-hero-primary-label">Actions</span>
+					<span class="gtm-hero-primary-sublabel">30-Day Plan</span>
+				</div>
 			</div>
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">{channelCount}</span>
-			<span class="hero-stat-label">Channels</span>
-			{#if highPriorityChannels > 0}
-				<Badge variant="success" size="sm">{highPriorityChannels} high priority</Badge>
-			{/if}
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">{contentAnglesCount}</span>
-			<span class="hero-stat-label">Content Angles</span>
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">30</span>
-			<span class="hero-stat-label">Day Plan</span>
-			<Badge variant="accent" size="sm">4 weeks</Badge>
-		</div>
-	</div>
+		{/snippet}
+		<HeroMetric
+			value={channelCount}
+			label="Channels"
+			icon={Megaphone}
+			color={highPriorityChannels > 0 ? 'success' : 'neutral'}
+		/>
+		<HeroMetric value={contentAnglesCount} label="Content Angles" icon={FileText} />
+		<HeroMetric value="4" label="Weeks" suffix="planned" icon={Calendar} color="accent" />
+	</HeroStrip>
 
 	<!-- Core Message Hero - Always Visible -->
 	<div class="insight-card insight-card--accent message-hero">
@@ -486,74 +482,39 @@
 </section>
 
 <style>
-	/* Hero Strip */
-	.hero-strip {
+	/* GTM Hero Primary (custom for actions display) */
+	.gtm-hero-primary {
 		display: flex;
 		align-items: center;
-		gap: 1.5rem;
-		padding: 1.25rem 1.5rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		margin-bottom: 1.5rem;
-		flex-wrap: wrap;
+		gap: 1rem;
 	}
 
-	.hero-metric {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.hero-metric-content {
+	.gtm-hero-primary-content {
 		display: flex;
 		flex-direction: column;
+		gap: 0.125rem;
 	}
 
-	.hero-metric-value {
+	.gtm-hero-primary-value {
 		font-family: var(--font-display);
-		font-size: 1.5rem;
+		font-size: 2rem;
 		font-weight: 800;
 		color: var(--color-accent);
 		line-height: 1;
 	}
 
-	.hero-metric-label {
+	.gtm-hero-primary-label {
 		font-family: var(--font-mono);
 		font-size: 0.625rem;
-		font-weight: 500;
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-text-muted);
 	}
 
-	.hero-divider {
-		width: 1px;
-		height: 2.5rem;
-		background: var(--color-border);
-	}
-
-	.hero-stat {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.hero-stat-value {
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: var(--color-text-primary);
-		line-height: 1;
-	}
-
-	.hero-stat-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
+	.gtm-hero-primary-sublabel {
+		font-size: 0.75rem;
+		color: var(--color-text-secondary);
 	}
 
 	/* Message Hero */
@@ -1211,16 +1172,6 @@
 
 	/* Responsive */
 	@media (max-width: 768px) {
-		.hero-strip {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 1rem;
-		}
-
-		.hero-divider {
-			display: none;
-		}
-
 		.icp-summary-grid,
 		.icp-details-grid {
 			grid-template-columns: 1fr;

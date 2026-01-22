@@ -216,3 +216,53 @@ def publish_job_failed(job_id: str, error: str, stage: Optional[float] = None) -
         error=error,
     )
     logger.error(f"[Progress] Job {job_id} failed at stage {stage}: {error}")
+
+
+def notify_job_quality_gate_stop(
+    job_id: str,
+    reason: str,
+    details: dict,
+    stage: int
+) -> bool:
+    """
+    Notify backend that a quality gate intentionally stopped the job.
+
+    This is different from a failure - it's an intentional stop due to
+    insufficient data quality. The backend stores this in stopReason/stopReasonDetails
+    fields to enable different UI treatment.
+
+    Args:
+        job_id: The job UUID
+        reason: Stop reason code (e.g., 'INSUFFICIENT_DATA')
+        details: Quality metrics and recommendation
+        stage: Stage number where the stop occurred
+
+    Returns:
+        True if notification was successful
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "error_message": details.get("recommendation", "Quality check failed"),
+            "error_stage": stage,
+            "stop_reason": reason,
+            "stop_reason_details": details,
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/job-failed",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=10,
+        )
+        response.raise_for_status()
+
+        logger.info(
+            f"[Progress] Job {job_id} stopped by quality gate at stage {stage}: {reason}"
+        )
+        return True
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify quality gate stop: {e}")
+        return False

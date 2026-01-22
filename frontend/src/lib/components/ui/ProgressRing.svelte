@@ -9,6 +9,8 @@
 		label?: string;
 		animate?: boolean;
 		showTooltip?: boolean;
+		glow?: boolean;
+		thick?: boolean;
 		class?: string;
 	}
 
@@ -22,10 +24,14 @@
 		label = '',
 		animate = true,
 		showTooltip = true,
+		glow = false,
+		thick = false,
 		class: className = ''
 	}: Props = $props();
 
-	const radius = $derived((size - strokeWidth) / 2);
+	// Adjust stroke width for thick variant
+	const effectiveStrokeWidth = $derived(thick ? Math.max(strokeWidth, 7) : strokeWidth);
+	const radius = $derived((size - effectiveStrokeWidth) / 2);
 	const circumference = $derived(2 * Math.PI * radius);
 	const progress = $derived(Math.min(Math.max(value, 0), 1));
 	const offset = $derived(circumference - progress * circumference);
@@ -89,6 +95,7 @@
 	bind:this={ref}
 	class="progress-ring {className}"
 	class:hovered={isHovered}
+	class:glow={glow}
 	role={showTooltip ? "button" : "img"}
 	aria-label="{label || 'Score'}: {Math.round(value * 100)}%"
 	onmouseenter={() => (isHovered = true)}
@@ -96,8 +103,21 @@
 	onfocus={() => (isHovered = true)}
 	onblur={() => (isHovered = false)}
 	tabindex={showTooltip ? 0 : -1}
+	style:--ring-color={colorVar}
 >
 	<svg width={size} height={size} class="progress-ring-svg" overflow="visible">
+		<!-- Glow filter definition -->
+		{#if glow}
+			<defs>
+				<filter id="glow-{size}" x="-50%" y="-50%" width="200%" height="200%">
+					<feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+					<feMerge>
+						<feMergeNode in="coloredBlur"/>
+						<feMergeNode in="SourceGraphic"/>
+					</feMerge>
+				</filter>
+			</defs>
+		{/if}
 		<!-- Background circle -->
 		<circle
 			cx={size / 2}
@@ -105,7 +125,7 @@
 			r={radius}
 			fill="none"
 			stroke="var(--color-bg-surface)"
-			stroke-width={strokeWidth}
+			stroke-width={effectiveStrokeWidth}
 			class="progress-ring-bg"
 		/>
 		<!-- Progress circle -->
@@ -115,13 +135,14 @@
 			r={radius}
 			fill="none"
 			stroke={colorVar}
-			stroke-width={strokeWidth}
+			stroke-width={effectiveStrokeWidth}
 			stroke-linecap="round"
 			stroke-dasharray={circumference}
 			stroke-dashoffset={visible ? offset : circumference}
 			class="progress-ring-progress"
 			class:animate={animate && visible}
 			class:hovered={isHovered}
+			filter={glow ? `url(#glow-${size})` : undefined}
 		/>
 	</svg>
 	{#if showValue || showLabel}
@@ -190,6 +211,15 @@
 
 	.progress-ring-progress.hovered {
 		filter: drop-shadow(0 0 10px currentColor);
+	}
+
+	/* Enhanced glow effect */
+	.progress-ring.glow .progress-ring-progress {
+		filter: drop-shadow(0 0 6px var(--ring-color, currentColor));
+	}
+
+	.progress-ring.glow.hovered .progress-ring-progress {
+		filter: drop-shadow(0 0 12px var(--ring-color, currentColor));
 	}
 
 	.progress-ring-content {

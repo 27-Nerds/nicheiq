@@ -468,7 +468,7 @@ competitive_analysis:
 
        c. **Competitor Profiling** (for top 5-8 competitors):
           - Website/product URL (verifiable)
-          - Key features (from website/reviews)
+          - Key features: Extract ALL significant features the competitor promotes on their product/features/pricing pages (typically 4-8 per competitor). Include core functionality, integrations, unique selling points, and any features relevant for comparison.
           - Pricing (from website/public info)
           - Positioning (from tagline/messaging)
           - Customer feedback (from reviews/social mentions)
@@ -492,12 +492,18 @@ competitive_analysis:
 
     **MARKET GAP IDENTIFICATION:**
 
-    Look for gaps by:
+    Look for ALL gaps by examining:
     - User complaints about existing tools (Knowledge Sources)
     - Features mentioned in pain points but missing in competitors
     - Pricing dissatisfaction (too expensive/inflexible)
     - Underserved segments (personas not targeted by competitors)
     - Integration gaps, workflow friction, poor UX
+    - Missing geographic coverage or language support
+    - Lack of mobile/offline capabilities
+    - Data freshness or accuracy issues
+    - Customer support or documentation gaps
+
+    **CRITICAL**: Include EVERY gap you identify. Do not limit yourself to a fixed number. The goal is comprehensive coverage - if you find 10 gaps, list all 10.
 
     **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
@@ -505,7 +511,7 @@ competitive_analysis:
     - [ ] Generated ONE CompetitiveLandscape per solution from Task 1
     - [ ] Applied semantic validation rules before searching (no nonsensical queries)
     - [ ] Every competitor has verifiable source (URL or user mention from Knowledge Sources)
-    - [ ] Features/pricing are from websites (not assumed)
+    - [ ] Features are comprehensive (all significant features from product pages) and verified from websites
     - [ ] If no competitors found via search, I reported "No competitors found via search" honestly
     - [ ] Market gaps reference specific user complaints or missing features
     - [ ] competitive_intensity justified by competitor count/strength
@@ -523,7 +529,7 @@ competitive_analysis:
       ✅ Example: "ToolY ($149/mo) - https://tooly.com/pricing - mentioned by 3 Reddit users"
     ✗ Features without website verification → Fabrication risk
       ❌ Example: Assuming competitor has "AI matching" without checking their product page
-      ✅ Example: "AI-powered matching (confirmed on product page: https://...)"
+      ✅ Example: Features from product page: "AI-powered matching", "Real-time notifications", "Multi-language support", "API access", "Mobile app" (verified at https://example.com/features)
     ✗ Pricing without official source → Must mark "Pricing not publicly available"
       ❌ Example: Guessing "$50/month" when pricing page doesn't exist
       ✅ Example: "Pricing not publicly available (checked website 2025-01-19)"
@@ -544,9 +550,9 @@ competitive_analysis:
 
     **solution_landscapes** (List[CompetitiveLandscape]): One per solution from Task 1, each containing:
     - solution_name: Matching solution from Task 1
-    - competitors: List[Competitor] (5-8 verified competitors with profiles)
-    - market_gaps: List[str] (3-5 unmet needs or weaknesses in current market)
-    - differentiation_opportunities: List[str] (3-5 ways new solution can differentiate)
+    - competitors: List[Competitor] (5-8 verified competitors with comprehensive feature profiles - typically 4-8 features each)
+    - market_gaps: List[str] (ALL unmet needs or weaknesses identified - be comprehensive, include every gap found from user complaints, missing features, and underserved segments)
+    - differentiation_opportunities: List[str] (ALL ways new solution can differentiate - comprehensive list)
     - competitive_intensity: LOW/MEDIUM/HIGH
     - recommended_positioning: Strategic positioning angle (2-3 sentences)
     - pricing_insights: Optional pricing strategy recommendations

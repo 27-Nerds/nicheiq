@@ -31,6 +31,17 @@
     url: string;
   }
 
+  interface StopReasonDetails {
+    qualityTier?: string;
+    confidenceScore?: number;
+    metrics?: {
+      painPointCount?: number;
+      quoteDensity?: number;
+      sourceCoverage?: number;
+    };
+    recommendation?: string;
+  }
+
   interface Job {
     id: string;
     email: string;
@@ -51,6 +62,9 @@
     queuePosition?: number | null;
     aheadCount?: number;
     totalQueued?: number;
+    // Quality gate stop metadata
+    stopReason?: string | null;
+    stopReasonDetails?: StopReasonDetails | null;
   }
 
   let job = $state<Job | null>(null);
@@ -334,8 +348,53 @@
         </div>
       {/if}
 
-      <!-- Error Message (only show for permanently failed jobs) -->
-      {#if job.errorMessage && job.status === 'FAILED'}
+      <!-- Quality Gate Stop Message (intentional stop, not an error) -->
+      {#if job.status === 'FAILED' && job.stopReason === 'INSUFFICIENT_DATA'}
+        <div class="p-5 rounded-lg bg-warning/5 border border-warning/20 mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
+          <div class="flex items-start gap-4">
+            <div class="p-2.5 rounded-xl bg-warning/10 border border-warning/20 shrink-0">
+              <AlertTriangle class="w-6 h-6 text-warning" />
+            </div>
+            <div class="flex-1">
+              <h3 class="text-base font-semibold text-text-primary">Not Enough Data Found</h3>
+              <p class="mt-1.5 text-sm text-text-secondary">
+                {job.stopReasonDetails?.recommendation || 'The research could not continue due to insufficient discussion data.'}
+              </p>
+
+              {#if job.stopReasonDetails?.metrics}
+                <div class="mt-4 p-3 rounded-lg bg-bg-surface border border-border">
+                  <div class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Quality Metrics</div>
+                  <div class="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span class="text-text-muted">Pain Points:</span>
+                      <span class="ml-1 font-medium text-text-primary">{job.stopReasonDetails.metrics.painPointCount ?? 0}</span>
+                    </div>
+                    <div>
+                      <span class="text-text-muted">Quality:</span>
+                      <span class="ml-1 font-medium text-text-primary">
+                        {job.stopReasonDetails.confidenceScore ? `${(job.stopReasonDetails.confidenceScore * 100).toFixed(0)}%` : 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span class="text-text-muted">Coverage:</span>
+                      <span class="ml-1 font-medium text-text-primary">
+                        {job.stopReasonDetails.metrics.sourceCoverage ? `${(job.stopReasonDetails.metrics.sourceCoverage * 100).toFixed(0)}%` : 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              {/if}
+
+              <div class="mt-4 flex items-center gap-2">
+                <CheckCircle class="w-4 h-4 text-success" />
+                <span class="text-sm text-success">Credit refunded automatically</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      <!-- Regular Error Message (for actual failures) -->
+      {:else if job.errorMessage && job.status === 'FAILED'}
         <div class="p-4 rounded-lg bg-error/5 border border-error/20 mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
           <div class="flex items-start gap-3">
             <div class="p-2 rounded-lg bg-error/10 shrink-0">

@@ -39,6 +39,20 @@ from ..utils.validation import KeywordRelevanceValidator
 from .checkpoint_manager import CheckpointManager
 
 
+class QualityGateStopException(Exception):
+    """Raised when a quality gate intentionally stops the pipeline.
+
+    This is not an error - it's an intentional stop due to insufficient
+    data quality that would produce unreliable results.
+    """
+
+    def __init__(self, stage: int, reason: str, details: dict):
+        self.stage = stage
+        self.reason = reason
+        self.details = details
+        super().__init__(f"Quality gate at stage {stage}: {reason}")
+
+
 class ResearchFlow(Flow[ResearchState]):
     """
     Main research flow orchestrating all 10 stages of the NicheIQ pipeline.
@@ -1497,15 +1511,35 @@ Return a valid JSON object with this structure:
 
         # Decision: Proceed based on quality tier
         if quality_tier == "INSUFFICIENT":
-            error_msg = "Pain point quality insufficient for pipeline - stopping execution"
-            logger.error(error_msg)
-            logger.error("Recommendation: Expand social content collection or refine niche focus")
+            logger.warning("Pain point quality insufficient - stopping pipeline (intentional quality gate)")
+            logger.warning("Recommendation: Expand social content collection or refine niche focus")
             self.state.errors.append(
                 f"Stage 6 quality gate failed: {quality_tier} tier (confidence: {confidence_score:.2f})"
             )
-            # Save checkpoint with error state
+            # Save checkpoint with current state
             self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
-            raise RuntimeError(f"Stage 6 failed: {error_msg}")
+
+            # Calculate metrics for the stop details
+            pain_points = self.state.pain_point_analysis.pain_points if self.state.pain_point_analysis else []
+            total_count = len(pain_points)
+            quote_density = sum(len(pp.representative_quotes) for pp in pain_points) / total_count if total_count > 0 else 0
+            sourced_count = len([pp for pp in pain_points if pp.source_post_ids])
+            source_coverage = sourced_count / total_count if total_count > 0 else 0
+
+            raise QualityGateStopException(
+                stage=6,
+                reason="INSUFFICIENT_DATA",
+                details={
+                    "qualityTier": quality_tier,
+                    "confidenceScore": confidence_score,
+                    "metrics": {
+                        "painPointCount": total_count,
+                        "quoteDensity": round(quote_density, 2),
+                        "sourceCoverage": round(source_coverage, 2),
+                    },
+                    "recommendation": "Expand social content collection or refine niche focus"
+                }
+            )
 
         # Quality tier acceptable - proceed with pipeline
         logger.info(f"Quality gate passed - proceeding with {quality_tier} tier data (confidence: {confidence_score:.2f})")

@@ -1,18 +1,18 @@
 <script lang="ts">
-	import type { Component, Snippet } from 'svelte';
+	import type { ComponentType, Snippet } from 'svelte';
 
 	interface Props {
-		icon: Component;
+		icon: ComponentType;
 		iconClass?: string;
 		gap?: string;
 		children: Snippet;
 	}
 
-	let { icon, iconClass = 'w-4 h-4', gap = 'gap-2', children }: Props = $props();
+	let { icon: Icon, iconClass = 'w-4 h-4', gap = 'gap-2', children }: Props = $props();
 </script>
 
 <div class="icon-text {gap}">
-	<svelte:component this={icon} class={iconClass} />
+	<Icon class={iconClass} />
 	{@render children()}
 </div>
 

@@ -1,20 +1,20 @@
 <script lang="ts">
-	import type { Component } from 'svelte';
+	import type { ComponentType } from 'svelte';
 
 	interface Props {
-		icon?: Component;
+		icon?: ComponentType;
 		value: string | number;
 		label: string;
 		iconClass?: string;
 		valueClass?: string;
 	}
 
-	let { icon, value, label, iconClass = 'w-4 h-4', valueClass = '' }: Props = $props();
+	let { icon: Icon, value, label, iconClass = 'w-4 h-4', valueClass = '' }: Props = $props();
 </script>
 
 <div class="meta-item">
-	{#if icon}
-		<svelte:component this={icon} class="meta-icon {iconClass}" />
+	{#if Icon}
+		<Icon class="meta-icon {iconClass}" />
 	{/if}
 	<span class="meta-value {valueClass}">{value}</span>
 	{#if label}

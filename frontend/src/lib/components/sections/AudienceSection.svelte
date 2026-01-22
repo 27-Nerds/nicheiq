@@ -5,7 +5,8 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
-	import HeroStat from '$lib/components/ui/HeroStat.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 	import MetaItem from '$lib/components/ui/MetaItem.svelte';
 
 	interface Props {
@@ -41,32 +42,34 @@
 	/>
 
 	<!-- Hero Strip: Primary Target + Stats -->
-	<div class="hero-strip">
-		{#if data.primary_target_segment}
-			<div class="hero-primary">
-				<UserCheck class="hero-primary-icon" />
+	<HeroStrip>
+		{#snippet primary()}
+			{#if data.primary_target_segment}
 				<div class="hero-primary-content">
-					<span class="hero-label">PRIMARY TARGET</span>
-					<span class="hero-value">{data.primary_target_segment}</span>
+					<UserCheck class="hero-primary-icon" />
+					<div class="hero-primary-text">
+						<span class="hero-label">PRIMARY TARGET</span>
+						<span class="hero-value">{data.primary_target_segment}</span>
+					</div>
 				</div>
-			</div>
-		{/if}
-
-		<div class="hero-stats">
-			<div class="hero-stat">
-				<span class="hero-stat-value">{totalSegments}</span>
-				<span class="hero-stat-label">Segments</span>
-			</div>
-			<div class="hero-stat">
-				<span class="hero-stat-value">{totalInfluencers}</span>
-				<span class="hero-stat-label">Influencers</span>
-			</div>
-			<div class="hero-stat">
-				<span class="hero-stat-value">{totalCommunities}</span>
-				<span class="hero-stat-label">Communities</span>
-			</div>
-		</div>
-	</div>
+			{/if}
+		{/snippet}
+		<HeroMetric
+			value={totalSegments}
+			label="Segments"
+			icon={Target}
+		/>
+		<HeroMetric
+			value={totalInfluencers}
+			label="Influencers"
+			icon={Star}
+		/>
+		<HeroMetric
+			value={totalCommunities}
+			label="Communities"
+			icon={Globe}
+		/>
+	</HeroStrip>
 
 	<!-- Audience Segments Grid -->
 	{#if data.audience_segments && data.audience_segments.length > 0}
@@ -244,36 +247,21 @@
 
 <style>
 	/* =========================
-	   HERO STRIP
+	   HERO PRIMARY CONTENT (inside HeroStrip)
 	   ========================= */
-	.hero-strip {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 1.5rem;
-		padding: 1.125rem 1.25rem;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, rgba(229, 90, 40, 0.02) 100%);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-radius: 0.75rem;
-		margin-bottom: 1.25rem;
-		flex-wrap: wrap;
-	}
-
-	.hero-primary {
+	.hero-primary-content {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		flex: 1;
-		min-width: 180px;
 	}
 
 	:global(.hero-primary-icon) {
 		width: 1.75rem;
 		height: 1.75rem;
-		color: #E55A28;
+		color: var(--color-accent);
 	}
 
-	.hero-primary-content {
+	.hero-primary-text {
 		display: flex;
 		flex-direction: column;
 		gap: 0.125rem;
@@ -283,7 +271,7 @@
 		font-family: var(--font-mono);
 		font-size: 0.5625rem;
 		font-weight: 600;
-		color: #A1A1AA;
+		color: var(--color-text-muted);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
@@ -292,35 +280,7 @@
 		font-family: var(--font-display);
 		font-size: 1rem;
 		font-weight: 600;
-		color: #E55A28;
-	}
-
-	.hero-stats {
-		display: flex;
-		gap: 1.5rem;
-	}
-
-	.hero-stat {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		text-align: center;
-	}
-
-	.hero-stat-value {
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: #18181B;
-		line-height: 1.1;
-	}
-
-	.hero-stat-label {
-		font-family: var(--font-mono);
-		font-size: 0.5625rem;
-		color: #A1A1AA;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		color: var(--color-accent);
 	}
 
 	/* =========================
@@ -688,20 +648,6 @@
 	   RESPONSIVE
 	   ========================= */
 	@media (max-width: 768px) {
-		.hero-strip {
-			flex-direction: column;
-			align-items: stretch;
-			gap: 1rem;
-		}
-
-		.hero-primary {
-			min-width: unset;
-		}
-
-		.hero-stats {
-			justify-content: space-around;
-		}
-
 		.segments-grid {
 			grid-template-columns: 1fr;
 		}
@@ -712,12 +658,6 @@
 
 		.messaging-grid {
 			grid-template-columns: 1fr;
-		}
-	}
-
-	@media (max-width: 480px) {
-		.hero-stats {
-			gap: 1rem;
 		}
 	}
 </style>

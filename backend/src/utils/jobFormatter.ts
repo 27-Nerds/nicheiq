@@ -28,6 +28,9 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     errorMessage: job.errorMessage,
     startedAt: job.startedAt?.toISOString() || null,
     completedAt: job.completedAt?.toISOString() || null,
+    // Quality gate stop metadata (for intentional stops, not errors)
+    stopReason: job.stopReason || null,
+    stopReasonDetails: job.stopReasonDetails || null,
   };
 
   // Optional fields based on endpoint needs

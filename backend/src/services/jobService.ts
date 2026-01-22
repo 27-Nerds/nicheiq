@@ -251,8 +251,20 @@ export async function completeJob(
  *
  * This function is IDEMPOTENT - safe to call multiple times for the same job.
  * If the job is already FAILED, it returns the existing job without making changes.
+ *
+ * @param jobId - The job UUID
+ * @param errorMessage - Error message or recommendation
+ * @param errorStage - Stage number where failure/stop occurred
+ * @param stopReason - Optional quality gate stop reason (e.g., 'INSUFFICIENT_DATA')
+ * @param stopReasonDetails - Optional quality metrics and recommendation
  */
-export async function failJob(jobId: string, errorMessage: string, errorStage?: number) {
+export async function failJob(
+  jobId: string,
+  errorMessage: string,
+  errorStage?: number,
+  stopReason?: string,
+  stopReasonDetails?: Record<string, any>
+) {
   // Check if job is already FAILED (idempotency)
   const existingJob = await prisma.job.findUnique({
     where: { id: jobId },
@@ -269,13 +281,15 @@ export async function failJob(jobId: string, errorMessage: string, errorStage?: 
     return prisma.job.findUnique({ where: { id: jobId } });
   }
 
-  // Update job status to FAILED
+  // Update job status to FAILED with optional quality gate metadata
   const job = await prisma.job.update({
     where: { id: jobId },
     data: {
       status: JobStatus.FAILED,
       errorMessage,
       errorStage,
+      stopReason: stopReason ?? null,
+      stopReasonDetails: stopReasonDetails ?? Prisma.JsonNull,
     },
   });
 

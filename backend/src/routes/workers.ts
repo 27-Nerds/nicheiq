@@ -242,6 +242,9 @@ const JobFailedSchema = z.object({
   job_id: z.string().uuid(),
   error_message: z.string(),
   error_stage: z.number().int().nullable().optional(),
+  // Quality gate stop fields (for intentional stops, not errors)
+  stop_reason: z.string().max(50).optional(),
+  stop_reason_details: z.record(z.any()).optional(),
 });
 
 /**
@@ -254,10 +257,21 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
   try {
     const data = JobFailedSchema.parse(req.body);
 
-    console.log(`[Workers] Job ${data.job_id} failed reported by worker ${data.worker_id}: ${data.error_message.substring(0, 100)}`);
+    // Log quality gate stops differently from errors
+    if (data.stop_reason) {
+      console.log(`[Workers] Job ${data.job_id} stopped by quality gate (${data.stop_reason}) at stage ${data.error_stage}`);
+    } else {
+      console.log(`[Workers] Job ${data.job_id} failed reported by worker ${data.worker_id}: ${data.error_message.substring(0, 100)}`);
+    }
 
     // failJob is idempotent - safe to call multiple times
-    const job = await failJob(data.job_id, data.error_message, data.error_stage ?? undefined);
+    const job = await failJob(
+      data.job_id,
+      data.error_message,
+      data.error_stage ?? undefined,
+      data.stop_reason,
+      data.stop_reason_details
+    );
 
     // Broadcast failure to SSE clients
     try {

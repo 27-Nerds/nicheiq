@@ -106,13 +106,27 @@
 		trends?.risk_factors?.length || trends?.trend_direction || trends?.timing_recommendation
 	);
 
-	// Score color helper
-	const getScoreClass = (score: number | null | undefined) => {
+	// Semantic score color - communicates health at a glance
+	const getScoreColor = (score: number | null | undefined): 'success' | 'warning' | 'error' | 'muted' => {
 		if (score == null) return 'muted';
-		if (score >= 0.7) return 'success';
-		if (score >= 0.5) return 'warning';
-		return 'error';
+		if (score >= 0.8) return 'success';   // Excellent (green)
+		if (score >= 0.6) return 'warning';   // Moderate (amber)
+		return 'error';                        // Weak (red)
 	};
+
+	// Human-readable verdict label
+	const getScoreLabel = (score: number | null | undefined): string => {
+		if (score == null) return 'N/A';
+		if (score >= 0.9) return 'Exceptional';
+		if (score >= 0.8) return 'Excellent';
+		if (score >= 0.7) return 'Strong';
+		if (score >= 0.6) return 'Moderate';
+		if (score >= 0.5) return 'Fair';
+		return 'Needs Work';
+	};
+
+	// Legacy alias for backward compat
+	const getScoreClass = getScoreColor;
 
 	// Get verdict color class
 	const getVerdictClass = (v: string) => {
@@ -141,8 +155,9 @@
 	};
 
 	const getRiskClass = (risk: string): string => {
-		if (risk === 'Low') return 'success';
-		if (risk === 'High') return 'error';
+		const r = risk.toLowerCase();
+		if (r === 'low') return 'success';
+		if (r === 'high') return 'error';
 		return 'warning';
 	};
 
@@ -190,9 +205,9 @@
 					</div>
 					<div class="verdict-risk-badge">
 						<Badge
-							variant={verdict?.risk_level === 'Low'
+							variant={verdict?.risk_level?.toLowerCase() === 'low'
 								? 'success'
-								: verdict?.risk_level === 'High'
+								: verdict?.risk_level?.toLowerCase() === 'high'
 									? 'error'
 									: 'warning'}
 							size="sm"
@@ -341,83 +356,123 @@
 			{/if}
 		</div>
 
-		<!-- Metrics Grid - 2x2 Progress Rings + Quick Stats -->
-		<div class="metrics-section">
-			<div class="metrics-rings">
-				<div class="metric-ring-item" style="--delay: 0.1s">
+		<!-- Score Diagnostics Panel -->
+		<div class="metrics-panel">
+			<div class="metrics-panel-header">
+				<span class="metrics-panel-title">SCORE DIAGNOSTICS</span>
+			</div>
+
+			<div class="metrics-cells">
+				<!-- Market Fit -->
+				<div class="metric-cell" style="--cell-delay: 0.1s">
 					<ProgressRing
 						value={metrics?.market_fit_score ?? 0}
-						size={68}
+						size={52}
 						strokeWidth={4}
-						color={getScoreClass(metrics?.market_fit_score)}
+						color={getScoreColor(metrics?.market_fit_score)}
 						showValue={true}
+						showTooltip={true}
+						glow={true}
 						label="Market Fit"
 					/>
-					<span class="metric-ring-label">Market Fit</span>
+					<span class="metric-label">Market Fit</span>
+					<span class="metric-verdict {getScoreColor(metrics?.market_fit_score)}-text">
+						{getScoreLabel(metrics?.market_fit_score)}
+					</span>
 				</div>
 
-				<div class="metric-ring-item" style="--delay: 0.2s">
+				<!-- Feasibility -->
+				<div class="metric-cell" style="--cell-delay: 0.15s">
 					<ProgressRing
 						value={metrics?.technical_feasibility_score ?? 0}
-						size={68}
+						size={52}
 						strokeWidth={4}
-						color={getScoreClass(metrics?.technical_feasibility_score)}
+						color={getScoreColor(metrics?.technical_feasibility_score)}
 						showValue={true}
+						showTooltip={true}
+						glow={true}
 						label="Feasibility"
 					/>
-					<span class="metric-ring-label">Feasibility</span>
+					<span class="metric-label">Feasibility</span>
+					<span class="metric-verdict {getScoreColor(metrics?.technical_feasibility_score)}-text">
+						{getScoreLabel(metrics?.technical_feasibility_score)}
+					</span>
 				</div>
 
-				<div class="metric-ring-item" style="--delay: 0.3s">
-					<ProgressRing
-						value={metrics?.competitive_advantage_score ?? 0}
-						size={68}
-						strokeWidth={4}
-						color={getScoreClass(metrics?.competitive_advantage_score)}
-						showValue={true}
-						label="Comp. Edge"
-					/>
-					<span class="metric-ring-label">Comp. Edge</span>
-				</div>
-
-				<div class="metric-ring-item" style="--delay: 0.4s">
+				<!-- SEO Score -->
+				<div class="metric-cell" style="--cell-delay: 0.2s">
 					<ProgressRing
 						value={metrics?.seo_potential_score ?? 0}
-						size={68}
+						size={52}
 						strokeWidth={4}
-						color={getScoreClass(metrics?.seo_potential_score)}
+						color={getScoreColor(metrics?.seo_potential_score)}
 						showValue={true}
+						showTooltip={true}
+						glow={true}
 						label="SEO Score"
 					/>
-					<span class="metric-ring-label">SEO Score</span>
+					<span class="metric-label">SEO</span>
+					<span class="metric-verdict {getScoreColor(metrics?.seo_potential_score)}-text">
+						{getScoreLabel(metrics?.seo_potential_score)}
+					</span>
+				</div>
+
+				<!-- Solo Dev Feasibility -->
+				<div class="metric-cell" style="--cell-delay: 0.25s">
+					<ProgressRing
+						value={report.selected_solution_details?.solo_dev_feasibility ?? 0}
+						size={52}
+						strokeWidth={4}
+						color={getScoreColor(report.selected_solution_details?.solo_dev_feasibility)}
+						showValue={true}
+						showTooltip={true}
+						glow={true}
+						label="Solo Dev"
+					/>
+					<span class="metric-label">Solo Dev</span>
+					<span class="metric-verdict {getScoreColor(report.selected_solution_details?.solo_dev_feasibility)}-text">
+						{getScoreLabel(report.selected_solution_details?.solo_dev_feasibility)}
+					</span>
+				</div>
+
+				<!-- Novelty / Competitive Edge -->
+				<div class="metric-cell" style="--cell-delay: 0.3s">
+					<ProgressRing
+						value={metrics?.competitive_advantage_score ?? 0}
+						size={52}
+						strokeWidth={4}
+						color={getScoreColor(metrics?.competitive_advantage_score)}
+						showValue={true}
+						showTooltip={true}
+						glow={true}
+						label="Novelty"
+					/>
+					<span class="metric-label">Novelty</span>
+					<span class="metric-verdict {getScoreColor(metrics?.competitive_advantage_score)}-text">
+						{getScoreLabel(metrics?.competitive_advantage_score)}
+					</span>
 				</div>
 			</div>
 
-			<!-- Quick Stats Pills -->
-			<div class="quick-stats">
-				<div class="quick-stat">
-					<Search class="quick-stat-icon" />
-					<span class="quick-stat-value">{formatNumber(metrics?.total_keyword_search_volume ?? 0)}</span>
-					<span class="quick-stat-label">Search Vol</span>
+			<!-- Integrated Footer Stats -->
+			<div class="metrics-footer">
+				<div class="footer-stat">
+					<Search class="footer-stat-icon" />
+					<span class="footer-stat-value">{formatNumber(metrics?.total_keyword_search_volume ?? 0)}</span>
+					<span class="footer-stat-label">mo. searches</span>
 				</div>
-				<div class="quick-stat">
-					<Target class="quick-stat-icon" />
-					<span class="quick-stat-value">{metrics?.total_keyword_count ?? 0}</span>
-					<span class="quick-stat-label">Keywords</span>
+				<div class="footer-divider"></div>
+				<div class="footer-stat">
+					<Target class="footer-stat-icon" />
+					<span class="footer-stat-value">{metrics?.total_keyword_count ?? 0}</span>
+					<span class="footer-stat-label">keywords</span>
 				</div>
-				<div class="quick-stat">
-					<Users class="quick-stat-icon" />
-					<span class="quick-stat-value">{metrics?.primary_competitor_count ?? 0}</span>
-					<span class="quick-stat-label">Competitors</span>
+				<div class="footer-divider"></div>
+				<div class="footer-stat">
+					<Users class="footer-stat-icon" />
+					<span class="footer-stat-value">{metrics?.primary_competitor_count ?? 0}</span>
+					<span class="footer-stat-label">competitors</span>
 				</div>
-				{#if report.selected_solution_details?.solo_dev_feasibility}
-					<div class="quick-stat highlight">
-						<span class="quick-stat-value"
-							>{formatPercent(report.selected_solution_details.solo_dev_feasibility)}</span
-						>
-						<span class="quick-stat-label">Solo Dev</span>
-					</div>
-				{/if}
 			</div>
 		</div>
 
@@ -438,9 +493,9 @@
 					<div class="rationale-info">
 						<span class="rationale-confidence">{formatPercent(confidenceScore)} confidence</span>
 						<Badge
-							variant={verdict.risk_level === 'Low'
+							variant={verdict.risk_level.toLowerCase() === 'low'
 								? 'success'
-								: verdict.risk_level === 'High'
+								: verdict.risk_level.toLowerCase() === 'high'
 									? 'error'
 									: 'warning'}
 							size="sm"
@@ -650,9 +705,9 @@
 												<div class="signal-row">
 													<span class="signal-row-label">Longevity:</span>
 													<Badge
-														variant={trends.longevity_verdict.includes('Sustain')
+														variant={trends.longevity_verdict.toLowerCase().includes('sustain')
 															? 'success'
-															: trends.longevity_verdict.includes('Fad')
+															: trends.longevity_verdict.toLowerCase().includes('fad')
 																? 'error'
 																: 'warning'}
 														size="sm"
@@ -1188,94 +1243,154 @@
 	}
 
 	/* =========================
-	   METRICS SECTION
+	   METRICS PANEL - Diagnostic Instrument Panel
 	   ========================= */
-	.metrics-section {
+	.metrics-panel {
+		background: linear-gradient(
+			180deg,
+			var(--color-bg-elevated) 0%,
+			var(--color-bg-surface) 100%
+		);
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-xl);
+		box-shadow:
+			inset 0 1px 0 rgba(255, 255, 255, 0.05),
+			0 4px 12px rgba(0, 0, 0, 0.08);
+		overflow: hidden;
 		margin-bottom: var(--space-6);
 	}
 
-	.metrics-rings {
-		display: grid;
-		grid-template-columns: repeat(4, 1fr);
-		gap: var(--space-4);
-		margin-bottom: var(--space-4);
+	.metrics-panel-header {
+		padding: 0.625rem var(--space-4);
+		border-bottom: 1px solid var(--color-border);
+		background: var(--color-bg-hover);
 	}
 
-	.metric-ring-item {
+	.metrics-panel-title {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: var(--font-bold);
+		letter-spacing: 0.12em;
+		color: var(--color-text-muted);
+		text-transform: uppercase;
+	}
+
+	.metrics-cells {
+		display: flex;
+		justify-content: stretch;
+	}
+
+	.metric-cell {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-4) var(--space-2);
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-lg);
+		padding: 1.25rem 0.5rem;
+		position: relative;
+		transition: background 0.2s ease;
+		/* Staggered entrance animation */
 		opacity: 0;
-		transform: scale(0.8);
-		animation: metric-reveal 0.5s ease-out forwards;
-		animation-delay: var(--delay, 0s);
+		transform: translateY(8px);
+		animation: metric-cell-enter 0.4s ease-out forwards;
+		animation-delay: var(--cell-delay, 0s);
 	}
 
-	@keyframes metric-reveal {
+	.metric-cell:hover {
+		background: var(--color-bg-hover);
+	}
+
+	/* Internal dividers between cells */
+	.metric-cell:not(:last-child)::after {
+		content: '';
+		position: absolute;
+		right: 0;
+		top: 20%;
+		height: 60%;
+		width: 1px;
+		background: var(--color-border-emphasis);
+	}
+
+	@keyframes metric-cell-enter {
 		to {
 			opacity: 1;
-			transform: scale(1);
+			transform: translateY(0);
 		}
 	}
 
-	.metric-ring-label {
+	.metric-label {
 		font-family: var(--font-mono);
-		font-size: var(--text-xs);
-		font-weight: var(--font-medium);
-		color: var(--color-text-muted);
+		font-size: 0.5625rem;
+		font-weight: var(--font-semibold);
 		text-transform: uppercase;
-		letter-spacing: 0.03em;
+		letter-spacing: 0.08em;
+		color: var(--color-text-muted);
+		margin-top: 0.375rem;
 		text-align: center;
 	}
 
-	/* Quick Stats Pills */
-	.quick-stats {
+	.metric-verdict {
+		font-family: var(--font-display);
+		font-size: 0.6875rem;
+		font-weight: var(--font-semibold);
+		margin-top: 0.25rem;
+		text-align: center;
+	}
+
+	/* Semantic verdict colors */
+	.metric-verdict.success-text {
+		color: var(--color-success);
+	}
+	.metric-verdict.warning-text {
+		color: var(--color-warning);
+	}
+	.metric-verdict.error-text {
+		color: var(--color-error);
+	}
+	.metric-verdict.muted-text {
+		color: var(--color-text-muted);
+	}
+
+	/* Integrated Footer Stats */
+	.metrics-footer {
 		display: flex;
 		justify-content: center;
-		gap: 0.625rem;
-		flex-wrap: wrap;
+		align-items: center;
+		gap: 1.5rem;
+		padding: 0.875rem 1.25rem;
+		border-top: 1px solid var(--color-border);
+		background: var(--color-bg-surface);
 	}
 
-	.quick-stat {
+	.footer-stat {
 		display: flex;
 		align-items: center;
-		gap: var(--space-2);
-		padding: var(--space-2) 0.875rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
+		gap: 0.5rem;
 	}
 
-	.quick-stat.highlight {
-		border-color: var(--color-border-accent);
-		background: var(--color-accent-subtle);
-	}
-
-	:global(.quick-stat-icon) {
+	:global(.footer-stat-icon) {
 		width: 0.875rem;
 		height: 0.875rem;
 		color: var(--color-text-muted);
+		flex-shrink: 0;
 	}
 
-	.quick-stat-value {
+	.footer-stat-value {
 		font-family: var(--font-display);
 		font-size: 0.9375rem;
-		font-weight: var(--font-bold);
+		font-weight: var(--font-semibold);
 		color: var(--color-text-primary);
 	}
 
-	.quick-stat.highlight .quick-stat-value {
-		color: var(--color-accent);
+	.footer-stat-label {
+		font-size: 0.75rem;
+		color: var(--color-text-muted);
 	}
 
-	.quick-stat-label {
-		font-size: var(--text-sm);
-		color: var(--color-text-muted);
+	.footer-divider {
+		width: 4px;
+		height: 4px;
+		border-radius: 50%;
+		background: var(--color-border-emphasis);
 	}
 
 	/* =========================
@@ -1825,10 +1940,6 @@
 		.hero-right {
 			order: 0;
 		}
-
-		.metrics-rings {
-			grid-template-columns: repeat(2, 1fr);
-		}
 	}
 
 	@media (max-width: 768px) {
@@ -1870,8 +1981,24 @@
 			border-radius: var(--radius-md);
 		}
 
-		.quick-stats {
-			justify-content: flex-start;
+		/* Metrics panel: 2 rows on tablet */
+		.metrics-cells {
+			flex-wrap: wrap;
+		}
+
+		.metric-cell {
+			flex: 1 1 33.33%;
+			min-width: 0;
+		}
+
+		/* Remove dividers in wrapped layout */
+		.metric-cell:nth-child(3)::after {
+			display: none;
+		}
+
+		.metrics-footer {
+			flex-wrap: wrap;
+			gap: 1rem;
 		}
 
 		.rationale-header {
@@ -1902,17 +2029,45 @@
 			padding: var(--space-1) 0.625rem;
 		}
 
-		.metrics-rings {
-			grid-template-columns: 1fr 1fr;
-			gap: var(--space-3);
+		/* Metrics panel: 2 columns on mobile */
+		.metric-cell {
+			flex: 1 1 50%;
+			padding: 1rem 0.375rem;
 		}
 
-		.quick-stat {
-			padding: var(--space-1) 0.625rem;
+		/* Hide dividers except between columns */
+		.metric-cell::after {
+			display: none;
 		}
 
-		.quick-stat-label {
+		.metric-cell:nth-child(odd):not(:last-child)::after {
+			display: block;
+		}
+
+		.metric-label {
+			font-size: 0.5rem;
+		}
+
+		.metric-verdict {
+			font-size: 0.625rem;
+		}
+
+		.metrics-footer {
+			gap: 0.75rem;
+			padding: 0.75rem 1rem;
+		}
+
+		.footer-stat-value {
+			font-size: 0.875rem;
+		}
+
+		.footer-stat-label {
 			font-size: 0.6875rem;
+		}
+
+		.footer-divider {
+			width: 3px;
+			height: 3px;
 		}
 	}
 </style>

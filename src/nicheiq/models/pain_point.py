@@ -24,7 +24,10 @@ class UnvalidatedPainPoint(BaseModel):
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
-    mention_count: int = Field(..., description="Number of times this problem was mentioned")
+    mention_count: int = Field(
+        ...,
+        description="Total UNIQUE discussions mentioning this problem - count ALL sources found, not just selected quotes"
+    )
     representative_quotes: list[str] = Field(
         ..., description="Real user quotes representing this pain point"
     )
@@ -47,7 +50,10 @@ class ThemeCategory(BaseModel):
     category_name: str = Field(..., description="Theme category name")
     definition: str = Field(..., description="What this category represents")
     frequency: str = Field(..., description="High/Medium/Low based on mention count")
-    mention_count: int = Field(..., description="Number of distinct discussions")
+    mention_count: int = Field(
+        ...,
+        description="Number of distinct discussions - count ALL unique [source: ID] tags"
+    )
     primary_user_segments: list[str] = Field(
         ..., description="User types in this category"
     )
@@ -155,7 +161,10 @@ class PainPoint(BaseModel):
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
-    mention_count: int = Field(..., description="Number of times this problem was mentioned")
+    mention_count: int = Field(
+        ...,
+        description="Total UNIQUE discussions mentioning this problem - typically much larger than quote count"
+    )
     severity_score: float = Field(
         ..., ge=0.0, le=1.0, description="Severity score (0-1) based on emotional language"
     )

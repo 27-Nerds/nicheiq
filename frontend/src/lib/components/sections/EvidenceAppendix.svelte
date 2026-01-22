@@ -19,8 +19,10 @@
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
-	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 	import QuoteBlock from '$lib/components/ui/QuoteBlock.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import HeroPrimary from '$lib/components/ui/HeroPrimary.svelte';
+	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 
 	interface Props {
 		data: EvidenceAppendix;
@@ -126,42 +128,20 @@
 	/>
 
 	<!-- Hero Strip -->
-	<div class="hero-strip">
-		<div class="hero-metric">
-			<ProgressRing
+	<HeroStrip>
+		{#snippet primary()}
+			<HeroPrimary
 				value={coverageScore}
-				size={56}
-				strokeWidth={5}
+				label="Coverage"
+				sublabel={coverageScore >= 0.75 ? 'Excellent' : coverageScore >= 0.5 ? 'Good' : 'Limited'}
 				color="auto"
-				showValue={false}
 			/>
-			<div class="hero-metric-content">
-				<span class="hero-metric-value">{Math.round(coverageScore * 100)}%</span>
-				<span class="hero-metric-label">Coverage</span>
-			</div>
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">{totalEvidenceItems}</span>
-			<span class="hero-stat-label">Sources</span>
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">{sortedThreads.length}</span>
-			<span class="hero-stat-label">Threads</span>
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">{formatNumber(totalEngagement)}</span>
-			<span class="hero-stat-label">Engagement</span>
-			<Badge variant="success" size="sm">{formatNumber(topScore)} top</Badge>
-		</div>
-		<div class="hero-divider"></div>
-		<div class="hero-stat">
-			<span class="hero-stat-value">{subredditCount}</span>
-			<span class="hero-stat-label">Subreddits</span>
-		</div>
-	</div>
+		{/snippet}
+		<HeroMetric value={totalEvidenceItems} label="Sources" icon={Database} />
+		<HeroMetric value={sortedThreads.length} label="Threads" icon={MessageCircle} />
+		<HeroMetric value={formatNumber(totalEngagement)} label="Engagement" icon={ThumbsUp} color="success" />
+		<HeroMetric value={subredditCount} label="Subreddits" icon={Layers} />
+	</HeroStrip>
 
 	<!-- Subreddit Summary - Always Visible -->
 	{#if subredditCount > 0}
@@ -384,76 +364,6 @@
 </section>
 
 <style>
-	/* Hero Strip */
-	.hero-strip {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		padding: 1.25rem 1.5rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		margin-bottom: 1.5rem;
-		flex-wrap: wrap;
-	}
-
-	.hero-metric {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	.hero-metric-content {
-		display: flex;
-		flex-direction: column;
-	}
-
-	.hero-metric-value {
-		font-family: var(--font-display);
-		font-size: 1.5rem;
-		font-weight: 800;
-		color: var(--color-accent);
-		line-height: 1;
-	}
-
-	.hero-metric-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-	}
-
-	.hero-divider {
-		width: 1px;
-		height: 2.5rem;
-		background: var(--color-border);
-	}
-
-	.hero-stat {
-		display: flex;
-		flex-direction: column;
-		gap: 0.25rem;
-	}
-
-	.hero-stat-value {
-		font-family: var(--font-display);
-		font-size: 1.25rem;
-		font-weight: 700;
-		color: var(--color-text-primary);
-		line-height: 1;
-	}
-
-	.hero-stat-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-	}
-
 	/* Subreddits Card */
 	.subreddits-card {
 		background: var(--color-bg-elevated);
@@ -953,16 +863,6 @@
 
 	/* Responsive */
 	@media (max-width: 768px) {
-		.hero-strip {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 1rem;
-		}
-
-		.hero-divider {
-			display: none;
-		}
-
 		.stats-strip {
 			flex-wrap: wrap;
 		}

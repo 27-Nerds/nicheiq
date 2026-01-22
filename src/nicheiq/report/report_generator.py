@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from ..models.analytics import (
         CompetitiveAnalytics,
+        FeatureComparison,
         MarketAnalytics,
         PainPointAnalytics,
         SEOAnalytics,
@@ -2497,16 +2498,99 @@ It differentiates through {diff_text}.
                 else:
                     logger.warning("⚠️ No competitor features found - avg_competitor_features will be null")
 
+            # Group features semantically using LLM
+            feature_comparison = None
+            if selected_landscape.competitors:
+                try:
+                    feature_comparison = self._group_competitor_features(
+                        selected_landscape.competitors
+                    )
+                except Exception as e:
+                    logger.warning(f"Feature grouping skipped: {e}")
+
             return CompetitiveAnalytics(
                 competitor_count=competitor_count,
                 market_saturation_score=saturation,
                 differentiation_strength=differentiation,
                 market_gaps_identified=market_gaps,
-                avg_competitor_features=avg_competitor_features
+                avg_competitor_features=avg_competitor_features,
+                feature_comparison=feature_comparison
             )
 
         except Exception as e:
             logger.warning(f"Failed to compute competitive analytics: {e}")
+            return None
+
+    def _group_competitor_features(
+        self,
+        competitors: list
+    ) -> "FeatureComparison | None":
+        """Use LLM to semantically group similar features across competitors."""
+        from ..models.analytics import FeatureGroup, FeatureComparison
+
+        # Collect all features with their sources
+        all_features = []
+        for comp in competitors:
+            for feature in (comp.key_features or []):
+                all_features.append({
+                    "competitor": comp.name,
+                    "feature": feature
+                })
+
+        if len(all_features) < 4:  # Not enough features to group
+            logger.debug("Skipping feature grouping: fewer than 4 features")
+            return None
+
+        # Build prompt for LLM
+        prompt = f"""Analyze these competitor features and group semantically similar ones.
+
+Features by competitor:
+{json.dumps(all_features, indent=2)}
+
+Instructions:
+1. Identify features that represent the same capability (even if named differently)
+2. Create 5-10 meaningful groups based on what the features actually do
+3. For each group, list which competitors have it
+4. Prioritize groups where 2+ competitors have the feature (shows meaningful comparison)
+
+Return valid JSON with this structure:
+{{
+  "feature_groups": [
+    {{
+      "group_name": "AI/Smart Features",
+      "description": "AI-powered automation and intelligent recommendations",
+      "competitors_with_feature": ["Competitor A", "Competitor B"],
+      "original_features": [
+        {{"competitor": "Competitor A", "feature_text": "AI-powered matching"}},
+        {{"competitor": "Competitor B", "feature_text": "Smart recommendations"}}
+      ]
+    }}
+  ],
+  "total_unique_groups": 5,
+  "avg_features_per_competitor": 3.5
+}}"""
+
+        try:
+            from ..utils.llm_service import LLMService
+
+            # Use LLMService for model-agnostic invocation
+            result, usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=FeatureComparison,
+                temperature=0.1,
+                timeout=60
+            )
+
+            # Update computed fields
+            result.total_unique_groups = len(result.feature_groups)
+            result.avg_features_per_competitor = len(all_features) / len(competitors) if competitors else 0
+
+            logger.info(f"✅ Grouped {len(all_features)} features into {len(result.feature_groups)} semantic groups")
+
+            return result
+
+        except Exception as e:
+            logger.warning(f"Feature grouping failed: {e}")
             return None
 
     def _compute_pain_point_analytics(self) -> "PainPointAnalytics | None":

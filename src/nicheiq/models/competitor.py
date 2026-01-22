@@ -32,7 +32,10 @@ class Competitor(BaseModel):
     url: Optional[str] = Field(default=None, description="Website URL")
     competitor_type: CompetitorType = Field(..., description="Type of competitor")
     description: str = Field(..., description="What this competitor offers")
-    key_features: list[str] = Field(..., description="Main features they provide")
+    key_features: list[str] = Field(
+        ...,
+        description="All significant features from the competitor's product/features pages - be comprehensive for comparison (typically 4-8 features)"
+    )
     pricing_model: Optional[str] = Field(
         default=None, description="Pricing model if available"
     )
@@ -49,10 +52,10 @@ class CompetitiveLandscape(BaseModel):
         default_factory=list, min_length=2, description="All competitors (minimum 2 required)"
     )
     market_gaps: list[str] = Field(
-        ..., min_length=2, description="Specific unmet needs or underserved areas (minimum 2)"
+        ..., min_length=2, description="ALL unmet needs, underserved areas, user complaints, and missing features - comprehensive list"
     )
     differentiation_opportunities: list[str] = Field(
-        ..., description="Specific ways this solution can differentiate from competitors"
+        ..., description="ALL ways this solution can differentiate from competitors - comprehensive list"
     )
     competitive_intensity: str = Field(
         ..., description="Assessment of competitive intensity (Low/Medium/High) with justification"

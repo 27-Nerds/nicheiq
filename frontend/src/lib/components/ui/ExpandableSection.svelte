@@ -1,18 +1,18 @@
 <script lang="ts">
 	import { ChevronDown } from 'lucide-svelte';
 	import Badge from './Badge.svelte';
-	import type { Component, Snippet } from 'svelte';
+	import type { ComponentType, Snippet } from 'svelte';
 
 	interface Props {
 		title: string;
-		icon?: Component;
+		icon?: ComponentType;
 		count?: number | null;
 		defaultOpen?: boolean;
 		variant?: 'default' | 'success' | 'warning' | 'error';
 		children: Snippet;
 	}
 
-	let { title, icon, count = null, defaultOpen = false, variant = 'default', children }: Props = $props();
+	let { title, icon: Icon, count = null, defaultOpen = false, variant = 'default', children }: Props = $props();
 
 	let expanded = $state<boolean>(false);
 
@@ -45,8 +45,8 @@
 <div class="expandable-section {variantClasses[variant]}">
 	<button class="expandable-header" onclick={() => expanded = !expanded}>
 		<div class="expandable-title">
-			{#if icon}
-				<svelte:component this={icon} class="expandable-icon {iconVariantClasses[variant]}" />
+			{#if Icon}
+				<Icon class="expandable-icon {iconVariantClasses[variant]}" />
 			{/if}
 			<span>{title}</span>
 			{#if count != null}

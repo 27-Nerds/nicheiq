@@ -29,9 +29,9 @@
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
-	import HeroStat from '$lib/components/ui/HeroStat.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
 
 	interface Props {
 		data: ExecutiveDashboard;
@@ -107,61 +107,67 @@
 	/>
 
 	<!-- Hero Metrics Strip - Most important numbers -->
-	<div class="hero-metrics">
-		<div class="hero-metric primary">
-			<Search class="hero-metric-icon" />
-			<div class="hero-metric-body">
-				<span class="hero-metric-value">{formatNumber(metrics.total_keyword_search_volume)}</span>
-				<span class="hero-metric-label">Monthly Search Volume</span>
+	<HeroStrip>
+		{#snippet primary()}
+			<div class="exec-hero-primary">
+				<Search class="exec-hero-icon" />
+				<div class="exec-hero-body">
+					<span class="exec-hero-value">{formatNumber(metrics.total_keyword_search_volume)}</span>
+					<span class="exec-hero-label">Monthly Search Volume</span>
+				</div>
 			</div>
-		</div>
+		{/snippet}
 
-		<div class="hero-scores">
-			<div class="hero-score" class:strong={getScoreClass(metrics.market_fit_score) === 'success'}>
+		<div class="exec-hero-scores">
+			<div class="exec-score" class:strong={getScoreClass(metrics.market_fit_score) === 'success'}>
 				<ProgressRing
 					value={metrics.market_fit_score ?? 0}
-					size={44}
-					strokeWidth={3}
+					size={48}
+					strokeWidth={4}
 					color={getScoreClass(metrics.market_fit_score)}
 					showValue={true}
+					glow={getScoreClass(metrics.market_fit_score) === 'success'}
 				/>
-				<span class="hero-score-label">Market Fit</span>
+				<span class="exec-score-label">Market Fit</span>
 			</div>
 
-			<div class="hero-score" class:strong={getScoreClass(metrics.technical_feasibility_score) === 'success'}>
+			<div class="exec-score" class:strong={getScoreClass(metrics.technical_feasibility_score) === 'success'}>
 				<ProgressRing
 					value={metrics.technical_feasibility_score ?? 0}
-					size={44}
-					strokeWidth={3}
+					size={48}
+					strokeWidth={4}
 					color={getScoreClass(metrics.technical_feasibility_score)}
 					showValue={true}
+					glow={getScoreClass(metrics.technical_feasibility_score) === 'success'}
 				/>
-				<span class="hero-score-label">Feasibility</span>
+				<span class="exec-score-label">Feasibility</span>
 			</div>
 
-			<div class="hero-score" class:strong={getScoreClass(metrics.competitive_advantage_score) === 'success'}>
+			<div class="exec-score" class:strong={getScoreClass(metrics.competitive_advantage_score) === 'success'}>
 				<ProgressRing
 					value={metrics.competitive_advantage_score ?? 0}
-					size={44}
-					strokeWidth={3}
+					size={48}
+					strokeWidth={4}
 					color={getScoreClass(metrics.competitive_advantage_score)}
 					showValue={true}
+					glow={getScoreClass(metrics.competitive_advantage_score) === 'success'}
 				/>
-				<span class="hero-score-label">Comp. Edge</span>
+				<span class="exec-score-label">Comp. Edge</span>
 			</div>
 
-			<div class="hero-score" class:strong={getScoreClass(metrics.seo_potential_score) === 'success'}>
+			<div class="exec-score" class:strong={getScoreClass(metrics.seo_potential_score) === 'success'}>
 				<ProgressRing
 					value={metrics.seo_potential_score ?? 0}
-					size={44}
-					strokeWidth={3}
+					size={48}
+					strokeWidth={4}
 					color={getScoreClass(metrics.seo_potential_score)}
 					showValue={true}
+					glow={getScoreClass(metrics.seo_potential_score) === 'success'}
 				/>
-				<span class="hero-score-label">SEO Score</span>
+				<span class="exec-score-label">SEO Score</span>
 			</div>
 		</div>
-	</div>
+	</HeroStrip>
 
 	<!-- Quick Stats Pills -->
 	<div class="quick-stats">
@@ -242,7 +248,7 @@
 			</div>
 			<div class="verdict-info">
 				<span class="verdict-confidence">{formatPercent(data.confidence_score)} confidence</span>
-				<Badge variant={verdict.risk_level === 'Low' ? 'success' : verdict.risk_level === 'High' ? 'error' : 'warning'} size="sm">
+				<Badge variant={verdict.risk_level.toLowerCase() === 'low' ? 'success' : verdict.risk_level.toLowerCase() === 'high' ? 'error' : 'warning'} size="sm">
 					{verdict.risk_level} Risk
 				</Badge>
 			</div>
@@ -437,7 +443,7 @@
 										{#if trends.longevity_verdict}
 											<div class="signal-row">
 												<span class="signal-label">Longevity:</span>
-												<Badge variant={trends.longevity_verdict.includes('Sustain') ? 'success' : trends.longevity_verdict.includes('Fad') ? 'error' : 'warning'} size="sm">
+												<Badge variant={trends.longevity_verdict.toLowerCase().includes('sustain') ? 'success' : trends.longevity_verdict.toLowerCase().includes('fad') ? 'error' : 'warning'} size="sm">
 													{trends.longevity_verdict}
 												</Badge>
 											</div>
@@ -532,88 +538,75 @@
 	}
 
 	/* =========================
-	   HERO METRICS STRIP
+	   EXECUTIVE HERO (custom styles for hero strip content)
 	   ========================= */
-	.hero-metrics {
-		display: flex;
-		align-items: stretch;
-		gap: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.hero-metric.primary {
-		flex: 0 0 auto;
+	.exec-hero-primary {
 		display: flex;
 		align-items: center;
 		gap: 0.875rem;
-		padding: 1.125rem 1.5rem;
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.1) 0%, rgba(229, 90, 40, 0.03) 100%);
-		border: 1px solid rgba(229, 90, 40, 0.25);
-		border-radius: 0.75rem;
 	}
 
-	:global(.hero-metric-icon) {
+	:global(.exec-hero-icon) {
 		width: 2rem;
 		height: 2rem;
-		color: #E55A28;
+		color: var(--color-accent);
 	}
 
-	.hero-metric-body {
+	.exec-hero-body {
 		display: flex;
 		flex-direction: column;
 	}
 
-	.hero-metric-value {
+	.exec-hero-value {
 		font-family: var(--font-display);
 		font-size: 1.75rem;
 		font-weight: 800;
-		color: #E55A28;
+		color: var(--color-accent);
 		line-height: 1.1;
 	}
 
-	.hero-metric-label {
+	.exec-hero-label {
 		font-family: var(--font-mono);
 		font-size: 0.625rem;
 		font-weight: 500;
-		color: #A1A1AA;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 	}
 
-	.hero-scores {
-		flex: 1;
+	.exec-hero-scores {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
 		gap: 0.625rem;
 	}
 
-	.hero-score {
+	.exec-score {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
 		gap: 0.375rem;
-		padding: 0.875rem 0.5rem;
-		background: #FFFFFF;
-		border: 1px solid rgba(0, 0, 0, 0.08);
+		padding: 0.5rem;
+		background: var(--color-bg-surface);
+		border: 1px solid var(--color-border);
 		border-radius: 0.625rem;
 		transition: all 0.15s ease;
 	}
 
-	.hero-score:hover {
-		border-color: rgba(0, 0, 0, 0.15);
+	.exec-score:hover {
+		border-color: color-mix(in srgb, var(--color-border) 50%, var(--color-accent));
 	}
 
-	.hero-score.strong {
+	.exec-score.strong {
 		background: linear-gradient(135deg, rgba(34, 197, 94, 0.06) 0%, transparent 60%);
 		border-color: rgba(34, 197, 94, 0.2);
 	}
 
-	.hero-score-label {
+	.exec-score-label {
 		font-family: var(--font-mono);
 		font-size: 0.5625rem;
 		font-weight: 500;
-		color: #A1A1AA;
+		color: var(--color-text-muted);
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		text-align: center;
@@ -1356,7 +1349,7 @@
 	   RESPONSIVE ADJUSTMENTS
 	   ========================= */
 	@media (max-width: 900px) {
-		.hero-scores {
+		.exec-hero-scores {
 			grid-template-columns: repeat(2, 1fr);
 		}
 	}
@@ -1364,14 +1357,6 @@
 	@media (max-width: 768px) {
 		.executive-section {
 			padding: 1rem;
-		}
-
-		.hero-metrics {
-			flex-direction: column;
-		}
-
-		.hero-metric.primary {
-			justify-content: center;
 		}
 
 		.content-grid {
@@ -1397,7 +1382,7 @@
 	}
 
 	@media (max-width: 480px) {
-		.hero-scores {
+		.exec-hero-scores {
 			grid-template-columns: 1fr 1fr;
 		}
 

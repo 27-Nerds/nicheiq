@@ -17,6 +17,7 @@ from rq import get_current_job
 from .progress import (
     create_progress_callback,
     publish_job_completed,
+    notify_job_quality_gate_stop,
 )
 from .status import mark_job_running
 
@@ -128,11 +129,19 @@ def run_research_job(
     except Exception as e:
         # Import here to avoid circular imports
         from .heartbeat import JobCancelledException
+        from nicheiq.flows.research_flow import QualityGateStopException
 
         # Re-raise cancellation exceptions for the queue_consumer to handle
         if isinstance(e, JobCancelledException):
             logger.info(f"[Worker] Job {job_id} cancelled by user during execution")
             raise
+
+        # Handle quality gate stops separately - these are intentional, not errors
+        if isinstance(e, QualityGateStopException):
+            logger.info(f"[Worker] Job {job_id} stopped by quality gate: {e.reason}")
+            notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
+            # Return None to indicate job stopped cleanly (not an error)
+            return None
 
         error_msg = str(e)
         error_traceback = traceback.format_exc()

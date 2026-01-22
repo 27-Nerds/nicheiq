@@ -143,6 +143,10 @@ model Job {
   errorMessage         String?     @db.Text
   errorStage           Float?
 
+  // Quality gate stop tracking (intentional stops vs errors)
+  stopReason           String?     @db.VarChar(50)  // e.g., 'INSUFFICIENT_DATA'
+  stopReasonDetails    Json?                        // Quality metrics, recommendation
+
   // Worker crash recovery tracking
   workerId             String?     @db.VarChar(100)  // Which worker is processing this job
   lastHeartbeat        DateTime?   // Last heartbeat from worker for this job

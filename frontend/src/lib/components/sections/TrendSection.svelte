@@ -18,6 +18,8 @@
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import HeroPrimary from '$lib/components/ui/HeroPrimary.svelte';
 
 	interface Props {
 		data: TrendLongevity;
@@ -65,30 +67,22 @@
 	/>
 
 	<!-- Hero Strip -->
-	<div class="hero-strip">
-		<!-- Momentum Score -->
-		{#if momentumPercent !== null}
-			<div class="hero-metric">
-				<ProgressRing
+	<HeroStrip>
+		{#snippet primary()}
+			{#if momentumPercent !== null}
+				<HeroPrimary
 					value={momentumPercent / 100}
-					size={56}
-					strokeWidth={5}
+					label="Momentum"
+					sublabel={momentumPercent >= 70 ? 'Strong' : momentumPercent >= 40 ? 'Moderate' : 'Weak'}
 					color={momentumPercent >= 70 ? 'success' : momentumPercent >= 40 ? 'warning' : 'error'}
-					showValue={true}
 				/>
-				<div class="hero-metric-content">
-					<span class="hero-metric-label">Momentum</span>
-					<span class="hero-metric-value"
-						>{momentumPercent >= 70 ? 'Strong' : momentumPercent >= 40 ? 'Moderate' : 'Weak'}</span
-					>
-				</div>
-			</div>
-		{/if}
+			{/if}
+		{/snippet}
 
 		<!-- Trend Direction -->
 		{#if data.trend_direction}
 			{@const TrendIcon = trendConfig.icon}
-			<div class="hero-trend">
+			<div class="trend-metric">
 				<div class="trend-indicator" style="--trend-color: {trendConfig.color}">
 					<TrendIcon class="trend-icon" />
 				</div>
@@ -101,12 +95,12 @@
 
 		<!-- Longevity Verdict -->
 		{#if data.longevity_verdict}
-			<div class="hero-verdict" style="--verdict-color: {verdictConfig.color}">
+			<div class="verdict-metric" style="--verdict-color: {verdictConfig.color}">
 				<span class="verdict-label">Longevity</span>
 				<Badge variant={verdictConfig.variant} size="sm">{data.longevity_verdict}</Badge>
 			</div>
 		{/if}
-	</div>
+	</HeroStrip>
 
 	<!-- Timing Recommendation (Always Visible) -->
 	{#if data.timing_recommendation}
@@ -258,55 +252,11 @@
 </section>
 
 <style>
-	/* Hero Strip */
-	.hero-strip {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		padding: 1rem 1.25rem;
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
-	}
-
-	.hero-metric {
+	/* Trend Metric (custom for direction display in hero rail) */
+	.trend-metric {
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		padding-right: 1.5rem;
-		border-right: 1px solid var(--color-border);
-	}
-
-	.hero-metric-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.hero-metric-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-	}
-
-	.hero-metric-value {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.hero-trend {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding-right: 1.5rem;
-		border-right: 1px solid var(--color-border);
 	}
 
 	.trend-indicator {
@@ -347,7 +297,8 @@
 		font-weight: 700;
 	}
 
-	.hero-verdict {
+	/* Verdict Metric */
+	.verdict-metric {
 		display: flex;
 		flex-direction: column;
 		gap: 0.25rem;
@@ -653,26 +604,8 @@
 
 	/* Responsive */
 	@media (max-width: 768px) {
-		.hero-strip {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 1rem;
-		}
-
-		.hero-metric {
-			padding-right: 0;
-			border-right: none;
-			padding-bottom: 1rem;
-			border-bottom: 1px solid var(--color-border);
-			width: 100%;
-		}
-
-		.hero-trend {
-			padding-right: 0;
-			border-right: none;
-			padding-bottom: 1rem;
-			border-bottom: 1px solid var(--color-border);
-			width: 100%;
+		.trend-metric {
+			padding-bottom: 0.5rem;
 		}
 	}
 

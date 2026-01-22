@@ -27,6 +27,17 @@
   } from 'lucide-svelte';
   import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
+  interface StopReasonDetails {
+    qualityTier?: string;
+    confidenceScore?: number;
+    metrics?: {
+      painPointCount?: number;
+      quoteDensity?: number;
+      sourceCoverage?: number;
+    };
+    recommendation?: string;
+  }
+
   interface Job {
     id: string;
     niche: string;
@@ -47,6 +58,9 @@
     queuePosition?: number | null;
     aheadCount?: number;
     totalQueued?: number;
+    // Quality gate stop metadata
+    stopReason?: string | null;
+    stopReasonDetails?: StopReasonDetails | null;
   }
 
   const TOTAL_STAGES = 16; // Fallback - actual value comes from job.totalStages
@@ -340,7 +354,17 @@
   }
 
   // Translate raw API errors into user-friendly messages
-  function getHumanReadableError(errorMessage: string | null): { summary: string; suggestion: string } {
+  function getHumanReadableError(job: Job): { summary: string; suggestion: string; isQualityGate?: boolean } {
+    // Check for quality gate stop first (intentional stops, not errors)
+    if (job.stopReason === 'INSUFFICIENT_DATA') {
+      return {
+        summary: 'Insufficient discussion data found',
+        suggestion: job.stopReasonDetails?.recommendation || 'Try a broader niche topic',
+        isQualityGate: true
+      };
+    }
+
+    const errorMessage = job.errorMessage;
     if (!errorMessage) {
       return { summary: 'Research failed', suggestion: 'Try again or contact support.' };
     }
@@ -795,16 +819,17 @@
           </div>
           <div class="grid gap-3">
             {#each filteredFailedJobs as job, i}
-              {@const humanError = getHumanReadableError(job.errorMessage)}
+              {@const humanError = getHumanReadableError(job)}
+              {@const isQualityGate = humanError.isQualityGate}
               <div
-                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-error animate-fade-slide-in"
+                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 animate-fade-slide-in {isQualityGate ? 'border-l-warning' : 'border-l-error'}"
                 style="animation-delay: {i * 50}ms"
               >
                 <div class="flex flex-col sm:flex-row sm:items-start gap-4">
                   <div class="flex-1 min-w-0">
                     <!-- Title Row with dot indicator -->
                     <div class="flex items-center gap-2.5 mb-2">
-                      <span class="w-2 h-2 rounded-full bg-error shrink-0"></span>
+                      <span class="w-2 h-2 rounded-full shrink-0 {isQualityGate ? 'bg-warning' : 'bg-error'}"></span>
                       <h3 class="text-base font-semibold text-text-primary truncate">
                         {formatNicheTitle(job.niche)}
                       </h3>
@@ -813,13 +838,13 @@
                       </span>
                     </div>
 
-                    <!-- User-Friendly Error Container -->
-                    {#if job.errorMessage}
-                      <div class="mt-3 p-3 rounded-lg bg-error/5 border border-error/10">
+                    <!-- User-Friendly Error/Quality Gate Container -->
+                    {#if job.errorMessage || job.stopReason}
+                      <div class="mt-3 p-3 rounded-lg {isQualityGate ? 'bg-warning/5 border border-warning/10' : 'bg-error/5 border border-error/10'}">
                         <div class="flex items-start gap-2">
-                          <AlertCircle class="w-4 h-4 text-error shrink-0 mt-0.5" />
+                          <AlertCircle class="w-4 h-4 shrink-0 mt-0.5 {isQualityGate ? 'text-warning' : 'text-error'}" />
                           <div class="flex-1">
-                            <p class="text-sm font-medium text-error">
+                            <p class="text-sm font-medium {isQualityGate ? 'text-warning' : 'text-error'}">
                               {humanError.summary}
                             </p>
                             <p class="text-xs text-text-muted mt-0.5">
@@ -831,7 +856,7 @@
                     {/if}
 
                     <!-- Credit Refund Indicator -->
-                    {#if job.creditRefunded}
+                    {#if job.creditRefunded || isQualityGate}
                       <div class="flex items-center gap-1.5 mt-2">
                         <CheckCircle class="w-3.5 h-3.5 text-success" />
                         <span class="text-xs text-success font-medium">Credit refunded</span>

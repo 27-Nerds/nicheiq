@@ -10,6 +10,45 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class OriginalFeature(BaseModel):
+    """Original feature text from a specific competitor."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    competitor: str = Field(..., description="Name of the competitor")
+    feature_text: str = Field(..., description="Original feature text from this competitor")
+
+
+class FeatureGroup(BaseModel):
+    """A semantic grouping of similar features across competitors."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    group_name: str = Field(..., description="Normalized name for this feature category")
+    description: str = Field(..., description="What this feature category represents")
+    competitors_with_feature: list[str] = Field(
+        ...,
+        description="Names of competitors that have this feature"
+    )
+    original_features: list[OriginalFeature] = Field(
+        ...,
+        description="List of original feature texts from each competitor"
+    )
+
+
+class FeatureComparison(BaseModel):
+    """Structured feature comparison with semantic grouping."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    feature_groups: list[FeatureGroup] = Field(
+        ...,
+        description="Semantically grouped features for comparison"
+    )
+    total_unique_groups: int = Field(..., description="Count of unique feature groups")
+    avg_features_per_competitor: float = Field(..., description="Average features per competitor")
+
+
 class MarketAnalytics(BaseModel):
     """Market opportunity scores and analytics."""
 
@@ -101,6 +140,11 @@ class CompetitiveAnalytics(BaseModel):
         default=None,
         description="Average feature count across competitors"
     )
+    feature_comparison: Optional[FeatureComparison] = Field(
+        default=None,
+        description="Semantically grouped feature comparison matrix"
+    )
+
 
 class PainPointAnalytics(BaseModel):
     """Pain point clustering and priority matrix data."""

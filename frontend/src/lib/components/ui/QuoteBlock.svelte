@@ -3,12 +3,13 @@
 		text: string;
 		variant?: 'default' | 'card' | 'enhanced';
 		class?: string;
+		style?: string;
 	}
 
-	let { text, variant = 'default', class: className = '' }: Props = $props();
+	let { text, variant = 'default', class: className = '', style }: Props = $props();
 </script>
 
-<blockquote class="quote-block quote-block--{variant} {className}">
+<blockquote class="quote-block quote-block--{variant} {className}" {style}>
 	<span class="quote-mark">"</span>
 	<p class="quote-text">{text}</p>
 </blockquote>

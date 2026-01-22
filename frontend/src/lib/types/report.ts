@@ -241,12 +241,31 @@ export interface SEOAnalytics {
 	high_volume_keywords: number;
 }
 
+export interface OriginalFeature {
+	competitor: string;
+	feature_text: string;
+}
+
+export interface FeatureGroup {
+	group_name: string;
+	description: string;
+	competitors_with_feature: string[];
+	original_features: OriginalFeature[];
+}
+
+export interface FeatureComparison {
+	feature_groups: FeatureGroup[];
+	total_unique_groups: number;
+	avg_features_per_competitor: number;
+}
+
 export interface CompetitiveAnalytics {
 	competitor_count: number;
 	market_saturation_score: number;
 	differentiation_strength: string;
 	market_gaps_identified: number;
 	avg_competitor_features: number;
+	feature_comparison?: FeatureComparison;
 }
 
 export interface PainPointAnalytics {
@@ -433,8 +452,13 @@ export interface CompetitiveAnalysis {
 
 export interface SolutionLandscape {
 	solution_name: string;
-	competitors: string[];
-	positioning?: string;
+	competitors: CompetitorProfile[] | string[];  // Support both full objects and string names
+	market_gaps: string[];
+	differentiation_opportunities: string[];
+	competitive_intensity: string;
+	recommended_positioning: string;
+	pricing_insights: string;
+	positioning?: string;  // Legacy/backwards compatibility
 }
 
 export interface CompetitorProfile {

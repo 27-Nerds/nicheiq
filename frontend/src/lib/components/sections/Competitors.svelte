@@ -26,11 +26,11 @@
 		getCompetitorTypeVariant
 	} from '$lib/utils/variantHelpers';
 	import Badge from '$lib/components/ui/Badge.svelte';
-	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
-	import HeroStat from '$lib/components/ui/HeroStat.svelte';
-	import CompetitorStrengthChart from '$lib/components/charts/CompetitorStrengthChart.svelte';
+	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import HeroPrimary from '$lib/components/ui/HeroPrimary.svelte';
+	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 
 	interface Props {
 		profiles: CompetitorProfile[];
@@ -86,6 +86,14 @@
 		}
 		return '';
 	}
+
+	// Get the selected solution's landscape for market gaps
+	const selectedLandscape = $derived.by(() => {
+		if (!analysis?.solution_landscapes || !selectedSolutionName) return null;
+		return analysis.solution_landscapes.find(
+			l => l.solution_name === selectedSolutionName
+		);
+	});
 </script>
 
 <section id="competitors" class="report-section">
@@ -96,27 +104,34 @@
 	/>
 
 	<!-- Hero Strip -->
-	<div class="hero-strip">
-		<div class="hero-metric">
-			<ProgressRing
+	<HeroStrip>
+		{#snippet primary()}
+			<HeroPrimary
 				value={opportunityPercent / 100}
+				label="Market Opportunity"
+				sublabel="{opportunityPercent}% Open"
 				size={56}
-				strokeWidth={5}
-				color={opportunityPercent >= 60 ? 'success' : opportunityPercent >= 30 ? 'warning' : 'error'}
-				showValue={true}
+				strokeWidth={6}
 			/>
-			<div class="hero-metric-content">
-				<span class="hero-metric-label">Market Opportunity</span>
-				<span class="hero-metric-value">{opportunityPercent}% Open</span>
-			</div>
-		</div>
-
-		<div class="hero-stats">
-			<HeroStat value={analytics.competitor_count} label="Competitors" />
-			<HeroStat value={diffConfig.label} label="Differentiation" valueColor={diffConfig.color} />
-			<HeroStat value={analytics.market_gaps_identified} label="Gaps Found" valueColor="var(--color-success)" />
-		</div>
-	</div>
+		{/snippet}
+		<HeroMetric
+			value={analytics.competitor_count}
+			label="Competitors"
+			icon={Users}
+		/>
+		<HeroMetric
+			value={diffConfig.label}
+			label="Differentiation"
+			color={diffConfig.label.toLowerCase() === 'strong' ? 'success' : diffConfig.label.toLowerCase() === 'moderate' ? 'warning' : 'error'}
+			progress={diffConfig.label.toLowerCase() === 'strong' ? 0.85 : diffConfig.label.toLowerCase() === 'moderate' ? 0.5 : 0.25}
+		/>
+		<HeroMetric
+			value={analytics.market_gaps_identified}
+			label="Gaps Found"
+			icon={Target}
+			color="success"
+		/>
+	</HeroStrip>
 
 	<!-- Key Competitors Strip (Always Visible) -->
 	{#if landscapeMatrix?.selected_solution_competitors && landscapeMatrix.selected_solution_competitors.length > 0}
@@ -139,13 +154,6 @@
 		</div>
 	{/if}
 
-	<!-- Competitor Chart (Always Visible) -->
-	{#if profiles.length > 0}
-		<div class="chart-card">
-			<CompetitorStrengthChart competitors={profiles} />
-		</div>
-	{/if}
-
 	<!-- Competitive Summary (if available) -->
 	{#if summary}
 		<div class="summary-card">
@@ -153,19 +161,19 @@
 		</div>
 	{/if}
 
-	<!-- Expandable: Market Opportunities -->
-	{#if analysis?.top_opportunities && analysis.top_opportunities.length > 0}
+	<!-- Expandable: Market Gaps & Opportunities (from selected solution) -->
+	{#if selectedLandscape?.market_gaps && selectedLandscape.market_gaps.length > 0}
 		<ExpandableSection
-			title="Market Opportunities"
+			title="Market Gaps & Opportunities"
 			icon={Sparkles}
-			count={analysis.top_opportunities.length}
+			count={selectedLandscape.market_gaps.length}
 			variant="success"
 		>
 			<div class="opportunities-list">
-				{#each analysis.top_opportunities as opportunity, i}
+				{#each selectedLandscape.market_gaps as gap, i}
 					<div class="opportunity-item">
 						<span class="opportunity-number">{i + 1}</span>
-						<span class="opportunity-text">{opportunity}</span>
+						<span class="opportunity-text">{gap}</span>
 					</div>
 				{/each}
 			</div>
@@ -216,7 +224,46 @@
 	{/if}
 
 	<!-- Expandable: Feature Comparison -->
-	{#if profiles.length >= 2 && featureList.length > 0}
+	{#if analytics?.feature_comparison?.feature_groups?.length}
+		<!-- Grouped Feature Comparison (LLM-powered semantic grouping) -->
+		<ExpandableSection
+			title="Feature Comparison"
+			icon={BarChart3}
+			count={analytics.feature_comparison.feature_groups.length}
+		>
+			<div class="table-container">
+				<table class="feature-table">
+					<thead>
+						<tr>
+							<th class="feature-header">Feature Category</th>
+							{#each profiles.slice(0, 4) as competitor}
+								<th class="competitor-header">{competitor.name.slice(0, 12)}</th>
+							{/each}
+						</tr>
+					</thead>
+					<tbody>
+						{#each analytics.feature_comparison.feature_groups.slice(0, 8) as group}
+							<tr>
+								<td class="feature-name" title={group.description}>
+									{group.group_name}
+								</td>
+								{#each profiles.slice(0, 4) as competitor}
+									<td class="feature-check">
+										{#if group.competitors_with_feature.includes(competitor.name)}
+											<CheckCircle class="check-yes" />
+										{:else}
+											<XCircle class="check-no" />
+										{/if}
+									</td>
+								{/each}
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</ExpandableSection>
+	{:else if profiles.length >= 2 && featureList.length > 0}
+		<!-- Fallback: Original feature list (exact string matching) -->
 		<ExpandableSection
 			title="Feature Comparison"
 			icon={BarChart3}
@@ -368,56 +415,6 @@
 </section>
 
 <style>
-	/* Hero Strip */
-	.hero-strip {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		padding: 1rem 1.25rem;
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		margin-bottom: 1rem;
-		flex-wrap: wrap;
-	}
-
-	.hero-metric {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		padding-right: 1.5rem;
-		border-right: 1px solid var(--color-border);
-	}
-
-	.hero-metric-content {
-		display: flex;
-		flex-direction: column;
-		gap: 0.125rem;
-	}
-
-	.hero-metric-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-	}
-
-	.hero-metric-value {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.hero-stats {
-		display: flex;
-		align-items: center;
-		gap: 1.5rem;
-		flex-wrap: wrap;
-	}
-
 	/* Key Competitors Strip */
 	.key-competitors-strip {
 		display: flex;
@@ -454,15 +451,6 @@
 		font-size: 0.8125rem;
 		color: var(--color-text-secondary);
 		line-height: 1.5;
-	}
-
-	/* Chart Card */
-	.chart-card {
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-		margin-bottom: 1rem;
 	}
 
 	/* Summary Card */
@@ -880,25 +868,6 @@
 
 	/* Responsive */
 	@media (max-width: 768px) {
-		.hero-strip {
-			flex-direction: column;
-			align-items: flex-start;
-			gap: 1rem;
-		}
-
-		.hero-metric {
-			padding-right: 0;
-			border-right: none;
-			padding-bottom: 1rem;
-			border-bottom: 1px solid var(--color-border);
-			width: 100%;
-		}
-
-		.hero-stats {
-			width: 100%;
-			justify-content: space-between;
-		}
-
 		.overlap-grid {
 			grid-template-columns: 1fr;
 		}
