@@ -7,10 +7,13 @@
     CheckCircle,
     Clock,
     Globe,
-    ChevronDown,
     Rocket,
     DollarSign,
     Users,
+    Lightbulb,
+    Search,
+    FileText,
+    Crosshair,
   } from "lucide-svelte";
   import type {
     SolutionDetails,
@@ -21,7 +24,11 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
+  import CardGrid from "$lib/components/ui/CardGrid.svelte";
+  import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
+  import InsightCard from "$lib/components/ui/InsightCard.svelte";
 
   interface Props {
     solution: SolutionDetails;
@@ -38,10 +45,6 @@
 
   // Parse metrics from rationale text
   const parsedRationale = $derived(parseRationaleMetrics(selectionRationale));
-
-  // Expandable state
-  let showFeatures = $state(false);
-  let showRationale = $state(false);
 
   // Get verdict styling
   const getVerdictBadge = (v: string) => {
@@ -112,7 +115,7 @@
         <span class="launch-params-label">LAUNCH PARAMETERS</span>
         <div class="launch-params-line"></div>
       </div>
-      <div class="launch-params-grid">
+      <CardGrid minWidth={140} gap="md" class="launch-params-grid">
         {#if solution.estimated_development_time}
           {@const devTime = extractDevTimeDuration(
             solution.estimated_development_time,
@@ -155,7 +158,12 @@
               <DollarSign class="param-icon" />
             </div>
             <div class="param-data">
-              <span class="param-value">{solution.estimated_cac_organic}</span>
+              <span class="param-value">
+                {solution.estimated_cac_organic}
+                {#if solution.estimated_cac_paid}
+                  <span class="cac-vs-paid">vs {solution.estimated_cac_paid} paid</span>
+                {/if}
+              </span>
               <span class="param-label">
                 Organic CAC
                 <Tooltip content={getTermTooltip("CAC")} position="top" />
@@ -164,27 +172,76 @@
             <div class="param-glow"></div>
           </div>
         {/if}
+      </CardGrid>
+    </div>
+  {/if}
+
+  <!-- Innovation Score Card -->
+  {#if solution.novelty_score != null}
+    <div class="innovation-card">
+      <div class="innovation-header">
+        <div class="innovation-label">
+          <Lightbulb class="innovation-icon" />
+          <span>INNOVATION</span>
+        </div>
+        <div class="innovation-score">
+          <span class="score-value">{solution.novelty_score.toFixed(1)}</span>
+          <span class="score-max">/10</span>
+        </div>
       </div>
+      {#if solution.novelty_justification}
+        <p class="innovation-text">{solution.novelty_justification}</p>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Discovery Queries -->
+  {#if solution.organic_discovery_queries && solution.organic_discovery_queries.length > 0}
+    <div class="discovery-card">
+      <div class="discovery-header">
+        <Search class="discovery-icon" />
+        <span class="discovery-title">HOW USERS FIND YOU</span>
+      </div>
+      <div class="discovery-queries">
+        {#each solution.organic_discovery_queries.slice(0, 8) as query}
+          <span class="query-chip">{query}</span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  <!-- Pain Points Addressed -->
+  {#if solution.pain_points_addressed && solution.pain_points_addressed.length > 0}
+    <div class="pain-points-card">
+      <div class="pain-points-header">
+        <Crosshair class="pain-points-icon" />
+        <span class="pain-points-title">PROBLEMS SOLVED</span>
+        <Badge variant="muted" size="sm">{solution.pain_points_addressed.length}</Badge>
+      </div>
+      <ul class="pain-points-list">
+        {#each solution.pain_points_addressed.slice(0, 4) as point}
+          <li class="pain-point-item">{point}</li>
+        {/each}
+      </ul>
     </div>
   {/if}
 
   <!-- Target Personas -->
   {#if solution.target_personas && solution.target_personas.length > 0}
     <div class="personas-section">
-      <div class="subsection-header">
-        <Users class="subsection-icon personas" />
-        <span class="subsection-title">Target Audience</span>
-        <Badge variant="muted" size="sm"
-          >{solution.target_personas.length}</Badge
-        >
-      </div>
-      <div class="personas-grid">
+      <SubsectionHeader
+        title="Target Audience"
+        icon={Users}
+        count={solution.target_personas.length}
+        variant="info"
+      />
+      <CardGrid minWidth={220} gap="md">
         {#each solution.target_personas as persona, i}
           <div class="persona-card" style="--persona-delay: {i * 0.05}s">
             <span class="persona-text">{persona}</span>
           </div>
         {/each}
-      </div>
+      </CardGrid>
     </div>
   {/if}
 
@@ -209,87 +266,92 @@
           >{solution.differentiation_factors.length}</Badge
         >
       </div>
-      <div class="advantages-grid">
+      <CardGrid minWidth={240} gap="sm">
         {#each solution.differentiation_factors as factor}
           <div class="advantage-item">
             <CheckCircle class="check-icon" />
             <span class="advantage-text">{factor}</span>
           </div>
         {/each}
-      </div>
+      </CardGrid>
     </div>
+  {/if}
+
+  <!-- Expandable: How It Works -->
+  {#if solution.description && solution.description !== solution.value_proposition}
+    <ExpandableSection
+      title="How It Works"
+      icon={FileText}
+      variant="default"
+    >
+      <p class="how-it-works-text">{solution.description}</p>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Core Features -->
   {#if solution.core_features && solution.core_features.length > 0}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showFeatures = !showFeatures)}
-      >
-        <div class="expandable-title">
-          <Layers class="expandable-icon" />
-          <span>Core Features</span>
-          <Badge variant="muted" size="sm"
-            >{solution.core_features.length}</Badge
+    <ExpandableSection
+      title="Core Features"
+      icon={Layers}
+      count={solution.core_features.length}
+      variant="accent"
+    >
+      <CardGrid minWidth={260} gap="md">
+        {#each solution.core_features as feature, i}
+          <InsightCard
+            variant={i < 2 ? "accent" : "default"}
+            border={i < 2 ? "left" : "all"}
+            hoverable={true}
+            padding="sm"
           >
-        </div>
-        <ChevronDown class="chevron-icon {showFeatures ? 'expanded' : ''}" />
-      </button>
+            {#snippet header()}
+              <span class="feature-num" class:primary={i < 2}>
+                {String(i + 1).padStart(2, "0")}
+              </span>
+            {/snippet}
+            <span class="feature-text">{feature}</span>
+          </InsightCard>
+        {/each}
+      </CardGrid>
+    </ExpandableSection>
+  {/if}
 
-      {#if showFeatures}
-        <div class="expandable-content">
-          <div class="features-grid">
-            {#each solution.core_features as feature, i}
-              <div class="feature-item">
-                <span class="feature-num">{String(i + 1).padStart(2, "0")}</span
-                >
-                <span class="feature-text">{feature}</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-    </div>
+  <!-- Expandable: SEO Content Engine -->
+  {#if solution.content_generation_model}
+    <ExpandableSection
+      title="SEO Content Engine"
+      icon={Globe}
+      variant="accent"
+    >
+      <p class="seo-content-text">{solution.content_generation_model}</p>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Why This Solution -->
   {#if selectionRationale}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showRationale = !showRationale)}
-      >
-        <div class="expandable-title">
-          <Target class="expandable-icon" />
-          <span>Selection Rationale</span>
-        </div>
-        <ChevronDown class="chevron-icon {showRationale ? 'expanded' : ''}" />
-      </button>
-
-      {#if showRationale}
-        <div class="expandable-content">
-          <!-- Extracted Metrics -->
-          {#if parsedRationale.metrics.length > 0}
-            <div class="rationale-metrics">
-              {#each parsedRationale.metrics as metric}
-                <div class="metric-chip">
-                  <span class="metric-value">{metric.value}</span>
-                  <span class="metric-label">{metric.label}</span>
-                </div>
-              {/each}
+    <ExpandableSection
+      title="Selection Rationale"
+      icon={Target}
+      count={parsedRationale.metrics.length > 0 ? parsedRationale.metrics.length : null}
+      countSuffix="metrics"
+      variant="accent"
+    >
+      <!-- Extracted Metrics -->
+      {#if parsedRationale.metrics.length > 0}
+        <div class="rationale-metrics">
+          {#each parsedRationale.metrics as metric}
+            <div class="metric-chip">
+              <span class="metric-value">{metric.value}</span>
+              <span class="metric-label">{metric.label}</span>
             </div>
-          {/if}
-
-          <!-- Narrative -->
-          <div class="rationale-text">
-            {@html renderMarkdown(
-              parsedRationale.highlightedText || selectionRationale,
-            )}
-          </div>
+          {/each}
         </div>
       {/if}
-    </div>
+      <!-- Narrative -->
+      <div class="rationale-text">
+        {@html renderMarkdown(parsedRationale.highlightedText || selectionRationale)}
+      </div>
+    </ExpandableSection>
   {/if}
 </section>
 
@@ -439,10 +501,7 @@
     );
   }
 
-  .launch-params-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 0.875rem;
+  :global(.launch-params-grid) {
     position: relative;
     z-index: 1;
   }
@@ -609,12 +668,6 @@
     color: #22c55e;
   }
 
-  .advantages-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 0.5rem;
-  }
-
   .advantage-item {
     display: flex;
     align-items: flex-start;
@@ -648,115 +701,29 @@
   }
 
   /* =========================
-	   EXPANDABLE SECTIONS
+	   FEATURES (inside ExpandableSection)
 	   ========================= */
-  .expandable-section {
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0.75rem;
-    margin-bottom: 0.75rem;
-    overflow: hidden;
-  }
-
-  .expandable-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 0.875rem 1rem;
-    background: #ffffff;
-    border: none;
-    cursor: pointer;
-    transition: background-color 0.15s;
-  }
-
-  .expandable-header:hover {
-    background: rgba(0, 0, 0, 0.02);
-  }
-
-  .expandable-header:focus-visible {
-    outline: 2px solid var(--color-accent, #e55a28);
-    outline-offset: 2px;
-  }
-
-  .expandable-title {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-  }
-
-  :global(.expandable-icon) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: #e55a28;
-  }
-
-  .expandable-title span {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: #18181b;
-  }
-
-  :global(.chevron-icon) {
-    width: 1rem;
-    height: 1rem;
-    color: #a1a1aa;
-    transition: transform 0.2s;
-  }
-
-  :global(.chevron-icon.expanded) {
-    transform: rotate(180deg);
-  }
-
-  .expandable-content {
-    padding: 0 1rem 1rem;
-    background: #ffffff;
-    animation: fadeSlideIn 0.2s ease-out;
-  }
-
-  @keyframes fadeSlideIn {
-    from {
-      opacity: 0;
-      transform: translateY(-8px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  /* Features Grid */
-  .features-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 0.5rem;
-  }
-
-  .feature-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.625rem 0.75rem;
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 0.375rem;
-  }
-
   .feature-num {
+    display: inline-block;
     font-family: var(--font-mono);
     font-size: 0.5625rem;
     font-weight: 700;
-    color: #e55a28;
-    background: rgba(229, 90, 40, 0.1);
-    padding: 0.1875rem 0.3125rem;
-    border-radius: 0.1875rem;
-    flex-shrink: 0;
+    color: var(--color-text-muted);
+    background: rgba(0, 0, 0, 0.06);
+    padding: 0.25rem 0.375rem;
+    border-radius: 0.25rem;
+    transition: all 0.15s ease;
+  }
+
+  .feature-num.primary {
+    color: var(--color-accent);
+    background: rgba(229, 90, 40, 0.12);
   }
 
   .feature-text {
     font-size: 0.8125rem;
-    color: #71717a;
-    line-height: 1.45;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
   }
 
   /* Rationale */
@@ -814,36 +781,6 @@
 	   ========================= */
   .personas-section {
     margin-bottom: 1rem;
-  }
-
-  .subsection-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
-  }
-
-  :global(.subsection-icon) {
-    width: 1rem;
-    height: 1rem;
-    color: var(--color-accent);
-  }
-
-  :global(.subsection-icon.personas) {
-    color: #6366f1;
-  }
-
-  .subsection-title {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-
-  .personas-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.75rem;
   }
 
   .persona-card {
@@ -921,19 +858,228 @@
   }
 
   /* =========================
+	   CAC VS PAID COMPARISON
+	   ========================= */
+  .cac-vs-paid {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: #a1a1aa;
+    margin-left: 0.25rem;
+  }
+
+  /* =========================
+	   INNOVATION SCORE CARD
+	   ========================= */
+  .innovation-card {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, transparent 60%);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .innovation-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
+
+  .innovation-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  :global(.innovation-icon) {
+    width: 1rem;
+    height: 1rem;
+    color: #f59e0b;
+  }
+
+  .innovation-label span {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #f59e0b;
+    text-transform: uppercase;
+  }
+
+  .innovation-score {
+    display: flex;
+    align-items: baseline;
+    gap: 0.125rem;
+  }
+
+  .innovation-score .score-value {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #f59e0b;
+    line-height: 1;
+  }
+
+  .innovation-score .score-max {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: #a1a1aa;
+  }
+
+  .innovation-text {
+    font-size: 0.8125rem;
+    color: #71717a;
+    line-height: 1.55;
+    margin: 0;
+    font-style: italic;
+  }
+
+  /* =========================
+	   DISCOVERY QUERIES
+	   ========================= */
+  .discovery-card {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, transparent 60%);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .discovery-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  :global(.discovery-icon) {
+    width: 1rem;
+    height: 1rem;
+    color: #6366f1;
+  }
+
+  .discovery-title {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #6366f1;
+    text-transform: uppercase;
+  }
+
+  .discovery-queries {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .query-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.375rem 0.75rem;
+    background: rgba(99, 102, 241, 0.08);
+    border: 1px solid rgba(99, 102, 241, 0.15);
+    border-radius: 100px;
+    font-size: 0.75rem;
+    color: #4f46e5;
+    transition: all 0.15s ease;
+  }
+
+  .query-chip:hover {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: rgba(99, 102, 241, 0.3);
+  }
+
+  /* =========================
+	   PAIN POINTS ADDRESSED
+	   ========================= */
+  .pain-points-card {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.04) 0%, transparent 60%);
+    border: 1px solid rgba(239, 68, 68, 0.15);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .pain-points-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.625rem;
+  }
+
+  :global(.pain-points-icon) {
+    width: 1rem;
+    height: 1rem;
+    color: #ef4444;
+  }
+
+  .pain-points-title {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #ef4444;
+    text-transform: uppercase;
+  }
+
+  .pain-points-list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .pain-point-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: #71717a;
+    line-height: 1.45;
+    padding-left: 1rem;
+    position: relative;
+  }
+
+  .pain-point-item::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.5rem;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #ef4444;
+  }
+
+  /* =========================
+	   HOW IT WORKS TEXT
+	   ========================= */
+  .how-it-works-text {
+    font-size: 0.8125rem;
+    color: #71717a;
+    line-height: 1.65;
+    margin: 0;
+  }
+
+  /* =========================
+	   SEO CONTENT ENGINE TEXT
+	   ========================= */
+  .seo-content-text {
+    font-size: 0.8125rem;
+    color: #71717a;
+    line-height: 1.65;
+    margin: 0;
+  }
+
+  /* =========================
 	   RESPONSIVE
 	   ========================= */
   @media (max-width: 768px) {
-    .launch-params-grid {
-      grid-template-columns: 1fr;
-    }
-
     .param-card {
       padding: 0.75rem 1rem;
-    }
-
-    .personas-grid {
-      grid-template-columns: 1fr;
     }
 
     .business-model-strip {
@@ -941,12 +1087,15 @@
       gap: 0.5rem;
     }
 
-    .advantages-grid {
-      grid-template-columns: 1fr;
+    .innovation-card,
+    .discovery-card,
+    .pain-points-card {
+      padding: 0.875rem 1rem;
     }
 
-    .features-grid {
-      grid-template-columns: 1fr;
+    .query-chip {
+      padding: 0.3125rem 0.625rem;
+      font-size: 0.6875rem;
     }
   }
 
@@ -979,6 +1128,16 @@
 
     .business-model-strip {
       padding: 0.75rem 0.875rem;
+    }
+
+    .innovation-score .score-value {
+      font-size: 1.25rem;
+    }
+
+    .cac-vs-paid {
+      display: block;
+      margin-left: 0;
+      margin-top: 0.125rem;
     }
   }
 </style>

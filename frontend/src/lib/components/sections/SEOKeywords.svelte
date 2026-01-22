@@ -8,13 +8,11 @@
     Layers,
     Target,
     Clock,
-    DollarSign,
     CheckCircle,
     AlertTriangle,
     Code,
     BarChart3,
     ChevronRight,
-    ChevronDown,
     ArrowUpRight,
     Hash,
     Table,
@@ -44,6 +42,7 @@
   import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
   import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
   import KeywordTierChart from "$lib/components/charts/KeywordTierChart.svelte";
+  import CardGrid from "$lib/components/ui/CardGrid.svelte";
 
   interface Props {
     strategy: SEOStrategy;
@@ -52,19 +51,8 @@
 
   let { strategy, analytics }: Props = $props();
 
-  // Expandable sections state
+  // Keyword tab state
   let activeTab = $state<"tier0" | "tier1" | "tier2" | "all">("all");
-  let showKeywords = $state(false);
-  let showClusters = $state(false);
-  let showRoadmap = $state(false);
-  let showStrategyBudget = $state(false);
-  let showTechnical = $state(false);
-  let showMetrics = $state(false);
-  let showRisks = $state(false);
-  let showSchema = $state(false);
-  let showPageTypes = $state(false);
-  let showPositioning = $state(false);
-  let showConclusion = $state(false);
 
   // Keyword search and display state
   let searchQuery = $state("");
@@ -224,10 +212,10 @@
   <div class="keyword-preview-card">
     <div class="preview-header">
       <span class="preview-title">Top Keywords by Tier</span>
-      <button class="preview-expand-btn" onclick={() => (showKeywords = true)}>
+      <a href="#seo-keywords-details" class="preview-expand-btn">
         View All {allKeywords.length}
         <ChevronRight class="w-4 h-4" />
-      </button>
+      </a>
     </div>
     <div class="preview-tiers">
       {#if previewKeywords.tier0.length > 0}
@@ -279,20 +267,13 @@
   </div>
 
   <!-- Expandable: Keywords Table -->
-  <div class="expandable-section">
-    <button
-      class="expandable-header"
-      onclick={() => (showKeywords = !showKeywords)}
-    >
-      <div class="expandable-title">
-        <Hash class="expandable-icon" />
-        <span>Keyword Details</span>
-        <Badge variant="muted" size="sm">{allKeywords.length} keywords</Badge>
-      </div>
-      <ChevronDown class="chevron-icon {showKeywords ? 'expanded' : ''}" />
-    </button>
-    {#if showKeywords}
-      <div class="expandable-content">
+  <div id="seo-keywords-details">
+  <ExpandableSection
+    title="Keyword Details"
+    icon={Hash}
+    count={allKeywords.length}
+    countSuffix="keywords"
+  >
         <!-- View Toggle -->
         <div class="view-toggle">
           <button
@@ -512,217 +493,125 @@
             {/if}
           </div>
         {/if}
-      </div>
-    {/if}
+  </ExpandableSection>
   </div>
 
   <!-- Expandable: Topic Clusters -->
   {#if strategy.topic_clusters && strategy.topic_clusters.length > 0}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showClusters = !showClusters)}
-      >
-        <div class="expandable-title">
-          <Layers class="expandable-icon" />
-          <span>Topic Clusters</span>
-          <Badge variant="muted" size="sm"
-            >{strategy.topic_clusters.length} clusters</Badge
-          >
-        </div>
-        <ChevronDown class="chevron-icon {showClusters ? 'expanded' : ''}" />
-      </button>
-      {#if showClusters}
-        <div class="expandable-content">
-          <div class="clusters-grid">
-            {#each strategy.topic_clusters.slice(0, 6) as cluster}
-              {@const clusterKeywords = cluster.supporting_keywords || []}
-              <div class="cluster-card">
-                <div class="cluster-header">
-                  <h4 class="cluster-name">{cluster.cluster_name}</h4>
-                  {#if cluster.primary_keyword}
-                    <Badge variant="accent" size="sm"
-                      >{cluster.primary_keyword}</Badge
-                    >
-                  {/if}
-                </div>
-                <div class="cluster-keywords">
-                  {#each clusterKeywords.slice(0, 5) as keyword}
-                    <span class="cluster-keyword">{keyword}</span>
-                  {/each}
-                  {#if clusterKeywords.length > 5}
-                    <span class="cluster-more"
-                      >+{clusterKeywords.length - 5}</span
-                    >
-                  {/if}
-                </div>
-              </div>
-            {/each}
+    <ExpandableSection
+      title="Topic Clusters"
+      icon={Layers}
+      count={strategy.topic_clusters.length}
+      countSuffix="clusters"
+    >
+      <CardGrid minWidth={240} gap="md">
+        {#each strategy.topic_clusters.slice(0, 6) as cluster}
+          {@const clusterKeywords = cluster.supporting_keywords || []}
+          <div class="cluster-card">
+            <div class="cluster-header">
+              <h4 class="cluster-name">{cluster.cluster_name}</h4>
+              {#if cluster.primary_keyword}
+                <Badge variant="accent" size="sm"
+                  >{cluster.primary_keyword}</Badge
+                >
+              {/if}
+            </div>
+            <div class="cluster-keywords">
+              {#each clusterKeywords.slice(0, 5) as keyword}
+                <span class="cluster-keyword">{keyword}</span>
+              {/each}
+              {#if clusterKeywords.length > 5}
+                <span class="cluster-more"
+                  >+{clusterKeywords.length - 5}</span
+                >
+              {/if}
+            </div>
           </div>
-        </div>
-      {/if}
-    </div>
+        {/each}
+      </CardGrid>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Implementation Roadmap -->
   {#if strategy.implementation_roadmap}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showRoadmap = !showRoadmap)}
-      >
-        <div class="expandable-title">
-          <Clock class="expandable-icon" />
-          <span>Implementation Roadmap</span>
-        </div>
-        <ChevronDown class="chevron-icon {showRoadmap ? 'expanded' : ''}" />
-      </button>
-      {#if showRoadmap}
-        <div class="expandable-content">
-          <div class="roadmap-content markdown-content">
-            {@html renderMarkdown(String(strategy.implementation_roadmap))}
-          </div>
-        </div>
-      {/if}
-    </div>
+    <ExpandableSection title="Implementation Roadmap" icon={Clock}>
+      <div class="roadmap-content markdown-content">
+        {@html renderTechnicalContent(String(strategy.implementation_roadmap))}
+      </div>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Content Strategy & Budget -->
   {#if strategy.content_strategy || strategy.budget_allocation}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showStrategyBudget = !showStrategyBudget)}
-      >
-        <div class="expandable-title">
-          <FileText class="expandable-icon" />
-          <span>Content Strategy & Budget</span>
-        </div>
-        <ChevronDown
-          class="chevron-icon {showStrategyBudget ? 'expanded' : ''}"
-        />
-      </button>
-      {#if showStrategyBudget}
-        <div class="expandable-content">
-          <div class="strategy-grid">
-            {#if strategy.content_strategy}
-              <div class="strategy-card">
-                <h4 class="card-label">Content Strategy</h4>
-                <div class="strategy-content markdown-content">
-                  {@html renderMarkdown(String(strategy.content_strategy))}
-                </div>
-              </div>
-            {/if}
-
-            {#if strategy.budget_allocation}
-              <div class="strategy-card">
-                <h4 class="card-label">Budget Allocation</h4>
-                <div class="budget-content markdown-content">
-                  {@html renderMarkdown(String(strategy.budget_allocation))}
-                </div>
-              </div>
-            {/if}
+    <ExpandableSection title="Content Strategy & Budget" icon={FileText}>
+      <CardGrid minWidth={260} gap="md">
+        {#if strategy.content_strategy}
+          <div class="strategy-card">
+            <h4 class="card-label">Content Strategy</h4>
+            <div class="strategy-content markdown-content">
+              {@html renderMarkdown(String(strategy.content_strategy))}
+            </div>
           </div>
-        </div>
-      {/if}
-    </div>
+        {/if}
+
+        {#if strategy.budget_allocation}
+          <div class="strategy-card">
+            <h4 class="card-label">Budget Allocation</h4>
+            <div class="budget-content markdown-content">
+              {@html renderMarkdown(String(strategy.budget_allocation))}
+            </div>
+          </div>
+        {/if}
+      </CardGrid>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Technical SEO -->
   {#if strategy.technical_seo_recommendations}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showTechnical = !showTechnical)}
-      >
-        <div class="expandable-title">
-          <Code class="expandable-icon" />
-          <span>Technical SEO Recommendations</span>
-        </div>
-        <ChevronDown class="chevron-icon {showTechnical ? 'expanded' : ''}" />
-      </button>
-      {#if showTechnical}
-        <div class="expandable-content">
-          <div class="technical-content">
-            {@html renderTechnicalContent(
-              strategy.technical_seo_recommendations,
-            )}
-          </div>
-        </div>
-      {/if}
-    </div>
+    <ExpandableSection title="Technical SEO Recommendations" icon={Code}>
+      <div class="markdown-content technical-content timeline-styled">
+        {@html renderTechnicalContent(
+          strategy.technical_seo_recommendations,
+        )}
+      </div>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Key Metrics to Track -->
   {#if strategy.key_metrics_to_track && strategy.key_metrics_to_track.length > 0}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showMetrics = !showMetrics)}
-      >
-        <div class="expandable-title">
-          <BarChart3 class="expandable-icon" />
-          <span>Key Metrics to Track</span>
-          <Badge variant="muted" size="sm"
-            >{strategy.key_metrics_to_track.length}</Badge
-          >
-        </div>
-        <ChevronDown class="chevron-icon {showMetrics ? 'expanded' : ''}" />
-      </button>
-      {#if showMetrics}
-        <div class="expandable-content">
-          <div class="metrics-list">
-            {#each strategy.key_metrics_to_track as metric, i}
-              <div class="metric-item">
-                <span class="metric-number">{i + 1}</span>
-                <span class="metric-text">{metric}</span>
-              </div>
-            {/each}
+    <ExpandableSection
+      title="Key Metrics to Track"
+      icon={BarChart3}
+      count={strategy.key_metrics_to_track.length}
+    >
+      <div class="metrics-list">
+        {#each strategy.key_metrics_to_track as metric, i}
+          <div class="metric-item">
+            <span class="metric-number">{i + 1}</span>
+            <span class="metric-text">{metric}</span>
           </div>
-        </div>
-      {/if}
-    </div>
+        {/each}
+      </div>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Risk Mitigation -->
   {#if strategy.risk_mitigation}
-    <div class="expandable-section warning-accent">
-      <button
-        class="expandable-header"
-        onclick={() => (showRisks = !showRisks)}
-      >
-        <div class="expandable-title">
-          <AlertTriangle class="expandable-icon warning" />
-          <span>Risk Mitigation</span>
-        </div>
-        <ChevronDown class="chevron-icon {showRisks ? 'expanded' : ''}" />
-      </button>
-      {#if showRisks}
-        <div class="expandable-content">
-          <div class="risk-content">
-            {@html renderMarkdown(strategy.risk_mitigation)}
-          </div>
-        </div>
-      {/if}
-    </div>
+    <ExpandableSection
+      title="Risk Mitigation"
+      icon={AlertTriangle}
+      variant="warning"
+    >
+      <div class="markdown-content risk-content timeline-styled">
+        {@html renderMarkdown(strategy.risk_mitigation)}
+      </div>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Schema Markup -->
   {#if strategy.schema_markup_strategy}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showSchema = !showSchema)}
-      >
-        <div class="expandable-title">
-          <Code class="expandable-icon" />
-          <span>Schema Markup Strategy</span>
-        </div>
-        <ChevronDown class="chevron-icon {showSchema ? 'expanded' : ''}" />
-      </button>
-      {#if showSchema}
-        <div class="expandable-content">
-          {#if isStructuredSchemaMarkup(strategy.schema_markup_strategy)}
+    <ExpandableSection title="Schema Markup Strategy" icon={Code}>
+      {#if isStructuredSchemaMarkup(strategy.schema_markup_strategy)}
             {#if strategy.schema_markup_strategy.why_schema_matters}
               <div class="schema-intro">
                 <p>{strategy.schema_markup_strategy.why_schema_matters}</p>
@@ -774,36 +663,24 @@
                 <p>{strategy.schema_markup_strategy.testing_validation}</p>
               </div>
             {/if}
-          {:else}
-            <!-- String/markdown format fallback -->
-            <div class="schema-content markdown-content">
-              {@html renderMarkdown(String(strategy.schema_markup_strategy))}
-            </div>
-          {/if}
+      {:else}
+        <!-- String/markdown format fallback -->
+        <div class="schema-content markdown-content">
+          {@html renderMarkdown(String(strategy.schema_markup_strategy))}
         </div>
       {/if}
-    </div>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Page Type Implementations -->
   {#if strategy.page_type_implementations && strategy.page_type_implementations.length > 0}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showPageTypes = !showPageTypes)}
-      >
-        <div class="expandable-title">
-          <FileCode class="expandable-icon" />
-          <span>Page Type Implementations</span>
-          <Badge variant="muted" size="sm"
-            >{strategy.page_type_implementations.length} types</Badge
-          >
-        </div>
-        <ChevronDown class="chevron-icon {showPageTypes ? 'expanded' : ''}" />
-      </button>
-      {#if showPageTypes}
-        <div class="expandable-content">
-          <div class="page-types-grid">
+    <ExpandableSection
+      title="Page Type Implementations"
+      icon={FileCode}
+      count={strategy.page_type_implementations.length}
+      countSuffix="types"
+    >
+      <div class="page-types-grid">
             {#each strategy.page_type_implementations as pageType}
               <div class="page-type-card">
                 <div class="page-type-header">
@@ -911,109 +788,83 @@
               </div>
             {/each}
           </div>
-        </div>
-      {/if}
-    </div>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Competitive Positioning -->
   {#if strategy.competitive_positioning || (strategy.competitive_advantages && strategy.competitive_advantages.length > 0)}
-    <div class="expandable-section">
-      <button
-        class="expandable-header"
-        onclick={() => (showPositioning = !showPositioning)}
-      >
-        <div class="expandable-title">
-          <Target class="expandable-icon" />
-          <span>Competitive Positioning</span>
-        </div>
-        <ChevronDown class="chevron-icon {showPositioning ? 'expanded' : ''}" />
-      </button>
-      {#if showPositioning}
-        <div class="expandable-content">
-          <div class="positioning-grid">
-            {#if strategy.competitive_positioning}
-              <div class="positioning-card">
-                <h4 class="card-label">Market Position</h4>
-                <div class="positioning-content">
-                  {@html renderMarkdown(strategy.competitive_positioning)}
-                </div>
-              </div>
-            {/if}
-            {#if strategy.competitive_advantages && strategy.competitive_advantages.length > 0}
-              <div class="advantages-card">
-                <h4 class="card-label success">Competitive Advantages</h4>
-                <ul class="advantages-list">
-                  {#each strategy.competitive_advantages as advantage}
-                    <li class="advantage-item">
-                      <ArrowUpRight class="advantage-icon" />
-                      {advantage}
-                    </li>
-                  {/each}
-                </ul>
-              </div>
-            {/if}
+    <ExpandableSection title="Competitive Positioning" icon={Target}>
+      <CardGrid minWidth={260} gap="md">
+        {#if strategy.competitive_positioning}
+          <div class="positioning-card">
+            <h4 class="card-label">Market Position</h4>
+            <div class="positioning-content">
+              {@html renderMarkdown(strategy.competitive_positioning)}
+            </div>
           </div>
-        </div>
-      {/if}
-    </div>
+        {/if}
+        {#if strategy.competitive_advantages && strategy.competitive_advantages.length > 0}
+          <div class="advantages-card">
+            <h4 class="card-label success">Competitive Advantages</h4>
+            <ul class="advantages-list">
+              {#each strategy.competitive_advantages as advantage}
+                <li class="advantage-item">
+                  <ArrowUpRight class="advantage-icon" />
+                  {advantage}
+                </li>
+              {/each}
+            </ul>
+          </div>
+        {/if}
+      </CardGrid>
+    </ExpandableSection>
   {/if}
 
   <!-- Expandable: Conclusion & Next Steps -->
   {#if strategy.conclusion_bottom_line || (strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0) || (strategy.critical_success_factors && strategy.critical_success_factors.length > 0)}
-    <div class="expandable-section success-accent">
-      <button
-        class="expandable-header"
-        onclick={() => (showConclusion = !showConclusion)}
-      >
-        <div class="expandable-title">
-          <CheckCircle class="expandable-icon success" />
-          <span>Conclusion & Next Steps</span>
-        </div>
-        <ChevronDown class="chevron-icon {showConclusion ? 'expanded' : ''}" />
-      </button>
-      {#if showConclusion}
-        <div class="expandable-content">
-          {#if strategy.critical_success_factors && strategy.critical_success_factors.length > 0}
-            <div class="success-factors">
-              <h4 class="card-label">Critical Success Factors</h4>
-              <div class="factors-grid">
-                {#each strategy.critical_success_factors as factor}
-                  <div class="factor-item">
-                    <CheckCircle class="factor-icon" />
-                    <span>{factor}</span>
-                  </div>
-                {/each}
+    <ExpandableSection
+      title="Conclusion & Next Steps"
+      icon={CheckCircle}
+      variant="success"
+    >
+      {#if strategy.critical_success_factors && strategy.critical_success_factors.length > 0}
+        <div class="success-factors">
+          <h4 class="card-label">Critical Success Factors</h4>
+          <div class="factors-grid">
+            {#each strategy.critical_success_factors as factor}
+              <div class="factor-item">
+                <CheckCircle class="factor-icon" />
+                <span>{factor}</span>
               </div>
-            </div>
-          {/if}
-
-          <div class="conclusion-grid">
-            {#if strategy.conclusion_bottom_line}
-              <div class="bottomline-card">
-                <h4 class="card-label accent">Bottom Line</h4>
-                <div class="bottomline-content">
-                  {@html renderMarkdown(strategy.conclusion_bottom_line)}
-                </div>
-              </div>
-            {/if}
-            {#if strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0}
-              <div class="nextsteps-card">
-                <h4 class="card-label success">Next Steps</h4>
-                <ol class="nextsteps-list">
-                  {#each strategy.next_steps_checklist as step, i}
-                    <li class="nextstep-item">
-                      <span class="step-number">{i + 1}</span>
-                      <span class="step-text">{step}</span>
-                    </li>
-                  {/each}
-                </ol>
-              </div>
-            {/if}
+            {/each}
           </div>
         </div>
       {/if}
-    </div>
+
+      <CardGrid minWidth={260} gap="md">
+        {#if strategy.conclusion_bottom_line}
+          <div class="bottomline-card">
+            <h4 class="card-label accent">Bottom Line</h4>
+            <div class="bottomline-content">
+              {@html renderMarkdown(strategy.conclusion_bottom_line)}
+            </div>
+          </div>
+        {/if}
+        {#if strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0}
+          <div class="nextsteps-card">
+            <h4 class="card-label success">Next Steps</h4>
+            <ol class="nextsteps-list">
+              {#each strategy.next_steps_checklist as step, i}
+                <li class="nextstep-item">
+                  <span class="step-number">{i + 1}</span>
+                  <span class="step-text">{step}</span>
+                </li>
+              {/each}
+            </ol>
+          </div>
+        {/if}
+      </CardGrid>
+    </ExpandableSection>
   {/if}
 </section>
 
@@ -1059,88 +910,6 @@
     border-radius: 0.75rem;
     padding: 1.25rem;
     margin-bottom: 1rem;
-  }
-
-  /* Expandable Sections */
-  .expandable-section {
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    margin-bottom: 0.75rem;
-    overflow: hidden;
-  }
-
-  .expandable-section.success-accent {
-    border-color: rgba(34, 197, 94, 0.3);
-    background: linear-gradient(
-      135deg,
-      rgba(34, 197, 94, 0.05) 0%,
-      transparent 40%
-    );
-  }
-
-  .expandable-section.warning-accent {
-    border-color: rgba(234, 179, 8, 0.3);
-    background: linear-gradient(
-      135deg,
-      rgba(234, 179, 8, 0.05) 0%,
-      transparent 40%
-    );
-  }
-
-  .expandable-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 1rem 1.25rem;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: background 0.15s ease;
-  }
-
-  .expandable-header:hover {
-    background: var(--color-bg-surface);
-  }
-
-  .expandable-title {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-
-  .expandable-title :global(.expandable-icon) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: var(--color-accent);
-  }
-
-  .expandable-title :global(.expandable-icon.success) {
-    color: var(--color-success);
-  }
-
-  .expandable-title :global(.expandable-icon.warning) {
-    color: var(--color-warning);
-  }
-
-  :global(.chevron-icon) {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: var(--color-text-muted);
-    transition: transform 0.2s ease;
-  }
-
-  :global(.chevron-icon.expanded) {
-    transform: rotate(180deg);
-  }
-
-  .expandable-content {
-    padding: 0 1.25rem 1.25rem;
   }
 
   /* Tabs */
@@ -1441,13 +1210,7 @@
     margin-top: 0.75rem;
   }
 
-  /* Clusters Grid */
-  .clusters-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 0.75rem;
-  }
-
+  /* Cluster Card */
   .cluster-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
@@ -1492,15 +1255,7 @@
     padding: 0.125rem 0.25rem;
   }
 
-  /* Strategy Grid */
-  .strategy-grid,
-  .positioning-grid,
-  .conclusion-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.75rem;
-  }
-
+  /* Strategy Cards */
   .strategy-card,
   .positioning-card,
   .advantages-card,
@@ -2020,13 +1775,6 @@
 
   /* Responsive */
   @media (max-width: 768px) {
-    .clusters-grid,
-    .strategy-grid,
-    .positioning-grid,
-    .conclusion-grid {
-      grid-template-columns: 1fr;
-    }
-
     .keyword-controls {
       flex-direction: column;
       align-items: stretch;
@@ -2052,18 +1800,6 @@
   }
 
   @media (max-width: 480px) {
-    .section-title {
-      font-size: 1.25rem;
-    }
-
-    .expandable-header {
-      padding: 0.875rem 1rem;
-    }
-
-    .expandable-content {
-      padding: 0 1rem 1rem;
-    }
-
     .tabs-container {
       flex-direction: column;
     }

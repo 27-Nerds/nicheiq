@@ -1984,6 +1984,13 @@ It differentiates through {diff_text}.
                 selected_solution=selected_solution
             )
 
+            # Generate dynamic budget estimate using LLM
+            budget_estimate = self._generate_budget_estimate(
+                channels=channels,
+                selected_solution=selected_solution,
+                icp=icp
+            ) if channels else None
+
             gtm_blueprint = GTMBlueprint(
                 ideal_customer_profile=icp,
                 core_marketing_message=narrative.core_marketing_message,
@@ -1991,7 +1998,7 @@ It differentiates through {diff_text}.
                 recommended_channels=channels[:3],  # Top 3 channels
                 example_content_angles=narrative.content_angles[:5],  # Top 5 angles
                 first_30_days_playbook=playbook,
-                budget_estimate="$500-1500/month (first 3 months: content creation + modest paid promotion)" if channels else None
+                budget_estimate=budget_estimate
             )
 
             logger.info(f"[OK] GTM blueprint generated: {len(channels)} channels, {len(narrative.content_angles)} content angles")
@@ -2309,6 +2316,103 @@ It differentiates through {diff_text}.
         except Exception as e:
             logger.error(f"Failed to generate 30-day playbook: {e}")
             raise
+
+    def _generate_budget_estimate(
+        self,
+        channels: list["MarketingChannel"],
+        selected_solution: "SolutionIdea",
+        icp: "IdealCustomerProfile"
+    ) -> "BudgetEstimateResult | None":
+        """
+        Generate dynamic marketing budget estimate using LLM.
+
+        Uses pricing strategy, market sizing, and channel mix to calculate
+        a context-aware budget with allocation breakdown.
+
+        Args:
+            channels: List of MarketingChannel objects
+            selected_solution: Selected solution with details
+            icp: Ideal customer profile
+
+        Returns:
+            BudgetEstimateResult with budget range and allocation, or None on failure
+        """
+        from ..models.marketing_blueprint import BudgetEstimateResult
+        from ..utils.prompts import load_prompt
+        from .utils.prompt_formatters import format_channels_for_prompt
+
+        try:
+            # Extract pricing data - find pricing strategy for selected solution
+            pricing_model = "Freemium"
+            starter_price = "N/A"
+            pro_price = "N/A"
+            estimated_arpu = "N/A"
+            estimated_ltv = "N/A"
+            ltv_to_cac_ratio = "3:1"
+
+            # Find pricing strategy for the selected solution from the list
+            if hasattr(self.state, 'pricing_strategies') and self.state.pricing_strategies:
+                for ps in self.state.pricing_strategies:
+                    if ps.solution_name == selected_solution.solution_name:
+                        pricing_model = ps.pricing_model or "Freemium"
+                        starter_price = ps.recommended_starter_price or "N/A"
+                        pro_price = ps.recommended_pro_price or "N/A"
+                        estimated_arpu = ps.estimated_arpu or "N/A"
+                        estimated_ltv = ps.estimated_ltv or "N/A"
+                        ltv_to_cac_ratio = ps.ltv_to_cac_ratio or "3:1"
+                        break
+
+            # Extract market sizing data
+            som_y1 = "Not calculated"
+            som_y3 = "Not calculated"
+            tam = "Not calculated"
+
+            if self.state.market_sizing:
+                ms = self.state.market_sizing
+                som_y1 = ms.serviceable_obtainable_market_y1 or "Not calculated"
+                som_y3 = ms.serviceable_obtainable_market_y3 or "Not calculated"
+                tam = ms.total_addressable_market or "Not calculated"
+
+            # Format channels
+            channels_summary = format_channels_for_prompt(channels)
+
+            # Get solution and ICP details
+            project_type = selected_solution.project_type or "SaaS Tool"
+            persona_name = icp.persona_name if icp else "Target Customer"
+
+            # Load template and generate prompt
+            template = load_prompt("report_budget_estimate")
+            prompt = template.format(
+                solution_name=selected_solution.solution_name,
+                pricing_model=pricing_model,
+                starter_price=starter_price,
+                pro_price=pro_price,
+                estimated_arpu=estimated_arpu,
+                estimated_ltv=estimated_ltv,
+                ltv_to_cac_ratio=ltv_to_cac_ratio,
+                som_y1=som_y1,
+                som_y3=som_y3,
+                tam=tam,
+                channels_summary=channels_summary,
+                project_type=project_type,
+                persona_name=persona_name
+            )
+
+            # Use LLMService for structured output
+            budget_result, _usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=BudgetEstimateResult,
+                temperature=0.5
+            )
+            logger.info(
+                f"Successfully generated budget estimate: "
+                f"${budget_result.monthly_budget_min}-${budget_result.monthly_budget_max}/month"
+            )
+            return budget_result
+
+        except Exception as e:
+            logger.warning(f"Failed to generate budget estimate, using fallback: {e}")
+            return None
 
     # ==================================================================================
     # Analytics Generator (Phase 3 Enhancement)

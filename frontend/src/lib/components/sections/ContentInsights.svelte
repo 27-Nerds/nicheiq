@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MessageSquare, Users, BarChart3, Quote, Star, Shield, TrendingUp, Hash, ChevronDown } from 'lucide-svelte';
+	import { MessageSquare, Users, BarChart3, Quote, Star, Shield, TrendingUp, Hash } from 'lucide-svelte';
 	import type { ContentCategorization } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
@@ -13,11 +13,6 @@
 	}
 
 	let { contentCategorization, overallCompetitiveInsights }: Props = $props();
-
-	// Expandable states
-	let showThemes = $state(true);
-	let showSegments = $state(false);
-	let showAssessment = $state(false);
 
 	// Get frequency badge variant
 	const getFrequencyVariant = (frequency: string) => {
@@ -113,147 +108,122 @@
 
 		<!-- Expandable: Theme Categories -->
 		{#if contentCategorization.theme_categories && contentCategorization.theme_categories.length > 0}
-			<div class="expandable-section">
-				<button class="expandable-header" onclick={() => showThemes = !showThemes}>
-					<div class="expandable-title">
-						<BarChart3 class="expandable-icon" />
-						<span>Discussion Themes</span>
-						<Badge variant="muted" size="sm">{contentCategorization.theme_categories.length}</Badge>
-					</div>
-					<ChevronDown class="chevron-icon {showThemes ? 'expanded' : ''}" />
-				</button>
-
-				{#if showThemes}
-					<div class="expandable-content">
-						<div class="themes-list">
-							{#each contentCategorization.theme_categories as category, i}
-								<details class="theme-card">
-									<summary class="theme-summary">
-										<div class="theme-main">
-											<span class="theme-rank">{i + 1}</span>
-											<div class="theme-info">
-												<h4 class="theme-name">{category.category_name}</h4>
-												<p class="theme-def">{category.definition}</p>
-											</div>
-										</div>
-										<div class="theme-meta">
-											<Badge variant={getFrequencyVariant(category.frequency)} size="sm">{category.frequency}</Badge>
-											<span class="theme-mentions">{category.mention_count}</span>
-										</div>
-									</summary>
-
-									<div class="theme-details">
-										{#if category.primary_user_segments && category.primary_user_segments.length > 0}
-											<div class="theme-section">
-												<span class="theme-section-label">
-													<Users class="section-icon-sm" />
-													User Segments
-												</span>
-												<div class="tag-row">
-													{#each category.primary_user_segments as segment}
-														<span class="tag">{segment}</span>
-													{/each}
-												</div>
-											</div>
-										{/if}
-
-										{#if category.representative_quotes && category.representative_quotes.length > 0}
-											<div class="theme-section">
-												<span class="theme-section-label">
-													<Quote class="section-icon-sm" />
-													Quotes
-												</span>
-												<div class="quotes-list">
-													{#each category.representative_quotes.slice(0, 3) as quote}
-														<QuoteBlock text={quote} variant="card" class="theme-quote-block" />
-													{/each}
-													{#if category.representative_quotes.length > 3}
-														<span class="quotes-more">+{category.representative_quotes.length - 3} more</span>
-													{/if}
-												</div>
-											</div>
-										{/if}
+			<ExpandableSection
+				title="Discussion Themes"
+				icon={BarChart3}
+				count={contentCategorization.theme_categories.length}
+				defaultOpen={true}
+			>
+				<div class="themes-list">
+					{#each contentCategorization.theme_categories as category, i}
+						<details class="theme-card">
+							<summary class="theme-summary">
+								<div class="theme-main">
+									<span class="theme-rank">{i + 1}</span>
+									<div class="theme-info">
+										<h4 class="theme-name">{category.category_name}</h4>
+										<p class="theme-def">{category.definition}</p>
 									</div>
-								</details>
-							{/each}
-						</div>
-					</div>
-				{/if}
-			</div>
+								</div>
+								<div class="theme-meta">
+									<Badge variant={getFrequencyVariant(category.frequency)} size="sm">{category.frequency}</Badge>
+									<span class="theme-mentions">{category.mention_count}</span>
+								</div>
+							</summary>
+
+							<div class="theme-details">
+								{#if category.primary_user_segments && category.primary_user_segments.length > 0}
+									<div class="theme-section">
+										<span class="theme-section-label">
+											<Users class="section-icon-sm" />
+											User Segments
+										</span>
+										<div class="tag-row">
+											{#each category.primary_user_segments as segment}
+												<span class="tag">{segment}</span>
+											{/each}
+										</div>
+									</div>
+								{/if}
+
+								{#if category.representative_quotes && category.representative_quotes.length > 0}
+									<div class="theme-section">
+										<span class="theme-section-label">
+											<Quote class="section-icon-sm" />
+											Quotes
+										</span>
+										<div class="quotes-list">
+											{#each category.representative_quotes.slice(0, 3) as quote}
+												<QuoteBlock text={quote} variant="card" class="theme-quote-block" />
+											{/each}
+											{#if category.representative_quotes.length > 3}
+												<span class="quotes-more">+{category.representative_quotes.length - 3} more</span>
+											{/if}
+										</div>
+									</div>
+								{/if}
+							</div>
+						</details>
+					{/each}
+				</div>
+			</ExpandableSection>
 		{/if}
 
 		<!-- Expandable: User Segments -->
 		{#if contentCategorization.user_segments && contentCategorization.user_segments.length > 0}
-			<div class="expandable-section">
-				<button class="expandable-header" onclick={() => showSegments = !showSegments}>
-					<div class="expandable-title">
-						<Users class="expandable-icon" />
-						<span>User Segments</span>
-						<Badge variant="muted" size="sm">{contentCategorization.user_segments.length}</Badge>
-					</div>
-					<ChevronDown class="chevron-icon {showSegments ? 'expanded' : ''}" />
-				</button>
-
-				{#if showSegments}
-					<div class="expandable-content">
-						<div class="segments-grid">
-							{#each contentCategorization.user_segments as segment}
-								<div class="segment-card">
-									<div class="segment-header">
-										<h4 class="segment-name">{segment.segment_name}</h4>
-										<Badge variant={getFrequencyVariant(segment.mention_frequency)} size="sm">{segment.mention_frequency}</Badge>
-									</div>
-									{#if segment.primary_concerns && segment.primary_concerns.length > 0}
-										<ul class="concerns-list">
-											{#each segment.primary_concerns as concern}
-												<li>{concern}</li>
-											{/each}
-										</ul>
-									{/if}
-								</div>
-							{/each}
+			<ExpandableSection
+				title="User Segments"
+				icon={Users}
+				count={contentCategorization.user_segments.length}
+			>
+				<div class="segments-grid">
+					{#each contentCategorization.user_segments as segment}
+						<div class="segment-card">
+							<div class="segment-header">
+								<h4 class="segment-name">{segment.segment_name}</h4>
+								<Badge variant={getFrequencyVariant(segment.mention_frequency)} size="sm">{segment.mention_frequency}</Badge>
+							</div>
+							{#if segment.primary_concerns && segment.primary_concerns.length > 0}
+								<ul class="concerns-list">
+									{#each segment.primary_concerns as concern}
+										<li>{concern}</li>
+									{/each}
+								</ul>
+							{/if}
 						</div>
-					</div>
-				{/if}
-			</div>
+					{/each}
+				</div>
+			</ExpandableSection>
 		{/if}
 
 		<!-- Expandable: Quality Assessment -->
 		{#if contentCategorization.overall_quality_justification || contentCategorization.discussion_quality_assessment}
-			<div class="expandable-section">
-				<button class="expandable-header" onclick={() => showAssessment = !showAssessment}>
-					<div class="expandable-title">
-						<Star class="expandable-icon warning" />
-						<span>Quality Assessment</span>
-					</div>
-					<ChevronDown class="chevron-icon {showAssessment ? 'expanded' : ''}" />
-				</button>
-
-				{#if showAssessment}
-					<div class="expandable-content">
-						<div class="assessment-grid">
-							{#if contentCategorization.overall_quality_justification}
-								<div class="assessment-card">
-									<h4 class="assessment-title">
-										<Star class="assessment-icon" />
-										Quality Justification
-									</h4>
-									<p class="assessment-text">{contentCategorization.overall_quality_justification}</p>
-								</div>
-							{/if}
-							{#if contentCategorization.discussion_quality_assessment}
-								<div class="assessment-card">
-									<h4 class="assessment-title">
-										<TrendingUp class="assessment-icon" />
-										Discussion Assessment
-									</h4>
-									<p class="assessment-text">{contentCategorization.discussion_quality_assessment}</p>
-								</div>
-							{/if}
+			<ExpandableSection
+				title="Quality Assessment"
+				icon={Star}
+				variant="warning"
+			>
+				<div class="assessment-grid">
+					{#if contentCategorization.overall_quality_justification}
+						<div class="assessment-card">
+							<h4 class="assessment-title">
+								<Star class="assessment-icon" />
+								Quality Justification
+							</h4>
+							<p class="assessment-text">{contentCategorization.overall_quality_justification}</p>
 						</div>
-					</div>
-				{/if}
-			</div>
+					{/if}
+					{#if contentCategorization.discussion_quality_assessment}
+						<div class="assessment-card">
+							<h4 class="assessment-title">
+								<TrendingUp class="assessment-icon" />
+								Discussion Assessment
+							</h4>
+							<p class="assessment-text">{contentCategorization.discussion_quality_assessment}</p>
+						</div>
+					{/if}
+				</div>
+			</ExpandableSection>
 		{/if}
 	{/if}
 </section>
@@ -442,72 +412,6 @@
 
 	.summary-text :global(p:last-child) {
 		margin-bottom: 0;
-	}
-
-	/* =========================
-	   EXPANDABLE SECTIONS
-	   ========================= */
-	.expandable-section {
-		border: 1px solid var(--color-border);
-		border-radius: 0.625rem;
-		margin-bottom: 0.625rem;
-		overflow: hidden;
-	}
-
-	.expandable-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0.875rem 1rem;
-		background: var(--color-bg-elevated);
-		border: none;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.expandable-header:hover {
-		background: var(--color-bg-surface);
-	}
-
-	.expandable-title {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-	}
-
-	:global(.expandable-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: var(--color-accent);
-	}
-
-	:global(.expandable-icon.warning) {
-		color: var(--color-warning);
-	}
-
-	.expandable-title span {
-		font-family: var(--font-display);
-		font-size: 0.875rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	:global(.chevron-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: var(--color-text-muted);
-		transition: transform 0.2s;
-	}
-
-	:global(.chevron-icon.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.expandable-content {
-		padding: 1rem;
-		background: var(--color-bg-base);
-		border-top: 1px solid var(--color-border);
 	}
 
 	/* Themes List */

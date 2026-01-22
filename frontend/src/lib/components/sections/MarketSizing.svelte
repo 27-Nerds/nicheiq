@@ -1,6 +1,5 @@
 <script lang="ts">
 	import {
-		PieChart,
 		TrendingUp,
 		Database,
 		CheckCircle,
@@ -8,7 +7,6 @@
 		Timer,
 		Target,
 		Zap,
-		ChevronDown,
 		BarChart3,
 		DollarSign
 	} from 'lucide-svelte';
@@ -22,18 +20,14 @@
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
+	import StatPill from '$lib/components/ui/StatPill.svelte';
+	import CardGrid from '$lib/components/ui/CardGrid.svelte';
 
 	interface Props {
 		data: MarketSizing;
 	}
 
 	let { data }: Props = $props();
-
-	// Expandable sections state
-	let showSegments = $state(false);
-	let showDriversRisks = $state(false);
-	let showMethodology = $state(false);
-	let showStrategy = $state(false);
 
 	// Get viability verdict styling
 	const getViabilityConfig = (verdict?: string) => {
@@ -120,28 +114,16 @@
 	<!-- Stats Strip -->
 	<div class="stats-strip">
 		{#if data.keyword_demand_signal}
-			<div class="stat-pill">
-				<span class="stat-label">Keyword Demand</span>
-				<span class="stat-value">{data.keyword_demand_signal}</span>
-			</div>
+			<StatPill label="Keyword Demand" value={data.keyword_demand_signal} />
 		{/if}
 		{#if data.pain_point_frequency}
-			<div class="stat-pill">
-				<span class="stat-label">Pain Frequency</span>
-				<span class="stat-value">{data.pain_point_frequency}</span>
-			</div>
+			<StatPill label="Pain Frequency" value={data.pain_point_frequency} />
 		{/if}
 		{#if data.competitor_market_presence}
-			<div class="stat-pill">
-				<span class="stat-label">Competition</span>
-				<span class="stat-value">{data.competitor_market_presence}</span>
-			</div>
+			<StatPill label="Competition" value={data.competitor_market_presence} />
 		{/if}
 		{#if data.primary_methodology}
-			<div class="stat-pill">
-				<span class="stat-label">Method</span>
-				<span class="stat-value">{data.primary_methodology}</span>
-			</div>
+			<StatPill label="Method" value={data.primary_methodology} />
 		{/if}
 	</div>
 
@@ -158,166 +140,131 @@
 
 	<!-- Expandable: Growth Drivers & Risks -->
 	{#if (data.growth_drivers && data.growth_drivers.length > 0) || (data.risk_factors && data.risk_factors.length > 0)}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => (showDriversRisks = !showDriversRisks)}>
-				<div class="expandable-title">
-					<BarChart3 class="expandable-icon" />
-					<span>Growth Drivers & Risks</span>
-					<Badge variant="muted" size="sm">
-						{(data.growth_drivers?.length || 0) + (data.risk_factors?.length || 0)}
-					</Badge>
-				</div>
-				<ChevronDown class="chevron-icon {showDriversRisks ? 'expanded' : ''}" />
-			</button>
-			{#if showDriversRisks}
-				<div class="expandable-content">
-					<div class="drivers-risks-grid">
-						{#if data.growth_drivers && data.growth_drivers.length > 0}
-							<div class="insight-card insight-card--success">
-								<h4 class="card-label success">
-									<TrendingUp class="label-icon" />
-									Growth Drivers
-								</h4>
-								<ul class="item-list">
-									{#each data.growth_drivers as driver}
-										<li class="item success">
-											<span class="bullet">+</span>
-											<span>{driver}</span>
-										</li>
-									{/each}
-								</ul>
-							</div>
-						{/if}
-
-						{#if data.risk_factors && data.risk_factors.length > 0}
-							<div class="insight-card insight-card--error">
-								<h4 class="card-label error">
-									<AlertTriangle class="label-icon" />
-									Market Risks
-								</h4>
-								<ul class="item-list">
-									{#each data.risk_factors as risk}
-										<li class="item error">
-											<span class="bullet">!</span>
-											<span>{risk}</span>
-										</li>
-									{/each}
-								</ul>
-							</div>
-						{/if}
+		<ExpandableSection
+			title="Growth Drivers & Risks"
+			icon={BarChart3}
+			count={(data.growth_drivers?.length || 0) + (data.risk_factors?.length || 0)}
+		>
+			<CardGrid minWidth={240} gap="md">
+				{#if data.growth_drivers && data.growth_drivers.length > 0}
+					<div class="insight-card insight-card--success">
+						<h4 class="card-label success">
+							<TrendingUp class="label-icon" />
+							Growth Drivers
+						</h4>
+						<ul class="item-list">
+							{#each data.growth_drivers as driver}
+								<li class="item success">
+									<span class="bullet">+</span>
+									<span>{driver}</span>
+								</li>
+							{/each}
+						</ul>
 					</div>
-				</div>
-			{/if}
-		</div>
+				{/if}
+
+				{#if data.risk_factors && data.risk_factors.length > 0}
+					<div class="insight-card insight-card--error">
+						<h4 class="card-label error">
+							<AlertTriangle class="label-icon" />
+							Market Risks
+						</h4>
+						<ul class="item-list">
+							{#each data.risk_factors as risk}
+								<li class="item error">
+									<span class="bullet">!</span>
+									<span>{risk}</span>
+								</li>
+							{/each}
+						</ul>
+					</div>
+				{/if}
+			</CardGrid>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Segment Breakdown -->
 	{#if data.segment_sizing && data.segment_sizing.length > 0}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => (showSegments = !showSegments)}>
-				<div class="expandable-title">
-					<Target class="expandable-icon" />
-					<span>Segment Breakdown</span>
-					<Badge variant="muted" size="sm">{data.segment_sizing.length}</Badge>
-				</div>
-				<ChevronDown class="chevron-icon {showSegments ? 'expanded' : ''}" />
-			</button>
-			{#if showSegments}
-				<div class="expandable-content">
-					<div class="segments-grid">
-						{#each data.segment_sizing as segment}
-							<div class="segment-card">
-								<div class="segment-header">
-									<h4 class="segment-name">{segment.segment_name}</h4>
-									<Badge
-										variant={segment.confidence_level === 'High' ? 'success' : 'warning'}
-										size="sm"
-									>
-										{segment.confidence_level}
-									</Badge>
-								</div>
-								<div class="segment-metrics">
-									<div class="metric">
-										<span class="metric-label">
-											TAM <Tooltip content={getTermTooltip('TAM')} position="top" />
-										</span>
-										<span class="metric-value">{segment.tam_estimate}</span>
-									</div>
-									<div class="metric">
-										<span class="metric-label">
-											SAM <Tooltip content={getTermTooltip('SAM')} position="top" />
-										</span>
-										<span class="metric-value">{segment.sam_estimate}</span>
-									</div>
-									<div class="metric highlight">
-										<span class="metric-label">
-											SOM <Tooltip content={getTermTooltip('SOM')} position="top" />
-										</span>
-										<span class="metric-value accent">{segment.som_estimate}</span>
-									</div>
-								</div>
-								{#if segment.sizing_methodology}
-									<p class="segment-method">{segment.sizing_methodology}</p>
-								{/if}
+		<ExpandableSection
+			title="Segment Breakdown"
+			icon={Target}
+			count={data.segment_sizing.length}
+		>
+			<div class="segments-grid">
+				{#each data.segment_sizing as segment}
+					<div class="segment-card">
+						<div class="segment-header">
+							<h4 class="segment-name">{segment.segment_name}</h4>
+							<Badge
+								variant={segment.confidence_level === 'High' ? 'success' : 'warning'}
+								size="sm"
+							>
+								{segment.confidence_level}
+							</Badge>
+						</div>
+						<div class="segment-metrics">
+							<div class="metric">
+								<span class="metric-label">
+									TAM <Tooltip content={getTermTooltip('TAM')} position="top" />
+								</span>
+								<span class="metric-value">{segment.tam_estimate}</span>
 							</div>
-						{/each}
+							<div class="metric">
+								<span class="metric-label">
+									SAM <Tooltip content={getTermTooltip('SAM')} position="top" />
+								</span>
+								<span class="metric-value">{segment.sam_estimate}</span>
+							</div>
+							<div class="metric highlight">
+								<span class="metric-label">
+									SOM <Tooltip content={getTermTooltip('SOM')} position="top" />
+								</span>
+								<span class="metric-value accent">{segment.som_estimate}</span>
+							</div>
+						</div>
+						{#if segment.sizing_methodology}
+							<p class="segment-method">{segment.sizing_methodology}</p>
+						{/if}
 					</div>
-				</div>
-			{/if}
-		</div>
+				{/each}
+			</div>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Methodology -->
 	{#if data.methodology_explanation}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => (showMethodology = !showMethodology)}>
-				<div class="expandable-title">
-					<Database class="expandable-icon" />
-					<span>Methodology</span>
-					{#if data.data_sources_used && data.data_sources_used.length > 0}
-						<Badge variant="muted" size="sm">{data.data_sources_used.length} sources</Badge>
-					{/if}
-				</div>
-				<ChevronDown class="chevron-icon {showMethodology ? 'expanded' : ''}" />
-			</button>
-			{#if showMethodology}
-				<div class="expandable-content">
-					<div class="methodology-content">
-						{@html renderMarkdown(data.methodology_explanation)}
+		<ExpandableSection
+			title="Methodology"
+			icon={Database}
+			count={data.data_sources_used?.length}
+			countSuffix="sources"
+		>
+			<div class="methodology-content">
+				{@html renderMarkdown(data.methodology_explanation)}
+			</div>
+			{#if data.data_sources_used && data.data_sources_used.length > 0}
+				<div class="sources-row">
+					<span class="sources-label">Data Sources:</span>
+					<div class="sources-tags">
+						{#each data.data_sources_used as source}
+							<span class="source-tag">{source}</span>
+						{/each}
 					</div>
-					{#if data.data_sources_used && data.data_sources_used.length > 0}
-						<div class="sources-row">
-							<span class="sources-label">Data Sources:</span>
-							<div class="sources-tags">
-								{#each data.data_sources_used as source}
-									<span class="source-tag">{source}</span>
-								{/each}
-							</div>
-						</div>
-					{/if}
 				</div>
 			{/if}
-		</div>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Viability Rationale -->
 	{#if data.viability_rationale}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => (showStrategy = !showStrategy)}>
-				<div class="expandable-title">
-					<CheckCircle class="expandable-icon" />
-					<span>Viability Rationale</span>
-				</div>
-				<ChevronDown class="chevron-icon {showStrategy ? 'expanded' : ''}" />
-			</button>
-			{#if showStrategy}
-				<div class="expandable-content">
-					<div class="rationale-content">
-						{@html renderMarkdown(data.viability_rationale)}
-					</div>
-				</div>
-			{/if}
-		</div>
+		<ExpandableSection
+			title="Viability Rationale"
+			icon={CheckCircle}
+		>
+			<div class="rationale-content">
+				{@html renderMarkdown(data.viability_rationale)}
+			</div>
+		</ExpandableSection>
 	{/if}
 </section>
 
@@ -391,32 +338,6 @@
 		margin-bottom: 1rem;
 	}
 
-	.stat-pill {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.75rem;
-		background: #FFFFFF;
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		border-radius: 9999px;
-	}
-
-	.stat-label {
-		font-family: var(--font-mono);
-		font-size: 0.5625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: #A1A1AA;
-	}
-
-	.stat-value {
-		font-family: var(--font-display);
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: #18181B;
-	}
-
 	/* =========================
 	   STRATEGY HERO
 	   ========================= */
@@ -458,75 +379,7 @@
 		margin: 0;
 	}
 
-	/* =========================
-	   EXPANDABLE SECTIONS
-	   ========================= */
-	.expandable-section {
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		border-radius: 0.75rem;
-		margin-bottom: 0.75rem;
-		overflow: hidden;
-	}
-
-	.expandable-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0.875rem 1rem;
-		background: #FFFFFF;
-		border: none;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.expandable-header:hover {
-		background: rgba(0, 0, 0, 0.02);
-	}
-
-	.expandable-title {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-	}
-
-	:global(.expandable-icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: #E55A28;
-	}
-
-	.expandable-title span {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: #18181B;
-	}
-
-	:global(.chevron-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: #A1A1AA;
-		transition: transform 0.2s;
-	}
-
-	:global(.chevron-icon.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.expandable-content {
-		padding: 0 1rem 1rem;
-		background: #FFFFFF;
-	}
-
-	/* Drivers & Risks Grid */
-	.drivers-risks-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-		gap: 0.75rem;
-	}
-
-
+	/* Drivers & Risks */
 	.card-label {
 		display: flex;
 		align-items: center;

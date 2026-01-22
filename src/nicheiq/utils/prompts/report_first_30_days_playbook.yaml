@@ -147,30 +147,24 @@ template: |
   **OUTPUT FORMAT REQUIREMENTS**
   **═════════════════════════════════════════════════════════════════════════**
 
-  Generate a JSON-compatible structure with 4 weeks of action items:
+  Generate a JSON structure with these EXACT fields:
 
-  For each week, provide:
-  - **week_number**: 1, 2, 3, or 4
-  - **week_theme**: One of ["Foundation", "Value First", "Validation", "Optimization"]
-  - **focus_areas**: 2-3 sentence summary of what this week accomplishes
-  - **action_items**: List of 5-8 specific, actionable tasks following the construction rules above
-  - **success_metrics**: 2-3 measurable outcomes using conservative ranges
-  - **key_deliverables**: 2-4 concrete outputs (landing page, blog post, email sequence, etc.)
+  - **week_1_actions**: List of 5-8 specific actions for Week 1 (Foundation)
+    Focus: Setup, analytics, landing page, email capture, social listening
+  - **week_2_actions**: List of 5-8 specific actions for Week 2 (Value First)
+    Focus: First content, community sharing, initial email list building
+  - **week_3_actions**: List of 5-8 specific actions for Week 3 (Validation)
+    Focus: Customer interviews, message iteration, case study/insight content
+  - **week_4_actions**: List of 5-8 specific actions for Week 4 (Optimization)
+    Focus: Data analysis, content optimization, feature iteration planning
+  - **success_metrics**: List of 3-5 metrics to track during the 30 days
 
-  **═════════════════════════════════════════════════════════════════════════**
-  **EMBEDDED VERIFICATION CHECKLIST (Review Before Finalizing)**
-  **═════════════════════════════════════════════════════════════════════════**
+  **IMPORTANT:** Each action should be a complete, self-contained string following the construction rules above.
+  Include the week theme context within each action item itself.
 
-  Before submitting your 30-day playbook, verify:
-
-  [ ] **Pain Point Grounding:** At least 50% of action items explicitly reference one of the 3 pain point titles
-  [ ] **Channel Accuracy:** All channel names are exact copies from the channels summary (no invented channels)
-  [ ] **Metric Realism:** All numeric targets fall within the conservative ranges (≤500 visitors, ≤70 subscribers)
-  [ ] **Action Specificity:** Every action has: deliverable + channel + outcome (no generic "create content")
-  [ ] **Weekly Progression:** Each week builds on previous week (Foundation → Value → Validation → Optimization)
-  [ ] **Content Angle Integration:** At least 3-5 actions leverage the provided content angles
-  [ ] **ICP Alignment:** Actions target the ideal customer profile described above
-  [ ] **Deliverables Clarity:** Each week has 2-4 concrete deliverables (not vague goals)
+  **Example action format:**
+  ✓ "Week 1 Foundation: Set up landing page with email capture targeting [persona] struggling with [PAIN_POINT_TITLE]"
+  ✓ "Publish comparison guide on [CHANNEL] addressing [PAIN_POINT_TITLE] - target 50-100 views"
 
   **═══ CRITICAL RULES (Read Last - Recency Reminder) ═══**
   Remember:
@@ -188,10 +182,9 @@ template: |
 
   <verification>
   Before returning, verify:
-  - JSON contains 4 weeks with week_number, week_theme, focus_areas, action_items, success_metrics, key_deliverables
-  - Each week has 5-8 action_items
+  - JSON contains EXACTLY these 5 fields: week_1_actions, week_2_actions, week_3_actions, week_4_actions, success_metrics
+  - Each week_N_actions has 5-8 action items as strings
   - ≥50% of actions reference specific pain point titles (exact match)
   - All channel names are EXACT copies from channels summary
-  - All metrics are conservative (≤500 visitors, ≤70 subscribers)
-  - Weekly progression follows Foundation → Value First → Validation → Optimization
+  - All metrics in success_metrics are conservative (≤500 visitors, ≤70 subscribers)
   </verification>

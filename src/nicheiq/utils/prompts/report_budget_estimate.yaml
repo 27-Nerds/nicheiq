@@ -1,0 +1,127 @@
+# Prompt template for generating dynamic marketing budget estimates
+#
+# This template uses progressive prompting structure:
+# 1. Critical rules (top)
+# 2. Pricing & economics context
+# 3. Market size context
+# 4. Marketing channels context
+# 5. Budget calibration guide
+# 6. Output format
+# 7. Critical rules (bottom - recency reminder)
+#
+# Variables:
+#   - solution_name: Name of the selected solution
+#   - pricing_model: Pricing model type (Freemium, Subscription, etc.)
+#   - starter_price: Recommended starter tier price
+#   - pro_price: Recommended pro tier price
+#   - estimated_arpu: Average revenue per user
+#   - estimated_ltv: Customer lifetime value
+#   - ltv_to_cac_ratio: Target LTV:CAC ratio
+#   - som_y1: Year 1 serviceable obtainable market
+#   - som_y3: Year 3 serviceable obtainable market
+#   - tam: Total addressable market
+#   - channels_summary: Formatted marketing channels with types
+#   - project_type: Type of project (SaaS, Tool, etc.)
+#   - persona_name: Target customer persona name
+
+template: |
+  Generate a realistic monthly marketing budget estimate for launching {solution_name}.
+
+  **═══ CRITICAL RULES ═══**
+  ✓ Budget MUST be calibrated to the pricing model and market size
+  ✓ Budget MUST consider channel mix (paid vs organic)
+  ✓ Budget MUST respect LTV:CAC economics (sustainable CAC < LTV/3)
+  ✓ Budget ranges MUST vary by business context - no one-size-fits-all
+  ✗ NO generic "$500-1500/month" estimates without justification
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **PRICING & ECONOMICS CONTEXT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Pricing Model:** {pricing_model}
+  **Starter Price:** {starter_price}
+  **Pro Price:** {pro_price}
+  **Estimated ARPU:** {estimated_arpu}
+  **Estimated LTV:** {estimated_ltv}
+  **LTV:CAC Ratio Target:** {ltv_to_cac_ratio}
+
+  **ECONOMICS CALCULATION:**
+  - If LTV is {estimated_ltv}, sustainable CAC should be ~1/3 of that
+  - Example: LTV $600 → max CAC ~$200 per customer
+  - Budget = target_customers × CAC
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **MARKET SIZE CONTEXT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Year 1 Target Market (SOM):** {som_y1}
+  **Year 3 Target Market (SOM):** {som_y3}
+  **Total Addressable Market:** {tam}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **MARKETING CHANNELS**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {channels_summary}
+
+  **Channel Analysis:**
+  - Count paid channels vs organic channels
+  - Paid channels (Google Ads, Meta, LinkedIn) require $500-2000/month minimum each
+  - Organic channels (SEO, Reddit, Twitter) require time but minimal budget ($0-200/month for tools)
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **SOLUTION CONTEXT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Solution:** {solution_name}
+  **Type:** {project_type}
+  **Target Persona:** {persona_name}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **BUDGET CALIBRATION GUIDE**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  | Pricing Model | Typical Budget Range | Rationale |
+  |---------------|---------------------|-----------|
+  | Ad-Supported-Free | $50-300/month | Traffic-focused, minimal spend |
+  | Affiliate-Only | $100-400/month | Content creation focused |
+  | Freemium-Lite | $200-800/month | Organic + light paid |
+  | Freemium | $400-1500/month | Balanced organic + paid |
+  | Subscription ($20+/mo) | $800-2500/month | Need quality leads |
+  | Subscription ($50+/mo) | $1500-5000/month | Higher CAC affordable |
+  | Usage-Based/Enterprise | $2000-8000/month | Long sales cycles, education |
+
+  **Channel Mix Adjustments:**
+  - All organic channels: Use lower end of range
+  - 1+ paid channels: Increase by 50-100%
+  - Multiple paid channels: Increase by 100-200%
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **OUTPUT FORMAT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  Return a JSON object with these exact fields:
+
+  - **monthly_budget_min**: Integer, minimum monthly budget in USD
+  - **monthly_budget_max**: Integer, maximum monthly budget in USD
+  - **allocation**: Object with percentage allocations (must sum to 100):
+    - content_creation: % for blog posts, guides, videos (10-40%)
+    - paid_advertising: % for Google/Meta/LinkedIn ads (0-60%)
+    - tools_and_software: % for email tools, analytics, design (5-20%)
+    - community_and_outreach: % for events, sponsorships, partnerships (5-30%)
+  - **rationale**: 2-3 sentence explanation of budget calculation referencing specific inputs
+  - **scaling_guidance**: When/how to increase budget (e.g., "After 100 subscribers, scale to $X")
+
+  **═══ VERIFICATION ═══**
+  Before returning, verify:
+  - Budget range reflects the pricing model (not generic)
+  - Budget respects LTV:CAC economics
+  - Allocation percentages sum to 100
+  - Rationale references specific inputs (pricing, channels, market size)
+  - monthly_budget_min and monthly_budget_max are integers (no decimals)
+
+  <brief_explanation>
+  First, identify the pricing model type and channel mix, then calculate the appropriate budget range.
+  </brief_explanation>
+
+  Now generate the budget estimate following all rules above.

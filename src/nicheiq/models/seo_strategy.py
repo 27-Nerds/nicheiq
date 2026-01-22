@@ -5,6 +5,7 @@ These models capture structured keyword data and narrative strategy sections
 that combine into the comprehensive SEO section of the final report.
 """
 
+import json
 from enum import Enum
 from typing import Optional
 
@@ -453,6 +454,14 @@ class SchemaExample(BaseModel):
         ...,
         description="JSON-LD code snippet for this schema type"
     )
+
+    @field_validator("json_ld_code", mode="before")
+    @classmethod
+    def serialize_json_ld(cls, v):
+        """Convert dict to JSON string if LLM returns object instead of string."""
+        if isinstance(v, dict):
+            return json.dumps(v, indent=2)
+        return v
 
 class SchemaMarkupStrategy(BaseModel):
     """Schema markup implementation guide with code examples."""

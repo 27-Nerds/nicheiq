@@ -4,6 +4,7 @@
 	import { formatPercent, renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
@@ -143,10 +144,7 @@
 	{#if hasDataSources}
 		<AnimateOnScroll animation="fade-up" delay={200}>
 			<div class="data-sources-section">
-				<h4 class="subsection-title">
-					<HardDrive class="w-4 h-4 text-accent" />
-					Data Sources & Integrations
-				</h4>
+				<SubsectionHeader title="Data Sources & Integrations" icon={HardDrive} />
 				<div class="data-sources-grid">
 					{#each solution.data_sources || [] as source, i}
 						<div class="tech-badge" style="animation-delay: {i * 50}ms">
@@ -163,10 +161,7 @@
 	{#if implementationOverview}
 		<AnimateOnScroll animation="fade-up" delay={300}>
 			<div class="implementation-section">
-				<h4 class="subsection-title">
-					<Layers class="w-4 h-4 text-accent" />
-					Implementation Roadmap
-				</h4>
+				<SubsectionHeader title="Implementation Roadmap" icon={Layers} />
 				<div class="markdown-content implementation-content timeline-styled">
 					{@html renderMarkdown(implementationOverview)}
 				</div>
@@ -178,10 +173,7 @@
 	{#if mvpScope}
 		<AnimateOnScroll animation="fade-up" delay={400}>
 			<div class="mvp-section">
-				<h4 class="subsection-title">
-					<CheckCircle class="w-4 h-4 text-success" />
-					MVP Scope & Success Criteria <Tooltip content={getTermTooltip('MVP')} position="right" />
-				</h4>
+				<SubsectionHeader title="MVP Scope & Success Criteria" icon={CheckCircle} variant="success" />
 				<div class="markdown-content mvp-content">
 					{@html renderMarkdown(mvpScope)}
 				</div>
@@ -193,10 +185,7 @@
 	{#if userJourney}
 		<AnimateOnScroll animation="fade-up" delay={500}>
 			<div class="journey-section">
-				<h4 class="subsection-title">
-					<User class="w-4 h-4 text-accent" />
-					User Journey Flow
-				</h4>
+				<SubsectionHeader title="User Journey Flow" icon={User} />
 				<div class="markdown-content journey-content">
 					{@html renderMarkdown(userJourney)}
 				</div>
@@ -208,10 +197,7 @@
 	{#if solution.keyword_feature_priorities && solution.keyword_feature_priorities.length > 0}
 		<AnimateOnScroll animation="fade-up" delay={600}>
 			<div class="priorities-section">
-				<h4 class="subsection-title">
-					<Zap class="w-4 h-4 text-accent" />
-					Feature Development Priorities
-				</h4>
+				<SubsectionHeader title="Feature Development Priorities" icon={Zap} />
 				<div class="timeline">
 					{#each solution.keyword_feature_priorities as priority, i}
 						<div class="timeline-item" style="animation-delay: {i * 100}ms">
@@ -230,10 +216,7 @@
 	{#if solution.keyword_geographic_priorities && solution.keyword_geographic_priorities.length > 0}
 		<AnimateOnScroll animation="fade-up" delay={700}>
 			<div class="geo-section">
-				<h4 class="subsection-title">
-					<Globe class="w-4 h-4 text-accent" />
-					Target Markets (Priority Order)
-				</h4>
+				<SubsectionHeader title="Target Markets (Priority Order)" icon={Globe} />
 				<div class="geo-badges">
 					{#each solution.keyword_geographic_priorities as market, i}
 						<Badge variant={i === 0 ? 'success' : i < 3 ? 'default' : 'muted'} size="sm">
@@ -275,17 +258,6 @@
 		font-size: 0.9375rem;
 		color: var(--color-text-secondary);
 		line-height: 1.7;
-	}
-
-	.subsection-title {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-		font-family: var(--font-display);
-		font-size: 1.125rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-		margin-bottom: 1rem;
 	}
 
 	.data-sources-section {

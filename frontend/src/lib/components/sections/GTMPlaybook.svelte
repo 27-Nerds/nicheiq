@@ -14,14 +14,14 @@
 		Megaphone,
 		FileText,
 		ChevronRight,
-		ChevronDown,
 		Clock,
 		TrendingUp,
 		Sparkles,
 		Play,
-		BarChart3
+		BarChart3,
+		PieChart
 	} from 'lucide-svelte';
-	import type { GoToMarketBlueprint } from '$lib/types/report';
+	import type { GoToMarketBlueprint, BudgetEstimate } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
@@ -37,6 +37,28 @@
 	}
 
 	let { gtmData, nextSteps }: Props = $props();
+
+	// Type guard for BudgetEstimate object
+	const isBudgetObject = (budget: string | BudgetEstimate | null): budget is BudgetEstimate => {
+		return budget !== null && typeof budget === 'object' && 'monthly_budget_min' in budget;
+	};
+
+	// Get budget display string
+	const budgetDisplayString = $derived.by(() => {
+		if (!gtmData.budget_estimate) return null;
+		if (isBudgetObject(gtmData.budget_estimate)) {
+			return `$${gtmData.budget_estimate.monthly_budget_min.toLocaleString()}-${gtmData.budget_estimate.monthly_budget_max.toLocaleString()}/month`;
+		}
+		return gtmData.budget_estimate;
+	});
+
+	// Get budget object for detailed display
+	const budgetDetails = $derived.by(() => {
+		if (gtmData.budget_estimate && isBudgetObject(gtmData.budget_estimate)) {
+			return gtmData.budget_estimate;
+		}
+		return null;
+	});
 
 	const icp = $derived(gtmData.ideal_customer_profile);
 	const playbook = $derived(gtmData.first_30_days_playbook);
@@ -93,13 +115,6 @@
 		);
 	});
 
-	// Expandable sections state
-	let showICP = $state(false);
-	let showChannels = $state(false);
-	let showContentAngles = $state(false);
-	let showPlaybook = $state(true); // Show by default - it's the core value
-	let showMetrics = $state(false);
-	let showNextSteps = $state(false);
 </script>
 
 <section id="gtm-playbook" class="report-section">
@@ -151,11 +166,11 @@
 				{@html renderMarkdown(gtmData.message_framework)}
 			</div>
 		{/if}
-		{#if gtmData.budget_estimate}
+		{#if budgetDisplayString}
 			<div class="budget-badge">
 				<DollarSign class="budget-icon" />
 				<span class="budget-label">Estimated Budget:</span>
-				<span class="budget-value">{gtmData.budget_estimate}</span>
+				<span class="budget-value">{budgetDisplayString}</span>
 			</div>
 		{/if}
 	</div>
@@ -266,217 +281,269 @@
 	<!-- Expandable Sections Container -->
 	<div class="expandable-sections">
 		<!-- Ideal Customer Profile Details -->
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => (showICP = !showICP)}>
-				<div class="expandable-title">
-					<User class="expandable-icon" />
-					<span>Customer Profile Details</span>
-					<Badge variant="muted" size="sm"
-						>{(icp.pain_points?.length || 0) + (icp.goals?.length || 0)} insights</Badge
-					>
+		<ExpandableSection
+			title="Customer Profile Details"
+			icon={User}
+			count={(icp.pain_points?.length || 0) + (icp.goals?.length || 0)}
+			countSuffix="insights"
+		>
+			<div class="icp-details-grid">
+				<div class="icp-detail-card">
+					<h5 class="icp-detail-label">Psychographics</h5>
+					<p class="icp-detail-text">{icp.psychographics}</p>
 				</div>
-				<ChevronDown class="chevron-icon {showICP ? 'expanded' : ''}" />
-			</button>
-			{#if showICP}
-				<div class="expandable-content">
-					<div class="icp-details-grid">
-						<div class="icp-detail-card">
-							<h5 class="icp-detail-label">Psychographics</h5>
-							<p class="icp-detail-text">{icp.psychographics}</p>
-						</div>
-						<div class="icp-detail-card">
-							<h5 class="icp-detail-label">Decision Criteria</h5>
-							<p class="icp-detail-text">{icp.decision_criteria}</p>
-						</div>
-					</div>
+				<div class="icp-detail-card">
+					<h5 class="icp-detail-label">Decision Criteria</h5>
+					<p class="icp-detail-text">{icp.decision_criteria}</p>
+				</div>
+			</div>
 
-					{#if icp.pain_points && icp.pain_points.length > 0}
-						<div class="icp-list-section">
-							<h5 class="icp-list-label">
-								<Target class="list-label-icon error" />
-								Pain Points
-							</h5>
-							<ul class="icp-list">
-								{#each icp.pain_points as point}
-									<li class="icp-list-item">
-										<span class="list-bullet error"></span>
-										<span>{point}</span>
-									</li>
-								{/each}
-							</ul>
-						</div>
-					{/if}
-
-					{#if icp.goals && icp.goals.length > 0}
-						<div class="icp-list-section">
-							<h5 class="icp-list-label">
-								<Zap class="list-label-icon success" />
-								Goals & Aspirations
-							</h5>
-							<ul class="icp-list">
-								{#each icp.goals.slice(0, 5) as goal}
-									<li class="icp-list-item">
-										<span class="list-bullet success"></span>
-										<span>{goal}</span>
-									</li>
-								{/each}
-							</ul>
-						</div>
-					{/if}
+			{#if icp.pain_points && icp.pain_points.length > 0}
+				<div class="icp-list-section">
+					<h5 class="icp-list-label">
+						<Target class="list-label-icon error" />
+						Pain Points
+					</h5>
+					<ul class="icp-list">
+						{#each icp.pain_points as point}
+							<li class="icp-list-item">
+								<span class="list-bullet error"></span>
+								<span>{point}</span>
+							</li>
+						{/each}
+					</ul>
 				</div>
 			{/if}
-		</div>
+
+			{#if icp.goals && icp.goals.length > 0}
+				<div class="icp-list-section">
+					<h5 class="icp-list-label">
+						<Zap class="list-label-icon success" />
+						Goals & Aspirations
+					</h5>
+					<ul class="icp-list">
+						{#each icp.goals.slice(0, 5) as goal}
+							<li class="icp-list-item">
+								<span class="list-bullet success"></span>
+								<span>{goal}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+			{/if}
+		</ExpandableSection>
 
 		<!-- Recommended Channels -->
 		{#if gtmData.recommended_channels && gtmData.recommended_channels.length > 0}
-			<div class="expandable-section">
-				<button class="expandable-header" onclick={() => (showChannels = !showChannels)}>
-					<div class="expandable-title">
-						<Users class="expandable-icon" />
-						<span>Marketing Channels</span>
-						<Badge variant="success" size="sm">{channelCount} channels</Badge>
-					</div>
-					<ChevronDown class="chevron-icon {showChannels ? 'expanded' : ''}" />
-				</button>
-				{#if showChannels}
-					<div class="expandable-content">
-						<div class="channels-grid">
-							{#each gtmData.recommended_channels as channel}
-								<div
-									class="insight-card insight-card--dynamic channel-card"
-									style="--card-accent-color: {getChannelColor(channel.priority)}"
-								>
-									<div class="channel-header">
-										<div class="channel-info">
-											<h4 class="channel-name">{channel.channel_name}</h4>
-											<Badge variant="muted" size="sm">{channel.channel_type}</Badge>
-										</div>
-										<Badge
-											variant={channel.priority === 'High'
-												? 'success'
-												: channel.priority === 'Medium'
-													? 'warning'
-													: 'muted'}
-											size="sm"
-										>
-											{channel.priority}
-										</Badge>
-									</div>
-									<p class="channel-audience">{channel.target_audience_size}</p>
-									<p class="channel-rationale">{channel.rationale}</p>
-									<div class="channel-strategy">
-										<span class="strategy-label">Strategy</span>
-										<p class="strategy-text">{channel.strategy}</p>
-									</div>
+			<ExpandableSection
+				title="Marketing Channels"
+				icon={Users}
+				count={channelCount}
+				countSuffix="channels"
+				variant="success"
+			>
+				<div class="channels-grid">
+					{#each gtmData.recommended_channels as channel}
+						<div
+							class="insight-card insight-card--dynamic channel-card"
+							style="--card-accent-color: {getChannelColor(channel.priority)}"
+						>
+							<div class="channel-header">
+								<div class="channel-info">
+									<h4 class="channel-name">{channel.channel_name}</h4>
+									<Badge variant="muted" size="sm">{channel.channel_type}</Badge>
 								</div>
-							{/each}
+								<Badge
+									variant={channel.priority === 'High'
+										? 'success'
+										: channel.priority === 'Medium'
+											? 'warning'
+											: 'muted'}
+									size="sm"
+								>
+									{channel.priority}
+								</Badge>
+							</div>
+							<p class="channel-audience">{channel.target_audience_size}</p>
+							<p class="channel-rationale">{channel.rationale}</p>
+							<div class="channel-strategy">
+								<span class="strategy-label">Strategy</span>
+								<p class="strategy-text">{channel.strategy}</p>
+							</div>
 						</div>
-					</div>
-				{/if}
-			</div>
+					{/each}
+				</div>
+			</ExpandableSection>
 		{/if}
 
 		<!-- Content Angles -->
 		{#if gtmData.example_content_angles && gtmData.example_content_angles.length > 0}
-			<div class="expandable-section">
-				<button class="expandable-header" onclick={() => (showContentAngles = !showContentAngles)}>
-					<div class="expandable-title">
-						<FileText class="expandable-icon" />
-						<span>Content Angles</span>
-						<Badge variant="muted" size="sm">{contentAnglesCount} ideas</Badge>
-					</div>
-					<ChevronDown class="chevron-icon {showContentAngles ? 'expanded' : ''}" />
-				</button>
-				{#if showContentAngles}
-					<div class="expandable-content">
-						<div class="angles-list">
-							{#each gtmData.example_content_angles as angle}
-								<div class="angle-card">
-									<div class="angle-header">
-										<Badge size="sm">{angle.content_type}</Badge>
-										<span class="angle-channel">{angle.target_channel}</span>
-									</div>
-									<h4 class="angle-title">{angle.title}</h4>
-									<p class="angle-hook">{angle.hook}</p>
-									{#if angle.key_points && angle.key_points.length > 0}
-										<ul class="angle-points">
-											{#each angle.key_points as point}
-												<li class="angle-point">
-													<ChevronRight class="point-icon" />
-													{point}
-												</li>
-											{/each}
-										</ul>
-									{/if}
-								</div>
-							{/each}
+			<ExpandableSection
+				title="Content Angles"
+				icon={FileText}
+				count={contentAnglesCount}
+				countSuffix="ideas"
+			>
+				<div class="angles-list">
+					{#each gtmData.example_content_angles as angle}
+						<div class="angle-card">
+							<div class="angle-header">
+								<Badge size="sm">{angle.content_type}</Badge>
+								<span class="angle-channel">{angle.target_channel}</span>
+							</div>
+							<h4 class="angle-title">{angle.title}</h4>
+							<p class="angle-hook">{angle.hook}</p>
+							{#if angle.key_points && angle.key_points.length > 0}
+								<ul class="angle-points">
+									{#each angle.key_points as point}
+										<li class="angle-point">
+											<ChevronRight class="point-icon" />
+											{point}
+										</li>
+									{/each}
+								</ul>
+							{/if}
 						</div>
-					</div>
-				{/if}
-			</div>
+					{/each}
+				</div>
+			</ExpandableSection>
 		{/if}
 
 		<!-- Success Metrics -->
 		{#if playbook.success_metrics && playbook.success_metrics.length > 0}
-			<div class="expandable-section success-accent">
-				<button class="expandable-header" onclick={() => (showMetrics = !showMetrics)}>
-					<div class="expandable-title">
-						<BarChart3 class="expandable-icon success" />
-						<span>Success Metrics</span>
-						<Badge variant="success" size="sm">{playbook.success_metrics.length} KPIs</Badge>
-					</div>
-					<ChevronDown class="chevron-icon {showMetrics ? 'expanded' : ''}" />
-				</button>
-				{#if showMetrics}
-					<div class="expandable-content">
-						<div class="metrics-grid">
-							{#each playbook.success_metrics as metric, i}
-								<div class="metric-item">
-									<span class="metric-number">{i + 1}</span>
-									<span class="metric-text">{metric}</span>
+			<ExpandableSection
+				title="Success Metrics"
+				icon={BarChart3}
+				count={playbook.success_metrics.length}
+				countSuffix="KPIs"
+				variant="success"
+			>
+				<div class="metrics-grid">
+					{#each playbook.success_metrics as metric, i}
+						<div class="metric-item">
+							<span class="metric-number">{i + 1}</span>
+							<span class="metric-text">{metric}</span>
+						</div>
+					{/each}
+				</div>
+			</ExpandableSection>
+		{/if}
+
+		<!-- Budget Breakdown -->
+		{#if budgetDetails}
+			<ExpandableSection
+				title="Budget Breakdown"
+				icon={PieChart}
+				count={4}
+				countSuffix="categories"
+				variant="accent"
+			>
+				<div class="budget-breakdown">
+					<!-- Allocation Bars -->
+					<div class="allocation-section">
+						<h5 class="allocation-header">Monthly Allocation</h5>
+						<div class="allocation-grid">
+							<div class="allocation-item">
+								<div class="allocation-label-row">
+									<span class="allocation-label">Content Creation</span>
+									<span class="allocation-percent">{budgetDetails.allocation.content_creation}%</span>
 								</div>
-							{/each}
+								<div class="allocation-bar">
+									<div class="allocation-fill content" style="width: {budgetDetails.allocation.content_creation}%"></div>
+								</div>
+								<span class="allocation-amount">
+									${Math.round(budgetDetails.monthly_budget_min * budgetDetails.allocation.content_creation / 100).toLocaleString()}-${Math.round(budgetDetails.monthly_budget_max * budgetDetails.allocation.content_creation / 100).toLocaleString()}
+								</span>
+							</div>
+
+							<div class="allocation-item">
+								<div class="allocation-label-row">
+									<span class="allocation-label">Paid Advertising</span>
+									<span class="allocation-percent">{budgetDetails.allocation.paid_advertising}%</span>
+								</div>
+								<div class="allocation-bar">
+									<div class="allocation-fill paid" style="width: {budgetDetails.allocation.paid_advertising}%"></div>
+								</div>
+								<span class="allocation-amount">
+									${Math.round(budgetDetails.monthly_budget_min * budgetDetails.allocation.paid_advertising / 100).toLocaleString()}-${Math.round(budgetDetails.monthly_budget_max * budgetDetails.allocation.paid_advertising / 100).toLocaleString()}
+								</span>
+							</div>
+
+							<div class="allocation-item">
+								<div class="allocation-label-row">
+									<span class="allocation-label">Tools & Software</span>
+									<span class="allocation-percent">{budgetDetails.allocation.tools_and_software}%</span>
+								</div>
+								<div class="allocation-bar">
+									<div class="allocation-fill tools" style="width: {budgetDetails.allocation.tools_and_software}%"></div>
+								</div>
+								<span class="allocation-amount">
+									${Math.round(budgetDetails.monthly_budget_min * budgetDetails.allocation.tools_and_software / 100).toLocaleString()}-${Math.round(budgetDetails.monthly_budget_max * budgetDetails.allocation.tools_and_software / 100).toLocaleString()}
+								</span>
+							</div>
+
+							<div class="allocation-item">
+								<div class="allocation-label-row">
+									<span class="allocation-label">Community & Outreach</span>
+									<span class="allocation-percent">{budgetDetails.allocation.community_and_outreach}%</span>
+								</div>
+								<div class="allocation-bar">
+									<div class="allocation-fill community" style="width: {budgetDetails.allocation.community_and_outreach}%"></div>
+								</div>
+								<span class="allocation-amount">
+									${Math.round(budgetDetails.monthly_budget_min * budgetDetails.allocation.community_and_outreach / 100).toLocaleString()}-${Math.round(budgetDetails.monthly_budget_max * budgetDetails.allocation.community_and_outreach / 100).toLocaleString()}
+								</span>
+							</div>
 						</div>
 					</div>
-				{/if}
-			</div>
+
+					<!-- Rationale -->
+					<div class="budget-rationale">
+						<h5 class="rationale-header">Why This Budget?</h5>
+						<p class="rationale-text">{budgetDetails.rationale}</p>
+					</div>
+
+					<!-- Scaling Guidance -->
+					<div class="scaling-guidance">
+						<TrendingUp class="scaling-icon" />
+						<div class="scaling-content">
+							<span class="scaling-label">Scaling Guidance</span>
+							<p class="scaling-text">{budgetDetails.scaling_guidance}</p>
+						</div>
+					</div>
+				</div>
+			</ExpandableSection>
 		{/if}
 
 		<!-- Implementation Checklist -->
 		{#if nextSteps && (steps.length > 0 || typeof nextSteps === 'string')}
-			<div class="expandable-section accent-section">
-				<button class="expandable-header" onclick={() => (showNextSteps = !showNextSteps)}>
-					<div class="expandable-title">
-						<Lightbulb class="expandable-icon accent" />
-						<span>Implementation Checklist</span>
-						<Badge variant="accent" size="sm">{steps.length} steps</Badge>
+			<ExpandableSection
+				title="Implementation Checklist"
+				icon={Lightbulb}
+				count={steps.length}
+				countSuffix="steps"
+				variant="accent"
+			>
+				{#if steps.length > 1}
+					<div class="checklist-items">
+						{#each steps as step, i}
+							<div class="checklist-item">
+								<span class="item-number">{i + 1}</span>
+								<span class="item-text">{step}</span>
+								<ArrowRight class="item-arrow" />
+							</div>
+						{/each}
 					</div>
-					<ChevronDown class="chevron-icon {showNextSteps ? 'expanded' : ''}" />
-				</button>
-				{#if showNextSteps}
-					<div class="expandable-content">
-						{#if steps.length > 1}
-							<div class="checklist-items">
-								{#each steps as step, i}
-									<div class="checklist-item">
-										<span class="item-number">{i + 1}</span>
-										<span class="item-text">{step}</span>
-										<ArrowRight class="item-arrow" />
-									</div>
-								{/each}
-							</div>
-						{:else if steps.length === 1}
-							<div class="checklist-content">
-								{@html renderMarkdown(steps[0])}
-							</div>
-						{:else if typeof nextSteps === 'string'}
-							<div class="checklist-content">
-								{@html renderMarkdown(nextSteps)}
-							</div>
-						{/if}
+				{:else if steps.length === 1}
+					<div class="checklist-content">
+						{@html renderMarkdown(steps[0])}
+					</div>
+				{:else if typeof nextSteps === 'string'}
+					<div class="checklist-content">
+						{@html renderMarkdown(nextSteps)}
 					</div>
 				{/if}
-			</div>
+			</ExpandableSection>
 		{/if}
 	</div>
 </section>
@@ -773,84 +840,11 @@
 		margin-top: 0.125rem;
 	}
 
-	/* Expandable Sections */
+	/* Expandable Sections Container */
 	.expandable-sections {
 		display: flex;
 		flex-direction: column;
 		gap: 0.75rem;
-	}
-
-	.expandable-section {
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		overflow: hidden;
-	}
-
-	.expandable-section.success-accent {
-		border-left: 3px solid #22c55e;
-	}
-
-	.expandable-section.accent-section {
-		border-left: 3px solid var(--color-accent);
-	}
-
-	.expandable-header {
-		width: 100%;
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 1rem 1.25rem;
-		background: none;
-		border: none;
-		cursor: pointer;
-		transition: background 0.15s ease;
-	}
-
-	.expandable-header:hover {
-		background: var(--color-bg-hover);
-	}
-
-	.expandable-title {
-		display: flex;
-		align-items: center;
-		gap: 0.75rem;
-	}
-
-	:global(.expandable-icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: var(--color-text-muted);
-	}
-
-	:global(.expandable-icon.success) {
-		color: #22c55e;
-	}
-
-	:global(.expandable-icon.accent) {
-		color: var(--color-accent);
-	}
-
-	.expandable-title span {
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	:global(.chevron-icon) {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--color-text-muted);
-		transition: transform 0.2s ease;
-	}
-
-	:global(.chevron-icon.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.expandable-content {
-		padding: 0 1.25rem 1.25rem;
-		border-top: 1px solid var(--color-border);
-		padding-top: 1.25rem;
 	}
 
 	/* ICP Details */
@@ -1170,6 +1164,158 @@
 		line-height: 1.6;
 	}
 
+	/* Budget Breakdown Styles */
+	.budget-breakdown {
+		display: flex;
+		flex-direction: column;
+		gap: 1.5rem;
+	}
+
+	.allocation-section {
+		background: var(--color-bg-surface);
+		border-radius: 0.5rem;
+		padding: 1.25rem;
+	}
+
+	.allocation-header {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
+		margin: 0 0 1rem;
+	}
+
+	.allocation-grid {
+		display: grid;
+		gap: 1rem;
+	}
+
+	.allocation-item {
+		display: flex;
+		flex-direction: column;
+		gap: 0.375rem;
+	}
+
+	.allocation-label-row {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.allocation-label {
+		font-size: 0.875rem;
+		font-weight: 500;
+		color: var(--color-text-primary);
+	}
+
+	.allocation-percent {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: var(--color-text-muted);
+	}
+
+	.allocation-bar {
+		height: 8px;
+		background: var(--color-bg-elevated);
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.allocation-fill {
+		height: 100%;
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+
+	.allocation-fill.content {
+		background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+	}
+
+	.allocation-fill.paid {
+		background: linear-gradient(90deg, #ef4444, #f87171);
+	}
+
+	.allocation-fill.tools {
+		background: linear-gradient(90deg, #3b82f6, #60a5fa);
+	}
+
+	.allocation-fill.community {
+		background: linear-gradient(90deg, #22c55e, #4ade80);
+	}
+
+	.allocation-amount {
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: var(--color-text-secondary);
+	}
+
+	.budget-rationale {
+		background: var(--color-bg-surface);
+		border-left: 3px solid var(--color-accent);
+		border-radius: 0 0.5rem 0.5rem 0;
+		padding: 1rem 1.25rem;
+	}
+
+	.rationale-header {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-accent);
+		margin: 0 0 0.5rem;
+	}
+
+	.rationale-text {
+		font-size: 0.9375rem;
+		color: var(--color-text-secondary);
+		line-height: 1.6;
+		margin: 0;
+	}
+
+	.scaling-guidance {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.75rem;
+		background: rgba(34, 197, 94, 0.08);
+		border: 1px solid rgba(34, 197, 94, 0.2);
+		border-radius: 0.5rem;
+		padding: 1rem;
+	}
+
+	:global(.scaling-icon) {
+		width: 1.25rem;
+		height: 1.25rem;
+		color: #22c55e;
+		flex-shrink: 0;
+		margin-top: 0.125rem;
+	}
+
+	.scaling-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.scaling-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #22c55e;
+	}
+
+	.scaling-text {
+		font-size: 0.875rem;
+		color: var(--color-text-secondary);
+		line-height: 1.5;
+		margin: 0;
+	}
+
 	/* Responsive */
 	@media (max-width: 768px) {
 		.icp-summary-grid,
@@ -1201,14 +1347,6 @@
 
 		.week-card {
 			padding: 1rem;
-		}
-
-		.expandable-header {
-			padding: 0.875rem 1rem;
-		}
-
-		.expandable-content {
-			padding: 0 1rem 1rem;
 		}
 	}
 </style>

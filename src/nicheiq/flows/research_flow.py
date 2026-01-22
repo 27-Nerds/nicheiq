@@ -1445,6 +1445,7 @@ Return a valid JSON object with this structure:
 
         # Run PainPointCrew and AudienceMappingCrew in parallel
         logger.info("[Stage 6] Running PainPointCrew and AudienceMappingCrew in PARALLEL...")
+        self._emit_progress(6.5, "Audience Mapping", "running")  # Emit running so duration can be tracked
 
         pain_point_result = None
         audience_result = None

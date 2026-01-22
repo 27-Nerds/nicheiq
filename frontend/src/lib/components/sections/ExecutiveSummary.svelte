@@ -8,17 +8,14 @@
 		TrendingDown,
 		Users,
 		Search,
-		Zap,
 		Lightbulb,
 		Globe,
 		Layers,
 		Calculator,
 		RefreshCw,
-		ShieldAlert,
 		Clock,
 		Minus,
 		Quote,
-		ChevronDown,
 		Sparkles,
 		BarChart3,
 		Shield
@@ -47,10 +44,6 @@
 	const solution = $derived(data.recommended_solution_snapshot);
 	const corePain = $derived(data.core_pain_point);
 	const metrics = $derived(data.key_metrics);
-
-	// Expandable sections state
-	let showStrategicInsights = $state(false);
-	let showRiskAssessment = $state(false);
 
 	// Score improvement percentage for SEO transparency
 	const scoreImprovement = $derived.by(() => {
@@ -272,213 +265,194 @@
 
 	<!-- Expandable: Strategic Insights -->
 	{#if hasStrategicInsights}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => showStrategicInsights = !showStrategicInsights}>
-				<div class="expandable-title">
-					<Lightbulb class="expandable-icon" />
-					<span>Strategic Rationale</span>
-					<Badge variant="muted" size="sm">
-						{refinementHighlights?.top_strategic_insights?.length ?? 0} insights
-					</Badge>
+		<ExpandableSection
+			title="Strategic Rationale"
+			icon={Lightbulb}
+			count={refinementHighlights?.top_strategic_insights?.length ?? 0}
+			countSuffix="insights"
+		>
+			<!-- Strategic Insights List -->
+			{#if refinementHighlights?.top_strategic_insights && refinementHighlights.top_strategic_insights.length > 0}
+				<div class="insights-list">
+					{#each refinementHighlights.top_strategic_insights as insight, i}
+						<div class="insight-item">
+							<span class="insight-num">{i + 1}</span>
+							<span class="insight-text">{insight}</span>
+						</div>
+					{/each}
 				</div>
-				<ChevronDown class="chevron-icon {showStrategicInsights ? 'expanded' : ''}" />
-			</button>
+			{/if}
 
-			{#if showStrategicInsights}
-				<div class="expandable-content">
-					<!-- Strategic Insights List -->
-					{#if refinementHighlights?.top_strategic_insights && refinementHighlights.top_strategic_insights.length > 0}
-						<div class="insights-list">
-							{#each refinementHighlights.top_strategic_insights as insight, i}
-								<div class="insight-item">
-									<span class="insight-num">{i + 1}</span>
-									<span class="insight-text">{insight}</span>
-								</div>
-							{/each}
-						</div>
-					{/if}
-
-					<!-- Priority Chips -->
-					{#if refinementHighlights?.geographic_priority || refinementHighlights?.feature_priority}
-						<div class="priority-grid">
-							{#if refinementHighlights.geographic_priority}
-								<div class="priority-chip geo">
-									<Globe class="priority-icon" />
-									<div class="priority-content">
-										<span class="priority-label">Geographic Focus</span>
-										<span class="priority-value">{refinementHighlights.geographic_priority}</span>
-									</div>
-								</div>
-							{/if}
-							{#if refinementHighlights.feature_priority}
-								<div class="priority-chip feature">
-									<Layers class="priority-icon" />
-									<div class="priority-content">
-										<span class="priority-label">Feature Priority</span>
-										<span class="priority-value">{refinementHighlights.feature_priority}</span>
-									</div>
-								</div>
-							{/if}
-						</div>
-					{/if}
-
-					<!-- Category Pivot Alert -->
-					{#if refinementHighlights?.category_pivot_recommendation}
-						<div class="pivot-alert">
-							<RefreshCw class="pivot-icon" />
-							<div class="pivot-content">
-								<span class="pivot-label">Category Pivot Recommended</span>
-								<p class="pivot-text">{refinementHighlights.category_pivot_recommendation}</p>
+			<!-- Priority Chips -->
+			{#if refinementHighlights?.geographic_priority || refinementHighlights?.feature_priority}
+				<div class="priority-grid">
+					{#if refinementHighlights.geographic_priority}
+						<div class="priority-chip geo">
+							<Globe class="priority-icon" />
+							<div class="priority-content">
+								<span class="priority-label">Geographic Focus</span>
+								<span class="priority-value">{refinementHighlights.geographic_priority}</span>
 							</div>
 						</div>
 					{/if}
-
-					<!-- SEO Transparency -->
-					{#if seoCalculationTransparency}
-						<div class="seo-transparency">
-							<div class="seo-header">
-								<Calculator class="seo-icon" />
-								<h4 class="seo-title">SEO Score Calculation</h4>
+					{#if refinementHighlights.feature_priority}
+						<div class="priority-chip feature">
+							<Layers class="priority-icon" />
+							<div class="priority-content">
+								<span class="priority-label">Feature Priority</span>
+								<span class="priority-value">{refinementHighlights.feature_priority}</span>
 							</div>
-
-							<div class="seo-flow">
-								<div class="seo-score baseline">
-									<span class="seo-value">{(seoCalculationTransparency.baseline_seo_score * 100).toFixed(0)}%</span>
-									<span class="seo-label">Baseline</span>
-								</div>
-								<span class="seo-arrow">→</span>
-								<div class="seo-score refined">
-									<span class="seo-value">{(seoCalculationTransparency.refined_seo_score * 100).toFixed(0)}%</span>
-									<span class="seo-label">Refined</span>
-								</div>
-								{#if scoreImprovement}
-									<div class="seo-score change" class:positive={parseFloat(scoreImprovement) >= 0}>
-										<span class="seo-value">
-											{parseFloat(scoreImprovement) >= 0 ? '+' : ''}{scoreImprovement}%
-										</span>
-										<span class="seo-label">Change</span>
-									</div>
-								{/if}
-							</div>
-
-							<div class="seo-factors">
-								<div class="seo-factor">
-									<span class="factor-value">{seoCalculationTransparency.volume_multiplier}x</span>
-									<span class="factor-label">Volume</span>
-								</div>
-								<div class="seo-factor">
-									<span class="factor-value">{seoCalculationTransparency.competition_modifier}x</span>
-									<span class="factor-label">Competition</span>
-								</div>
-								<div class="seo-factor">
-									<span class="factor-value">{seoCalculationTransparency.tier1_multiplier}x</span>
-									<span class="factor-label">Tier 1</span>
-								</div>
-								<div class="seo-factor">
-									<span class="factor-value">{seoCalculationTransparency.estimated_year1_pages}</span>
-									<span class="factor-label">Est. Pages</span>
-								</div>
-							</div>
-
-							{#if seoCalculationTransparency.calculation_rationale}
-								<p class="seo-rationale">{seoCalculationTransparency.calculation_rationale}</p>
-							{/if}
 						</div>
 					{/if}
 				</div>
 			{/if}
-		</div>
+
+			<!-- Category Pivot Alert -->
+			{#if refinementHighlights?.category_pivot_recommendation}
+				<div class="pivot-alert">
+					<RefreshCw class="pivot-icon" />
+					<div class="pivot-content">
+						<span class="pivot-label">Category Pivot Recommended</span>
+						<p class="pivot-text">{refinementHighlights.category_pivot_recommendation}</p>
+					</div>
+				</div>
+			{/if}
+
+			<!-- SEO Transparency -->
+			{#if seoCalculationTransparency}
+				<div class="seo-transparency">
+					<div class="seo-header">
+						<Calculator class="seo-icon" />
+						<h4 class="seo-title">SEO Score Calculation</h4>
+					</div>
+
+					<div class="seo-flow">
+						<div class="seo-score baseline">
+							<span class="seo-value">{(seoCalculationTransparency.baseline_seo_score * 100).toFixed(0)}%</span>
+							<span class="seo-label">Baseline</span>
+						</div>
+						<span class="seo-arrow">→</span>
+						<div class="seo-score refined">
+							<span class="seo-value">{(seoCalculationTransparency.refined_seo_score * 100).toFixed(0)}%</span>
+							<span class="seo-label">Refined</span>
+						</div>
+						{#if scoreImprovement}
+							<div class="seo-score change" class:positive={parseFloat(scoreImprovement) >= 0}>
+								<span class="seo-value">
+									{parseFloat(scoreImprovement) >= 0 ? '+' : ''}{scoreImprovement}%
+								</span>
+								<span class="seo-label">Change</span>
+							</div>
+						{/if}
+					</div>
+
+					<div class="seo-factors">
+						<div class="seo-factor">
+							<span class="factor-value">{seoCalculationTransparency.volume_multiplier}x</span>
+							<span class="factor-label">Volume</span>
+						</div>
+						<div class="seo-factor">
+							<span class="factor-value">{seoCalculationTransparency.competition_modifier}x</span>
+							<span class="factor-label">Competition</span>
+						</div>
+						<div class="seo-factor">
+							<span class="factor-value">{seoCalculationTransparency.tier1_multiplier}x</span>
+							<span class="factor-label">Tier 1</span>
+						</div>
+						<div class="seo-factor">
+							<span class="factor-value">{seoCalculationTransparency.estimated_year1_pages}</span>
+							<span class="factor-label">Est. Pages</span>
+						</div>
+					</div>
+
+					{#if seoCalculationTransparency.calculation_rationale}
+						<p class="seo-rationale">{seoCalculationTransparency.calculation_rationale}</p>
+					{/if}
+				</div>
+			{/if}
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Risk Assessment -->
 	{#if hasRiskAssessment}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => showRiskAssessment = !showRiskAssessment}>
-				<div class="expandable-title">
-					<Shield class="expandable-icon risk" />
-					<span>Risk Assessment & Timing</span>
-					{#if trends?.risk_factors?.length}
-						<Badge variant="error" size="sm">{trends.risk_factors.length} risks</Badge>
-					{/if}
+		<ExpandableSection
+			title="Risk Assessment & Timing"
+			icon={Shield}
+			count={trends?.risk_factors?.length ?? null}
+			countSuffix="risks"
+			variant="error"
+		>
+			<!-- Risk Factors -->
+			{#if trends?.risk_factors && trends.risk_factors.length > 0}
+				<div class="risk-list">
+					<h4 class="risk-list-title">Risk Factors</h4>
+					<ul class="risk-items">
+						{#each trends.risk_factors as risk}
+							<li class="risk-item">
+								<span class="risk-bullet">!</span>
+								<span>{risk}</span>
+							</li>
+						{/each}
+					</ul>
 				</div>
-				<ChevronDown class="chevron-icon {showRiskAssessment ? 'expanded' : ''}" />
-			</button>
+			{/if}
 
-			{#if showRiskAssessment}
-				<div class="expandable-content">
-					<!-- Risk Factors -->
-					{#if trends?.risk_factors && trends.risk_factors.length > 0}
-						<div class="risk-list">
-							<h4 class="risk-list-title">Risk Factors</h4>
-							<ul class="risk-items">
-								{#each trends.risk_factors as risk}
-									<li class="risk-item">
-										<span class="risk-bullet">!</span>
-										<span>{risk}</span>
-									</li>
-								{/each}
-							</ul>
+			<!-- Market Signals Grid -->
+			{#if trends}
+				<div class="signals-grid">
+					{#if trends.trend_direction}
+						{@const TrendIcon = getTrendIcon(trends.trend_direction)}
+						<div class="signal-card">
+							<TrendIcon class="signal-icon" />
+							<h4 class="signal-title">Market Trend</h4>
+							<div class="signal-rows">
+								<div class="signal-row">
+									<span class="signal-label">Direction:</span>
+									<span class="signal-value">{trends.trend_direction}</span>
+								</div>
+								{#if trends.momentum_score !== undefined}
+									<div class="signal-row">
+										<span class="signal-label">Momentum:</span>
+										<span class="signal-value">{Math.round(trends.momentum_score * 100)}%</span>
+									</div>
+								{/if}
+								{#if trends.longevity_verdict}
+									<div class="signal-row">
+										<span class="signal-label">Longevity:</span>
+										<Badge variant={trends.longevity_verdict.toLowerCase().includes('sustain') ? 'success' : trends.longevity_verdict.toLowerCase().includes('fad') ? 'error' : 'warning'} size="sm">
+											{trends.longevity_verdict}
+										</Badge>
+									</div>
+								{/if}
+								{#if trends.market_maturity}
+									<div class="signal-row">
+										<span class="signal-label">Maturity:</span>
+										<span class="signal-value">{trends.market_maturity}</span>
+									</div>
+								{/if}
+							</div>
 						</div>
 					{/if}
 
-					<!-- Market Signals Grid -->
-					{#if trends}
-						<div class="signals-grid">
-							{#if trends.trend_direction}
-								{@const TrendIcon = getTrendIcon(trends.trend_direction)}
-								<div class="signal-card">
-									<TrendIcon class="signal-icon" />
-									<h4 class="signal-title">Market Trend</h4>
-									<div class="signal-rows">
-										<div class="signal-row">
-											<span class="signal-label">Direction:</span>
-											<span class="signal-value">{trends.trend_direction}</span>
-										</div>
-										{#if trends.momentum_score !== undefined}
-											<div class="signal-row">
-												<span class="signal-label">Momentum:</span>
-												<span class="signal-value">{Math.round(trends.momentum_score * 100)}%</span>
-											</div>
-										{/if}
-										{#if trends.longevity_verdict}
-											<div class="signal-row">
-												<span class="signal-label">Longevity:</span>
-												<Badge variant={trends.longevity_verdict.toLowerCase().includes('sustain') ? 'success' : trends.longevity_verdict.toLowerCase().includes('fad') ? 'error' : 'warning'} size="sm">
-													{trends.longevity_verdict}
-												</Badge>
-											</div>
-										{/if}
-										{#if trends.market_maturity}
-											<div class="signal-row">
-												<span class="signal-label">Maturity:</span>
-												<span class="signal-value">{trends.market_maturity}</span>
-											</div>
-										{/if}
-									</div>
+					{#if trends.timing_recommendation || trends.longevity_rationale}
+						<div class="signal-card">
+							<Clock class="signal-icon" />
+							<h4 class="signal-title">Timing Analysis</h4>
+							{#if trends.timing_recommendation}
+								<div class="timing-highlight">
+									<p>{trends.timing_recommendation}</p>
 								</div>
 							{/if}
-
-							{#if trends.timing_recommendation || trends.longevity_rationale}
-								<div class="signal-card">
-									<Clock class="signal-icon" />
-									<h4 class="signal-title">Timing Analysis</h4>
-									{#if trends.timing_recommendation}
-										<div class="timing-highlight">
-											<p>{trends.timing_recommendation}</p>
-										</div>
-									{/if}
-									{#if trends.longevity_rationale}
-										<div class="timing-rationale">
-											{@html renderMarkdown(trends.longevity_rationale)}
-										</div>
-									{/if}
+							{#if trends.longevity_rationale}
+								<div class="timing-rationale">
+									{@html renderMarkdown(trends.longevity_rationale)}
 								</div>
 							{/if}
 						</div>
 					{/if}
 				</div>
 			{/if}
-		</div>
+		</ExpandableSection>
 	{/if}
 </section>
 
@@ -938,71 +912,6 @@
 
 	.summary-content :global(p:last-child) {
 		margin-bottom: 0;
-	}
-
-	/* =========================
-	   EXPANDABLE SECTIONS
-	   ========================= */
-	.expandable-section {
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		border-radius: 0.75rem;
-		margin-bottom: 0.75rem;
-		overflow: hidden;
-	}
-
-	.expandable-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0.875rem 1rem;
-		background: #FFFFFF;
-		border: none;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.expandable-header:hover {
-		background: rgba(0, 0, 0, 0.02);
-	}
-
-	.expandable-title {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-	}
-
-	:global(.expandable-icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: #E55A28;
-	}
-
-	:global(.expandable-icon.risk) {
-		color: #EF4444;
-	}
-
-	.expandable-title span {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: #18181B;
-	}
-
-	:global(.chevron-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: #A1A1AA;
-		transition: transform 0.2s;
-	}
-
-	:global(.chevron-icon.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.expandable-content {
-		padding: 0 1rem 1rem;
-		background: #FFFFFF;
 	}
 
 	/* Insights List */

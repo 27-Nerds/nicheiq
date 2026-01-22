@@ -1,24 +1,21 @@
 <script lang="ts">
-	import { Users, UserCheck, MessageSquare, Hash, Star, Target, Briefcase, DollarSign, Sparkles, ChevronDown, Globe } from 'lucide-svelte';
+	import { Users, UserCheck, MessageSquare, Hash, Star, Target, Briefcase, DollarSign, Sparkles, Globe } from 'lucide-svelte';
 	import type { AudienceMapping } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
 	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 	import MetaItem from '$lib/components/ui/MetaItem.svelte';
+	import CardGrid from '$lib/components/ui/CardGrid.svelte';
 
 	interface Props {
 		data: AudienceMapping;
 	}
 
 	let { data }: Props = $props();
-
-	// Expandable states
-	let showInfluencers = $state(false);
-	let showMessaging = $state(false);
-	let showTactics = $state(false);
 
 	// Map segment size to badge variant
 	const getSizeVariant = (size: string | undefined) => {
@@ -74,12 +71,9 @@
 	<!-- Audience Segments Grid -->
 	{#if data.audience_segments && data.audience_segments.length > 0}
 		<div class="segments-section">
-			<div class="subsection-header">
-				<Target class="subsection-icon" />
-				<span class="subsection-title">Audience Segments</span>
-			</div>
+			<SubsectionHeader title="Audience Segments" icon={Target} />
 
-			<div class="segments-grid">
+			<CardGrid minWidth={280} gap="md">
 				{#each data.audience_segments as segment, i}
 					<div class="segment-card" class:primary={i === 0}>
 						<div class="segment-top">
@@ -118,7 +112,7 @@
 						{/if}
 					</div>
 				{/each}
-			</div>
+			</CardGrid>
 		</div>
 	{/if}
 
@@ -139,109 +133,84 @@
 
 	<!-- Expandable: Key Influencers -->
 	{#if data.key_influencers && data.key_influencers.length > 0}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => showInfluencers = !showInfluencers}>
-				<div class="expandable-title">
-					<Star class="expandable-icon warning" />
-					<span>Key Influencers</span>
-					<Badge variant="muted" size="sm">{data.key_influencers.length}</Badge>
-				</div>
-				<ChevronDown class="chevron-icon {showInfluencers ? 'expanded' : ''}" />
-			</button>
-
-			{#if showInfluencers}
-				<div class="expandable-content">
-					<div class="influencers-grid">
-						{#each data.key_influencers as influencer}
-							<div class="influencer-card">
-								<div class="influencer-top">
-									<span class="influencer-name">{influencer.name}</span>
-									{#if influencer.outreach_priority}
-										<Badge variant={influencer.outreach_priority === 'High' ? 'success' : influencer.outreach_priority === 'Medium' ? 'warning' : 'muted'} size="sm">
-											{influencer.outreach_priority}
-										</Badge>
-									{/if}
-								</div>
-								<div class="influencer-meta">
-									<span class="influencer-platform">{influencer.platform}</span>
-									{#if influencer.follower_estimate}
-										<span class="influencer-followers">{influencer.follower_estimate.toLocaleString()} followers</span>
-									{/if}
-								</div>
-							</div>
-						{/each}
+		<ExpandableSection
+			title="Key Influencers"
+			icon={Star}
+			count={data.key_influencers.length}
+			variant="warning"
+		>
+			<CardGrid minWidth={200} gap="sm">
+				{#each data.key_influencers as influencer}
+					<div class="influencer-card">
+						<div class="influencer-top">
+							<span class="influencer-name">{influencer.name}</span>
+							{#if influencer.outreach_priority}
+								<Badge variant={influencer.outreach_priority === 'High' ? 'success' : influencer.outreach_priority === 'Medium' ? 'warning' : 'muted'} size="sm">
+									{influencer.outreach_priority}
+								</Badge>
+							{/if}
+						</div>
+						<div class="influencer-meta">
+							<span class="influencer-platform">{influencer.platform}</span>
+							{#if influencer.follower_estimate}
+								<span class="influencer-followers">{influencer.follower_estimate.toLocaleString()} followers</span>
+							{/if}
+						</div>
 					</div>
-				</div>
-			{/if}
-		</div>
+				{/each}
+			</CardGrid>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Messaging & Vocabulary -->
 	{#if (data.messaging_frameworks && data.messaging_frameworks.length > 0) || (data.common_vocabulary && data.common_vocabulary.length > 0)}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => showMessaging = !showMessaging}>
-				<div class="expandable-title">
-					<MessageSquare class="expandable-icon" />
-					<span>Messaging & Vocabulary</span>
-				</div>
-				<ChevronDown class="chevron-icon {showMessaging ? 'expanded' : ''}" />
-			</button>
-
-			{#if showMessaging}
-				<div class="expandable-content">
-					<div class="messaging-grid">
-						{#if data.messaging_frameworks && data.messaging_frameworks.length > 0}
-							<div class="messaging-box">
-								<h4 class="messaging-box-title">Messaging Frameworks</h4>
-								<div class="messaging-list">
-									{#each data.messaging_frameworks as msg}
-										<div class="messaging-item">
-											<span class="quote-mark">"</span>
-											<span class="messaging-text">{msg}</span>
-										</div>
-									{/each}
+		<ExpandableSection
+			title="Messaging & Vocabulary"
+			icon={MessageSquare}
+		>
+			<CardGrid minWidth={240} gap="md">
+				{#if data.messaging_frameworks && data.messaging_frameworks.length > 0}
+					<div class="messaging-box">
+						<h4 class="messaging-box-title">Messaging Frameworks</h4>
+						<div class="messaging-list">
+							{#each data.messaging_frameworks as msg}
+								<div class="messaging-item">
+									<span class="quote-mark">"</span>
+									<span class="messaging-text">{msg}</span>
 								</div>
-							</div>
-						{/if}
-
-						{#if data.common_vocabulary && data.common_vocabulary.length > 0}
-							<div class="messaging-box">
-								<h4 class="messaging-box-title">
-									<Hash class="box-title-icon" />
-									Common Vocabulary
-								</h4>
-								<div class="vocab-tags">
-									{#each data.common_vocabulary as term}
-										<span class="vocab-tag">{term}</span>
-									{/each}
-								</div>
-							</div>
-						{/if}
+							{/each}
+						</div>
 					</div>
-				</div>
-			{/if}
-		</div>
+				{/if}
+
+				{#if data.common_vocabulary && data.common_vocabulary.length > 0}
+					<div class="messaging-box">
+						<h4 class="messaging-box-title">
+							<Hash class="box-title-icon" />
+							Common Vocabulary
+						</h4>
+						<div class="vocab-tags">
+							{#each data.common_vocabulary as term}
+								<span class="vocab-tag">{term}</span>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			</CardGrid>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Early Adopter Tactics -->
 	{#if data.early_adopter_tactics}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => showTactics = !showTactics}>
-				<div class="expandable-title">
-					<Sparkles class="expandable-icon success" />
-					<span>Early Adopter Tactics</span>
-				</div>
-				<ChevronDown class="chevron-icon {showTactics ? 'expanded' : ''}" />
-			</button>
-
-			{#if showTactics}
-				<div class="expandable-content tactics-bg">
-					<div class="tactics-content">
-						{@html renderMarkdown(data.early_adopter_tactics)}
-					</div>
-				</div>
-			{/if}
-		</div>
+		<ExpandableSection
+			title="Early Adopter Tactics"
+			icon={Sparkles}
+			variant="success"
+		>
+			<div class="tactics-content">
+				{@html renderMarkdown(data.early_adopter_tactics)}
+			</div>
+		</ExpandableSection>
 	{/if}
 </section>
 
@@ -288,32 +257,6 @@
 	   ========================= */
 	.segments-section {
 		margin-bottom: 1rem;
-	}
-
-	.subsection-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.75rem;
-	}
-
-	:global(.subsection-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: #E55A28;
-	}
-
-	.subsection-title {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: #18181B;
-	}
-
-	.segments-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-		gap: 0.75rem;
 	}
 
 	.segment-card {
@@ -438,82 +381,7 @@
 		color: #71717A;
 	}
 
-	/* =========================
-	   EXPANDABLE SECTIONS
-	   ========================= */
-	.expandable-section {
-		border: 1px solid rgba(0, 0, 0, 0.08);
-		border-radius: 0.75rem;
-		margin-bottom: 0.75rem;
-		overflow: hidden;
-	}
-
-	.expandable-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 0.875rem 1rem;
-		background: #FFFFFF;
-		border: none;
-		cursor: pointer;
-		transition: background-color 0.15s;
-	}
-
-	.expandable-header:hover {
-		background: rgba(0, 0, 0, 0.02);
-	}
-
-	.expandable-title {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-	}
-
-	:global(.expandable-icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: #E55A28;
-	}
-
-	:global(.expandable-icon.warning) {
-		color: #EAB308;
-	}
-
-	:global(.expandable-icon.success) {
-		color: #22C55E;
-	}
-
-	.expandable-title span {
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: #18181B;
-	}
-
-	:global(.chevron-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: #A1A1AA;
-		transition: transform 0.2s;
-	}
-
-	:global(.chevron-icon.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.expandable-content {
-		padding: 0 1rem 1rem;
-		background: #FFFFFF;
-	}
-
-	/* Influencers Grid */
-	.influencers-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 0.625rem;
-	}
-
+	/* Influencer Card */
 	.influencer-card {
 		padding: 0.75rem;
 		background: rgba(0, 0, 0, 0.02);
@@ -554,13 +422,7 @@
 		color: #A1A1AA;
 	}
 
-	/* Messaging Grid */
-	.messaging-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-		gap: 0.75rem;
-	}
-
+	/* Messaging Box */
 	.messaging-box {
 		background: rgba(0, 0, 0, 0.02);
 		border: 1px solid rgba(0, 0, 0, 0.06);
@@ -626,10 +488,6 @@
 	}
 
 	/* Tactics */
-	.tactics-bg {
-		background: linear-gradient(135deg, rgba(34, 197, 94, 0.04) 0%, transparent 100%);
-	}
-
 	.tactics-content {
 		font-size: 0.8125rem;
 		color: #71717A;
@@ -644,20 +502,4 @@
 		margin-bottom: 0;
 	}
 
-	/* =========================
-	   RESPONSIVE
-	   ========================= */
-	@media (max-width: 768px) {
-		.segments-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.influencers-grid {
-			grid-template-columns: 1fr;
-		}
-
-		.messaging-grid {
-			grid-template-columns: 1fr;
-		}
-	}
 </style>

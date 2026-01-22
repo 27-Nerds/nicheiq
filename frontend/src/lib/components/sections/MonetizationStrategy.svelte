@@ -1,11 +1,15 @@
 <script lang="ts">
-	import { DollarSign, CheckCircle, Globe, Users, Megaphone, TrendingUp, Zap, AlertCircle } from 'lucide-svelte';
+	import { DollarSign, CheckCircle, Globe, Users, Megaphone, TrendingUp, Zap, AlertCircle, Calculator, CircleDollarSign, Scale, BarChart3, FileText } from 'lucide-svelte';
 	import type { PricingStrategy, TrafficMonetization } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
+	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
+	import InsightCard from '$lib/components/ui/InsightCard.svelte';
+	import CardGrid from '$lib/components/ui/CardGrid.svelte';
+	import SectionLabel from '$lib/components/ui/SectionLabel.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 
 	interface Props {
@@ -23,6 +27,41 @@
 			percentage
 		}));
 	});
+
+	// Detect N/A values for muted styling
+	const isNAValue = (value: string | undefined): boolean => {
+		if (!value) return true;
+		const lower = value.toLowerCase();
+		return lower.includes('n/a') || lower.includes('not applicable');
+	};
+
+	// Get semantic variant based on metric type and value
+	const getMetricVariant = (type: string, value: string | undefined): 'default' | 'success' | 'warning' | 'accent' | 'muted' => {
+		if (isNAValue(value)) return 'muted';
+		if (type === 'ltv_cac') {
+			const match = value?.match(/(\d+\.?\d*)/);
+			if (match) {
+				const ratio = parseFloat(match[1]);
+				if (ratio >= 3) return 'success';
+				if (ratio >= 1.5) return 'warning';
+			}
+		}
+		return type === 'competitor' ? 'default' : 'accent';
+	};
+
+	// Split long values into display + description
+	const parseMetricValue = (value: string | undefined): { display: string; description?: string } => {
+		if (!value) return { display: 'N/A' };
+		const dashIdx = value.indexOf(' - ');
+		if (dashIdx > 0) {
+			return { display: value.substring(0, dashIdx).trim(), description: value.substring(dashIdx + 3).trim() };
+		}
+		if (value.length > 25) {
+			const priceMatch = value.match(/\$[\d,]+(?:\.\d{2,})?/);
+			if (priceMatch) return { display: priceMatch[0], description: value };
+		}
+		return { display: value };
+	};
 </script>
 
 <section id="monetization" class="report-section">
@@ -36,23 +75,18 @@
 	     SaaS PRICING SECTION
 	     ═══════════════════════════════════════════════════════════════════ -->
 
-	<div class="subsection-header mb-6">
-		<h3 class="text-lg font-semibold text-text-primary">
-			{#if pricingData.pricing_model === 'Ad-Supported-Free' || pricingData.pricing_model === 'Affiliate-Only'}
-				Traffic Monetization Model
-			{:else}
-				SaaS Pricing Model
-			{/if}
-		</h3>
-		<div class="flex items-center gap-4">
-			<Badge>{pricingData.pricing_model}</Badge>
-			{#if pricingData.pricing_confidence}
-				<span class="text-sm text-text-muted">
-					{pricingData.pricing_confidence} confidence
-				</span>
-			{/if}
-		</div>
-	</div>
+	<SubsectionHeader
+		title={pricingData.pricing_model === 'Ad-Supported-Free' || pricingData.pricing_model === 'Affiliate-Only'
+			? 'Traffic Monetization Model'
+			: 'SaaS Pricing Model'}
+	>
+		<Badge>{pricingData.pricing_model}</Badge>
+		{#if pricingData.pricing_confidence}
+			<span class="text-sm text-text-muted">
+				{pricingData.pricing_confidence} confidence
+			</span>
+		{/if}
+	</SubsectionHeader>
 
 	<!-- Conditional Pricing Display based on pricing_model -->
 	{#if pricingData.pricing_model === 'Ad-Supported-Free' || pricingData.pricing_model === 'Affiliate-Only'}
@@ -237,46 +271,86 @@
 	{/if}
 
 	<!-- Pricing Rationale -->
-	<div class="card mb-8">
-		<h4 class="text-lg font-semibold text-text-primary mb-4">Pricing Rationale</h4>
+	<InsightCard variant="accent" border="left" padding="lg" class="mb-6">
+		{#snippet header()}
+			<div class="flex items-center gap-2">
+				<FileText class="w-4 h-4 text-accent" />
+				<SectionLabel text="Pricing Rationale" variant="accent" />
+			</div>
+		{/snippet}
 		<div class="markdown-content narrative">
 			{@html renderMarkdown(pricingData.pricing_rationale)}
 		</div>
-	</div>
+	</InsightCard>
 
 	<!-- Unit Economics -->
-	<div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+	<SubsectionHeader title="Unit Economics" icon={Calculator} />
+	<CardGrid minWidth={180} gap="md" class="mb-8">
 		{#if pricingData.estimated_arpu}
-			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1 inline-flex items-center gap-1">
-					Estimated ARPU <Tooltip content={getTermTooltip('ARPU')} position="top" />
-				</div>
-				<div class="text-xl font-semibold text-text-primary">{pricingData.estimated_arpu}</div>
-			</div>
+			{@const parsed = parseMetricValue(pricingData.estimated_arpu)}
+			<InsightCard variant={getMetricVariant('arpu', pricingData.estimated_arpu)} border="left" padding="md">
+				{#snippet meta()}
+					<div class="metric-label">
+						<CircleDollarSign class="w-3.5 h-3.5" />
+						<span class="mono-label">Estimated ARPU</span>
+						<Tooltip content={getTermTooltip('ARPU')} position="top" />
+					</div>
+				{/snippet}
+				<div class="metric-value">{parsed.display}</div>
+				{#if parsed.description}
+					<p class="metric-desc">{parsed.description}</p>
+				{/if}
+			</InsightCard>
 		{/if}
 		{#if pricingData.estimated_ltv}
-			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1 inline-flex items-center gap-1">
-					Estimated LTV <Tooltip content={getTermTooltip('LTV')} position="top" />
-				</div>
-				<div class="text-xl font-semibold text-accent">{pricingData.estimated_ltv}</div>
-			</div>
+			{@const parsed = parseMetricValue(pricingData.estimated_ltv)}
+			<InsightCard variant={getMetricVariant('ltv', pricingData.estimated_ltv)} border="left" padding="md">
+				{#snippet meta()}
+					<div class="metric-label">
+						<TrendingUp class="w-3.5 h-3.5" />
+						<span class="mono-label">Estimated LTV</span>
+						<Tooltip content={getTermTooltip('LTV')} position="top" />
+					</div>
+				{/snippet}
+				<div class="metric-value">{parsed.display}</div>
+				{#if parsed.description}
+					<p class="metric-desc">{parsed.description}</p>
+				{/if}
+			</InsightCard>
 		{/if}
 		{#if pricingData.ltv_to_cac_ratio}
-			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1 inline-flex items-center gap-1">
-					LTV:CAC Ratio <Tooltip content={getTermTooltip('LTV:CAC')} position="top" />
-				</div>
-				<div class="text-xl font-semibold text-success">{pricingData.ltv_to_cac_ratio}</div>
-			</div>
+			{@const parsed = parseMetricValue(pricingData.ltv_to_cac_ratio)}
+			<InsightCard variant={getMetricVariant('ltv_cac', pricingData.ltv_to_cac_ratio)} border="left" padding="md">
+				{#snippet meta()}
+					<div class="metric-label">
+						<Scale class="w-3.5 h-3.5" />
+						<span class="mono-label">LTV:CAC Ratio</span>
+						<Tooltip content={getTermTooltip('LTV:CAC')} position="top" />
+					</div>
+				{/snippet}
+				<div class="metric-value">{parsed.display}</div>
+				{#if parsed.description}
+					<p class="metric-desc">{parsed.description}</p>
+				{/if}
+			</InsightCard>
 		{/if}
 		{#if pricingData.price_vs_competitors}
-			<div class="card-surface card-sm text-center">
-				<div class="text-sm text-text-muted mb-1">vs Competitors</div>
-				<div class="text-xl font-semibold text-text-primary">{pricingData.price_vs_competitors}</div>
-			</div>
+			{@const parsed = parseMetricValue(pricingData.price_vs_competitors)}
+			<InsightCard variant={getMetricVariant('competitor', pricingData.price_vs_competitors)} border="left" padding="md">
+				{#snippet meta()}
+					<div class="metric-label">
+						<BarChart3 class="w-3.5 h-3.5" />
+						<span class="mono-label">vs Competitors</span>
+						<Tooltip content="How your pricing compares to competitor offerings in the market" position="top" />
+					</div>
+				{/snippet}
+				<div class="metric-value">{parsed.display}</div>
+				{#if parsed.description}
+					<p class="metric-desc">{parsed.description}</p>
+				{/if}
+			</InsightCard>
 		{/if}
-	</div>
+	</CardGrid>
 
 	<!-- WTP Validation -->
 	{#if pricingData.wtp_validation}
@@ -307,10 +381,9 @@
 	{#if trafficData}
 		<div class="section-divider my-8"></div>
 
-		<div class="subsection-header mb-6">
-			<h3 class="text-lg font-semibold text-text-primary">Traffic-Based Revenue</h3>
+		<SubsectionHeader title="Traffic-Based Revenue">
 			<Badge variant="accent">{trafficData.monetization_model}</Badge>
-		</div>
+		</SubsectionHeader>
 
 		<!-- Revenue Overview Cards -->
 		<AnimateOnScroll animation="fade-up">
@@ -536,14 +609,6 @@
 </section>
 
 <style>
-	.subsection-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		flex-wrap: wrap;
-		gap: 1rem;
-	}
-
 	.section-divider {
 		height: 1px;
 		background: linear-gradient(90deg, transparent, var(--color-border), transparent);
@@ -587,5 +652,37 @@
 	.pricing-tier-pro {
 		border-color: var(--color-success);
 		background: linear-gradient(135deg, rgba(229, 90, 40, 0.05) 0%, transparent 60%);
+	}
+
+	/* Unit Economics metric styles */
+	.metric-label {
+		display: flex;
+		align-items: center;
+		gap: 0.375rem;
+	}
+
+	.mono-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.03em;
+		color: var(--color-text-muted);
+	}
+
+	.metric-value {
+		font-family: var(--font-display);
+		font-size: 1.25rem;
+		font-weight: 700;
+		margin-top: 0.25rem;
+		color: var(--color-text-primary);
+	}
+
+	.metric-desc {
+		font-size: 0.6875rem;
+		color: var(--color-text-muted);
+		line-height: 1.4;
+		margin-top: 0.375rem;
+		margin-bottom: 0;
 	}
 </style>

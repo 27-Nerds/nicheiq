@@ -7,7 +7,6 @@
 		AlertTriangle,
 		Calendar,
 		Activity,
-		ChevronDown,
 		ChevronRight,
 		BarChart3,
 		Zap
@@ -15,22 +14,17 @@
 	import type { TrendLongevity } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
-	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
 	import HeroPrimary from '$lib/components/ui/HeroPrimary.svelte';
+	import StatPill from '$lib/components/ui/StatPill.svelte';
 
 	interface Props {
 		data: TrendLongevity;
 	}
 
 	let { data }: Props = $props();
-
-	// Expandable sections state
-	let showAnalysis = $state(false);
-	let showGrowth = $state(false);
-	let showRisks = $state(false);
 
 	// Determine trend icon and color
 	const trendConfig = $derived.by(() => {
@@ -116,28 +110,16 @@
 	<!-- Stats Strip -->
 	<div class="stats-strip">
 		{#if data.keyword_volume_trend}
-			<div class="stat-pill">
-				<span class="stat-label">Keyword Volume</span>
-				<span class="stat-value">{data.keyword_volume_trend}</span>
-			</div>
+			<StatPill label="Keyword Volume" value={data.keyword_volume_trend} />
 		{/if}
 		{#if data.discussion_frequency_trend}
-			<div class="stat-pill">
-				<span class="stat-label">Discussions</span>
-				<span class="stat-value">{data.discussion_frequency_trend}</span>
-			</div>
+			<StatPill label="Discussions" value={data.discussion_frequency_trend} />
 		{/if}
 		{#if data.new_entrants_trend}
-			<div class="stat-pill">
-				<span class="stat-label">New Entrants</span>
-				<span class="stat-value">{data.new_entrants_trend}</span>
-			</div>
+			<StatPill label="New Entrants" value={data.new_entrants_trend} />
 		{/if}
 		{#if data.market_maturity}
-			<div class="stat-pill">
-				<span class="stat-label">Maturity</span>
-				<span class="stat-value">{data.market_maturity}</span>
-			</div>
+			<StatPill label="Maturity" value={data.market_maturity} />
 		{/if}
 	</div>
 
@@ -162,74 +144,49 @@
 
 	<!-- Expandable: Longevity Analysis -->
 	{#if data.longevity_rationale}
-		<div class="expandable-section">
-			<button class="expandable-header" onclick={() => (showAnalysis = !showAnalysis)}>
-				<div class="expandable-title">
-					<BarChart3 class="expandable-icon" />
-					<span>Longevity Analysis</span>
-				</div>
-				<ChevronDown class="chevron-icon {showAnalysis ? 'expanded' : ''}" />
-			</button>
-			{#if showAnalysis}
-				<div class="expandable-content">
-					<div class="analysis-content">
-						{@html renderMarkdown(data.longevity_rationale)}
-					</div>
-				</div>
-			{/if}
-		</div>
+		<ExpandableSection title="Longevity Analysis" icon={BarChart3}>
+			<div class="analysis-content">
+				{@html renderMarkdown(data.longevity_rationale)}
+			</div>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Growth Indicators -->
 	{#if data.community_growth_indicators && data.community_growth_indicators.length > 0}
-		<div class="expandable-section success-accent">
-			<button class="expandable-header" onclick={() => (showGrowth = !showGrowth)}>
-				<div class="expandable-title">
-					<Zap class="expandable-icon success" />
-					<span>Growth Indicators</span>
-					<Badge variant="success" size="sm">{data.community_growth_indicators.length}</Badge>
-				</div>
-				<ChevronDown class="chevron-icon {showGrowth ? 'expanded' : ''}" />
-			</button>
-			{#if showGrowth}
-				<div class="expandable-content">
-					<ul class="indicator-list">
-						{#each data.community_growth_indicators as indicator}
-							<li class="indicator-item">
-								<ChevronRight class="indicator-icon" />
-								<span>{indicator}</span>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</div>
+		<ExpandableSection
+			title="Growth Indicators"
+			icon={Zap}
+			count={data.community_growth_indicators.length}
+			variant="success"
+		>
+			<ul class="indicator-list">
+				{#each data.community_growth_indicators as indicator}
+					<li class="indicator-item">
+						<ChevronRight class="indicator-icon" />
+						<span>{indicator}</span>
+					</li>
+				{/each}
+			</ul>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Expandable: Risk Factors -->
 	{#if data.risk_factors && data.risk_factors.length > 0}
-		<div class="expandable-section error-accent">
-			<button class="expandable-header" onclick={() => (showRisks = !showRisks)}>
-				<div class="expandable-title">
-					<AlertTriangle class="expandable-icon error" />
-					<span>Risk Factors</span>
-					<Badge variant="error" size="sm">{data.risk_factors.length}</Badge>
-				</div>
-				<ChevronDown class="chevron-icon {showRisks ? 'expanded' : ''}" />
-			</button>
-			{#if showRisks}
-				<div class="expandable-content">
-					<ul class="risk-list">
-						{#each data.risk_factors as risk}
-							<li class="risk-item">
-								<span class="risk-bullet">!</span>
-								<span>{risk}</span>
-							</li>
-						{/each}
-					</ul>
-				</div>
-			{/if}
-		</div>
+		<ExpandableSection
+			title="Risk Factors"
+			icon={AlertTriangle}
+			count={data.risk_factors.length}
+			variant="error"
+		>
+			<ul class="risk-list">
+				{#each data.risk_factors as risk}
+					<li class="risk-item">
+						<span class="risk-bullet">!</span>
+						<span>{risk}</span>
+					</li>
+				{/each}
+			</ul>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Metadata Footer -->
@@ -360,32 +317,6 @@
 		margin-bottom: 1rem;
 	}
 
-	.stat-pill {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.375rem 0.75rem;
-		background: var(--color-bg-surface);
-		border: 1px solid var(--color-border);
-		border-radius: 999px;
-	}
-
-	.stat-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-		color: var(--color-text-muted);
-	}
-
-	.stat-value {
-		font-family: var(--font-display);
-		font-size: 0.8125rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
 	/* Seasonality Card */
 	.seasonality-card {
 		background: var(--color-bg-elevated);
@@ -436,80 +367,6 @@
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 		color: var(--color-text-muted);
-	}
-
-	/* Expandable Sections */
-	.expandable-section {
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.75rem;
-		margin-bottom: 0.75rem;
-		overflow: hidden;
-	}
-
-	.expandable-section.success-accent {
-		border-color: rgba(34, 197, 94, 0.3);
-		background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, transparent 40%);
-	}
-
-	.expandable-section.error-accent {
-		border-color: rgba(239, 68, 68, 0.3);
-		background: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, transparent 40%);
-	}
-
-	.expandable-header {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		width: 100%;
-		padding: 1rem 1.25rem;
-		background: transparent;
-		border: none;
-		cursor: pointer;
-		transition: background 0.15s ease;
-	}
-
-	.expandable-header:hover {
-		background: var(--color-bg-surface);
-	}
-
-	.expandable-title {
-		display: flex;
-		align-items: center;
-		gap: 0.625rem;
-		font-family: var(--font-display);
-		font-size: 0.9375rem;
-		font-weight: 600;
-		color: var(--color-text-primary);
-	}
-
-	.expandable-title :global(.expandable-icon) {
-		width: 1.125rem;
-		height: 1.125rem;
-		color: var(--color-accent);
-	}
-
-	.expandable-title :global(.expandable-icon.success) {
-		color: var(--color-success);
-	}
-
-	.expandable-title :global(.expandable-icon.error) {
-		color: var(--color-error);
-	}
-
-	:global(.chevron-icon) {
-		width: 1.25rem;
-		height: 1.25rem;
-		color: var(--color-text-muted);
-		transition: transform 0.2s ease;
-	}
-
-	:global(.chevron-icon.expanded) {
-		transform: rotate(180deg);
-	}
-
-	.expandable-content {
-		padding: 0 1.25rem 1.25rem;
 	}
 
 	/* Analysis Content */
@@ -610,25 +467,8 @@
 	}
 
 	@media (max-width: 480px) {
-		.section-title {
-			font-size: 1.25rem;
-		}
-
-		.expandable-header {
-			padding: 0.875rem 1rem;
-		}
-
-		.expandable-content {
-			padding: 0 1rem 1rem;
-		}
-
 		.stats-strip {
 			flex-direction: column;
-		}
-
-		.stat-pill {
-			width: 100%;
-			justify-content: space-between;
 		}
 	}
 </style>

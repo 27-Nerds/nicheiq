@@ -174,6 +174,21 @@ export interface KeyMetrics {
 	seo_potential_score?: number | null;
 }
 
+export interface BudgetAllocation {
+	content_creation: number;
+	paid_advertising: number;
+	tools_and_software: number;
+	community_and_outreach: number;
+}
+
+export interface BudgetEstimate {
+	monthly_budget_min: number;
+	monthly_budget_max: number;
+	allocation: BudgetAllocation;
+	rationale: string;
+	scaling_guidance: string;
+}
+
 export interface GoToMarketBlueprint {
 	ideal_customer_profile: IdealCustomerProfile;
 	core_marketing_message: string;
@@ -181,7 +196,7 @@ export interface GoToMarketBlueprint {
 	recommended_channels: RecommendedChannel[];
 	example_content_angles: ContentAngle[];
 	first_30_days_playbook: Playbook;
-	budget_estimate: string;
+	budget_estimate: string | BudgetEstimate | null;  // Support both old string and new object
 }
 
 export interface IdealCustomerProfile {

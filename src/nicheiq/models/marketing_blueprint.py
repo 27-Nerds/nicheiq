@@ -107,6 +107,53 @@ class First30DaysPlaybook(BaseModel):
         description="3-5 metrics to track during first 30 days"
     )
 
+class BudgetAllocation(BaseModel):
+    """Budget allocation percentages across marketing categories."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    content_creation: int = Field(
+        ge=0, le=100,
+        description="Percentage for blog posts, guides, videos (10-40%)"
+    )
+    paid_advertising: int = Field(
+        ge=0, le=100,
+        description="Percentage for Google/Meta/LinkedIn ads (0-60%)"
+    )
+    tools_and_software: int = Field(
+        ge=0, le=100,
+        description="Percentage for email tools, analytics, design (5-20%)"
+    )
+    community_and_outreach: int = Field(
+        ge=0, le=100,
+        description="Percentage for events, sponsorships, partnerships (5-30%)"
+    )
+
+
+class BudgetEstimateResult(BaseModel):
+    """LLM-generated budget estimate with breakdown."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    monthly_budget_min: int = Field(
+        ge=0,
+        description="Minimum monthly budget in USD"
+    )
+    monthly_budget_max: int = Field(
+        ge=0,
+        description="Maximum monthly budget in USD"
+    )
+    allocation: BudgetAllocation = Field(
+        description="Budget allocation percentages by category"
+    )
+    rationale: str = Field(
+        description="2-3 sentence explanation of budget calculation"
+    )
+    scaling_guidance: str = Field(
+        description="When/how to increase budget (e.g., 'After 100 subscribers, scale to $X')"
+    )
+
+
 class GTMBlueprint(BaseModel):
     """
     Comprehensive Go-to-Market blueprint for immediate execution.
@@ -141,9 +188,9 @@ class GTMBlueprint(BaseModel):
         description="Week-by-week action plan for first month"
     )
 
-    budget_estimate: Optional[str] = Field(
+    budget_estimate: Optional[str | BudgetEstimateResult] = Field(
         default=None,
-        description="Estimated monthly marketing budget for first 3 months (optional)"
+        description="Estimated monthly marketing budget - either string (legacy) or detailed breakdown"
     )
 
 # Model for LLM-generated marketing components (hybrid approach)
