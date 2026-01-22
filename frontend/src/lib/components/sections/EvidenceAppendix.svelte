@@ -884,10 +884,6 @@
 	}
 
 	@media (max-width: 480px) {
-		.section-title {
-			font-size: 1.25rem;
-		}
-
 		.stats-strip {
 			flex-direction: column;
 		}

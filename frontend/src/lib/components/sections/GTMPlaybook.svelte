@@ -950,10 +950,6 @@
 		gap: 1rem;
 	}
 
-	.channel-card {
-		/* Additional channel-specific styling beyond insight-card */
-	}
-
 	.channel-header {
 		display: flex;
 		align-items: flex-start;
@@ -1337,10 +1333,6 @@
 	}
 
 	@media (max-width: 480px) {
-		.section-title {
-			font-size: 1.25rem;
-		}
-
 		.message-text {
 			font-size: 1.125rem;
 		}

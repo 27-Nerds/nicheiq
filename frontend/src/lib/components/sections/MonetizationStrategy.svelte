@@ -273,10 +273,7 @@
 	<!-- Pricing Rationale -->
 	<InsightCard variant="accent" border="left" padding="lg" class="mb-6">
 		{#snippet header()}
-			<div class="flex items-center gap-2">
-				<FileText class="w-4 h-4 text-accent" />
-				<SectionLabel text="Pricing Rationale" variant="accent" />
-			</div>
+			<SectionLabel text="Pricing Rationale" variant="accent" icon={FileText} />
 		{/snippet}
 		<div class="markdown-content narrative">
 			{@html renderMarkdown(pricingData.pricing_rationale)}

@@ -386,10 +386,4 @@
 		padding-top: 0;
 	}
 
-	/* ============================================
-	   Content Area
-	   ============================================ */
-	.section-content {
-		/* Padding controlled by padding-* classes */
-	}
 </style>

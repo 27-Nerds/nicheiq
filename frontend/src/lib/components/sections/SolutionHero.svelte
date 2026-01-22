@@ -13,12 +13,20 @@
     Lightbulb,
     Search,
     FileText,
-    Crosshair,
+    Wallet,
+    TrendingUp,
+    BarChart3,
+    Hash,
+    Cpu,
+    Settings,
+    Code,
+    User,
   } from "lucide-svelte";
   import type {
     SolutionDetails,
     ExecutiveDashboard,
     SelectionCriteriaScore,
+    BudgetEstimate,
   } from "$lib/types/report";
   import { renderMarkdown, parseRationaleMetrics } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -27,17 +35,20 @@
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
-  import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import InsightCard from "$lib/components/ui/InsightCard.svelte";
+  import CheckListItem from "$lib/components/ui/CheckListItem.svelte";
+  import SectionLabel from "$lib/components/ui/SectionLabel.svelte";
+  import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
 
   interface Props {
     solution: SolutionDetails;
     dashboard: ExecutiveDashboard;
     selectionRationale: string;
     scores?: SelectionCriteriaScore[];
+    budgetEstimate?: BudgetEstimate | string | null;
   }
 
-  let { solution, dashboard, selectionRationale, scores }: Props = $props();
+  let { solution, dashboard, selectionRationale, scores, budgetEstimate }: Props = $props();
 
   const solutionName = $derived(solution.solution_name || "Solution");
   const snapshot = $derived(dashboard.recommended_solution_snapshot);
@@ -69,6 +80,103 @@
     // Otherwise truncate
     return { short: devTime.slice(0, 17) + "...", full: devTime };
   };
+
+  // Format budget range for display (e.g., "$500-$2K")
+  const formatBudgetRange = (budget: BudgetEstimate | string | null | undefined): string | null => {
+    if (!budget || typeof budget === 'string') return null;
+    const formatK = (n: number) =>
+      n >= 1000 ? `$${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `$${n}`;
+    return `${formatK(budget.monthly_budget_min)}-${formatK(budget.monthly_budget_max)}`;
+  };
+
+  const budgetDisplay = $derived(formatBudgetRange(budgetEstimate));
+
+  // Format novelty score with validation for invalid values
+  function formatNoveltyScore(score: number | null | undefined): string {
+    if (score == null || isNaN(score)) return '-';
+    // Clamp to valid range and convert to 0-10 scale
+    const clamped = Math.max(0, Math.min(1, score));
+    return (clamped * 10).toFixed(1);
+  }
+
+  // Get semantic variant for Selection Rationale metrics based on value
+  const getMetricCardVariant = (metric: { label: string; value: string }): 'default' | 'success' | 'warning' | 'accent' => {
+    const label = metric.label.toLowerCase();
+    const value = metric.value;
+
+    // Score-based metrics (e.g., "8.5/10" or "0.85")
+    if (label.includes('score') || label.includes('fit')) {
+      const numMatch = value.match(/(\d+\.?\d*)/);
+      if (numMatch) {
+        const num = parseFloat(numMatch[1]);
+        if (num >= 8 || (num >= 0.8 && num <= 1)) return 'success';
+        if (num >= 6 || (num >= 0.6 && num < 0.8)) return 'accent';
+        return 'warning';
+      }
+    }
+
+    // Percentage-based metrics
+    if (value.includes('%')) {
+      const numMatch = value.match(/(\d+)/);
+      if (numMatch) {
+        const num = parseInt(numMatch[1]);
+        if (num >= 70) return 'success';
+        if (num >= 40) return 'accent';
+        return 'warning';
+      }
+    }
+
+    return 'accent';
+  };
+
+  // Get icon component for metric based on label pattern
+  const getMetricIcon = (label: string): typeof Globe => {
+    const lowerLabel = label.toLowerCase();
+    if (lowerLabel.includes('seo')) return Globe;
+    if (lowerLabel.includes('search')) return Search;
+    if (lowerLabel.includes('tech') || lowerLabel.includes('feasibility')) return Cpu;
+    if (lowerLabel.includes('settings') || lowerLabel.includes('config')) return Settings;
+    if (lowerLabel.includes('dev') || lowerLabel.includes('solo')) return Code;
+    if (lowerLabel.includes('user') || lowerLabel.includes('audience')) return User;
+    if (lowerLabel.includes('market') || lowerLabel.includes('fit')) return Target;
+    if (lowerLabel.includes('growth') || lowerLabel.includes('trend')) return TrendingUp;
+    return BarChart3;
+  };
+
+  // Extract numeric value (0-100) for progress bar from metric value
+  const extractProgressValue = (value: string): number => {
+    // Try to extract percentage directly
+    const percentMatch = value.match(/(\d+(?:\.\d+)?)\s*%/);
+    if (percentMatch) return Math.min(100, parseFloat(percentMatch[1]));
+
+    // Try to extract X/10 format
+    const tenScaleMatch = value.match(/(\d+(?:\.\d+)?)\s*\/\s*10/);
+    if (tenScaleMatch) return Math.min(100, parseFloat(tenScaleMatch[1]) * 10);
+
+    // Try to extract decimal (0.0-1.0)
+    const decimalMatch = value.match(/^0\.(\d+)$/);
+    if (decimalMatch) return Math.min(100, parseFloat('0.' + decimalMatch[1]) * 100);
+
+    // Try to extract any number and assume it's out of 10 if <= 10
+    const numMatch = value.match(/(\d+(?:\.\d+)?)/);
+    if (numMatch) {
+      const num = parseFloat(numMatch[1]);
+      if (num <= 10) return num * 10;
+      if (num <= 100) return num;
+    }
+
+    return 75; // Default fallback
+  };
+
+  // Get progress bar color based on variant
+  const getProgressColor = (variant: 'default' | 'success' | 'warning' | 'accent'): string => {
+    switch (variant) {
+      case 'success': return 'var(--color-success)';
+      case 'warning': return 'var(--color-warning)';
+      case 'accent': return 'var(--color-accent)';
+      default: return 'var(--color-text-muted)';
+    }
+  };
 </script>
 
 <section id="solution" class="report-section">
@@ -99,17 +207,17 @@
     {/if}
 
     <!-- Value Proposition -->
-    <div class="value-block">
+    <InsightCard variant="accent" border="left" padding="md">
       <p class="value-text">
         {solution.value_proposition ||
           snapshot.core_value_prop ||
           solution.description}
       </p>
-    </div>
+    </InsightCard>
   </div>
 
   <!-- Launch Parameters Strip -->
-  {#if solution.estimated_development_time || solution.estimated_indexable_pages || solution.estimated_cac_organic}
+  {#if solution.estimated_development_time || solution.estimated_indexable_pages || solution.estimated_cac_organic || budgetDisplay}
     <div class="launch-params">
       <div class="launch-params-header">
         <span class="launch-params-label">LAUNCH PARAMETERS</span>
@@ -172,59 +280,64 @@
             <div class="param-glow"></div>
           </div>
         {/if}
+
+        {#if budgetDisplay}
+          <div class="param-card param-budget" style="--param-delay: 0.24s">
+            <div class="param-icon-wrap">
+              <Wallet class="param-icon" />
+            </div>
+            <div class="param-data">
+              <span class="param-value">{budgetDisplay}</span>
+              <span class="param-label">
+                Monthly Budget
+                <Tooltip content="Estimated monthly marketing budget to achieve growth targets" position="top" />
+              </span>
+            </div>
+            <div class="param-glow"></div>
+          </div>
+        {/if}
       </CardGrid>
     </div>
   {/if}
 
   <!-- Innovation Score Card -->
-  {#if solution.novelty_score != null}
-    <div class="innovation-card">
-      <div class="innovation-header">
-        <div class="innovation-label">
-          <Lightbulb class="innovation-icon" />
-          <span>INNOVATION</span>
+  {#if solution.novelty_score != null && !isNaN(solution.novelty_score)}
+    <InsightCard variant="warning" border="left" padding="md" class="innovation-card">
+      {#snippet header()}
+        <div class="innovation-header">
+          <div class="innovation-label">
+            <Lightbulb class="innovation-icon" />
+            <span>INNOVATION</span>
+          </div>
+          <div class="innovation-score">
+            <span class="score-value">{formatNoveltyScore(solution.novelty_score)}</span>
+            <span class="score-max">/10</span>
+          </div>
         </div>
-        <div class="innovation-score">
-          <span class="score-value">{solution.novelty_score.toFixed(1)}</span>
-          <span class="score-max">/10</span>
-        </div>
-      </div>
+      {/snippet}
       {#if solution.novelty_justification}
         <p class="innovation-text">{solution.novelty_justification}</p>
       {/if}
-    </div>
+    </InsightCard>
   {/if}
 
   <!-- Discovery Queries -->
   {#if solution.organic_discovery_queries && solution.organic_discovery_queries.length > 0}
-    <div class="discovery-card">
-      <div class="discovery-header">
-        <Search class="discovery-icon" />
-        <span class="discovery-title">HOW USERS FIND YOU</span>
-      </div>
+    <InsightCard variant="info" border="left" padding="md" class="discovery-card">
+      {#snippet header()}
+        <div class="discovery-header">
+          <Search class="discovery-icon" />
+          <span class="discovery-title">HOW USERS FIND YOU</span>
+        </div>
+      {/snippet}
       <div class="discovery-queries">
         {#each solution.organic_discovery_queries.slice(0, 8) as query}
           <span class="query-chip">{query}</span>
         {/each}
       </div>
-    </div>
+    </InsightCard>
   {/if}
 
-  <!-- Pain Points Addressed -->
-  {#if solution.pain_points_addressed && solution.pain_points_addressed.length > 0}
-    <div class="pain-points-card">
-      <div class="pain-points-header">
-        <Crosshair class="pain-points-icon" />
-        <span class="pain-points-title">PROBLEMS SOLVED</span>
-        <Badge variant="muted" size="sm">{solution.pain_points_addressed.length}</Badge>
-      </div>
-      <ul class="pain-points-list">
-        {#each solution.pain_points_addressed.slice(0, 4) as point}
-          <li class="pain-point-item">{point}</li>
-        {/each}
-      </ul>
-    </div>
-  {/if}
 
   <!-- Target Personas -->
   {#if solution.target_personas && solution.target_personas.length > 0}
@@ -237,9 +350,22 @@
       />
       <CardGrid minWidth={220} gap="md">
         {#each solution.target_personas as persona, i}
-          <div class="persona-card" style="--persona-delay: {i * 0.05}s">
+          <InsightCard
+            variant={i === 0 ? "accent" : "default"}
+            border="left"
+            hoverable={true}
+            padding="md"
+          >
+            {#snippet header()}
+              <div class="persona-header">
+                <span class="persona-num" class:primary={i === 0}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <SectionLabel text={i === 0 ? "Primary" : "Secondary"} variant={i === 0 ? "accent" : "muted"} />
+              </div>
+            {/snippet}
             <span class="persona-text">{persona}</span>
-          </div>
+          </InsightCard>
         {/each}
       </CardGrid>
     </div>
@@ -247,13 +373,15 @@
 
   <!-- Business Model -->
   {#if solution.pricing_strategy}
-    <div class="business-model-strip">
-      <div class="business-model-label">
-        <DollarSign class="business-model-icon" />
-        <span>Business Model</span>
-      </div>
+    <InsightCard variant="success" border="left" padding="md" class="business-model-card">
+      {#snippet header()}
+        <div class="business-model-header">
+          <DollarSign class="business-model-icon" />
+          <span class="business-model-title">Business Model</span>
+        </div>
+      {/snippet}
       <p class="business-model-text">{solution.pricing_strategy}</p>
-    </div>
+    </InsightCard>
   {/if}
 
   <!-- Competitive Advantages - Always Visible -->
@@ -277,74 +405,86 @@
     </div>
   {/if}
 
-  <!-- Expandable: How It Works -->
+  <!-- How It Works -->
   {#if solution.description && solution.description !== solution.value_proposition}
-    <ExpandableSection
-      title="How It Works"
-      icon={FileText}
-      variant="default"
-    >
-      <p class="how-it-works-text">{solution.description}</p>
-    </ExpandableSection>
+    <div class="how-it-works-section">
+      <SubsectionHeader title="How It Works" icon={FileText} variant="default" />
+      <InsightCard variant="muted" border="left" padding="md">
+        <div class="how-it-works-content">
+          {@html renderMarkdown(solution.description)}
+        </div>
+      </InsightCard>
+    </div>
   {/if}
 
-  <!-- Expandable: Core Features -->
+  <!-- Core Features -->
   {#if solution.core_features && solution.core_features.length > 0}
-    <ExpandableSection
-      title="Core Features"
-      icon={Layers}
-      count={solution.core_features.length}
-      variant="accent"
-    >
-      <CardGrid minWidth={260} gap="md">
-        {#each solution.core_features as feature, i}
-          <InsightCard
-            variant={i < 2 ? "accent" : "default"}
-            border={i < 2 ? "left" : "all"}
-            hoverable={true}
-            padding="sm"
-          >
-            {#snippet header()}
-              <span class="feature-num" class:primary={i < 2}>
-                {String(i + 1).padStart(2, "0")}
-              </span>
-            {/snippet}
-            <span class="feature-text">{feature}</span>
-          </InsightCard>
-        {/each}
-      </CardGrid>
-    </ExpandableSection>
+    <div class="core-features-section">
+      <SubsectionHeader title="Core Features" icon={Layers} count={solution.core_features.length} variant="default" />
+      <InsightCard variant="muted" border="left" padding="md">
+        <ul class="feature-list">
+          {#each solution.core_features as feature}
+            <CheckListItem color="accent">{feature}</CheckListItem>
+          {/each}
+        </ul>
+      </InsightCard>
+    </div>
   {/if}
 
-  <!-- Expandable: SEO Content Engine -->
+  <!-- SEO Content Engine -->
   {#if solution.content_generation_model}
-    <ExpandableSection
-      title="SEO Content Engine"
-      icon={Globe}
-      variant="accent"
-    >
-      <p class="seo-content-text">{solution.content_generation_model}</p>
-    </ExpandableSection>
+    <div class="seo-engine-section">
+      <SubsectionHeader title="SEO Content Engine" icon={Globe} variant="default" />
+      <InsightCard variant="muted" border="left" padding="md">
+        <div class="seo-engine-content">
+          {@html renderMarkdown(solution.content_generation_model)}
+        </div>
+      </InsightCard>
+    </div>
   {/if}
 
-  <!-- Expandable: Why This Solution -->
+  <!-- Selection Rationale -->
   {#if selectionRationale}
     <ExpandableSection
       title="Selection Rationale"
       icon={Target}
       count={parsedRationale.metrics.length > 0 ? parsedRationale.metrics.length : null}
       countSuffix="metrics"
-      variant="accent"
     >
-      <!-- Extracted Metrics -->
+      <!-- Extracted Metrics as InsightCard Grid -->
       {#if parsedRationale.metrics.length > 0}
-        <div class="rationale-metrics">
-          {#each parsedRationale.metrics as metric}
-            <div class="metric-chip">
-              <span class="metric-value">{metric.value}</span>
-              <span class="metric-label">{metric.label}</span>
-            </div>
-          {/each}
+        <div class="rationale-metrics-section">
+          <div class="rationale-metrics-label">
+            <BarChart3 class="rationale-metrics-icon" />
+            <SectionLabel text="Key Metrics" variant="accent" />
+          </div>
+          <CardGrid minWidth={140} gap="md">
+            {#each parsedRationale.metrics as metric}
+              {@const MetricIcon = getMetricIcon(metric.label)}
+              {@const cardVariant = getMetricCardVariant(metric)}
+              {@const progressValue = extractProgressValue(metric.value)}
+              <InsightCard
+                variant={cardVariant}
+                border="left"
+                padding="sm"
+                hoverable={true}
+              >
+                {#snippet meta()}
+                  <div class="rationale-metric-label">
+                    <MetricIcon class="rationale-metric-icon" />
+                    <span class="rationale-metric-name">{metric.label}</span>
+                  </div>
+                {/snippet}
+                <span class="rationale-metric-value">{metric.value}</span>
+                <div class="metric-progress">
+                  <div
+                    class="metric-progress-fill"
+                    style="width: {progressValue}%; background: {getProgressColor(cardVariant)};"
+                  ></div>
+                </div>
+              </InsightCard>
+            {/each}
+          </CardGrid>
         </div>
       {/if}
       <!-- Narrative -->
@@ -427,19 +567,7 @@
     line-height: 1.5;
   }
 
-  /* Value Block */
-  .value-block {
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.05) 0%,
-      transparent 50%
-    );
-    border: 1px solid rgba(229, 90, 40, 0.12);
-    border-left: 3px solid #e55a28;
-    border-radius: 0.5rem;
-    padding: 0.875rem 1rem;
-  }
-
+  /* Value Block - using InsightCard */
   .value-text {
     font-size: 0.875rem;
     color: #71717a;
@@ -552,6 +680,10 @@
   .param-cost {
     --param-color: #22c55e;
     --param-bg: rgba(34, 197, 94, 0.08);
+  }
+  .param-budget {
+    --param-color: #8b5cf6;
+    --param-bg: rgba(139, 92, 246, 0.08);
   }
 
   .param-card:hover {
@@ -701,9 +833,15 @@
   }
 
   /* =========================
-	   FEATURES (inside ExpandableSection)
+	   TARGET AUDIENCE (Personas)
 	   ========================= */
-  .feature-num {
+  .persona-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .persona-num {
     display: inline-block;
     font-family: var(--font-mono);
     font-size: 0.5625rem;
@@ -715,51 +853,119 @@
     transition: all 0.15s ease;
   }
 
-  .feature-num.primary {
+  .persona-num.primary {
     color: var(--color-accent);
     background: rgba(229, 90, 40, 0.12);
   }
 
-  .feature-text {
+  /* =========================
+	   HOW IT WORKS
+	   ========================= */
+  .how-it-works-content {
     font-size: 0.8125rem;
+    line-height: 1.65;
     color: var(--color-text-secondary);
-    line-height: 1.5;
   }
 
-  /* Rationale */
-  .rationale-metrics {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 0.875rem;
-    padding-bottom: 0.875rem;
-    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  .how-it-works-content :global(p) {
+    margin-bottom: 0.625rem;
   }
 
-  .metric-chip {
+  .how-it-works-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  /* =========================
+	   FEATURE LIST
+	   ========================= */
+  .feature-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  /* =========================
+	   SEO CONTENT ENGINE
+	   ========================= */
+  .seo-engine-content {
+    font-size: 0.8125rem;
+    line-height: 1.65;
+    color: var(--color-text-secondary);
+  }
+
+  .seo-engine-content :global(p) {
+    margin-bottom: 0.625rem;
+  }
+
+  .seo-engine-content :global(p:last-child) {
+    margin-bottom: 0;
+  }
+
+  /* =========================
+	   SELECTION RATIONALE
+	   ========================= */
+  .rationale-metrics-section {
+    margin-bottom: 1.25rem;
+  }
+
+  .rationale-metrics-label {
+    display: flex;
     align-items: center;
-    padding: 0.5rem 0.75rem;
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 0.375rem;
-    min-width: 65px;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
   }
 
-  .metric-chip .metric-value {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: #e55a28;
+  :global(.rationale-metrics-icon) {
+    width: 1rem;
+    height: 1rem;
+    color: var(--color-accent);
   }
 
-  .metric-chip .metric-label {
-    font-size: 0.5rem;
+  .rationale-metric-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+  }
+
+  :global(.rationale-metric-icon) {
+    width: 0.75rem;
+    height: 0.75rem;
+    color: var(--color-text-muted);
+  }
+
+  .rationale-metric-name {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
     font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #a1a1aa;
+    letter-spacing: 0.03em;
+    color: var(--color-text-muted);
+  }
+
+  .rationale-metric-value {
+    font-family: var(--font-display);
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+
+  /* Progress bar for metrics */
+  .metric-progress {
+    width: 100%;
+    height: 4px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 2px;
+    margin-top: 0.5rem;
+    overflow: hidden;
+  }
+
+  .metric-progress-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease;
   }
 
   .rationale-text {
@@ -777,35 +983,19 @@
   }
 
   /* =========================
+	   SECTION WRAPPERS
+	   ========================= */
+  .how-it-works-section,
+  .core-features-section,
+  .seo-engine-section {
+    margin-bottom: 1.5rem;
+  }
+
+  /* =========================
 	   TARGET PERSONAS SECTION
 	   ========================= */
   .personas-section {
     margin-bottom: 1rem;
-  }
-
-  .persona-card {
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: 0.625rem;
-    padding: 0.875rem 1rem;
-    transition: all 0.15s ease;
-    /* Staggered entrance animation */
-    opacity: 0;
-    transform: translateY(6px);
-    animation: persona-enter 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-    animation-delay: var(--persona-delay, 0s);
-  }
-
-  @keyframes persona-enter {
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .persona-card:hover {
-    border-color: rgba(99, 102, 241, 0.3);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   }
 
   .persona-text {
@@ -815,25 +1005,16 @@
   }
 
   /* =========================
-	   BUSINESS MODEL STRIP
+	   BUSINESS MODEL - using InsightCard
 	   ========================= */
-  .business-model-strip {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.875rem;
-    padding: 0.875rem 1rem;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-success);
-    border-radius: 0.625rem;
+  :global(.business-model-card) {
     margin-bottom: 0.75rem;
   }
 
-  .business-model-label {
+  .business-model-header {
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    flex-shrink: 0;
   }
 
   :global(.business-model-icon) {
@@ -842,11 +1023,11 @@
     color: var(--color-success);
   }
 
-  .business-model-label span {
+  .business-model-title {
     font-family: var(--font-display);
     font-size: 0.8125rem;
     font-weight: 600;
-    color: var(--color-text-primary);
+    color: var(--color-success);
     white-space: nowrap;
   }
 
@@ -868,13 +1049,9 @@
   }
 
   /* =========================
-	   INNOVATION SCORE CARD
+	   INNOVATION SCORE - using InsightCard
 	   ========================= */
-  .innovation-card {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.06) 0%, transparent 60%);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 0.75rem;
-    padding: 1rem 1.25rem;
+  :global(.innovation-card) {
     margin-bottom: 0.75rem;
   }
 
@@ -882,7 +1059,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    width: 100%;
   }
 
   .innovation-label {
@@ -935,13 +1112,9 @@
   }
 
   /* =========================
-	   DISCOVERY QUERIES
+	   DISCOVERY QUERIES - using InsightCard
 	   ========================= */
-  .discovery-card {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, transparent 60%);
-    border: 1px solid rgba(99, 102, 241, 0.15);
-    border-radius: 0.75rem;
-    padding: 1rem 1.25rem;
+  :global(.discovery-card) {
     margin-bottom: 0.75rem;
   }
 
@@ -949,7 +1122,6 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    margin-bottom: 0.75rem;
   }
 
   :global(.discovery-icon) {
@@ -990,107 +1162,14 @@
     border-color: rgba(99, 102, 241, 0.3);
   }
 
-  /* =========================
-	   PAIN POINTS ADDRESSED
-	   ========================= */
-  .pain-points-card {
-    background: linear-gradient(135deg, rgba(239, 68, 68, 0.04) 0%, transparent 60%);
-    border: 1px solid rgba(239, 68, 68, 0.15);
-    border-radius: 0.75rem;
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.75rem;
-  }
 
-  .pain-points-header {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.625rem;
-  }
-
-  :global(.pain-points-icon) {
-    width: 1rem;
-    height: 1rem;
-    color: #ef4444;
-  }
-
-  .pain-points-title {
-    font-family: var(--font-mono);
-    font-size: 0.5625rem;
-    font-weight: 700;
-    letter-spacing: 0.15em;
-    color: #ef4444;
-    text-transform: uppercase;
-  }
-
-  .pain-points-list {
-    margin: 0;
-    padding-left: 0;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-
-  .pain-point-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: #71717a;
-    line-height: 1.45;
-    padding-left: 1rem;
-    position: relative;
-  }
-
-  .pain-point-item::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 0.5rem;
-    width: 4px;
-    height: 4px;
-    border-radius: 50%;
-    background: #ef4444;
-  }
-
-  /* =========================
-	   HOW IT WORKS TEXT
-	   ========================= */
-  .how-it-works-text {
-    font-size: 0.8125rem;
-    color: #71717a;
-    line-height: 1.65;
-    margin: 0;
-  }
-
-  /* =========================
-	   SEO CONTENT ENGINE TEXT
-	   ========================= */
-  .seo-content-text {
-    font-size: 0.8125rem;
-    color: #71717a;
-    line-height: 1.65;
-    margin: 0;
-  }
-
+  
   /* =========================
 	   RESPONSIVE
 	   ========================= */
   @media (max-width: 768px) {
     .param-card {
       padding: 0.75rem 1rem;
-    }
-
-    .business-model-strip {
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-
-    .innovation-card,
-    .discovery-card,
-    .pain-points-card {
-      padding: 0.875rem 1rem;
     }
 
     .query-chip {
@@ -1120,14 +1199,6 @@
 
     .param-value {
       font-size: 0.9375rem;
-    }
-
-    .persona-card {
-      padding: 0.75rem 0.875rem;
-    }
-
-    .business-model-strip {
-      padding: 0.75rem 0.875rem;
     }
 
     .innovation-score .score-value {

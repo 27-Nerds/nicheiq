@@ -2,7 +2,7 @@
 	import type { Snippet } from 'svelte';
 
 	interface Props {
-		variant?: 'default' | 'success' | 'warning' | 'error' | 'accent' | 'muted';
+		variant?: 'default' | 'success' | 'warning' | 'error' | 'accent' | 'muted' | 'info';
 		border?: 'none' | 'left' | 'top' | 'all';
 		hoverable?: boolean;
 		padding?: 'sm' | 'md' | 'lg';
@@ -178,6 +178,24 @@
 
 	.insight-card--accent.hoverable:hover {
 		border-color: rgba(229, 90, 40, 0.3);
+	}
+
+	/* Info variant (purple) */
+	.insight-card--info {
+		background: linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, transparent 50%);
+		border-color: rgba(99, 102, 241, 0.15);
+	}
+
+	.insight-card--info.insight-card--border-left {
+		border-left-color: #6366F1;
+	}
+
+	.insight-card--info.insight-card--border-top {
+		border-top-color: #6366F1;
+	}
+
+	.insight-card--info.hoverable:hover {
+		border-color: rgba(99, 102, 241, 0.3);
 	}
 
 	/* Muted variant */

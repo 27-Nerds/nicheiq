@@ -1103,6 +1103,7 @@ develop_content_technical_strategy:
     - Reference specific keywords when building topic clusters (e.g., "budget expat health insurance" not "<tier_1_keyword>")
     - If a tier has no keywords (field is null), note "None identified" and focus on other tiers
     - DO NOT fabricate keywords - use ONLY what Task 1e provided
+    - **JSON FORMAT**: All numeric values MUST be digits (e.g., 60) NOT words (e.g., "sixty"). Invalid: `"count": sixty` Valid: `"count": 60`
 
     **CONTENT STRATEGY** (4-6 numbered sections, markdown):
 
@@ -1112,30 +1113,32 @@ develop_content_technical_strategy:
     4. **Content Formats** → Match to search intent (guides, comparisons, FAQs)
     5. **Conversion Integration** → CTAs and conversion paths per content type
 
-    **TOPIC CLUSTERS** (3-5 clusters):
+    **TOPIC CLUSTERS** (3-5 clusters) - LIGHTWEIGHT OUTPUT:
 
     | Element | Specification |
     |---------|--------------|
     | cluster_name | Content pillar theme derived from Task 1e keywords |
     | primary_keyword | Use ACTUAL keyword string from top_tier_1_keywords or top_tier_2_keywords |
-    | supporting_keywords | Related terms from same tier or sample_category_themes |
-    | total_monthly_volume | Estimate based on tier (high for T1, medium for T2) |
-    | priority | 1 (critical), 2 (important), 3 (nice-to-have) |
+    | supporting_keywords | Related terms from same tier or sample_category_themes (5-15 keywords) |
+    | content_recommendation | What to create for this cluster (2-4 sentences) |
+    | priority | 1 (critical), 2 (important), 3 (nice-to-have), 4-5 (lower priority) |
 
-    **Example Topic Cluster (CORRECT - uses actual keywords):**
+    NOTE: Do NOT include total_monthly_volume or estimated_traffic_potential - Python calculates these from CSV data.
+
+    **Example Topic Cluster (CORRECT - uses actual keywords, no volume):**
     ```
     cluster_name: "Budget Health Insurance for Expats"
     primary_keyword: "budget expat health insurance"  ← From top_tier_1_keywords
-    supporting_keywords: ["cheap international coverage", "affordable expat plans"]
-    total_monthly_volume: 5000
+    supporting_keywords: ["cheap international coverage", "affordable expat plans", "low cost expat insurance"]
+    content_recommendation: "Create a comprehensive guide comparing budget-friendly options..."
     priority: 1
     ```
 
-    **Example Topic Cluster (WRONG - uses placeholders):**
+    **Example Topic Cluster (WRONG - includes volume or uses placeholders):**
     ```
     cluster_name: "Tier 1 Quick Wins"
-    primary_keyword: "<TIER_1_KEYWORD_1>"  ← NEVER DO THIS
-    supporting_keywords: ["<TIER_1_KEYWORD_2>", "<TIER_1_KEYWORD_3>"]
+    primary_keyword: "<TIER_1_KEYWORD_1>"  ← NEVER use placeholders
+    total_monthly_volume: 5000  ← NEVER include - Python calculates this
     ```
 
     **TECHNICAL SEO** (markdown, 3-5 sections with code):
@@ -1168,17 +1171,33 @@ develop_content_technical_strategy:
     ✗ All recommendations MUST align with Task 1 keyword tiers
 
   expected_output: >
-    ContentStrategyResult Pydantic model:
+    ContentStrategyResultLight Pydantic model (LIGHTWEIGHT - Python calculates numeric fields):
 
     - content_strategy: str (4-6 numbered paragraphs, markdown)
-    - topic_clusters: Optional[List[TopicCluster]] (3-5 pillars with primary_keyword, supporting_keywords, total_monthly_volume, priority)
+    - topic_clusters: Optional[List[TopicClusterLight]] (3-5 pillars)
+      - cluster_name: str
+      - primary_keyword: str (MUST match a keyword from CSV)
+      - supporting_keywords: List[str] (MUST match keywords from CSV, 5-15 keywords)
+      - content_recommendation: str (2-4 sentences)
+      - priority: int (1-5)
+      NOTE: Do NOT include total_monthly_volume or estimated_traffic_potential - Python will calculate
+
     - technical_seo_recommendations: str (markdown, 3-5 sections, code examples)
-    - keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] with fields:
-        - url_hierarchy_diagram: str (ASCII/markdown site hierarchy)
-        - section_keyword_mapping: list of {section_path, keyword_cluster_name, target_tier}
-        - total_pages_from_keywords: int (numeric count, e.g., 420)
-        - keyword_coverage_explanation: str (2-3 sentences on page coverage)
-    - keyword_based_page_types: Optional[List[KeywordBasedPageType]] (4-8 scalable templates)
+
+    - keyword_based_page_types: Optional[List[KeywordBasedPageTypeLight]] (4-8 templates)
+      - page_type_name: str
+      - url_pattern: str
+      - target_keyword_cluster: str (which tier/cluster this targets, e.g., "Tier 1 Quick Wins")
+      - example_keywords: List[str] (2-5 examples from CSV)
+      - primary_intent: str (commercial/informational/navigational/transactional)
+      - priority: str (P0/P1/P2)
+      - required_schema: Optional[List[str]]
+      - seo_optimization_notes: str
+      NOTE: Do NOT include estimated_page_count - Python will calculate
+
+    - url_hierarchy_diagram: Optional[str] (ASCII/markdown site hierarchy)
+    - section_keyword_mapping: Optional[str] (markdown mapping sections to clusters)
+    - keyword_coverage_explanation: Optional[str] (2-3 sentences)
 
 create_implementation_plan:
   description: >

@@ -18,7 +18,8 @@
 		Quote,
 		Sparkles,
 		Shield,
-		HelpCircle
+		HelpCircle,
+		ArrowDown
 	} from 'lucide-svelte';
 	import type {
 		Report,
@@ -32,6 +33,10 @@
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
+	import InsightCard from '$lib/components/ui/InsightCard.svelte';
+	import CardGrid from '$lib/components/ui/CardGrid.svelte';
+	import IconListItem from '$lib/components/ui/IconListItem.svelte';
+	import { AlertCircle } from 'lucide-svelte';
 
 	interface Props {
 		report: Report;
@@ -65,6 +70,7 @@
 	const corePain = $derived(dashboard?.core_pain_point);
 	const metrics = $derived(dashboard?.key_metrics);
 	const confidenceScore = $derived(dashboard?.confidence_score ?? 0);
+	const solutionDetails = $derived(report.selected_solution_details);
 
 	// Market signals
 	const opportunityScore = $derived(report.market_analytics?.overall_opportunity_score ?? 0);
@@ -336,19 +342,47 @@
 				</div>
 			{/if}
 
-			<!-- Solution Card -->
+			<!-- Solution Teaser (Enhanced - links to full solution section) -->
 			{#if solution}
-				<div class="hero-card hero-card--solution">
-					<div class="card-header">
-						<Sparkles class="card-icon solution" />
-						<span class="card-badge">RECOMMENDED SOLUTION</span>
+				<div class="solution-teaser">
+					<div class="teaser-header">
+						<Sparkles class="teaser-icon" />
+						<span class="teaser-badge">RECOMMENDED SOLUTION</span>
 					</div>
-					<h3 class="solution-name">{solution.name}</h3>
-					<p class="solution-tagline">{solution.tagline}</p>
-					<div class="solution-meta">
-						<Badge variant="default">{solution.project_type}</Badge>
-					</div>
-					<p class="solution-value">{solution.core_value_prop}</p>
+					<h3 class="teaser-name">{solution.name}</h3>
+					<p class="teaser-tagline">{solution.tagline}</p>
+
+					<!-- Core value prop -->
+					{#if solution.core_value_prop}
+						<p class="teaser-value-prop">{solution.core_value_prop}</p>
+					{/if}
+
+					<!-- Target audience (unique data, not in metrics panel) -->
+					{#if solutionDetails?.target_audience}
+						<div class="teaser-target">
+							<Users class="teaser-target-icon" />
+							<span class="teaser-target-text">{solutionDetails.target_audience}</span>
+						</div>
+					{/if}
+
+					<!-- Differentiator badges (unique data) -->
+					{#if solutionDetails?.differentiation_factors?.length}
+						<div class="teaser-badges">
+							{#each solutionDetails.differentiation_factors.slice(0, 3) as factor}
+								<Badge variant="muted" size="sm">{factor}</Badge>
+							{/each}
+						</div>
+					{:else if solution.project_type}
+						<!-- Fallback to project type if no differentiators -->
+						<div class="teaser-badges">
+							<Badge variant="muted" size="sm">{solution.project_type}</Badge>
+						</div>
+					{/if}
+
+					<a href="#solution" class="teaser-cta">
+						View Solution Details
+						<ArrowDown class="cta-arrow" />
+					</a>
 				</div>
 			{/if}
 		</div>
@@ -371,6 +405,7 @@
 						showTooltip={true}
 						glow={true}
 						label="Market Fit"
+						description="How well the solution addresses validated market demand and pain points"
 					/>
 					<span class="metric-label">Market Fit</span>
 					<span class="metric-verdict {getScoreColor(metrics?.market_fit_score)}-text">
@@ -389,6 +424,7 @@
 						showTooltip={true}
 						glow={true}
 						label="Feasibility"
+						description="Technical complexity and resource requirements for implementation"
 					/>
 					<span class="metric-label">Feasibility</span>
 					<span class="metric-verdict {getScoreColor(metrics?.technical_feasibility_score)}-text">
@@ -407,6 +443,7 @@
 						showTooltip={true}
 						glow={true}
 						label="SEO Score"
+						description="Organic search growth potential based on keyword landscape"
 					/>
 					<span class="metric-label">SEO</span>
 					<span class="metric-verdict {getScoreColor(metrics?.seo_potential_score)}-text">
@@ -425,6 +462,7 @@
 						showTooltip={true}
 						glow={true}
 						label="Solo Dev"
+						description="Suitability for a single developer to build and launch"
 					/>
 					<span class="metric-label">Solo Dev</span>
 					<span class="metric-verdict {getScoreColor(report.selected_solution_details?.solo_dev_feasibility)}-text">
@@ -432,7 +470,7 @@
 					</span>
 				</div>
 
-				<!-- Novelty / Competitive Edge -->
+				<!-- Competitive Edge -->
 				<div class="metric-cell" style="--cell-delay: 0.3s">
 					<ProgressRing
 						value={metrics?.competitive_advantage_score ?? 0}
@@ -442,9 +480,10 @@
 						showValue={true}
 						showTooltip={true}
 						glow={true}
-						label="Novelty"
+						label="Comp. Edge"
+						description="Competitive positioning and differentiation strength"
 					/>
-					<span class="metric-label">Novelty</span>
+					<span class="metric-label">Comp. Edge</span>
 					<span class="metric-verdict {getScoreColor(metrics?.competitive_advantage_score)}-text">
 						{getScoreLabel(metrics?.competitive_advantage_score)}
 					</span>
@@ -533,26 +572,30 @@
 
 				<!-- Priority Chips -->
 				{#if refinementHighlights?.geographic_priority || refinementHighlights?.feature_priority}
-					<div class="priority-grid">
+					<CardGrid minWidth={200} gap="md">
 						{#if refinementHighlights.geographic_priority}
-							<div class="priority-chip geo">
-								<Globe class="priority-icon" />
-								<div class="priority-content">
-									<span class="priority-label">Geographic Focus</span>
-									<span class="priority-value">{refinementHighlights.geographic_priority}</span>
-								</div>
-							</div>
+							<InsightCard variant="info" border="left" padding="md" hoverable={true}>
+								{#snippet header()}
+									<div class="priority-header">
+										<Globe class="priority-icon geo" />
+										<span class="priority-label">Geographic Focus</span>
+									</div>
+								{/snippet}
+								<span class="priority-value">{refinementHighlights.geographic_priority}</span>
+							</InsightCard>
 						{/if}
 						{#if refinementHighlights.feature_priority}
-							<div class="priority-chip feature">
-								<Layers class="priority-icon" />
-								<div class="priority-content">
-									<span class="priority-label">Feature Priority</span>
-									<span class="priority-value">{refinementHighlights.feature_priority}</span>
-								</div>
-							</div>
+							<InsightCard variant="accent" border="left" padding="md" hoverable={true}>
+								{#snippet header()}
+									<div class="priority-header">
+										<Layers class="priority-icon feature" />
+										<span class="priority-label">Feature Priority</span>
+									</div>
+								{/snippet}
+								<span class="priority-value">{refinementHighlights.feature_priority}</span>
+							</InsightCard>
 						{/if}
-					</div>
+					</CardGrid>
 				{/if}
 
 				<!-- Category Pivot Alert -->
@@ -641,27 +684,30 @@
 			>
 				<!-- Risk Factors -->
 				{#if trends?.risk_factors && trends.risk_factors.length > 0}
-					<div class="risk-list">
-						<h4 class="risk-list-title">Risk Factors</h4>
-						<ul class="risk-items">
+					<InsightCard variant="error" border="left" padding="md" class="risk-card">
+						{#snippet header()}
+							<h4 class="risk-card-title">Risk Factors</h4>
+						{/snippet}
+						<div class="risk-items-list">
 							{#each trends.risk_factors as risk}
-								<li class="risk-item">
-									<span class="risk-bullet">!</span>
-									<span>{risk}</span>
-								</li>
+								<IconListItem icon={AlertCircle} iconVariant="error">{risk}</IconListItem>
 							{/each}
-						</ul>
-					</div>
+						</div>
+					</InsightCard>
 				{/if}
 
 				<!-- Market Signals Grid -->
 				{#if trends}
-					<div class="signals-grid">
+					<CardGrid minWidth={220} gap="md">
 						{#if trends.trend_direction}
 							{@const TrendIcon = getTrendIcon(trends.trend_direction)}
-							<div class="signal-card">
-								<TrendIcon class="signal-card-icon" />
-								<h4 class="signal-title">Market Trend</h4>
+							<InsightCard variant="default" border="left" padding="md" hoverable={true}>
+								{#snippet header()}
+									<div class="signal-card-header">
+										<TrendIcon class="signal-card-icon" />
+										<h4 class="signal-card-title">Market Trend</h4>
+									</div>
+								{/snippet}
 								<div class="signal-rows">
 									<div class="signal-row">
 										<span class="signal-row-label">Direction:</span>
@@ -697,13 +743,17 @@
 										</div>
 									{/if}
 								</div>
-							</div>
+							</InsightCard>
 						{/if}
 
 						{#if trends.timing_recommendation || trends.longevity_rationale}
-							<div class="signal-card">
-								<Clock class="signal-card-icon" />
-								<h4 class="signal-title">Timing Analysis</h4>
+							<InsightCard variant="default" border="left" padding="md" hoverable={true}>
+								{#snippet header()}
+									<div class="signal-card-header">
+										<Clock class="signal-card-icon" />
+										<h4 class="signal-card-title">Timing Analysis</h4>
+									</div>
+								{/snippet}
 								{#if trends.timing_recommendation}
 									<div class="timing-highlight">
 										<p>{trends.timing_recommendation}</p>
@@ -714,9 +764,9 @@
 										{@html renderMarkdown(trends.longevity_rationale)}
 									</div>
 								{/if}
-							</div>
+							</InsightCard>
 						{/if}
-					</div>
+					</CardGrid>
 				{/if}
 			</ExpandableSection>
 		{/if}
@@ -890,6 +940,7 @@
 		line-height: var(--leading-relaxed);
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
+		line-clamp: 2;
 		-webkit-box-orient: vertical;
 		overflow: hidden;
 		cursor: pointer;
@@ -903,6 +954,7 @@
 
 	.niche-description.expanded {
 		-webkit-line-clamp: unset;
+		line-clamp: unset;
 		display: block;
 	}
 
@@ -1119,10 +1171,6 @@
 		background: var(--color-accent);
 	}
 
-	/* Solution variant - green accent */
-	.hero-card--solution::before {
-		background: var(--color-success);
-	}
 
 	.pain-title {
 		font-family: var(--font-display);
@@ -1188,30 +1236,140 @@
 		opacity: 0.4;
 	}
 
-	.solution-name {
+	/* =========================
+	   SOLUTION TEASER (in content zone)
+	   ========================= */
+	.solution-teaser {
+		background: var(--color-bg-elevated);
+		border: 1px solid var(--color-border);
+		border-left: 3px solid var(--color-success);
+		border-radius: var(--radius-lg);
+		padding: var(--space-5);
+		padding-left: calc(var(--space-5) + 2px);
+		position: relative;
+		box-shadow: var(--shadow-md);
+		transition: all 0.2s ease;
+	}
+
+	.solution-teaser:hover {
+		box-shadow: var(--shadow-lg);
+		transform: translateY(-2px);
+		border-color: var(--color-success);
+	}
+
+	.teaser-header {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
+		margin-bottom: 0.625rem;
+	}
+
+	:global(.teaser-icon) {
+		width: var(--space-4);
+		height: var(--space-4);
+		color: var(--color-success);
+	}
+
+	.teaser-badge {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		font-weight: var(--font-bold);
+		letter-spacing: 0.1em;
+		color: var(--color-success);
+	}
+
+	.teaser-name {
 		font-family: var(--font-display);
 		font-size: 1.125rem;
 		font-weight: var(--font-bold);
 		color: var(--color-accent);
 		margin-bottom: var(--space-1);
+		line-height: var(--leading-snug);
 	}
 
-	.solution-tagline {
+	.teaser-tagline {
 		font-style: italic;
 		color: var(--color-text-muted);
-		font-size: var(--text-base);
-		margin-bottom: 0.625rem;
-	}
-
-	.solution-meta {
-		margin-bottom: 0.625rem;
-	}
-
-	.solution-value {
-		font-size: 0.8125rem;
-		color: var(--color-text-muted);
+		font-size: var(--text-sm);
+		margin-bottom: 0.875rem;
 		line-height: var(--leading-relaxed);
-		margin: 0;
+	}
+
+	.teaser-cta {
+		display: inline-flex;
+		align-items: center;
+		gap: var(--space-2);
+		font-family: var(--font-display);
+		font-size: var(--text-sm);
+		font-weight: var(--font-semibold);
+		color: var(--color-accent);
+		text-decoration: none;
+		padding: var(--space-2) var(--space-3);
+		background: var(--color-accent-subtle);
+		border-radius: var(--radius-md);
+		transition: all 0.2s ease;
+	}
+
+	.teaser-cta:hover {
+		background: var(--color-accent);
+		color: white;
+	}
+
+	:global(.cta-arrow) {
+		width: var(--space-4);
+		height: var(--space-4);
+		transition: transform 0.2s ease;
+	}
+
+	.teaser-cta:hover :global(.cta-arrow) {
+		animation: bounce-down 0.6s ease infinite;
+	}
+
+	@keyframes bounce-down {
+		0%, 100% { transform: translateY(0); }
+		50% { transform: translateY(3px); }
+	}
+
+	/* Value proposition - explains WHY this solution */
+	.teaser-value-prop {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: var(--leading-relaxed);
+		margin-bottom: 0.875rem;
+		padding-bottom: 0.875rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	/* Target audience row */
+	.teaser-target {
+		display: flex;
+		align-items: flex-start;
+		gap: 0.5rem;
+		margin-bottom: 0.875rem;
+		padding-bottom: 0.875rem;
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	:global(.teaser-target-icon) {
+		width: 1rem;
+		height: 1rem;
+		color: var(--color-text-muted);
+		flex-shrink: 0;
+		margin-top: 0.125rem;
+	}
+
+	.teaser-target-text {
+		font-size: 0.8125rem;
+		color: var(--color-text-secondary);
+		line-height: var(--leading-relaxed);
+	}
+
+	/* Differentiator badges */
+	.teaser-badges {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.375rem;
+		margin-bottom: 0.875rem;
 	}
 
 	/* =========================
@@ -1524,44 +1682,32 @@
 		line-height: var(--leading-normal);
 	}
 
-	/* Priority Grid */
-	.priority-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-		gap: 0.625rem;
-		margin-bottom: var(--space-4);
-	}
-
-	.priority-chip {
+	/* Priority Cards - using CardGrid + InsightCard */
+	.priority-header {
 		display: flex;
 		align-items: center;
-		gap: 0.625rem;
-		padding: 0.875rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-	}
-
-	.priority-chip.geo :global(.priority-icon) {
-		color: var(--color-info);
-	}
-
-	.priority-chip.feature :global(.priority-icon) {
-		color: var(--viz-cat-4);
+		gap: var(--space-2);
 	}
 
 	:global(.priority-icon) {
-		width: var(--space-5);
-		height: var(--space-5);
+		width: var(--space-4);
+		height: var(--space-4);
 	}
 
-	.priority-content {
-		display: flex;
-		flex-direction: column;
+	:global(.priority-icon.geo) {
+		color: #6366F1;
+	}
+
+	:global(.priority-icon.feature) {
+		color: var(--color-accent);
 	}
 
 	.priority-label {
+		font-family: var(--font-mono);
 		font-size: var(--text-xs);
+		font-weight: var(--font-medium);
+		text-transform: uppercase;
+		letter-spacing: var(--tracking-wide);
 		color: var(--color-text-muted);
 	}
 
@@ -1721,72 +1867,44 @@
 		margin: 0;
 	}
 
-	/* Risk Section */
-	.risk-list {
-		background: var(--color-error-subtle);
-		border: 1px solid var(--color-border-error);
-		border-radius: var(--radius-md);
-		padding: 0.875rem;
+	/* Risk Section - using InsightCard + IconListItem */
+	:global(.risk-card) {
 		margin-bottom: var(--space-4);
 	}
 
-	.risk-list-title {
+	.risk-card-title {
 		font-family: var(--font-display);
 		font-size: 0.8125rem;
 		font-weight: var(--font-semibold);
 		color: var(--color-error);
-		margin-bottom: 0.625rem;
+		margin: 0;
 	}
 
-	.risk-items {
-		list-style: none;
-		padding: 0;
-		margin: 0;
+	.risk-items-list {
 		display: flex;
 		flex-direction: column;
-		gap: var(--space-1);
-	}
-
-	.risk-item {
-		display: flex;
-		align-items: flex-start;
 		gap: var(--space-2);
-		font-size: var(--text-sm);
-		color: var(--color-text-muted);
-		line-height: var(--leading-normal);
 	}
 
-	.risk-bullet {
-		color: var(--color-error);
-		font-weight: var(--font-bold);
-	}
-
-	.signals-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-		gap: 0.625rem;
-	}
-
-	.signal-card {
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: var(--radius-md);
-		padding: 0.875rem;
+	/* Signal Cards - using CardGrid + InsightCard */
+	.signal-card-header {
+		display: flex;
+		align-items: center;
+		gap: var(--space-2);
 	}
 
 	:global(.signal-card-icon) {
 		width: var(--space-4);
 		height: var(--space-4);
 		color: var(--color-accent);
-		margin-bottom: var(--space-2);
 	}
 
-	.signal-title {
+	.signal-card-title {
 		font-family: var(--font-display);
 		font-size: 0.8125rem;
 		font-weight: var(--font-semibold);
 		color: var(--color-text-primary);
-		margin-bottom: 0.625rem;
+		margin: 0;
 	}
 
 	.signal-rows {
@@ -1919,6 +2037,16 @@
 
 		.seo-factors {
 			grid-template-columns: repeat(2, 1fr);
+		}
+
+		/* Teaser responsive */
+		.teaser-value-prop,
+		.teaser-target-text {
+			font-size: 0.75rem;
+		}
+
+		.teaser-badges {
+			gap: 0.25rem;
 		}
 	}
 

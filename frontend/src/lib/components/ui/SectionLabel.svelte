@@ -1,24 +1,39 @@
 <script lang="ts">
+	import type { ComponentType } from 'svelte';
+
 	interface Props {
 		text: string;
 		variant?: 'default' | 'accent' | 'success' | 'warning' | 'error' | 'muted';
 		size?: 'xs' | 'sm';
+		icon?: ComponentType;
 		class?: string;
 	}
 
-	let { text, variant = 'default', size = 'xs', class: className = '' }: Props = $props();
+	let { text, variant = 'default', size = 'xs', icon, class: className = '' }: Props = $props();
 </script>
 
 <span class="section-label section-label--{variant} section-label--{size} {className}">
+	{#if icon}
+		{@const Icon = icon}
+		<Icon class="section-label-icon" />
+	{/if}
 	{text}
 </span>
 
 <style>
 	.section-label {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.375rem;
 		font-family: var(--font-mono);
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
+	}
+
+	.section-label :global(.section-label-icon) {
+		width: 0.875rem;
+		height: 0.875rem;
 	}
 
 	/* Sizes */

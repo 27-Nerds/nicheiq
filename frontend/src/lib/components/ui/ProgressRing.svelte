@@ -7,6 +7,7 @@
 		showValue?: boolean;
 		showLabel?: boolean;
 		label?: string;
+		description?: string;
 		animate?: boolean;
 		showTooltip?: boolean;
 		glow?: boolean;
@@ -22,6 +23,7 @@
 		showValue = true,
 		showLabel = false,
 		label = '',
+		description = '',
 		animate = true,
 		showTooltip = true,
 		glow = false,
@@ -161,6 +163,9 @@
 	<!-- Tooltip -->
 	{#if showTooltip && isHovered}
 		<div class="progress-ring-tooltip" style:--tooltip-color={colorVar}>
+			{#if description}
+				<span class="tooltip-description">{description}</span>
+			{/if}
 			<span class="tooltip-value">{Math.round(value * 100)}%</span>
 			<span class="tooltip-interpretation">{scoreInterpretation}</span>
 			{#if label}
@@ -268,7 +273,6 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 0.125rem;
-		white-space: nowrap;
 		z-index: 50;
 		animation: tooltipFadeIn 0.15s ease;
 	}
@@ -292,6 +296,16 @@
 			opacity: 1;
 			transform: translateX(-50%) translateY(0);
 		}
+	}
+
+	.tooltip-description {
+		font-size: 0.6875rem;
+		color: var(--color-text-secondary);
+		line-height: 1.4;
+		margin-bottom: 0.375rem;
+		max-width: 180px;
+		text-align: center;
+		white-space: normal;
 	}
 
 	.tooltip-value {

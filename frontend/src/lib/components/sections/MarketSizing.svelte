@@ -14,14 +14,18 @@
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
-	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
+	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
 	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
+	import InsightCard from '$lib/components/ui/InsightCard.svelte';
 	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { getTermTooltip } from '$lib/stores/glossary';
 	import StatPill from '$lib/components/ui/StatPill.svelte';
 	import CardGrid from '$lib/components/ui/CardGrid.svelte';
+	import IconListItem from '$lib/components/ui/IconListItem.svelte';
+	import SectionLabel from '$lib/components/ui/SectionLabel.svelte';
+	import { Plus, AlertCircle } from 'lucide-svelte';
 
 	interface Props {
 		data: MarketSizing;
@@ -129,79 +133,70 @@
 
 	<!-- Entry Strategy Card (Always Visible) -->
 	{#if data.recommended_entry_strategy}
-		<div class="strategy-hero">
-			<div class="strategy-header">
-				<Zap class="strategy-icon" />
-				<span class="strategy-title">Recommended Entry Strategy</span>
-			</div>
+		<InsightCard variant="accent" border="left" padding="md" class="strategy-card">
+			{#snippet header()}
+				<SectionLabel text="Recommended Entry Strategy" variant="accent" icon={Zap} />
+			{/snippet}
 			<p class="strategy-text">{data.recommended_entry_strategy}</p>
-		</div>
+		</InsightCard>
 	{/if}
 
-	<!-- Expandable: Growth Drivers & Risks -->
+	<!-- Growth Drivers & Risks -->
 	{#if (data.growth_drivers && data.growth_drivers.length > 0) || (data.risk_factors && data.risk_factors.length > 0)}
-		<ExpandableSection
-			title="Growth Drivers & Risks"
-			icon={BarChart3}
-			count={(data.growth_drivers?.length || 0) + (data.risk_factors?.length || 0)}
-		>
+		<div class="drivers-risks-section">
+			<SubsectionHeader
+				title="Growth Drivers & Risks"
+				icon={BarChart3}
+				count={(data.growth_drivers?.length || 0) + (data.risk_factors?.length || 0)}
+			/>
 			<CardGrid minWidth={240} gap="md">
 				{#if data.growth_drivers && data.growth_drivers.length > 0}
-					<div class="insight-card insight-card--success">
-						<h4 class="card-label success">
-							<TrendingUp class="label-icon" />
-							Growth Drivers
-						</h4>
-						<ul class="item-list">
+					<InsightCard variant="success" border="left" padding="md">
+						{#snippet header()}
+							<SectionLabel text="Growth Drivers" variant="success" icon={TrendingUp} />
+						{/snippet}
+						<div class="item-list">
 							{#each data.growth_drivers as driver}
-								<li class="item success">
-									<span class="bullet">+</span>
-									<span>{driver}</span>
-								</li>
+								<IconListItem icon={Plus} iconVariant="success">{driver}</IconListItem>
 							{/each}
-						</ul>
-					</div>
+						</div>
+					</InsightCard>
 				{/if}
 
 				{#if data.risk_factors && data.risk_factors.length > 0}
-					<div class="insight-card insight-card--error">
-						<h4 class="card-label error">
-							<AlertTriangle class="label-icon" />
-							Market Risks
-						</h4>
-						<ul class="item-list">
+					<InsightCard variant="error" border="left" padding="md">
+						{#snippet header()}
+							<SectionLabel text="Market Risks" variant="error" icon={AlertCircle} />
+						{/snippet}
+						<div class="item-list">
 							{#each data.risk_factors as risk}
-								<li class="item error">
-									<span class="bullet">!</span>
-									<span>{risk}</span>
-								</li>
+								<IconListItem icon={AlertCircle} iconVariant="error">{risk}</IconListItem>
 							{/each}
-						</ul>
-					</div>
+						</div>
+					</InsightCard>
 				{/if}
 			</CardGrid>
-		</ExpandableSection>
+		</div>
 	{/if}
 
-	<!-- Expandable: Segment Breakdown -->
+	<!-- Segment Breakdown -->
 	{#if data.segment_sizing && data.segment_sizing.length > 0}
-		<ExpandableSection
-			title="Segment Breakdown"
-			icon={Target}
-			count={data.segment_sizing.length}
-		>
+		<div class="segment-breakdown-section">
+			<SubsectionHeader title="Segment Breakdown" icon={Target} count={data.segment_sizing.length} />
 			<div class="segments-grid">
 				{#each data.segment_sizing as segment}
-					<div class="segment-card">
-						<div class="segment-header">
-							<h4 class="segment-name">{segment.segment_name}</h4>
-							<Badge
-								variant={segment.confidence_level === 'High' ? 'success' : 'warning'}
-								size="sm"
-							>
-								{segment.confidence_level}
-							</Badge>
-						</div>
+					<InsightCard variant="muted" border="left" padding="md">
+						{#snippet header()}
+							<div class="segment-header">
+								<h4 class="segment-name">{segment.segment_name}</h4>
+								<Badge
+									variant={segment.confidence_level === 'High' ? 'success' : 'warning'}
+									size="sm"
+								>
+									{segment.confidence_level}
+								</Badge>
+							</div>
+						{/snippet}
 						<div class="segment-metrics">
 							<div class="metric">
 								<span class="metric-label">
@@ -225,46 +220,44 @@
 						{#if segment.sizing_methodology}
 							<p class="segment-method">{segment.sizing_methodology}</p>
 						{/if}
-					</div>
+					</InsightCard>
 				{/each}
 			</div>
-		</ExpandableSection>
+		</div>
 	{/if}
 
-	<!-- Expandable: Methodology -->
+	<!-- Methodology -->
 	{#if data.methodology_explanation}
-		<ExpandableSection
-			title="Methodology"
-			icon={Database}
-			count={data.data_sources_used?.length}
-			countSuffix="sources"
-		>
-			<div class="methodology-content">
-				{@html renderMarkdown(data.methodology_explanation)}
-			</div>
-			{#if data.data_sources_used && data.data_sources_used.length > 0}
-				<div class="sources-row">
-					<span class="sources-label">Data Sources:</span>
-					<div class="sources-tags">
-						{#each data.data_sources_used as source}
-							<span class="source-tag">{source}</span>
-						{/each}
-					</div>
+		<div class="methodology-section">
+			<SubsectionHeader title="Methodology" icon={Database} count={data.data_sources_used?.length} />
+			<InsightCard variant="muted" border="left" padding="md">
+				<div class="methodology-content">
+					{@html renderMarkdown(data.methodology_explanation)}
 				</div>
-			{/if}
-		</ExpandableSection>
+				{#if data.data_sources_used && data.data_sources_used.length > 0}
+					<div class="sources-row">
+						<span class="sources-label">Data Sources:</span>
+						<div class="sources-tags">
+							{#each data.data_sources_used as source}
+								<span class="source-tag">{source}</span>
+							{/each}
+						</div>
+					</div>
+				{/if}
+			</InsightCard>
+		</div>
 	{/if}
 
-	<!-- Expandable: Viability Rationale -->
+	<!-- Viability Rationale -->
 	{#if data.viability_rationale}
-		<ExpandableSection
-			title="Viability Rationale"
-			icon={CheckCircle}
-		>
-			<div class="rationale-content">
-				{@html renderMarkdown(data.viability_rationale)}
-			</div>
-		</ExpandableSection>
+		<div class="viability-rationale-section">
+			<SubsectionHeader title="Viability Rationale" icon={CheckCircle} variant="success" />
+			<InsightCard variant="success" border="left" padding="md">
+				<div class="rationale-content">
+					{@html renderMarkdown(data.viability_rationale)}
+				</div>
+			</InsightCard>
+		</div>
 	{/if}
 </section>
 
@@ -339,37 +332,10 @@
 	}
 
 	/* =========================
-	   STRATEGY HERO
+	   STRATEGY CARD - using InsightCard
 	   ========================= */
-	.strategy-hero {
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, transparent 60%);
-		border: 1px solid rgba(229, 90, 40, 0.2);
-		border-left: 3px solid #E55A28;
-		border-radius: 0.75rem;
-		padding: 1.125rem;
+	:global(.strategy-card) {
 		margin-bottom: 0.75rem;
-	}
-
-	.strategy-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-	}
-
-	:global(.strategy-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: #E55A28;
-	}
-
-	.strategy-title {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.1em;
-		color: #E55A28;
 	}
 
 	.strategy-text {
@@ -379,59 +345,11 @@
 		margin: 0;
 	}
 
-	/* Drivers & Risks */
-	.card-label {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		font-family: var(--font-display);
-		font-size: 0.8125rem;
-		font-weight: 600;
-		margin-bottom: 0.625rem;
-	}
-
-	.card-label.success {
-		color: #22C55E;
-	}
-
-	.card-label.error {
-		color: #EF4444;
-	}
-
-	:global(.label-icon) {
-		width: 0.875rem;
-		height: 0.875rem;
-	}
-
+	/* Drivers & Risks - using IconListItem */
 	.item-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
 		display: flex;
 		flex-direction: column;
-		gap: 0.375rem;
-	}
-
-	.item {
-		display: flex;
-		align-items: flex-start;
 		gap: 0.5rem;
-		font-size: 0.75rem;
-		color: #71717A;
-		line-height: 1.5;
-	}
-
-	.item .bullet {
-		font-weight: 700;
-		flex-shrink: 0;
-	}
-
-	.item.success .bullet {
-		color: #22C55E;
-	}
-
-	.item.error .bullet {
-		color: #EF4444;
 	}
 
 	/* Segments Grid */
@@ -439,20 +357,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.625rem;
-	}
-
-	.segment-card {
-		padding: 0.875rem;
-		background: rgba(0, 0, 0, 0.02);
-		border-radius: 0.5rem;
-		border: 1px solid rgba(0, 0, 0, 0.06);
-		position: relative;
-	}
-
-	/* Raise z-index when card contains a hovered tooltip */
-	.segment-card:has(:global(.tooltip-wrapper:hover)),
-	.segment-card:has(:global(.tooltip-wrapper:focus-within)) {
-		z-index: 10;
 	}
 
 	.segment-header {
@@ -584,6 +488,16 @@
 	}
 
 	/* =========================
+	   SECTION WRAPPERS
+	   ========================= */
+	.drivers-risks-section,
+	.segment-breakdown-section,
+	.methodology-section,
+	.viability-rationale-section {
+		margin-bottom: 1.5rem;
+	}
+
+	/* =========================
 	   RESPONSIVE
 	   ========================= */
 	@media (max-width: 768px) {
@@ -594,10 +508,6 @@
 	}
 
 	@media (max-width: 480px) {
-		.section-title {
-			font-size: 1.25rem;
-		}
-
 		.funnel-card {
 			padding: 1rem;
 		}

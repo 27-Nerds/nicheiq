@@ -1,9 +1,9 @@
 <script lang="ts">
-	import type { Component, Snippet } from 'svelte';
+	import type { ComponentType, Snippet } from 'svelte';
 
 	interface Props {
-		icon?: Component;
-		iconVariant?: 'default' | 'success' | 'warning' | 'error' | 'accent' | 'muted';
+		icon?: ComponentType;
+		iconVariant?: 'default' | 'success' | 'warning' | 'error' | 'accent' | 'muted' | 'info';
 		iconSize?: 'sm' | 'md';
 		children: Snippet;
 		class?: string;
@@ -90,6 +90,10 @@
 
 	.item-icon--muted :global(.icon) {
 		color: var(--color-text-muted);
+	}
+
+	.item-icon--info :global(.icon) {
+		color: #6366F1;
 	}
 
 	.item-content {

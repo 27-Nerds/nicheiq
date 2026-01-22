@@ -20,6 +20,7 @@ from ..models.seo_strategy import (
     CategoryLightResult,
     CategoryTierResult,
     ContentStrategyResult,
+    ContentStrategyResultLight,
     ExpandedKeywordList,
     FinalSynthesis,
     GeographicKeywordEntry,
@@ -31,9 +32,13 @@ from ..models.seo_strategy import (
     ImplementationGuide,
     ImplementationPlanResult,
     KeywordAnalysisResult,
+    KeywordBasedPageType,
+    KeywordBasedPageTypeLight,
+    KeywordDrivenSiteArchitecture,
     KeywordSummaryResult,
     LightweightKeywordSelection,
     PremiumTierResult,
+    SectionKeywordMapping,
     SEOStrategyReport,
     StrategicLightResult,
     StrategicTierResult,
@@ -42,6 +47,8 @@ from ..models.seo_strategy import (
     Tier1LightResult,
     Tier1QuickWinResult,
     TieredKeyword,
+    TopicCluster,
+    TopicClusterLight,
 )
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
 from ..utils.generation import KeywordSeedGenerator
@@ -68,7 +75,12 @@ def _build_keyword_lookup(enriched_keywords: list[dict]) -> dict[str, dict]:
     Returns:
         Dict mapping lowercase keyword to full stats dict
     """
-    return {kw['keyword'].lower().strip(): kw for kw in enriched_keywords}
+    # Defensive: skip entries missing 'keyword' key to avoid KeyError
+    return {
+        kw['keyword'].lower().strip(): kw
+        for kw in enriched_keywords
+        if 'keyword' in kw and kw['keyword']
+    }
 
 
 def _hydrate_tiered_keyword(
@@ -250,6 +262,186 @@ def _hydrate_category_group(
         total_volume=total_volume,
         keywords=keywords,
         strategy_recommendation=light_group.strategy_recommendation,
+    )
+
+
+# ========================================
+# TASK 2 HYDRATION UTILITIES
+# ========================================
+# Hydrate ContentStrategyResultLight with numeric data from CSV lookup.
+
+
+def _hydrate_topic_cluster(
+    light: TopicClusterLight,
+    lookup: dict[str, dict]
+) -> TopicCluster:
+    """
+    Hydrate lightweight topic cluster with real search volumes from CSV.
+
+    Args:
+        light: Lightweight topic cluster from LLM
+        lookup: Keyword -> stats lookup dict
+
+    Returns:
+        Full TopicCluster with calculated volumes
+    """
+    # Sum volumes for primary + supporting keywords
+    total_volume = 0
+    missing_keywords = []
+
+    # Check primary keyword
+    primary_key = light.primary_keyword.lower().strip()
+    primary_stats = lookup.get(primary_key)
+    if primary_stats:
+        total_volume += primary_stats.get('search_volume', 0) or 0
+    else:
+        missing_keywords.append(light.primary_keyword)
+
+    # Check supporting keywords
+    for kw in light.supporting_keywords:
+        kw_key = kw.lower().strip()
+        stats = lookup.get(kw_key)
+        if stats:
+            total_volume += stats.get('search_volume', 0) or 0
+        else:
+            missing_keywords.append(kw)
+
+    if missing_keywords:
+        logger.warning(
+            f"⚠️ HYDRATION: Topic cluster '{light.cluster_name}' has {len(missing_keywords)} "
+            f"keywords not found in CSV: {missing_keywords[:5]}{'...' if len(missing_keywords) > 5 else ''}"
+        )
+
+    # Calculate traffic potential (10-30% of volume is typical for ranking pages)
+    traffic_low = int(total_volume * 0.10)
+    traffic_high = int(total_volume * 0.30)
+    traffic_potential = f"{traffic_low:,}-{traffic_high:,} visits/month"
+
+    return TopicCluster(
+        cluster_name=light.cluster_name,
+        primary_keyword=light.primary_keyword,
+        supporting_keywords=light.supporting_keywords,
+        total_monthly_volume=total_volume,  # Python-calculated
+        content_recommendation=light.content_recommendation,
+        estimated_traffic_potential=traffic_potential,  # Python-calculated
+        priority=light.priority,
+    )
+
+
+def _hydrate_page_type(
+    light: KeywordBasedPageTypeLight,
+    lookup: dict[str, dict],
+    tier_counts: dict[str, int]
+) -> KeywordBasedPageType:
+    """
+    Hydrate lightweight page type with estimated page count from tier data.
+
+    Args:
+        light: Lightweight page type from LLM
+        lookup: Keyword -> stats lookup dict
+        tier_counts: Dict with tier counts (tier_0, tier_1, tier_2, geographic, category)
+
+    Returns:
+        Full KeywordBasedPageType with calculated page count
+    """
+    # Estimate page count based on target tier/cluster
+    tier_name = light.target_keyword_cluster.lower()
+
+    # Match tier patterns to determine page count
+    if 'tier 0' in tier_name or 'premium' in tier_name:
+        count = max(tier_counts.get('tier_0', 3), 3)
+    elif 'tier 1' in tier_name or 'quick win' in tier_name:
+        count = max(tier_counts.get('tier_1', 5), 5)
+    elif 'tier 2' in tier_name or 'strategic' in tier_name:
+        count = max(tier_counts.get('tier_2', 8), 8)
+    elif 'geographic' in tier_name or 'location' in tier_name:
+        count = max(tier_counts.get('geographic', 10), 10)
+    elif 'category' in tier_name or 'tier 4' in tier_name:
+        count = max(tier_counts.get('category', 20), 10)
+    else:
+        # Fallback: estimate from example keywords
+        count = max(len(light.example_keywords) * 3, 5)
+
+    logger.debug(
+        f"Hydrated page type '{light.page_type_name}': "
+        f"estimated_page_count={count} (target: {light.target_keyword_cluster})"
+    )
+
+    return KeywordBasedPageType(
+        page_type_name=light.page_type_name,
+        url_pattern=light.url_pattern,
+        target_keyword_cluster=light.target_keyword_cluster,
+        example_keywords=light.example_keywords,
+        primary_intent=light.primary_intent,
+        estimated_page_count=count,  # Python-calculated
+        priority=light.priority,
+        required_schema=light.required_schema,
+        seo_optimization_notes=light.seo_optimization_notes,
+    )
+
+
+def _hydrate_content_strategy(
+    light: ContentStrategyResultLight,
+    lookup: dict[str, dict],
+    tier_counts: dict[str, int]
+) -> ContentStrategyResult:
+    """
+    Hydrate lightweight Task 2 output with numeric data from CSV.
+
+    Args:
+        light: Lightweight content strategy from LLM
+        lookup: Keyword -> stats lookup dict
+        tier_counts: Dict with tier counts for page estimation
+
+    Returns:
+        Full ContentStrategyResult with calculated volumes and page counts
+    """
+    # Hydrate topic clusters
+    hydrated_clusters = None
+    if light.topic_clusters:
+        hydrated_clusters = [
+            _hydrate_topic_cluster(cluster, lookup)
+            for cluster in light.topic_clusters
+        ]
+        logger.info(
+            f"✅ Hydrated {len(hydrated_clusters)} topic clusters with search volumes"
+        )
+
+    # Hydrate page types
+    hydrated_page_types = None
+    if light.keyword_based_page_types:
+        hydrated_page_types = [
+            _hydrate_page_type(pt, lookup, tier_counts)
+            for pt in light.keyword_based_page_types
+        ]
+        logger.info(
+            f"✅ Hydrated {len(hydrated_page_types)} page types with page counts"
+        )
+
+    # Calculate total pages from hydrated page types
+    total_pages = 0
+    if hydrated_page_types:
+        total_pages = sum(pt.estimated_page_count for pt in hydrated_page_types)
+
+    # Build site architecture with calculated totals
+    # NOTE: section_keyword_mapping is discarded - the lightweight model provides it as markdown
+    # string but the full model expects list[SectionKeywordMapping]. Parsing would be complex
+    # and the field is not critical for the report. Future enhancement could parse the markdown.
+    site_architecture = None
+    if light.url_hierarchy_diagram or total_pages > 0 or light.keyword_coverage_explanation:
+        site_architecture = KeywordDrivenSiteArchitecture(
+            url_hierarchy_diagram=light.url_hierarchy_diagram,
+            section_keyword_mapping=None,  # Markdown string not parsed to SectionKeywordMapping list
+            total_pages_from_keywords=total_pages if total_pages > 0 else None,
+            keyword_coverage_explanation=light.keyword_coverage_explanation,
+        )
+
+    return ContentStrategyResult(
+        content_strategy=light.content_strategy,
+        topic_clusters=hydrated_clusters,
+        technical_seo_recommendations=light.technical_seo_recommendations,
+        keyword_driven_site_architecture=site_architecture,
+        keyword_based_page_types=hydrated_page_types,
     )
 
 
@@ -955,19 +1147,23 @@ class SEOStrategyCrew:
     @task
     def develop_content_technical_strategy_task(self) -> Task:
         """
-        Task 2: Content & Technical Strategy.
+        Task 2: Content & Technical Strategy (Lightweight Output Pattern).
 
         Develops content strategy, topic clusters, and technical SEO recommendations
         based on keyword analysis from Tasks 1a-1d (via synthesize_keyword_summary_task).
 
+        Uses Lightweight Output Pattern:
+        - LLM outputs strategic/creative content only (ContentStrategyResultLight)
+        - Python hydrates numeric fields (volumes, page counts) from CSV data
+
         Depends on: synthesize_keyword_summary_task (which aggregates Tasks 1a-1d)
-        Output: ContentStrategyResult with content plan and technical recommendations.
+        Output: ContentStrategyResultLight - Python will hydrate to ContentStrategyResult
         """
         return Task(
             config=self.tasks_config["develop_content_technical_strategy"],
             agent=self.content_strategist(),
             context=[self.synthesize_keyword_summary_task()],  # Depends on Task 1d (summary of 1a-1c)
-            output_pydantic=ContentStrategyResult,
+            output_pydantic=ContentStrategyResultLight,  # Lightweight - Python hydrates numeric fields
         )
 
     @task
@@ -1787,12 +1983,41 @@ class SEOStrategyCrew:
             # Extract and validate Tasks 2-5 (Strategy Development)
             # ========================================
 
-            task_2_output = task_outputs[4].pydantic  # ContentStrategyResult
-            if task_2_output is None:
+            task_2_light = task_outputs[4].pydantic  # ContentStrategyResultLight
+            if task_2_light is None:
                 raise ValueError(
                     "Task 2 (Content Strategy) returned None pydantic output. "
-                    "Check ContentStrategyResult schema and agent prompt."
+                    "Check ContentStrategyResultLight schema and agent prompt."
                 )
+
+            # ========================================
+            # HYDRATION: Task 2 - Build lookup and hydrate lightweight output
+            # ========================================
+
+            # Build keyword lookup from enriched keywords (for volume calculation)
+            lookup = _build_keyword_lookup(enriched_keywords)
+            logger.info(f"✅ Built keyword lookup with {len(lookup)} entries for Task 2 hydration")
+
+            # Calculate tier counts for page type estimation
+            tier_counts = {
+                'tier_0': len(task_1a_output.tier_0_keywords or []),
+                'tier_1': len(task_1a_output.tier_1_keywords or []),
+                'tier_2': len(task_1a_output.tier_2_keywords or []),
+                'geographic': sum(
+                    len(g.keywords) for g in (task_1b_output.tier_3_geographic_groups or [])
+                ),
+                'category': sum(
+                    len(g.keywords) for g in (task_1c_output.tier_4_category_groups or [])
+                ),
+            }
+            logger.debug(f"Tier counts for Task 2 hydration: {tier_counts}")
+
+            # Hydrate Task 2 lightweight output to full ContentStrategyResult
+            task_2_output = _hydrate_content_strategy(task_2_light, lookup, tier_counts)
+            logger.info(
+                f"✅ Task 2 hydrated: {len(task_2_output.topic_clusters or [])} topic clusters, "
+                f"{len(task_2_output.keyword_based_page_types or [])} page types"
+            )
 
             task_3_output = task_outputs[5].pydantic  # ImplementationPlanResult
             if task_3_output is None:
@@ -2315,12 +2540,34 @@ class SEOStrategyCrew:
             # Extract and validate Tasks 2-5 (Strategy Development)
             # ========================================
 
-            task_2_output = task_outputs[6].pydantic  # ContentStrategyResult
-            if task_2_output is None:
+            task_2_light = task_outputs[6].pydantic  # ContentStrategyResultLight
+            if task_2_light is None:
                 raise ValueError(
                     "Task 2 (Content Strategy) returned None pydantic output. "
-                    "Check ContentStrategyResult schema and agent prompt."
+                    "Check ContentStrategyResultLight schema and agent prompt."
                 )
+
+            # ========================================
+            # HYDRATION: Task 2 - Hydrate lightweight output with CSV data
+            # ========================================
+
+            # Note: lookup was already built earlier in parallel flow (line ~2303)
+            # Calculate tier counts from hydrated keyword analysis
+            tier_counts = {
+                'tier_0': tier0_selected,
+                'tier_1': tier1_selected,
+                'tier_2': tier2_selected,
+                'geographic': tier_3_kw_count,
+                'category': tier_4_kw_count,
+            }
+            logger.debug(f"Tier counts for Task 2 hydration: {tier_counts}")
+
+            # Hydrate Task 2 lightweight output to full ContentStrategyResult
+            task_2_output = _hydrate_content_strategy(task_2_light, lookup, tier_counts)
+            logger.info(
+                f"✅ Task 2 hydrated: {len(task_2_output.topic_clusters or [])} topic clusters, "
+                f"{len(task_2_output.keyword_based_page_types or [])} page types"
+            )
 
             task_3_output = task_outputs[7].pydantic  # ImplementationPlanResult
             if task_3_output is None:

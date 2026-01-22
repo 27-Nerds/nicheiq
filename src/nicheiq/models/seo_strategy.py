@@ -959,6 +959,126 @@ class CategoryLightResult(BaseModel):
     )
 
 
+# ----------------------------------------
+# Task 2: Lightweight Content Strategy Output
+# ----------------------------------------
+# LLM generates strategic/creative content only.
+# Python hydrates numeric fields from keyword CSV data.
+
+
+class TopicClusterLight(BaseModel):
+    """
+    Lightweight topic cluster - Python hydrates volumes.
+
+    LLM outputs only strategic content (cluster groupings, recommendations).
+    Python calculates total_monthly_volume and estimated_traffic_potential from CSV.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    cluster_name: str = Field(..., description="Name of the content cluster/pillar")
+    primary_keyword: str = Field(
+        ..., description="Main keyword for this cluster (must match CSV keyword)"
+    )
+    supporting_keywords: list[str] = Field(
+        ..., description="Related keywords (must match CSV keywords, 5-15 keywords)"
+    )
+    content_recommendation: str = Field(
+        ..., description="What to create for this cluster (2-4 sentences)"
+    )
+    priority: int = Field(
+        ..., ge=1, le=5, description="Priority level (1=highest, 5=lowest)"
+    )
+
+
+class KeywordBasedPageTypeLight(BaseModel):
+    """
+    Lightweight page type - Python hydrates page count.
+
+    LLM outputs only strategic content (page type definitions, schema types).
+    Python calculates estimated_page_count based on keyword tier/cluster data.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    page_type_name: str = Field(
+        ..., description="Name of page type based on keyword intent"
+    )
+    url_pattern: str = Field(
+        ..., description="URL pattern optimized for target keywords"
+    )
+    target_keyword_cluster: str = Field(
+        ..., description="Which keyword tier/cluster this page type targets"
+    )
+    example_keywords: list[str] = Field(
+        ..., min_length=2, max_length=5, description="2-5 example target keywords"
+    )
+    primary_intent: str = Field(
+        ..., description="Primary search intent: 'commercial', 'informational', 'navigational', 'transactional'"
+    )
+    priority: str = Field(
+        ..., description="Launch priority: 'P0' (Tier 1), 'P1' (Tier 2), 'P2' (Tier 3-4)"
+    )
+    required_schema: Optional[list[str]] = Field(
+        default=None, description="Schema.org types for this page type"
+    )
+    seo_optimization_notes: str = Field(
+        ..., description="SEO-specific guidance for these pages"
+    )
+
+
+class ContentStrategyResultLight(BaseModel):
+    """
+    Lightweight Task 2 output - Python hydrates numeric fields.
+
+    LLM outputs only strategic/creative content:
+    - content_strategy narrative
+    - Topic cluster groupings (which keywords belong together)
+    - technical_seo_recommendations narrative
+    - Page type definitions (URL patterns, schema types)
+
+    Python hydrates from CSV:
+    - total_monthly_volume (sum from keyword CSV)
+    - estimated_traffic_potential (calculated from volume)
+    - estimated_page_count (count keywords per tier)
+    - total_pages_from_keywords (sum page type counts)
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    # Content strategy (LLM-generated)
+    content_strategy: str = Field(
+        ...,
+        min_length=100,
+        description="Comprehensive content strategy with numbered sections (markdown, 4-6 paragraphs)"
+    )
+    topic_clusters: Optional[list[TopicClusterLight]] = Field(
+        default=None, description="Content pillars/clusters (3-5 clusters) - Python will add volumes"
+    )
+
+    # Technical SEO (LLM-generated)
+    technical_seo_recommendations: str = Field(
+        ...,
+        min_length=50,
+        description="Technical SEO recommendations (markdown, 3-5 sections)"
+    )
+    keyword_based_page_types: Optional[list[KeywordBasedPageTypeLight]] = Field(
+        default=None,
+        description="Page types (4-8 types) - Python will add page counts"
+    )
+
+    # Site architecture fields (LLM-generated, minimal numeric content)
+    url_hierarchy_diagram: Optional[str] = Field(
+        default=None, description="ASCII/markdown hierarchy showing keyword cluster mapping"
+    )
+    section_keyword_mapping: Optional[str] = Field(
+        default=None, description="Mapping of sections to keyword clusters (markdown)"
+    )
+    keyword_coverage_explanation: Optional[str] = Field(
+        default=None, description="How site structure ensures keyword coverage (2-3 sentences)"
+    )
+
+
 # ========================================
 # ORIGINAL (FULL) OUTPUT MODELS - KEPT FOR BACKWARD COMPATIBILITY
 # ========================================

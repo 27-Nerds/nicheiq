@@ -19,6 +19,9 @@
 	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
 	import HeroPrimary from '$lib/components/ui/HeroPrimary.svelte';
 	import StatPill from '$lib/components/ui/StatPill.svelte';
+	import InsightCard from '$lib/components/ui/InsightCard.svelte';
+	import IconListItem from '$lib/components/ui/IconListItem.svelte';
+	import SectionLabel from '$lib/components/ui/SectionLabel.svelte';
 
 	interface Props {
 		data: TrendLongevity;
@@ -98,13 +101,12 @@
 
 	<!-- Timing Recommendation (Always Visible) -->
 	{#if data.timing_recommendation}
-		<div class="timing-card">
-			<div class="timing-header">
-				<Clock class="timing-icon" />
-				<span class="timing-title">Timing Recommendation</span>
-			</div>
+		<InsightCard variant="accent" border="left" padding="md" class="timing-card">
+			{#snippet header()}
+				<SectionLabel text="Timing Recommendation" variant="accent" icon={Clock} />
+			{/snippet}
 			<p class="timing-text">{data.timing_recommendation}</p>
-		</div>
+		</InsightCard>
 	{/if}
 
 	<!-- Stats Strip -->
@@ -159,14 +161,11 @@
 			count={data.community_growth_indicators.length}
 			variant="success"
 		>
-			<ul class="indicator-list">
+			<div class="item-list">
 				{#each data.community_growth_indicators as indicator}
-					<li class="indicator-item">
-						<ChevronRight class="indicator-icon" />
-						<span>{indicator}</span>
-					</li>
+					<IconListItem icon={ChevronRight} iconVariant="success">{indicator}</IconListItem>
 				{/each}
-			</ul>
+			</div>
 		</ExpandableSection>
 	{/if}
 
@@ -178,14 +177,11 @@
 			count={data.risk_factors.length}
 			variant="error"
 		>
-			<ul class="risk-list">
+			<div class="item-list">
 				{#each data.risk_factors as risk}
-					<li class="risk-item">
-						<span class="risk-bullet">!</span>
-						<span>{risk}</span>
-					</li>
+					<IconListItem icon={AlertTriangle} iconVariant="error">{risk}</IconListItem>
 				{/each}
-			</ul>
+			</div>
 		</ExpandableSection>
 	{/if}
 
@@ -270,38 +266,7 @@
 		color: var(--color-text-muted);
 	}
 
-	/* Timing Card */
-	.timing-card {
-		background: linear-gradient(135deg, rgba(229, 90, 40, 0.08) 0%, transparent 60%);
-		border: 1px solid rgba(229, 90, 40, 0.25);
-		border-left: 3px solid var(--color-accent);
-		border-radius: 0.75rem;
-		padding: 1.25rem;
-		margin-bottom: 1rem;
-	}
-
-	.timing-header {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.timing-header :global(.timing-icon) {
-		width: 1rem;
-		height: 1rem;
-		color: var(--color-accent);
-	}
-
-	.timing-title {
-		font-family: var(--font-mono);
-		font-size: 0.6875rem;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-accent);
-	}
-
+	/* Timing Card - using InsightCard, just need text styling */
 	.timing-text {
 		font-size: 0.9375rem;
 		color: var(--color-text-primary);
@@ -384,56 +349,11 @@
 		margin-bottom: 0;
 	}
 
-	/* Indicator List */
-	.indicator-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
+	/* Item List - using IconListItem component */
+	.item-list {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-	}
-
-	.indicator-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		color: var(--color-text-secondary);
-		line-height: 1.5;
-	}
-
-	.indicator-item :global(.indicator-icon) {
-		width: 0.875rem;
-		height: 0.875rem;
-		color: var(--color-success);
-		flex-shrink: 0;
-		margin-top: 0.125rem;
-	}
-
-	/* Risk List */
-	.risk-list {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-
-	.risk-item {
-		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		font-size: 0.875rem;
-		color: var(--color-text-secondary);
-		line-height: 1.5;
-	}
-
-	.risk-bullet {
-		font-weight: 700;
-		color: var(--color-error);
-		flex-shrink: 0;
 	}
 
 	/* Metadata Footer */
