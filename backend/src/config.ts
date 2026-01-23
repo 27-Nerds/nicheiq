@@ -33,6 +33,12 @@ export const CONFIG = {
 
   // Job settings
   jobTtlSeconds: parseInt(process.env.JOB_TTL_SECONDS || '604800', 10), // 7 days default
+
+  // Niche suggestion settings
+  openaiApiKey: process.env.OPENAI_API_KEY || '',
+  suggestModel: process.env.SUGGEST_LLM_MODEL || 'gpt-4.1-nano',
+  suggestRateHourly: parseInt(process.env.SUGGEST_RATE_HOURLY || '25', 10),
+  suggestRateDaily: parseInt(process.env.SUGGEST_RATE_DAILY || '50', 10),
 } as const;
 
 // Validate required config in production

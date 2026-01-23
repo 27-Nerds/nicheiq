@@ -204,6 +204,12 @@ class PainPoint(BaseModel):
         )
     )
 
+    # NEW: Solution approach mapping (from Stage 10 report generation)
+    solution_approach: Optional[str] = Field(
+        default=None,
+        description="1-2 sentence explanation of how the selected solution addresses this pain point."
+    )
+
 class PainPointAnalysisResult(BaseModel):
     """Complete result of pain point analysis."""
 

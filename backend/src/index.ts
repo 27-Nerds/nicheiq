@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth.js';
 import { usersRouter } from './routes/users.js';
 import { billingRouter } from './routes/billing.js';
 import { workersRouter } from './routes/workers.js';
+import { suggestRouter } from './routes/suggest.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 
@@ -39,6 +40,7 @@ app.use('/api/jobs', jobsRouter);
 app.use('/api/jobs', eventsRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/workers', workersRouter);
+app.use('/api/suggest', suggestRouter);
 app.use('/api', healthRouter);
 
 // Error handling middleware

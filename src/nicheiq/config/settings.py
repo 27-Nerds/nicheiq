@@ -101,6 +101,10 @@ class Settings(BaseSettings):
         default="gpt-4.1-mini",
         description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
     )
+    pain_solution_mapping_llm: str = Field(
+        default="gpt-4o-mini",
+        description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4o-mini recommended for cost efficiency)"
+    )
     landing_page_llm: str = Field(
         default="gpt-5.2",
         description="Model to use for landing page generation (gpt-5.2 recommended for high-quality creative output)"

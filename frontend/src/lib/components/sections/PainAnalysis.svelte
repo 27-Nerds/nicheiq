@@ -200,13 +200,16 @@
 								<CheckCircle class="w-4 h-4 text-success" />
 								<span class="solution-label">How We Solve It</span>
 							</div>
-							{#if solution.pain_points_addressed && solution.pain_points_addressed[i]}
-								<p class="solution-text">{solution.pain_points_addressed[i]}</p>
+							{#if painPoint.solution_approach}
+								<!-- New: LLM-generated specific mapping -->
+								<p class="solution-text">{painPoint.solution_approach}</p>
 							{:else if solution.core_features && solution.core_features[i]}
+								<!-- Fallback: Old index-based mapping for legacy reports -->
 								<p class="solution-text">{solution.core_features[i]}</p>
 							{:else if solution.key_features && solution.key_features[i]}
 								<p class="solution-text">{solution.key_features[i]}</p>
 							{:else}
+								<!-- Final fallback: Generic value proposition -->
 								<p class="solution-text solution-generic">
 									{solution.value_proposition || solution.description}
 								</p>

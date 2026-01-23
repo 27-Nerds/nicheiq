@@ -522,8 +522,12 @@ analyze_tier_1_quick_wins:
   description: >
     **Task 1a-ii (Parallel): Tier 1 Quick Win Keywords**
 
-    Select ALL {tier_1_keywords_count} keywords from the CSV below.
-    These are PRE-FILTERED Tier 1 keywords (opp_score 100-200).
+    Analyze {tier_1_keywords_count} TOP PRIORITY keywords from {tier_1_total} total Tier 1 keywords.
+    These are PRE-FILTERED Tier 1 keywords (opp_score 100-200), sorted by opportunity score.
+
+    **SAMPLING NOTE:** You are seeing the top {tier_1_keywords_count} keywords by opportunity score.
+    Python will apply your tier-level strategy to the remaining keywords programmatically.
+    Focus on strategic analysis and pattern identification that applies to ALL Tier 1 keywords.
 
     **TIER 1 KEYWORDS CSV:**
     ```csv
@@ -535,6 +539,8 @@ analyze_tier_1_quick_wins:
     2. Add brief strategy (1-2 sentences) for each
     3. Add intent classification for each
     4. Write 1 paragraph tier_1_quick_win_strategy narrative
+       - IMPORTANT: This strategy will be applied to ALL {tier_1_total} Tier 1 keywords
+       - Make it generalizable, not just for the keywords you see
 
     **NOTE:** You do NOT need to include search_volume, competition, or
     opportunity_score - Python will add these automatically from CSV.
@@ -549,15 +555,19 @@ analyze_tier_1_quick_wins:
 
     - tier_1_keywords: List of lightweight keyword selections (ALL {tier_1_keywords_count})
       Each with ONLY: keyword (exact match from CSV), strategy (1-2 sentences), intent (optional)
-    - tier_1_quick_win_strategy: str (1 paragraph narrative)
+    - tier_1_quick_win_strategy: str (1 paragraph narrative - will be applied to ALL {tier_1_total} keywords)
 
 
 analyze_strategic_tier:
   description: >
     **Task 1b (Parallel): Strategic Keywords (Tier 2)**
 
-    Select ALL {strategic_keywords_count} keywords from the CSV below.
-    These are PRE-FILTERED Tier 2 keywords (opp_score 50-100).
+    Analyze {strategic_keywords_count} TOP PRIORITY keywords from {strategic_total} total Tier 2 keywords.
+    These are PRE-FILTERED Tier 2 keywords (opp_score 50-100), sorted by opportunity score.
+
+    **SAMPLING NOTE:** You are seeing the top {strategic_keywords_count} keywords by opportunity score.
+    Python will apply your tier-level strategy to the remaining keywords programmatically.
+    Focus on strategic analysis and pattern identification that applies to ALL Tier 2 keywords.
 
     **STRATEGIC KEYWORDS CSV:**
     ```csv
@@ -569,6 +579,8 @@ analyze_strategic_tier:
     2. Add brief strategy (1-2 sentences) for each
     3. Add intent classification for each
     4. Write 1-2 paragraph tier_2_strategy narrative
+       - IMPORTANT: This strategy will be applied to ALL {strategic_total} Tier 2 keywords
+       - Make it generalizable, not just for the keywords you see
 
     **NOTE:** You do NOT need to include search_volume, competition, or
     opportunity_score - Python will add these automatically from CSV.
@@ -589,14 +601,18 @@ analyze_strategic_tier:
 
     - tier_2_keywords: List of lightweight keyword selections (ALL {strategic_keywords_count}, or null if empty)
       Each with ONLY: keyword (exact match from CSV), strategy (1-2 sentences), intent (optional)
-    - tier_2_strategy: str (1-2 paragraphs, or null if empty)
+    - tier_2_strategy: str (1-2 paragraphs - will be applied to ALL {strategic_total} keywords, or null if empty)
 
 analyze_geographic_tier_parallel:
   description: >
     **Task 1c (Parallel): Geographic Keywords (Tier 3)**
 
-    Group {geographic_keywords_count} PRE-FILTERED geographic keywords by region.
-    These keywords contain explicit location mentions (city/country names).
+    Analyze {geographic_keywords_count} TOP PRIORITY keywords from {geographic_total} total geographic keywords.
+    These keywords contain explicit location mentions (city/country names), sorted by opportunity score.
+
+    **SAMPLING NOTE:** You are seeing the top {geographic_keywords_count} keywords by opportunity score.
+    Python will apply your geographic strategy to the remaining keywords programmatically.
+    Focus on regional patterns that apply broadly to ALL geographic keywords.
 
     **GEOGRAPHIC KEYWORDS CSV:**
     ```csv
@@ -608,6 +624,7 @@ analyze_geographic_tier_parallel:
     2. For each keyword, extract the city/location name from the keyword text
     3. Add optional notes per keyword
     4. Write strategy_notes per region (1-3 sentences)
+       - IMPORTANT: These strategies will be applied to ALL {geographic_total} geographic keywords
     5. Assess overall competition_level per region ("LOW"/"MEDIUM"/"HIGH")
     6. Write geographic_strategy_notes (1-2 paragraphs overall)
 
@@ -629,16 +646,20 @@ analyze_geographic_tier_parallel:
     - tier_3_geographic_groups: List of groups, each with:
       - region_name: str (e.g., "Spanish-Speaking Markets")
       - keywords: List of {keyword (exact from CSV), city (extracted from keyword), notes (optional)}
-      - strategy_notes: str (1-3 sentences)
+      - strategy_notes: str (1-3 sentences - will apply to ALL keywords in this region)
       - competition_level: str ("LOW"/"MEDIUM"/"HIGH")
-    - geographic_strategy_notes: str (1-2 paragraphs overall, or null)
+    - geographic_strategy_notes: str (1-2 paragraphs overall - applies to ALL {geographic_total} keywords, or null)
 
 analyze_category_tier_parallel:
   description: >
     **Task 1d (Parallel): Category Keywords (Tier 4)**
 
-    Group {category_keywords_count} PRE-FILTERED category keywords by theme.
-    These are remaining keywords after high-priority, strategic, and geographic filtering.
+    Analyze {category_keywords_count} TOP PRIORITY keywords from {category_total} total category keywords.
+    These are remaining keywords after high-priority, strategic, and geographic filtering, sorted by opportunity score.
+
+    **SAMPLING NOTE:** You are seeing the top {category_keywords_count} keywords by opportunity score.
+    Python will apply your category strategies to the remaining keywords programmatically.
+    Focus on creating category themes that will apply broadly to ALL {category_total} category keywords.
 
     **CATEGORY KEYWORDS CSV:**
     ```csv
@@ -649,6 +670,7 @@ analyze_category_tier_parallel:
     1. Create {min_category_groups} to {max_category_groups} thematic category groups
     2. Assign each keyword to ONE category (no duplicates)
     3. Write strategy_recommendation per category (2-4 sentences)
+       - IMPORTANT: These strategies will be applied to ALL keywords in each category
     4. Write category_strategy_notes (1-2 paragraphs overall)
 
     **NOTE:** You do NOT need to include search_volume, competition, cpc, or total_volume -
@@ -680,8 +702,8 @@ analyze_category_tier_parallel:
     - tier_4_category_groups: List of groups, each with:
       - category_name: str
       - keywords: List of {keyword_name (exact from CSV)}
-      - strategy_recommendation: str (2-4 sentences)
-    - category_strategy_notes: str (1-2 paragraphs overall, or null)
+      - strategy_recommendation: str (2-4 sentences - will apply to ALL keywords in this category)
+    - category_strategy_notes: str (1-2 paragraphs overall - applies to ALL {category_total} keywords, or null)
 
 synthesize_keyword_summary_parallel:
   description: >
@@ -1348,10 +1370,10 @@ synthesize_final_seo_strategy:
 
 create_implementation_guide:
   description: >
-    ═══ TASK 5: IMPLEMENTATION GUIDE ═══
+    ═══ TASK 5: IMPLEMENTATION GUIDE (LIGHTWEIGHT) ═══
     ✓ Generate ONLY 3 new implementation fields (Python will merge with Task 4)
-    ✓ Focus on high-quality, actionable implementation guidance
-    ✓ Use moderate code examples (JSON-LD snippets, NOT full HTML pages)
+    ✓ Focus on strategic guidance and schema TYPE selections
+    ✓ DO NOT generate full JSON-LD code - Python generates it from templates
 
     **Task 5: Create SEO Implementation Guide**
 
@@ -1382,107 +1404,83 @@ create_implementation_guide:
     - url_pattern: URL structure (e.g., "/service/[location]")
     - target_keywords: 3-5 keyword patterns from Task 1 tiers
     - title_tag_example: Real example applying formula to {selected_solution_name}
-    - meta_description_example: Real example
+    - meta_description_example: Real example (140-155 chars)
     - h1_structure: H1 format pattern
     - h2_structure: List of 3-6 recommended H2 section headings (must be array of strings)
     - schema_types: Required schema types (e.g., ["Service", "Breadcrumb", "FAQ"])
     - internal_linking_strategy: How to link to/from this page type
     - content_guidelines: Min/optimal word count, required sections
 
-    **3. Schema Markup Strategy** (SchemaMarkupStrategy model):
+    **3. Schema Markup Strategy** (SchemaMarkupStrategyLight model - LIGHTWEIGHT):
+
+    ═══ IMPORTANT: DO NOT GENERATE JSON-LD CODE ═══
+
+    Python will generate the actual JSON-LD code from templates after this task completes.
+    Your job is to provide STRATEGIC GUIDANCE on which schemas to use and why.
+
     - why_schema_matters: Benefits (rich results, voice search, AI search, CTR) - 2-3 paragraphs
-    - priority_schema_types: Ordered list of 6-8 essential types
-    - implementation_method: JSON-LD format, <head> placement, why JSON-LD - 2 paragraphs
-    - schema_examples: List of SchemaExample objects, each containing:
-      * schema_type: The Schema.org type (e.g., "Organization", "Service", "FAQ")
-      * json_ld_code: FULLY POPULATED JSON-LD with actual values from context (NOT template variables)
-
-      **CRITICAL SCHEMA SYNTAX CLARIFICATION:**
-
-      Your json_ld_code field MUST contain fully populated JSON with actual values from context.
-      Do NOT use placeholders like [solution_name], [url], or template variables like [variable].
-
-      **Example for Organization schema** (CORRECT - fully populated):
-      ```json
-      {
-        "@context": "https://schema.org",
-        "@type": "Organization",
-        "name": "ExpatEase - International Relocation Directory",
-        "description": "Curated directory connecting expats with vetted relocation service providers across 50+ countries",
-        "url": "https://expatease.com",
-        "logo": "https://expatease.com/logo.png",
-        "address": {
-          "@type": "PostalAddress",
-          "addressCountry": "DE"
-        },
-        "sameAs": [
-          "https://twitter.com/expatease",
-          "https://linkedin.com/company/expatease"
-        ]
-      }
-      ```
-
-      ❌ **WRONG** (has placeholders):
-      ```json
-      {
-        "@type": "Organization",
-        "name": "[solution_name]",
-        "url": "[solution_url]"
-      }
-      ```
-
-      ❌ **WRONG** (has template variables):
-      ```json
-      {
-        "@type": "Organization",
-        "name": "[selected_solution_name]",
-        "url": "[solution_url]"
-      }
-      ```
-
-      ✅ **CORRECT** (fully populated with actual values from {selected_solution_name}, {value_proposition}, {niche}):
-      - Uses actual solution name: "ExpatEase - International Relocation Directory"
-      - Uses inferred URL based on solution name: "https://expatease.com"
-      - Uses specific description from {value_proposition}
-      - Includes 5-10 properties (not just @type + name)
-
-      Provide 6-8 schema examples (Organization, Service/Product, Review, AggregateRating, FAQ, Article, BreadcrumbList, etc.)
-      ALL examples must be fully populated with actual values from context.
-
+    - selected_schemas: List of 4-8 schema type selections, each with:
+      * schema_type: Schema.org type name (e.g., "Organization", "Service", "FAQPage", "BreadcrumbList", "Article", "WebPage", "Review", "HowTo")
+      * priority: 1-5 (1=critical, 5=nice-to-have)
+      * strategic_rationale: 1-2 sentences on why this schema matters for SEO
+      * suggested_questions: (For FAQPage only) 3-5 question TOPICS (not full questions) - e.g., ["pricing", "how it works", "getting started"]
+    - implementation_method: JSON-LD format, <head> placement, why JSON-LD over Microdata - 2 paragraphs
     - testing_validation: Tools and process (Google Rich Results Test, Schema Validator) - 2 paragraphs
+
+    **SCHEMA TYPE SELECTION GUIDANCE:**
+
+    Select 4-8 schema types based on solution needs. Common recommendations:
+
+    **Priority 1 (Critical - Select 2-3):**
+    - Organization: Every site needs this for brand entity
+    - Service OR Product: Based on what the solution offers
+    - FAQPage: Excellent for featured snippets - provide 3-5 question TOPICS
+
+    **Priority 2-3 (Important - Select 2-3):**
+    - BreadcrumbList: Site navigation signals
+    - Article: For blog/content pages
+    - HowTo: For tutorial content
+
+    **Priority 4-5 (Nice-to-have - Select 1-2):**
+    - Review/AggregateRating: If solution has reviews
+    - WebPage: Basic page markup
+
+    **Example Selection (CORRECT):**
+    ```
+    selected_schemas:
+      - schema_type: "Organization"
+        priority: 1
+        strategic_rationale: "Establishes brand entity for Knowledge Graph eligibility"
+
+      - schema_type: "Service"
+        priority: 1
+        strategic_rationale: "Core service offering for rich results in service searches"
+
+      - schema_type: "FAQPage"
+        priority: 2
+        strategic_rationale: "Captures featured snippet opportunities for common questions"
+        suggested_questions: ["pricing", "how it works", "coverage areas", "getting started"]
+
+      - schema_type: "BreadcrumbList"
+        priority: 3
+        strategic_rationale: "Improves site architecture signals for Google"
+    ```
 
     **KEYWORD TIER INTEGRATION (Prioritize Page Types):**
 
     Use keyword tiers from Task 1 to prioritize page types by ranking potential:
 
     **High Priority Page Types** (Tier 1 - Quick Win keywords):
-    - These page types should target low-competition, high-intent Tier 1 keywords
-    - Focus: Fast ranking potential, conversion-optimized pages
-    - Schema: Add trust signals (AggregateRating, Review, Offer) for competitive edge
-    - Example: If Task 1 has Tier 1 keyword "budget expat insurance" (2400 vol, low comp):
-      → Create high-priority "Budget Insurance Guides" page type targeting this keyword
+    - Target low-competition, high-intent Tier 1 keywords
+    - priority: "high"
 
     **Medium Priority Page Types** (Tier 2 - Strategic Growth keywords):
-    - These page types target competitive but valuable Tier 2 keywords
-    - Focus: Comprehensive content, authority-building, long-term investment
-    - Schema: Add depth signals (FAQPage, HowTo, Article) for rich results
-    - Example: If Task 1 has Tier 2 keyword "expat health insurance comparison" (1800 vol, medium comp):
-      → Create medium-priority "Insurance Comparison Pages" page type
+    - Target competitive but valuable Tier 2 keywords
+    - priority: "medium"
 
     **Lower Priority Page Types** (Tier 3-4 keywords):
-    - These page types target informational, long-tail, or geographic Tier 3-4 keywords
-    - Focus: Content breadth, topical coverage, supporting pages
-    - Schema: Add basic structure (BreadcrumbList, Organization) for crawlability
-    - Example: If Task 1 has Tier 3 geographic keyword "expat insurance bangkok":
-      → Create lower-priority "Location-Specific Guide" page type
-
-    **Page Type Priority Mapping**:
-    For EACH page type implementation, set priority field based on keyword tier:
-    - priority: "high" → Targets Tier 1 keywords (Quick Wins)
-    - priority: "medium" → Targets Tier 2 keywords (Strategic Growth)
-    - priority: "low" → Targets Tier 3-4 keywords (Supporting content)
-
-    This helps developers and content teams understand which pages to build first.
+    - Target informational, long-tail, or geographic keywords
+    - priority: "low"
 
     **SOLUTION CONTEXT FOR IMPLEMENTATION:**
     - Solution Name: {selected_solution_name}
@@ -1493,260 +1491,23 @@ create_implementation_guide:
     - Niche: {niche}
     - Topic Clusters: {topic_clusters_summary}
 
-    Use this solution context to customize implementation examples (page titles, meta descriptions, schema examples).
+    Use this solution context to customize implementation examples (page titles, meta descriptions).
     Reference keyword tiers from Task 1 when suggesting target keywords.
     Align page types with keyword_based_page_types from Task 2 if available.
 
-    **ALIGN WITH TASK 2 CONTENT STRATEGY:**
-
-    Task 2 (Content Strategy) already generated keyword_based_page_types in its output (accessible via context).
-    Your job is to ENHANCE these with SEO implementation details, NOT create new page types from scratch.
-
-    **Workflow**:
-    1. **Extract Task 2 page types**: Review keyword_based_page_types from Task 2's ContentStrategyResult context
-       - Expected count: 4-8 page types identified by content strategist
-       - Each should be tied to keyword clusters from Task 1
-
-    2. **Enhance EACH page type** from Task 2 with SEO implementation details:
-       - Title tag formula + example (with {selected_solution_name} + keyword pattern)
-       - Meta description pattern (value prop + CTA, 140-155 chars)
-       - Schema markup recommendation (both schema types list + JSON-LD example)
-       - H1/H2 structure recommendations
-       - Internal linking strategy
-       - Content structure recommendations
-
-    3. **Add supplementary page types** ONLY if Task 2 missed critical types for this solution:
-       - Check: Does the solution type require page types not in Task 2?
-       - Example: Directory needs "Location Pages" but Task 2 only has "Service Pages"
-       - Limit: Add maximum 2 additional page types beyond Task 2's list
-       - Justify: Note why each addition is necessary for the solution type
-
-    4. **Verify alignment**: Cross-check each page type against keyword tiers from Task 1
-       - Each page type should map to 2-5 keywords from Task 1's tier structure
-       - If no keyword mapping → either remove the page type or find relevant keywords from Task 1
-
-    **Example Enhancement**:
-    - **Task 2 identified**: "Budget-Friendly Expat Health Insurance Guides"
-      - Keywords: "budget expat insurance", "affordable health coverage abroad" (from Task 1 Tier 1)
-      - Target tier: Tier 1 (Quick Win keywords)
-
-    - **Your Task 5 enhancement**:
-      ```
-      Page Type: Budget-Friendly Expat Health Insurance Guides
-      Priority: high (Tier 1 keywords)
-
-      URL Pattern: /guides/budget-expat-health-insurance/[country]
-
-      Target Keywords: ["budget expat insurance", "affordable health coverage abroad", "cheap expat health plans"]
-
-      Title Formula: "[selected_solution_name] - Budget Expat Health Insurance | [country/region]"
-      Title Example: "ExpatEase - Budget Expat Health Insurance | Southeast Asia"
-
-      Meta Description Pattern: "Find affordable expat health insurance through {selected_solution_name}. Compare [X] budget-friendly providers, read reviews, get quotes. [CTA]"
-      Meta Description Example: "Find affordable expat health insurance through ExpatEase. Compare 15 budget-friendly providers in Southeast Asia, read verified reviews, get instant quotes. Start saving today." (154 chars)
-
-      Schema Types: ["Organization", "ItemList", "AggregateRating"]
-      [... detailed schema example with actual solution name ...]
-      ```
-
-    **Validation**: Before finalizing, verify:
-    - ☐ 60%+ of page types come from Task 2's keyword_based_page_types (not invented by you)
-    - ☐ Each Task 2 page type has been enhanced with comprehensive SEO implementation details
-    - ☐ Any new page types (max 2) are justified with clear reasoning for why they're needed
-
-    **ADAPT TO PROJECT TYPE (Solution-Specific Page Types):**
-
-    Based on the solution's characteristics and needs, prioritize appropriate page types and schemas.
-    Different solution types require different page structures:
-
-    **Common Patterns** (adapt to actual solution):
-
-    - **IF solution is a directory/listing platform:**
-      - Page types: Directory listing pages, Category/taxonomy pages, Location/geography pages, Provider/business profiles
-      - Schema priority: Organization, LocalBusiness, ItemList, BreadcrumbList, AggregateRating
-      - Example: "Provider Profile Page"
-        - Schema: Organization (business info) + LocalBusiness (location) + AggregateRating (reviews)
-        - Title: "[provider_name] - [category] in [location] | {selected_solution_name}"
-
-    - **IF solution is a marketplace/platform:**
-      - Page types: Vendor/seller profiles, Product/service listings, Comparison pages, Review aggregation, Category pages
-      - Schema priority: Offer, Product, Review, AggregateRating, Organization, BreadcrumbList
-      - Example: "Vendor Profile Page"
-        - Schema: Organization (vendor info) + Offer (services) + AggregateRating (ratings)
-        - Title: "[vendor_name] Reviews & Services | {selected_solution_name} Marketplace"
-
-    - **IF solution is an aggregator/comparison tool:**
-      - Page types: Data collection pages, Comparison/analysis tables, Trend/analytics dashboards, Report/research pages, Category pages
-      - Schema priority: DataFeed, Dataset, Table, Organization, FAQPage
-      - Example: "Data Comparison Page"
-        - Schema: Dataset (data source) + Table (comparison matrix) + Organization (aggregator)
-        - Title: "Compare [data_type] - [timeframe] Analysis | {selected_solution_name}"
-
-    - **IF solution is a SaaS tool or software:**
-      - Page types: Feature pages, Use case pages, Comparison pages, Alternative/vs pages, Pricing pages, Integration pages
-      - Schema priority: SoftwareApplication, WebApplication, Product, FAQPage, HowTo
-      - Example: "Feature Page"
-        - Schema: SoftwareApplication (tool) + HowTo (usage guide) + FAQPage (common questions)
-        - Title: "[feature_name] - {selected_solution_name} | [value_prop_snippet]"
-
-    - **IF solution is a community/platform:**
-      - Page types: Topic/discussion pages, User profile pages, Guide/resource pages, Event pages
-      - Schema priority: DiscussionForumPosting, Article, Person, Event, Organization
-      - Example: "Topic Discussion Page"
-        - Schema: DiscussionForumPosting + Article (guides) + Organization (platform)
-        - Title: "[topic_name] Discussion | {selected_solution_name} Community"
-
-    **Validation Rule**: Verify your page types match the solution's actual type and needs.
-    Reference {selected_solution_description}, {core_features}, and {technical_approach} to understand what type of solution this is.
-
-    **ANTI-HALLUCINATION GUARDRAILS:**
-
-    ✗ NEVER use placeholder syntax in final output
-      ❌ Example: "name": "[solution_name]" or "\{solution_name\}" in schema JSON-LD
-      ✅ Example: "name": "ExpatEase - International Relocation Directory"
-
-    ✗ NEVER use bracket notation ([ ]) as placeholders in schema JSON-LD examples
-      ❌ Example: "addressCountry": "[primary_country]"
-      ✅ Example: "addressCountry": "DE" (inferred from {target_personas} or {niche} context)
-
-    ✗ NEVER invent values not present in context
-      ❌ Example: Adding "24/7 customer support" feature when {core_features} doesn't mention it
-      ✅ Example: If uncertain about a value → use "To be determined" or infer from context
-
-    ✗ NEVER create generic page types - adapt to solution's actual needs
-      ❌ Example: Using "Product Pages" for a directory solution
-      ✅ Example: Using "Directory Listing Pages" for directory, "Vendor Profiles" for marketplace
-
-    ✗ NEVER ignore Task 2's keyword_based_page_types
-      ❌ Example: Creating "Generic Service Pages" when Task 2 specified "Budget Health Insurance Guides"
-      ✅ Example: "Task 2 identified 'Budget-Friendly Relocation Guides' (Tier 1: 'budget expat insurance') - implementing SEO structure for this page type"
-
-    ✗ NEVER duplicate schema types across page types without differentiation
-      ❌ Example: Using identical Organization schema for 3 different page types
-      ✅ Example: Customize each schema - Organization schema for homepage has different properties than provider profile
-
-    ✗ Use ONLY context from previous tasks and solution details
-      ❌ Example: Inventing features not in {core_features}, competitors not in {competitor_names}
-      ✅ Example: If core_features includes "multi-language support", mention it in schema "inLanguage" property
-
-    **VERIFICATION RULE**: Before submitting, replace every instance of:
-    - [placeholder] → actual value from context
-    - [variable] in examples → actual value (keep [variable] syntax only in formulas/patterns)
-    - Generic terms → specific solution details from context
-
-    **MANDATORY CUSTOMIZATION REQUIREMENTS:**
-
-    ✓ ALL title_tag_example fields MUST include {selected_solution_name} (exact match from context)
-    ✓ ALL meta_description_example fields MUST reference {value_proposition} or key solution benefits
-    ✓ ALL schema JSON-LD examples MUST use actual solution name from context
-      - Verify: "name" field = {selected_solution_name}, NOT "[solution_name]" or generic placeholder
-    ✓ Page types MUST align with solution's project type (see context variables)
-    ✓ EVERY page type implementation MUST reference at least ONE keyword from Task 1's keyword tiers
-      - Example: "Budget Relocation Guide" page → must use Tier 1/2 keywords like "budget expat health insurance"
-
-    **REQUIRED OUTPUT STRUCTURE:**
-
-    Your final output MUST follow this exact structure for the ImplementationGuide model:
-
-    {
-      "universal_seo_elements": {
-        "title_tag_formula": "string",        # Pattern using [variables]
-        "title_tag_guidelines": "string",     # 2-3 paragraphs (markdown)
-        "meta_description_guidelines": "string",  # 2-3 paragraphs (markdown)
-        "canonical_url_strategy": "string",   # 2 paragraphs (markdown)
-        "open_graph_tags": "string",          # Format examples (markdown)
-        "robots_meta_guidelines": "string"    # 2 paragraphs (markdown)
-      },
-      "page_type_implementations": [
-        {
-          "page_type": "string",                     # From Task 2 or project-type mapping
-          "priority": "high|medium|low",             # Based on keyword tier
-          "url_pattern": "string",                   # URL structure
-          "target_keywords": ["kw1", "kw2"],         # 3-5 keywords from Task 1
-          "title_tag_example": "string",             # MUST include {selected_solution_name}
-          "meta_description_example": "string",      # 140-155 chars, actual values
-          "h1_structure": "string",
-          "h2_structure": ["string"],                # 3-6 sections
-          "schema_types": ["string"],                # Required schema types
-          "internal_linking_strategy": "string",
-          "content_guidelines": "string"
-        }
-        // Repeat for 4-8 page types (60%+ should be from Task 2)
-      ],
-      "schema_markup_strategy": {
-        "why_schema_matters": "string",        # 2-3 paragraphs (markdown)
-        "priority_schema_types": ["string"],   # 6-8 essential types
-        "implementation_method": "string",     # 2 paragraphs (markdown)
-        "schema_examples": [                   # 6-8 examples
-          {
-            "schema_type": "string",
-            "json_ld_code": "json string"     # Fully populated with actual values
-          }
-        ],
-        "testing_validation": "string"         # 2 paragraphs (markdown)
-      }
-    }
-
-    **Validation**: Before submitting, verify:
-    - ☐ All 3 top-level keys present (universal_seo_elements, page_type_implementations, schema_markup_strategy)
-    - ☐ page_type_implementations array has 4-8 items
-    - ☐ Each page_type_implementation has ALL 11 required fields
-    - ☐ schema_markup_strategy has schema_examples with 6-8 items
-
     **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
-    Before finalizing output, verify EACH page type implementation (minimum 4-8 page types):
-
-    ☐ **Solution Name Integration**: title_tag_example includes "{selected_solution_name}"
-       - Example check: Does "ExpatEase - International Relocation Directory" appear in title?
-       - Test: Search your output for "{selected_solution_name}" - should find 4+ matches in title examples
-       - If NO → Add solution name to title_tag_example for each page type
-
-    ☐ **Real Values (No Placeholders)**: Schema JSON-LD uses actual values, not bracket syntax
-       - Example check: "name": "ExpatEase", NOT "name": "[solution_name]" or "\{solution_name\}"
-       - Test: Search schema examples for "[" character - should find ZERO placeholder matches
-       - If found brackets → Replace ALL with actual context values
-
-    ☐ **Project-Type Alignment**: Page types make sense for this type of solution
-       - Example check: Does the solution need these specific page types?
-       - Verify: Count page types - you should have 4-8 types that are relevant
-       - If NO → Adjust page types to match solution's actual needs
-
-    ☐ **Task 2 Integration**: Referenced keyword_based_page_types from content strategy (Task 2 context)
-       - Example check: Did you enhance Task 2's page types or create duplicates?
-       - Verify: At least 60% of page types should come from Task 2's keyword_based_page_types
-       - If NO → Review Task 2 context and enhance its page types with SEO implementation details
-
-    ☐ **Feature Integration**: Referenced {core_features} in schema properties or descriptions
-       - Example check: Do schema examples or guidelines mention actual solution features?
-       - Verify: Each page type should reference at least 1 feature from {core_features} context
-       - If NO → Add relevant features to schema "description" or content_guidelines
-
-    ☐ **Persona Targeting**: title/meta examples reference {target_personas} language
-       - Example check: Do examples mention specific persona pain points or goals?
-       - Verify: Persona-specific language appears in 50%+ of title/meta examples
-       - If NO → Add persona language to title/meta examples (e.g., "for budget-conscious expats")
-
-    ☐ **Keyword Relevance**: Each page type ties to specific keywords from Task 1 keyword tiers
-       - Example check: "Budget Guide" page type → uses Tier 1 keyword "budget health insurance expat"
-       - Verify: Can you map each page type to 2-5 keywords from Task 1?
-       - If NO → Review Task 1 keyword tiers and add keyword mapping to target_keywords field
-
-    ☐ **Schema Completeness**: Each page type has schema examples with 5-10 properties (not just @type + name)
-       - Example check: Does schema have name, description, url, address, offers, aggregateRating?
-       - Verify: Count properties in each schema - should have 5-10 properties minimum
-       - If NO → Expand schema examples with relevant properties from schema.org
-
-    ☐ **Character Limits**: Title tags are 50-60 chars, meta descriptions are 140-155 chars
-       - Example check: Count characters in title_tag_example - should be 50-60 chars
-       - Example check: Count characters in meta_description_example - should be 140-155 chars
-       - If NO → Shorten or lengthen to meet SERP display requirements
-
-    CRITICAL: If ANY checkbox fails → Fix the issue BEFORE submitting. Do not proceed with incomplete validation.
-    Python will automatically validate and may retry if customization is insufficient.
+    ☐ universal_seo_elements has all 6 required fields (title formula/guidelines, meta, canonical, OG, robots)
+    ☐ page_type_implementations has 4-6 page types with all 11 required fields
+    ☐ schema_markup_strategy.selected_schemas has 4-8 schema type selections
+    ☐ Each schema selection has schema_type, priority (1-5), and strategic_rationale
+    ☐ FAQPage schema (if included) has suggested_questions with 3-5 topics
+    ☐ NO JSON-LD code in output (Python generates this)
+    ☐ All title_tag_examples include {selected_solution_name}
+    ☐ All meta_description_examples are 140-155 characters
 
   expected_output: >
-    ImplementationGuide Pydantic model with 3 implementation fields ONLY:
+    ImplementationGuideLight Pydantic model with 3 implementation fields ONLY:
 
     1. universal_seo_elements: UniversalSEOElements
        - title_tag_formula: Pattern like "[Primary KW] | [Secondary] | [Brand]"
@@ -1758,15 +1519,19 @@ create_implementation_guide:
 
     2. page_type_implementations: List[PageTypeImplementation]
        - 4-6 page types with complete SEO templates
-       - Each with: page_type name, url_pattern, target_keywords (3-5), title_tag_example, meta_description_example,
+       - Each with: page_type name, priority, url_pattern, target_keywords (3-5), title_tag_example, meta_description_example,
          h1_structure, h2_structure (list of 3-6 section headings), schema_types (required types), internal_linking_strategy,
          content_guidelines (word count, required sections)
 
-    3. schema_markup_strategy: SchemaMarkupStrategy
+    3. schema_markup_strategy: SchemaMarkupStrategyLight (LIGHTWEIGHT - no JSON-LD code)
        - why_schema_matters: Benefits (rich results, voice search, AI search, CTR boost) - 2-3 paragraphs, markdown
-       - priority_schema_types: Ordered list of 6-8 essential Schema.org types
+       - selected_schemas: List of 4-8 SchemaSelectionLight objects, each with:
+         * schema_type: str (Organization, Service, FAQPage, BreadcrumbList, Article, WebPage, Review, HowTo)
+         * priority: int (1-5, 1=critical)
+         * strategic_rationale: str (1-2 sentences)
+         * suggested_questions: Optional[List[str]] (For FAQPage: 3-5 question topics)
        - implementation_method: JSON-LD format, placement in <head>, why JSON-LD over Microdata (2 paragraphs, markdown)
-       - schema_examples: List of SchemaExample objects (6-8 examples), each with schema_type and json_ld_code snippet
        - testing_validation: Tools and process (Google Rich Results Test, Schema Validator, Search Console) - 2 paragraphs, markdown
 
-    NOTE: Task 4 fields will be merged automatically by Python. Focus on creating excellent implementation guidance.
+    NOTE: Python will generate actual JSON-LD code from templates + solution context.
+    Task 4 fields will be merged automatically by Python. Focus on strategic schema selection guidance.

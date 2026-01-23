@@ -30,6 +30,7 @@ from ..models.seo_strategy import (
     GeographicTierResult,
     HighPriorityTierResult,
     ImplementationGuide,
+    ImplementationGuideLight,
     ImplementationPlanResult,
     KeywordAnalysisResult,
     KeywordBasedPageType,
@@ -38,6 +39,8 @@ from ..models.seo_strategy import (
     KeywordSummaryResult,
     LightweightKeywordSelection,
     PremiumTierResult,
+    SchemaExample,
+    SchemaMarkupStrategy,
     SectionKeywordMapping,
     SEOStrategyReport,
     StrategicLightResult,
@@ -51,7 +54,16 @@ from ..models.seo_strategy import (
     TopicClusterLight,
 )
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
-from ..utils.generation import KeywordSeedGenerator
+from ..utils.generation import KeywordSeedGenerator, generate_json_ld_schemas
+from ..utils.validation import (
+    validate_category_tier_output,
+    validate_content_strategy_output,
+    validate_final_synthesis_output,
+    validate_geographic_tier_output,
+    validate_implementation_guide_light_output,
+    validate_implementation_plan_output,
+    validate_strategic_tier_output,
+)
 
 if TYPE_CHECKING:
     from ..models.competitor import CompetitiveLandscape
@@ -265,6 +277,82 @@ def _hydrate_category_group(
     )
 
 
+def _hydrate_remaining_keywords(
+    remaining: list[dict],
+    tier: int,
+    tier_strategy: str | None,
+    lookup: dict[str, dict],
+) -> list[TieredKeyword]:
+    """
+    Create TieredKeyword objects for keywords not sent to LLM.
+
+    Uses tier-level strategy template from LLM output. This function
+    hydrates remaining keywords (those exceeding LLM limit) with the
+    tier strategy, ensuring no hallucination risk.
+
+    Args:
+        remaining: List of keyword dicts not sent to LLM
+        tier: Tier number (1, 2, 3, 4)
+        tier_strategy: Tier-level strategy narrative from LLM output
+        lookup: Keyword -> stats lookup dict
+
+    Returns:
+        List of TieredKeyword objects with Python-hydrated strategies
+    """
+    tier_names = {
+        0: "TIER_0_PREMIUM",
+        1: "TIER_1_QUICK_WIN",
+        2: "TIER_2_STRATEGIC",
+        3: "TIER_3_GEOGRAPHIC",
+        4: "TIER_4_CATEGORY",
+    }
+
+    # Truncate strategy to 150 chars for Python-assigned keywords
+    strategy_prefix = "[Auto-tiered] "
+    if tier_strategy:
+        # Take first 150 chars of tier strategy, add ellipsis if truncated
+        truncated_strategy = tier_strategy[:150].strip()
+        if len(tier_strategy) > 150:
+            truncated_strategy += "..."
+        strategy_text = f"{strategy_prefix}{truncated_strategy}"
+    else:
+        strategy_text = f"{strategy_prefix}Applied tier-level strategy programmatically"
+
+    results = []
+    for kw in remaining:
+        keyword_text = kw.get("keyword", "")
+        kw_key = keyword_text.lower().strip()
+        stats = lookup.get(kw_key, {})
+
+        # Extract stats with defaults
+        search_volume = stats.get("search_volume") or kw.get("search_volume") or 0
+        competition_index = stats.get("competition_index") or kw.get("competition_index") or 50
+        competition_level = stats.get("competition_level") or kw.get("competition_level") or "MEDIUM"
+        opp_score = stats.get("opportunity_score") or kw.get("opportunity_score")
+
+        # Calculate opp_score if not present
+        if opp_score is None:
+            opp_score = search_volume / max(competition_index, 1)
+
+        tier_rationale = (
+            f"Python-hydrated: Vol={search_volume}, Comp={competition_index}, "
+            f"Opp={opp_score:.1f} (not sent to LLM)"
+        )
+
+        results.append(TieredKeyword(
+            keyword=keyword_text,
+            search_volume=search_volume,
+            competition=f"{competition_level} ({competition_index})",
+            opportunity_score=opp_score,
+            tier=tier,
+            strategy=strategy_text,
+            intent=stats.get("search_intent", "informational"),
+            tier_rationale=tier_rationale,
+        ))
+
+    return results
+
+
 # ========================================
 # TASK 2 HYDRATION UTILITIES
 # ========================================
@@ -445,6 +533,77 @@ def _hydrate_content_strategy(
     )
 
 
+# ========================================
+# TASK 5 HYDRATION UTILITIES
+# ========================================
+# Hydrate ImplementationGuideLight with Python-generated JSON-LD schemas.
+
+
+def _hydrate_implementation_guide(
+    light: ImplementationGuideLight,
+    solution_name: str,
+    value_proposition: str,
+    niche: str,
+    pricing: dict | None = None,
+) -> ImplementationGuide:
+    """
+    Hydrate lightweight Task 5 output with Python-generated JSON-LD schemas.
+
+    LLM provides:
+    - universal_seo_elements (passed through)
+    - page_type_implementations (passed through)
+    - schema_markup_strategy (LIGHT - schema selections + rationale only)
+
+    Python generates:
+    - schema_markup_strategy.schema_examples (JSON-LD code from templates)
+
+    Args:
+        light: Lightweight implementation guide from LLM
+        solution_name: Solution name for branding in JSON-LD
+        value_proposition: Description for JSON-LD content
+        niche: Market niche for context
+        pricing: Optional pricing dict for Service schema
+
+    Returns:
+        Full ImplementationGuide with JSON-LD code generated
+    """
+    # Generate JSON-LD schemas from lightweight selections
+    schema_results = generate_json_ld_schemas(
+        schema_selections=light.schema_markup_strategy.selected_schemas,
+        solution_name=solution_name,
+        value_proposition=value_proposition,
+        niche=niche,
+        pricing=pricing,
+    )
+
+    # Convert to SchemaExample objects
+    schema_examples = [
+        SchemaExample(
+            schema_type=result["schema_type"],
+            json_ld_code=result["json_ld_code"],
+        )
+        for result in schema_results
+    ]
+
+    # Build full SchemaMarkupStrategy with generated JSON-LD
+    full_schema_strategy = SchemaMarkupStrategy(
+        why_schema_matters=light.schema_markup_strategy.why_schema_matters,
+        schema_examples=schema_examples,
+        implementation_method=light.schema_markup_strategy.implementation_method,
+        testing_validation=light.schema_markup_strategy.testing_validation,
+    )
+
+    logger.info(
+        f"✅ Task 5 hydrated: {len(schema_examples)} JSON-LD schemas generated via Python"
+    )
+
+    return ImplementationGuide(
+        universal_seo_elements=light.universal_seo_elements,
+        page_type_implementations=light.page_type_implementations,
+        schema_markup_strategy=full_schema_strategy,
+    )
+
+
 @CrewBase
 class SEOStrategyCrew:
     """
@@ -460,6 +619,19 @@ class SEOStrategyCrew:
 
     agents_config = "config/seo_strategy_agents.yaml"
     tasks_config = "config/seo_strategy_tasks.yaml"
+
+    # ========================================
+    # KEYWORD LIMITS PER TIER (sent to LLM)
+    # ========================================
+    # Limits the number of keywords sent to LLM to optimize token usage.
+    # Python hydrates remaining keywords using tier-level strategy.
+    # Selection: Sort by opportunity_score descending (highest value first)
+
+    TIER_0_LLM_LIMIT: int | None = None  # No limit - send all premium (rare and critical)
+    TIER_1_LLM_LIMIT: int = 25           # Quick wins need strategic analysis
+    TIER_2_LLM_LIMIT: int = 30           # Strategic tier benefits from context
+    TIER_3_LLM_LIMIT: int = 40           # Geographic needs regional diversity
+    TIER_4_LLM_LIMIT: int = 50           # Category tier is programmatic-focused
 
     def __init__(
         self,
@@ -759,7 +931,8 @@ class SEOStrategyCrew:
         Analyzes pre-filtered keywords with opp_score 50-100 for medium-term growth.
         Receives only strategic-tier keywords - no filtering needed.
 
-        Uses zero temperature for data-driven keyword analysis.
+        Uses low temperature for data-driven keyword analysis.
+        Uses frequency_penalty to prevent infinite repetition loops in JSON output.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -769,7 +942,9 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Slight randomness to prevent repetition loops
+                frequency_penalty=0.5,  # Discourage repeating the same tokens
+                presence_penalty=0.3,  # Discourage repeating topics
             )),
             verbose=True,
         )
@@ -782,7 +957,8 @@ class SEOStrategyCrew:
         Groups location-based keywords by region for geographic SEO strategy.
         Only includes keywords with explicit location mentions in the keyword text.
 
-        Uses zero temperature for precise geographic segmentation.
+        Uses low temperature for precise geographic segmentation.
+        Uses frequency_penalty to prevent infinite repetition loops in JSON output.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -792,7 +968,9 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Slight randomness to prevent repetition loops
+                frequency_penalty=0.5,  # Discourage repeating the same tokens
+                presence_penalty=0.3,  # Discourage repeating topics
             )),
             verbose=True,
         )
@@ -805,7 +983,8 @@ class SEOStrategyCrew:
         Organizes remaining keywords into thematic category groups for programmatic SEO.
         Creates 8-15 category groups to maximize keyword coverage.
 
-        Uses zero temperature for systematic categorization.
+        Uses low temperature for systematic categorization.
+        Uses frequency_penalty to prevent infinite repetition loops in JSON output.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
@@ -815,7 +994,9 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Slight randomness to prevent repetition loops
+                frequency_penalty=0.5,  # Discourage repeating the same tokens
+                presence_penalty=0.3,  # Discourage repeating topics
             )),
             verbose=True,
         )
@@ -1055,12 +1236,16 @@ class SEOStrategyCrew:
 
         Output: StrategicLightResult with lightweight keyword selections.
         Python hydrates full TieredKeyword objects with stats from CSV.
+
+        Guardrail: Validates JSON completeness and detects repetition loops.
         """
         return Task(
             config=self.tasks_config["analyze_strategic_tier"],
             agent=self.strategic_tier_analyst(),
             output_pydantic=StrategicLightResult,  # Lightweight output - Python hydrates stats
             async_execution=True,  # Runs in parallel
+            guardrail=validate_strategic_tier_output,
+            guardrail_max_retries=2,  # Retry up to 2 times on validation failure
         )
 
     @task
@@ -1073,12 +1258,16 @@ class SEOStrategyCrew:
 
         Output: GeographicLightResult with lightweight geographic groups.
         Python hydrates full GeographicKeywordGroup objects with stats from CSV.
+
+        Guardrail: Validates JSON completeness and detects repetition loops.
         """
         return Task(
             config=self.tasks_config["analyze_geographic_tier_parallel"],
             agent=self.geographic_tier_analyst(),
             output_pydantic=GeographicLightResult,  # Lightweight output - Python hydrates stats
             async_execution=True,  # Runs in parallel
+            guardrail=validate_geographic_tier_output,
+            guardrail_max_retries=2,  # Retry up to 2 times on validation failure
         )
 
     @task
@@ -1091,12 +1280,17 @@ class SEOStrategyCrew:
 
         Output: CategoryLightResult with lightweight category groups.
         Python hydrates full CategoryKeywordGroup objects with stats from CSV.
+
+        Guardrail: Validates JSON completeness and detects repetition loops.
+        This task is most susceptible to repetition issues due to large dataset size.
         """
         return Task(
             config=self.tasks_config["analyze_category_tier_parallel"],
             agent=self.category_tier_analyst(),
             output_pydantic=CategoryLightResult,  # Lightweight output - Python hydrates stats
             async_execution=True,  # Runs in parallel
+            guardrail=validate_category_tier_output,
+            guardrail_max_retries=2,  # Retry up to 2 times on validation failure
         )
 
     @task
@@ -1164,6 +1358,8 @@ class SEOStrategyCrew:
             agent=self.content_strategist(),
             context=[self.synthesize_keyword_summary_task()],  # Depends on Task 1d (summary of 1a-1c)
             output_pydantic=ContentStrategyResultLight,  # Lightweight - Python hydrates numeric fields
+            guardrail=validate_content_strategy_output,
+            guardrail_max_retries=2,
         )
 
     @task
@@ -1185,6 +1381,8 @@ class SEOStrategyCrew:
                 self.develop_content_technical_strategy_task(),  # Task 2
             ],
             output_pydantic=ImplementationPlanResult,
+            guardrail=validate_implementation_plan_output,
+            guardrail_max_retries=2,
         )
 
     @task
@@ -1212,22 +1410,25 @@ class SEOStrategyCrew:
                 self.create_implementation_plan_task(),  # Task 3 (reference)
             ],
             output_pydantic=FinalSynthesis,
+            guardrail=validate_final_synthesis_output,
+            guardrail_max_retries=2,
         )
 
     @task
     def create_implementation_guide_task(self) -> Task:
         """
-        Task 5: Create SEO Implementation Guide.
+        Task 5: Create SEO Implementation Guide (Lightweight).
 
         Generates ONLY 3 new implementation fields:
         - universal_seo_elements (title tags, meta descriptions, canonical, OG tags, robots)
         - page_type_implementations (4-6 page type templates with examples)
-        - schema_markup_strategy (JSON-LD code examples, priority types, testing)
+        - schema_markup_strategy (LIGHT - schema type selections + rationale only)
 
+        JSON-LD code is generated by Python after this task completes.
         All 26 fields from Task 4 will be preserved via Python merge.
 
         Depends on: All previous tasks (1d, 2, 3, 4)
-        Output: ImplementationGuide (3 fields only)
+        Output: ImplementationGuideLight (schema_markup_strategy without JSON-LD code)
         """
         return Task(
             config=self.tasks_config["create_implementation_guide"],
@@ -1238,7 +1439,9 @@ class SEOStrategyCrew:
                 self.create_implementation_plan_task(),  # Task 3 (for roadmap)
                 self.synthesize_final_seo_strategy_task(),  # Task 4 (reference only)
             ],
-            output_pydantic=ImplementationGuide,
+            output_pydantic=ImplementationGuideLight,
+            guardrail=validate_implementation_guide_light_output,
+            guardrail_max_retries=2,
         )
 
     @crew
@@ -1529,6 +1732,50 @@ class SEOStrategyCrew:
 
         return "\n".join(lines)
 
+    def _limit_keywords_for_llm(
+        self,
+        keywords: list[dict],
+        limit: int | None,
+        sort_by: str = "opportunity_score",
+    ) -> tuple[list[dict], list[dict]]:
+        """
+        Split keywords into LLM subset and remainder for Python hydration.
+
+        This optimization reduces token usage by sending only the top N keywords
+        to the LLM for strategic analysis. Remaining keywords are hydrated by
+        Python using the tier-level strategy (no hallucination risk).
+
+        Args:
+            keywords: Full list of keyword dicts from CSV
+            limit: Max keywords to send to LLM (None = no limit, send all)
+            sort_by: Field to sort by (descending). Default "opportunity_score"
+
+        Returns:
+            Tuple of (llm_keywords, remaining_keywords)
+            - llm_keywords: Top N keywords sent to LLM for analysis
+            - remaining_keywords: Rest of keywords to hydrate via Python
+        """
+        if limit is None or len(keywords) <= limit:
+            return keywords, []
+
+        # Calculate opportunity_score if not present
+        def get_opp_score(kw: dict) -> float:
+            if sort_by in kw and kw[sort_by] is not None:
+                return float(kw[sort_by])
+            # Calculate from volume/competition
+            sv = kw.get("search_volume", 0) or 0
+            ci = kw.get("competition_index", 1) or 1
+            return sv / max(ci, 1)
+
+        # Sort by opportunity_score descending (highest value first)
+        sorted_kws = sorted(
+            keywords,
+            key=get_opp_score,
+            reverse=True
+        )
+
+        return sorted_kws[:limit], sorted_kws[limit:]
+
     def _has_location_mention(self, keyword_text: str) -> bool:
         """
         Check if keyword contains explicit location mention.
@@ -1560,18 +1807,22 @@ class SEOStrategyCrew:
         """
         Pre-filter keywords into 5 non-overlapping partitions for parallel processing.
 
+        Applies LLM limits (TIER_X_LLM_LIMIT) to optimize token usage:
+        - Sends top N keywords (by opportunity_score) to LLM for analysis
+        - Returns remaining keywords for Python hydration
+
         Partitions:
-        - tier_0: opp_score > 200 (Tier 0 Premium)
-        - tier_1: opp_score 100-200 (Tier 1 Quick Wins)
-        - strategic: opp_score 50-100 (Tier 2)
-        - geographic: location mentions, opp < 50 (Tier 3)
-        - category: remaining (Tier 4)
+        - tier_0: opp_score > 200 (Tier 0 Premium) - no limit
+        - tier_1: opp_score 100-200 (Tier 1 Quick Wins) - top 25
+        - strategic: opp_score 50-100 (Tier 2) - top 30
+        - geographic: location mentions, opp < 50 (Tier 3) - top 40
+        - category: remaining (Tier 4) - top 50
 
         Args:
             enriched_keywords: List of keyword dicts from DataForSEO
 
         Returns:
-            dict with CSV strings and counts for each partition
+            dict with CSV strings, counts, totals, and remaining keywords for each partition
         """
         tier_0_keywords = []          # opp_score > 200 → Task 1a-i
         tier_1_keywords = []          # opp_score 100-200 → Task 1a-ii
@@ -1601,31 +1852,67 @@ class SEOStrategyCrew:
             else:
                 category_keywords.append(kw)
 
+        # Apply LLM limits to each tier
+        tier_0_llm, tier_0_remaining = self._limit_keywords_for_llm(
+            tier_0_keywords, self.TIER_0_LLM_LIMIT
+        )
+        tier_1_llm, tier_1_remaining = self._limit_keywords_for_llm(
+            tier_1_keywords, self.TIER_1_LLM_LIMIT
+        )
+        tier_2_llm, tier_2_remaining = self._limit_keywords_for_llm(
+            strategic_keywords, self.TIER_2_LLM_LIMIT
+        )
+        tier_3_llm, tier_3_remaining = self._limit_keywords_for_llm(
+            geographic_keywords, self.TIER_3_LLM_LIMIT
+        )
+        tier_4_llm, tier_4_remaining = self._limit_keywords_for_llm(
+            category_keywords, self.TIER_4_LLM_LIMIT
+        )
+
+        # Log partitioning with limit details
         logger.info(
-            f"Keyword partitioning: Tier 0={len(tier_0_keywords)}, Tier 1={len(tier_1_keywords)}, "
-            f"Strategic={len(strategic_keywords)}, Geographic={len(geographic_keywords)}, "
-            f"Category={len(category_keywords)}"
+            f"Keyword partitioning (with LLM limits):\n"
+            f"  Tier 0: {len(tier_0_llm)} sent to LLM / {len(tier_0_keywords)} total (limit={self.TIER_0_LLM_LIMIT or 'None'})\n"
+            f"  Tier 1: {len(tier_1_llm)} sent to LLM / {len(tier_1_keywords)} total (limit={self.TIER_1_LLM_LIMIT})\n"
+            f"  Tier 2: {len(tier_2_llm)} sent to LLM / {len(strategic_keywords)} total (limit={self.TIER_2_LLM_LIMIT})\n"
+            f"  Tier 3: {len(tier_3_llm)} sent to LLM / {len(geographic_keywords)} total (limit={self.TIER_3_LLM_LIMIT})\n"
+            f"  Tier 4: {len(tier_4_llm)} sent to LLM / {len(category_keywords)} total (limit={self.TIER_4_LLM_LIMIT})"
         )
 
         return {
-            # Task 1a-i: Tier 0 Premium
-            "tier_0_csv": self._format_keywords_as_csv(tier_0_keywords),
-            "tier_0_count": len(tier_0_keywords),
-            # Task 1a-ii: Tier 1 Quick Wins
-            "tier_1_csv": self._format_keywords_as_csv(tier_1_keywords),
-            "tier_1_count": len(tier_1_keywords),
-            # Legacy: high_priority (for backward compatibility)
-            "high_priority_csv": self._format_keywords_as_csv(tier_0_keywords + tier_1_keywords),
-            "high_priority_count": len(tier_0_keywords) + len(tier_1_keywords),
-            # Task 1b: Strategic (T2)
-            "strategic_csv": self._format_keywords_as_csv(strategic_keywords),
-            "strategic_count": len(strategic_keywords),
-            # Task 1c: Geographic (T3)
-            "geographic_csv": self._format_keywords_as_csv(geographic_keywords),
-            "geographic_count": len(geographic_keywords),
-            # Task 1d: Category (T4)
-            "category_csv": self._format_keywords_as_csv(category_keywords),
-            "category_count": len(category_keywords),
+            # Task 1a-i: Tier 0 Premium (no limit)
+            "tier_0_csv": self._format_keywords_as_csv(tier_0_llm),
+            "tier_0_count": len(tier_0_llm),
+            "tier_0_total": len(tier_0_keywords),
+            "tier_0_remaining": tier_0_remaining,
+
+            # Task 1a-ii: Tier 1 Quick Wins (limited)
+            "tier_1_csv": self._format_keywords_as_csv(tier_1_llm),
+            "tier_1_count": len(tier_1_llm),
+            "tier_1_total": len(tier_1_keywords),
+            "tier_1_remaining": tier_1_remaining,
+
+            # Legacy: high_priority (for backward compatibility - uses limited sets)
+            "high_priority_csv": self._format_keywords_as_csv(tier_0_llm + tier_1_llm),
+            "high_priority_count": len(tier_0_llm) + len(tier_1_llm),
+
+            # Task 1b: Strategic / Tier 2 (limited)
+            "strategic_csv": self._format_keywords_as_csv(tier_2_llm),
+            "strategic_count": len(tier_2_llm),
+            "strategic_total": len(strategic_keywords),
+            "strategic_remaining": tier_2_remaining,
+
+            # Task 1c: Geographic / Tier 3 (limited)
+            "geographic_csv": self._format_keywords_as_csv(tier_3_llm),
+            "geographic_count": len(tier_3_llm),
+            "geographic_total": len(geographic_keywords),
+            "geographic_remaining": tier_3_remaining,
+
+            # Task 1d: Category / Tier 4 (limited)
+            "category_csv": self._format_keywords_as_csv(tier_4_llm),
+            "category_count": len(tier_4_llm),
+            "category_total": len(category_keywords),
+            "category_remaining": tier_4_remaining,
         }
 
     def _calculate_category_limits(self, keyword_count: int) -> tuple[int, int]:
@@ -2033,12 +2320,33 @@ class SEOStrategyCrew:
                     "Check FinalSynthesis schema and agent prompt."
                 )
 
-            task_5_output = task_outputs[7].pydantic  # ImplementationGuide
-            if task_5_output is None:
+            task_5_light = task_outputs[7].pydantic  # ImplementationGuideLight
+            if task_5_light is None:
                 raise ValueError(
                     "Task 5 (Implementation Guide) returned None pydantic output. "
-                    "Check ImplementationGuide schema and agent prompt."
+                    "Check ImplementationGuideLight schema and agent prompt."
                 )
+
+            # ========================================
+            # HYDRATION: Task 5 - Generate JSON-LD schemas via Python
+            # ========================================
+
+            # Extract pricing info for Service schema
+            pricing_dict = None
+            if self.selected_solution.pricing_strategy:
+                # Try to extract price from pricing strategy text
+                import re
+                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', self.selected_solution.pricing_strategy)
+                if price_match:
+                    pricing_dict = {"price": price_match.group(1)}
+
+            task_5_output = _hydrate_implementation_guide(
+                light=task_5_light,
+                solution_name=self.selected_solution.solution_name,
+                value_proposition=self.selected_solution.value_proposition or "",
+                niche=self.niche,
+                pricing=pricing_dict,
+            )
 
             # Prepare seed keywords from conceptual expansion (if available)
             seed_keywords = (
@@ -2063,7 +2371,7 @@ class SEOStrategyCrew:
                 conclusion_bottom_line=task_4_output.conclusion_bottom_line,
                 competitive_advantages=task_4_output.competitive_advantages,
                 critical_success_factors=task_4_output.critical_success_factors,
-                # Task 5 fields (3 fields)
+                # Task 5 fields (3 fields) - hydrated with Python-generated JSON-LD
                 universal_seo_elements=task_5_output.universal_seo_elements,
                 page_type_implementations=task_5_output.page_type_implementations,
                 schema_markup_strategy=task_5_output.schema_markup_strategy,
@@ -2251,18 +2559,23 @@ class SEOStrategyCrew:
                     # Split Tier 0 and Tier 1 CSVs (new parallel tasks)
                     "tier_0_keywords_csv": partitions["tier_0_csv"],
                     "tier_0_keywords_count": partitions["tier_0_count"],
+                    "tier_0_total": partitions["tier_0_total"],  # For sampling context
                     "tier_1_keywords_csv": partitions["tier_1_csv"],
                     "tier_1_keywords_count": partitions["tier_1_count"],
+                    "tier_1_total": partitions["tier_1_total"],  # For sampling context
                     # Legacy: high_priority (backward compatibility)
                     "high_priority_keywords_csv": partitions["high_priority_csv"],
                     "high_priority_keywords_count": partitions["high_priority_count"],
                     # Other partitioned CSVs for parallel tasks
                     "strategic_keywords_csv": partitions["strategic_csv"],
                     "strategic_keywords_count": partitions["strategic_count"],
+                    "strategic_total": partitions["strategic_total"],  # For sampling context
                     "geographic_keywords_csv": partitions["geographic_csv"],
                     "geographic_keywords_count": partitions["geographic_count"],
+                    "geographic_total": partitions["geographic_total"],  # For sampling context
                     "category_keywords_csv": partitions["category_csv"],
                     "category_keywords_count": partitions["category_count"],
+                    "category_total": partitions["category_total"],  # For sampling context
                     # Dynamic category limits (calculated by Python, not LLM)
                     "min_category_groups": cat_min,
                     "max_category_groups": cat_max,
@@ -2346,6 +2659,18 @@ class SEOStrategyCrew:
             if len(tier_0_keywords) < len(tier_0_light):
                 logger.warning(f"⚠️ Removed {len(tier_0_light) - len(tier_0_keywords)} duplicate keywords from tier_0_keywords")
 
+            # Hydrate remaining Tier 0 keywords (Python hydration - no LLM limit exceeded for Tier 0)
+            tier_0_remaining = partitions.get("tier_0_remaining", [])
+            if tier_0_remaining:
+                tier_0_hydrated_remaining = _hydrate_remaining_keywords(
+                    remaining=tier_0_remaining,
+                    tier=0,
+                    tier_strategy=task_1a_i_output.tier_0_strategy,
+                    lookup=lookup,
+                )
+                tier_0_keywords.extend(tier_0_hydrated_remaining)
+                logger.info(f"✅ Tier 0: {len(tier_0_light)} analyzed by LLM, {len(tier_0_hydrated_remaining)} hydrated by Python ({len(tier_0_keywords)} total)")
+
             # Hydrate Tier 1 (Task 1a-ii) - lightweight -> full TieredKeyword
             tier_1_light = task_1a_ii_output.tier_1_keywords or []
             tier_1_keywords = []
@@ -2357,6 +2682,18 @@ class SEOStrategyCrew:
                     seen_t1.add(kw_key)
             if len(tier_1_keywords) < len(tier_1_light):
                 logger.warning(f"⚠️ Removed {len(tier_1_light) - len(tier_1_keywords)} duplicate keywords from tier_1_keywords")
+
+            # Hydrate remaining Tier 1 keywords (Python hydration)
+            tier_1_remaining = partitions.get("tier_1_remaining", [])
+            if tier_1_remaining:
+                tier_1_hydrated_remaining = _hydrate_remaining_keywords(
+                    remaining=tier_1_remaining,
+                    tier=1,
+                    tier_strategy=task_1a_ii_output.tier_1_quick_win_strategy,
+                    lookup=lookup,
+                )
+                tier_1_keywords.extend(tier_1_hydrated_remaining)
+                logger.info(f"✅ Tier 1: {len(tier_1_light)} analyzed by LLM, {len(tier_1_hydrated_remaining)} hydrated by Python ({len(tier_1_keywords)} total)")
 
             # Hydrate Tier 2 (Task 1b) - lightweight -> full TieredKeyword
             tier_2_light = task_1b_output.tier_2_keywords or []
@@ -2370,6 +2707,18 @@ class SEOStrategyCrew:
             if tier_2_keywords and len(tier_2_keywords) < len(tier_2_light):
                 logger.warning(f"⚠️ Removed {len(tier_2_light) - len(tier_2_keywords)} duplicate keywords from tier_2_keywords")
 
+            # Hydrate remaining Tier 2 keywords (Python hydration)
+            tier_2_remaining = partitions.get("strategic_remaining", [])
+            if tier_2_remaining:
+                tier_2_hydrated_remaining = _hydrate_remaining_keywords(
+                    remaining=tier_2_remaining,
+                    tier=2,
+                    tier_strategy=task_1b_output.tier_2_strategy,
+                    lookup=lookup,
+                )
+                tier_2_keywords.extend(tier_2_hydrated_remaining)
+                logger.info(f"✅ Tier 2: {len(tier_2_light)} analyzed by LLM, {len(tier_2_hydrated_remaining)} hydrated by Python ({len(tier_2_keywords)} total)")
+
             # Hydrate Geographic (Task 1c) - lightweight -> full GeographicKeywordGroup
             tier_3_light_groups = task_1c_output.tier_3_geographic_groups or []
             tier_3_groups = [
@@ -2377,12 +2726,81 @@ class SEOStrategyCrew:
                 for g in tier_3_light_groups
             ] if tier_3_light_groups else None
 
+            # Hydrate remaining Tier 3 (Geographic) keywords (Python hydration)
+            # Note: Geographic keywords are grouped, so remaining ones go into a "Python-Hydrated" group
+            tier_3_remaining = partitions.get("geographic_remaining", [])
+            if tier_3_remaining:
+                # Create TieredKeywords for remaining geographic keywords
+                tier_3_hydrated_remaining = _hydrate_remaining_keywords(
+                    remaining=tier_3_remaining,
+                    tier=3,
+                    tier_strategy=task_1c_output.geographic_strategy_notes,
+                    lookup=lookup,
+                )
+                # Create a catch-all geographic group for remaining keywords
+                if tier_3_hydrated_remaining:
+                    from ..models.seo_strategy import GeographicKeywordGroup, GeographicKeywordEntry
+                    remaining_entries = [
+                        GeographicKeywordEntry(
+                            keyword=kw.keyword,
+                            city="[Auto-detected]",
+                            search_volume=kw.search_volume,
+                            notes=kw.tier_rationale,
+                        )
+                        for kw in tier_3_hydrated_remaining
+                    ]
+                    remaining_group = GeographicKeywordGroup(
+                        region_name="Python-Hydrated Geographic",
+                        total_volume=sum(kw.search_volume or 0 for kw in tier_3_hydrated_remaining),
+                        keywords=remaining_entries,
+                        strategy_notes="[Auto-tiered] " + (task_1c_output.geographic_strategy_notes or "Applied tier-level strategy programmatically")[:150],
+                        competition_level="MEDIUM",
+                    )
+                    if tier_3_groups is None:
+                        tier_3_groups = []
+                    tier_3_groups.append(remaining_group)
+                    logger.info(f"✅ Tier 3 (Geographic): {sum(len(g.keywords) for g in tier_3_light_groups)} analyzed by LLM, {len(tier_3_hydrated_remaining)} hydrated by Python")
+
             # Hydrate Category (Task 1d) - lightweight -> full CategoryKeywordGroup
             tier_4_light_groups = task_1d_output.tier_4_category_groups or []
             tier_4_groups = [
                 _hydrate_category_group(g, lookup)
                 for g in tier_4_light_groups
             ] if tier_4_light_groups else None
+
+            # Hydrate remaining Tier 4 (Category) keywords (Python hydration)
+            # Note: Category keywords are grouped, so remaining ones go into a "Python-Hydrated" group
+            tier_4_remaining = partitions.get("category_remaining", [])
+            if tier_4_remaining:
+                # Create TieredKeywords for remaining category keywords
+                tier_4_hydrated_remaining = _hydrate_remaining_keywords(
+                    remaining=tier_4_remaining,
+                    tier=4,
+                    tier_strategy=task_1d_output.category_strategy_notes,
+                    lookup=lookup,
+                )
+                # Create a catch-all category group for remaining keywords
+                if tier_4_hydrated_remaining:
+                    from ..models.seo_strategy import CategoryKeywordGroup, CategoryKeywordEntry
+                    remaining_entries = [
+                        CategoryKeywordEntry(
+                            keyword_name=kw.keyword,
+                            search_volume=kw.search_volume,
+                            competition=kw.competition,
+                            cpc=None,
+                        )
+                        for kw in tier_4_hydrated_remaining
+                    ]
+                    remaining_group = CategoryKeywordGroup(
+                        category_name="Python-Hydrated Category",
+                        total_volume=sum(kw.search_volume or 0 for kw in tier_4_hydrated_remaining),
+                        keywords=remaining_entries,
+                        strategy_recommendation="[Auto-tiered] " + (task_1d_output.category_strategy_notes or "Applied tier-level strategy programmatically")[:150],
+                    )
+                    if tier_4_groups is None:
+                        tier_4_groups = []
+                    tier_4_groups.append(remaining_group)
+                    logger.info(f"✅ Tier 4 (Category): {sum(len(g.keywords) for g in tier_4_light_groups)} analyzed by LLM, {len(tier_4_hydrated_remaining)} hydrated by Python")
 
             logger.info(
                 f"✅ Hydration complete: T0={len(tier_0_keywords)}, T1={len(tier_1_keywords)}, "
@@ -2583,12 +3001,33 @@ class SEOStrategyCrew:
                     "Check FinalSynthesis schema and agent prompt."
                 )
 
-            task_5_output = task_outputs[9].pydantic  # ImplementationGuide
-            if task_5_output is None:
+            task_5_light = task_outputs[9].pydantic  # ImplementationGuideLight
+            if task_5_light is None:
                 raise ValueError(
                     "Task 5 (Implementation Guide) returned None pydantic output. "
-                    "Check ImplementationGuide schema and agent prompt."
+                    "Check ImplementationGuideLight schema and agent prompt."
                 )
+
+            # ========================================
+            # HYDRATION: Task 5 - Generate JSON-LD schemas via Python
+            # ========================================
+
+            # Extract pricing info for Service schema
+            pricing_dict = None
+            if self.selected_solution.pricing_strategy:
+                # Try to extract price from pricing strategy text
+                import re
+                price_match = re.search(r'\$(\d+(?:\.\d{2})?)', self.selected_solution.pricing_strategy)
+                if price_match:
+                    pricing_dict = {"price": price_match.group(1)}
+
+            task_5_output = _hydrate_implementation_guide(
+                light=task_5_light,
+                solution_name=self.selected_solution.solution_name,
+                value_proposition=self.selected_solution.value_proposition or "",
+                niche=self.niche,
+                pricing=pricing_dict,
+            )
 
             # Prepare seed keywords from conceptual expansion (if available)
             seed_keywords = (
@@ -2613,7 +3052,7 @@ class SEOStrategyCrew:
                 conclusion_bottom_line=task_4_output.conclusion_bottom_line,
                 competitive_advantages=task_4_output.competitive_advantages,
                 critical_success_factors=task_4_output.critical_success_factors,
-                # Task 5 fields (3 fields)
+                # Task 5 fields (3 fields) - hydrated with Python-generated JSON-LD
                 universal_seo_elements=task_5_output.universal_seo_elements,
                 page_type_implementations=task_5_output.page_type_implementations,
                 schema_markup_strategy=task_5_output.schema_markup_strategy,

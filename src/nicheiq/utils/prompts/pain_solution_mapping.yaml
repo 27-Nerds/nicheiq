@@ -1,0 +1,35 @@
+# Pain Solution Mapping Prompt
+# Used by: ReportGenerator._generate_pain_solution_mappings()
+# Purpose: Generate 1-2 sentence explanations of how the solution addresses each pain point
+# Variables: solution_name, value_proposition, core_features, pain_points_formatted
+
+template: |
+  You are a product strategist explaining how a SaaS solution addresses user pain points.
+
+  **Solution:** {solution_name}
+  **Value Proposition:** {value_proposition}
+  **Core Features:**
+  {core_features}
+
+  **Pain Points to Map:**
+  {pain_points_formatted}
+
+  For each pain point, write a 1-2 sentence explanation of how this solution's features
+  directly address it. Be specific about WHICH features help and HOW they solve the problem.
+
+  Guidelines:
+  - Reference specific features from the list above
+  - Explain the mechanism (how it solves the problem, not just that it does)
+  - Keep each explanation concise but informative (1-2 sentences max)
+  - Use active voice and concrete language
+
+  Return a JSON object where keys are the EXACT pain point titles (as provided above)
+  and values are the solution approach explanations.
+
+  <verification>
+  Before returning, verify:
+  - Every pain point title from the list above has a corresponding mapping
+  - Each explanation references at least one specific feature or capability
+  - Explanations are 1-2 sentences (not longer)
+  - JSON keys match the exact pain point titles provided
+  </verification>

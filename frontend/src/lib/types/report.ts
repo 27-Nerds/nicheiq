@@ -312,6 +312,7 @@ export interface DetailedPainPoint {
 	source_post_ids: string[];
 	source_engagement_metrics: EngagementMetric[];
 	affected_segments?: string[];
+	solution_approach?: string;
 }
 
 export interface EngagementMetric {

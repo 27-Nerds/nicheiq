@@ -163,6 +163,22 @@ class CheckpointManager:
         if hasattr(self.state, 'pain_point_confidence_score') and self.state.pain_point_confidence_score is not None:
             metadata["pain_point_confidence_score"] = self.state.pain_point_confidence_score
 
+        # Filtering stats (for data quality summary in final report)
+        if hasattr(self.state, 'filtering_stats') and self.state.filtering_stats:
+            metadata["filtering_stats"] = self.state.filtering_stats
+
+        # Completed stages list (for diagnostic visibility in final report)
+        if hasattr(self.state, 'completed_stages') and self.state.completed_stages:
+            metadata["completed_stage_numbers"] = self.state.completed_stages
+
+        # Fallback stages list (for quality warnings in final report)
+        if hasattr(self.state, 'fallback_stages') and self.state.fallback_stages:
+            metadata["fallback_stages"] = self.state.fallback_stages
+
+        # Social content metrics (for research metadata in final report)
+        if hasattr(self.state, 'social_content_metrics') and self.state.social_content_metrics:
+            metadata["social_content_metrics"] = self.state.social_content_metrics
+
         # Stage completion timestamps (for timing summary in final report)
         if hasattr(self.state, 'stage_completion_timestamps') and self.state.stage_completion_timestamps:
             metadata["stage_completion_timestamps"] = {
@@ -371,6 +387,22 @@ class CheckpointManager:
             self.state.pain_point_quality_tier = metadata["pain_point_quality_tier"]
         if metadata.get("pain_point_confidence_score") is not None:
             self.state.pain_point_confidence_score = metadata["pain_point_confidence_score"]
+
+        # Restore filtering stats
+        if metadata.get("filtering_stats"):
+            self.state.filtering_stats = metadata["filtering_stats"]
+
+        # Restore completed stages list
+        if metadata.get("completed_stage_numbers"):
+            self.state.completed_stages = metadata["completed_stage_numbers"]
+
+        # Restore fallback stages list
+        if metadata.get("fallback_stages"):
+            self.state.fallback_stages = metadata["fallback_stages"]
+
+        # Restore social content metrics
+        if metadata.get("social_content_metrics"):
+            self.state.social_content_metrics = metadata["social_content_metrics"]
 
         # Restore stage completion timestamps
         if metadata.get("stage_completion_timestamps"):

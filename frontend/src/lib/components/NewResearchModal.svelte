@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto, invalidateAll } from '$app/navigation';
   import { page } from '$app/stores';
-  import { X, ArrowRight, Loader2, AlertCircle, Coins } from 'lucide-svelte';
+  import { X, ArrowRight, Loader2, AlertCircle, Coins, Sparkles, Wand2 } from 'lucide-svelte';
 
   let { open = $bindable(false) } = $props();
 
@@ -13,6 +13,11 @@
   let loading = $state(false);
   let error = $state('');
   let isInsufficientCredits = $state(false);
+
+  // Suggestion state
+  let suggestLoading = $state(false);
+  let suggestMode = $state<'lucky' | 'complete' | null>(null);
+  let suggestError = $state('');
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
@@ -64,6 +69,69 @@
   function handleKeydown(e: KeyboardEvent) {
     if (e.key === 'Escape' && open) {
       open = false;
+    }
+  }
+
+  async function handleFeelingLucky() {
+    suggestLoading = true;
+    suggestMode = 'lucky';
+    suggestError = '';
+
+    try {
+      const res = await fetch('/api/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'feeling_lucky', count: 1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        suggestError =
+          res.status === 429
+            ? `Rate limited. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} min.`
+            : data.error || 'Failed to generate suggestion';
+        return;
+      }
+      // Directly set textarea value
+      if (data.suggestions?.[0]?.niche) {
+        niche = data.suggestions[0].niche;
+      }
+    } catch {
+      suggestError = 'Failed to connect';
+    } finally {
+      suggestLoading = false;
+      suggestMode = null;
+    }
+  }
+
+  async function handleExpandThis() {
+    if (!niche.trim()) return;
+    suggestLoading = true;
+    suggestMode = 'complete';
+    suggestError = '';
+
+    try {
+      const res = await fetch('/api/suggest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'auto_complete', partial_input: niche.trim(), count: 1 }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        suggestError =
+          res.status === 429
+            ? `Rate limited. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} min.`
+            : data.error || 'Failed to expand';
+        return;
+      }
+      // Directly replace textarea value
+      if (data.suggestions?.[0]?.niche) {
+        niche = data.suggestions[0].niche;
+      }
+    } catch {
+      suggestError = 'Failed to connect';
+    } finally {
+      suggestLoading = false;
+      suggestMode = null;
     }
   }
 </script>
@@ -137,6 +205,50 @@
             <p class="text-xs text-text-muted mt-1.5">
               We'll find pain points and generate solution ideas for this market.
             </p>
+
+            <!-- Suggestion buttons -->
+            <div class="flex items-center gap-2 mt-3">
+              <button
+                type="button"
+                onclick={handleFeelingLucky}
+                disabled={loading || suggestLoading}
+                class="text-sm px-4 py-2 rounded-lg border border-border bg-bg-surface
+                       hover:border-accent hover:bg-accent/5 text-text-primary
+                       transition-colors flex items-center gap-2
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {#if suggestLoading && suggestMode === 'lucky'}
+                  <Loader2 class="w-4 h-4 animate-spin" />
+                  Generating...
+                {:else}
+                  <Sparkles class="w-4 h-4 text-accent" />
+                  Feeling Lucky
+                {/if}
+              </button>
+
+              <button
+                type="button"
+                onclick={handleExpandThis}
+                disabled={loading || suggestLoading || !niche.trim()}
+                class="text-sm px-4 py-2 rounded-lg border border-border bg-bg-surface
+                       hover:border-accent hover:bg-accent/5 text-text-primary
+                       transition-colors flex items-center gap-2
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {#if suggestLoading && suggestMode === 'complete'}
+                  <Loader2 class="w-4 h-4 animate-spin" />
+                  Expanding...
+                {:else}
+                  <Wand2 class="w-4 h-4 text-accent" />
+                  Expand This
+                {/if}
+              </button>
+            </div>
+
+            <!-- Error only -->
+            {#if suggestError}
+              <p class="text-xs text-error mt-2">{suggestError}</p>
+            {/if}
           </div>
         {/if}
 

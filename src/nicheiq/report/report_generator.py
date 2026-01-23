@@ -120,6 +120,21 @@ class ReportGenerator:
         logger.info("Step 2: Enhancing with LLM for strategic synthesis (optional)...")
         final_report = self._enhance_report_with_llm(final_report)
 
+        # Step 2.5: Generate pain-solution mappings (LLM-based)
+        if final_report.detailed_pain_points and final_report.selected_solution_details:
+            pain_solution_mappings = self._generate_pain_solution_mappings(
+                pain_points=final_report.detailed_pain_points,
+                solution=final_report.selected_solution_details
+            )
+            # Apply mappings to pain points
+            if pain_solution_mappings:
+                for pp in final_report.detailed_pain_points:
+                    if pp.title in pain_solution_mappings:
+                        pp.solution_approach = pain_solution_mappings[pp.title]
+                logger.info(
+                    f"[OK] Applied solution approach to {len(pain_solution_mappings)} pain points"
+                )
+
         # Step 3: Generate enhanced report sections (Python-based data preservation)
         logger.info("Step 3: Generating enhanced report sections (Python)...")
 
@@ -753,6 +768,76 @@ class ReportGenerator:
             logger.warning(f"LLM enhancement failed: {e}. Using template-based fields.")
             # Return base report unchanged if LLM fails
             return base_report
+
+    def _generate_pain_solution_mappings(
+        self,
+        pain_points: list,
+        solution: "SolutionIdea | None"
+    ) -> dict[str, str]:
+        """
+        Generate LLM-based explanations of how the solution addresses each pain point.
+
+        Uses gpt-4o-mini for cost-effectiveness (~$0.0003 per report).
+
+        Args:
+            pain_points: List of PainPoint objects (top 10 used)
+            solution: Selected SolutionIdea with features and value proposition
+
+        Returns:
+            Dictionary mapping pain point titles to solution approach explanations
+        """
+        from ..utils.prompts import load_prompt
+        from ..models.pain_point import PainPoint
+
+        if not pain_points or not solution:
+            return {}
+
+        # Define minimal Pydantic model for mapping output
+        class PainSolutionMapping(BaseModel):
+            """Maps pain point titles to solution approach explanations."""
+            mappings: dict[str, str] = Field(
+                ...,
+                description="Dictionary mapping pain point titles to 1-2 sentence explanations"
+            )
+
+        # Format pain points for prompt (limit to top 10)
+        pain_points_to_map = pain_points[:10]
+        pain_points_formatted = "\n".join([
+            f"- {pp.title}: {pp.description[:200]}{'...' if len(pp.description) > 200 else ''}"
+            for pp in pain_points_to_map
+        ])
+
+        # Format core features
+        core_features = solution.core_features or solution.key_features or []
+        core_features_formatted = "\n".join([
+            f"- {f}" for f in core_features[:8]
+        ]) if core_features else "- General SaaS platform capabilities"
+
+        # Load and format prompt
+        try:
+            template = load_prompt("pain_solution_mapping")
+            prompt = template.format(
+                solution_name=solution.solution_name,
+                value_proposition=solution.value_proposition or solution.description or "Comprehensive solution",
+                core_features=core_features_formatted,
+                pain_points_formatted=pain_points_formatted
+            )
+
+            logger.info(f"Generating pain-solution mappings for {len(pain_points_to_map)} pain points...")
+
+            result, _usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=PainSolutionMapping,
+                temperature=0.5,  # Lower for consistency
+                model_name=settings.pain_solution_mapping_llm
+            )
+
+            logger.info(f"[OK] Generated {len(result.mappings)} pain-solution mappings")
+            return result.mappings
+
+        except Exception as e:
+            logger.warning(f"Pain-solution mapping failed: {e}")
+            return {}
 
     # ==================================================================================
     # Enhanced Section Generators (6 methods)

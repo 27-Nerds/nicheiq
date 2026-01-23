@@ -1513,3 +1513,99 @@ class ImplementationGuide(BaseModel):
     schema_markup_strategy: SchemaMarkupStrategy = Field(
         ..., description="Schema markup strategy with JSON-LD examples and testing"
     )
+
+
+# ========================================
+# LIGHTWEIGHT TASK 5 OUTPUT MODELS FOR PYTHON HYDRATION
+# ========================================
+# These models capture only LLM-generated content (schema selections + strategic guidance).
+# Python generates actual JSON-LD code using templates + solution context.
+
+
+class SchemaSelectionLight(BaseModel):
+    """
+    Lightweight schema selection - Python generates actual JSON-LD.
+
+    LLM selects which schemas to use and provides strategic rationale,
+    but does NOT generate the actual JSON-LD code (which is 80% static).
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    schema_type: str = Field(
+        ...,
+        description="Schema.org type: Organization, Service, FAQPage, BreadcrumbList, Article, WebPage, Review, HowTo"
+    )
+    priority: int = Field(
+        ..., ge=1, le=5, description="Implementation priority (1=critical, 5=nice-to-have)"
+    )
+    strategic_rationale: str = Field(
+        ..., description="Why this schema matters for SEO (1-2 sentences)"
+    )
+    # For FAQPage - LLM suggests question topics (not full questions)
+    suggested_questions: Optional[list[str]] = Field(
+        default=None,
+        description="For FAQPage: 3-5 question topics (not full questions, e.g., 'pricing', 'how it works')"
+    )
+
+
+class SchemaMarkupStrategyLight(BaseModel):
+    """
+    Lightweight schema strategy - Python generates JSON-LD code.
+
+    LLM provides:
+    - Strategic narrative (why schema matters)
+    - Schema type selections with rationale
+    - Implementation guidance
+
+    Python hydrates with:
+    - Actual JSON-LD code from templates
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    why_schema_matters: str = Field(
+        ...,
+        description="Benefits narrative (rich results, voice search, AI search, CTR) - 2-3 paragraphs, markdown"
+    )
+    selected_schemas: list[SchemaSelectionLight] = Field(
+        ...,
+        min_length=4,
+        description="4-8 schema types to implement with strategic rationale"
+    )
+    implementation_method: str = Field(
+        ...,
+        description="JSON-LD format guidance, placement in <head>, why JSON-LD over Microdata - 2 paragraphs, markdown"
+    )
+    testing_validation: str = Field(
+        ...,
+        description="Testing tools and process (Google Rich Results Test, Schema Validator, Search Console) - 2 paragraphs, markdown"
+    )
+
+
+class ImplementationGuideLight(BaseModel):
+    """
+    Lightweight Task 5 output - schema_markup_strategy uses light model.
+
+    LLM generates:
+    - universal_seo_elements (same as before - pure strategic content)
+    - page_type_implementations (same as before - pure strategic content)
+    - schema_markup_strategy (LIGHT - schema selections + rationale only)
+
+    Python hydrates:
+    - schema_markup_strategy.schema_examples (JSON-LD code from templates)
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    universal_seo_elements: UniversalSEOElements = Field(
+        ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"
+    )
+    page_type_implementations: list[PageTypeImplementation] = Field(
+        ...,
+        min_length=4,
+        description="SEO templates for 4-6 key page types (minimum 4)"
+    )
+    schema_markup_strategy: SchemaMarkupStrategyLight = Field(
+        ..., description="Schema strategy with type selections (Python generates JSON-LD code)"
+    )
