@@ -195,7 +195,7 @@ class Settings(BaseSettings):
         description="Minimum score for Reddit comments (filters out low-quality/downvoted comments)"
     )
     max_reddit_content_tokens: int = Field(
-        default=400_000,
+        default=150_000,
         description="Maximum tokens for Reddit content in PainPointCrew (filters by engagement/recency)"
     )
     min_twitter_likes: int = Field(default=10, description="Minimum likes for Twitter posts (higher threshold for quality)")

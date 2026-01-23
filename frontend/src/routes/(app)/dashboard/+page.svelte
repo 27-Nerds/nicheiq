@@ -109,8 +109,11 @@
   const failedJobs = $derived(jobs.filter((j) => j.status.toUpperCase() === 'FAILED'));
 
   // Collapsible state for completed jobs
-  const INITIAL_VISIBLE_COMPLETED = 3;
+  const INITIAL_VISIBLE_COMPLETED = 6;
   let showAllCompleted = $state(false);
+
+  // Collapsible state for failed jobs
+  let showFailedJobs = $state(true);
   const visibleCompletedJobs = $derived(
     showAllCompleted ? completedJobs : completedJobs.slice(0, INITIAL_VISIBLE_COMPLETED)
   );
@@ -822,96 +825,9 @@
         </div>
       {/if}
 
-      <!-- Failed Jobs Section -->
-      {#if filteredFailedJobs.length > 0}
-        {#if filteredActiveJobs.length > 0}
-          <div class="my-6">
-            <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
-          </div>
-        {/if}
-        <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <div class="w-1 h-6 rounded-full bg-error"></div>
-            <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
-              Failed
-            </h2>
-            <span class="text-xs font-mono text-error bg-error/10 px-2 py-0.5 rounded-full">
-              {filteredFailedJobs.length}
-            </span>
-          </div>
-          <div class="grid gap-3">
-            {#each filteredFailedJobs as job, i}
-              {@const humanError = getHumanReadableError(job)}
-              {@const isQualityGate = humanError.isQualityGate}
-              <div
-                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 animate-fade-slide-in {isQualityGate ? 'border-l-warning' : 'border-l-error'}"
-                style="animation-delay: {i * 50}ms"
-              >
-                <div class="flex flex-col sm:flex-row sm:items-start gap-4">
-                  <div class="flex-1 min-w-0">
-                    <!-- Title Row with dot indicator -->
-                    <div class="flex items-center gap-2.5 mb-2">
-                      <span class="w-2 h-2 rounded-full shrink-0 {isQualityGate ? 'bg-warning' : 'bg-error'}"></span>
-                      <h3 class="text-base font-semibold text-text-primary truncate">
-                        {formatNicheTitle(job.niche)}
-                      </h3>
-                      <span class="text-xs text-text-muted ml-auto" title={formatDate(job.createdAt)}>
-                        {formatRelativeDate(job.createdAt)}
-                      </span>
-                    </div>
-
-                    <!-- User-Friendly Error/Quality Gate Container -->
-                    {#if job.errorMessage || job.stopReason}
-                      <div class="mt-3 p-3 rounded-lg {isQualityGate ? 'bg-warning/5 border border-warning/10' : 'bg-error/5 border border-error/10'}">
-                        <div class="flex items-start gap-2">
-                          <AlertCircle class="w-4 h-4 shrink-0 mt-0.5 {isQualityGate ? 'text-warning' : 'text-error'}" />
-                          <div class="flex-1">
-                            <p class="text-sm font-medium {isQualityGate ? 'text-warning' : 'text-error'}">
-                              {humanError.summary}
-                            </p>
-                            <p class="text-xs text-text-muted mt-0.5">
-                              {humanError.suggestion}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    {/if}
-
-                    <!-- Credit Refund Indicator -->
-                    {#if job.creditRefunded || isQualityGate}
-                      <div class="flex items-center gap-1.5 mt-2">
-                        <CheckCircle class="w-3.5 h-3.5 text-success" />
-                        <span class="text-xs text-success font-medium">Credit refunded</span>
-                      </div>
-                    {/if}
-                  </div>
-
-                  <!-- Action Buttons -->
-                  <div class="flex items-center gap-2 shrink-0">
-                    <button
-                      onclick={() => resumeJob(job)}
-                      disabled={resumingJobs.has(job.id)}
-                      class="btn-primary flex items-center gap-2"
-                      title="Resume from last checkpoint (no credit charge)"
-                    >
-                      <RotateCw class="w-4 h-4 {resumingJobs.has(job.id) ? 'animate-spin' : ''}" />
-                      {resumingJobs.has(job.id) ? 'Resuming...' : 'Resume'}
-                    </button>
-                    <a href="/jobs/{job.id}" class="btn-secondary">
-                      Details
-                      <ArrowRight class="w-4 h-4" />
-                    </a>
-                  </div>
-                </div>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
       <!-- Completed Jobs Section -->
       {#if filteredCompletedJobs.length > 0}
-        {#if filteredActiveJobs.length > 0 || filteredFailedJobs.length > 0}
+        {#if filteredActiveJobs.length > 0}
           <div class="my-6">
             <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
           </div>
@@ -1012,6 +928,108 @@
                 Show {filteredCompletedJobs.length - INITIAL_VISIBLE_COMPLETED} more completed
               {/if}
             </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- Failed Jobs Section -->
+      {#if filteredFailedJobs.length > 0}
+        {#if filteredActiveJobs.length > 0 || filteredCompletedJobs.length > 0}
+          <div class="my-6">
+            <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
+          </div>
+        {/if}
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-1 h-6 rounded-full bg-error"></div>
+              <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+                Failed
+              </h2>
+              <span class="text-xs font-mono text-error bg-error/10 px-2 py-0.5 rounded-full">
+                {filteredFailedJobs.length}
+              </span>
+            </div>
+            <button
+              onclick={() => showFailedJobs = !showFailedJobs}
+              class="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+              aria-label={showFailedJobs ? 'Collapse failed jobs' : 'Expand failed jobs'}
+            >
+              {#if showFailedJobs}
+                <ChevronUp class="w-4 h-4" />
+              {:else}
+                <ChevronDown class="w-4 h-4" />
+              {/if}
+            </button>
+          </div>
+          {#if showFailedJobs}
+            <div class="grid gap-3">
+              {#each filteredFailedJobs as job, i}
+                {@const humanError = getHumanReadableError(job)}
+                {@const isQualityGate = humanError.isQualityGate}
+                <div
+                  class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 animate-fade-slide-in {isQualityGate ? 'border-l-warning' : 'border-l-error'}"
+                  style="animation-delay: {i * 50}ms"
+                >
+                  <div class="flex flex-col sm:flex-row sm:items-start gap-4">
+                    <div class="flex-1 min-w-0">
+                      <!-- Title Row with dot indicator -->
+                      <div class="flex items-center gap-2.5 mb-2">
+                        <span class="w-2 h-2 rounded-full shrink-0 {isQualityGate ? 'bg-warning' : 'bg-error'}"></span>
+                        <h3 class="text-base font-semibold text-text-primary truncate">
+                          {formatNicheTitle(job.niche)}
+                        </h3>
+                        <span class="text-xs text-text-muted ml-auto" title={formatDate(job.createdAt)}>
+                          {formatRelativeDate(job.createdAt)}
+                        </span>
+                      </div>
+
+                      <!-- User-Friendly Error/Quality Gate Container -->
+                      {#if job.errorMessage || job.stopReason}
+                        <div class="mt-3 p-3 rounded-lg {isQualityGate ? 'bg-warning/5 border border-warning/10' : 'bg-error/5 border border-error/10'}">
+                          <div class="flex items-start gap-2">
+                            <AlertCircle class="w-4 h-4 shrink-0 mt-0.5 {isQualityGate ? 'text-warning' : 'text-error'}" />
+                            <div class="flex-1">
+                              <p class="text-sm font-medium {isQualityGate ? 'text-warning' : 'text-error'}">
+                                {humanError.summary}
+                              </p>
+                              <p class="text-xs text-text-muted mt-0.5">
+                                {humanError.suggestion}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      {/if}
+
+                      <!-- Credit Refund Indicator -->
+                      {#if job.creditRefunded || isQualityGate}
+                        <div class="flex items-center gap-1.5 mt-2">
+                          <CheckCircle class="w-3.5 h-3.5 text-success" />
+                          <span class="text-xs text-success font-medium">Credit refunded</span>
+                        </div>
+                      {/if}
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="flex items-center gap-2 shrink-0">
+                      <button
+                        onclick={() => resumeJob(job)}
+                        disabled={resumingJobs.has(job.id)}
+                        class="btn-primary flex items-center gap-2"
+                        title="Resume from last checkpoint (no credit charge)"
+                      >
+                        <RotateCw class="w-4 h-4 {resumingJobs.has(job.id) ? 'animate-spin' : ''}" />
+                        {resumingJobs.has(job.id) ? 'Resuming...' : 'Resume'}
+                      </button>
+                      <a href="/jobs/{job.id}" class="btn-secondary">
+                        Details
+                        <ArrowRight class="w-4 h-4" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
           {/if}
         </div>
       {/if}

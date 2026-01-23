@@ -866,12 +866,52 @@ class PainPointCrew:
                 model=settings.content_analysis_llm
             )
 
-            # Context limit check: ~1M tokens available, leave 400K for scaffolding + agent overhead
-            max_content_tokens = 600_000
+            # Use configured limit, with safe maximum cap
+            max_content_tokens = min(settings.max_reddit_content_tokens, 500_000)
+
+            # Iteratively remove lowest quality posts until content fits
+            original_post_count = len(self.reddit_posts)
+            reduction_iterations = 0
+            max_iterations = 10  # Safety limit to prevent infinite loop
+
+            while content_tokens > max_content_tokens and len(self.reddit_posts) > 1 and reduction_iterations < max_iterations:
+                reduction_iterations += 1
+
+                # Sort posts by engagement/recency score (lowest first)
+                sorted_posts = sorted(
+                    self.reddit_posts,
+                    key=monitor.engagement_recency_score,
+                    reverse=False  # Lowest score first
+                )
+
+                # Remove bottom 20% of posts (at least 1)
+                remove_count = max(1, len(sorted_posts) // 5)
+                self.reddit_posts = sorted_posts[remove_count:]  # Keep the higher quality posts
+
+                logger.info(
+                    f"[Stage 6] Auto-reduction iteration {reduction_iterations}: "
+                    f"removed {remove_count} lowest-quality posts, {len(self.reddit_posts)} remaining"
+                )
+
+                # Regenerate formatted content with reduced posts
+                self.formatted_reddit_content = self._prepare_reddit_content()
+
+                # Recalculate tokens after reduction
+                content_tokens = monitor.count_tokens(
+                    self.formatted_reddit_content + self.formatted_twitter_content,
+                    model=settings.content_analysis_llm
+                )
+
+            if reduction_iterations > 0:
+                logger.info(
+                    f"[Stage 6] Auto-reduction complete: {original_post_count} → {len(self.reddit_posts)} posts "
+                    f"({reduction_iterations} iterations), now {content_tokens:,} tokens"
+                )
+
             if content_tokens > max_content_tokens:
                 logger.warning(
-                    f"[Stage 6] Content tokens ({content_tokens:,}) exceed safe limit ({max_content_tokens:,}). "
-                    f"Consider reducing posts or comment depth. Proceeding anyway..."
+                    f"[Stage 6] Content still exceeds limit after {reduction_iterations} iterations. "
+                    f"Proceeding with {content_tokens:,} tokens (limit: {max_content_tokens:,})"
                 )
             else:
                 logger.info(f"[Stage 6] Content size: {content_tokens:,} tokens (limit: {max_content_tokens:,})")
