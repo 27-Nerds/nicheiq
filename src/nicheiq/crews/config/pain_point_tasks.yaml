@@ -40,8 +40,8 @@ categorize_content:
     2. **Theme Extraction**: Identify 5-10 recurring theme categories from patterns (let data guide you, not assumptions)
     3. **Segment Mapping**: For each category, identify user segments from explicit self-descriptions in discussions
     4. **Frequency Assignment**: Assign High/Medium/Low based on actual mention counts (count occurrences)
-    5. **Quote Collection**: Gather ≥3 representative quotes per theme, preserving [source: ID] suffixes
-    6. **Quality Verification**: Verify each theme has sufficient evidence before including
+    5. **Quote Collection**: Gather 5-10 representative quotes per theme (minimum 3), preserving [source: ID] suffixes exactly as written
+    6. **Quality Verification**: Verify each quote exists verbatim in content above before including - NEVER fabricate quotes to reach quota
 
     **Pattern Keywords:**
     - Problems: "frustration", "difficult", "can't", "impossible", "broken", "struggle"
@@ -53,7 +53,7 @@ categorize_content:
     **Acceptance Criteria:**
 
     - Minimum 5 distinct theme categories identified
-    - Each category has clear definition and at least 3 representative quote examples from the content above
+    - Each category has clear definition and 5-10 representative quotes (minimum 3) from the content above - all verified to exist verbatim
     - User segments are specific enough to inform product targeting
     - Frequency indicators (high/medium/low) assigned to each theme based on mention count
 
@@ -96,7 +96,7 @@ categorize_content:
        - **frequency**: Either "High", "Medium", or "Low" based on mention count
        - **mention_count**: Number of distinct discussions mentioning this theme (integer)
        - **primary_user_segments**: List of specific user types discussing this theme (e.g., ["Budget-conscious consumers", "Luxury skincare aspirants"])
-       - **representative_quotes**: 3-6 direct user quotes that exemplify this theme. CRITICAL: Copy quotes EXACTLY as they appear in knowledge sources, INCLUDING the [source: POST_ID] suffix at the end of each quote (e.g., "I spent 3 hours on setup [source: abc123]"). DO NOT strip the [source: ...] tags - they are required for Task 2 traceability.
+       - **representative_quotes**: 5-10 direct user quotes that exemplify this theme (minimum 3 - if fewer exist, exclude the category rather than fabricating). CRITICAL: Copy quotes EXACTLY as they appear in content, INCLUDING the [source: POST_ID] suffix at the end of each quote (e.g., "I spent 3 hours on setup [source: abc123]"). DO NOT strip the [source: ...] tags - they are required for Task 2 traceability. VERIFY each quote exists verbatim before including.
 
     **user_segments**: List of UserSegment objects (aim for 4-8 segments based on distinct user types in discussions).
     Each UserSegment object must contain:
@@ -124,21 +124,31 @@ extract_pain_points:
     Transform the categorized content into specific, actionable pain points relevant
     to the niche being analyzed.
 
-    **WORKFLOW** (Apply your 3-Quote Minimum Protocol):
+    **WORKFLOW** (Apply Thorough Evidence Gathering Protocol):
 
     1. Review categorization report → identify high/medium-frequency categories
     2. For each category → extract 2-5 specific pain points with supporting evidence
-    3. **COUNT ALL UNIQUE DISCUSSIONS FIRST** → Query knowledge sources for ALL posts mentioning this problem pattern. Count every unique [source: ID] you find. This count becomes mention_count.
-    4. **THEN SELECT REPRESENTATIVE QUOTES** → From those mentions, select 3-5 best quotes. The quote count will be MUCH SMALLER than mention_count.
-    5. Identify severity indicators → "frustrating", "critical", "showstopper"
-    6. Note current solutions/workarounds users mention
-    7. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
-    8. Validate: If <3 quotes found → EXCLUDE pain point (quality over quota)
+    3. **EXHAUSTIVE SEARCH** → For each potential pain point, run MULTIPLE knowledge source queries using different phrasings:
+       - Query 1: Main problem keywords (e.g., "slow loading", "performance issues")
+       - Query 2: Synonyms and variants (e.g., "laggy", "takes forever", "waiting")
+       - Query 3: Emotional language (e.g., "frustrated", "annoying", "hate")
+       - Query 4: Impact language (e.g., "wasting time", "lost customers", "can't work")
+    4. **COUNT ALL UNIQUE DISCUSSIONS** → From ALL queries, count every unique [source: ID]. This count becomes mention_count.
+    5. **SELECT BEST QUOTES CAREFULLY** → From those mentions, select 5-10 quotes that:
+       - Clearly articulate the pain (specific, detailed complaints)
+       - Include impact statements (time lost, money spent, frustration level)
+       - Have [source: ID] suffix intact (REQUIRED - never fabricate)
+       - Represent diverse voices (different users, different platforms if possible)
+    6. **VERIFY EACH QUOTE EXISTS** → Before including a quote, confirm you can find it in knowledge sources
+    7. Identify severity indicators → "frustrating", "critical", "showstopper"
+    8. Note current solutions/workarounds users mention
+    9. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
+    10. **QUALITY GATE**: If <3 VERIFIED quotes with [source: ID] → EXCLUDE pain point entirely
 
     **CRITICAL**: mention_count and quote count are DIFFERENT:
     - mention_count = ALL unique posts discussing this problem (typically 10-50+)
-    - representative_quotes = 3-5 SELECTED examples from those mentions
-    - If mention_count equals quote count, you're doing it wrong
+    - representative_quotes = 5-10 SELECTED examples from those mentions
+    - If mention_count equals quote count, you searched insufficiently
 
     **CATEGORY COVERAGE REQUIREMENT** (Prevents Missing High-WTP Pain Points):
 
@@ -167,7 +177,7 @@ extract_pain_points:
 
     - Minimum 10 distinct pain points extracted (if evidence supports it)
     - Each pain point has clear problem articulation
-    - Supporting evidence includes ≥3 direct user quotes from knowledge sources
+    - Supporting evidence includes 5-10 direct user quotes from knowledge sources (target 8+)
     - Mention frequency quantified for each
     - Source platforms identified (Reddit/Twitter)
     - Source post IDs tracked for traceability
@@ -212,16 +222,29 @@ extract_pain_points:
     ✗ If a quote does NOT have [source: ID] suffix → DO NOT include it
       ❌ Example: Including quotes without source attribution
       ✅ Example: Skip quotes lacking [source: ID] and find other quotes with proper attribution
+    ✗ NEVER invent quotes to reach a quota - quality over quantity
+      ❌ Example: Creating plausible-sounding quotes when knowledge sources are sparse
+      ✅ Example: Return 5 pain points with 4 quotes each, instead of 10 with fabricated quotes
+
+    **WHEN DATA IS SPARSE** (Critical Decision Point):
+    If you cannot find sufficient quotes for a pain point despite thorough searching:
+    1. DO NOT fabricate quotes to fill the gap
+    2. DO NOT include the pain point if <3 verified quotes exist
+    3. Return fewer pain points rather than lower-quality pain points
+    4. Document in extraction_summary: "Limited to X pain points due to sparse evidence for [category Y]"
+    5. Quality with 6 well-evidenced pain points > quantity with 12 weakly-evidenced pain points
 
     **EXTRACTION CHAIN-OF-THOUGHT PROCEDURE:**
     For EACH pain point you identify, follow this mandatory procedure:
 
     Step 1: **Identify Pattern** - Note recurring problem from categorization
-    Step 2: **Find Evidence** - Search knowledge sources for exact quotes with [source: ID]
-    Step 3: **Verify Count** - Confirm ≥3 quotes found (if <3, EXCLUDE this pain point)
-    Step 4: **Extract Sources** - Copy [source: ID] from each quote (e.g., "quote text [source: 1a2b3c]")
-    Step 5: **Preserve Quotes** - Include full quote WITH [source: ID] suffix intact
-    Step 6: **Validate** - Check all quotes are verbatim copies with visible [source: ID] tags
+    Step 2: **Multi-Query Search** - Run 3-4 different queries with synonyms and variants
+    Step 3: **Collect Candidates** - Gather ALL quotes with [source: ID] from all queries
+    Step 4: **Verify Each Quote** - Confirm each quote exists verbatim in knowledge sources
+    Step 5: **Count Verified** - If <3 verified quotes with [source: ID] → EXCLUDE this pain point
+    Step 6: **Select Best 5-10** - From verified quotes, pick most detailed and impactful ones
+    Step 7: **Preserve Exactly** - Include full quote WITH [source: ID] suffix intact
+    Step 8: **Final Check** - Verify all included quotes are verbatim copies with visible [source: ID] tags
 
     CRITICAL: DO NOT remove [source: ID] suffixes yourself - Python will extract them post-processing.
 
@@ -239,7 +262,7 @@ extract_pain_points:
        - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
        - **description**: 2-3 sentence clear articulation of the specific problem in user language
        - **mention_count**: Count of ALL unique discussions/posts mentioning this problem (search knowledge sources comprehensively, count every unique [source: ID]). This should be LARGER than the number of representative_quotes. Example: If you found 18 posts discussing "slow onboarding", mention_count = 18, even if you only selected 4 representative quotes.
-       - **representative_quotes**: 3-5 direct user quotes (MUST include [source: ID] suffix)
+       - **representative_quotes**: 5-10 direct user quotes (MUST include [source: ID] suffix, target 8+)
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to
        - **source_post_ids**: ALWAYS set to [] (Python extracts automatically)
@@ -259,7 +282,7 @@ extract_pain_points:
 
     **extraction_summary**: 3-4 sentences overview of pain point landscape and key patterns
 
-    CRITICAL: Return structured Pydantic data. Minimum 3 quotes per pain point, all with [source: ID].
+    CRITICAL: Return structured Pydantic data. Minimum 3 verified quotes per pain point (target 5-10), all with [source: ID]. Quality over quantity - exclude pain points with insufficient evidence rather than fabricating quotes.
 
 validate_pain_points:
   description: >
@@ -298,9 +321,9 @@ validate_pain_points:
     |-------------|---------------------|-------------------------------|
     | **0.8-1.0** (High) | Critical business impact, workflow blocker, strong emotional language ("nightmare", "critical", "can't work without") | Explicit payment mentions, budget availability, current spend on inadequate solutions |
     | **0.5-0.7** (Medium) | Significant inconvenience, wastes time/money, clear frustration | Frustration with existing paid tools, value/ROI mentions |
-    | **0.3-0.5** (Low-Med) | Notable pain affecting productivity | INFERRED: severity ≥0.7 AND workflow-blocking = WTP 0.35-0.45 |
-    | **0.2-0.35** (Low) | Notable annoyance, mentioned but not critical | INFERRED: productivity/time loss mentioned = WTP 0.2-0.35 |
-    | **0.1-0.2** (Minimal) | Minor inconvenience with some frustration | INFERRED: strong emotional language = WTP 0.1-0.2 |
+    | **0.4-0.55** (Med) | Notable pain affecting productivity | INFERRED: severity ≥0.7 AND workflow-blocking = WTP 0.45-0.55 |
+    | **0.25-0.4** (Low-Med) | Notable annoyance, mentioned but not critical | INFERRED: productivity/time loss mentioned = WTP 0.3-0.4 |
+    | **0.15-0.25** (Low) | Minor inconvenience with some frustration | INFERRED: strong emotional language = WTP 0.15-0.25 |
     | **0.0-0.1** (None) | Minor inconvenience, weak signals | No financial OR productivity impact signals |
 
     **WORKFLOW:**
@@ -317,9 +340,9 @@ validate_pain_points:
 
     **WTP INFERENCE RULES** (When No Explicit Payment Signals):
     When knowledge sources lack explicit money/budget mentions, INFER WTP based on:
-    - severity ≥0.7 AND workflow-blocking problem → assign WTP 0.35-0.45
-    - productivity/time loss explicitly mentioned → assign WTP 0.25-0.35
-    - Strong emotional language (frustration, anger) → assign WTP 0.15-0.25
+    - severity ≥0.7 AND workflow-blocking problem → assign WTP 0.45-0.55 (high inference)
+    - productivity/time loss explicitly mentioned → assign WTP 0.3-0.4 (medium inference)
+    - Strong emotional language (frustration, anger) → assign WTP 0.15-0.25 (low inference)
     - Only assign WTP 0.0-0.1 when problem is minor inconvenience with NO productivity impact
     - CRITICAL: NEVER assign identical WTP scores to all pain points - use the full range to differentiate
 
@@ -328,7 +351,7 @@ validate_pain_points:
     - If knowledge source queries return insufficient evidence for severity, assign 0.0 with note
     - DO NOT assign scores based on assumptions about what severity "should" be for this type of problem
     - Every severity score ≥0.5 MUST have at least one direct quote showing strong emotional language or business impact
-    - WTP scores ≥0.5 require explicit payment mentions; WTP scores 0.1-0.5 can be INFERRED from severity/impact
+    - WTP scores ≥0.6 require explicit payment mentions; WTP scores 0.1-0.55 can be INFERRED from severity/impact
 
     **CRITICAL CONSTRAINT: 1:1 Mapping Required**
     - You MUST score EXACTLY the pain points from Task 2—no more, no fewer
@@ -342,12 +365,12 @@ validate_pain_points:
       ❌ Example: Scoring without querying knowledge sources (using assumptions about severity)
     ✗ Every severity score ≥0.5 requires ≥1 quote showing strong emotional language/business impact
       ❌ Example: Assigning 0.9 severity without quotes showing "critical", "nightmare", "can't work"
-    ✗ WTP scores ≥0.5 require explicit payment mentions; WTP 0.1-0.5 can be INFERRED from severity/impact
-      ✅ Example: High severity (0.8) + workflow blocker → infer WTP 0.35-0.45
-      ✅ Example: Time/productivity loss mentioned → infer WTP 0.25-0.35
-    ✗ NEVER assign identical WTP scores to ALL pain points - discriminate using the full 0.0-0.5 range
+    ✗ WTP scores ≥0.6 require explicit payment mentions; WTP 0.1-0.55 can be INFERRED from severity/impact
+      ✅ Example: High severity (0.8) + workflow blocker → infer WTP 0.45-0.55
+      ✅ Example: Time/productivity loss mentioned → infer WTP 0.3-0.4
+    ✗ NEVER assign identical WTP scores to ALL pain points - discriminate using the full 0.0-0.55 range
       ❌ Example: All 10 pain points with WTP = 0.0 (no discrimination)
-      ✅ Example: WTP scores ranging from 0.1 to 0.45 based on inferred impact
+      ✅ Example: WTP scores ranging from 0.15 to 0.55 based on inferred impact
 
     **OUTPUT REQUIREMENTS:**
     ✗ pain_point_scores count MUST EXACTLY match Task 2 extraction count (1:1 mapping)

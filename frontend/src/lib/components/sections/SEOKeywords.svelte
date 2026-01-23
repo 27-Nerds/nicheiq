@@ -52,7 +52,7 @@
   let { strategy, analytics }: Props = $props();
 
   // Keyword tab state
-  let activeTab = $state<"tier0" | "tier1" | "tier2" | "all">("all");
+  let activeTab = $state<"tier0" | "tier1" | "tier2" | "tier3" | "tier4" | "all">("all");
 
   // Keyword search and display state
   let searchQuery = $state("");
@@ -60,12 +60,57 @@
   const INITIAL_KEYWORD_LIMIT = 15;
   const EXPANDED_KEYWORD_LIMIT = 50;
 
-  // Combine all keywords with tier info
+  // Extract keywords from tier 3 geographic groups
+  // Structure: GeographicKeywordGroup -> GeographicKeywordEntry { keyword, search_volume, city, notes }
+  function extractTier3Keywords() {
+    const groups = strategy.tier_3_geographic_groups || [];
+    const keywords: any[] = [];
+    for (const group of groups) {
+      const groupKeywords = group.keywords || [];
+      for (const kw of groupKeywords) {
+        keywords.push({
+          keyword: kw.keyword,
+          search_volume: kw.search_volume || 0,
+          competition: group.competition_level || null,
+          tier: 3,
+          geographic_region: group.region_name,
+          city: kw.city,
+          notes: kw.notes,
+        });
+      }
+    }
+    return keywords;
+  }
+
+  // Extract keywords from tier 4 category groups
+  // Structure: CategoryKeywordGroup -> CategoryKeyword { keyword_name, search_volume, competition, cpc }
+  function extractTier4Keywords() {
+    const groups = strategy.tier_4_category_groups || [];
+    const keywords: any[] = [];
+    for (const group of groups) {
+      const groupKeywords = group.keywords || [];
+      for (const kw of groupKeywords) {
+        keywords.push({
+          keyword: kw.keyword_name,
+          search_volume: kw.search_volume || 0,
+          competition: kw.competition,
+          tier: 4,
+          category: group.category_name,
+          cpc: kw.cpc,
+        });
+      }
+    }
+    return keywords;
+  }
+
+  // Combine all keywords with tier info (including grouped tiers 3 & 4)
   const allKeywords = $derived(
     [
       ...(strategy.tier_0_keywords || []).map((k) => ({ ...k, tier: 0 })),
       ...(strategy.tier_1_keywords || []).map((k) => ({ ...k, tier: 1 })),
       ...(strategy.tier_2_keywords || []).map((k) => ({ ...k, tier: 2 })),
+      ...extractTier3Keywords(),
+      ...extractTier4Keywords(),
     ].sort((a, b) => b.search_volume - a.search_volume),
   );
 
@@ -74,7 +119,13 @@
     tier0: allKeywords.filter((k) => k.tier === 0).slice(0, 3),
     tier1: allKeywords.filter((k) => k.tier === 1).slice(0, 3),
     tier2: allKeywords.filter((k) => k.tier === 2).slice(0, 3),
+    tier3: allKeywords.filter((k) => k.tier === 3).slice(0, 3),
+    tier4: allKeywords.filter((k) => k.tier === 4).slice(0, 3),
   });
+
+  // Count keywords per tier (for tier 3 and 4 which are extracted from groups)
+  const tier3Count = $derived(extractTier3Keywords().length);
+  const tier4Count = $derived(extractTier4Keywords().length);
 
   function getFilteredKeywords() {
     let keywords = allKeywords;
@@ -263,6 +314,32 @@
           </div>
         </div>
       {/if}
+      {#if previewKeywords.tier3.length > 0}
+        <div class="preview-tier">
+          <span class="tier-label info">Geographic</span>
+          <div class="tier-pills">
+            {#each previewKeywords.tier3 as kw}
+              <span class="keyword-pill info">{kw.keyword}</span>
+            {/each}
+            {#if tier3Count > 3}
+              <span class="pill-more">+{tier3Count - 3}</span>
+            {/if}
+          </div>
+        </div>
+      {/if}
+      {#if previewKeywords.tier4.length > 0}
+        <div class="preview-tier">
+          <span class="tier-label warning">Category</span>
+          <div class="tier-pills">
+            {#each previewKeywords.tier4 as kw}
+              <span class="keyword-pill warning">{kw.keyword}</span>
+            {/each}
+            {#if tier4Count > 3}
+              <span class="pill-more">+{tier4Count - 3}</span>
+            {/if}
+          </div>
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -354,6 +431,24 @@
               <span class="tab-count"
                 >{strategy.tier_2_keywords?.length || 0}</span
               >
+            </button>
+            <button
+              class="tab-button"
+              class:active={activeTab === "tier3"}
+              onclick={() => (activeTab = "tier3")}
+              type="button"
+            >
+              <span class="tab-label">Geographic</span>
+              <span class="tab-count info">{tier3Count}</span>
+            </button>
+            <button
+              class="tab-button"
+              class:active={activeTab === "tier4"}
+              onclick={() => (activeTab = "tier4")}
+              type="button"
+            >
+              <span class="tab-label">Category</span>
+              <span class="tab-count">{tier4Count}</span>
             </button>
           </div>
         </div>
@@ -965,6 +1060,11 @@
   .tab-count.accent {
     background: rgba(229, 90, 40, 0.15);
     color: var(--color-accent);
+  }
+
+  .tab-count.info {
+    background: rgba(59, 130, 246, 0.15);
+    color: var(--color-info, #3b82f6);
   }
 
   /* Keywords Table */
@@ -1631,6 +1731,14 @@
     color: var(--color-text-muted);
   }
 
+  .tier-label.info {
+    color: var(--color-info, #3b82f6);
+  }
+
+  .tier-label.warning {
+    color: var(--color-warning, #f59e0b);
+  }
+
   .tier-pills {
     display: flex;
     flex-wrap: wrap;
@@ -1661,6 +1769,18 @@
 
   .keyword-pill.muted {
     background: var(--color-bg-surface);
+  }
+
+  .keyword-pill.info {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.2);
+    color: var(--color-info, #3b82f6);
+  }
+
+  .keyword-pill.warning {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.2);
+    color: var(--color-warning, #f59e0b);
   }
 
   .pill-more {

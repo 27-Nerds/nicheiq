@@ -3,6 +3,7 @@
   import { onDestroy } from 'svelte';
   import { browser } from '$app/environment';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
+  import { subscribeToProgress, isTerminalStatus } from '$lib/api';
   import {
     Plus,
     Clock,
@@ -70,8 +71,8 @@
   const session = $derived($page.data.session);
   const initialJobs = $derived(data.jobs as Job[]);
 
-  // Track SSE connections and live job updates
-  let eventSources = new SvelteMap<string, EventSource>();
+  // Track SSE subscriptions and live job updates
+  let sseUnsubscribers = new SvelteMap<string, () => void>();
   let jobUpdates = new SvelteMap<string, Job>();
 
   // Merge initial jobs with live updates and sort by priority
@@ -177,53 +178,45 @@
 
   // Connect SSE for active jobs (including queued to catch status changes)
   $effect(() => {
-    const activeJobs = initialJobs.filter(j =>
-      ['RUNNING', 'PENDING', 'QUEUED'].includes(j.status.toUpperCase())
+    const activeJobsList = initialJobs.filter(j =>
+      !isTerminalStatus(j.status)
     );
 
     // Connect to SSE for each active job
-    for (const job of activeJobs) {
-      if (!eventSources.has(job.id)) {
-        const es = new EventSource(`/api/jobs/${job.id}/events`);
+    for (const job of activeJobsList) {
+      if (!sseUnsubscribers.has(job.id)) {
+        const unsubscribe = subscribeToProgress(
+          job.id,
+          (data) => {
+            jobUpdates.set(job.id, data as Job);
 
-        es.onmessage = (e) => {
-          try {
-            const data = JSON.parse(e.data);
-            jobUpdates.set(job.id, data);
-
-            // Close connection if job completed/failed
-            if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status?.toUpperCase())) {
-              es.close();
-              eventSources.delete(job.id);
+            // Cleanup subscription if job reached terminal state
+            if (isTerminalStatus(data.status)) {
+              sseUnsubscribers.get(job.id)?.();
+              sseUnsubscribers.delete(job.id);
             }
-          } catch (err) {
-            console.error('SSE parse error:', err);
-          }
-        };
+          },
+          (err) => console.warn(`SSE error for job ${job.id}:`, err.message)
+        );
 
-        es.onerror = () => {
-          es.close();
-          eventSources.delete(job.id);
-        };
-
-        eventSources.set(job.id, es);
+        sseUnsubscribers.set(job.id, unsubscribe);
       }
     }
 
-    // Cleanup connections for jobs no longer active
-    for (const [jobId, es] of eventSources) {
+    // Cleanup subscriptions for jobs no longer active
+    for (const [jobId, unsubscribe] of sseUnsubscribers) {
       const job = getJobData(jobId);
-      if (!job || ['COMPLETED', 'FAILED', 'CANCELLED'].includes(job.status.toUpperCase())) {
-        es.close();
-        eventSources.delete(jobId);
+      if (!job || isTerminalStatus(job.status)) {
+        unsubscribe();
+        sseUnsubscribers.delete(jobId);
       }
     }
   });
 
   // Cleanup on destroy
   onDestroy(() => {
-    eventSources.forEach(es => es.close());
-    eventSources.clear();
+    sseUnsubscribers.forEach(unsubscribe => unsubscribe());
+    sseUnsubscribers.clear();
   });
 
   function getStatusBadge(status: string) {
@@ -316,10 +309,10 @@
         jobUpdates.set(job.id, { ...job, status: 'CANCELLED', errorMessage: 'Cancelled by user' });
 
         // Close SSE connection for this job
-        const es = eventSources.get(job.id);
-        if (es) {
-          es.close();
-          eventSources.delete(job.id);
+        const unsubscribe = sseUnsubscribers.get(job.id);
+        if (unsubscribe) {
+          unsubscribe();
+          sseUnsubscribers.delete(job.id);
         }
       }
     } catch (err) {
@@ -351,6 +344,34 @@
       day: 'numeric',
       year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
     });
+  }
+
+  // Stage name overrides for parallel stages (display as combined)
+  const STAGE_NAME_OVERRIDES: Record<string, string> = {
+    'Pain Point Analysis': 'Pain Point & Audience Analysis',
+    'Audience Mapping': 'Pain Point & Audience Analysis',
+  };
+
+  // Get display-friendly stage name (combines parallel stages)
+  function getDisplayStageName(stageName: string | null): string {
+    if (!stageName) return 'Starting';
+    return STAGE_NAME_OVERRIDES[stageName] || stageName;
+  }
+
+  // Hidden stages that are combined with others (for count adjustments)
+  const HIDDEN_STAGES = [6.5];
+
+  // Adjust stage counts for hidden parallel stages
+  function getAdjustedStageCounts(job: Job): { completed: number; total: number } {
+    const hiddenCount = HIDDEN_STAGES.length;
+    const total = (job.totalStages || TOTAL_STAGES) - hiddenCount;
+
+    // Subtract hidden stages from completed count if they're done
+    // Stage 6.5 is done if currentStage > 6.5 or job is completed
+    const hiddenCompleted = (job.currentStage > 6.5 || job.status.toUpperCase() === 'COMPLETED') ? hiddenCount : 0;
+    const completed = job.stagesCompleted - hiddenCompleted;
+
+    return { completed: Math.max(0, completed), total };
   }
 
   // Translate raw API errors into user-friendly messages
@@ -708,6 +729,7 @@
 
               {#if isRunning}
                 <!-- RUNNING Card: Compact with inline progress -->
+                {@const stageCounts = getAdjustedStageCounts(job)}
                 <div
                   class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-warning animate-fade-slide-in"
                   style="animation-delay: {i * 50}ms"
@@ -733,7 +755,7 @@
                       <div class="h-full bg-warning rounded-full transition-all duration-300 animate-shimmer" style="width: {job.progressPercent}%"></div>
                     </div>
                     <span class="text-xs text-text-muted whitespace-nowrap">
-                      {job.currentStageName || 'Starting'} ({job.stagesCompleted}/{totalStages})
+                      {getDisplayStageName(job.currentStageName)} ({stageCounts.completed}/{stageCounts.total})
                     </span>
                     <div class="flex items-center gap-1 shrink-0">
                       <button

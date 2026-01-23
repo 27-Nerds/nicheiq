@@ -27,7 +27,6 @@
 	// PHASE 4: REFERENCE (Appendix)
 	import AlternativesSection from '$lib/components/sections/AlternativesSection.svelte';
 	import EvidenceAppendix from '$lib/components/sections/EvidenceAppendix.svelte';
-	import ResearchMetadata from '$lib/components/sections/ResearchMetadata.svelte';
 
 	// UI components
 	import SectionNav from '$lib/components/ui/SectionNav.svelte';
@@ -221,13 +220,6 @@
 
 				{#if report.evidence_appendix}
 					<EvidenceAppendix data={report.evidence_appendix} />
-				{/if}
-
-				{#if report.research_metadata}
-					<ResearchMetadata
-						metadata={report.research_metadata}
-						overallConfidence={report.executive_dashboard?.confidence_score}
-					/>
 				{/if}
 			</div>
 		</main>

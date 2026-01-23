@@ -26,11 +26,14 @@ export function getTierVariant(tier: string | undefined | null): BadgeVariant {
 }
 
 /**
- * Get a badge variant for SEO keyword tiers (0, 1, 2)
+ * Get a badge variant for SEO keyword tiers (0-4)
  */
 export function getKeywordTierVariant(tier: number): BadgeVariant {
 	if (tier === 0) return 'success';
 	if (tier === 1) return 'accent';
+	if (tier === 2) return 'muted';
+	if (tier === 3) return 'info';
+	if (tier === 4) return 'warning';
 	return 'muted';
 }
 

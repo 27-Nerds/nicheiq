@@ -792,12 +792,18 @@ class ReportGenerator:
         if not pain_points or not solution:
             return {}
 
-        # Define minimal Pydantic model for mapping output
+        # Define minimal Pydantic models for mapping output
+        # Note: OpenAI structured output doesn't support dict[str, str], so we use a list
+        class PainSolutionItem(BaseModel):
+            """Single pain point to solution mapping."""
+            pain_point_title: str = Field(..., description="Exact title of the pain point")
+            solution_approach: str = Field(..., description="1-2 sentence explanation of how the solution addresses this pain")
+
         class PainSolutionMapping(BaseModel):
-            """Maps pain point titles to solution approach explanations."""
-            mappings: dict[str, str] = Field(
+            """List of pain point to solution mappings."""
+            mappings: list[PainSolutionItem] = Field(
                 ...,
-                description="Dictionary mapping pain point titles to 1-2 sentence explanations"
+                description="List of mappings from pain point titles to solution explanations"
             )
 
         # Format pain points for prompt (limit to top 10)
@@ -832,8 +838,10 @@ class ReportGenerator:
                 model_name=settings.pain_solution_mapping_llm
             )
 
-            logger.info(f"[OK] Generated {len(result.mappings)} pain-solution mappings")
-            return result.mappings
+            # Convert list to dict
+            mappings_dict = {item.pain_point_title: item.solution_approach for item in result.mappings}
+            logger.info(f"[OK] Generated {len(mappings_dict)} pain-solution mappings")
+            return mappings_dict
 
         except Exception as e:
             logger.warning(f"Pain-solution mapping failed: {e}")

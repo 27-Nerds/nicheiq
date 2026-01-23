@@ -23,7 +23,38 @@ class DataForSEOBaseClient:
     """
     Base client for DataForSEO API operations.
     Shared methods for authentication and request handling.
+
+    Session-level caching is implemented to reduce redundant API calls:
+    - _expand_cache: Maps seed keywords to expanded results
+    - _volume_cache: Maps keywords to volume data
+    These caches persist for the lifetime of the instance, typically a full flow run.
     """
+
+    # Session-level caches (lazy-initialized)
+    _expand_cache: dict[str, list[dict]] | None = None
+    _volume_cache: dict[str, dict] | None = None
+    _cache_hits: int = 0
+    _cache_misses: int = 0
+
+    def _ensure_caches_initialized(self) -> None:
+        """Lazy initialization of caches (handles Pydantic model limitations)."""
+        if self._expand_cache is None:
+            self._expand_cache = {}
+        if self._volume_cache is None:
+            self._volume_cache = {}
+
+    def get_cache_stats(self) -> dict[str, Any]:
+        """Return cache statistics for logging."""
+        self._ensure_caches_initialized()
+        total = self._cache_hits + self._cache_misses
+        hit_rate = (self._cache_hits / total * 100) if total > 0 else 0
+        return {
+            "hits": self._cache_hits,
+            "misses": self._cache_misses,
+            "hit_rate": f"{hit_rate:.1f}%",
+            "expand_cache_size": len(self._expand_cache),
+            "volume_cache_size": len(self._volume_cache),
+        }
 
     def _get_api_config(self):
         """Get API URL and headers for DataForSEO."""
@@ -352,8 +383,20 @@ class DataForSEOBaseClient:
         unique_keywords = {kw["keyword"]: kw for kw in all_keywords}.values()
         keywords_list = list(unique_keywords)
 
+        # Populate volume cache with expanded keyword data
+        # This enables cache hits when get_search_volume() is called later with the same keywords
+        self._ensure_caches_initialized()
+        cached_count = 0
+        for kw_data in keywords_list:
+            cache_key = kw_data["keyword"].lower().strip()
+            if cache_key and cache_key not in self._volume_cache:
+                self._volume_cache[cache_key] = kw_data
+                cached_count += 1
+
         logger.info(f"Expanded to {len(keywords_list)} unique keywords from {len(seed_keywords)} seeds")
         logger.info(f"API cost: {len(keyword_batches)} request(s)")
+        if cached_count > 0:
+            logger.info(f"[Volume Cache] Pre-populated with {cached_count} keywords from expansion")
 
         return keywords_list
 
@@ -417,11 +460,34 @@ class DataForSEOBaseClient:
         if sanitized_count > 0:
             logger.info(f"Sanitized {sanitized_count} keywords with invalid characters")
 
+        # Initialize caches if needed
+        self._ensure_caches_initialized()
+
+        # Check cache for already-fetched keywords
+        cached_results = []
+        uncached_keywords = []
+        for kw in sanitized_keywords:
+            cache_key = kw.lower().strip()
+            if cache_key in self._volume_cache:
+                cached_results.append(self._volume_cache[cache_key])
+                self._cache_hits += 1
+            else:
+                uncached_keywords.append(kw)
+                self._cache_misses += 1
+
+        if cached_results:
+            logger.info(f"[Volume Cache] {len(cached_results)} keywords from cache, {len(uncached_keywords)} need API lookup")
+
+        # If all keywords are cached, return immediately
+        if not uncached_keywords:
+            logger.info(f"[Volume Cache] All {len(cached_results)} keywords served from cache (0 API calls)")
+            return cached_results
+
         # Correct endpoint: Keywords Data API - Search Volume
         endpoint = "/keywords_data/google_ads/search_volume/live"
 
-        # Split keywords into batches to minimize API calls
-        keyword_batches = self._chunk_list(sanitized_keywords, MAX_KEYWORDS_SEARCH_VOLUME)
+        # Split uncached keywords into batches to minimize API calls
+        keyword_batches = self._chunk_list(uncached_keywords, MAX_KEYWORDS_SEARCH_VOLUME)
         all_metrics = []
 
         for batch_idx, batch in enumerate(keyword_batches, 1):
@@ -499,7 +565,7 @@ class DataForSEOBaseClient:
                     # Convert competition_index (0-100) to float (0-1)
                     competition_float = competition_index / 100.0
 
-                    all_metrics.append({
+                    keyword_data = {
                         "keyword": item.get("keyword", ""),
                         "search_volume": search_volume,
                         "competition": competition_float,
@@ -507,7 +573,14 @@ class DataForSEOBaseClient:
                         "competition_scale": "0-1",  # Explicit: competition is normalized from 0-100
                         "cpc": item.get("cpc") or 0,  # Coalesce None to 0
                         "monthly_searches": item.get("monthly_searches", []),  # 12-month historical data
-                    })
+                    }
+                    all_metrics.append(keyword_data)
+
+                    # Cache the result for future lookups
+                    cache_key = keyword_data["keyword"].lower().strip()
+                    if cache_key:
+                        self._volume_cache[cache_key] = keyword_data
+
                     result_count += 1
 
                 logger.debug(f"Batch {batch_idx}: Processed {result_count} keywords from {len(result_data)} results")
@@ -525,10 +598,14 @@ class DataForSEOBaseClient:
                 logger.debug(f"Exception details: {type(e).__name__}: {str(e)}")
                 continue
 
-        logger.info(f"Retrieved metrics for {len(all_metrics)} keywords")
-        logger.info(f"API cost: {len(keyword_batches)} request(s)")
+        # Merge cached results with newly fetched results
+        combined_results = cached_results + all_metrics
 
-        return all_metrics
+        logger.info(f"Retrieved metrics for {len(all_metrics)} keywords from API, {len(cached_results)} from cache")
+        logger.info(f"API cost: {len(keyword_batches)} request(s)")
+        logger.info(f"[Volume Cache] Stats: {self.get_cache_stats()}")
+
+        return combined_results
 
 # CrewAI Tool Wrappers
 # These wrap the base client methods so agents can use them as tools

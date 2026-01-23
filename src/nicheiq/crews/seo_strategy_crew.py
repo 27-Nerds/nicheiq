@@ -38,6 +38,8 @@ from ..models.seo_strategy import (
     KeywordDrivenSiteArchitecture,
     KeywordSummaryResult,
     LightweightKeywordSelection,
+    PageTypeImplementation,
+    PageTypeImplementationLight,
     PremiumTierResult,
     SchemaExample,
     SchemaMarkupStrategy,
@@ -45,6 +47,7 @@ from ..models.seo_strategy import (
     SEOStrategyReport,
     StrategicLightResult,
     StrategicTierResult,
+    SyncFinalOutputs,
     Tier0LightResult,
     Tier0PremiumResult,
     Tier1LightResult,
@@ -52,6 +55,8 @@ from ..models.seo_strategy import (
     TieredKeyword,
     TopicCluster,
     TopicClusterLight,
+    UniversalSEOElements,
+    UniversalSEOElementsLight,
 )
 from ..tools.dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
 from ..utils.generation import KeywordSeedGenerator, generate_json_ld_schemas
@@ -536,7 +541,136 @@ def _hydrate_content_strategy(
 # ========================================
 # TASK 5 HYDRATION UTILITIES
 # ========================================
-# Hydrate ImplementationGuideLight with Python-generated JSON-LD schemas.
+# Hydrate ImplementationGuideLight with Python-generated boilerplate and JSON-LD schemas.
+
+
+# Boilerplate SEO guidelines (static content - no LLM needed)
+_TITLE_TAG_GUIDELINES = """**Length**: Aim for 50-60 characters to avoid truncation in desktop and mobile SERPs.
+
+**Keyword Placement**: Place the highest-value keyword at the beginning of the title to maximize relevance signals and CTR. Use a clear page-type modifier in the middle and end with the brand name for consistency.
+
+**CTR Optimization**: Include urgency or trust signals when appropriate (e.g., "Updated 2026", "Verified", "Guide"). Use emotionally relevant modifiers for your target personas. Avoid keyword stuffing — write natural phrasing that reads well in the SERP."""
+
+_META_DESCRIPTION_GUIDELINES = """**Length**: 140-160 characters preferred; target 140-155 for consistent presentation across results.
+
+**Structure**: Start with a clear value statement including the primary keyword within the first 120 characters. Include a single primary CTA and one trust signal.
+
+**Best Practices**: Use one or two keyword variations naturally — focus on user intent and clear benefit rather than repeating terms. Keep sentences scannable; use punctuation to create readable breaks."""
+
+_CANONICAL_URL_STRATEGY = """**Self-Referencing Canonicals**: Every indexable page must include a self-referencing `rel="canonical"` to the canonical URL. For directory pages, the canonical should always be the primary permalink — not filter or session URLs.
+
+**Duplicate Handling**: Implement canonicalization for faceted or sorted URLs by pointing them to the main listing page. Use `rel="next/prev"` or param handling in Search Console for deep facet combinations. For near-duplicate programmatic pages, ensure unique content and canonical to the most authoritative version."""
+
+_ROBOTS_META_GUIDELINES = """**Index/Follow**: Use `index,follow` for primary content that should appear in search (pillars, guides, profile pages, high-value landing pages).
+
+**Noindex/Follow**: Use `noindex,follow` for staging pages, internal search results with no unique value, admin pages, and paginated parameter combinations that offer no unique content. Use `x-robots-tag` header for non-HTML assets where necessary."""
+
+_SCHEMA_IMPLEMENTATION_METHOD = """Implement schema using JSON-LD placed in the document `<head>` for every canonical page. For pages with dynamic content (user-generated reports, listings), inject server-generated JSON-LD at render time so it always matches visible page content.
+
+**Why JSON-LD**: JSON-LD is preferred over Microdata because it's non-intrusive to the page DOM, easier to generate and maintain via templates, and less likely to break layout or conflict with client-side rendering. It also separates structured data from presentation, making validation and templating straightforward for programmatic page generation."""
+
+_SCHEMA_TESTING_VALIDATION = """**Testing Process**: Run JSON-LD snippets through the Google Rich Results Test to confirm eligibility for targeted rich result types (FAQ, HowTo, Review, Product). Use the Schema Markup Validator (schema.org validator) for strict syntax checking.
+
+**Ongoing Monitoring**: After deployment, monitor Search Console (Enhancements and Performance reports) for indexing errors and rich result impressions. Validate each template before bulk programmatic rollouts and run automated checks for templated pages. Maintain an issue tracker for schema warnings/errors and prioritize fixes for fields that block rich result eligibility."""
+
+
+def _generate_open_graph_template(solution_name: str) -> str:
+    """Generate Open Graph tags template with solution name."""
+    return f"""**Required Open Graph tags** (include in page `<head>`):
+
+- `og:title` — Example: "Page Title | {solution_name}"
+- `og:description` — Example: "Concise description of page content and value proposition."
+- `og:image` — Example: "https://yourdomain.com/assets/og/page-image.jpg" (1200x630 px recommended)
+- `og:url` — Example: "https://yourdomain.com/page-path/"
+
+Also include `twitter:card` (summary_large_image), `twitter:title` and `twitter:description` mirroring OG fields. Ensure each page uses a unique `og:image` where possible."""
+
+
+def _generate_internal_linking_strategy(page_type: str) -> str:
+    """Generate internal linking strategy based on page type."""
+    strategies = {
+        "homepage": "Feature clear hub links to pillar guides, location hubs, and key landing pages. Use CTAs to funnel users to conversion pages. Homepage should link to 3-6 high-value pillar and regional pages to distribute authority.",
+        "location": "Link up to the homepage and relevant pillar guides. List top profile/listing links and link to related regional pages and tools. Encourage conversion actions linking to onboarding pages.",
+        "profile": "Link back to the parent location/category page, related profiles (similar type), and relevant guides. Link to the report/claim submission flow and onboarding pages.",
+        "content": "Link to supporting location pages, profiles (as examples), tools, and topical FAQs. Each supporting page links back to the pillar to concentrate topical authority.",
+        "guide": "Link to supporting location pages, profiles (as examples), tools, and topical FAQs. Each supporting page links back to the pillar to concentrate topical authority.",
+    }
+    # Match page type to strategy (case-insensitive partial match)
+    page_type_lower = page_type.lower()
+    for key, strategy in strategies.items():
+        if key in page_type_lower:
+            return strategy
+    # Default strategy
+    return "Link to related pages within the same content cluster, parent category pages, and relevant conversion pages. Ensure bidirectional linking to strengthen topical authority."
+
+
+def _generate_content_guidelines(page_type: str) -> str:
+    """Generate content guidelines based on page type."""
+    guidelines = {
+        "homepage": "**Word count**: 600-1,000 words of unique content. **Required sections**: concise value proposition, primary search/navigation, 3 featured items/case studies, starter guide link, and conversion CTAs.",
+        "location": "**Word count**: 800-1,200 words with a unique intro paragraph for each location. **Required sections**: unique location intro, top 10 listings snippet, 3 featured stories, short FAQ tailored to regional concerns.",
+        "profile": "**Word count**: 400-800 words including user-generated content excerpts. **Required sections**: entity metadata, automated metrics snapshot, 5-10 recent UGC excerpts, summary notes, and CTA for submissions.",
+        "content": "**Word count**: 1,500-2,500 words. **Required sections**: long-form introduction, evidence-backed steps, images or short videos for each step, FAQ block with schema-ready Q/A, and downloadable resource CTA.",
+        "guide": "**Word count**: 1,500-2,500 words. **Required sections**: long-form introduction, evidence-backed steps, images or short videos for each step, FAQ block with schema-ready Q/A, and downloadable resource CTA.",
+    }
+    # Match page type to guidelines (case-insensitive partial match)
+    page_type_lower = page_type.lower()
+    for key, guideline in guidelines.items():
+        if key in page_type_lower:
+            return guideline
+    # Default guidelines
+    return "**Word count**: 800-1,500 words. **Required sections**: unique introduction, primary content with supporting details, related links section, and clear conversion CTA."
+
+
+def _hydrate_universal_seo_elements(
+    light: "UniversalSEOElementsLight",
+    solution_name: str,
+) -> UniversalSEOElements:
+    """
+    Hydrate lightweight universal SEO elements with boilerplate guidelines.
+
+    Args:
+        light: Lightweight universal SEO elements from LLM (title_tag_formula only)
+        solution_name: Solution name for Open Graph template
+
+    Returns:
+        Full UniversalSEOElements with all guidelines
+    """
+    return UniversalSEOElements(
+        title_tag_formula=light.title_tag_formula,
+        title_tag_guidelines=_TITLE_TAG_GUIDELINES,
+        meta_description_guidelines=_META_DESCRIPTION_GUIDELINES,
+        canonical_url_strategy=_CANONICAL_URL_STRATEGY,
+        open_graph_tags=_generate_open_graph_template(solution_name),
+        robots_meta_guidelines=_ROBOTS_META_GUIDELINES,
+    )
+
+
+def _hydrate_page_type_implementation(
+    light: "PageTypeImplementationLight",
+) -> PageTypeImplementation:
+    """
+    Hydrate lightweight page type implementation with boilerplate guidelines.
+
+    Args:
+        light: Lightweight page type from LLM (without internal_linking_strategy/content_guidelines)
+
+    Returns:
+        Full PageTypeImplementation with all guidelines
+    """
+    return PageTypeImplementation(
+        page_type=light.page_type,
+        url_pattern=light.url_pattern,
+        target_keywords=light.target_keywords,
+        title_tag_example=light.title_tag_example,
+        meta_description_example=light.meta_description_example,
+        h1_structure=light.h1_structure,
+        h2_structure=light.h2_structure,
+        schema_types=light.schema_types,
+        internal_linking_strategy=_generate_internal_linking_strategy(light.page_type),
+        content_guidelines=_generate_content_guidelines(light.page_type),
+        priority=light.priority,
+    )
 
 
 def _hydrate_implementation_guide(
@@ -547,27 +681,41 @@ def _hydrate_implementation_guide(
     pricing: dict | None = None,
 ) -> ImplementationGuide:
     """
-    Hydrate lightweight Task 5 output with Python-generated JSON-LD schemas.
+    Hydrate lightweight Task 5 output with boilerplate guidelines and JSON-LD schemas.
 
-    LLM provides:
-    - universal_seo_elements (passed through)
-    - page_type_implementations (passed through)
-    - schema_markup_strategy (LIGHT - schema selections + rationale only)
+    LLM provides (minimal):
+    - universal_seo_elements.title_tag_formula only
+    - page_type_implementations without internal_linking_strategy/content_guidelines
+    - schema_markup_strategy schema selections + rationale only
 
     Python generates:
-    - schema_markup_strategy.schema_examples (JSON-LD code from templates)
+    - All universal SEO guidelines (boilerplate)
+    - internal_linking_strategy and content_guidelines per page type
+    - JSON-LD code from templates
 
     Args:
         light: Lightweight implementation guide from LLM
-        solution_name: Solution name for branding in JSON-LD
+        solution_name: Solution name for branding
         value_proposition: Description for JSON-LD content
         niche: Market niche for context
         pricing: Optional pricing dict for Service schema
 
     Returns:
-        Full ImplementationGuide with JSON-LD code generated
+        Full ImplementationGuide with all content hydrated
     """
-    # Generate JSON-LD schemas from lightweight selections
+    # 1. Hydrate universal SEO elements with boilerplate
+    full_universal_seo = _hydrate_universal_seo_elements(
+        light.universal_seo_elements,
+        solution_name,
+    )
+
+    # 2. Hydrate page type implementations with boilerplate
+    full_page_types = [
+        _hydrate_page_type_implementation(pt)
+        for pt in light.page_type_implementations
+    ]
+
+    # 3. Generate JSON-LD schemas from lightweight selections
     schema_results = generate_json_ld_schemas(
         schema_selections=light.schema_markup_strategy.selected_schemas,
         solution_name=solution_name,
@@ -585,21 +733,39 @@ def _hydrate_implementation_guide(
         for result in schema_results
     ]
 
+    # Extract priority_schema_types from selected_schemas (sorted by priority)
+    priority_schema_types = [
+        schema.schema_type
+        for schema in sorted(
+            light.schema_markup_strategy.selected_schemas,
+            key=lambda s: s.priority
+        )
+    ]
+
     # Build full SchemaMarkupStrategy with generated JSON-LD
+    # Use boilerplate for implementation_method and testing_validation if not provided by LLM
     full_schema_strategy = SchemaMarkupStrategy(
         why_schema_matters=light.schema_markup_strategy.why_schema_matters,
+        priority_schema_types=priority_schema_types,
         schema_examples=schema_examples,
-        implementation_method=light.schema_markup_strategy.implementation_method,
-        testing_validation=light.schema_markup_strategy.testing_validation,
+        implementation_method=(
+            light.schema_markup_strategy.implementation_method
+            or _SCHEMA_IMPLEMENTATION_METHOD
+        ),
+        testing_validation=(
+            light.schema_markup_strategy.testing_validation
+            or _SCHEMA_TESTING_VALIDATION
+        ),
     )
 
     logger.info(
-        f"✅ Task 5 hydrated: {len(schema_examples)} JSON-LD schemas generated via Python"
+        f"✅ Task 5 hydrated: universal SEO elements, {len(full_page_types)} page types, "
+        f"{len(schema_examples)} JSON-LD schemas generated via Python"
     )
 
     return ImplementationGuide(
-        universal_seo_elements=light.universal_seo_elements,
-        page_type_implementations=light.page_type_implementations,
+        universal_seo_elements=full_universal_seo,
+        page_type_implementations=full_page_types,
         schema_markup_strategy=full_schema_strategy,
     )
 
@@ -1400,6 +1566,9 @@ class SEOStrategyCrew:
 
         Depends on: All previous tasks (1d, 2, 3)
         Output: FinalSynthesis (4 fields only)
+
+        Note: Runs in parallel with Task 5 (async_execution=True) since Task 5
+        does not require Task 4's output - they share common dependencies (1d, 2, 3).
         """
         return Task(
             config=self.tasks_config["synthesize_final_seo_strategy"],
@@ -1412,6 +1581,7 @@ class SEOStrategyCrew:
             output_pydantic=FinalSynthesis,
             guardrail=validate_final_synthesis_output,
             guardrail_max_retries=2,
+            async_execution=True,  # Run in parallel with Task 5
         )
 
     @task
@@ -1425,10 +1595,13 @@ class SEOStrategyCrew:
         - schema_markup_strategy (LIGHT - schema type selections + rationale only)
 
         JSON-LD code is generated by Python after this task completes.
-        All 26 fields from Task 4 will be preserved via Python merge.
+        All fields from Tasks 1-4 will be preserved via Python merge.
 
-        Depends on: All previous tasks (1d, 2, 3, 4)
+        Depends on: Tasks 1d, 2, 3 (Task 4 removed - not needed per YAML "reference only")
         Output: ImplementationGuideLight (schema_markup_strategy without JSON-LD code)
+
+        Note: Runs in parallel with Task 4 (async_execution=True) for ~4-5 min speedup.
+        Task 4's output is merged by Python, not needed as LLM context for this task.
         """
         return Task(
             config=self.tasks_config["create_implementation_guide"],
@@ -1437,11 +1610,35 @@ class SEOStrategyCrew:
                 self.synthesize_keyword_summary_task(),  # Task 1d (keyword reference)
                 self.develop_content_technical_strategy_task(),  # Task 2 (for page types)
                 self.create_implementation_plan_task(),  # Task 3 (for roadmap)
-                self.synthesize_final_seo_strategy_task(),  # Task 4 (reference only)
+                # Task 4 removed - runs in parallel, Python merge handles field combination
             ],
             output_pydantic=ImplementationGuideLight,
             guardrail=validate_implementation_guide_light_output,
             guardrail_max_retries=2,
+            async_execution=True,  # Run in parallel with Task 4
+        )
+
+    @task
+    def sync_final_outputs_task(self) -> Task:
+        """
+        Task 6: Synchronization point for parallel Tasks 4 and 5.
+
+        CrewAI requires at most one async task at the end of a crew.
+        This sync task depends on both Task 4 (FinalSynthesis) and Task 5
+        (ImplementationGuideLight), ensuring both complete before the crew finishes.
+
+        The actual outputs from Tasks 4 and 5 are extracted by Python after
+        the crew completes - this task just ensures synchronization.
+        """
+        return Task(
+            config=self.tasks_config["sync_final_outputs"],
+            agent=self.seo_specialist(),
+            context=[
+                self.synthesize_final_seo_strategy_task(),  # Task 4 (async)
+                self.create_implementation_guide_task(),    # Task 5 (async)
+            ],
+            output_pydantic=SyncFinalOutputs,
+            # async_execution=False (default) - sync point for parallel tasks
         )
 
     @crew
@@ -1946,7 +2143,7 @@ class SEOStrategyCrew:
         parallel: bool = True,
     ) -> SEOStrategyReport:
         """
-        Execute 10-Task SEO Strategy Flow with Parallel Keyword Analysis.
+        Execute 11-Task SEO Strategy Flow with Parallel Keyword Analysis.
 
         Creates comprehensive SEO strategy using parallel keyword analysis:
         - Task 1a-i: Tier 0 Premium Keywords (opp_score > 200) - async
@@ -2397,7 +2594,7 @@ class SEOStrategyCrew:
         self, enriched_keywords: list, expanded_keywords: ExpandedKeywordList | None = None
     ) -> SEOStrategyReport:
         """
-        Execute 10-Task SEO Strategy Flow with Parallel Keyword Analysis.
+        Execute 11-Task SEO Strategy Flow with Parallel Keyword Analysis.
 
         Tasks 1a-i, 1a-ii, 1b, 1c, 1d run in parallel using CrewAI's async_execution=True pattern.
         Task 1e waits for all 5 async tasks via context dependency.
@@ -2410,7 +2607,7 @@ class SEOStrategyCrew:
         - Tier 0 and Tier 1 have separate token budgets (fixes null issue)
         """
         logger.info(
-            f"Starting 10-Task SEO Strategy Flow (PARALLEL) for: {self.selected_solution.solution_name}"
+            f"Starting 11-Task SEO Strategy Flow (PARALLEL) for: {self.selected_solution.solution_name}"
         )
         logger.info(
             f"Processing {len(enriched_keywords)} enriched keywords"
@@ -2449,9 +2646,25 @@ class SEOStrategyCrew:
             else:
                 topic_clusters_summary = "No topic clusters identified"
 
-            # Create 10-task crew with parallel keyword analysis
+            # Create 11-task crew with parallel keyword analysis
             # Tasks 1a-i, 1a-ii, 1b, 1c, 1d run concurrently (async_execution=True)
             # Task 1e waits for all via context dependency
+            # Tasks 4 and 5 run in parallel, Task 6 syncs them
+            #
+            # IMPORTANT: Store task references to access task.output directly after crew completes
+            # (crew_output.tasks_output has bugs with async tasks - may not include all outputs)
+            task_1a_i = self.analyze_tier_0_premium_task()           # Task 1a-i (async)
+            task_1a_ii = self.analyze_tier_1_quick_wins_task()       # Task 1a-ii (async)
+            task_1b = self.analyze_strategic_tier_task()             # Task 1b (async)
+            task_1c = self.analyze_geographic_tier_parallel_task()   # Task 1c (async)
+            task_1d = self.analyze_category_tier_parallel_task()     # Task 1d (async)
+            task_1e = self.synthesize_keyword_summary_parallel_task()  # Task 1e (sync)
+            task_2 = self.develop_content_technical_strategy_task()  # Task 2
+            task_3 = self.create_implementation_plan_task()          # Task 3
+            task_4 = self.synthesize_final_seo_strategy_task()       # Task 4 (async)
+            task_5 = self.create_implementation_guide_task()         # Task 5 (async)
+            task_6 = self.sync_final_outputs_task()                  # Task 6 (sync)
+
             strategy_crew = Crew(
                 agents=[
                     # Tasks 1a-i, 1a-ii, 1b, 1c, 1d, 1e: Parallel keyword analysis agents
@@ -2461,23 +2674,13 @@ class SEOStrategyCrew:
                     self.geographic_tier_analyst(),    # Task 1c (async)
                     self.category_tier_analyst(),      # Task 1d (async)
                     self.keyword_summary_analyst(),    # Task 1e (sync)
-                    # Tasks 2-5: Strategy development agents
+                    # Tasks 2-6: Strategy development agents
                     self.content_strategist(),         # Task 2
-                    self.seo_specialist(),             # Tasks 3-5
+                    self.seo_specialist(),             # Tasks 3-6
                 ],
                 tasks=[
-                    # Parallel keyword analysis (Tasks 1a-i, 1a-ii, 1b, 1c, 1d run concurrently)
-                    self.analyze_tier_0_premium_task(),           # Task 1a-i (async)
-                    self.analyze_tier_1_quick_wins_task(),        # Task 1a-ii (async)
-                    self.analyze_strategic_tier_task(),           # Task 1b (async)
-                    self.analyze_geographic_tier_parallel_task(), # Task 1c (async)
-                    self.analyze_category_tier_parallel_task(),   # Task 1d (async)
-                    self.synthesize_keyword_summary_parallel_task(),  # Task 1e (waits for 1a-i/ii, 1b-1d)
-                    # Strategy development (Tasks 2-5)
-                    self.develop_content_technical_strategy_task(),   # Task 2 (context: 1e)
-                    self.create_implementation_plan_task(),           # Task 3
-                    self.synthesize_final_seo_strategy_task(),        # Task 4
-                    self.create_implementation_guide_task(),          # Task 5
+                    task_1a_i, task_1a_ii, task_1b, task_1c, task_1d, task_1e,
+                    task_2, task_3, task_4, task_5, task_6,
                 ],
                 verbose=True,
                 process_type="sequential",  # CrewAI handles async within sequential
@@ -2532,7 +2735,7 @@ class SEOStrategyCrew:
                 f"(based on {partitions['category_count']} category keywords)"
             )
 
-            logger.info("Executing 10-Task SEO Strategy Flow (parallel keyword analysis)...")
+            logger.info("Executing 11-Task SEO Strategy Flow (parallel keyword analysis)...")
             logger.info(
                 f"Tasks 1a-i/ii, 1b, 1c, 1d will run in PARALLEL: "
                 f"T0={partitions['tier_0_count']}, T1={partitions['tier_1_count']}, "
@@ -2585,59 +2788,60 @@ class SEOStrategyCrew:
                 }
             )
 
-            # Extract all task outputs (Tasks 1a-i, 1a-ii, 1b, 1c, 1d, 1e + Tasks 2-5 = 10 total)
-            task_outputs = crew_output.tasks_output if hasattr(crew_output, "tasks_output") else []
-            if len(task_outputs) < 10:
-                raise ValueError(
-                    f"Expected 10 task outputs, got {len(task_outputs)}. "
-                    "Pipeline may have failed mid-execution."
-                )
-
             # ========================================
-            # Extract and validate Tasks 1a-i/ii, 1b, 1c, 1d, 1e (Parallel Keyword Analysis)
+            # Extract task outputs using task.output (workaround for CrewAI async bug)
             # ========================================
+            # NOTE: crew_output.tasks_output has bugs with async tasks - may not include all outputs
+            # Instead, access task.output directly from the task objects we stored earlier
+            # See: https://community.crewai.com/t/improper-taskoutput-when-using-async-execution-true-in-tasks/3340
 
-            task_1a_i_output = task_outputs[0].pydantic  # Tier0LightResult
-            if task_1a_i_output is None:
-                raise ValueError(
-                    "Task 1a-i (Tier 0 Premium Analysis) returned None pydantic output. "
-                    "Check Tier0LightResult schema and agent prompt."
-                )
+            def _get_task_output(task, task_name: str, expected_type: str):
+                """Extract pydantic output from task, with validation."""
+                if not hasattr(task, 'output') or task.output is None:
+                    raise ValueError(
+                        f"{task_name} has no output. Task may not have executed. "
+                        f"Expected {expected_type}."
+                    )
+                output = task.output
+                # CrewAI 1.7.0+: When guardrails exist, pydantic may be None - parse from raw
+                if output.pydantic is None and output.raw:
+                    logger.debug(f"{task_name}: pydantic is None, will parse from raw")
+                return output
 
-            task_1a_ii_output = task_outputs[1].pydantic  # Tier1LightResult
-            if task_1a_ii_output is None:
-                raise ValueError(
-                    "Task 1a-ii (Tier 1 Quick Win Analysis) returned None pydantic output. "
-                    "Check Tier1LightResult schema and agent prompt."
-                )
+            # Extract outputs from stored task references
+            logger.info("[DEBUG] Extracting outputs from task.output (bypassing tasks_output bug)")
 
-            task_1b_output = task_outputs[2].pydantic  # StrategicLightResult
-            if task_1b_output is None:
-                raise ValueError(
-                    "Task 1b (Strategic Tier Analysis) returned None pydantic output. "
-                    "Check StrategicLightResult schema and agent prompt."
-                )
+            task_1a_i_raw = _get_task_output(task_1a_i, "Task 1a-i (Tier 0 Premium)", "Tier0LightResult")
+            task_1a_ii_raw = _get_task_output(task_1a_ii, "Task 1a-ii (Tier 1 Quick Win)", "Tier1LightResult")
+            task_1b_raw = _get_task_output(task_1b, "Task 1b (Strategic Tier)", "StrategicLightResult")
+            task_1c_raw = _get_task_output(task_1c, "Task 1c (Geographic Tier)", "GeographicLightResult")
+            task_1d_raw = _get_task_output(task_1d, "Task 1d (Category Tier)", "CategoryLightResult")
+            task_1e_raw = _get_task_output(task_1e, "Task 1e (Keyword Summary)", "KeywordSummaryResult")
 
-            task_1c_output = task_outputs[3].pydantic  # GeographicLightResult
-            if task_1c_output is None:
-                raise ValueError(
-                    "Task 1c (Geographic Tier Analysis) returned None pydantic output. "
-                    "Check GeographicLightResult schema and agent prompt."
-                )
+            # Parse pydantic from raw if needed (guardrail compatibility)
+            from ..utils.parsing.json_extractor import clean_llm_response
 
-            task_1d_output = task_outputs[4].pydantic  # CategoryLightResult
-            if task_1d_output is None:
-                raise ValueError(
-                    "Task 1d (Category Tier Analysis) returned None pydantic output. "
-                    "Check CategoryLightResult schema and agent prompt."
-                )
+            def _parse_output(task_output, model_class, task_name: str):
+                """Parse pydantic output, falling back to raw JSON if needed."""
+                if task_output.pydantic is not None:
+                    return task_output.pydantic
+                # Parse from raw
+                if not task_output.raw:
+                    raise ValueError(f"{task_name} has no pydantic or raw output")
+                try:
+                    cleaned = clean_llm_response(task_output.raw)
+                    return model_class.model_validate_json(cleaned)
+                except Exception as e:
+                    raise ValueError(f"{task_name} failed to parse: {e}")
 
-            task_1e_output = task_outputs[5].pydantic  # KeywordSummaryResult
-            if task_1e_output is None:
-                raise ValueError(
-                    "Task 1e (Summary & Synthesis) returned None pydantic output. "
-                    "Check KeywordSummaryResult schema and agent prompt."
-                )
+            task_1a_i_output = _parse_output(task_1a_i_raw, Tier0LightResult, "Task 1a-i")
+            task_1a_ii_output = _parse_output(task_1a_ii_raw, Tier1LightResult, "Task 1a-ii")
+            task_1b_output = _parse_output(task_1b_raw, StrategicLightResult, "Task 1b")
+            task_1c_output = _parse_output(task_1c_raw, GeographicLightResult, "Task 1c")
+            task_1d_output = _parse_output(task_1d_raw, CategoryLightResult, "Task 1d")
+            task_1e_output = _parse_output(task_1e_raw, KeywordSummaryResult, "Task 1e")
+
+            logger.info("✅ All keyword analysis task outputs extracted successfully")
 
             # ========================================
             # HYDRATION: Build lookup and hydrate lightweight outputs
@@ -2957,13 +3161,11 @@ class SEOStrategyCrew:
             # ========================================
             # Extract and validate Tasks 2-5 (Strategy Development)
             # ========================================
+            # Using task.output directly (workaround for CrewAI async bug)
 
-            task_2_light = task_outputs[6].pydantic  # ContentStrategyResultLight
-            if task_2_light is None:
-                raise ValueError(
-                    "Task 2 (Content Strategy) returned None pydantic output. "
-                    "Check ContentStrategyResultLight schema and agent prompt."
-                )
+            task_2_raw = _get_task_output(task_2, "Task 2 (Content Strategy)", "ContentStrategyResultLight")
+            task_2_light = _parse_output(task_2_raw, ContentStrategyResultLight, "Task 2")
+            logger.info("✅ Task 2 output extracted")
 
             # ========================================
             # HYDRATION: Task 2 - Hydrate lightweight output with CSV data
@@ -2987,26 +3189,17 @@ class SEOStrategyCrew:
                 f"{len(task_2_output.keyword_based_page_types or [])} page types"
             )
 
-            task_3_output = task_outputs[7].pydantic  # ImplementationPlanResult
-            if task_3_output is None:
-                raise ValueError(
-                    "Task 3 (Implementation Plan) returned None pydantic output. "
-                    "Check ImplementationPlanResult schema and agent prompt."
-                )
+            task_3_raw = _get_task_output(task_3, "Task 3 (Implementation Plan)", "ImplementationPlanResult")
+            task_3_output = _parse_output(task_3_raw, ImplementationPlanResult, "Task 3")
+            logger.info("✅ Task 3 output extracted")
 
-            task_4_output = task_outputs[8].pydantic  # FinalSynthesis
-            if task_4_output is None:
-                raise ValueError(
-                    "Task 4 (Final Synthesis) returned None pydantic output. "
-                    "Check FinalSynthesis schema and agent prompt."
-                )
+            task_4_raw = _get_task_output(task_4, "Task 4 (Final Synthesis)", "FinalSynthesis")
+            task_4_output = _parse_output(task_4_raw, FinalSynthesis, "Task 4")
+            logger.info("✅ Task 4 output extracted")
 
-            task_5_light = task_outputs[9].pydantic  # ImplementationGuideLight
-            if task_5_light is None:
-                raise ValueError(
-                    "Task 5 (Implementation Guide) returned None pydantic output. "
-                    "Check ImplementationGuideLight schema and agent prompt."
-                )
+            task_5_raw = _get_task_output(task_5, "Task 5 (Implementation Guide)", "ImplementationGuideLight")
+            task_5_light = _parse_output(task_5_raw, ImplementationGuideLight, "Task 5")
+            logger.info("✅ Task 5 output extracted")
 
             # ========================================
             # HYDRATION: Task 5 - Generate JSON-LD schemas via Python
@@ -3059,7 +3252,7 @@ class SEOStrategyCrew:
             )
 
             logger.info(
-                f"[OK] 10-Task SEO Strategy Flow complete (PARALLEL: Tasks 1a-i/ii, 1b-1e + 2-5):\n"
+                f"[OK] 11-Task SEO Strategy Flow complete (PARALLEL: Tasks 1a-i/ii, 1b-1e + 2-6):\n"
                 f"  - Tier 0 keywords: {tier0_selected}\n"
                 f"  - Tier 1 keywords: {tier1_selected}\n"
                 f"  - Tier 2 keywords: {tier2_selected}\n"
@@ -3074,7 +3267,7 @@ class SEOStrategyCrew:
             return result
 
         except Exception as e:
-            logger.error(f"10-Task SEO Strategy Flow (PARALLEL) failed: {e}")
+            logger.error(f"11-Task SEO Strategy Flow (PARALLEL) failed: {e}")
             raise
 
     @property

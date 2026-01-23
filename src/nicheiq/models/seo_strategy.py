@@ -1492,6 +1492,36 @@ class FinalSynthesis(BaseModel):
         description="3-4 critical success factors (minimum 3)"
     )
 
+
+class SyncFinalOutputs(BaseModel):
+    """
+    Task 6 output: Sync point for parallel Tasks 4 and 5.
+
+    This minimal model confirms that both async tasks (Task 4: FinalSynthesis,
+    Task 5: ImplementationGuideLight) have completed. The actual outputs are
+    extracted from context by Python after the crew finishes.
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    status: str = Field(
+        default="complete",
+        description="Completion status (always 'complete' if this task runs)"
+    )
+    task_4_received: bool = Field(
+        default=True,
+        description="Confirmation that Task 4 (FinalSynthesis) output was received"
+    )
+    task_5_received: bool = Field(
+        default=True,
+        description="Confirmation that Task 5 (ImplementationGuideLight) output was received"
+    )
+    summary: str = Field(
+        default="SEO strategy tasks completed successfully.",
+        description="Brief completion summary"
+    )
+
+
 class ImplementationGuide(BaseModel):
     """
     Task 5 output: SEO Implementation Guide (3 new fields only).
@@ -1519,7 +1549,83 @@ class ImplementationGuide(BaseModel):
 # LIGHTWEIGHT TASK 5 OUTPUT MODELS FOR PYTHON HYDRATION
 # ========================================
 # These models capture only LLM-generated content (schema selections + strategic guidance).
-# Python generates actual JSON-LD code using templates + solution context.
+# Python generates boilerplate SEO guidelines and JSON-LD code using templates.
+
+
+class UniversalSEOElementsLight(BaseModel):
+    """
+    Lightweight universal SEO elements - Python generates boilerplate guidelines.
+
+    LLM provides:
+    - title_tag_formula (brand-specific pattern)
+
+    Python hydrates with:
+    - title_tag_guidelines (standard SEO best practices)
+    - meta_description_guidelines (standard best practices)
+    - canonical_url_strategy (standard best practices)
+    - open_graph_tags (template with brand placeholder)
+    - robots_meta_guidelines (standard best practices)
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    title_tag_formula: str = Field(
+        ...,
+        description="Title tag format pattern (e.g., '[Primary Keyword] | [Page Type] | Brand Name')"
+    )
+
+
+class PageTypeImplementationLight(BaseModel):
+    """
+    Lightweight page type implementation - Python generates boilerplate guidelines.
+
+    LLM provides:
+    - page_type, url_pattern, target_keywords (strategic)
+    - title_tag_example, meta_description_example, h1_structure (creative)
+    - h2_structure, schema_types (content planning)
+
+    Python hydrates with:
+    - internal_linking_strategy (template based on page_type)
+    - content_guidelines (template based on page_type)
+    """
+
+    model_config = ConfigDict(extra='ignore')
+
+    page_type: str = Field(
+        ...,
+        description="Page type name (e.g., 'Homepage', 'Location Page', 'Profile Page', 'Content Page')"
+    )
+    url_pattern: str = Field(
+        ...,
+        description="URL structure pattern (e.g., '/locations/{city}', '/guides/{topic}')"
+    )
+    target_keywords: list[str] = Field(
+        ...,
+        description="3-5 primary and secondary keyword patterns for this page type"
+    )
+    title_tag_example: str = Field(
+        ...,
+        description="Example title tag applying the formula to this page type"
+    )
+    meta_description_example: str = Field(
+        ...,
+        description="Example meta description for this page type (140-160 chars)"
+    )
+    h1_structure: str = Field(
+        ...,
+        description="H1 format pattern (e.g., '[Service] in [Location] - [Value Prop]')"
+    )
+    h2_structure: list[str] = Field(
+        ...,
+        description="Recommended H2 section headings (3-6 headings)"
+    )
+    schema_types: list[str] = Field(
+        ...,
+        description="Required schema types (e.g., ['Organization', 'LocalBusiness', 'BreadcrumbList'])"
+    )
+    priority: Optional[str] = Field(
+        default=None, description="Implementation priority level (e.g., 'high', 'medium', 'low')"
+    )
 
 
 class SchemaSelectionLight(BaseModel):
@@ -1534,7 +1640,7 @@ class SchemaSelectionLight(BaseModel):
 
     schema_type: str = Field(
         ...,
-        description="Schema.org type: Organization, Service, FAQPage, BreadcrumbList, Article, WebPage, Review, HowTo"
+        description="Schema.org type: Organization, Service, FAQPage, BreadcrumbList, Article, WebPage, Review, HowTo, WebSite, LocalBusiness, Dataset"
     )
     priority: int = Field(
         ..., ge=1, le=5, description="Implementation priority (1=critical, 5=nice-to-have)"
@@ -1551,14 +1657,15 @@ class SchemaSelectionLight(BaseModel):
 
 class SchemaMarkupStrategyLight(BaseModel):
     """
-    Lightweight schema strategy - Python generates JSON-LD code.
+    Lightweight schema strategy - Python generates JSON-LD code and boilerplate.
 
     LLM provides:
-    - Strategic narrative (why schema matters)
+    - Strategic narrative (why schema matters) - solution-specific
     - Schema type selections with rationale
-    - Implementation guidance
 
     Python hydrates with:
+    - implementation_method (boilerplate)
+    - testing_validation (boilerplate)
     - Actual JSON-LD code from templates
     """
 
@@ -1573,38 +1680,41 @@ class SchemaMarkupStrategyLight(BaseModel):
         min_length=4,
         description="4-8 schema types to implement with strategic rationale"
     )
-    implementation_method: str = Field(
-        ...,
-        description="JSON-LD format guidance, placement in <head>, why JSON-LD over Microdata - 2 paragraphs, markdown"
+    # Optional - Python generates boilerplate if not provided
+    implementation_method: Optional[str] = Field(
+        default=None,
+        description="Optional - Python generates standard JSON-LD implementation guidance"
     )
-    testing_validation: str = Field(
-        ...,
-        description="Testing tools and process (Google Rich Results Test, Schema Validator, Search Console) - 2 paragraphs, markdown"
+    testing_validation: Optional[str] = Field(
+        default=None,
+        description="Optional - Python generates standard testing/validation guidance"
     )
 
 
 class ImplementationGuideLight(BaseModel):
     """
-    Lightweight Task 5 output - schema_markup_strategy uses light model.
+    Lightweight Task 5 output - all components use light models.
 
-    LLM generates:
-    - universal_seo_elements (same as before - pure strategic content)
-    - page_type_implementations (same as before - pure strategic content)
-    - schema_markup_strategy (LIGHT - schema selections + rationale only)
+    LLM generates (minimal):
+    - universal_seo_elements.title_tag_formula only
+    - page_type_implementations without internal_linking_strategy/content_guidelines
+    - schema_markup_strategy schema selections + rationale only
 
-    Python hydrates:
-    - schema_markup_strategy.schema_examples (JSON-LD code from templates)
+    Python hydrates with:
+    - All universal SEO guidelines (boilerplate)
+    - internal_linking_strategy and content_guidelines per page type
+    - JSON-LD code from templates
     """
 
     model_config = ConfigDict(extra='ignore')
 
-    universal_seo_elements: UniversalSEOElements = Field(
-        ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"
+    universal_seo_elements: UniversalSEOElementsLight = Field(
+        ..., description="Title tag formula only - Python generates all guidelines"
     )
-    page_type_implementations: list[PageTypeImplementation] = Field(
+    page_type_implementations: list[PageTypeImplementationLight] = Field(
         ...,
         min_length=4,
-        description="SEO templates for 4-6 key page types (minimum 4)"
+        description="SEO templates for 4-6 key page types (minimum 4) - Python adds guidelines"
     )
     schema_markup_strategy: SchemaMarkupStrategyLight = Field(
         ..., description="Schema strategy with type selections (Python generates JSON-LD code)"

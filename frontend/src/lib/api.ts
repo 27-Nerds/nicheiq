@@ -49,6 +49,24 @@ export interface Job {
   completedAt: string | null;
   progress: JobProgress[];
   assets: JobAsset[];
+  // Optional fields returned by some endpoints
+  hasReport?: boolean;
+  hasLandingPage?: boolean;
+  creditRefunded?: boolean;
+  queuePosition?: number | null;
+  aheadCount?: number;
+  totalQueued?: number;
+  stopReason?: string | null;
+  stopReasonDetails?: {
+    qualityTier?: string;
+    confidenceScore?: number;
+    metrics?: {
+      painPointCount?: number;
+      quoteDensity?: number;
+      sourceCoverage?: number;
+    };
+    recommendation?: string;
+  } | null;
 }
 
 export class ApiError extends Error {
@@ -109,31 +127,115 @@ export async function cancelJob(jobId: string): Promise<{ message: string }> {
 }
 
 /**
- * Subscribe to job progress updates via SSE
+ * Terminal job statuses - SSE should close when job reaches these
+ */
+const TERMINAL_STATUSES = ['COMPLETED', 'FAILED', 'CANCELLED'];
+
+/**
+ * Check if a job status is terminal (no more updates expected)
+ */
+export function isTerminalStatus(status: string | undefined): boolean {
+  return !!status && TERMINAL_STATUSES.includes(status.toUpperCase());
+}
+
+/**
+ * SSE connection options
+ */
+export interface SSEOptions {
+  maxReconnectAttempts?: number;
+  reconnectDelayMs?: number;
+  onReconnecting?: (attempt: number, maxAttempts: number) => void;
+  onMaxReconnectsReached?: () => void;
+}
+
+const DEFAULT_MAX_RECONNECT_ATTEMPTS = 10;
+const DEFAULT_RECONNECT_DELAY_MS = 3000;
+
+/**
+ * Subscribe to job progress updates via SSE with automatic reconnection
+ *
+ * @param jobId - The job ID to subscribe to
+ * @param onUpdate - Callback for job updates. Return the job status to help manage connection lifecycle.
+ * @param onError - Optional error callback
+ * @param options - Optional configuration for reconnection behavior
+ * @returns Cleanup function to close the connection
  */
 export function subscribeToProgress(
   jobId: string,
-  onUpdate: (job: Partial<Job>) => void,
-  onError?: (error: Error) => void
+  onUpdate: (job: Job) => void,
+  onError?: (error: Error) => void,
+  options?: SSEOptions
 ): () => void {
-  const eventSource = new EventSource(`${SSE_BASE}/jobs/${jobId}/events`);
+  const maxAttempts = options?.maxReconnectAttempts ?? DEFAULT_MAX_RECONNECT_ATTEMPTS;
+  const delayMs = options?.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
 
-  eventSource.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onUpdate(data);
-    } catch (e) {
-      console.error('Failed to parse SSE data:', e);
-    }
-  };
+  let eventSource: EventSource | null = null;
+  let reconnectAttempts = 0;
+  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  let isCleanedUp = false;
+  let lastKnownStatus: string | undefined;
 
-  eventSource.onerror = () => {
-    eventSource.close();
-    onError?.(new Error('SSE connection closed'));
-  };
+  function connect() {
+    if (isCleanedUp) return;
+
+    // Don't connect if we know the job is in a terminal state
+    if (isTerminalStatus(lastKnownStatus)) return;
+
+    eventSource?.close();
+    eventSource = new EventSource(`${SSE_BASE}/jobs/${jobId}/events`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data) as Job;
+        lastKnownStatus = data.status;
+        reconnectAttempts = 0; // Reset on successful message
+        onUpdate(data);
+
+        // Close connection if job reached terminal state
+        if (isTerminalStatus(data.status)) {
+          eventSource?.close();
+          eventSource = null;
+        }
+      } catch (e) {
+        console.error('Failed to parse SSE data:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource?.close();
+      eventSource = null;
+
+      // Don't reconnect if cleaned up or terminal
+      if (isCleanedUp || isTerminalStatus(lastKnownStatus)) {
+        return;
+      }
+
+      // Attempt reconnect with backoff
+      if (reconnectAttempts < maxAttempts) {
+        reconnectAttempts++;
+        const delay = delayMs * Math.min(reconnectAttempts, 3);
+        options?.onReconnecting?.(reconnectAttempts, maxAttempts);
+        reconnectTimeout = setTimeout(connect, delay);
+      } else {
+        options?.onMaxReconnectsReached?.();
+        onError?.(new Error('Max SSE reconnection attempts reached'));
+      }
+    };
+  }
+
+  // Start connection
+  connect();
 
   // Return cleanup function
-  return () => eventSource.close();
+  return () => {
+    isCleanedUp = true;
+    eventSource?.close();
+    eventSource = null;
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
+      reconnectTimeout = null;
+    }
+  };
 }
 
 /**

@@ -3,6 +3,8 @@ PainPointCrew - Stage 6: Pain Point Analysis
 Multi-agent crew for analyzing social discussions and extracting validated pain points.
 """
 
+import json
+import re
 from difflib import SequenceMatcher
 from typing import Any
 
@@ -20,7 +22,12 @@ from ..models.pain_point import (
     ValidationResult,
 )
 from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
+from ..utils.parsing.json_extractor import clean_llm_response
 from ..utils.token_monitor import ContentTokenMonitor
+from ..utils.validation.crew_guardrails import (
+    _fix_common_json_errors,
+    validate_content_categorization,
+)
 
 # Source tracking pattern for [source: ID] suffixes
 # Matches alphanumeric, dash, underscore, period (1-50 chars) for post/thread IDs
@@ -64,6 +71,156 @@ def fuzzy_find_matching_score(title: str, scores: list, threshold: float = FUZZY
         return (best_match, best_ratio)
 
     return (None, best_ratio)
+
+
+def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for extract_pain_points_task to handle JSON parsing errors.
+
+    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    Must parse from .raw and return (True, raw_string) on success.
+
+    Validates:
+    - JSON is parseable (catches malformed output)
+    - Has at least 3 extracted_pain_points
+    - Each pain point has minimum required fields
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    try:
+        # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
+        result = task_output.pydantic
+        if result is None:
+            if not hasattr(task_output, 'raw') or not task_output.raw:
+                return (False, "Pain point extraction returned empty output (no pydantic or raw)")
+
+            try:
+                # Clean LLM response to remove XML-like tags
+                cleaned_raw = clean_llm_response(task_output.raw)
+                # Try to fix common JSON errors
+                cleaned_raw = _fix_common_json_errors(cleaned_raw)
+                raw_json = json.loads(cleaned_raw)
+                result = PainPointExtraction.model_validate(raw_json)
+                logger.debug("Pain point extraction guardrail: Parsed from .raw")
+            except json.JSONDecodeError as e:
+                # Provide helpful error message for retry
+                logger.warning(f"JSON parse error in pain point extraction: {e}")
+                logger.warning(f"Raw output first 500 chars: {task_output.raw[:500] if task_output.raw else 'empty'}")
+                return (
+                    False,
+                    f"Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}. "
+                    "Ensure your JSON output is valid: "
+                    "1) No trailing commas before } or ] "
+                    "2) All strings use double quotes "
+                    "3) No comments in JSON. "
+                    "Return a valid PainPointExtraction JSON object."
+                )
+            except Exception as e:
+                logger.warning(f"Failed to validate PainPointExtraction: {e}")
+                return (False, f"Failed to parse PainPointExtraction: {e}")
+
+        if not isinstance(result, PainPointExtraction):
+            return (
+                False,
+                f"Invalid type: expected PainPointExtraction, got {type(result)}"
+            )
+
+        # Validate minimum pain points
+        if len(result.extracted_pain_points) < 3:
+            return (
+                False,
+                f"Need at least 3 extracted_pain_points, got {len(result.extracted_pain_points)}. "
+                "If data is sparse, still identify at least 3 distinct pain patterns with supporting quotes."
+            )
+
+        # Validate each pain point has required fields
+        for i, pp in enumerate(result.extracted_pain_points):
+            if not pp.title or len(pp.title) < 5:
+                return (False, f"Pain point {i+1} missing or too short title")
+            if not pp.description or len(pp.description) < 20:
+                return (False, f"Pain point '{pp.title}' has missing or too short description")
+            if len(pp.representative_quotes) < 5:
+                return (
+                    False,
+                    f"Pain point '{pp.title}' needs at least 5 representative_quotes (target 8+), got {len(pp.representative_quotes)}. "
+                    "Search knowledge sources for more supporting evidence with [source: ID] tags."
+                )
+
+        logger.info(f"✓ Pain point extraction guardrail passed: {len(result.extracted_pain_points)} pain points")
+        return (True, task_output.raw)
+
+    except Exception as e:
+        return (False, f"Pain point extraction validation error: {str(e)}")
+
+
+def validate_pain_point_scoring(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for validate_pain_points_task to handle JSON parsing errors.
+
+    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    Must parse from .raw and return (True, raw_string) on success.
+
+    Validates:
+    - JSON is parseable
+    - Has pain_point_scores list
+    - Each score has required fields
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    try:
+        result = task_output.pydantic
+        if result is None:
+            if not hasattr(task_output, 'raw') or not task_output.raw:
+                return (False, "Pain point validation returned empty output (no pydantic or raw)")
+
+            try:
+                cleaned_raw = clean_llm_response(task_output.raw)
+                cleaned_raw = _fix_common_json_errors(cleaned_raw)
+                raw_json = json.loads(cleaned_raw)
+                result = ValidationResult.model_validate(raw_json)
+                logger.debug("Pain point scoring guardrail: Parsed from .raw")
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON parse error in pain point scoring: {e}")
+                return (
+                    False,
+                    f"Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}. "
+                    "Ensure valid JSON with no trailing commas and double-quoted strings."
+                )
+            except Exception as e:
+                logger.warning(f"Failed to validate ValidationResult: {e}")
+                return (False, f"Failed to parse ValidationResult: {e}")
+
+        if not isinstance(result, ValidationResult):
+            return (False, f"Invalid type: expected ValidationResult, got {type(result)}")
+
+        # Validate has scores
+        if not result.pain_point_scores or len(result.pain_point_scores) < 1:
+            return (False, "Need at least 1 pain_point_score entry")
+
+        # Validate each score has required fields in valid range
+        for score in result.pain_point_scores:
+            if not score.pain_point_title:
+                return (False, "Score entry missing pain_point_title")
+            if score.severity_score is None or not (0.0 <= score.severity_score <= 1.0):
+                return (
+                    False,
+                    f"Score for '{score.pain_point_title}' has invalid severity_score {score.severity_score}. "
+                    "Must be between 0.0 and 1.0."
+                )
+            if score.willingness_to_pay is None or not (0.0 <= score.willingness_to_pay <= 1.0):
+                return (
+                    False,
+                    f"Score for '{score.pain_point_title}' has invalid willingness_to_pay {score.willingness_to_pay}. "
+                    "Must be between 0.0 and 1.0."
+                )
+
+        logger.info(f"✓ Pain point scoring guardrail passed: {len(result.pain_point_scores)} scores")
+        return (True, task_output.raw)
+
+    except Exception as e:
+        return (False, f"Pain point scoring validation error: {str(e)}")
 
 
 @CrewBase
@@ -490,11 +647,14 @@ class PainPointCrew:
         Task: Read and categorize all social content.
 
         Output: Structured categorization of discussions by theme and user segment.
+        Guardrail: Validates 4+ themes with 3+ quotes each, and 3+ user segments.
         """
         return Task(
             config=self.tasks_config["categorize_content"],
             agent=self.content_researcher(),
             output_pydantic=ContentCategorizationReport,
+            guardrail=validate_content_categorization,
+            guardrail_max_retries=2,
         )
 
     @task
@@ -504,12 +664,16 @@ class PainPointCrew:
 
         Depends on: categorize_content_task
         Output: Structured list of identified pain points with descriptions and quotes (no scores yet).
+
+        Includes guardrail to handle JSON parsing errors and validate output structure.
         """
         return Task(
             config=self.tasks_config["extract_pain_points"],
             agent=self.pain_point_analyst(),
             context=[self.categorize_content_task()],
             output_pydantic=PainPointExtraction,
+            guardrail=validate_pain_point_extraction,
+            guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
     @task
@@ -519,12 +683,16 @@ class PainPointCrew:
 
         Depends on: extract_pain_points_task
         Output: ValidationResult with severity and WTP scores (scores only, Python will merge).
+
+        Includes guardrail to handle JSON parsing errors and validate score ranges.
         """
         return Task(
             config=self.tasks_config["validate_pain_points"],
             agent=self.pain_point_validator(),
             context=[self.extract_pain_points_task()],
             output_pydantic=ValidationResult,
+            guardrail=validate_pain_point_scoring,
+            guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
     @crew
@@ -767,9 +935,26 @@ class PainPointCrew:
                 logger.error(f"Expected 3 task outputs, got {len(task_outputs)}")
                 raise ValueError("Incomplete task execution in pain point crew")
 
-            categorization_output = task_outputs[0].pydantic  # Task 1: ContentCategorizationReport
-            extraction_output = task_outputs[1].pydantic      # Task 2: PainPointExtraction
-            validation_output = task_outputs[2].pydantic      # Task 3: ValidationResult
+            # Helper to parse pydantic from raw when guardrails set pydantic=None
+            def _parse_output(task_output, model_class, task_name: str):
+                """Parse pydantic from raw if needed (guardrail compatibility)."""
+                if task_output.pydantic is not None:
+                    return task_output.pydantic
+                if not hasattr(task_output, 'raw') or not task_output.raw:
+                    raise ValueError(f"{task_name}: No pydantic or raw output available")
+                try:
+                    cleaned_raw = clean_llm_response(task_output.raw)
+                    cleaned_raw = _fix_common_json_errors(cleaned_raw)
+                    raw_json = json.loads(cleaned_raw)
+                    result = model_class.model_validate(raw_json)
+                    logger.debug(f"{task_name}: Parsed {model_class.__name__} from .raw")
+                    return result
+                except Exception as e:
+                    raise ValueError(f"{task_name}: Failed to parse {model_class.__name__} from .raw: {e}")
+
+            categorization_output = _parse_output(task_outputs[0], ContentCategorizationReport, "Task 1")
+            extraction_output = _parse_output(task_outputs[1], PainPointExtraction, "Task 2")
+            validation_output = _parse_output(task_outputs[2], ValidationResult, "Task 3")
 
             # Extract source IDs from [source: ID] suffixes and clean quotes
             extraction_output.extracted_pain_points = self._extract_and_clean_sources(

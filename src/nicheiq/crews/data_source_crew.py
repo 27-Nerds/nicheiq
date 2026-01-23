@@ -19,6 +19,7 @@ from ..models.data_source import (
 )
 from ..models.seo_strategy import SEOStrategyReport
 from ..models.solution_idea import SolutionIdea
+from ..utils.validation.crew_guardrails import validate_data_source_evaluation
 
 
 @CrewBase
@@ -117,12 +118,15 @@ class DataSourceResearchCrew:
         """
         Task: Evaluate discovered data sources for quality, cost, and feasibility.
         Output: SourceEvaluationReport with priority tiers and quality metrics.
+        Guardrail: Validates 1+ high_priority_source with quality_metrics.
         """
         return Task(
             config=self.tasks_config["evaluate_data_sources"],
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task()],
             output_pydantic=SourceEvaluationReport,
+            guardrail=validate_data_source_evaluation,
+            guardrail_max_retries=2,
         )
 
     @task

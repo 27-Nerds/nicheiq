@@ -17,6 +17,7 @@ from ..config.settings import settings
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult
 from ..models.social_content import RedditPost, TwitterThread
+from ..utils.validation.crew_guardrails import validate_audience_mapping
 
 
 @CrewBase
@@ -247,11 +248,14 @@ class AudienceMappingCrew:
 
         Analyzes social discussions via knowledge sources to identify
         segments, influencers, vocabulary, and messaging frameworks.
+        Guardrail: Validates 2+ segments, 3+ influencers, 2+ community hubs.
         """
         return Task(
             config=self.tasks_config["audience_mapping_analysis"],
             agent=self.audience_researcher(),
             output_pydantic=AudienceMappingResult,
+            guardrail=validate_audience_mapping,
+            guardrail_max_retries=2,
         )
 
     @crew

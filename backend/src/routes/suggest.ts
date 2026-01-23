@@ -26,34 +26,125 @@ interface NicheSuggestion {
   appeal: string;
 }
 
+// Industry seeds for injecting randomness into each request
+const INDUSTRY_SEEDS = [
+  // Services & trades
+  'veterinary', 'escape rooms', 'fishing', 'event planning', 'ceramics',
+  'food trucks', 'tattoo', 'yacht', 'vintage', 'podcasting',
+  'martial arts', 'wine', 'arboriculture', 'weddings', 'drones',
+  'board games', 'locksmith', 'notary', 'mushroom farming', 'antiques',
+  'florists', 'chimney', 'tourism', 'home inspection', 'calligraphy',
+  'brewing', 'funeral', 'piano', 'equestrian', 'pool maintenance',
+  'comic books', 'private chef', 'metal fabrication', 'dog training', 'astrology',
+  'ice cream', 'court reporting', 'voiceover', 'golf instruction', 'taxidermy',
+  'gemology', 'blacksmith', 'hypnotherapy', 'sailmaking', 'landscaping',
+  'jewelry repair', 'barbershop', 'candle making', 'carpet cleaning', 'pest control',
+  'window tinting', 'mobile repair', 'daycare', 'storage units', 'laundromat',
+  'car detailing', 'appliance repair', 'tutoring', 'moving services', 'junk removal',
+  'pressure washing', 'roofing', 'plumbing', 'HVAC', 'electrician',
+  'photography', 'videography', 'dance studio', 'music lessons', 'art gallery',
+  'bookstore', 'coffee roasting', 'bakery', 'catering', 'meal prep',
+  'fitness coaching', 'yoga studio', 'crossfit', 'rock climbing', 'cycling',
+  'ski instruction', 'surfing', 'sailing', 'kayaking', 'camping gear',
+  'RV parks', 'glamping', 'hunting outfitter', 'archery', 'paintball',
+  // Healthcare & wellness
+  'chiropractor', 'acupuncture', 'physical therapy', 'dental practice', 'optometry',
+  'pharmacy', 'medical billing', 'home healthcare', 'mental health counseling', 'dietitian',
+  'speech therapy', 'occupational therapy', 'massage therapy', 'meditation coaching', 'sleep clinic',
+  // Agriculture & food
+  'organic farming', 'hydroponics', 'livestock auction', 'seed suppliers', 'grain storage',
+  'farm equipment', 'vineyard', 'olive oil production', 'cheese aging', 'honey extraction',
+  'butcher shop', 'fish market', 'spice trading', 'tea importing', 'chocolate making',
+  // Creative & media
+  'animation studio', 'game development', 'music production', 'film editing', 'sound design',
+  'graphic design', 'interior design', 'fashion design', 'product design', 'UX research',
+  'copywriting', 'translation', 'publishing', 'screenwriting', 'documentary filmmaking',
+  // Education & training
+  'driving school', 'flight school', 'cooking classes', 'language learning', 'test prep',
+  'corporate training', 'safety certification', 'first aid training', 'lifeguard certification', 'welding school',
+  // Real estate & property
+  'property management', 'vacation rentals', 'commercial leasing', 'land surveying', 'home staging',
+  'real estate photography', 'title company', 'mortgage broker', 'house flipping', 'coworking space',
+  // Automotive & transport
+  'auto body shop', 'tire shop', 'towing service', 'car wash', 'fleet management',
+  'motorcycle repair', 'boat repair', 'RV repair', 'aircraft maintenance', 'classic car restoration',
+  // Events & entertainment
+  'DJ services', 'magician', 'party rental', 'photo booth', 'fireworks display',
+  'circus arts', 'comedy club', 'karaoke bar', 'trivia hosting', 'murder mystery dinner',
+  // Pets & animals
+  'pet grooming', 'dog walking', 'pet sitting', 'aquarium maintenance', 'bird breeding',
+  'reptile supplies', 'horse boarding', 'pet photography', 'animal rescue', 'exotic pets',
+  // Outdoor & environment
+  'tree removal', 'irrigation systems', 'solar installation', 'well drilling', 'septic services',
+  'waste management', 'recycling', 'environmental consulting', 'wildlife control', 'erosion control',
+  // Retail & commerce
+  'pawn shop', 'consignment store', 'thrift store', 'auction house', 'flea market vendor',
+  'vending machines', 'kiosk operator', 'wholesale distribution', 'import/export', 'dropshipping',
+  // Manufacturing & industrial
+  'CNC machining', '3D printing service', 'injection molding', 'PCB assembly', 'textile manufacturing',
+  'furniture making', 'glass blowing', 'pottery studio', 'leather working', 'woodworking',
+  // Professional services
+  'bookkeeping', 'tax preparation', 'payroll services', 'HR consulting', 'legal transcription',
+  'private investigation', 'process serving', 'bail bonds', 'collections agency', 'credit repair',
+  // Tech & digital
+  'IT support', 'data recovery', 'website hosting', 'domain brokerage', 'SEO consulting',
+  'app development', 'cybersecurity', 'network installation', 'smart home setup', 'drone services',
+  // Sports & recreation
+  'tennis coaching', 'swimming lessons', 'boxing gym', 'bowling alley', 'ice skating rink',
+  'mini golf', 'batting cages', 'trampoline park', 'laser tag', 'go-kart track',
+  // Niche hobbies
+  'model trains', 'RC cars', 'coin collecting', 'stamp collecting', 'card grading',
+  'cosplay', 'LARP', 'tabletop gaming', 'miniature painting', 'bonsai',
+  // Construction & building
+  'concrete work', 'masonry', 'drywall', 'painting contractor', 'flooring installation',
+  'cabinet making', 'countertop fabrication', 'window installation', 'garage door repair', 'fence building',
+  // Marine & water
+  'marina', 'boat storage', 'fishing charter', 'dive shop', 'jet ski rental',
+  'paddleboard rental', 'boat detailing', 'marine electronics', 'sail repair', 'boat brokerage',
+  // Aviation
+  'flight training', 'aircraft charter', 'aerial photography', 'crop dusting', 'skydiving',
+  'helicopter tours', 'hot air balloon', 'glider club', 'aircraft detailing', 'FBO services',
+];
+
+// Get random seed industries
+function getRandomSeeds(count: number = 3): string[] {
+  const shuffled = [...INDUSTRY_SEEDS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
+
 // System prompts
-const FEELING_LUCKY_SYSTEM_PROMPT = `Generate RANDOM niche ideas for SaaS/tools. SURPRISE ME with unexpected industries.
+const FEELING_LUCKY_SYSTEM_PROMPT = `You generate random niche/audience ideas for market research. Be creative and unexpected.
 
-Pick a random industry from the entire economy - anything from plumbing to AI, beekeeping to dentistry, bowling alleys to blockchain. Be unpredictable.
+OUTPUT THE NICHE ONLY - not the solution. We research the niche first, then figure out what to build.
 
-FORMAT - vary between:
-- Broad: "Pet grooming businesses"
-- Topic: "Restaurant menu optimization"
-- Audience: "People moving abroad"
-- Specific: "Gyms tracking member streaks"
+GOOD examples (niche/audience only):
+- "Vintage board game collectors"
+- "DIY drone repair hobbyists"
+- "Food truck owners scheduling events"
+- "Chiropractors managing patient intake"
+
+BAD examples (includes solution - DO NOT do this):
+- "Vintage board game collectors marketplace" ❌
+- "DIY drone repair parts finder app" ❌
+- "Food truck booking platform" ❌
 
 REQUIREMENTS:
-1. Has online communities (Reddit/Twitter/forums)
-2. Monetizable (SaaS, directory, marketplace, or tool)
-3. Each suggestion from a DIFFERENT random industry
+1. Must have online communities (Reddit/Twitter/forums)
+2. Keep it concise: 4-8 words maximum
+3. Be specific, not generic
+4. Describe WHO or WHAT ACTIVITY - never the solution
 
 AVOID:
-- Repeating similar industries in same batch
-- Overusing "freelance/indie/solo" (max 1 per batch)
-- Generic ("small businesses", "entrepreneurs")
-- Overly specific multi-clause descriptions
+- Solution words: "marketplace", "platform", "app", "tool", "software", "directory", "finder"
+- Generic terms: "small businesses", "entrepreneurs", "startups"
+- Long multi-clause descriptions
 
 Respond with JSON:
 {
   "suggestions": [
     {
-      "niche": "Niche description",
-      "category": "Random industry category",
+      "niche": "Audience or activity description (NO solution)",
+      "category": "Industry category",
       "appeal": "Why underserved (1 sentence)"
     }
   ]
@@ -146,7 +237,7 @@ suggestRouter.post('/', requireInternalAuth, async (req: AuthenticatedRequest, r
       : AUTO_COMPLETE_SYSTEM_PROMPT;
 
     const userPrompt = mode === 'feeling_lucky'
-      ? `Generate ${count} creative and diverse niche ideas for SaaS products.`
+      ? `Generate 1 random niche idea. For inspiration, consider industries like: ${getRandomSeeds(3).join(', ')}. But feel free to pick something completely different.`
       : `Expand this partial niche description into ${count} specific, researchable market segments: "${partial_input}"`;
 
     // Call OpenAI API

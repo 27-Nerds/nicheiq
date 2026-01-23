@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { BarChart3, Sparkles, Target, Search, Users, DollarSign, Briefcase, Code, TrendingUp, Lightbulb, UserCheck, MessageSquare, FileText, Database, ClipboardList, Check } from 'lucide-svelte';
+	import { BarChart3, Sparkles, Target, Search, Users, DollarSign, Briefcase, Code, TrendingUp, Lightbulb, UserCheck, MessageSquare, Database, ClipboardList, Coins } from 'lucide-svelte';
 	import type { Report } from '$lib/types/report';
 
 	interface Section {
@@ -17,12 +17,12 @@
 	// Sections ordered by UX-optimized decision workflow (16 sections total)
 	const allSections: Section[] = [
 		// PHASE 1: DECISION (Go/No-Go verdict)
-		{ id: 'executive', label: 'Executive', icon: BarChart3 },
+		{ id: 'unified-hero', label: 'Executive', icon: BarChart3 },
 		{ id: 'solution', label: 'Solution', icon: Sparkles },
 		// PHASE 2: VALIDATE (Is the opportunity real?)
 		{ id: 'pain-analysis', label: 'Pain Points', icon: Target },
 		{ id: 'market-sizing', label: 'Market', icon: DollarSign },
-		{ id: 'monetization', label: 'Monetization', icon: DollarSign },
+		{ id: 'monetization', label: 'Monetization', icon: Coins },
 		{ id: 'trends', label: 'Trends', icon: TrendingUp },
 		{ id: 'competitors', label: 'Competitors', icon: Users },
 		// PHASE 3: EXECUTE (How to launch & build)
@@ -34,8 +34,7 @@
 		{ id: 'data-infrastructure', label: 'Data', icon: Database },
 		// PHASE 4: REFERENCE (Appendix)
 		{ id: 'alternatives', label: 'Alternatives', icon: Lightbulb },
-		{ id: 'evidence-appendix', label: 'Evidence', icon: ClipboardList },
-		{ id: 'research-metadata', label: 'Research', icon: FileText }
+		{ id: 'evidence-appendix', label: 'Evidence', icon: ClipboardList }
 	];
 
 	// Filter sections based on report data availability
@@ -56,21 +55,14 @@
 				case 'data-infrastructure': return !!report.data_source_research_full;
 				case 'alternatives': return (report.alternative_solutions?.length ?? 0) > 0;
 				case 'evidence-appendix': return !!report.evidence_appendix;
-				case 'research-metadata': return !!report.research_metadata;
 				default: return true; // Always visible: executive, market-sizing, technical
 			}
 		});
 	});
 
-	let activeSection = $state('executive');
+	let activeSection = $state('unified-hero');
 	let scrollProgress = $state(0);
 	let isOpen = $state(false);
-	let viewedSections = $state<Set<string>>(new Set(['executive']));
-
-	// Progress tracking
-	const viewedCount = $derived(viewedSections.size);
-	const totalCount = $derived(sections.length);
-	const progressPercentage = $derived(Math.round((viewedCount / totalCount) * 100));
 
 	function scrollToSection(id: string) {
 		const element = document.getElementById(id);
@@ -88,7 +80,7 @@
 			const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
 			scrollProgress = Math.min(window.scrollY / scrollHeight, 1);
 
-			// Find active section and track viewed sections
+			// Find active section
 			const sectionElements = sections
 				.map((s) => ({ id: s.id, el: document.getElementById(s.id) }))
 				.filter((s) => s.el !== null);
@@ -99,10 +91,6 @@
 					const rect = section.el.getBoundingClientRect();
 					if (rect.top <= 150) {
 						activeSection = section.id;
-						// Mark as viewed when scrolled into view
-						if (!viewedSections.has(section.id)) {
-							viewedSections = new Set([...viewedSections, section.id]);
-						}
 						break;
 					}
 				}
@@ -126,20 +114,13 @@
 	<div class="nav-items">
 		{#each sections as section}
 			{@const Icon = section.icon}
-			{@const isViewed = viewedSections.has(section.id)}
 			{@const isActive = activeSection === section.id}
 			<button
 				class="nav-item"
 				class:active={isActive}
-				class:viewed={isViewed && !isActive}
 				onclick={() => scrollToSection(section.id)}
 				title={section.label}
 			>
-				{#if isViewed && !isActive}
-					<div class="nav-item-check">
-						<Check class="w-3 h-3" />
-					</div>
-				{/if}
 				<Icon class="w-4 h-4" />
 				<span class="nav-item-label">{section.label}</span>
 			</button>
@@ -166,19 +147,13 @@
 		<div class="nav-mobile-menu">
 			{#each sections as section}
 				{@const Icon = section.icon}
-				{@const isViewed = viewedSections.has(section.id)}
 				{@const isActive = activeSection === section.id}
 				<button
 					class="nav-mobile-item"
 					class:active={isActive}
-					class:viewed={isViewed && !isActive}
 					onclick={() => scrollToSection(section.id)}
 				>
-					{#if isViewed && !isActive}
-						<Check class="w-3 h-3 check-icon" />
-					{:else}
-						<Icon class="w-4 h-4" />
-					{/if}
+					<Icon class="w-4 h-4" />
 					<span>{section.label}</span>
 				</button>
 			{/each}
@@ -261,23 +236,6 @@
 	.nav-item.active {
 		color: var(--color-accent);
 		background: var(--color-accent-subtle);
-	}
-
-	.nav-item.viewed {
-		color: var(--color-success-dark);
-	}
-
-	.nav-item-check {
-		position: absolute;
-		left: -0.25rem;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		width: 1rem;
-		height: 1rem;
-		background: rgba(34, 197, 94, 0.15);
-		border-radius: 50%;
-		color: var(--color-success);
 	}
 
 	.nav-item-label {
@@ -407,13 +365,5 @@
 	.nav-mobile-item.active {
 		color: var(--color-accent);
 		background: var(--color-accent-subtle);
-	}
-
-	.nav-mobile-item.viewed {
-		color: var(--color-success-dark);
-	}
-
-	.nav-mobile-item :global(.check-icon) {
-		color: var(--color-success);
 	}
 </style>

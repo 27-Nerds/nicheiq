@@ -45,7 +45,12 @@ from ..utils.crew_helpers import (
     prepare_competitor_intelligence,
     prepare_pain_point_content,
 )
-from ..utils.validation import create_diversity_guardrail, validate_competitive_analysis
+from ..utils.validation import (
+    create_diversity_guardrail,
+    validate_competitive_analysis,
+    validate_filtered_concepts,
+    validate_raw_concepts,
+)
 
 
 @CrewBase
@@ -309,11 +314,14 @@ class UnifiedSolutionCrew:
         Divergent phase - prioritize quantity and variety over polish.
         Uses high temperature (0.85) for creative diversity.
         Output: RawConceptList with 8-12 lightweight concepts.
+        Guardrail: Validates 6+ concepts with name, one_liner, target_keywords.
         """
         return Task(
             config=self.tasks_config["divergent_exploration"],
             agent=self.solution_ideator(),  # High temp (0.85) for creativity
             output_pydantic=RawConceptList,
+            guardrail=validate_raw_concepts,
+            guardrail_max_retries=2,
         )
 
     @task
@@ -324,12 +332,15 @@ class UnifiedSolutionCrew:
         Convergent phase - apply strict diversity criteria.
         Clusters similar concepts, enforces architectural variety.
         Output: FilteredConceptList with 5-7 unique concepts.
+        Guardrail: Validates 3+ filtered concepts with diversity_summary.
         """
         return Task(
             config=self.tasks_config["diversity_filtering"],
             agent=self.solution_evaluator(),  # Low temp (0.2) for objective filtering
             context=[self.divergent_exploration_task()],
             output_pydantic=FilteredConceptList,
+            guardrail=validate_filtered_concepts,
+            guardrail_max_retries=2,
         )
 
     @task

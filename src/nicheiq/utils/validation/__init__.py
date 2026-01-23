@@ -4,15 +4,20 @@ from .checkpoint_validator import CheckpointValidator
 from .crew_guardrails import (
     create_diversity_guardrail,
     detect_similarity,
+    validate_audience_mapping,
     validate_category_tier_output,
     validate_competitive_analysis,
+    validate_content_categorization,
     validate_content_strategy_output,
+    validate_data_source_evaluation,
     validate_diversity,
+    validate_filtered_concepts,
     validate_final_synthesis_output,
     validate_geographic_tier_output,
     validate_implementation_guide_light_output,
     validate_implementation_guide_output,
     validate_implementation_plan_output,
+    validate_raw_concepts,
     validate_strategic_tier_output,
 )
 from .keyword_validator import KeywordRelevanceValidator
@@ -30,11 +35,17 @@ __all__ = [
     "CheckpointValidator",
     # Social content validation
     "SocialContentValidator",
-    # Crew guardrails
+    # Crew guardrails (core)
     "validate_diversity",
     "validate_competitive_analysis",
     "detect_similarity",
     "create_diversity_guardrail",
+    # Crew guardrails (new high-priority tasks)
+    "validate_content_categorization",
+    "validate_raw_concepts",
+    "validate_filtered_concepts",
+    "validate_audience_mapping",
+    "validate_data_source_evaluation",
     # SEO keyword analysis guardrails (Tasks 1a-1d)
     "validate_category_tier_output",
     "validate_geographic_tier_output",

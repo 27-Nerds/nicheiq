@@ -343,6 +343,105 @@ def generate_howto_schema(
     }
 
 
+def generate_website_schema(
+    solution_name: str,
+    description: str,
+    base_url: Optional[str] = None,
+) -> dict:
+    """
+    Generate WebSite JSON-LD schema with SearchAction for sitelinks search box.
+
+    Args:
+        solution_name: Name of the solution/website
+        description: Site description
+        base_url: Optional custom base URL
+
+    Returns:
+        JSON-LD WebSite schema dict
+    """
+    url = base_url or f"https://{_slugify(solution_name)}.com"
+    return {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": solution_name,
+        "url": url,
+        "description": description[:200] if description else solution_name,
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": f"{url}/search?q={{search_term_string}}",
+            "query-input": "required name=search_term_string",
+        },
+    }
+
+
+def generate_localbusiness_schema(
+    solution_name: str,
+    description: str,
+    niche: str,
+    base_url: Optional[str] = None,
+) -> dict:
+    """
+    Generate LocalBusiness JSON-LD schema.
+
+    Args:
+        solution_name: Name of the business
+        description: Business description
+        niche: Market niche for business type
+        base_url: Optional custom base URL
+
+    Returns:
+        JSON-LD LocalBusiness schema dict
+    """
+    url = base_url or f"https://{_slugify(solution_name)}.com"
+    return {
+        "@context": "https://schema.org",
+        "@type": "LocalBusiness",
+        "name": solution_name,
+        "url": url,
+        "description": description[:200] if description else solution_name,
+        "address": {
+            "@type": "PostalAddress",
+            "addressCountry": "US",
+        },
+        "priceRange": "$$",
+        "image": f"{url}/assets/logo.png",
+    }
+
+
+def generate_dataset_schema(
+    solution_name: str,
+    description: str,
+    niche: str,
+    base_url: Optional[str] = None,
+) -> dict:
+    """
+    Generate Dataset JSON-LD schema for data-driven solutions.
+
+    Args:
+        solution_name: Name of the dataset/solution
+        description: Dataset description
+        niche: Market niche for context
+        base_url: Optional custom base URL
+
+    Returns:
+        JSON-LD Dataset schema dict
+    """
+    url = base_url or f"https://{_slugify(solution_name)}.com"
+    return {
+        "@context": "https://schema.org",
+        "@type": "Dataset",
+        "name": f"{solution_name} Data",
+        "description": description[:300] if description else f"{niche} data from {solution_name}",
+        "url": f"{url}/data",
+        "creator": {
+            "@type": "Organization",
+            "name": solution_name,
+            "url": url,
+        },
+        "license": "https://creativecommons.org/licenses/by/4.0/",
+    }
+
+
 def generate_json_ld_schemas(
     schema_selections: list["SchemaSelectionLight"],
     solution_name: str,
@@ -398,6 +497,15 @@ def generate_json_ld_schemas(
         "Review": lambda sel: generate_review_schema(solution_name, base_url=url),
         "HowTo": lambda sel: generate_howto_schema(
             solution_name, niche, sel.suggested_questions
+        ),
+        "WebSite": lambda sel: generate_website_schema(
+            solution_name, value_proposition, url
+        ),
+        "LocalBusiness": lambda sel: generate_localbusiness_schema(
+            solution_name, value_proposition, niche, url
+        ),
+        "Dataset": lambda sel: generate_dataset_schema(
+            solution_name, value_proposition, niche, url
         ),
     }
 

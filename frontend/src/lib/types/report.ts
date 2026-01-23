@@ -331,7 +331,7 @@ export interface SEOStrategy {
 	tier_1_quick_win_strategy?: string;
 	tier_2_keywords: Keyword[];
 	tier_2_strategy?: string;
-	tier_3_geographic_groups?: KeywordGroup[];
+	tier_3_geographic_groups?: GeographicKeywordGroup[];
 	tier_4_category_groups?: CategoryKeywordGroup[];
 	content_strategy?: string;
 	topic_clusters?: TopicCluster[];
@@ -365,6 +365,24 @@ export interface Keyword {
 	tier_rationale?: string;
 }
 
+// Geographic keyword entry (Tier 3)
+export interface GeographicKeywordEntry {
+	city: string;
+	keyword: string;
+	search_volume: number;
+	notes?: string;
+}
+
+// Geographic keyword group (Tier 3)
+export interface GeographicKeywordGroup {
+	region_name: string;
+	total_volume: number;
+	competition_level: string;
+	keywords: GeographicKeywordEntry[];
+	strategy_notes: string;
+}
+
+// Legacy KeywordGroup for backwards compatibility
 export interface KeywordGroup {
 	group_name: string;
 	keywords: Keyword[];

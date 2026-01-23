@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
-  import { SSE_BASE } from '$lib/api';
+  import { subscribeToProgress, isTerminalStatus } from '$lib/api';
   import Badge from '$lib/components/ui/Badge.svelte';
   import {
     Loader2,
@@ -70,13 +70,32 @@
   let job = $state<Job | null>(null);
   let loading = $state(true);
   let error = $state('');
-  let eventSource: EventSource | null = null;
+  let unsubscribeSSE: (() => void) | null = null;
   let cancelling = $state(false);
   let cancelError = $state('');
   let isResuming = $state(false);
   let resumeError = $state('');
 
   const jobId = $derived($page.params.jobId);
+
+  function connectSSE() {
+    // Clean up existing subscription
+    unsubscribeSSE?.();
+
+    // Don't connect if no jobId or job is in terminal state
+    if (!jobId) return;
+    if (job && isTerminalStatus(job.status)) return;
+
+    unsubscribeSSE = subscribeToProgress(
+      jobId,
+      (data) => {
+        if (data && data.id) {
+          job = data as Job;
+        }
+      },
+      (err) => console.warn('SSE error:', err.message)
+    );
+  }
 
   async function resumeJob() {
     if (!job || isResuming) return;
@@ -102,23 +121,7 @@
       job = { ...job, status: 'QUEUED', errorMessage: null, progress: updatedProgress };
 
       // Reconnect SSE for real-time updates
-      eventSource?.close();
-      eventSource = new EventSource(`${SSE_BASE}/jobs/${jobId}/events`);
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.id) {
-            job = data;
-          }
-        } catch (e) {
-          console.error('Failed to parse SSE data:', e);
-        }
-      };
-
-      eventSource.onerror = () => {
-        eventSource?.close();
-      };
+      connectSSE();
     } catch (e) {
       resumeError = e instanceof Error ? e.message : 'Failed to resume job';
     } finally {
@@ -146,7 +149,7 @@
       job = { ...job, status: 'CANCELLED', errorMessage: 'Cancelled by user' };
 
       // Close SSE connection
-      eventSource?.close();
+      unsubscribeSSE?.();
     } catch (e) {
       cancelError = e instanceof Error ? e.message : 'Failed to cancel job';
     } finally {
@@ -170,29 +173,13 @@
     }
 
     // SSE for real-time updates if job is still in progress
-    if (job && !['COMPLETED', 'FAILED', 'CANCELLED'].includes(job.status)) {
-      eventSource = new EventSource(`${SSE_BASE}/jobs/${jobId}/events`);
-
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.id) {
-            job = data;
-          }
-        } catch (e) {
-          console.error('Failed to parse SSE data:', e);
-        }
-      };
-
-      eventSource.onerror = () => {
-        // Connection closed, likely job completed
-        eventSource?.close();
-      };
+    if (job && !isTerminalStatus(job.status)) {
+      connectSSE();
     }
   });
 
   onDestroy(() => {
-    eventSource?.close();
+    unsubscribeSSE?.();
   });
 
   function getStatusVariant(status: string): 'success' | 'warning' | 'error' | 'muted' | 'info' {
@@ -215,6 +202,49 @@
     const secs = totalSeconds % 60;
     return `${mins}m ${secs}s`;
   }
+
+  // Stages that run in parallel and should be combined into one line
+  const PARALLEL_STAGE_GROUPS: Record<number, { hide: number[], combinedName: string }> = {
+    6: { hide: [6.5], combinedName: 'Pain Point & Audience Analysis' }
+  };
+
+  // Process stages to combine parallel stages into single lines
+  function processStagesForDisplay(stages: StageProgress[]): StageProgress[] {
+    const hiddenStages = new Set<number>();
+
+    // Collect all stages that should be hidden
+    for (const group of Object.values(PARALLEL_STAGE_GROUPS)) {
+      group.hide.forEach(s => hiddenStages.add(s));
+    }
+
+    return stages
+      .filter(stage => !hiddenStages.has(stage.stageNumber))
+      .map(stage => {
+        const group = PARALLEL_STAGE_GROUPS[stage.stageNumber];
+        if (group) {
+          return { ...stage, stageName: group.combinedName };
+        }
+        return stage;
+      });
+  }
+
+  const displayStages = $derived(job ? processStagesForDisplay(job.progress) : []);
+
+  // Adjusted stage counts (subtract hidden stages)
+  const adjustedStagesCompleted = $derived.by(() => {
+    if (!job) return 0;
+    const hiddenStageNumbers = Object.values(PARALLEL_STAGE_GROUPS).flatMap(g => g.hide);
+    const hiddenCompleted = job.progress.filter(
+      s => hiddenStageNumbers.includes(s.stageNumber) && s.status === 'COMPLETED'
+    ).length;
+    return job.stagesCompleted - hiddenCompleted;
+  });
+
+  const adjustedTotalStages = $derived.by(() => {
+    if (!job) return 0;
+    const hiddenCount = Object.values(PARALLEL_STAGE_GROUPS).flatMap(g => g.hide).length;
+    return job.totalStages - hiddenCount;
+  });
 </script>
 
 <svelte:head>
@@ -308,10 +338,13 @@
         </div>
       {:else}
         <!-- Progress Bar (for non-queued jobs) -->
+        {@const displayCurrentStageName = (job.currentStage === 6 || job.currentStage === 6.5)
+          ? PARALLEL_STAGE_GROUPS[6].combinedName
+          : (job.currentStageName || 'Initializing...')}
         <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 100ms;">
           <div class="flex justify-between items-center mb-3">
             <span class="text-sm font-medium text-text-secondary">
-              {job.currentStageName || 'Initializing...'}
+              {displayCurrentStageName}
             </span>
             <span class="text-sm font-semibold text-accent">
               {Math.round(job.progressPercent)}%
@@ -324,7 +357,7 @@
             ></div>
           </div>
           <p class="mt-3 text-sm text-text-muted">
-            {job.stagesCompleted} of {job.totalStages} stages completed
+            {adjustedStagesCompleted} of {adjustedTotalStages} stages completed
           </p>
         </div>
       {/if}
@@ -437,7 +470,7 @@
           <h2 class="text-lg font-medium text-text-primary">Pipeline Stages</h2>
         </div>
         <ul class="divide-y divide-border">
-          {#each job.progress as stage, index}
+          {#each displayStages as stage, index}
             <li
               class="px-6 py-4 flex items-center justify-between transition-colors hover:bg-bg-hover {stage.status === 'RUNNING' ? 'bg-info/5' : ''}"
               style="animation-delay: {250 + index * 50}ms;"

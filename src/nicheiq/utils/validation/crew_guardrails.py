@@ -11,11 +11,20 @@ Guardrail Return Convention:
 """
 
 import json
+import re
 from typing import Any
 
 from loguru import logger
 
+# Pre-compiled regex patterns for JSON error fixing (performance optimization)
+_SINGLE_LINE_COMMENT_RE = re.compile(r'//[^\n]*')
+_MULTI_LINE_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
+_TRAILING_COMMA_RE = re.compile(r',(\s*[}\]])')
+
 from ...models.competitor import CompetitiveAnalysisResult
+from ...models.data_source import SourceEvaluationReport
+from ...models.pain_point import ContentCategorizationReport
+from ...models.research_state import AudienceMappingResult
 from ...models.seo_strategy import (
     CategoryLightResult,
     ContentStrategyResultLight,
@@ -26,7 +35,11 @@ from ...models.seo_strategy import (
     ImplementationPlanResult,
     StrategicLightResult,
 )
-from ...models.solution_idea import IdeaGenerationResult
+from ...models.solution_idea import (
+    FilteredConceptList,
+    IdeaGenerationResult,
+    RawConceptList,
+)
 from ..parsing.json_extractor import clean_llm_response
 
 
@@ -382,17 +395,18 @@ def validate_category_tier_output(task_output) -> tuple[bool, Any]:
             return (False, f"Invalid type: expected CategoryLightResult, got {type(result)}")
 
         # Validate structure
-        if not result.category_groups or len(result.category_groups) < 3:
+        if not result.tier_4_category_groups or len(result.tier_4_category_groups) < 3:
             return (
                 False,
-                f"Need at least 3 category groups, got {len(result.category_groups or [])}. "
+                f"Need at least 3 category groups, got {len(result.tier_4_category_groups or [])}. "
                 "Analyze the keywords and create meaningful thematic groups."
             )
 
         # Check for duplicate keywords across groups (sign of repetition issue)
         all_keywords = []
-        for group in result.category_groups:
-            all_keywords.extend(kw.lower().strip() for kw in group.keywords)
+        for group in result.tier_4_category_groups:
+            # CategoryLightEntry has keyword_name field
+            all_keywords.extend(kw.keyword_name.lower().strip() for kw in group.keywords)
 
         unique_keywords = set(all_keywords)
         if len(unique_keywords) < len(all_keywords) * 0.7:  # >30% duplicates
@@ -402,7 +416,7 @@ def validate_category_tier_output(task_output) -> tuple[bool, Any]:
                 "Each keyword should appear in only ONE category group."
             )
 
-        logger.info(f"✓ Category tier guardrail passed: {len(result.category_groups)} groups")
+        logger.info(f"✓ Category tier guardrail passed: {len(result.tier_4_category_groups)} groups")
         return (True, task_output.raw)
 
     except Exception as e:
@@ -447,11 +461,12 @@ def validate_geographic_tier_output(task_output) -> tuple[bool, Any]:
             return (False, f"Invalid type: expected GeographicLightResult, got {type(result)}")
 
         # Geographic groups are optional (niche may not have location keywords)
-        if result.geographic_groups:
+        if result.tier_3_geographic_groups:
             # Check for duplicate keywords
             all_keywords = []
-            for group in result.geographic_groups:
-                all_keywords.extend(kw.lower().strip() for kw in group.keywords)
+            for group in result.tier_3_geographic_groups:
+                # GeographicLightEntry has keyword field
+                all_keywords.extend(kw.keyword.lower().strip() for kw in group.keywords)
 
             unique_keywords = set(all_keywords)
             if len(all_keywords) > 5 and len(unique_keywords) < len(all_keywords) * 0.8:
@@ -461,7 +476,7 @@ def validate_geographic_tier_output(task_output) -> tuple[bool, Any]:
                     "Each location keyword should appear in only ONE region."
                 )
 
-        logger.info(f"✓ Geographic tier guardrail passed: {len(result.geographic_groups or [])} regions")
+        logger.info(f"✓ Geographic tier guardrail passed: {len(result.tier_3_geographic_groups or [])} regions")
         return (True, task_output.raw)
 
     except Exception as e:
@@ -1135,3 +1150,390 @@ def validate_final_synthesis_output(task_output) -> tuple[bool, Any]:
 
     except Exception as e:
         return (False, f"Final synthesis validation error: {str(e)}")
+
+
+# ========================================
+# HELPER: FIX COMMON JSON ERRORS
+# ========================================
+
+
+def _fix_common_json_errors(raw_json: str) -> str:
+    """
+    Attempt to fix common JSON errors from LLM output.
+
+    Fixes:
+    - Trailing commas before } or ]
+    - JavaScript-style comments
+
+    Args:
+        raw_json: Raw JSON string that may contain errors
+
+    Returns:
+        Cleaned JSON string
+    """
+    # Remove JavaScript-style comments using pre-compiled patterns
+    cleaned = _SINGLE_LINE_COMMENT_RE.sub('', raw_json)
+    cleaned = _MULTI_LINE_COMMENT_RE.sub('', cleaned)
+
+    # Fix trailing commas before } or ]
+    cleaned = _TRAILING_COMMA_RE.sub(r'\1', cleaned)
+
+    return cleaned
+
+
+def _parse_pydantic_from_task_output(task_output, model_class, task_name: str) -> tuple[Any | None, str | None]:
+    """
+    Unified helper to parse Pydantic model from task output.
+
+    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    This helper attempts to parse from .raw when .pydantic is None.
+
+    Args:
+        task_output: CrewAI task output object
+        model_class: Pydantic model class to validate against
+        task_name: Name of the task for error messages
+
+    Returns:
+        tuple[result | None, error_message | None]:
+        - (result, None) on success
+        - (None, error_message) on failure
+    """
+    try:
+        # Try pydantic first
+        result = task_output.pydantic
+        if result is not None:
+            if isinstance(result, model_class):
+                return (result, None)
+            return (None, f"Invalid type: expected {model_class.__name__}, got {type(result)}")
+
+        # CrewAI 1.7.0: pydantic is None when guardrails exist, parse from .raw
+        if not hasattr(task_output, 'raw') or not task_output.raw:
+            return (None, f"{task_name} returned empty output (no pydantic or raw)")
+
+        try:
+            # Clean and fix common JSON errors
+            cleaned_raw = clean_llm_response(task_output.raw)
+            cleaned_raw = _fix_common_json_errors(cleaned_raw)
+            raw_json = json.loads(cleaned_raw)
+            result = model_class.model_validate(raw_json)
+            logger.debug(f"{task_name} guardrail: Parsed {model_class.__name__} from .raw")
+            return (result, None)
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON parse error in {task_name}: {e}")
+            return (
+                None,
+                f"Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}. "
+                "Ensure valid JSON with no trailing commas and double-quoted strings. "
+                f"Return a valid {model_class.__name__} JSON object."
+            )
+        except Exception as e:
+            logger.warning(f"Failed to validate {model_class.__name__}: {e}")
+            return (None, f"Failed to parse {model_class.__name__}: {e}")
+
+    except Exception as e:
+        return (None, f"{task_name} validation error: {str(e)}")
+
+
+# ========================================
+# PAIN POINT CREW: CONTENT CATEGORIZATION GUARDRAIL
+# ========================================
+
+
+def validate_content_categorization(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for categorize_content_task to validate ContentCategorizationReport.
+
+    Validates:
+    - JSON is parseable (via unified helper)
+    - Has at least 4 theme_categories
+    - Each theme has at least 3 representative_quotes
+    - Has at least 3 user_segments
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    # Parse using unified helper
+    result, error = _parse_pydantic_from_task_output(
+        task_output, ContentCategorizationReport, "Content categorization"
+    )
+    if error:
+        return (False, error)
+
+    # Validate minimum theme_categories (at least 4)
+    if not result.theme_categories or len(result.theme_categories) < 4:
+        return (
+            False,
+            f"Need at least 4 theme_categories, got {len(result.theme_categories or [])}. "
+            "Identify more thematic categories from the discussion content."
+        )
+
+    # Validate each theme has at least 3 representative_quotes
+    # Note: Prompt targets 5-10 quotes, but guardrail minimum is 3 to avoid hallucination pressure
+    for theme in result.theme_categories:
+        if not theme.representative_quotes or len(theme.representative_quotes) < 3:
+            return (
+                False,
+                f"Theme '{theme.category_name}' needs at least 3 representative_quotes, "
+                f"got {len(theme.representative_quotes or [])}. "
+                "Include quotes from discussions WITH [source: ID] tags to support this theme."
+            )
+
+    # Validate minimum user_segments (at least 3)
+    if not result.user_segments or len(result.user_segments) < 3:
+        return (
+            False,
+            f"Need at least 3 user_segments, got {len(result.user_segments or [])}. "
+            "Identify more distinct user types from the discussions."
+        )
+
+    logger.info(
+        f"✓ Content categorization guardrail passed: "
+        f"{len(result.theme_categories)} themes, {len(result.user_segments)} segments"
+    )
+    return (True, task_output.raw)
+
+
+# ========================================
+# UNIFIED SOLUTION CREW: RAW CONCEPTS GUARDRAIL
+# ========================================
+
+
+def validate_raw_concepts(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for divergent_exploration_task to validate RawConceptList.
+
+    Validates:
+    - JSON is parseable (via unified helper)
+    - Has 8-12 concepts (minimum 6)
+    - Each concept has name, one_liner, target_keywords (2-5)
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    # Parse using unified helper
+    result, error = _parse_pydantic_from_task_output(
+        task_output, RawConceptList, "Divergent exploration"
+    )
+    if error:
+        return (False, error)
+
+    # Validate concept count (8-12 expected, minimum 6)
+    if not result.concepts or len(result.concepts) < 6:
+        return (
+            False,
+            f"Need at least 6 concepts (target 8-12), got {len(result.concepts or [])}. "
+            "Generate more diverse solution concepts using different ideation techniques."
+        )
+
+    # Validate each concept has required fields
+    for i, concept in enumerate(result.concepts):
+        if not concept.concept_name or len(concept.concept_name.strip()) < 3:
+            return (False, f"Concept {i+1} missing or too short concept_name")
+        if not concept.one_liner or len(concept.one_liner.strip()) < 20:
+            return (
+                False,
+                f"Concept '{concept.concept_name}' has missing or too short one_liner "
+                f"(needs 20+ chars, got {len(concept.one_liner or '')}). "
+                "Describe what the solution does and why it's interesting."
+            )
+        if not concept.target_keywords or len(concept.target_keywords) < 2:
+            return (
+                False,
+                f"Concept '{concept.concept_name}' needs at least 2 target_keywords, "
+                f"got {len(concept.target_keywords or [])}. "
+                "Add specific SEO keywords this solution would target."
+            )
+
+    logger.info(f"✓ Raw concepts guardrail passed: {len(result.concepts)} concepts")
+    return (True, task_output.raw)
+
+
+# ========================================
+# UNIFIED SOLUTION CREW: FILTERED CONCEPTS GUARDRAIL
+# ========================================
+
+
+def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for diversity_filtering_task to validate FilteredConceptList.
+
+    Validates:
+    - JSON is parseable (via unified helper)
+    - Has concepts list (3-8 expected, minimum 3)
+    - Has removed_concepts with matching explanations
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    # Parse using unified helper
+    result, error = _parse_pydantic_from_task_output(
+        task_output, FilteredConceptList, "Diversity filtering"
+    )
+    if error:
+        return (False, error)
+
+    # Validate concept count (3-8 expected, minimum 3)
+    if not result.concepts or len(result.concepts) < 3:
+        return (
+            False,
+            f"Need at least 3 filtered concepts, got {len(result.concepts or [])}. "
+            "Keep more diverse concepts that represent different approaches."
+        )
+
+    # Validate removed_concepts/removal_reasons consistency
+    # Note: Both can be empty if all concepts are unique, but counts must match
+    removed_count = len(result.removed_concepts or [])
+    reasons_count = len(result.removal_reasons or [])
+    if removed_count != reasons_count:
+        return (
+            False,
+            f"Mismatch between removed_concepts ({removed_count}) "
+            f"and removal_reasons ({reasons_count}). "
+            "Each removed concept needs a corresponding reason."
+        )
+
+    # Validate diversity_summary exists
+    if not result.diversity_summary or len(result.diversity_summary) < 30:
+        return (
+            False,
+            f"diversity_summary too short ({len(result.diversity_summary or '')} chars, minimum 30). "
+            "Summarize the project types and data sources represented."
+        )
+
+    logger.info(
+        f"✓ Filtered concepts guardrail passed: "
+        f"{len(result.concepts)} kept, {len(result.removed_concepts or [])} removed"
+    )
+    return (True, task_output.raw)
+
+
+# ========================================
+# AUDIENCE MAPPING CREW: AUDIENCE MAPPING GUARDRAIL
+# ========================================
+
+
+def validate_audience_mapping(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for audience_mapping_task to validate AudienceMappingResult.
+
+    Validates:
+    - JSON is parseable (via unified helper)
+    - Has at least 2 audience_segments
+    - Has required fields: primary_target_segment, key_influencers, community_hubs
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    # Parse using unified helper
+    result, error = _parse_pydantic_from_task_output(
+        task_output, AudienceMappingResult, "Audience mapping"
+    )
+    if error:
+        return (False, error)
+
+    # Validate minimum audience_segments (at least 2)
+    if not result.audience_segments or len(result.audience_segments) < 2:
+        return (
+            False,
+            f"Need at least 2 audience_segments, got {len(result.audience_segments or [])}. "
+            "Identify more distinct audience segments from the discussions."
+        )
+
+    # Validate primary_target_segment exists
+    if not result.primary_target_segment or len(result.primary_target_segment.strip()) < 3:
+        return (
+            False,
+            "Missing or empty primary_target_segment. "
+            "Identify the recommended primary target segment name."
+        )
+
+    # Validate key_influencers (at least 3)
+    if not result.key_influencers or len(result.key_influencers) < 3:
+        return (
+            False,
+            f"Need at least 3 key_influencers, got {len(result.key_influencers or [])}. "
+            "Identify more influencers or active community members from discussions."
+        )
+
+    # Validate community_hubs (at least 2)
+    if not result.community_hubs or len(result.community_hubs) < 2:
+        return (
+            False,
+            f"Need at least 2 community_hubs, got {len(result.community_hubs or [])}. "
+            "Identify subreddits, forums, or Discord servers where this audience gathers."
+        )
+
+    logger.info(
+        f"✓ Audience mapping guardrail passed: "
+        f"{len(result.audience_segments)} segments, {len(result.key_influencers)} influencers"
+    )
+    return (True, task_output.raw)
+
+
+# ========================================
+# DATA SOURCE CREW: SOURCE EVALUATION GUARDRAIL
+# ========================================
+
+
+def validate_data_source_evaluation(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for evaluate_data_sources_task to validate SourceEvaluationReport.
+
+    Validates:
+    - JSON is parseable (via unified helper)
+    - high_priority_sources is not empty (at least 1)
+    - Has evaluation_summary and overall_data_quality_risk
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    # Parse using unified helper
+    result, error = _parse_pydantic_from_task_output(
+        task_output, SourceEvaluationReport, "Data source evaluation"
+    )
+    if error:
+        return (False, error)
+
+    # Validate high_priority_sources is not empty
+    if not result.high_priority_sources or len(result.high_priority_sources) < 1:
+        return (
+            False,
+            "Need at least 1 high_priority_source. "
+            "Identify the most critical data source for this solution."
+        )
+
+    # Validate each high-priority source has quality_metrics
+    for source in result.high_priority_sources:
+        if not source.quality_metrics:
+            return (
+                False,
+                f"High-priority source '{source.provider}' missing quality_metrics. "
+                "Include coverage, freshness, integration complexity, cost, and quality assessment."
+            )
+
+    # Validate evaluation_summary exists
+    if not result.evaluation_summary or len(result.evaluation_summary) < 30:
+        return (
+            False,
+            f"evaluation_summary too short ({len(result.evaluation_summary or '')} chars, minimum 30). "
+            "Provide a 2-3 sentence summary of evaluation findings."
+        )
+
+    # Validate overall_data_quality_risk exists
+    if not result.overall_data_quality_risk or len(result.overall_data_quality_risk) < 20:
+        return (
+            False,
+            f"overall_data_quality_risk too short ({len(result.overall_data_quality_risk or '')} chars, minimum 20). "
+            "Assess the overall risk level for data quality."
+        )
+
+    total_sources = (
+        len(result.high_priority_sources) +
+        len(result.medium_priority_sources or []) +
+        len(result.low_priority_sources or [])
+    )
+    logger.info(
+        f"✓ Data source evaluation guardrail passed: "
+        f"{len(result.high_priority_sources)} high priority, {total_sources} total sources"
+    )
+    return (True, task_output.raw)
