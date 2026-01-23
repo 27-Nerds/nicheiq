@@ -105,6 +105,11 @@ services:
       FROM_EMAIL: ${FROM_EMAIL:-}
       # Job settings
       JOB_TTL_SECONDS: ${JOB_TTL_SECONDS:-604800}
+      # Niche suggestion settings
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY is required}
+      SUGGEST_LLM_MODEL: ${SUGGEST_LLM_MODEL:-gpt-4.1-nano}
+      SUGGEST_RATE_HOURLY: ${SUGGEST_RATE_HOURLY:-40}
+      SUGGEST_RATE_DAILY: ${SUGGEST_RATE_DAILY:-50}
     volumes:
       - job_output:/app/output
     networks:
