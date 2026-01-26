@@ -30,8 +30,6 @@ from ...models.seo_strategy import (
     ContentStrategyResultLight,
     FinalSynthesis,
     GeographicLightResult,
-    ImplementationGuide,
-    ImplementationGuideLight,
     ImplementationPlanResult,
     StrategicLightResult,
 )
@@ -651,246 +649,8 @@ def _validate_json_ld(code: str) -> tuple[bool, str]:
         return (False, f"Invalid JSON at line {e.lineno}: {e.msg}")
 
 
-def validate_implementation_guide_output(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for create_implementation_guide_task (Task 5 - CRITICAL).
-
-    Validates:
-    - 4+ page_type_implementations
-    - 6+ schema_examples in schema_markup_strategy
-    - Valid JSON-LD in each schema example
-    - No template variables like [solution_name] or {variable} in JSON-LD
-    - h2_structure is array, not string
-
-    Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
-    """
-    try:
-        result = task_output.pydantic
-        if result is None:
-            if not hasattr(task_output, 'raw') or not task_output.raw:
-                return (False, "Implementation guide returned empty output (no pydantic or raw)")
-
-            try:
-                cleaned_raw = clean_llm_response(task_output.raw)
-                raw_json = json.loads(cleaned_raw)
-                result = ImplementationGuide.model_validate(raw_json)
-                logger.debug("Implementation guide guardrail: Parsed from .raw")
-            except json.JSONDecodeError as e:
-                # Check for repetition loop pattern
-                raw_sample = task_output.raw[:2000] if task_output.raw else ""
-                if _detect_repetition_pattern(raw_sample):
-                    return (
-                        False,
-                        "REPETITION LOOP DETECTED in implementation guide. "
-                        "Generate UNIQUE page types and schema examples. "
-                        "Do NOT repeat the same JSON-LD structure multiple times."
-                    )
-                return (
-                    False,
-                    f"JSON truncated/malformed at line {e.lineno}: {e.msg}. "
-                    "Reduce output: 4-5 page types max, 6-8 schema examples with shorter descriptions."
-                )
-            except Exception as e:
-                return (False, f"Failed to parse ImplementationGuide: {e}")
-
-        if not isinstance(result, ImplementationGuide):
-            return (False, f"Invalid type: expected ImplementationGuide, got {type(result)}")
-
-        # Validate page_type_implementations (minimum 4)
-        if not result.page_type_implementations or len(result.page_type_implementations) < 4:
-            return (
-                False,
-                f"Need at least 4 page_type_implementations, got {len(result.page_type_implementations or [])}. "
-                "Create templates for Homepage, Location Pages, Profile Pages, and Content Pages."
-            )
-
-        # Validate h2_structure is array for each page type
-        for page_type in result.page_type_implementations:
-            if not isinstance(page_type.h2_structure, list):
-                return (
-                    False,
-                    f"h2_structure for '{page_type.page_type}' must be a list of strings, "
-                    f"got {type(page_type.h2_structure).__name__}. "
-                    "Use format: [\"H2 Section 1\", \"H2 Section 2\", ...]"
-                )
-
-        # Validate schema_markup_strategy
-        if not result.schema_markup_strategy:
-            return (False, "Missing schema_markup_strategy - required for implementation guide")
-
-        schema_examples = result.schema_markup_strategy.schema_examples or []
-        if len(schema_examples) < 6:
-            return (
-                False,
-                f"Need at least 6 schema_examples, got {len(schema_examples)}. "
-                "Include Organization, Service, FAQ, Article, BreadcrumbList, and Person/Review schemas."
-            )
-
-        # Validate each JSON-LD example
-        for schema in schema_examples:
-            # Check for template variables in JSON-LD
-            template_vars = _detect_template_variables(schema.json_ld_code)
-            if template_vars:
-                return (
-                    False,
-                    f"Template variables found in {schema.schema_type} JSON-LD: {template_vars}. "
-                    "Replace placeholders with realistic example values "
-                    "(e.g., use 'Acme Translation Services' instead of '[solution_name]')."
-                )
-
-            # Validate JSON-LD structure
-            is_valid, error = _validate_json_ld(schema.json_ld_code)
-            if not is_valid:
-                return (
-                    False,
-                    f"Invalid JSON-LD for {schema.schema_type}: {error}. "
-                    "Ensure JSON is complete with proper @context and closing brackets."
-                )
-
-        logger.info(
-            f"✓ Implementation guide guardrail passed: "
-            f"{len(result.page_type_implementations)} page types, "
-            f"{len(schema_examples)} schema examples"
-        )
-        return (True, task_output.raw)
-
-    except Exception as e:
-        return (False, f"Implementation guide validation error: {str(e)}")
-
-
-# ========================================
-# TASK 5: IMPLEMENTATION GUIDE LIGHT GUARDRAIL (NEW)
-# ========================================
-# Validates lightweight output with schema type selections instead of JSON-LD code
-
-
-def validate_implementation_guide_light_output(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for create_implementation_guide_task (Task 5 - LIGHTWEIGHT VERSION).
-
-    This validates the lightweight output model where:
-    - LLM provides schema TYPE selections + strategic rationale
-    - Python generates actual JSON-LD code from templates after this task
-
-    Validates:
-    - 4+ page_type_implementations
-    - 4+ selected_schemas in schema_markup_strategy (NOT json_ld_code)
-    - Each schema selection has schema_type, priority, and strategic_rationale
-    - h2_structure is array, not string
-
-    Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
-    """
-    try:
-        result = task_output.pydantic
-        if result is None:
-            if not hasattr(task_output, 'raw') or not task_output.raw:
-                return (False, "Implementation guide returned empty output (no pydantic or raw)")
-
-            try:
-                cleaned_raw = clean_llm_response(task_output.raw)
-                raw_json = json.loads(cleaned_raw)
-                result = ImplementationGuideLight.model_validate(raw_json)
-                logger.debug("Implementation guide light guardrail: Parsed from .raw")
-            except json.JSONDecodeError as e:
-                # Check for repetition loop pattern
-                raw_sample = task_output.raw[:2000] if task_output.raw else ""
-                if _detect_repetition_pattern(raw_sample):
-                    return (
-                        False,
-                        "REPETITION LOOP DETECTED in implementation guide. "
-                        "Generate UNIQUE page types and schema selections. "
-                        "Do NOT repeat the same schema type multiple times."
-                    )
-                return (
-                    False,
-                    f"JSON truncated/malformed at line {e.lineno}: {e.msg}. "
-                    "Reduce output: 4-5 page types max, 4-8 schema selections with concise rationale."
-                )
-            except Exception as e:
-                return (False, f"Failed to parse ImplementationGuideLight: {e}")
-
-        if not isinstance(result, ImplementationGuideLight):
-            return (False, f"Invalid type: expected ImplementationGuideLight, got {type(result)}")
-
-        # Validate page_type_implementations (minimum 4)
-        if not result.page_type_implementations or len(result.page_type_implementations) < 4:
-            return (
-                False,
-                f"Need at least 4 page_type_implementations, got {len(result.page_type_implementations or [])}. "
-                "Create templates for Homepage, Location Pages, Profile Pages, and Content Pages."
-            )
-
-        # Validate h2_structure is array for each page type
-        for page_type in result.page_type_implementations:
-            if not isinstance(page_type.h2_structure, list):
-                return (
-                    False,
-                    f"h2_structure for '{page_type.page_type}' must be a list of strings, "
-                    f"got {type(page_type.h2_structure).__name__}. "
-                    "Use format: [\"H2 Section 1\", \"H2 Section 2\", ...]"
-                )
-
-        # Validate schema_markup_strategy (light version)
-        if not result.schema_markup_strategy:
-            return (False, "Missing schema_markup_strategy - required for implementation guide")
-
-        selected_schemas = result.schema_markup_strategy.selected_schemas or []
-        if len(selected_schemas) < 4:
-            return (
-                False,
-                f"Need at least 4 selected_schemas, got {len(selected_schemas)}. "
-                "Include Organization, Service, FAQPage, BreadcrumbList at minimum."
-            )
-
-        # Validate each schema selection has required fields
-        seen_types = set()
-        for schema in selected_schemas:
-            # Check required fields
-            if not schema.schema_type:
-                return (False, "Schema selection missing schema_type field")
-            if schema.priority is None or not (1 <= schema.priority <= 5):
-                return (
-                    False,
-                    f"Schema '{schema.schema_type}' has invalid priority {schema.priority}. "
-                    "Priority must be 1-5 (1=critical, 5=nice-to-have)."
-                )
-            if not schema.strategic_rationale or len(schema.strategic_rationale) < 10:
-                return (
-                    False,
-                    f"Schema '{schema.schema_type}' needs strategic_rationale (min 10 chars), "
-                    f"got '{schema.strategic_rationale or ''}'. "
-                    "Explain why this schema matters for SEO."
-                )
-
-            # Check for duplicate schema types
-            if schema.schema_type.lower() in seen_types:
-                return (
-                    False,
-                    f"Duplicate schema type '{schema.schema_type}' detected. "
-                    "Each schema type should appear only once in selected_schemas."
-                )
-            seen_types.add(schema.schema_type.lower())
-
-        # Validate why_schema_matters narrative
-        if not result.schema_markup_strategy.why_schema_matters or \
-           len(result.schema_markup_strategy.why_schema_matters) < 50:
-            return (
-                False,
-                "why_schema_matters too short (minimum 50 chars). "
-                "Explain the benefits of schema markup for SEO."
-            )
-
-        logger.info(
-            f"✓ Implementation guide light guardrail passed: "
-            f"{len(result.page_type_implementations)} page types, "
-            f"{len(selected_schemas)} schema selections"
-        )
-        return (True, task_output.raw)
-
-    except Exception as e:
-        return (False, f"Implementation guide light validation error: {str(e)}")
+# validate_implementation_guide_output and validate_implementation_guide_light_output
+# removed - Task 5 deleted, technical SEO is now in Task 2's technical_seo_recommendations
 
 
 # ========================================
@@ -969,18 +729,41 @@ def validate_content_strategy_output(task_output) -> tuple[bool, Any]:
                     "Create page types for different keyword intents and tiers."
                 )
 
-        # Validate technical_seo_recommendations has content
-        if not result.technical_seo_recommendations or len(result.technical_seo_recommendations) < 50:
+        # Validate technical_seo_recommendations is comprehensive (now replaces Task 5)
+        tech_seo = result.technical_seo_recommendations or ""
+        if len(tech_seo) < 500:
             return (
                 False,
-                f"technical_seo_recommendations too short ({len(result.technical_seo_recommendations or '')} chars, minimum 50). "
-                "Include URL structure, schema markup, and technical recommendations."
+                f"technical_seo_recommendations too short ({len(tech_seo)} chars, minimum 500). "
+                "This field is the COMPLETE technical SEO guide. Include all 5 sections: "
+                "Title Tag Strategy, URL Structure Patterns, Schema Markup Types, "
+                "H1/H2 Structure Recommendations, and Internal Linking Strategy."
+            )
+
+        # Check for required sections (at least 3 of 5 must be present)
+        required_sections = [
+            ("title tag", "Title Tag Strategy"),
+            ("url structure", "URL Structure Patterns"),
+            ("schema", "Schema Markup Types"),
+            ("h1", "H1/H2 Structure"),
+            ("internal link", "Internal Linking Strategy"),
+        ]
+        tech_seo_lower = tech_seo.lower()
+        found_sections = sum(1 for keyword, _ in required_sections if keyword in tech_seo_lower)
+        if found_sections < 3:
+            missing = [name for keyword, name in required_sections if keyword not in tech_seo_lower]
+            return (
+                False,
+                f"technical_seo_recommendations missing key sections. Found {found_sections}/5 required sections. "
+                f"Missing: {', '.join(missing[:3])}. "
+                "Include comprehensive technical SEO guidance."
             )
 
         logger.info(
             f"✓ Content strategy guardrail passed: "
             f"{len(result.topic_clusters or [])} clusters, "
-            f"{len(result.keyword_based_page_types or [])} page types"
+            f"{len(result.keyword_based_page_types or [])} page types, "
+            f"{len(tech_seo)} chars technical SEO ({found_sections}/5 sections)"
         )
         return (True, task_output.raw)
 

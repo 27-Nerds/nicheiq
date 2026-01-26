@@ -13,7 +13,6 @@
     Code,
     BarChart3,
     ChevronRight,
-    ArrowUpRight,
     Hash,
     Table,
     Lightbulb,
@@ -907,55 +906,25 @@
   {/if}
 
   <!-- Expandable: Competitive Positioning -->
-  {#if strategy.competitive_positioning || (strategy.competitive_advantages && strategy.competitive_advantages.length > 0)}
+  {#if strategy.competitive_positioning}
     <ExpandableSection title="Competitive Positioning" icon={Target}>
-      <CardGrid minWidth={260} gap="md">
-        {#if strategy.competitive_positioning}
-          <div class="positioning-card">
-            <h4 class="card-label">Market Position</h4>
-            <div class="positioning-content">
-              {@html renderMarkdown(strategy.competitive_positioning)}
-            </div>
-          </div>
-        {/if}
-        {#if strategy.competitive_advantages && strategy.competitive_advantages.length > 0}
-          <div class="advantages-card">
-            <h4 class="card-label success">Competitive Advantages</h4>
-            <ul class="advantages-list">
-              {#each strategy.competitive_advantages as advantage}
-                <li class="advantage-item">
-                  <ArrowUpRight class="advantage-icon" />
-                  {advantage}
-                </li>
-              {/each}
-            </ul>
-          </div>
-        {/if}
-      </CardGrid>
+      <div class="positioning-card">
+        <div class="positioning-content">
+          {@html renderMarkdown(strategy.competitive_positioning)}
+        </div>
+      </div>
     </ExpandableSection>
   {/if}
+  <!-- competitive_advantages removed - redundant with competitive_positioning -->
 
   <!-- Expandable: Conclusion & Next Steps -->
-  {#if strategy.conclusion_bottom_line || (strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0) || (strategy.critical_success_factors && strategy.critical_success_factors.length > 0)}
+  <!-- critical_success_factors removed - overlaps with next_steps_checklist -->
+  {#if strategy.conclusion_bottom_line || (strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0)}
     <ExpandableSection
       title="Conclusion & Next Steps"
       icon={CheckCircle}
       variant="success"
     >
-      {#if strategy.critical_success_factors && strategy.critical_success_factors.length > 0}
-        <div class="success-factors">
-          <h4 class="card-label">Critical Success Factors</h4>
-          <div class="factors-grid">
-            {#each strategy.critical_success_factors as factor}
-              <div class="factor-item">
-                <CheckCircle class="factor-icon" />
-                <span>{factor}</span>
-              </div>
-            {/each}
-          </div>
-        </div>
-      {/if}
-
       <CardGrid minWidth={260} gap="md">
         {#if strategy.conclusion_bottom_line}
           <div class="bottomline-card">
@@ -1383,7 +1352,6 @@
   /* Strategy Cards */
   .strategy-card,
   .positioning-card,
-  .advantages-card,
   .bottomline-card,
   .nextsteps-card {
     background: var(--color-bg-surface);
@@ -1588,58 +1556,7 @@
     color: var(--color-text-secondary);
   }
 
-  /* Advantages List */
-  .advantages-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.375rem;
-  }
-
-  .advantage-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.375rem;
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-  }
-
-  .advantage-item :global(.advantage-icon) {
-    width: 0.875rem;
-    height: 0.875rem;
-    color: var(--color-success);
-    flex-shrink: 0;
-    margin-top: 0.0625rem;
-  }
-
-  /* Success Factors */
-  .success-factors {
-    margin-bottom: 1rem;
-  }
-
-  .factors-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.5rem;
-  }
-
-  .factor-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.375rem;
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-  }
-
-  .factor-item :global(.factor-icon) {
-    width: 0.875rem;
-    height: 0.875rem;
-    color: var(--color-accent);
-    flex-shrink: 0;
-    margin-top: 0.0625rem;
-  }
+  /* Advantages List and Success Factors styles removed - sections no longer rendered */
 
   /* Next Steps */
   .nextsteps-list {

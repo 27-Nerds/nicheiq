@@ -14,12 +14,11 @@ from .crew_guardrails import (
     validate_filtered_concepts,
     validate_final_synthesis_output,
     validate_geographic_tier_output,
-    validate_implementation_guide_light_output,
-    validate_implementation_guide_output,
     validate_implementation_plan_output,
     validate_raw_concepts,
     validate_strategic_tier_output,
 )
+# Removed: validate_implementation_guide_output, validate_implementation_guide_light_output (Task 5 deleted)
 from .keyword_validator import KeywordRelevanceValidator
 from .social_content_validator import SocialContentValidator
 from .thread_validator import BatchValidationResponse, ThreadRelevanceValidator, ValidationResult
@@ -50,10 +49,9 @@ __all__ = [
     "validate_category_tier_output",
     "validate_geographic_tier_output",
     "validate_strategic_tier_output",
-    # SEO strategy guardrails (Tasks 2-5)
+    # SEO strategy guardrails (Tasks 2-4)
     "validate_content_strategy_output",
     "validate_implementation_plan_output",
     "validate_final_synthesis_output",
-    "validate_implementation_guide_output",
-    "validate_implementation_guide_light_output",
+    # Removed: validate_implementation_guide_output, validate_implementation_guide_light_output (Task 5 deleted)
 ]

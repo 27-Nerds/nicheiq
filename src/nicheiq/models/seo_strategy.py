@@ -333,161 +333,10 @@ class KeywordBasedPageType(BaseModel):
         default=None, description="Additional SEO optimization notes if needed"
     )
 
-class SectionKeywordMapping(BaseModel):
-    """Mapping of a site section to its keyword cluster."""
+# SectionKeywordMapping and KeywordDrivenSiteArchitecture classes removed
+# These were never rendered in frontend and overlapped with keyword_based_page_types
+# Technical SEO implementation is now handled via technical_seo_recommendations markdown field
 
-    model_config = ConfigDict(extra='ignore')
-
-    section_path: str = Field(..., description="URL path of the section (e.g., '/tools/', '/compare/')")
-    keyword_cluster: str = Field(..., description="Keyword cluster description (e.g., 'Tier 1 problem-solving keywords')")
-
-class KeywordDrivenSiteArchitecture(BaseModel):
-    """Site structure organized by keyword clusters and search intent patterns."""
-
-    model_config = ConfigDict(extra='ignore')
-
-    url_hierarchy_diagram: Optional[str] = Field(
-        default=None, description="ASCII/markdown hierarchy showing how keyword clusters map to site sections"
-    )
-    section_keyword_mapping: Optional[list[SectionKeywordMapping]] = Field(
-        default=None, description="Mapping of top-level sections to keyword clusters (e.g., {'/tools/': 'Tier 1 problem-solving keywords', '/compare/': 'Competitor alternative keywords'})"
-    )
-    total_pages_from_keywords: Optional[int] = Field(
-        default=None, description="Total page count derived from keyword opportunities (geographic variations × category variations × core pages)"
-    )
-    keyword_coverage_explanation: Optional[str] = Field(
-        default=None, description="Explanation of how site structure ensures all high-priority keywords have dedicated landing pages (2-3 sentences)"
-    )
-
-class UniversalSEOElements(BaseModel):
-    """Universal SEO elements that appear on every page."""
-
-    model_config = ConfigDict(extra='ignore')
-
-    title_tag_formula: str = Field(
-        ...,
-        description="Title tag format pattern (e.g., '[Primary Keyword] | [Secondary] | [Brand]')"
-    )
-    title_tag_guidelines: str = Field(
-        ...,
-        description="Character limits, keyword placement, CTR optimization tips (2-3 paragraphs, markdown)"
-    )
-    meta_description_guidelines: str = Field(
-        ...,
-        description="Length, CTA inclusion, keyword usage best practices (2-3 paragraphs, markdown)"
-    )
-    canonical_url_strategy: str = Field(
-        ...,
-        description="Self-referencing canonicals, filter/sort handling, duplicate content prevention (2 paragraphs, markdown)"
-    )
-    open_graph_tags: str = Field(
-        ...,
-        description="Required OG tags (og:title, og:description, og:image, og:url) with format examples (markdown)"
-    )
-    robots_meta_guidelines: str = Field(
-        ...,
-        description="When to use index/noindex, follow/nofollow with page type examples (2 paragraphs, markdown)"
-    )
-    robots_meta_guidelines_note: Optional[str] = Field(
-        default=None, description="Additional notes on robots meta guidelines"
-    )
-
-class PageTypeImplementation(BaseModel):
-    """SEO implementation template for specific page type."""
-
-    model_config = ConfigDict(extra='ignore')
-
-    page_type: str = Field(
-        ...,
-        description="Page type name (e.g., 'Homepage', 'Location Page', 'Profile Page', 'Content Page')"
-    )
-    url_pattern: str = Field(
-        ...,
-        description="URL structure pattern (e.g., '/translators/[city]', '/guides/[topic]')"
-    )
-    target_keywords: list[str] = Field(
-        ...,
-        description="3-5 primary and secondary keyword patterns for this page type"
-    )
-    title_tag_example: str = Field(
-        ...,
-        description="Example title tag applying the formula to this page type"
-    )
-    meta_description_example: str = Field(
-        ...,
-        description="Example meta description for this page type"
-    )
-    h1_structure: str = Field(
-        ...,
-        description="H1 format pattern (e.g., '[Service] in [Location] - [Value Prop]')"
-    )
-    h2_structure: list[str] = Field(
-        ...,
-        description="Recommended H2 section headings (3-6 headings)"
-    )
-    schema_types: list[str] = Field(
-        ...,
-        description="Required schema types (e.g., ['Organization', 'Service', 'Breadcrumb', 'FAQ'])"
-    )
-    internal_linking_strategy: str = Field(
-        ...,
-        description="How this page type should link to others (2-3 sentences)"
-    )
-    content_guidelines: str = Field(
-        ...,
-        description="Min/optimal word count, required sections, quality standards (2-3 sentences)"
-    )
-    priority: Optional[str] = Field(
-        default=None, description="Implementation priority level (e.g., 'high', 'medium', 'low')"
-    )
-
-class SchemaExample(BaseModel):
-    """Individual schema markup code example."""
-
-    model_config = ConfigDict(extra='ignore')
-
-    schema_type: str = Field(
-        ...,
-        description="Schema.org type (e.g., 'Organization', 'Service', 'FAQ', 'Article', 'BreadcrumbList')"
-    )
-    json_ld_code: str = Field(
-        ...,
-        description="JSON-LD code snippet for this schema type"
-    )
-
-    @field_validator("json_ld_code", mode="before")
-    @classmethod
-    def serialize_json_ld(cls, v):
-        """Convert dict to JSON string if LLM returns object instead of string."""
-        if isinstance(v, dict):
-            return json.dumps(v, indent=2)
-        return v
-
-class SchemaMarkupStrategy(BaseModel):
-    """Schema markup implementation guide with code examples."""
-
-    model_config = ConfigDict(extra='ignore')
-
-    why_schema_matters: str = Field(
-        ...,
-        description="Benefits: rich results, voice search, AI search, CTR boost (2-3 paragraphs, markdown)"
-    )
-    priority_schema_types: list[str] = Field(
-        ...,
-        description="Ordered list of 6-8 essential schema types (Organization, Service, Person, Review, FAQ, Article, BreadcrumbList, etc.)"
-    )
-    implementation_method: str = Field(
-        ...,
-        description="JSON-LD format, placement in <head>, why JSON-LD over Microdata (2 paragraphs, markdown)"
-    )
-    schema_examples: list[SchemaExample] = Field(
-        ...,
-        description="JSON-LD code snippets for each priority schema type (6-8 examples)"
-    )
-    testing_validation: str = Field(
-        ...,
-        description="Tools and process: Google Rich Results Test, Schema Validator, Search Console monitoring (2 paragraphs, markdown)"
-    )
 
 class SEOStrategyReport(BaseModel):
     """
@@ -502,10 +351,7 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # METADATA
     # ========================================
-    seed_keywords_generated: Optional[list[str]] = Field(
-        default=None,
-        description="Seed keywords generated in STEP 1 before expansion (120-150 intent-based keywords)"
-    )
+    # seed_keywords_generated removed - internal debug data, never displayed
     total_keywords_analyzed: int = Field(
         ..., description="Total number of keywords with measurable search volume (after expansion)"
     )
@@ -527,10 +373,7 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="Premium keywords with exceptional opportunity scores (>200)"
     )
-    tier_0_strategy: Optional[str] = Field(
-        default=None,
-        description="Strategy narrative for Tier 0 premium keywords (1-2 paragraphs, markdown)"
-    )
+    # tier_0_strategy removed - duplicates content_strategy, never rendered
 
     # ========================================
     # TIER 1: IMMEDIATE IMPLEMENTATION
@@ -538,10 +381,7 @@ class SEOStrategyReport(BaseModel):
     tier_1_keywords: list[TieredKeyword] = Field(
         ..., description="High volume + low competition keywords (3-5 keywords)"
     )
-    tier_1_quick_win_strategy: str = Field(
-        ...,
-        description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
-    )
+    # tier_1_quick_win_strategy removed - duplicates content_strategy, never rendered
 
     # ========================================
     # TIER 2: HIGH VALUE KEYWORDS
@@ -550,10 +390,7 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="High value keywords with medium competition (3-5 keywords)"
     )
-    tier_2_strategy: Optional[str] = Field(
-        default=None,
-        description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, markdown)"
-    )
+    # tier_2_strategy removed - duplicates content_strategy, never rendered
 
     # ========================================
     # TIER 3: GEOGRAPHIC/NICHE OPPORTUNITIES
@@ -571,13 +408,7 @@ class SEOStrategyReport(BaseModel):
         description="Category-based keyword groups (document types, service categories)"
     )
 
-    # ========================================
-    # TIER 5: UNTIERED KEYWORDS (FORCE-ADDED)
-    # ========================================
-    untiered_keywords: Optional[list[TieredKeyword]] = Field(
-        default=None,
-        description="Keywords from CSV not selected by LLM - force-added for completeness"
-    )
+    # untiered_keywords removed - internal recovery tracking, never displayed
 
     # ========================================
     # CONTENT STRATEGY
@@ -599,11 +430,7 @@ class SEOStrategyReport(BaseModel):
         description="Technical SEO recommendations with URL structure, schema markup, code examples (markdown, 3-5 sections)"
     )
 
-    # NEW: Keyword-Driven Site Architecture
-    keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] = Field(
-        default=None,
-        description="Site structure organized around keyword clusters and search intent patterns"
-    )
+    # keyword_driven_site_architecture removed - never rendered, overlaps with keyword_based_page_types
     keyword_based_page_types: Optional[list[KeywordBasedPageType]] = Field(
         default=None,
         description="Page types derived from keyword analysis (4-8 page types covering different keyword clusters)"
@@ -648,13 +475,7 @@ class SEOStrategyReport(BaseModel):
         description="Budget recommendations with options (markdown, Option A/B/C)"
     )
 
-    # ========================================
-    # LONG-TERM STRATEGY
-    # ========================================
-    long_term_strategy: str = Field(
-        ...,
-        description="Year 1/2/3 strategic milestones (markdown, 3 sections)"
-    )
+    # long_term_strategy removed - duplicates implementation_roadmap, never rendered
 
     # ========================================
     # CONCLUSION
@@ -663,15 +484,9 @@ class SEOStrategyReport(BaseModel):
         ...,
         description="Bottom line summary (1 paragraph)"
     )
-    competitive_advantages: list[str] = Field(
-        ..., description="2-4 key competitive advantages from SEO analysis"
-    )
-    critical_success_factors: list[str] = Field(
-        ..., description="3-4 critical success factors"
-    )
-    expected_timeline: str = Field(
-        ..., description="Timeline expectations (3, 6, 12, 18 months milestones)"
-    )
+    # competitive_advantages removed - redundant with competitive_positioning (same info as bullet list)
+    # critical_success_factors removed - overlaps with next_steps_checklist (overlapping action items)
+    # expected_timeline removed - duplicates implementation_roadmap, never rendered
 
     # ========================================
     # NEXT STEPS
@@ -680,21 +495,8 @@ class SEOStrategyReport(BaseModel):
         ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
     )
 
-    # ========================================
-    # IMPLEMENTATION GUIDE (TASK 5)
-    # ========================================
-    universal_seo_elements: Optional[UniversalSEOElements] = Field(
-        default=None,
-        description="Universal SEO elements for every page (title tags, meta descriptions, canonical, OG tags, robots)"
-    )
-    page_type_implementations: Optional[list[PageTypeImplementation]] = Field(
-        default=None,
-        description="SEO templates for 4-6 key page types (homepage, location pages, profile pages, content pages)"
-    )
-    schema_markup_strategy: Optional[SchemaMarkupStrategy] = Field(
-        default=None,
-        description="Schema markup implementation guide with JSON-LD code examples and testing guidance"
-    )
+    # Note: Implementation guide fields (universal_seo_elements, page_type_implementations,
+    # schema_markup_strategy) removed - technical SEO is now in technical_seo_recommendations
 
     @field_validator('total_monthly_volume', mode='before')
     @classmethod
@@ -1420,9 +1222,7 @@ class ContentStrategyResult(BaseModel):
         min_length=50,
         description="Technical SEO recommendations with URL structure, schema markup, code examples (markdown, 3-5 sections, minimum 50 chars)"
     )
-    keyword_driven_site_architecture: Optional[KeywordDrivenSiteArchitecture] = Field(
-        default=None, description="Site structure organized around keyword clusters and search intent patterns"
-    )
+    # keyword_driven_site_architecture removed - never rendered, overlaps with keyword_based_page_types
     keyword_based_page_types: Optional[list[KeywordBasedPageType]] = Field(
         default=None,
         min_length=2,
@@ -1446,9 +1246,7 @@ class ImplementationPlanResult(BaseModel):
     key_metrics_to_track: list[str] = Field(
         ..., description="4-6 critical KPIs (SEO Performance + Business Metrics)"
     )
-    expected_timeline: str = Field(
-        ..., description="Timeline expectations (3, 6, 12, 18 months milestones)"
-    )
+    # expected_timeline removed - duplicates implementation_roadmap
     next_steps_checklist: list[str] = Field(
         ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
     )
@@ -1463,259 +1261,25 @@ class ImplementationPlanResult(BaseModel):
 
 class FinalSynthesis(BaseModel):
     """
-    Task 4 output: Final SEO Strategy Synthesis (4 new fields only).
+    Task 4 output: Final SEO Strategy Synthesis.
 
-    Contains strategic synthesis and long-term vision that extends
-    outputs from Tasks 1-3. These fields will be merged with Tasks 1-3 via Python.
+    Contains the final conclusion/summary. Other fields removed as they were
+    redundant with existing fields (implementation_roadmap, competitive_positioning, etc.)
     """
 
     model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
 
-    long_term_strategy: str = Field(
-        ...,
-        min_length=50,
-        description="Year 1/2/3 strategic milestones (markdown, 3 sections, minimum 50 chars)"
-    )
+    # long_term_strategy removed - duplicates implementation_roadmap
     conclusion_bottom_line: str = Field(
         ...,
         min_length=50,
         description="Bottom line summary (1 paragraph, minimum 50 chars)"
     )
-    competitive_advantages: list[str] = Field(
-        ...,
-        min_length=2,
-        description="2-4 key competitive advantages from SEO analysis (minimum 2)"
-    )
-    critical_success_factors: list[str] = Field(
-        ...,
-        min_length=3,
-        description="3-4 critical success factors (minimum 3)"
-    )
+    # competitive_advantages removed - redundant with competitive_positioning
+    # critical_success_factors removed - overlaps with next_steps_checklist
 
 
-class SyncFinalOutputs(BaseModel):
-    """
-    Task 6 output: Sync point for parallel Tasks 4 and 5.
-
-    This minimal model confirms that both async tasks (Task 4: FinalSynthesis,
-    Task 5: ImplementationGuideLight) have completed. The actual outputs are
-    extracted from context by Python after the crew finishes.
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    status: str = Field(
-        default="complete",
-        description="Completion status (always 'complete' if this task runs)"
-    )
-    task_4_received: bool = Field(
-        default=True,
-        description="Confirmation that Task 4 (FinalSynthesis) output was received"
-    )
-    task_5_received: bool = Field(
-        default=True,
-        description="Confirmation that Task 5 (ImplementationGuideLight) output was received"
-    )
-    summary: str = Field(
-        default="SEO strategy tasks completed successfully.",
-        description="Brief completion summary"
-    )
-
-
-class ImplementationGuide(BaseModel):
-    """
-    Task 5 output: SEO Implementation Guide (3 new fields only).
-
-    Contains technical implementation details that extend SEOStrategyReport.
-    These fields will be merged with Task 4 output via Python.
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    universal_seo_elements: UniversalSEOElements = Field(
-        ..., description="Universal SEO elements for every page (title, meta, canonical, OG, robots)"
-    )
-    page_type_implementations: list[PageTypeImplementation] = Field(
-        ...,
-        min_length=4,
-        description="SEO templates for 4-6 key page types (minimum 4)"
-    )
-    schema_markup_strategy: SchemaMarkupStrategy = Field(
-        ..., description="Schema markup strategy with JSON-LD examples and testing"
-    )
-
-
-# ========================================
-# LIGHTWEIGHT TASK 5 OUTPUT MODELS FOR PYTHON HYDRATION
-# ========================================
-# These models capture only LLM-generated content (schema selections + strategic guidance).
-# Python generates boilerplate SEO guidelines and JSON-LD code using templates.
-
-
-class UniversalSEOElementsLight(BaseModel):
-    """
-    Lightweight universal SEO elements - Python generates boilerplate guidelines.
-
-    LLM provides:
-    - title_tag_formula (brand-specific pattern)
-
-    Python hydrates with:
-    - title_tag_guidelines (standard SEO best practices)
-    - meta_description_guidelines (standard best practices)
-    - canonical_url_strategy (standard best practices)
-    - open_graph_tags (template with brand placeholder)
-    - robots_meta_guidelines (standard best practices)
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    title_tag_formula: str = Field(
-        ...,
-        description="Title tag format pattern (e.g., '[Primary Keyword] | [Page Type] | Brand Name')"
-    )
-
-
-class PageTypeImplementationLight(BaseModel):
-    """
-    Lightweight page type implementation - Python generates boilerplate guidelines.
-
-    LLM provides:
-    - page_type, url_pattern, target_keywords (strategic)
-    - title_tag_example, meta_description_example, h1_structure (creative)
-    - h2_structure, schema_types (content planning)
-
-    Python hydrates with:
-    - internal_linking_strategy (template based on page_type)
-    - content_guidelines (template based on page_type)
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    page_type: str = Field(
-        ...,
-        description="Page type name (e.g., 'Homepage', 'Location Page', 'Profile Page', 'Content Page')"
-    )
-    url_pattern: str = Field(
-        ...,
-        description="URL structure pattern (e.g., '/locations/{city}', '/guides/{topic}')"
-    )
-    target_keywords: list[str] = Field(
-        ...,
-        description="3-5 primary and secondary keyword patterns for this page type"
-    )
-    title_tag_example: str = Field(
-        ...,
-        description="Example title tag applying the formula to this page type"
-    )
-    meta_description_example: str = Field(
-        ...,
-        description="Example meta description for this page type (140-160 chars)"
-    )
-    h1_structure: str = Field(
-        ...,
-        description="H1 format pattern (e.g., '[Service] in [Location] - [Value Prop]')"
-    )
-    h2_structure: list[str] = Field(
-        ...,
-        description="Recommended H2 section headings (3-6 headings)"
-    )
-    schema_types: list[str] = Field(
-        ...,
-        description="Required schema types (e.g., ['Organization', 'LocalBusiness', 'BreadcrumbList'])"
-    )
-    priority: Optional[str] = Field(
-        default=None, description="Implementation priority level (e.g., 'high', 'medium', 'low')"
-    )
-
-
-class SchemaSelectionLight(BaseModel):
-    """
-    Lightweight schema selection - Python generates actual JSON-LD.
-
-    LLM selects which schemas to use and provides strategic rationale,
-    but does NOT generate the actual JSON-LD code (which is 80% static).
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    schema_type: str = Field(
-        ...,
-        description="Schema.org type: Organization, Service, FAQPage, BreadcrumbList, Article, WebPage, Review, HowTo, WebSite, LocalBusiness, Dataset"
-    )
-    priority: int = Field(
-        ..., ge=1, le=5, description="Implementation priority (1=critical, 5=nice-to-have)"
-    )
-    strategic_rationale: str = Field(
-        ..., description="Why this schema matters for SEO (1-2 sentences)"
-    )
-    # For FAQPage - LLM suggests question topics (not full questions)
-    suggested_questions: Optional[list[str]] = Field(
-        default=None,
-        description="For FAQPage: 3-5 question topics (not full questions, e.g., 'pricing', 'how it works')"
-    )
-
-
-class SchemaMarkupStrategyLight(BaseModel):
-    """
-    Lightweight schema strategy - Python generates JSON-LD code and boilerplate.
-
-    LLM provides:
-    - Strategic narrative (why schema matters) - solution-specific
-    - Schema type selections with rationale
-
-    Python hydrates with:
-    - implementation_method (boilerplate)
-    - testing_validation (boilerplate)
-    - Actual JSON-LD code from templates
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    why_schema_matters: str = Field(
-        ...,
-        description="Benefits narrative (rich results, voice search, AI search, CTR) - 2-3 paragraphs, markdown"
-    )
-    selected_schemas: list[SchemaSelectionLight] = Field(
-        ...,
-        min_length=4,
-        description="4-8 schema types to implement with strategic rationale"
-    )
-    # Optional - Python generates boilerplate if not provided
-    implementation_method: Optional[str] = Field(
-        default=None,
-        description="Optional - Python generates standard JSON-LD implementation guidance"
-    )
-    testing_validation: Optional[str] = Field(
-        default=None,
-        description="Optional - Python generates standard testing/validation guidance"
-    )
-
-
-class ImplementationGuideLight(BaseModel):
-    """
-    Lightweight Task 5 output - all components use light models.
-
-    LLM generates (minimal):
-    - universal_seo_elements.title_tag_formula only
-    - page_type_implementations without internal_linking_strategy/content_guidelines
-    - schema_markup_strategy schema selections + rationale only
-
-    Python hydrates with:
-    - All universal SEO guidelines (boilerplate)
-    - internal_linking_strategy and content_guidelines per page type
-    - JSON-LD code from templates
-    """
-
-    model_config = ConfigDict(extra='ignore')
-
-    universal_seo_elements: UniversalSEOElementsLight = Field(
-        ..., description="Title tag formula only - Python generates all guidelines"
-    )
-    page_type_implementations: list[PageTypeImplementationLight] = Field(
-        ...,
-        min_length=4,
-        description="SEO templates for 4-6 key page types (minimum 4) - Python adds guidelines"
-    )
-    schema_markup_strategy: SchemaMarkupStrategyLight = Field(
-        ..., description="Schema strategy with type selections (Python generates JSON-LD code)"
-    )
+# SyncFinalOutputs, ImplementationGuide, and all Light models (UniversalSEOElementsLight,
+# PageTypeImplementationLight, SchemaSelectionLight, SchemaMarkupStrategyLight,
+# ImplementationGuideLight) removed - Task 5/6 deleted from crew, technical SEO
+# is now handled via Task 2's technical_seo_recommendations markdown field

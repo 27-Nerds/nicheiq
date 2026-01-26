@@ -1163,13 +1163,58 @@ develop_content_technical_strategy:
     total_monthly_volume: 5000  ← NEVER include - Python calculates this
     ```
 
-    **TECHNICAL SEO** (markdown, 3-5 sections with code):
+    **TECHNICAL SEO IMPLEMENTATION GUIDE** (markdown, comprehensive):
 
-    - **URL Structure** → Keyword-optimized patterns with examples
-    - **Schema Markup** → Structured data code examples for rich snippets
-    - **Internal Linking** → Hub-and-spoke architecture
-    - **Page Speed** → Core Web Vitals optimization
-    - **Mobile Optimization** → Mobile-first considerations
+    Generate a COMPLETE technical SEO guide in the `technical_seo_recommendations` field.
+    This field replaces the separate implementation guide task - make it comprehensive.
+
+    **REQUIRED SECTIONS (use these exact headers):**
+
+    ## Technical SEO Implementation Guide
+
+    ### 1. Title Tag Strategy
+    - **Formula:** `[Primary Keyword] | [Page Type] | {selected_solution_name}`
+    - Provide 4-6 specific examples for different page types:
+      * Homepage: "Professional [Service] Services | Find [Service] Providers | Brand"
+      * Location Page: "[City] [Service] Services | Local [Service] Providers | Brand"
+      * Service Page: "[Service Type] Services | Professional [Service] | Brand"
+      * Guide/Blog: "[Topic] Guide | How to [Action] | Brand"
+
+    ### 2. URL Structure Patterns
+    Create a markdown table with URL patterns for each page type:
+
+    | Page Type | URL Pattern | Example | Target Keywords |
+    |-----------|-------------|---------|-----------------|
+    | Homepage | / | / | brand keywords |
+    | Location | /locations/{city} | /locations/new-york | [city] [service] |
+    | Service | /services/{service} | /services/translation | [service] keywords |
+    | Guide | /guides/{topic} | /guides/getting-started | informational keywords |
+
+    ### 3. Schema Markup Types
+    List schema types to implement in priority order (NO JSON-LD code - just type names and rationale):
+
+    **Priority 1 (Critical):**
+    - Organization - Core brand identity for knowledge panel
+    - WebSite - Sitelinks searchbox eligibility
+
+    **Priority 2 (Important):**
+    - Service/Product - Rich results for offerings
+    - FAQPage - FAQ rich snippets (suggest 3-5 question topics)
+    - BreadcrumbList - Navigation breadcrumbs
+
+    **Priority 3 (Nice-to-have):**
+    - Article - For blog/guide content
+    - LocalBusiness - If location-based
+
+    ### 4. H1/H2 Structure Recommendations
+    For each page type, specify:
+    - **H1 Pattern:** "[Primary Keyword] - [Value Proposition]"
+    - **H2 Sections:** List 4-6 recommended section headings
+
+    ### 5. Internal Linking Strategy
+    - Hub-and-spoke architecture recommendations
+    - Cross-linking between topic clusters
+    - Footer/navigation link structure
 
     **PRE-SUBMISSION VALIDATION CHECKLIST:**
 
@@ -1177,7 +1222,13 @@ develop_content_technical_strategy:
     - [ ] Content strategy has 4-6 numbered sections (prioritization, clusters, calendar, formats, conversion)
     - [ ] topic_clusters has 3-5 pillar hubs with primary_keyword from Task 1 tiers
     - [ ] Content calendar covers first 90 days (Tier 1 weeks 1-4, Tier 2 weeks 5-8)
-    - [ ] technical_seo_recommendations has 3-5 sections with code examples
+    - [ ] technical_seo_recommendations has ALL 5 required sections:
+      * Title Tag Strategy with formula and examples
+      * URL Structure Patterns table
+      * Schema Markup Types (priority list, NO JSON-LD code)
+      * H1/H2 Structure Recommendations
+      * Internal Linking Strategy
+    - [ ] technical_seo_recommendations is at least 500 characters (comprehensive guide)
     - [ ] All recommendations align with Task 1 keyword tiers
     - [ ] keyword_based_page_types has 4-8 scalable templates
 
@@ -1186,11 +1237,13 @@ develop_content_technical_strategy:
     ❌ Generic content strategy without referencing Task 1 keyword data
     ❌ Topic clusters without primary keywords from Tier 1/2
     ❌ Vague content calendar like "Week 1-4: Write content" (vs specific Tier 1 keyword mapping)
-    ❌ Technical SEO sections without code examples (must include URL patterns, schema JSON-LD)
+    ❌ Technical SEO without comprehensive implementation guide
+    ❌ Including JSON-LD code in technical_seo_recommendations (just list schema type names)
     ❌ Recommending page types that don't align with solution's project_type
 
     ═══ CRITICAL RULES (Read Last) ═══
     ✗ All recommendations MUST align with Task 1 keyword tiers
+    ✗ technical_seo_recommendations MUST be comprehensive (replaces separate implementation guide)
 
   expected_output: >
     ContentStrategyResultLight Pydantic model (LIGHTWEIGHT - Python calculates numeric fields):
@@ -1204,7 +1257,14 @@ develop_content_technical_strategy:
       - priority: int (1-5)
       NOTE: Do NOT include total_monthly_volume or estimated_traffic_potential - Python will calculate
 
-    - technical_seo_recommendations: str (markdown, 3-5 sections, code examples)
+    - technical_seo_recommendations: str (COMPREHENSIVE markdown guide with these sections):
+      * "## Technical SEO Implementation Guide" header
+      * "### 1. Title Tag Strategy" - formula + 4-6 page type examples
+      * "### 2. URL Structure Patterns" - markdown table with patterns
+      * "### 3. Schema Markup Types" - priority list (NO JSON-LD code)
+      * "### 4. H1/H2 Structure Recommendations" - patterns per page type
+      * "### 5. Internal Linking Strategy" - hub-and-spoke recommendations
+      MINIMUM 500 characters - this is the COMPLETE technical SEO guide
 
     - keyword_based_page_types: Optional[List[KeywordBasedPageTypeLight]] (4-8 templates)
       - page_type_name: str
@@ -1297,22 +1357,23 @@ create_implementation_plan:
     - Each string field must be under 400 chars
 
   expected_output: >
-    ImplementationPlanResult JSON with ONLY these 6 fields (NO extras):
+    ImplementationPlanResult JSON with ONLY these 5 fields (NO extras):
 
     - implementation_roadmap: str (3 phases as bullet points, ~300 chars MAX)
     - key_metrics_to_track: List[str] (4-6 simple strings)
-    - expected_timeline: str (1 short paragraph, ~100 chars)
     - next_steps_checklist: List[str] (5-8 action items)
     - risk_mitigation: Optional[str] (~100 chars)
     - budget_allocation: Optional[str] (~100 chars)
+
+    NOTE: expected_timeline removed - timeline info should be in implementation_roadmap phases.
 
     TOTAL OUTPUT MUST BE UNDER 2000 CHARACTERS.
 
 synthesize_final_seo_strategy:
   description: >
     ═══ TASK 4: FINAL SYNTHESIS ═══
-    ✓ Generate ONLY 4 new strategic synthesis fields (Python will merge with Tasks 1-3)
-    ✓ Focus on long-term vision and competitive positioning
+    ✓ Generate the final conclusion/summary for the SEO strategy
+    ✓ Synthesize insights from Tasks 1-3 into an executive bottom line
     ✓ NO new keyword analysis - synthesis only
 
     **Task 4: Final Strategy Synthesis**
@@ -1322,189 +1383,34 @@ synthesize_final_seo_strategy:
     Tasks 1-3 are available in your context for reference:
     - Task 1: KeywordAnalysisResult (keyword tiers, volumes, competitive positioning)
     - Task 2: ContentStrategyResult (content plan, technical SEO, site architecture)
-    - Task 3: ImplementationPlanResult (roadmap, metrics, timeline, next steps)
+    - Task 3: ImplementationPlanResult (roadmap, metrics, next steps)
 
-    **YOUR TASK: Generate Strategic Synthesis**
+    **YOUR TASK: Generate Bottom Line Summary**
 
-    **LONG-TERM STRATEGY** (3 sections, markdown):
+    Write a compelling conclusion_bottom_line paragraph that:
+    - Summarizes the overall SEO opportunity
+    - States the key competitive advantage this strategy provides
+    - Explains why this approach will succeed for {selected_solution_name}
+    - Provides confidence in the recommended path forward
 
-    **Year 1: Foundation & Traction**
-    - Target: Position 1-10 for Tier 1 keywords
-    - Content: 30-50 pieces covering core topics
-    - Traffic: 5K-10K organic visits/month
-
-    **Year 2: Expansion & Authority**
-    - Target: Dominate Tier 1 (pos 1-3), expand Tier 2/3
-    - Content: 100+ pieces, comprehensive clusters
-    - Traffic: 20K-50K organic visits/month
-
-    **Year 3: Leadership & Scaling**
-    - Target: Category leadership, programmatic SEO
-    - Content: 300+ pages via programmatic generation
-    - Traffic: 50K-100K+ organic visits/month
-
-    **COMPETITIVE ADVANTAGES** (2-4 bullets):
-    - What unique positioning does SEO strategy enable?
-    - What keyword opportunities do competitors miss?
-    - What moats are built through this approach?
-
-    **CRITICAL SUCCESS FACTORS** (3-4 bullets):
-    - Content quality and consistency
-    - Technical execution (speed, mobile, schema)
-    - Resource commitment
-    - Patience and persistence (6-12 month compounding)
+    **CONCLUSION FORMAT:**
+    One paragraph (3-5 sentences) that serves as the executive summary of the
+    entire SEO strategy. This is the "bottom line" takeaway for stakeholders.
 
     ═══ CRITICAL RULES (Read Last) ═══
     ✗ This is SYNTHESIS only - do NOT generate new keyword analysis
-    ✗ Python will merge with Tasks 1-3 - focus ONLY on strategic synthesis
+    ✗ Other strategic fields (competitive_advantages, long_term_strategy) removed -
+      these are now covered by competitive_positioning and implementation_roadmap from earlier tasks
 
   expected_output: >
-    FinalSynthesis Pydantic model with 4 strategic fields ONLY:
+    FinalSynthesis Pydantic model with 1 field ONLY:
 
-    1. long_term_strategy: str
-       - Year 1/2/3 strategic milestones (markdown, 3 sections)
-       - Foundation & Traction → Expansion & Authority → Leadership & Scaling
-
-    2. conclusion_bottom_line: str
-       - Executive summary (1 paragraph)
+    1. conclusion_bottom_line: str
+       - Executive summary (1 paragraph, 3-5 sentences)
        - Bottom line: Why this SEO strategy will succeed
+       - Minimum 50 characters
 
-    3. competitive_advantages: List[str]
-       - 2-4 key competitive advantages from SEO analysis
-       - What unique positioning does this enable?
+    NOTE: Tasks 1-3 fields will be merged automatically by Python.
+    Long-term vision is now in implementation_roadmap, competitive insights in competitive_positioning.
 
-    4. critical_success_factors: List[str]
-       - 3-4 critical make-or-break elements
-       - Content quality, technical execution, resources, patience
-
-    NOTE: Tasks 1-3 fields will be merged automatically by Python. Focus on strategic vision.
-
-create_implementation_guide:
-  description: >
-    ═══ TASK 5: IMPLEMENTATION GUIDE (ULTRA-LIGHTWEIGHT) ═══
-    ✓ Python generates ALL boilerplate SEO guidelines
-    ✓ Focus ONLY on strategic/creative fields
-    ✓ DO NOT generate JSON-LD code or generic SEO guidelines
-
-    **Task 5: Create SEO Implementation Guide**
-
-    **HOW TO ACCESS CONTEXT:**
-
-    Tasks 1-4 are available in your context for reference:
-    - Task 1: KeywordAnalysisResult (keyword tiers, volumes)
-    - Task 2: ContentStrategyResult (content plan, site architecture)
-    - Task 3: ImplementationPlanResult (roadmap, metrics)
-    - Task 4: SEOStrategyReport (complete SEO strategy - for reference only)
-
-    **YOUR TASK: Generate MINIMAL Implementation Details**
-
-    Python will auto-generate all standard SEO guidelines (title guidelines, meta guidelines,
-    canonical strategy, OG tags, robots meta, internal linking, content guidelines).
-    You ONLY need to provide strategic/creative fields:
-
-    **1. Universal SEO Elements** (UniversalSEOElementsLight - ONLY 1 field):
-    - title_tag_formula: Pattern like "[Primary KW] | [Page Type] | {selected_solution_name}"
-
-    **2. Page-Specific Implementations** (List[PageTypeImplementationLight] - 4-6 page types):
-
-    For EACH page type (Homepage, Location Pages, Profile Pages, Content/Guide Pages):
-    - page_type: Descriptive name (e.g., "Homepage", "Location Page", "Profile Page")
-    - url_pattern: URL structure (e.g., "/locations/:city", "/guides/:topic")
-    - target_keywords: 3-5 keyword patterns from Task 1 tiers
-    - title_tag_example: Real example applying formula to {selected_solution_name}
-    - meta_description_example: Real example (140-155 chars)
-    - h1_structure: H1 format pattern
-    - h2_structure: List of 3-6 recommended H2 section headings (must be array of strings)
-    - schema_types: Required schema types (e.g., ["Organization", "LocalBusiness", "BreadcrumbList"])
-    - priority: "high", "medium", or "low" based on keyword tier potential
-
-    ══ Python auto-generates: internal_linking_strategy, content_guidelines ══
-
-    **3. Schema Markup Strategy** (SchemaMarkupStrategyLight - NO JSON-LD code):
-
-    - why_schema_matters: Benefits (rich results, voice search, AI search, CTR) - 2-3 paragraphs
-    - selected_schemas: List of 4-8 schema type selections, each with:
-      * schema_type: Organization, Service, FAQPage, BreadcrumbList, Article, WebPage, Review, HowTo, WebSite, LocalBusiness, Dataset
-      * priority: 1-5 (1=critical, 5=nice-to-have)
-      * strategic_rationale: 1-2 sentences on why this schema matters for SEO
-      * suggested_questions: (For FAQPage only) 3-5 question TOPICS
-
-    ══ Python auto-generates: implementation_method, testing_validation ══
-
-    **SCHEMA TYPE SELECTION GUIDANCE:**
-
-    Select 4-8 schema types based on solution needs:
-
-    **Priority 1 (Critical):** Organization, WebSite, Service/Product
-    **Priority 2-3 (Important):** FAQPage, LocalBusiness, BreadcrumbList, Article
-    **Priority 4-5 (Nice-to-have):** Review, HowTo, WebPage, Dataset
-
-    **SOLUTION CONTEXT:**
-    - Solution Name: {selected_solution_name}
-    - Value Proposition: {value_proposition}
-    - Niche: {niche}
-    - Topic Clusters: {topic_clusters_summary}
-
-    **PRE-SUBMISSION VALIDATION CHECKLIST:**
-
-    ☐ universal_seo_elements.title_tag_formula is provided (ONLY field needed)
-    ☐ page_type_implementations has 4-6 page types with 9 required fields (NOT 11 - Python adds 2)
-    ☐ schema_markup_strategy.selected_schemas has 4-8 schema type selections
-    ☐ Each schema selection has schema_type, priority (1-5), and strategic_rationale
-    ☐ NO JSON-LD code in output
-    ☐ NO generic SEO guidelines (title_tag_guidelines, meta_description_guidelines, etc.)
-
-  expected_output: >
-    ImplementationGuideLight Pydantic model with 3 implementation fields:
-
-    1. universal_seo_elements: UniversalSEOElementsLight (ONLY title_tag_formula)
-       - title_tag_formula: Pattern like "[Primary KW] | [Page Type] | Brand"
-
-    2. page_type_implementations: List[PageTypeImplementationLight] (4-6 page types)
-       - Each with 9 fields: page_type, url_pattern, target_keywords (3-5), title_tag_example,
-         meta_description_example, h1_structure, h2_structure (list), schema_types (list), priority
-       - DO NOT include internal_linking_strategy or content_guidelines (Python generates these)
-
-    3. schema_markup_strategy: SchemaMarkupStrategyLight
-       - why_schema_matters: 2-3 paragraphs (solution-specific benefits)
-       - selected_schemas: 4-8 SchemaSelectionLight objects with schema_type, priority, strategic_rationale
-       - DO NOT include implementation_method or testing_validation (Python generates these)
-
-    NOTE: Python generates all boilerplate (SEO guidelines, internal linking, content guidelines, implementation_method, testing_validation, JSON-LD code).
-
-# ========================================
-# TASK 6: SYNC FINAL OUTPUTS (Parallel Sync Point)
-# ========================================
-# This task synchronizes the parallel execution of Tasks 4 and 5.
-# CrewAI requires at most one async task at the end of a crew.
-# This sync task ensures both async tasks complete before crew finishes.
-
-sync_final_outputs:
-  description: >
-    Synchronization point for parallel Tasks 4 and 5.
-
-    This task collects the outputs from the parallel final synthesis (Task 4) and
-    implementation guide (Task 5) tasks. Both tasks run concurrently for performance,
-    and this sync task ensures they complete before the crew finishes.
-
-    Your job: Confirm receipt of both outputs and provide a brief completion summary.
-
-    **Inputs from Task 4 (Final Synthesis):**
-    - long_term_strategy
-    - conclusion_bottom_line
-    - competitive_advantages
-    - critical_success_factors
-
-    **Inputs from Task 5 (Implementation Guide):**
-    - universal_seo_elements
-    - page_type_implementations
-    - schema_markup_strategy
-
-  expected_output: >
-    A brief JSON confirmation:
-    {
-      "status": "complete",
-      "task_4_received": true,
-      "task_5_received": true,
-      "summary": "SEO strategy synthesis and implementation guide tasks completed successfully."
-    }
+# Tasks 5 and 6 removed - technical SEO implementation is now part of Task 2's technical_seo_recommendations field
