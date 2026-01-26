@@ -457,4 +457,4 @@ Task failed: Could not parse keyword data
 - [ARCHITECTURE.md](ARCHITECTURE.md) - Technical architecture details
 - [FEATURES.md](FEATURES.md) - Feature configuration and usage
 - [README.md](../README.md) - Project overview
-- [GETTING_STARTED.md](../GETTING_STARTED.md) - Setup guide
+- [SETUP.md](SETUP.md) - Setup guide

@@ -9,15 +9,16 @@ Complete documentation for the NicheIQ autonomous market research system.
 **Start here if you're new to NicheIQ:**
 
 - **[README.md](../README.md)** - Project overview, features, and quick start
-- **[GETTING_STARTED.md](../GETTING_STARTED.md)** - Step-by-step setup and first research run
-- **[ENV_REFERENCE.md](../ENV_REFERENCE.md)** - Complete environment variable reference
+- **[SETUP.md](SETUP.md)** - Step-by-step setup and first research run
+- **[ENV_REFERENCE.md](ENV_REFERENCE.md)** - Complete environment variable reference
+- **[STRIPE_SETUP.md](STRIPE_SETUP.md)** - Stripe payments setup (dev & production)
 
 ### 🤖 AI Context (Root Directory)
 
 **For Claude Code and AI-assisted development:**
 
 - **[CLAUDE.md](../CLAUDE.md)** - Essential project knowledge, current patterns, and best practices
-- **[PROMPT_OPTIMIZATION_BEST_PRACTICES.md](../PROMPT_OPTIMIZATION_BEST_PRACTICES.md)** - Prompt engineering guidelines
+- **[PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md)** - Prompt engineering guidelines
 
 ### 🏗️ Technical Documentation (docs/)
 
@@ -34,12 +35,19 @@ Complete documentation for the NicheIQ autonomous market research system.
 
 - **[archive/README.md](archive/README.md)** - Index of archived reports
 
+### 🧩 Component Documentation
+
+**Component-specific docs live with their code:**
+
+- **[frontend/docs/UI_GUIDELINES.md](../frontend/docs/UI_GUIDELINES.md)** - UI design patterns (expandable vs static sections)
+- **[backend/README.md](../backend/README.md)** - Backend setup and API overview
+
 ## When to Use Each Document
 
 ### I want to...
 
 **...get started with NicheIQ**
-→ [README.md](../README.md) → [GETTING_STARTED.md](../GETTING_STARTED.md)
+→ [README.md](../README.md) → [SETUP.md](SETUP.md)
 
 **...understand the architecture**
 → [ARCHITECTURE.md](ARCHITECTURE.md)
@@ -57,10 +65,19 @@ Complete documentation for the NicheIQ autonomous market research system.
 → [CLAUDE.md](../CLAUDE.md)
 
 **...understand environment variables**
-→ [ENV_REFERENCE.md](../ENV_REFERENCE.md)
+→ [ENV_REFERENCE.md](ENV_REFERENCE.md)
+
+**...set up Stripe payments**
+→ [STRIPE_SETUP.md](STRIPE_SETUP.md)
 
 **...find historical implementation details**
 → [archive/README.md](archive/README.md)
+
+**...understand frontend UI patterns**
+→ [frontend/docs/UI_GUIDELINES.md](../frontend/docs/UI_GUIDELINES.md)
+
+**...set up the backend**
+→ [backend/README.md](../backend/README.md)
 
 ## Documentation Principles
 
@@ -94,7 +111,7 @@ Complete documentation for the NicheIQ autonomous market research system.
 - **FEATURES.md**: Document new configuration options or advanced features
 - **TROUBLESHOOTING.md**: Archive bug fixes after resolution
 - **README.md**: Major feature additions, update quick start
-- **GETTING_STARTED.md**: Setup process changes
+- **SETUP.md**: Setup process changes
 - **ENV_REFERENCE.md**: New environment variables
 
 ## Contributing to Documentation
@@ -130,7 +147,7 @@ Complete documentation for the NicheIQ autonomous market research system.
 1. [CLAUDE.md](../CLAUDE.md) - Daily AI development context
 2. [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - When things break
 3. [PATTERNS.md](PATTERNS.md) - Copy-paste code templates
-4. [ENV_REFERENCE.md](../ENV_REFERENCE.md) - Configuration lookup
+4. [ENV_REFERENCE.md](ENV_REFERENCE.md) - Configuration lookup
 
 ### For Specific Tasks
 
@@ -141,21 +158,25 @@ Complete documentation for the NicheIQ autonomous market research system.
 - **Guardrails**: [PATTERNS.md#implementing-guardrails](PATTERNS.md#implementing-guardrails)
 - **Async issues**: [TROUBLESHOOTING.md#async-event-loop-issues](TROUBLESHOOTING.md#async-event-loop-issues)
 - **Pydantic bug**: [TROUBLESHOOTING.md#pydantic-schema-parser-bug](TROUBLESHOOTING.md#pydantic-schema-parser-bug)
+- **Stripe payments**: [STRIPE_SETUP.md](STRIPE_SETUP.md)
 
 ## Documentation Statistics
 
 | File | Purpose | Target Audience | Size |
 |------|---------|----------------|------|
 | README.md | Overview | All users | ~200 lines |
-| GETTING_STARTED.md | Setup guide | New users | ~300 lines |
+| SETUP.md | Setup guide | New users | ~300 lines |
 | CLAUDE.md | AI context | Claude Code | ~350 lines |
 | ENV_REFERENCE.md | Config reference | Operators | ~200 lines |
 | ARCHITECTURE.md | Technical details | Developers | ~250 lines |
 | PATTERNS.md | Code recipes | Developers | ~150 lines |
 | FEATURES.md | Advanced features | Power users | ~200 lines |
+| STRIPE_SETUP.md | Payments setup | Operators | ~200 lines |
 | TROUBLESHOOTING.md | Bug fixes | All developers | ~300 lines |
+| frontend/docs/UI_GUIDELINES.md | UI patterns | Frontend devs | ~150 lines |
+| backend/README.md | Backend setup | Backend devs | ~100 lines |
 
 ---
 
-**Last Updated**: 2025-01-22
-**Documentation Version**: 2.0 (Restructured)
+**Last Updated**: 2026-01-26
+**Documentation Version**: 2.1 (Reorganized)

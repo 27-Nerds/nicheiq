@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestrated through a 10-stage research pipeline. Each agent has a specific role, named framework, and verification standards.
+NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestrated through a 10-stage research pipeline. Each agent has a specific role, named framework, and verification standards.
 
 ---
 
@@ -31,13 +31,21 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 3. SEOStrategyCrew (Stage 9) - 3 Agents
+### 3. SEOStrategyCrew (Stage 9) - 11 Agents
 
 | Agent | Role | Framework |
 |-------|------|-----------|
 | **keyword_strategist** | Keyword analysis, tiering, and prioritization | Tier Classification (T1/T2/T3 by difficulty × volume) |
 | **content_strategist** | Content strategy, pillar pages, topic clusters | Topic-Cluster Architecture |
 | **seo_specialist** | Technical SEO, implementation planning, final synthesis | Implementation Roadmap Builder |
+| **premium_tier_analyst** | Analyze premium tier keywords for high-value targeting | Premium Keyword Analysis Protocol |
+| **high_priority_analyst** | Identify and prioritize high-impact keyword opportunities | Priority Scoring Matrix |
+| **tier_0_analyst** | Analyze tier 0 (immediate priority) keywords | Quick-Win Identification |
+| **tier_1_analyst** | Analyze tier 1 (high priority) keywords | Strategic Opportunity Mapping |
+| **strategic_tier_analyst** | Strategic keyword analysis for long-term positioning | Market Position Framework |
+| **geographic_tier_analyst** | Location-based keyword opportunities and regional targeting | Geographic Expansion Protocol |
+| **category_tier_analyst** | Category-specific keyword analysis and segmentation | Category Domination Strategy |
+| **keyword_summary_analyst** | Synthesize keyword analysis into actionable summary | Executive Summary Framework |
 
 ---
 
@@ -57,7 +65,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 6. TrendLongevityCrew (Stage 9.5) - 1 Agent
+### 6. TrendLongevityCrew (Stage 9.2) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -65,7 +73,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 7. PricingStrategyCrew (Stage 8) - 1 Agent
+### 7. PricingStrategyCrew (Stage 8.7) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -73,7 +81,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 8. SolutionRefinementCrew (Stage 8.7) - 1 Agent
+### 8. SolutionRefinementCrew (Stage 8.85) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -81,7 +89,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 9. DataSourceCrew (Stage 9.7, conditional) - 2 Agents
+### 9. DataSourceCrew (Stage 9.75, conditional) - 2 Agents
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -90,14 +98,31 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 10. LandingPageCrew (Optional) - 4 Agents
+### 10. LandingPageCrew (Optional) - 8 Agents
 
 | Agent | Role | Framework |
 |-------|------|-----------|
-| **marketing_strategist** | Strategic landing page brief, persona focus, differentiation | Strategic Landing Framework - ONE persona, ONE memorable element |
-| **brand_designer** | Brand identity, color palette, typography, design mood | Category-to-Color Protocol - maps product types to optimal aesthetics |
-| **landing_page_copywriter** | Conversion-focused copy, section selection | Problem-First Framework - lead with pain, avoid AI slop patterns |
-| **html_developer** | HTML/Tailwind implementation, responsive design | Mood-to-Layout Protocol - custom layouts per design mood |
+| **marketing_strategist** | Strategic brief with persona focus, messaging, memorable element | Strategic Landing Framework - ONE persona, ONE memorable element |
+| **creative_director** | Autonomous visual strategy (archetype, intensity, hero layout) | Niche-Derived Archetypes - visual differentiation from niche analysis |
+| **visual_designer** | Interprets creative direction into card treatments, visual surprises | Creative Interpretation Protocol - specific visual decisions |
+| **brand_designer** | Brand identity, color palette, typography following creative direction | Category-to-Color Protocol - maps product types to optimal aesthetics |
+| **landing_page_copywriter** | Conversion-focused copy following section_density from creative direction | Problem-First Framework - lead with pain, avoid AI slop patterns |
+| **html_developer** | HTML/Tailwind implementation with visual design spec | Mood-to-Layout Protocol - custom layouts per design mood |
+| **animation_enhancer** | Premium motion design and micro-interactions | Intensity-to-Animation Mapping - animations based on visual intensity |
+| **qa_reviewer** | Validates and fixes visual design issues (layout, typography, responsive) | Structured QA Validation - quality scoring and issue fixing |
+
+**Pipeline Flow:**
+```
+Strategy → Creative Direction → Visual Design → Brand Identity → Copy → HTML → Animation → QA Review
+```
+
+**Pipeline Phases:**
+1. **Strategy Phase**: `marketing_strategist` creates strategic brief with ONE persona focus
+2. **Creative Direction Phase**: `creative_director` + `visual_designer` define visual approach
+3. **Design Phase**: `brand_designer` creates brand identity following creative direction
+4. **Content Phase**: `landing_page_copywriter` writes conversion copy
+5. **Implementation Phase**: `html_developer` + `animation_enhancer` build and animate
+6. **Validation Phase**: `qa_reviewer` validates and fixes issues
 
 ---
 
@@ -226,7 +251,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
           └────────────────────────────────────┬───────────────────────────┘
                                                │
           ┌────────────────────────────────────┴────────────────────────────┐
-          │                   STAGE 9.5: TREND ANALYSIS                      │
+          │                   STAGE 9.2: TREND ANALYSIS                      │
           │  ┌─────────────────────────────────────────────────────────────┐ │
           │  │                   TrendLongevityCrew                         │ │
           │  │   ┌──────────────────────────────────────────────────────┐  │ │
@@ -277,14 +302,14 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                              AGENT COUNT SUMMARY                                    │
 ├─────────────────────────────────────────────────────────────────────────────────────┤
-│  PainPointCrew (6)      : 3 agents    │  MarketSizingCrew (8.6)   : 1 agent        │
-│  AudienceMappingCrew(6.5): 1 agent    │  SolutionRefinementCrew(8.7): 1 agent      │
-│  UnifiedSolutionCrew(7) : 6 agents    │  SEOStrategyCrew (9)      : 3 agents       │
-│  PricingStrategyCrew(8) : 1 agent     │  TrendLongevityCrew (9.5) : 1 agent        │
-│  DataSourceCrew (9.7)   : 2 agents    │  TrafficMonetizationCrew  : 1 agent        │
-│  LandingPageCrew        : 4 agents    │                                            │
+│  PainPointCrew (6)       : 3 agents   │  MarketSizingCrew (8.6)    : 1 agent       │
+│  AudienceMappingCrew(6.5): 1 agent    │  PricingStrategyCrew (8.7) : 1 agent       │
+│  UnifiedSolutionCrew(7)  : 6 agents   │  SolutionRefinementCrew(8.85): 1 agent     │
+│  SEOStrategyCrew (9)     : 11 agents  │  TrendLongevityCrew (9.2)  : 1 agent       │
+│  DataSourceCrew (9.75)   : 2 agents   │  TrafficMonetizationCrew   : 1 agent       │
+│  LandingPageCrew         : 8 agents   │                                            │
 ├─────────────────────────────────────────────────────────────────────────────────────┤
-│  TOTAL: 24 Specialized AI Agents across 11 Crews                                   │
+│  TOTAL: 36 Specialized AI Agents across 11 Crews                                   │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -337,7 +362,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
                                 │
                                 ▼
     ┌─────────────────────────────────────────────────────────┐
-    │  STAGE 9.5: TREND ANALYSIS                              │
+    │  STAGE 9.2: TREND ANALYSIS                              │
     │  Is the market growing, stable, or declining?           │
     │  Fad detection to avoid short-lived opportunities       │
     └───────────────────────────┬─────────────────────────────┘
@@ -358,7 +383,7 @@ NicheIQ uses **24 specialized AI agents** organized into **11 crews**, orchestra
 
 
     ┌─────────────────────────────────────────────────────────┐
-    │  24 AI AGENTS • 11 SPECIALIZED CREWS • 10 STAGES        │
+    │  36 AI AGENTS • 11 SPECIALIZED CREWS • 10 STAGES        │
     │  From idea to validated opportunity in minutes          │
     └─────────────────────────────────────────────────────────┘
 ```

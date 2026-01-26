@@ -300,7 +300,7 @@ VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.60
 ```
 
 **See Also**:
-- [ENV_REFERENCE.md](../ENV_REFERENCE.md#report-generation--validation) - Complete configuration reference
+- [ENV_REFERENCE.md](ENV_REFERENCE.md#report-generation--validation) - Complete configuration reference
 
 ---
 

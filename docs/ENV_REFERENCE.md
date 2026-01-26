@@ -51,6 +51,194 @@ TWITTER_EMAIL=your_email@example.com
 - Reddit provides enough data
 - Security concerns (credentials stored locally)
 
+### Stripe Payments
+
+Configure Stripe for token package purchases.
+
+```bash
+# Stripe API Secret Key (starts with sk_)
+STRIPE_SECRET_KEY=sk_live_...
+# Get at: https://dashboard.stripe.com/apikeys
+# Use sk_test_... for development
+
+# Stripe Webhook Signing Secret (starts with whsec_)
+STRIPE_WEBHOOK_SECRET=whsec_...
+# Get at: https://dashboard.stripe.com/webhooks
+# Required for processing payment confirmations
+```
+
+**Setup Steps:**
+
+1. Create a Stripe account at https://stripe.com
+2. Get your API keys from https://dashboard.stripe.com/apikeys
+3. Create Products and Prices in Stripe Dashboard
+4. Set up a webhook endpoint (see below)
+5. Select webhook events (see below)
+6. Copy the webhook signing secret
+
+**Webhook URL:**
+
+Production:
+```
+https://yourdomain.com/api/webhooks/stripe
+```
+
+Local development (using Stripe CLI):
+```bash
+# Install Stripe CLI: https://stripe.com/docs/stripe-cli
+stripe listen --forward-to localhost:3001/api/webhooks/stripe
+```
+The CLI will output a temporary `whsec_...` secret - use that for `STRIPE_WEBHOOK_SECRET` locally.
+
+**Webhook Events to Select:**
+
+Only these events are handled by the backend:
+
+| Event | Purpose |
+|-------|---------|
+| `checkout.session.completed` | **Required** - Adds credits to user after successful payment |
+| `checkout.session.expired` | Optional - Logs when checkout session expires without payment |
+
+Skip `checkout.session.async_payment_*` events - they're for delayed payment methods (bank transfers, SEPA) which aren't used since we only accept card payments.
+
+**Test vs Live Keys:**
+- Use `sk_test_...` keys for development (no real charges)
+- Use `sk_live_...` keys for production
+
+---
+
+### Authentication (OAuth & Internal)
+
+Configure OAuth providers for user login and internal service authentication.
+
+```bash
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-...
+# Get at: https://console.cloud.google.com/apis/credentials
+# Setup: Create OAuth 2.0 Client ID, add authorized redirect URIs
+
+# GitHub OAuth
+GITHUB_CLIENT_ID=Iv1.your_client_id
+GITHUB_CLIENT_SECRET=your_client_secret
+# Get at: https://github.com/settings/developers
+# Setup: Create OAuth App, set callback URL to /api/auth/callback/github
+
+# Backend API URL (for frontend)
+BACKEND_URL=http://localhost:3001
+# Production: https://api.yourdomain.com
+# Used by frontend to communicate with backend API
+
+# Internal Service Authentication
+INTERNAL_SERVICE_SECRET=your-32-char-secret-key-here
+# Used for: Worker-to-backend authentication
+# Generate: openssl rand -base64 32
+# MUST match between backend and worker services
+
+# Auth.js Secret
+AUTH_SECRET=your-auth-secret-32-chars-minimum
+# Used for: Session encryption in Auth.js
+# Generate: openssl rand -base64 32
+```
+
+**OAuth Setup Steps:**
+
+1. **Google OAuth:**
+   - Go to https://console.cloud.google.com/apis/credentials
+   - Create OAuth 2.0 Client ID (Web application)
+   - Add authorized redirect URI: `https://yourdomain.com/api/auth/callback/google`
+   - Copy Client ID and Client Secret
+
+2. **GitHub OAuth:**
+   - Go to https://github.com/settings/developers
+   - Create new OAuth App
+   - Set callback URL: `https://yourdomain.com/api/auth/callback/github`
+   - Copy Client ID and Client Secret
+
+---
+
+### Email Notifications (Backend)
+
+Configure email notifications when jobs start, complete, or fail.
+
+```bash
+# Email Provider (smtp or sendgrid)
+EMAIL_PROVIDER=smtp
+# Options: smtp, sendgrid
+
+FROM_EMAIL=noreply@yourdomain.com
+# Email address shown in "From" field
+```
+
+**SendGrid API (Recommended):**
+
+Better deliverability, tracking, and reliability.
+
+```bash
+EMAIL_PROVIDER=sendgrid
+SENDGRID_API_KEY=SG.your-api-key
+FROM_EMAIL=noreply@yourdomain.com
+```
+
+**Setup Steps:**
+
+1. Create a SendGrid account at https://sendgrid.com
+2. Go to Settings → API Keys → Create API Key
+3. Select "Full Access" or "Restricted Access" with Mail Send permissions
+4. Copy the API key (shown only once!)
+5. Verify your sender email/domain in Settings → Sender Authentication
+
+Get your API key at: https://app.sendgrid.com/settings/api_keys
+
+**SMTP Configuration:**
+
+```bash
+EMAIL_PROVIDER=smtp
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-app-password
+FROM_EMAIL=noreply@yourdomain.com
+```
+
+**SMTP Provider Examples:**
+
+Gmail (requires App Password):
+```bash
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your-email@gmail.com
+SMTP_PASSWORD=your-16-char-app-password
+```
+
+SendGrid via SMTP:
+```bash
+SMTP_HOST=smtp.sendgrid.net
+SMTP_PORT=587
+SMTP_USER=apikey
+SMTP_PASSWORD=SG.your-api-key
+```
+
+Amazon SES:
+```bash
+SMTP_HOST=email-smtp.us-east-1.amazonaws.com
+SMTP_PORT=587
+SMTP_USER=your-ses-smtp-user
+SMTP_PASSWORD=your-ses-smtp-password
+```
+
+**User Preferences:**
+
+Users can control which emails they receive via the API:
+- `emailEnabled` - Master toggle for all notifications
+- `emailOnJobStart` - Notify when job starts processing
+- `emailOnJobComplete` - Notify when job completes successfully
+- `emailOnJobError` - Notify when job fails
+
+API endpoints:
+- `GET /api/users/:userId/notification-preferences`
+- `PUT /api/users/:userId/notification-preferences`
+
 ---
 
 ## Application Settings
@@ -73,6 +261,39 @@ MAX_RETRIES=3
 TIMEOUT_SECONDS=30
 # API request timeout in seconds
 # Increase if requests are timing out
+```
+
+### Backend Server Configuration
+
+```bash
+# Node environment
+NODE_ENV=development
+# Options: development, production, test
+# Affects logging, error handling, and security settings
+
+# Server port
+PORT=3001
+# Backend API server port
+# Default: 3001 (frontend uses 3000)
+
+# Niche suggestion settings
+SUGGEST_LLM_MODEL=gpt-4.1-nano
+# Model for generating niche suggestions
+# Nano model is fast and cheap for simple suggestions
+
+SUGGEST_RATE_HOURLY=25
+# Maximum niche suggestions per user per hour
+# Prevents abuse of suggestion endpoint
+
+SUGGEST_RATE_DAILY=50
+# Maximum niche suggestions per user per day
+# Prevents excessive API costs
+
+# Job management
+MAX_JOB_RUNTIME_HOURS=4
+# Maximum hours a job can run before being killed
+# Safety net for stuck jobs
+# Worker sends heartbeats; jobs without heartbeat are marked failed
 ```
 
 ### Model Selection
@@ -131,6 +352,51 @@ KEYWORD_VALIDATION_LLM=gpt-4.1-nano
 KEYWORD_RESEARCH_LLM=gpt-4o-mini
 # Used for: SEO keyword analysis and tier classification
 # Why mini: Structured analysis, good with metrics
+
+# Pain Point Validation (Stage 6 refinement)
+PAIN_POINT_VALIDATION_LLM=gpt-4.1-mini
+# Used for: Validating and filtering pain points
+# Why mini: Binary validation decisions, cost-effective
+
+# Pain-to-Solution Mapping
+PAIN_SOLUTION_MAPPING_LLM=gpt-4o-mini
+# Used for: Mapping pain points to solution features
+# Why mini: Structured mapping task
+
+# Landing Page Generation (Stage 10+)
+LANDING_PAGE_LLM=gpt-5.2
+# Used for: Creative landing page content generation
+# Why gpt-5.2: Needs strong creative and reasoning abilities
+
+LANDING_PAGE_EXECUTION_LLM=gpt-5.1-codex-max
+# Used for: Landing page code execution/generation
+# Why codex: Optimized for code generation
+
+# Landing Page Reasoning Effort (GPT-5 series only)
+LANDING_PAGE_CREATIVE_REASONING_EFFORT=high
+# Reasoning effort for creative content phase
+# Options: none, minimal, low, medium, high, xhigh
+
+LANDING_PAGE_EXECUTION_REASONING_EFFORT=medium
+# Reasoning effort for code execution phase
+
+LANDING_PAGE_VALIDATION_REASONING_EFFORT=low
+# Reasoning effort for validation phase
+
+# CrewAI Enterprise (Optional)
+CREWAI_API_KEY=
+# Optional: CrewAI+ enterprise features
+# Enables: Enhanced monitoring, analytics, collaboration
+# Get at: https://www.crewai.com/
+
+CREWAI_STORAGE_DIR=
+# Optional: Custom storage directory for CrewAI
+# Default: Uses CrewAI's default location
+
+# ChromaDB Embedding API Key
+CHROMA_OPENAI_API_KEY=
+# Optional: Separate API key for ChromaDB embeddings
+# Default: Uses OPENAI_API_KEY if not set
 ```
 
 **Cost Impact Example** (expat relocation niche):
@@ -154,11 +420,36 @@ TOP_SOLUTIONS_FOR_VALIDATION=3
 #   - 5: Thorough, validates all generated solutions
 # Higher values increase API costs but provide pricing/keyword data for more solutions
 # Useful when Stage 8.5 re-ranking might change the winner
+
+# Solution refinement toggle
+SOLUTION_REFINEMENT_ENABLED=true
+# Enable solution refinement and re-ranking after keyword validation
+# When true: Solutions are refined based on keyword data
+# When false: Skip refinement, use original rankings
 ```
 
 ---
 
 ## Search Configuration
+
+### Data Collection Toggles
+
+```bash
+# Enable/disable data sources
+ENABLE_REDDIT=true
+# Enable Reddit data collection
+# Set to false to skip Reddit entirely
+
+ENABLE_TWITTER=false
+# Enable Twitter/X data collection
+# Default: false (requires credentials or uses rate-limited guest mode)
+
+# Search query generation
+NUM_SEARCH_QUERIES=40
+# Number of search queries to generate for Reddit/Twitter
+# Higher = more diverse results but more API calls
+# Recommended: 30-50 for thorough coverage
+```
 
 ### Result Limits
 
@@ -205,6 +496,17 @@ MAX_REDDIT_CONTENT_TOKENS=400000
 #   - 400000: Balanced (recommended)
 #   - 600000: Include more posts (higher cost)
 # Note: Prevents context overflow while keeping best content
+
+# Comment-level quality filters
+MIN_COMMENT_LENGTH=50
+# Minimum character length for comments to be included
+# Filters out short, low-value comments like "this" or "same"
+# Recommended: 30-100 characters
+
+MIN_COMMENT_SCORE=2
+# Minimum Reddit score (upvotes - downvotes) for comments
+# Higher = only include upvoted, quality comments
+# Recommended: 1-5
 ```
 
 ### Twitter Quality Filters
@@ -217,6 +519,12 @@ MIN_TWITTER_LIKES=5
 MIN_TWITTER_REPLIES=3
 # Minimum replies for engagement signal
 # Higher = more discussion
+
+# Twitter cookies cache path
+TWITTER_COOKIES_CACHE=data/twitter_cookies.json
+# Path to store Twitter session cookies
+# Speeds up subsequent runs by reusing session
+# Default: data/twitter_cookies.json
 ```
 
 ---
@@ -273,6 +581,173 @@ TARGET_LANGUAGE=en
 #   - fr: French
 #   - pt: Portuguese
 #   - ja: Japanese
+```
+
+---
+
+## Keyword Enrichment Configuration (Stage 9.5c)
+
+Stage 9.5c enriches and validates keywords for relevance to the identified pain points and solutions. These settings control the enrichment process.
+
+### Pivot Detection & Recovery
+
+```bash
+# Minimum volume threshold for pivot detection
+KEYWORD_MIN_VOLUME_THRESHOLD=10
+# Keywords below this volume trigger potential pivot consideration
+# If too many low-volume keywords, may indicate wrong keyword focus
+
+# Maximum pivot attempts before proceeding
+KEYWORD_PIVOT_MAX_ATTEMPTS=4
+# Number of times to retry with different keyword strategies
+# Prevents infinite loops on difficult niches
+
+# Quick expansion batch size
+KEYWORD_QUICK_EXPANSION_SIZE=50
+# Number of keywords to fetch in quick expansion rounds
+# Used when initial keywords have low coverage
+```
+
+### Validation Settings
+
+```bash
+# Enable keyword validation
+KEYWORD_VALIDATION_ENABLED=true
+# When true: Validates keywords against pain points/solutions
+# When false: Skip validation, use all keywords
+
+# Top pain points for validation context
+KEYWORD_VALIDATION_TOP_PAIN_POINTS=5
+# Number of top pain points to include in validation prompt
+# More = better context but higher token cost
+
+# Top competitors for validation context
+KEYWORD_VALIDATION_TOP_COMPETITORS=10
+# Number of top competitors to include in validation prompt
+# Helps identify competitor-branded keywords
+
+# LLM temperature for validation
+KEYWORD_VALIDATION_TEMPERATURE=0.7
+# Temperature for keyword validation LLM calls
+# Lower = more consistent, higher = more creative decisions
+
+# Relevance score threshold
+KEYWORD_RELEVANCE_THRESHOLD=0.65
+# Minimum relevance score (0.0-1.0) to keep a keyword
+# Below this = keyword is filtered out as irrelevant
+```
+
+### Enrichment Targets
+
+```bash
+# Target enriched keyword count
+KEYWORD_ENRICHMENT_TARGET_COUNT=150
+# Target number of enriched keywords to collect
+# Enrichment continues until this target is reached
+
+# Minimum volume for enrichment candidates
+KEYWORD_ENRICHMENT_MIN_VOLUME=500
+# Only enrich keywords with at least this search volume
+# Prevents wasting API calls on low-value keywords
+
+# Maximum enrichment rounds
+KEYWORD_ENRICHMENT_MAX_ROUNDS=5
+# Maximum iterations of enrichment process
+# Prevents infinite loops on sparse niches
+
+# Keywords per enrichment batch
+KEYWORD_ENRICHMENT_BATCH_SIZE=12
+# Number of keywords to process per enrichment API call
+# Balances cost vs accuracy
+```
+
+### Coverage Thresholds
+
+```bash
+# Minimum coverage for enrichment
+KEYWORD_ENRICHMENT_MIN_COVERAGE=0.7
+# Minimum coverage score (0.0-1.0) before enrichment stops
+# Coverage = how well keywords cover identified pain points
+
+# Target coverage threshold
+KEYWORD_ENRICHMENT_TARGET_COVERAGE=0.60
+# Target coverage to achieve during enrichment
+# Enrichment continues until this is reached or max rounds hit
+
+# Minimum tiering coverage
+KEYWORD_TIERING_MIN_COVERAGE=0.30
+# Minimum coverage required before tiering keywords
+# Below this = too few keywords to tier meaningfully
+```
+
+---
+
+## SEO Refinement Configuration
+
+SEO refinement adjusts keyword volumes and tiers based on competitive analysis and market conditions.
+
+```bash
+# Enable SEO refinement
+SEO_REFINEMENT_ENABLED=true
+# When true: Applies volume adjustments and tier boosts
+# When false: Use raw DataForSEO volumes
+
+# Volume baselines by keyword type (JSON format)
+SEO_REFINEMENT_VOLUME_BASELINES={"brand": 1000, "product": 500, "feature": 200, "problem": 100}
+# Baseline volumes for different keyword categories
+# Keywords below baseline may get boosted
+
+# Maximum volume boost multiplier
+SEO_REFINEMENT_MAX_VOLUME_BOOST=1.2
+# Maximum multiplier for volume adjustments
+# 1.2 = up to 20% boost for undervalued keywords
+
+# Maximum Tier 1 boost
+SEO_REFINEMENT_MAX_TIER1_BOOST=0.20
+# Maximum score boost for Tier 1 promotion
+# 0.20 = up to 20% score boost
+
+# Volume discount floor
+SEO_REFINEMENT_VOLUME_DISCOUNT_FLOOR=0.7
+# Minimum multiplier when discounting overvalued volumes
+# 0.7 = never reduce volume by more than 30%
+```
+
+---
+
+## Checkpoint Configuration
+
+Checkpointing enables resume capability for long-running research jobs.
+
+```bash
+# Enable checkpointing
+CHECKPOINT_ENABLED=true
+# When true: Saves state after each pipeline stage
+# When false: No checkpoints, must restart from beginning on failure
+
+# Checkpoint directory
+CHECKPOINT_DIR=./output/checkpoints
+# Directory to store checkpoint files
+# Each job gets a subdirectory with stage-specific checkpoints
+
+# Maximum checkpoint age (days)
+CHECKPOINT_MAX_AGE_DAYS=7
+# Checkpoints older than this are considered stale
+# Stale checkpoints may be ignored during resume
+
+# Auto-cleanup old checkpoints
+CHECKPOINT_AUTO_CLEANUP=true
+# When true: Automatically delete old checkpoint files
+# When false: Manual cleanup required
+```
+
+**Resume Usage:**
+```bash
+# Resume from checkpoint
+python -m nicheiq.main --niche "Your niche" --resume
+
+# Force fresh start (ignore checkpoints)
+python -m nicheiq.main --niche "Your niche" --no-resume
 ```
 
 ---
@@ -683,4 +1158,4 @@ A: Just the 4 required sections (OpenAI, Serper, Reddit, DataForSEO). Everything
 
 ---
 
-For detailed setup instructions, see [GETTING_STARTED.md](GETTING_STARTED.md).
+For detailed setup instructions, see [SETUP.md](SETUP.md).

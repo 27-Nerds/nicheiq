@@ -545,7 +545,7 @@ All stages are production-ready and can be:
 ## References
 
 - **Architecture Documentation**: `docs/ARCHITECTURE.md`
-- **Prompt Optimization Best Practices**: `PROMPT_OPTIMIZATION_BEST_PRACTICES.md`
+- **Prompt Optimization Best Practices**: `PROMPT_OPTIMIZATION.md`
 - **Environment Configuration**: `ENV_REFERENCE.md`
 - **Troubleshooting Guide**: `docs/TROUBLESHOOTING.md`
 - **Feature Documentation**: `docs/FEATURES.md`

@@ -687,7 +687,7 @@ results = validator.validate_batch_parallel(
    result = crew.kickoff(inputs={"key": "value"})
    ```
 
-See [PROMPT_OPTIMIZATION_BEST_PRACTICES.md](../PROMPT_OPTIMIZATION_BEST_PRACTICES.md) for advanced prompt patterns.
+See [PROMPT_OPTIMIZATION.md](PROMPT_OPTIMIZATION.md) for advanced prompt patterns.
 
 ---
 

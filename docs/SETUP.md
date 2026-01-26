@@ -1,4 +1,7 @@
-# Getting Started with NicheIQ - Step by Step Guide
+# Python CLI Setup Guide
+
+> **Note**: This guide covers setting up the Python research pipeline for direct CLI usage.
+> For the full-stack web application, see the [Quick Start in README.md](README.md#quick-start-local-development).
 
 This guide will walk you through setting up NicheIQ from scratch, including obtaining all required API keys.
 

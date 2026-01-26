@@ -1,14 +1,15 @@
 # Testing Guide
 
-Comprehensive guide to testing and validation in NicheIQ.
+Comprehensive guide to testing in NicheIQ across all components.
 
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Test Organization](#test-organization)
-- [Running Tests](#running-tests)
+- [Test Structure](#test-structure)
+- [Python Pipeline Tests](#python-pipeline-tests)
+- [Frontend Tests](#frontend-tests)
+- [Backend Tests](#backend-tests)
 - [Validation Scripts](#validation-scripts)
-- [Test Categories](#test-categories)
 - [Writing Tests](#writing-tests)
 - [Troubleshooting](#troubleshooting)
 
@@ -16,117 +17,168 @@ Comprehensive guide to testing and validation in NicheIQ.
 
 ## Quick Start
 
+### Run All Tests
+
+```bash
+# Python pipeline tests
+source .venv/bin/activate
+pytest
+
+# Frontend tests
+cd frontend && npm test
+
+# Backend tests
+cd backend && npm test
+```
+
 ### Pre-Run Validation
 
-Before running research, validate your environment setup:
+Before running research, validate your environment:
 
 ```bash
 python check_setup.py
 ```
 
-**Checks:**
-
-- Python version (3.10+)
-- Required dependencies installed
-- `.env` file exists
-- API keys configured
-- Output directory writable
-
-### Run Tests
-
-```bash
-# All tests (unit + integration)
-pytest
-
-# Fast unit tests only (no API calls)
-pytest tests/unit/
-
-# With coverage report
-pytest --cov=src/nicheiq --cov-report=term-missing
-
-# Specific test file
-pytest tests/unit/test_models.py -v
-```
-
 ### Post-Run Validation
 
-After generating a report, validate for hallucinations and data integrity:
+After generating a report, validate data integrity:
 
 ```bash
 python validate_report.py output/final_report_*.json output/research_state_raw_*.json
 ```
 
-**Checks:**
-
-- Pain point conflation (research vs solution)
-- Score accuracy (no rounding errors)
-- CAC value precision
-- Page count accuracy
-- Competition intensity labels
-
 ---
 
-## Test Organization
+## Test Structure
 
-NicheIQ uses a three-tier testing structure:
+NicheIQ has three test suites corresponding to the main components:
 
-### 1. Unit Tests (`tests/unit/`)
-
-Fast, focused tests with no external dependencies or API calls.
-
-**Characteristics:**
-
-- Run in milliseconds
-- Test individual functions/classes
-- Use mocks for external dependencies
-- Safe to run frequently during development
-
-**Examples:**
-
-- `test_config.py` - Settings validation
-- `test_models.py` - Pydantic model validation
-- `test_utils.py` - Utility function tests
-- `test_model_helpers.py` - Report utility tests
-
-**Run:**
-
-```bash
-pytest tests/unit/ -v
+```
+nicheiq/
+├── tests/                          # Python pipeline tests
+│   ├── conftest.py                 # Shared fixtures
+│   └── unit/
+│       ├── test_*.py               # Core unit tests
+│       ├── flows/                  # Flow/checkpoint tests
+│       ├── report/                 # Report generation tests
+│       ├── utils/validation/       # Validation utility tests
+│       └── validators/             # Score/text validator tests
+│
+├── frontend/src/**/__tests__/      # Frontend tests (Vitest)
+│   ├── lib/__tests__/              # API client tests
+│   └── routes/**/__tests__/        # Route tests
+│
+└── backend/src/**/__tests__/       # Backend tests (Vitest)
+    ├── routes/__tests__/           # API endpoint tests
+    └── services/__tests__/         # Service layer tests
 ```
 
-### 2. Validation Scripts (Root Directory)
-
-User-facing tools for environment and output validation.
-
-**Scripts:**
-
-- `check_setup.py` - Pre-run environment validation
-- `validate_report.py` - Post-run hallucination detection
-
-**Not part of pytest suite** - designed for manual execution.
-
 ---
 
-## Running Tests
+## Python Pipeline Tests
 
-### Basic Usage
+Located in `tests/` directory. Uses pytest.
+
+### Running Tests
 
 ```bash
+# Activate virtual environment first
+source .venv/bin/activate
+
 # Run all tests
 pytest
 
 # Verbose output
 pytest -v
 
-# Stop on first failure
-pytest -x
-
-# Run specific test
-pytest tests/unit/test_models.py::test_pain_point_model -v
+# Run specific test file
+pytest tests/unit/test_models.py -v
 
 # Run tests matching pattern
 pytest -k "test_keyword" -v
+
+# Stop on first failure
+pytest -x
+
+# With coverage
+pytest --cov=src/nicheiq --cov-report=term-missing
 ```
+
+### Test Categories
+
+#### Configuration Tests
+```bash
+pytest tests/unit/test_config.py -v
+```
+- Settings loading from .env
+- Default value handling
+- Type conversions
+
+#### Model Tests
+```bash
+pytest tests/unit/test_models.py -v
+pytest tests/unit/test_model_helpers.py -v
+pytest tests/unit/test_keyword_validation_crew_models.py -v
+```
+- Pydantic model validation
+- Field constraints
+- Serialization/deserialization
+
+#### LLM Service Tests
+```bash
+pytest tests/unit/test_llm_service.py -v
+pytest tests/unit/test_llm_service_components.py -v
+```
+- Centralized LLM API
+- Model selection
+- Structured output generation
+
+#### Report Generation Tests
+```bash
+pytest tests/unit/test_final_report_generator.py -v
+pytest tests/unit/report/ -v
+```
+- Report assembly
+- Score accessor methods
+- Validation edge cases
+
+#### Token Monitoring Tests
+```bash
+pytest tests/unit/test_token_monitor.py -v
+```
+- Token counting
+- Cost estimation
+- Warning thresholds
+
+#### SEO & Keyword Tests
+```bash
+pytest tests/unit/test_seo_strategy_validators.py -v
+pytest tests/unit/test_score_refinement.py -v
+pytest tests/unit/test_keyword_filtering.py -v
+```
+- SEO strategy validation
+- Keyword tier classification
+- Score refinement logic
+
+#### Utility Tests
+```bash
+pytest tests/unit/test_utils.py -v
+pytest tests/unit/test_helpers_validation.py -v
+pytest tests/unit/test_search_helpers.py -v
+```
+- Helper functions
+- Data transformations
+- Search query generation
+
+#### Validation Tests
+```bash
+pytest tests/unit/validators/ -v
+pytest tests/unit/utils/validation/ -v
+```
+- Score validators
+- Text validators
+- Checkpoint validators
+- Social content validators
 
 ### Coverage Reports
 
@@ -134,351 +186,172 @@ pytest -k "test_keyword" -v
 # Terminal report with missing lines
 pytest --cov=src/nicheiq --cov-report=term-missing
 
-# HTML report (opens in browser)
+# HTML report
 pytest --cov=src/nicheiq --cov-report=html
 open htmlcov/index.html
 
-# Generate both terminal and HTML
-pytest --cov=src/nicheiq --cov-report=term-missing --cov-report=html
+# XML for CI
+pytest --cov=src/nicheiq --cov-report=xml
 ```
 
-**Coverage Goals:**
+---
 
-- Unit tests: >80% coverage
-- Critical paths: >90% coverage
+## Frontend Tests
 
-### Parallel Execution
+Located in `frontend/src/**/__tests__/`. Uses Vitest.
+
+### Running Tests
 
 ```bash
-# Install pytest-xdist
-pip install pytest-xdist
+cd frontend
 
-# Run tests in parallel (4 workers)
-pytest -n 4
+# Run once
+npm test
+
+# Watch mode
+npm run test:watch
+
+# With coverage
+npm run test:coverage
 ```
 
-### CI/CD Usage
+### Test Files
+
+| File | Description |
+|------|-------------|
+| `src/lib/__tests__/api.test.ts` | Backend API client tests |
+| `src/routes/(app)/billing/__tests__/page.server.test.ts` | Billing page server tests |
+| `src/routes/api/billing/checkout/__tests__/server.test.ts` | Checkout API tests |
+
+### Writing Frontend Tests
+
+```typescript
+// src/lib/__tests__/example.test.ts
+import { describe, it, expect, vi } from 'vitest';
+import { myFunction } from '../myModule';
+
+describe('myFunction', () => {
+  it('should return expected result', () => {
+    const result = myFunction('input');
+    expect(result).toBe('expected');
+  });
+
+  it('should handle errors', () => {
+    expect(() => myFunction(null)).toThrow();
+  });
+});
+```
+
+---
+
+## Backend Tests
+
+Located in `backend/src/**/__tests__/`. Uses Vitest.
+
+### Running Tests
 
 ```bash
-# Fast CI run (unit tests only)
-pytest tests/unit/ --cov=src/nicheiq --cov-report=xml
+cd backend
 
-# Full CI run (all tests)
-pytest --cov=src/nicheiq --cov-report=xml --junitxml=junit.xml
+# Run once
+npm test
+
+# Watch mode
+npm run test:watch
+
+# With coverage
+npm run test:coverage
+```
+
+### Test Files
+
+#### Route Tests (`src/routes/__tests__/`)
+
+| File | Description |
+|------|-------------|
+| `billing.stripe.test.ts` | Stripe billing endpoints |
+| `users.changePassword.test.ts` | Password change endpoint |
+| `users.notificationPrefs.test.ts` | Notification preferences |
+| `webhooks.stripe.test.ts` | Stripe webhook handling |
+
+#### Service Tests (`src/services/__tests__/`)
+
+| File | Description |
+|------|-------------|
+| `emailService.test.ts` | Email sending service |
+| `notificationService.test.ts` | Notification service |
+| `stripeService.test.ts` | Stripe integration |
+
+### Writing Backend Tests
+
+```typescript
+// src/services/__tests__/example.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { MyService } from '../myService';
+
+describe('MyService', () => {
+  let service: MyService;
+
+  beforeEach(() => {
+    service = new MyService();
+  });
+
+  it('should process data correctly', async () => {
+    const result = await service.process({ id: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle missing data', async () => {
+    await expect(service.process(null)).rejects.toThrow();
+  });
+});
 ```
 
 ---
 
 ## Validation Scripts
 
+User-facing tools for environment and output validation.
+
 ### check_setup.py
 
 Validates environment before running research.
-
-**Usage:**
 
 ```bash
 python check_setup.py
 ```
 
-**Output:**
+**Checks:**
+- Python version (3.10+)
+- Required dependencies installed
+- `.env` file exists
+- API keys configured
+- Output directory writable
 
-```
-✓ Python version: 3.12.7
-✓ Dependencies installed: crewai, praw, pydantic, ...
-✓ .env file found
-✓ API keys configured: OPENAI_API_KEY, SERPER_API_KEY, ...
-✓ Output directory writable: ./output/
-
-All checks passed! You're ready to run NicheIQ.
-```
-
-**Exit Codes:**
-
-- `0`: All checks passed
-- `1`: One or more checks failed
+**Exit codes:** `0` = passed, `1` = failed
 
 ### validate_report.py
 
-Detects hallucinations and validates data integrity in generated reports.
-
-**Usage:**
+Detects hallucinations and validates data integrity.
 
 ```bash
 python validate_report.py <final_report.json> <research_state_raw.json>
 ```
 
-**Example:**
-
-```bash
-python validate_report.py \
-  output/final_report_20250122_143052.json \
-  output/research_state_raw_20250122_143052.json
-```
-
-**Validation Categories:**
-
-1. **Pain Point Conflation** - Ensures research vs solution pain points not mixed
-2. **Score Accuracy** - Validates severity/WTP scores (no rounding)
-3. **CAC Precision** - Checks exact CAC ranges preserved
-4. **Page Count** - Verifies exact values from metadata
-5. **Competition Intensity** - No invented labels
-
-**Output:**
-
-```
-Validating final report...
-
-✓ Pain point conflation check passed
-✓ Pain point scores accurate (no rounding)
-✓ CAC values precise
-✓ Page counts accurate
-✓ Competition intensity labels valid
-
-All validations passed!
-```
-
-**Exit Codes:**
-
-- `0`: All validations passed
-- `1`: One or more validations failed
-
----
-
-## Test Categories
-
-### Configuration Tests
-
-**Files:**
-
-- `tests/unit/test_config.py`
-
-**What they test:**
-
-- Settings loading from .env
-- Default value handling
-- Type conversions
-- Model configuration
-
-**Run:**
-
-```bash
-pytest tests/unit/test_config.py -v
-```
-
-### Model Validation Tests
-
-**Files:**
-
-- `tests/unit/test_models.py`
-- `tests/unit/test_model_helpers.py`
-- `tests/unit/test_keyword_validation_crew_models.py`
-
-**What they test:**
-
-- Pydantic model validation
-- Field constraints
-- Type checking
-- Model serialization/deserialization
-
-**Run:**
-
-```bash
-pytest tests/unit/test_models.py -v
-```
-
-### Utility Function Tests
-
-**Files:**
-
-- `tests/unit/test_utils.py`
-- `tests/unit/test_helpers_validation.py`
-- `tests/unit/test_search_helpers.py`
-
-**What they test:**
-
-- Helper functions
-- Data transformations
-- Formatting utilities
-- Search query generation
-
-**Run:**
-
-```bash
-pytest tests/unit/test_utils.py -v
-```
-
-### Generation Tests
-
-**Files:**
-
-- `tests/integration/test_query_generator.py`
-- `tests/integration/test_keyword_seed_generator.py`
-- `tests/integration/test_competitor_query_generator.py`
-- `tests/integration/test_hybrid_seed_generation.py`
-
-**What they test:**
-
-- Context-aware query generation
-- Keyword seed generation
-- Semantic validation
-- NicheContext integration
-
-**Run:**
-
-```bash
-pytest tests/integration/test_query_generator.py -v
-```
-
-### LLM Integration Tests
-
-**Files:**
-
-- `tests/unit/test_llm_service.py`
-- `tests/unit/test_llm_service_components.py`
-- `tests/integration/test_llm_service_integration.py`
-
-**What they test:**
-
-- LLMService centralized API
-- Model selection
-- Structured output generation
-- Error handling
-
-**Run:**
-
-```bash
-pytest tests/unit/test_llm_service.py -v
-```
-
-### Knowledge Sources Tests
-
-**Files:**
-
-- `tests/integration/test_knowledge_sources.py`
-
-**What they test:**
-
-- CrewAI RAG integration
-- StringKnowledgeSource chunking
-- Embedding generation
-- Semantic search
-
-**Run:**
-
-```bash
-pytest tests/integration/test_knowledge_sources.py -v
-```
-
-### Report Generation Tests
-
-**Files:**
-
-- `tests/unit/test_final_report_generator.py`
-- `tests/integration/test_final_report_fix.py`
-- `tests/integration/test_anti_hallucination.py`
-
-**What they test:**
-
-- Hybrid report generation (Python + LLM)
-- Data assembly
-- Hallucination detection
-- Field preservation
-
-**Run:**
-
-```bash
-pytest tests/unit/test_final_report_generator.py -v
-```
-
-### DataForSEO Tests
-
-**Files:**
-
-- `tests/integration/test_dataforseo.py`
-- `tests/integration/test_dataforseo_tools.py`
-
-**What they test:**
-
-- DataForSEO API integration
-- Keyword validation
-- Batch processing
-- Error handling
-
-**Run:**
-
-```bash
-pytest tests/integration/test_dataforseo.py -v
-```
-
-### Token Monitoring Tests
-
-**Files:**
-
-- `tests/unit/test_token_monitor.py`
-- `tests/integration/test_token_monitoring.py`
-
-**What they test:**
-
-- Token counting accuracy
-- Cost estimation
-- Warning thresholds
-- Soft caps
-
-**Run:**
-
-```bash
-pytest tests/unit/test_token_monitor.py -v
-```
-
-### Checkpoint System Tests
-
-**Files:**
-
-- `tests/integration/test_checkpoint_reconstruction.py`
-
-**What they test:**
-
-- Checkpoint creation
-- State persistence
-- Resume functionality
-- Stage reconstruction
-
-**Run:**
-
-```bash
-pytest tests/integration/test_checkpoint_reconstruction.py -v
-```
-
-### SEO Tests
-
-**Files:**
-
-- `tests/unit/test_seo_strategy_validators.py`
-- `tests/unit/test_score_refinement.py`
-- `tests/integration/test_seo_csv_format.py`
-- `tests/integration/test_seo_csv_format_simple.py`
-
-**What they test:**
-
-- SEO strategy validation
-- CSV format handling
-- Keyword tier classification
-- Score refinement logic
-
-**Run:**
-
-```bash
-pytest tests/unit/test_seo_strategy_validators.py -v
-```
+**Validation categories:**
+- Pain point conflation (research vs solution)
+- Score accuracy (no rounding errors)
+- CAC value precision
+- Page count accuracy
+- Competition intensity labels
+
+**Exit codes:** `0` = passed, `1` = failed
 
 ---
 
 ## Writing Tests
 
-### Test Structure
-
-Follow pytest conventions:
+### Python Test Structure
 
 ```python
 # tests/unit/test_my_feature.py
@@ -508,9 +381,7 @@ class TestMyFeature:
         assert my_function(input) == expected
 ```
 
-### Fixtures
-
-Use `conftest.py` for shared fixtures:
+### Using Fixtures
 
 ```python
 # tests/conftest.py
@@ -527,17 +398,7 @@ def sample_research_state():
     )
 ```
 
-**Usage:**
-
-```python
-def test_with_fixture(sample_research_state):
-    """Test using fixture."""
-    assert sample_research_state.niche_description == "AI tools for content creators"
-```
-
 ### Mocking External APIs
-
-Use `pytest-mock` for API mocking:
 
 ```python
 def test_api_call(mocker):
@@ -549,79 +410,65 @@ def test_api_call(mocker):
     assert result == mock_response
 ```
 
-### Test Naming
-
-- Use descriptive names: `test_<feature>_<scenario>`
-- Group related tests in classes
-- Use docstrings to explain test purpose
-
 ---
 
 ## Troubleshooting
 
 ### Tests Not Found
 
-**Issue:** `pytest` doesn't find tests
+**Issue:** pytest doesn't find tests
 
 **Solutions:**
-
 1. Ensure test files start with `test_`
 2. Check test functions start with `test_`
-3. Verify pytest can import modules: `pytest --collect-only`
+3. Verify imports: `pytest --collect-only`
 
 ### Import Errors
 
 **Issue:** `ModuleNotFoundError: No module named 'nicheiq'`
 
 **Solution:**
-
 ```bash
 # Install package in editable mode
-pip install -e .
-
-# Or activate venv
 source .venv/bin/activate
+pip install -e .
 ```
 
 ### Slow Tests
 
-**Issue:** Tests take too long
-
 **Solutions:**
-
 1. Run unit tests only: `pytest tests/unit/`
-2. Use parallel execution: `pytest -n 4`
-3. Skip slow tests: `pytest -m "not slow"`
+2. Use parallel execution: `pip install pytest-xdist && pytest -n 4`
+3. Skip slow tests with markers
 
 ### API Rate Limits
 
-**Issue:** Integration tests hit API rate limits
-
 **Solutions:**
+1. Use mocks for API calls
+2. Run unit tests for development
+3. Add delays: `pytest --maxfail=1`
 
-1. Run unit tests only for development
-2. Use mocks for API calls
-3. Add delays between tests: `pytest --maxfail=1`
+### TypeScript Test Issues
 
-### Coverage Too Low
+**Issue:** Vitest configuration errors
 
-**Issue:** Coverage report shows low coverage
+**Solution:**
+```bash
+# Ensure dependencies installed
+npm install
 
-**Solutions:**
-
-1. Focus on critical paths first
-2. Add tests for uncovered lines
-3. Check coverage report: `pytest --cov=src/nicheiq --cov-report=html`
+# Check vitest config exists
+cat vitest.config.ts
+```
 
 ---
 
 ## See Also
 
 - [CLAUDE.md](../CLAUDE.md) - Testing commands reference
-- [README.md](../README.md) - Quick start testing
-- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common test issues
-- [PATTERNS.md](PATTERNS.md) - Testing patterns
+- [README.md](../README.md) - Quick start
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Common issues
 
 ---
 
-**Last Updated**: 2025-01-22
+**Last Updated**: 2026-01-26

@@ -425,7 +425,7 @@ KEYWORD_VALIDATION_LLM=gpt-4o
 KEYWORD_RESEARCH_LLM=gpt-4o
 ```
 
-See [ENV_REFERENCE.md#specialized-model-configuration-advanced](../ENV_REFERENCE.md#specialized-model-configuration-advanced) for detailed guidance.
+See [ENV_REFERENCE.md#specialized-model-configuration-advanced](ENV_REFERENCE.md#specialized-model-configuration-advanced) for detailed guidance.
 
 ---
 
@@ -492,4 +492,4 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete architecture details.
 - [TROUBLESHOOTING.md](TROUBLESHOOTING.md) - Bug fixes and debugging
 - [PATTERNS.md](PATTERNS.md) - Code recipes
 - [README.md](../README.md) - Project overview
-- [ENV_REFERENCE.md](../ENV_REFERENCE.md) - Complete configuration reference
+- [ENV_REFERENCE.md](ENV_REFERENCE.md) - Complete configuration reference
