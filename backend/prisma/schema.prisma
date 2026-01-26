@@ -38,12 +38,13 @@ enum AssetType {
 
 // Credit transaction types
 enum CreditTransactionType {
-  PURCHASE          // Manual purchase (admin adds)
+  PURCHASE          // Stripe purchase
   JOB_DEDUCTION     // Used for research job
   PROMO_REDEMPTION  // Promo code redeemed
   REFUND            // Job failed - tokens refunded
   ADMIN_ADJUSTMENT  // Manual admin adjustment
 }
+
 
 // ============================================
 // Authentication Models (Auth.js compatible)
@@ -69,8 +70,30 @@ model User {
   sessions      Session[]
   jobs          Job[]
   credits       UserCredits?
+  notificationPreferences NotificationPreferences?
 
   @@index([email])
+}
+
+// User notification preferences (one-to-one with User)
+model NotificationPreferences {
+  id                    String   @id @default(uuid())
+  userId                String   @unique
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Master toggle
+  emailEnabled          Boolean  @default(true)
+
+  // Notification types
+  emailOnJobStart       Boolean  @default(true)    // Notify when job starts processing
+  emailOnJobComplete    Boolean  @default(true)    // Notify when job completes successfully
+  emailOnJobError       Boolean  @default(true)    // Notify when job fails
+
+  // Timestamps
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@index([userId])
 }
 
 // OAuth accounts (one user can have multiple providers)
@@ -320,4 +343,28 @@ model PromoRedemption {
   @@unique([promoCodeId, userId])  // User can only redeem each code once
   @@index([userId])
   @@index([redeemedAt])
+}
+
+// ============================================
+// Stripe Token Packages
+// ============================================
+
+// Token packages available for purchase
+model TokenPackage {
+  id            String   @id @default(uuid())
+  name          String   @db.VarChar(100)     // "Starter", "Pro", "Enterprise"
+  description   String?  @db.VarChar(500)     // Package description
+  credits       Int                           // Number of credits in package
+  priceInCents  Int                           // Price in cents (e.g., 999 = $9.99)
+  stripePriceId String   @unique @db.VarChar(255)  // Stripe Price ID
+
+  isActive      Boolean  @default(true)       // Whether package is available
+  isPopular     Boolean  @default(false)      // Highlight as "Most Popular"
+  sortOrder     Int      @default(0)          // Display order
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([sortOrder])
 }

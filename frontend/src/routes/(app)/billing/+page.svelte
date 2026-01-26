@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll } from '$app/navigation';
+  import { invalidateAll, goto } from '$app/navigation';
   import {
     Coins,
     Gift,
@@ -12,7 +12,10 @@
     Loader2,
     History,
     Sparkles,
-    CreditCard
+    CreditCard,
+    ShoppingCart,
+    Zap,
+    X
   } from 'lucide-svelte';
 
   interface Transaction {
@@ -31,8 +34,20 @@
     recentTransactions: Transaction[];
   }
 
+  interface TokenPackage {
+    id: string;
+    name: string;
+    description: string | null;
+    credits: number;
+    priceInCents: number;
+    isPopular: boolean;
+  }
+
   let { data } = $props();
   const billing = $derived(data.billing as BillingData);
+  const packages = $derived(data.packages as TokenPackage[]);
+  const success = $derived(data.success as boolean);
+  const canceled = $derived(data.canceled as boolean);
 
   // Promo code state
   let promoCode = $state('');
@@ -40,8 +55,17 @@
   let promoSuccess = $state<string | null>(null);
   let isRedeeming = $state(false);
 
+  // Checkout state
+  let checkoutLoading = $state<string | null>(null);
+  let checkoutError = $state<string | null>(null);
+
   // Refresh state
   let isRefreshing = $state(false);
+
+  // Dismiss success/canceled banners
+  function dismissBanner() {
+    goto('/billing', { replaceState: true });
+  }
 
   async function redeemPromoCode() {
     if (!promoCode.trim() || isRedeeming) return;
@@ -143,6 +167,38 @@
       day: 'numeric',
     });
   }
+
+  function formatPrice(cents: number): string {
+    return `$${(cents / 100).toFixed(2)}`;
+  }
+
+  async function startCheckout(packageId: string) {
+    if (checkoutLoading) return;
+
+    checkoutLoading = packageId;
+    checkoutError = null;
+
+    try {
+      const response = await fetch('/api/billing/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageId }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.url) {
+        // Redirect to Stripe Checkout
+        window.location.href = result.url;
+      } else {
+        checkoutError = result.error || 'Failed to start checkout';
+      }
+    } catch (error) {
+      checkoutError = 'Network error. Please try again.';
+    } finally {
+      checkoutLoading = null;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -200,8 +256,52 @@
     </div>
   </div>
 
+  <!-- Success Banner -->
+  {#if success}
+    <div class="mb-8 p-4 rounded-lg bg-success/10 border border-success/30">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <CheckCircle class="w-5 h-5 text-success shrink-0" />
+          <div>
+            <p class="text-sm font-medium text-text-primary">
+              Payment successful!
+            </p>
+            <p class="text-sm text-text-muted">
+              Your credits have been added to your account.
+            </p>
+          </div>
+        </div>
+        <button onclick={dismissBanner} class="text-text-muted hover:text-text-primary p-1" aria-label="Dismiss">
+          <X class="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Canceled Banner -->
+  {#if canceled}
+    <div class="mb-8 p-4 rounded-lg bg-warning/10 border border-warning/30">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <AlertCircle class="w-5 h-5 text-warning shrink-0" />
+          <div>
+            <p class="text-sm font-medium text-text-primary">
+              Payment canceled
+            </p>
+            <p class="text-sm text-text-muted">
+              No charges were made. You can try again when ready.
+            </p>
+          </div>
+        </div>
+        <button onclick={dismissBanner} class="text-text-muted hover:text-text-primary p-1" aria-label="Dismiss">
+          <X class="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  {/if}
+
   <!-- Info Banner (if no credits) -->
-  {#if billing.balance === 0}
+  {#if billing.balance === 0 && !success}
     <div class="mb-8 p-4 rounded-lg bg-warning/5 border border-warning/20">
       <div class="flex items-start gap-3">
         <AlertCircle class="w-5 h-5 text-warning shrink-0 mt-0.5" />
@@ -210,9 +310,76 @@
             You need research credits to start new research
           </p>
           <p class="text-sm text-text-muted mt-1">
-            Redeem a promo code below to get started, or contact us for credit packages.
+            Purchase a credit package below or redeem a promo code to get started.
           </p>
         </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Buy Credits Section -->
+  {#if packages.length > 0}
+    <div class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="w-1 h-6 rounded-full bg-accent"></div>
+        <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+          Buy Credits
+        </h2>
+      </div>
+
+      {#if checkoutError}
+        <div class="mb-4 p-3 rounded-lg bg-error/10 border border-error/30 flex items-center gap-2 text-sm text-error">
+          <AlertCircle class="w-4 h-4 shrink-0" />
+          {checkoutError}
+        </div>
+      {/if}
+
+      <div class="grid gap-4 sm:grid-cols-3">
+        {#each packages as pkg (pkg.id)}
+          <div
+            class="card relative {pkg.isPopular ? 'border-accent/50 bg-accent/5' : ''}"
+          >
+            {#if pkg.isPopular}
+              <div class="absolute -top-3 left-1/2 -translate-x-1/2">
+                <span class="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full flex items-center gap-1">
+                  <Zap class="w-3 h-3" />
+                  Most Popular
+                </span>
+              </div>
+            {/if}
+
+            <div class="text-center pt-2">
+              <h3 class="text-lg font-display font-bold text-text-primary">{pkg.name}</h3>
+              {#if pkg.description}
+                <p class="text-sm text-text-muted mt-1">{pkg.description}</p>
+              {/if}
+
+              <div class="my-4">
+                <span class="text-3xl font-display font-bold text-text-primary">{formatPrice(pkg.priceInCents)}</span>
+              </div>
+
+              <div class="flex items-center justify-center gap-2 text-sm text-text-muted mb-4">
+                <Coins class="w-4 h-4 text-accent" />
+                <span class="font-semibold text-text-primary">{pkg.credits}</span>
+                <span>credits</span>
+              </div>
+
+              <button
+                onclick={() => startCheckout(pkg.id)}
+                disabled={checkoutLoading !== null}
+                class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
+              >
+                {#if checkoutLoading === pkg.id}
+                  <Loader2 class="w-4 h-4 animate-spin" />
+                  Processing...
+                {:else}
+                  <ShoppingCart class="w-4 h-4" />
+                  Buy Now
+                {/if}
+              </button>
+            </div>
+          </div>
+        {/each}
       </div>
     </div>
   {/if}

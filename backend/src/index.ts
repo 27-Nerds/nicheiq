@@ -10,6 +10,7 @@ import { usersRouter } from './routes/users.js';
 import { billingRouter } from './routes/billing.js';
 import { workersRouter } from './routes/workers.js';
 import { suggestRouter } from './routes/suggest.js';
+import { webhooksRouter } from './routes/webhooks.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 
@@ -23,6 +24,11 @@ app.use(cors({
   origin: CONFIG.corsOrigins,
   credentials: true,
 }));
+
+// Stripe webhook needs raw body - must be before express.json()
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhooksRouter);
+
+// JSON parsing for all other routes
 app.use(express.json());
 
 // Request logging in development

@@ -19,10 +19,34 @@ interface BillingData {
   recentTransactions: Transaction[];
 }
 
-export const load: PageServerLoad = async ({ parent }) => {
-  const { session } = await parent();
+interface TokenPackage {
+  id: string;
+  name: string;
+  description: string | null;
+  credits: number;
+  priceInCents: number;
+  isPopular: boolean;
+}
 
+export const load: PageServerLoad = async ({ parent, url }) => {
+  const { session } = await parent();
   const userId = session?.user?.id;
+
+  // Check for success/canceled query params
+  const success = url.searchParams.get('success') === 'true';
+  const canceled = url.searchParams.get('canceled') === 'true';
+
+  // Fetch packages (public endpoint, no auth needed)
+  let packages: TokenPackage[] = [];
+  try {
+    const packagesResponse = await fetch(`${BACKEND_URL}/api/billing/packages`);
+    if (packagesResponse.ok) {
+      const data = await packagesResponse.json();
+      packages = data.packages || [];
+    }
+  } catch (error) {
+    console.error('Error fetching packages:', error);
+  }
 
   if (!userId) {
     return {
@@ -32,6 +56,9 @@ export const load: PageServerLoad = async ({ parent }) => {
         totalUsed: 0,
         recentTransactions: [],
       } as BillingData,
+      packages,
+      success,
+      canceled,
     };
   }
 
@@ -52,11 +79,14 @@ export const load: PageServerLoad = async ({ parent }) => {
           totalUsed: 0,
           recentTransactions: [],
         } as BillingData,
+        packages,
+        success,
+        canceled,
       };
     }
 
     const billing: BillingData = await response.json();
-    return { billing };
+    return { billing, packages, success, canceled };
   } catch (error) {
     console.error('Error fetching billing info:', error);
     return {
@@ -66,6 +96,9 @@ export const load: PageServerLoad = async ({ parent }) => {
         totalUsed: 0,
         recentTransactions: [],
       } as BillingData,
+      packages,
+      success,
+      canceled,
     };
   }
 };

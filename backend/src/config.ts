@@ -20,6 +20,22 @@ export const CONFIG = {
   corsOrigins: process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:5173'],
 
   // Email
+  email: {
+    provider: (process.env.EMAIL_PROVIDER || 'smtp') as 'smtp' | 'sendgrid',
+    fromEmail: process.env.FROM_EMAIL || 'noreply@nicheiq.local',
+    // SMTP settings
+    smtp: {
+      host: process.env.SMTP_HOST || '',
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      user: process.env.SMTP_USER || '',
+      password: process.env.SMTP_PASSWORD || '',
+    },
+    // SendGrid settings
+    sendgrid: {
+      apiKey: process.env.SENDGRID_API_KEY || '',
+    },
+  },
+  // Legacy alias for backwards compatibility
   smtp: {
     host: process.env.SMTP_HOST || '',
     port: parseInt(process.env.SMTP_PORT || '587', 10),
@@ -39,6 +55,12 @@ export const CONFIG = {
   suggestModel: process.env.SUGGEST_LLM_MODEL || 'gpt-4.1-nano',
   suggestRateHourly: parseInt(process.env.SUGGEST_RATE_HOURLY || '25', 10),
   suggestRateDaily: parseInt(process.env.SUGGEST_RATE_DAILY || '50', 10),
+
+  // Stripe
+  stripe: {
+    secretKey: process.env.STRIPE_SECRET_KEY || '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
+  },
 } as const;
 
 // Validate required config in production

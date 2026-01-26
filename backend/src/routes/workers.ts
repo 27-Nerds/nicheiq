@@ -18,7 +18,7 @@ import {
 } from '../services/heartbeatService.js';
 import { failJob, updateStageProgress, completeJob, getJob } from '../services/jobService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
-import { sendCompletionEmail, sendFailureEmail } from '../services/emailService.js';
+import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/notificationService.js';
 import { requireInternalService } from '../middleware/auth.js';
 import { StageStatus } from '@prisma/client';
 import { PIPELINE_STAGES } from '../types/job.js';
@@ -115,7 +115,6 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
     if (data.job_id) {
       const { prisma } = await import('../services/db.js');
       const { JobStatus } = await import('@prisma/client');
-      const { sendFailureEmail } = await import('../services/emailService.js');
 
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
@@ -127,18 +126,16 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
         await failJob(data.job_id, errorMessage);
         console.log(`[Workers] Job ${data.job_id} marked as failed due to worker shutdown`);
 
-        // Send failure email
+        // Send failure notification
         if (job.userId) {
           const user = await prisma.user.findUnique({
             where: { id: job.userId },
             select: { email: true },
           });
           if (user?.email) {
-            try {
-              await sendFailureEmail(user.email, data.job_id, job.niche, errorMessage);
-            } catch (emailError) {
-              console.error(`[Workers] Failed to send failure email for job ${data.job_id}:`, emailError);
-            }
+            notifyJobError(job.userId, user.email, data.job_id, job.niche, errorMessage).catch(emailError => {
+              console.error(`[Workers] Failed to send failure notification for job ${data.job_id}:`, emailError);
+            });
           }
         }
       }
@@ -175,7 +172,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     const { JobStatus } = await import('@prisma/client');
 
     // Update job with worker ID and initial heartbeat
-    await prisma.job.update({
+    const job = await prisma.job.update({
       where: { id: data.job_id },
       data: {
         workerId: data.worker_id,
@@ -184,10 +181,22 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
         startedAt: new Date(),
         errorMessage: null, // Clear any retry messages from previous attempts
       },
+      include: {
+        user: {
+          select: { id: true, email: true },
+        },
+      },
     });
 
     // Update worker heartbeat
     await registerWorkerHeartbeat(data.worker_id, data.job_id);
+
+    // Send job start notification
+    if (job.user?.email) {
+      notifyJobStart(job.userId, job.user.email, data.job_id, job.niche).catch(err => {
+        console.error('Failed to send job start notification:', err);
+      });
+    }
 
     console.log(`[Workers] Job ${data.job_id} started by worker ${data.worker_id}`);
 
@@ -378,12 +387,12 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
         data.landing_path
       );
 
-      // Send completion email
+      // Send completion notification
       if (completedJob) {
         const email = await getCurrentEmailForJob(completedJob);
         if (email) {
-          sendCompletionEmail(email, data.job_id, completedJob.niche).catch(err => {
-            console.error('Failed to send completion email:', err);
+          notifyJobComplete(completedJob.userId, email, data.job_id, completedJob.niche).catch(err => {
+            console.error('Failed to send completion notification:', err);
           });
         }
       }
@@ -395,13 +404,13 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     if (data.status === 'failed' && data.error) {
       await failJob(data.job_id, data.error, data.stage);
 
-      // Send failure email
+      // Send failure notification
       const failedJob = await getJob(data.job_id);
       if (failedJob) {
         const email = await getCurrentEmailForJob(failedJob);
         if (email) {
-          sendFailureEmail(email, data.job_id, failedJob.niche, data.error).catch(err => {
-            console.error('Failed to send failure email:', err);
+          notifyJobError(failedJob.userId, email, data.job_id, failedJob.niche, data.error).catch(err => {
+            console.error('Failed to send failure notification:', err);
           });
         }
       }

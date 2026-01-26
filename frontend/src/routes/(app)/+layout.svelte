@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { signOut } from '@auth/sveltekit/client';
-  import { LogOut, LayoutDashboard, Plus, Coins, CreditCard } from 'lucide-svelte';
+  import { LogOut, LayoutDashboard, Plus, Coins, CreditCard, Settings } from 'lucide-svelte';
   import NewResearchModal from '$lib/components/NewResearchModal.svelte';
   import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
@@ -10,6 +10,7 @@
   const session = $derived($page.data.session);
   const creditBalance = $derived($page.data.creditBalance as number ?? 0);
   let showUserMenu = $state(false);
+  let imageError = $state(false);
 
   function handleSignOut() {
     signOut({ callbackUrl: '/' });
@@ -80,11 +81,13 @@
               class="flex items-center gap-2.5 pl-3 pr-2 py-1.5 rounded-full hover:bg-bg-elevated transition-colors border border-transparent hover:border-border"
             >
               <span class="text-sm font-medium text-text-secondary hidden sm:inline">{firstName}</span>
-              {#if session?.user?.image}
+              {#if session?.user?.image && !imageError}
                 <img
                   src={session.user.image}
-                  alt={session.user.name || 'User'}
+                  alt=""
+                  referrerpolicy="no-referrer"
                   class="w-8 h-8 rounded-full object-cover ring-2 ring-bg-elevated"
+                  onerror={() => imageError = true}
                 />
               {:else}
                 <div class="w-8 h-8 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white text-xs font-semibold ring-2 ring-bg-elevated">
@@ -105,6 +108,13 @@
                     {session?.user?.email}
                   </p>
                 </div>
+                <a
+                  href="/settings"
+                  class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors"
+                >
+                  <Settings class="w-4 h-4" />
+                  Settings
+                </a>
                 <a
                   href="/billing"
                   class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors"

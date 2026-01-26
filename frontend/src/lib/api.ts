@@ -252,3 +252,67 @@ export function getLandingPageUrl(jobId: string, download = false): string {
   const base = `${API_BASE}/jobs/${jobId}/landing`;
   return download ? `${base}?download=true` : base;
 }
+
+// ============================================
+// Notification Preferences
+// ============================================
+
+export interface NotificationPreferences {
+  emailEnabled: boolean;
+  emailOnJobStart: boolean;
+  emailOnJobComplete: boolean;
+  emailOnJobError: boolean;
+}
+
+export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;
+
+/**
+ * Get user's notification preferences
+ */
+export async function getNotificationPreferences(userId: string): Promise<NotificationPreferences> {
+  const response = await fetch(`${API_BASE}/users/${userId}/notification-preferences`);
+  return handleResponse<NotificationPreferences>(response);
+}
+
+/**
+ * Update user's notification preferences
+ */
+export async function updateNotificationPreferences(
+  userId: string,
+  prefs: NotificationPreferencesUpdate
+): Promise<NotificationPreferences> {
+  const response = await fetch(`${API_BASE}/users/${userId}/notification-preferences`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(prefs),
+  });
+  return handleResponse<NotificationPreferences>(response);
+}
+
+// ============================================
+// Password Management
+// ============================================
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  message: string;
+}
+
+/**
+ * Change user's password
+ */
+export async function changePassword(
+  userId: string,
+  request: ChangePasswordRequest
+): Promise<ChangePasswordResponse> {
+  const response = await fetch(`${API_BASE}/users/${userId}/change-password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return handleResponse<ChangePasswordResponse>(response);
+}

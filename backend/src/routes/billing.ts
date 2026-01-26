@@ -8,6 +8,7 @@ import {
   PromoCodeError,
   RateLimitError,
 } from '../services/creditService.js';
+import { getPackages, getPackageById, createCheckoutSession } from '../services/stripeService.js';
 
 export const billingRouter = Router();
 
@@ -149,5 +150,77 @@ billingRouter.get('/balance', requireInternalAuth, async (req: AuthenticatedRequ
   } catch (error) {
     console.error('Failed to get balance:', error);
     res.status(500).json({ error: 'Failed to get balance' });
+  }
+});
+
+/**
+ * GET /api/billing/packages
+ * Get available token packages for purchase
+ */
+billingRouter.get('/packages', async (_req, res: Response) => {
+  try {
+    const packages = await getPackages();
+
+    res.json({
+      packages: packages.map((pkg: { id: string; name: string; description: string | null; credits: number; priceInCents: number; isPopular: boolean }) => ({
+        id: pkg.id,
+        name: pkg.name,
+        description: pkg.description,
+        credits: pkg.credits,
+        priceInCents: pkg.priceInCents,
+        isPopular: pkg.isPopular,
+      })),
+    });
+  } catch (error) {
+    console.error('Failed to get packages:', error);
+    res.status(500).json({ error: 'Failed to get packages' });
+  }
+});
+
+/**
+ * POST /api/billing/checkout
+ * Create a Stripe Checkout Session for purchasing credits
+ */
+billingRouter.post('/checkout', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email || '';
+    const { packageId } = req.body;
+
+    if (!packageId || typeof packageId !== 'string') {
+      res.status(400).json({
+        error: 'Package ID is required',
+        code: 'MISSING_PACKAGE_ID',
+      });
+      return;
+    }
+
+    // Verify package exists
+    const pkg = await getPackageById(packageId);
+    if (!pkg) {
+      res.status(404).json({
+        error: 'Package not found',
+        code: 'PACKAGE_NOT_FOUND',
+      });
+      return;
+    }
+
+    if (!pkg.isActive) {
+      res.status(400).json({
+        error: 'Package is no longer available',
+        code: 'PACKAGE_INACTIVE',
+      });
+      return;
+    }
+
+    const { url } = await createCheckoutSession(userId, userEmail, packageId);
+
+    res.json({ url });
+  } catch (error) {
+    console.error('Failed to create checkout session:', error);
+    res.status(500).json({
+      error: 'Failed to create checkout session',
+      code: 'CHECKOUT_FAILED',
+    });
   }
 });

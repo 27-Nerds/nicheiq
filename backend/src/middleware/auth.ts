@@ -179,9 +179,10 @@ export function requireInternalAuth(req: AuthenticatedRequest, res: Response, ne
   // Check internal service authentication
   if (serviceSecret === expectedSecret) {
     const userId = req.headers['x-user-id'] as string;
+    const userEmail = req.headers['x-user-email'] as string;
 
     if (userId) {
-      req.user = { id: userId };
+      req.user = { id: userId, email: userEmail };
       return next();
     }
   }

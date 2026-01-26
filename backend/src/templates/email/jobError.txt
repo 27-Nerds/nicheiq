@@ -1,0 +1,11 @@
+NicheIQ Research Issue
+
+Unfortunately, there was an issue processing your research for "{{NICHE}}".
+
+Error: {{ERROR_MESSAGE}}
+
+You can try submitting your research request again. If the problem persists, please contact support.
+
+View Job Status: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

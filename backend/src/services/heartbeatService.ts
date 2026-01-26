@@ -10,7 +10,7 @@
 import { prisma } from './db.js';
 import { JobStatus } from '@prisma/client';
 import { failJob } from './jobService.js';
-import { sendFailureEmail } from './emailService.js';
+import { notifyJobError } from './notificationService.js';
 
 // Configuration
 const STALE_THRESHOLD_MS = 90 * 1000; // 90 seconds - detect stale jobs within this window
@@ -190,13 +190,13 @@ async function markJobFailed(job: {
   // Use failJob which handles credit refunds
   await failJob(job.id, reason);
 
-  // Send failure email
+  // Send failure notification
   const email = await getUserEmail(job.userId);
   if (email) {
     try {
-      await sendFailureEmail(email, job.id, job.niche, reason);
+      await notifyJobError(job.userId, email, job.id, job.niche, reason);
     } catch (emailError) {
-      console.error(`[Heartbeat] Failed to send failure email for job ${job.id}:`, emailError);
+      console.error(`[Heartbeat] Failed to send failure notification for job ${job.id}:`, emailError);
     }
   }
 }

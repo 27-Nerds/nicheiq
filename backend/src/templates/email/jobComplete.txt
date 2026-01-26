@@ -1,0 +1,19 @@
+Your NicheIQ Research is Ready!
+
+Great news! Your market research for "{{NICHE}}" has been completed.
+
+What's included:
+- Comprehensive market research report (JSON)
+- Pain point analysis from real user discussions
+- Solution recommendations with competitive analysis
+- SEO strategy with validated keywords
+- Ready-to-use landing page (HTML)
+
+View Your Results: {{STATUS_URL}}
+
+Quick Links:
+- Download Research Report: {{REPORT_URL}}
+- View Landing Page: {{LANDING_URL}}
+- Download Landing Page: {{LANDING_URL}}?download=true
+
+Job ID: {{JOB_ID}}
