@@ -2821,21 +2821,34 @@ class SEOStrategyCrew:
             # Parse pydantic from raw if needed (guardrail compatibility)
             from ..utils.parsing.json_extractor import clean_llm_response
 
-            def _parse_output(task_output, model_class, task_name: str):
-                """Parse pydantic output, falling back to raw JSON if needed."""
+            def _parse_output(task_output, model_class, task_name: str, allow_fallback: bool = False):
+                """Parse pydantic output, falling back to raw JSON if needed.
+
+                Args:
+                    task_output: CrewAI task output
+                    model_class: Pydantic model class to validate against
+                    task_name: Name for logging
+                    allow_fallback: If True, return default model on failure (for Tier0/Tier1)
+                """
                 if task_output.pydantic is not None:
                     return task_output.pydantic
                 # Parse from raw
                 if not task_output.raw:
+                    if allow_fallback:
+                        logger.warning(f"⚠️ {task_name} has no output - using empty fallback")
+                        return model_class()
                     raise ValueError(f"{task_name} has no pydantic or raw output")
                 try:
                     cleaned = clean_llm_response(task_output.raw)
                     return model_class.model_validate_json(cleaned)
                 except Exception as e:
+                    if allow_fallback:
+                        logger.warning(f"⚠️ {task_name} failed to parse: {e} - using empty fallback")
+                        return model_class()
                     raise ValueError(f"{task_name} failed to parse: {e}")
 
-            task_1a_i_output = _parse_output(task_1a_i_raw, Tier0LightResult, "Task 1a-i")
-            task_1a_ii_output = _parse_output(task_1a_ii_raw, Tier1LightResult, "Task 1a-ii")
+            task_1a_i_output = _parse_output(task_1a_i_raw, Tier0LightResult, "Task 1a-i", allow_fallback=True)
+            task_1a_ii_output = _parse_output(task_1a_ii_raw, Tier1LightResult, "Task 1a-ii", allow_fallback=True)
             task_1b_output = _parse_output(task_1b_raw, StrategicLightResult, "Task 1b")
             task_1c_output = _parse_output(task_1c_raw, GeographicLightResult, "Task 1c")
             task_1d_output = _parse_output(task_1d_raw, CategoryLightResult, "Task 1d")
@@ -2862,6 +2875,8 @@ class SEOStrategyCrew:
                     seen_t0.add(kw_key)
             if len(tier_0_keywords) < len(tier_0_light):
                 logger.warning(f"⚠️ Removed {len(tier_0_light) - len(tier_0_keywords)} duplicate keywords from tier_0_keywords")
+            if not tier_0_keywords and not partitions.get("tier_0_remaining"):
+                logger.warning("⚠️ No Tier 0 premium keywords found - niche may lack high-opportunity keywords (opp_score > 200)")
 
             # Hydrate remaining Tier 0 keywords (Python hydration - no LLM limit exceeded for Tier 0)
             tier_0_remaining = partitions.get("tier_0_remaining", [])
@@ -2886,6 +2901,8 @@ class SEOStrategyCrew:
                     seen_t1.add(kw_key)
             if len(tier_1_keywords) < len(tier_1_light):
                 logger.warning(f"⚠️ Removed {len(tier_1_light) - len(tier_1_keywords)} duplicate keywords from tier_1_keywords")
+            if not tier_1_keywords and not partitions.get("tier_1_remaining"):
+                logger.warning("⚠️ No Tier 1 quick-win keywords found - niche may lack mid-opportunity keywords (opp_score 100-200)")
 
             # Hydrate remaining Tier 1 keywords (Python hydration)
             tier_1_remaining = partitions.get("tier_1_remaining", [])

@@ -829,12 +829,12 @@ class Tier0LightResult(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     tier_0_keywords: list[LightweightKeywordSelection] = Field(
-        ...,
-        min_length=1,
-        description="Premium keyword selections. Include ALL keywords from CSV."
+        default_factory=list,
+        description="Premium keyword selections. Empty if no keywords meet Tier 0 threshold (opp_score > 200)."
     )
     tier_0_strategy: str = Field(
-        ..., description="Strategy narrative for Tier 0 premium keywords (1 paragraph max)"
+        default="No Tier 0 premium keywords identified - all keywords have opportunity scores below 200.",
+        description="Strategy narrative for Tier 0 premium keywords (1 paragraph max)"
     )
 
 
@@ -848,12 +848,12 @@ class Tier1LightResult(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     tier_1_keywords: list[LightweightKeywordSelection] = Field(
-        ...,
-        min_length=1,
-        description="Quick win keyword selections. Include ALL keywords from CSV."
+        default_factory=list,
+        description="Quick win keyword selections. Empty if no keywords meet Tier 1 threshold (opp_score 100-200)."
     )
     tier_1_quick_win_strategy: str = Field(
-        ..., description="Strategy narrative for Tier 1 quick wins (1 paragraph max)"
+        default="No Tier 1 quick win keywords identified - all keywords have opportunity scores outside 100-200 range.",
+        description="Strategy narrative for Tier 1 quick wins (1 paragraph max)"
     )
 
 

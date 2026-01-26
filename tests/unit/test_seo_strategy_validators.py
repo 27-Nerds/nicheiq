@@ -4,7 +4,13 @@ Tests for SEO strategy model validators.
 
 import pytest
 import logging
-from nicheiq.models.seo_strategy import TieredKeyword, ConceptualKeyword
+from nicheiq.models.seo_strategy import (
+    TieredKeyword,
+    ConceptualKeyword,
+    Tier0LightResult,
+    Tier1LightResult,
+    LightweightKeywordSelection,
+)
 
 
 class TestTieredKeywordValidator:
@@ -235,3 +241,77 @@ class TestConceptualKeywordValidator:
                 cluster="Test",
                 priority=6  # Too high
             )
+
+
+class TestTier0LightResultEmptyKeywords:
+    """Tests for Tier0LightResult graceful degradation with empty keywords."""
+
+    def test_empty_tier_0_keywords_accepted(self):
+        """Test that empty tier_0_keywords list is accepted (graceful degradation)."""
+        result = Tier0LightResult(
+            tier_0_keywords=[],
+            tier_0_strategy="No premium keywords found in this niche."
+        )
+        assert result.tier_0_keywords == []
+        assert "No premium keywords" in result.tier_0_strategy
+
+    def test_default_values_when_no_keywords(self):
+        """Test that default values are used when instantiated without args."""
+        result = Tier0LightResult()
+        assert result.tier_0_keywords == []
+        assert "No Tier 0 premium keywords identified" in result.tier_0_strategy
+
+    def test_with_keywords_still_works(self):
+        """Test that normal case with keywords still works."""
+        result = Tier0LightResult(
+            tier_0_keywords=[
+                LightweightKeywordSelection(
+                    keyword="best seo tools",
+                    strategy="Target high-intent users"
+                )
+            ],
+            tier_0_strategy="Focus on premium SEO tool keywords."
+        )
+        assert len(result.tier_0_keywords) == 1
+        assert result.tier_0_keywords[0].keyword == "best seo tools"
+
+    def test_custom_strategy_with_empty_keywords(self):
+        """Test custom strategy message when no keywords found."""
+        result = Tier0LightResult(
+            tier_0_keywords=[],
+            tier_0_strategy="Market is highly competitive - no Tier 0 opportunities."
+        )
+        assert result.tier_0_keywords == []
+        assert "highly competitive" in result.tier_0_strategy
+
+
+class TestTier1LightResultEmptyKeywords:
+    """Tests for Tier1LightResult graceful degradation with empty keywords."""
+
+    def test_empty_tier_1_keywords_accepted(self):
+        """Test that empty tier_1_keywords list is accepted (graceful degradation)."""
+        result = Tier1LightResult(
+            tier_1_keywords=[],
+            tier_1_quick_win_strategy="No quick-win keywords found."
+        )
+        assert result.tier_1_keywords == []
+
+    def test_default_values_when_no_keywords(self):
+        """Test that default values are used when instantiated without args."""
+        result = Tier1LightResult()
+        assert result.tier_1_keywords == []
+        assert "No Tier 1 quick win keywords identified" in result.tier_1_quick_win_strategy
+
+    def test_with_keywords_still_works(self):
+        """Test that normal case with keywords still works."""
+        result = Tier1LightResult(
+            tier_1_keywords=[
+                LightweightKeywordSelection(
+                    keyword="project management app",
+                    strategy="Target SMB market"
+                )
+            ],
+            tier_1_quick_win_strategy="Focus on mid-opportunity keywords."
+        )
+        assert len(result.tier_1_keywords) == 1
+        assert result.tier_1_keywords[0].keyword == "project management app"

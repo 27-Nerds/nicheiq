@@ -3,6 +3,10 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
   plugins: [svelte({ hot: false })],
+  resolve: {
+    // Force client-side Svelte exports for testing (Svelte 5 compatibility)
+    conditions: ['browser'],
+  },
   test: {
     include: ['src/**/*.{test,spec}.{js,ts}'],
     environment: 'jsdom',

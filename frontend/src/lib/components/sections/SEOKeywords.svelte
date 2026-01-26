@@ -36,6 +36,7 @@
     getPriorityVariant,
   } from "$lib/utils/variantHelpers";
   import Badge from "$lib/components/ui/Badge.svelte";
+  import EmptyState from "$lib/components/ui/EmptyState.svelte";
   import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
@@ -159,6 +160,12 @@
     ),
   );
 
+  // Check if high-priority keywords are missing
+  const hasLimitedKeywords = $derived(
+    (strategy.tier_0_keywords?.length || 0) === 0 ||
+    (strategy.tier_1_keywords?.length || 0) === 0
+  );
+
   // Type guard to check schema markup format
   function isStructuredSchemaMarkup(
     schema: unknown,
@@ -236,6 +243,19 @@
       progress={analytics.avg_competition / 100}
     />
   </HeroStrip>
+
+  <!-- Warning for limited keyword data -->
+  {#if hasLimitedKeywords}
+    <div class="limited-keywords-warning">
+      <EmptyState
+        icon={AlertTriangle}
+        title="Limited Keyword Data"
+        description="Not enough high-opportunity keywords were found for this niche. SEO results may be limited and require additional investigation."
+        variant="warning"
+        size="sm"
+      />
+    </div>
+  {/if}
 
   <!-- Key Findings (Always Visible) -->
   {#if strategy.key_findings}
@@ -964,6 +984,11 @@
 </section>
 
 <style>
+  /* Limited Keywords Warning */
+  .limited-keywords-warning {
+    margin-bottom: 1rem;
+  }
+
   /* Findings Card */
   .findings-card {
     margin-bottom: 1rem;

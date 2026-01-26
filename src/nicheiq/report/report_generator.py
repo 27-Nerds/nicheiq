@@ -930,6 +930,14 @@ class ReportGenerator:
                 quality_caveats.append("Limited social content collected - results may be incomplete")
             if pain_tier == "BRONZE":
                 quality_caveats.append("Pain point analysis used minimum viable data")
+
+            # Add SEO-specific caveats for missing keyword tiers
+            if self.state.seo_strategy_report:
+                if not self.state.seo_strategy_report.tier_0_keywords:
+                    quality_caveats.append("No premium (Tier 0) keywords found - market may be highly competitive")
+                if not self.state.seo_strategy_report.tier_1_keywords:
+                    quality_caveats.append("No quick-win (Tier 1) keywords found - SEO opportunities may be limited")
+
             if self.state.fallback_stages:
                 fallback_names = [f"Stage {s}" for s in self.state.fallback_stages]
                 quality_caveats.append(f"Fallback data used in: {', '.join(fallback_names)}")

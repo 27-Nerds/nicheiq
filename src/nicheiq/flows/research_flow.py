@@ -3435,8 +3435,14 @@ Return a valid JSON object with this structure:
         # Update stage first, then checkpoint (so resume skips this stage)
         self.state.current_stage = 9.5
 
-        # Mark stage complete with tracking
-        self._mark_stage_complete(9)
+        # Mark stage complete with tracking - flag fallback if Tier 0/1 keywords are empty
+        seo_report = self.state.seo_strategy_report
+        tier0_empty = not seo_report.tier_0_keywords if seo_report else True
+        tier1_empty = not seo_report.tier_1_keywords if seo_report else True
+        used_fallback = tier0_empty or tier1_empty
+        if used_fallback:
+            logger.warning(f"⚠️ Stage 9 completed with limited keywords: Tier0={'empty' if tier0_empty else 'ok'}, Tier1={'empty' if tier1_empty else 'ok'}")
+        self._mark_stage_complete(9, used_fallback=used_fallback)
 
         # Checkpoint: Save SEO strategy
         if self.state.seo_strategy_report:

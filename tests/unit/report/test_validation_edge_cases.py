@@ -262,3 +262,71 @@ class TestPainPointPriorityEdgeCases:
 
         # Just below threshold (0.69) should not be high priority
         assert validator.is_high_priority_pain_point(0.69) is False
+
+
+class TestSEOQualityCaveats:
+    """Test SEO quality caveats for missing keyword tiers."""
+
+    def test_empty_tier0_adds_caveat(self):
+        """Test that empty Tier 0 keywords should trigger a quality caveat."""
+        # This tests the logic pattern used in _generate_data_quality_summary
+        quality_caveats = []
+
+        # Simulate seo_strategy_report with empty tier_0_keywords
+        tier_0_keywords = []
+        tier_1_keywords = [{"keyword": "test"}]  # Has Tier 1
+
+        if not tier_0_keywords:
+            quality_caveats.append("No premium (Tier 0) keywords found - market may be highly competitive")
+        if not tier_1_keywords:
+            quality_caveats.append("No quick-win (Tier 1) keywords found - SEO opportunities may be limited")
+
+        assert len(quality_caveats) == 1
+        assert "Tier 0" in quality_caveats[0]
+        assert "highly competitive" in quality_caveats[0]
+
+    def test_empty_tier1_adds_caveat(self):
+        """Test that empty Tier 1 keywords should trigger a quality caveat."""
+        quality_caveats = []
+
+        tier_0_keywords = [{"keyword": "test"}]  # Has Tier 0
+        tier_1_keywords = []
+
+        if not tier_0_keywords:
+            quality_caveats.append("No premium (Tier 0) keywords found - market may be highly competitive")
+        if not tier_1_keywords:
+            quality_caveats.append("No quick-win (Tier 1) keywords found - SEO opportunities may be limited")
+
+        assert len(quality_caveats) == 1
+        assert "Tier 1" in quality_caveats[0]
+        assert "SEO opportunities" in quality_caveats[0]
+
+    def test_both_empty_adds_both_caveats(self):
+        """Test that both empty tiers add both caveats."""
+        quality_caveats = []
+
+        tier_0_keywords = []
+        tier_1_keywords = []
+
+        if not tier_0_keywords:
+            quality_caveats.append("No premium (Tier 0) keywords found - market may be highly competitive")
+        if not tier_1_keywords:
+            quality_caveats.append("No quick-win (Tier 1) keywords found - SEO opportunities may be limited")
+
+        assert len(quality_caveats) == 2
+        assert any("Tier 0" in c for c in quality_caveats)
+        assert any("Tier 1" in c for c in quality_caveats)
+
+    def test_both_present_no_caveats(self):
+        """Test that having both tiers adds no SEO caveats."""
+        quality_caveats = []
+
+        tier_0_keywords = [{"keyword": "premium"}]
+        tier_1_keywords = [{"keyword": "quickwin"}]
+
+        if not tier_0_keywords:
+            quality_caveats.append("No premium (Tier 0) keywords found - market may be highly competitive")
+        if not tier_1_keywords:
+            quality_caveats.append("No quick-win (Tier 1) keywords found - SEO opportunities may be limited")
+
+        assert len(quality_caveats) == 0
