@@ -69,9 +69,26 @@ create_creative_direction:
     ## Page Mode: {page_mode}
     For "coming_soon": Design for anticipation and exclusivity.
 
+    ## Inspiration (Optional)
+    Consider searching for "{niche} landing page design" or similar queries to see
+    what's working in this space. Note any inspiring patterns or approaches you find,
+    then create something original that serves THIS product's unique story.
+
+    ## Competitor Reference (Optional)
+    Real competitor landing pages you can search for design inspiration:
+    {competitor_links}
+    Analyze their layouts and visual approaches, then differentiate.
+
     ## Your Decisions
     Make autonomous choices for: design archetype, color mood, hero layout,
     visual intensity, typography, section density, and layout rhythm.
+
+    STRUCTURAL CREATIVITY: Question the default two-column hero (copy left, artifact right).
+    Is it truly the best structure for THIS product? Consider alternatives:
+    - Centered, message-focused heroes that let the words breathe
+    - Full-viewport immersive designs with dramatic visual impact
+    - Vertical narrative flows that guide the eye down the story
+    - Asymmetric layouts that break expectations
 
     Ground each choice in the product context above. Unusual choices are welcome
     when they serve the product's story.
@@ -82,6 +99,7 @@ create_creative_direction:
 
   expected_output: >
     CreativeDirection with all fields populated. Each choice grounded in product context.
+    If you searched for inspiration, mention what influenced your thinking.
 
 create_visual_design:
   description: >

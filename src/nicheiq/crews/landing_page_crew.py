@@ -30,6 +30,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
+from ..tools import CachedSerperDevTool
 from ..utils.llm_service import build_llm, build_llm_kwargs
 from ..models.landing_page import (
     AnimatedHTMLResult,
@@ -95,6 +96,7 @@ class LandingPageCrew:
         """
         Creative Director agent - makes autonomous visual strategy decisions.
         Uses high reasoning_effort for creative, unexpected combinations (GPT-5.2).
+        Has access to web search for landing page inspiration.
         """
         return Agent(
             config=self.agents_config["creative_director"],
@@ -102,6 +104,7 @@ class LandingPageCrew:
                 model=settings.landing_page_llm,
                 reasoning_effort=settings.landing_page_creative_reasoning_effort,
             )),
+            tools=[CachedSerperDevTool()],  # Enable inspiration search
             verbose=True,
         )
 
@@ -407,23 +410,33 @@ class LandingPageCrew:
         )
 
     def _generate_variation_context(self) -> dict:
-        """Generate simple variation hint for the run.
+        """Generate variation hint including structural nudges.
 
-        Provides a subtle nudge to creative agents to explore different
-        directions each run, without prescriptive instructions.
+        Provides subtle nudges to creative agents to explore different
+        directions each run, including structural alternatives to the
+        default split-showcase hero pattern.
         """
         seed = int(time.time()) % 100000
         rng = random.Random(seed)
 
         hints = [
+            # STRUCTURAL nudges (open-ended)
+            "Consider a centered, single-column hero instead of the typical two-column split",
+            "What if the hero was full-viewport with dramatic visual impact?",
+            "Try a vertical narrative flow where elements stack and reveal on scroll",
+            "Experiment with asymmetry - angled sections or overlapping elements",
+            "Could the hero work without a side artifact? Focus purely on the message",
+            # VISUAL nudges (existing)
             "Consider an unexpected color temperature for this category",
-            "Try a hero layout that's atypical for this product type",
             "Pick fonts that feel fresh, not the obvious choice",
             "Vary the visual intensity from what you'd normally expect",
-            "Surprise us with the section structure",
             "Explore a design archetype that breaks category conventions",
             "Consider warm colors where cool is expected, or vice versa",
-            "Try a bold approach where minimal is typical, or vice versa",
+            # COLOR-SPECIFIC nudges (new)
+            "Consider a light/bright color scheme for this product's energy",
+            "Explore cool tones (blues, teals, greens) instead of warm amber",
+            "A clean white background might serve this product better than dark",
+            "Bold, saturated colors could make this product feel more distinctive",
         ]
 
         return {
@@ -596,4 +609,29 @@ class LandingPageCrew:
             # NEW: Market Credibility (Part C)
             "trend_signal": trend_signal,
             "market_verdict": market_verdict,
+            # Competitor links for creative inspiration
+            "competitor_links": self._extract_competitor_links(report),
         }
+
+    def _extract_competitor_links(self, report: FinalReport) -> str:
+        """Extract competitor URLs from report for creative inspiration.
+
+        Provides the Creative Director with real competitor landing pages
+        to analyze and differentiate from.
+
+        Args:
+            report: FinalReport from NicheIQ pipeline
+
+        Returns:
+            Formatted string of competitor links or "No competitor URLs available"
+        """
+        if not report.competitor_profiles:
+            return "No competitor URLs available"
+
+        links = [
+            f"- {cp.name}: {cp.url}"
+            for cp in report.competitor_profiles[:5]
+            if cp.url
+        ]
+
+        return "\n".join(links) if links else "No competitor URLs available"

@@ -146,6 +146,10 @@ class CreativeDirection(BaseModel):
         ...,
         description="How the visual direction differentiates from competitors (1-2 sentences)"
     )
+    design_inspiration: Optional[str] = Field(
+        default=None,
+        description="Optional: Real-world landing pages or design patterns that inspired this direction. Helps document creative thinking."
+    )
 
 
 class CardTreatment(BaseModel):

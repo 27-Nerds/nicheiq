@@ -6,27 +6,18 @@
   import { subscribeToProgress, isTerminalStatus } from '$lib/api';
   import {
     Plus,
-    Clock,
-    CheckCircle,
     XCircle,
-    Loader2,
-    ArrowRight,
     Search,
-    ExternalLink,
-    Activity,
-    RotateCw,
     ChevronDown,
     ChevronUp,
     Sparkles,
     X,
-    AlertCircle,
     FolderOpen,
     ShieldCheck,
-    RefreshCw,
-    MoreVertical,
-    Download
+    RefreshCw
   } from 'lucide-svelte';
   import { showNewResearchModal } from '$lib/stores/newResearchModal';
+  import JobCard from '$lib/components/ui/JobCard.svelte';
 
   interface StopReasonDetails {
     qualityTier?: string;
@@ -63,8 +54,6 @@
     stopReason?: string | null;
     stopReasonDetails?: StopReasonDetails | null;
   }
-
-  const TOTAL_STAGES = 16; // Fallback - actual value comes from job.totalStages
 
   let { data } = $props();
 
@@ -222,53 +211,6 @@
     sseUnsubscribers.clear();
   });
 
-  function getStatusBadge(status: string) {
-    switch (status.toUpperCase()) {
-      case 'COMPLETED':
-        return { class: 'badge-success', icon: CheckCircle, text: 'Completed', borderClass: 'border-l-success' };
-      case 'RUNNING':
-        return { class: 'badge-warning', icon: Loader2, text: 'Running', borderClass: 'border-l-warning' };
-      case 'PENDING':
-      case 'QUEUED':
-        return { class: 'badge-info', icon: Clock, text: 'Queued', borderClass: 'border-l-secondary' };
-      case 'FAILED':
-        return { class: 'badge-error', icon: XCircle, text: 'Failed', borderClass: 'border-l-error' };
-      default:
-        return { class: 'badge-muted', icon: Clock, text: status, borderClass: 'border-l-border' };
-    }
-  }
-
-  // Capitalize first letter of each word for professional titles
-  function formatNicheTitle(niche: string): string {
-    return niche
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
-  }
-
-  function formatDate(dateStr: string) {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  }
-
-  function formatElapsedTime(startedAt: string | null): string {
-    if (!startedAt) return '';
-    const start = new Date(startedAt);
-    const now = new Date();
-    const diffMs = now.getTime() - start.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-
-    if (diffMins < 1) return 'just started';
-    if (diffMins === 1) return '1 min elapsed';
-    return `${diffMins} min elapsed`;
-  }
-
   // Resume a failed job from checkpoint (no credit charge)
   let resumingJobs = new SvelteSet<string>();
 
@@ -325,190 +267,6 @@
     }
   }
 
-  // Professional relative time formatting
-  function formatRelativeDate(dateStr: string): string {
-    const date = new Date(dateStr);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays}d ago`;
-    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
-
-    // For older dates, show formatted date
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
-    });
-  }
-
-  // Stage name overrides for parallel stages (display as combined)
-  const STAGE_NAME_OVERRIDES: Record<string, string> = {
-    'Pain Point Analysis': 'Pain Point & Audience Analysis',
-    'Audience Mapping': 'Pain Point & Audience Analysis',
-  };
-
-  // Get display-friendly stage name (combines parallel stages)
-  function getDisplayStageName(stageName: string | null): string {
-    if (!stageName) return 'Starting';
-    return STAGE_NAME_OVERRIDES[stageName] || stageName;
-  }
-
-  // Hidden stages that are combined with others (for count adjustments)
-  const HIDDEN_STAGES = [6.5];
-
-  // Adjust stage counts for hidden parallel stages
-  function getAdjustedStageCounts(job: Job): { completed: number; total: number } {
-    const hiddenCount = HIDDEN_STAGES.length;
-    const total = (job.totalStages || TOTAL_STAGES) - hiddenCount;
-
-    // Subtract hidden stages from completed count if they're done
-    // Stage 6.5 is done if currentStage > 6.5 or job is completed
-    const hiddenCompleted = (job.currentStage > 6.5 || job.status.toUpperCase() === 'COMPLETED') ? hiddenCount : 0;
-    const completed = job.stagesCompleted - hiddenCompleted;
-
-    return { completed: Math.max(0, completed), total };
-  }
-
-  // Translate raw API errors into user-friendly messages
-  function getHumanReadableError(job: Job): { summary: string; suggestion: string; isQualityGate?: boolean } {
-    // Check for quality gate stop first (intentional stops, not errors)
-    if (job.stopReason === 'INSUFFICIENT_DATA') {
-      return {
-        summary: 'Insufficient discussion data found',
-        suggestion: job.stopReasonDetails?.recommendation || 'Try a broader niche topic',
-        isQualityGate: true
-      };
-    }
-
-    const errorMessage = job.errorMessage;
-    if (!errorMessage) {
-      return { summary: 'Research failed', suggestion: 'Try again or contact support.' };
-    }
-
-    const error = errorMessage.toLowerCase();
-
-    // === USER-ACTIONABLE ERRORS ===
-
-    // Empty/invalid niche input
-    if (error.includes('cannot be empty') || error.includes('niche description')) {
-      return {
-        summary: 'Invalid niche',
-        suggestion: 'Please provide a more descriptive niche.'
-      };
-    }
-
-    // No social content found (common for obscure niches)
-    if (error.includes('no social content') || error.includes('no reddit') || error.includes('no twitter')) {
-      return {
-        summary: 'No discussions found',
-        suggestion: 'Try a broader or more popular niche topic.'
-      };
-    }
-
-    // Cancelled by user
-    if (error.includes('cancelled') || error.includes('canceled')) {
-      return {
-        summary: 'Cancelled',
-        suggestion: 'You cancelled this research.'
-      };
-    }
-
-    // Insufficient credits (shouldn't happen but handle gracefully)
-    if (error.includes('insufficient') && error.includes('credit')) {
-      return {
-        summary: 'Insufficient credits',
-        suggestion: 'Purchase more credits to continue researching.'
-      };
-    }
-
-    // Timeout errors
-    if (error.includes('timeout') || error.includes('timed out')) {
-      return {
-        summary: 'Research took too long',
-        suggestion: 'Try with a more specific niche.'
-      };
-    }
-
-    // No results found (generic)
-    if (error.includes('no results') || error.includes('not found') || error.includes('no data')) {
-      return {
-        summary: 'No data found for this niche',
-        suggestion: 'Try a different or broader niche.'
-      };
-    }
-
-    // === SYSTEM ERRORS (not user's fault) ===
-
-    // Quality gate failures (internal threshold not met)
-    if (error.includes('quality gate') || error.includes('confidence') || error.includes('threshold')) {
-      return {
-        summary: 'Quality check failed',
-        suggestion: "The research didn't meet quality standards. Your credit was refunded."
-      };
-    }
-
-    // Stage prerequisite errors (internal pipeline issue)
-    if (error.includes('requires') && error.includes('stage')) {
-      return {
-        summary: 'Pipeline error',
-        suggestion: 'An internal error occurred. Your credit was refunded.'
-      };
-    }
-
-    // DataForSEO API errors
-    if (error.includes('dataforseo')) {
-      return {
-        summary: 'SEO data unavailable',
-        suggestion: 'External SEO service issue. Try again later.'
-      };
-    }
-
-    // Rate limiting / quota errors
-    if (error.includes('rate limit') || error.includes('quota') || error.includes('429')) {
-      return {
-        summary: 'Service temporarily busy',
-        suggestion: 'Wait a few minutes and try again.'
-      };
-    }
-
-    // API configuration errors (400 errors)
-    if (error.includes('400') || error.includes('invalid_request') || error.includes('unsupported_parameter')) {
-      return {
-        summary: 'Configuration issue',
-        suggestion: 'This is on our end. Your credit was refunded automatically.'
-      };
-    }
-
-    // Authentication / API key errors
-    if (error.includes('401') || error.includes('403') || error.includes('authentication') || error.includes('api key')) {
-      return {
-        summary: 'Service connection issue',
-        suggestion: 'This is on our end. Try again later.'
-      };
-    }
-
-    // Server errors
-    if (error.includes('500') || error.includes('502') || error.includes('503') || error.includes('server')) {
-      return {
-        summary: 'Server error',
-        suggestion: 'Our systems are having issues. Try again later.'
-      };
-    }
-
-    // Default fallback
-    return {
-      summary: 'Research failed',
-      suggestion: 'Try again or contact support if the issue persists.'
-    };
-  }
 </script>
 
 <svelte:head>
@@ -725,101 +483,12 @@
           </div>
           <div class="grid gap-3">
             {#each filteredActiveJobs as job, i}
-              {@const isRunning = job.status.toUpperCase() === 'RUNNING'}
-              {@const isPending = job.status.toUpperCase() === 'PENDING'}
-              {@const isQueued = job.status.toUpperCase() === 'QUEUED'}
-              {@const totalStages = job.totalStages || TOTAL_STAGES}
-
-              {#if isRunning}
-                <!-- RUNNING Card: Compact with inline progress -->
-                {@const stageCounts = getAdjustedStageCounts(job)}
-                <div
-                  class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-warning animate-fade-slide-in"
-                  style="animation-delay: {i * 50}ms"
-                >
-                  <!-- Header row -->
-                  <div class="flex items-center justify-between gap-4 mb-3">
-                    <div class="flex items-center gap-2.5 min-w-0">
-                      <span class="w-2 h-2 rounded-full bg-warning animate-pulse shrink-0"></span>
-                      <h3 class="text-base font-semibold text-text-primary truncate">
-                        {formatNicheTitle(job.niche)}
-                      </h3>
-                    </div>
-                    {#if job.startedAt}
-                      <span class="text-xs font-medium text-warning shrink-0">
-                        {formatElapsedTime(job.startedAt)}
-                      </span>
-                    {/if}
-                  </div>
-
-                  <!-- Progress row -->
-                  <div class="flex items-center gap-3">
-                    <div class="flex-1 h-1.5 bg-bg-surface rounded-full overflow-hidden">
-                      <div class="h-full bg-warning rounded-full transition-all duration-300 animate-shimmer" style="width: {job.progressPercent}%"></div>
-                    </div>
-                    <span class="text-xs text-text-muted whitespace-nowrap">
-                      {getDisplayStageName(job.currentStageName)} ({stageCounts.completed}/{stageCounts.total})
-                    </span>
-                    <div class="flex items-center gap-1 shrink-0">
-                      <button
-                        onclick={() => cancelJob(job)}
-                        disabled={cancellingJobs.has(job.id)}
-                        class="p-1.5 rounded-md text-text-muted hover:text-error hover:bg-error/5 transition-colors"
-                        title="Cancel"
-                        aria-label="Cancel research"
-                      >
-                        {#if cancellingJobs.has(job.id)}
-                          <Loader2 class="w-4 h-4 animate-spin" />
-                        {:else}
-                          <X class="w-4 h-4" />
-                        {/if}
-                      </button>
-                      <a href="/jobs/{job.id}" class="btn-secondary text-sm py-1.5 px-3">
-                        View <ArrowRight class="w-3.5 h-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-
-              {:else}
-                <!-- QUEUED/PENDING Card: Simplified single-row -->
-                <div
-                  class="card hover:shadow-md transition-all duration-200 border-l-2 border-l-secondary/60 bg-bg-surface/50 animate-fade-slide-in"
-                  style="animation-delay: {i * 50}ms"
-                >
-                  <div class="flex items-center justify-between gap-4">
-                    <div class="flex items-center gap-2.5 min-w-0">
-                      <Clock class="w-4 h-4 text-secondary shrink-0" />
-                      <h3 class="text-base font-medium text-text-secondary truncate">
-                        {formatNicheTitle(job.niche)}
-                      </h3>
-                    </div>
-                    <div class="flex items-center gap-3 shrink-0">
-                      <span class="text-xs text-text-muted">
-                        {#if job.queuePosition === 1}
-                          Next up
-                        {:else if job.queuePosition}
-                          Position {job.queuePosition}
-                        {:else}
-                          Queued
-                        {/if}
-                      </span>
-                      <button
-                        onclick={() => cancelJob(job)}
-                        disabled={cancellingJobs.has(job.id)}
-                        class="text-xs px-2 py-0.5 rounded text-text-muted bg-bg-surface border border-border/50 hover:text-error hover:bg-error/10 hover:border-error/20 transition-colors"
-                        aria-label="Cancel research"
-                      >
-                        {#if cancellingJobs.has(job.id)}
-                          <Loader2 class="w-3 h-3 animate-spin inline" />
-                        {:else}
-                          Cancel
-                        {/if}
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              {/if}
+              <JobCard
+                {job}
+                onCancel={cancelJob}
+                isCancelling={cancellingJobs.has(job.id)}
+                animationDelay={i * 50}
+              />
             {/each}
           </div>
         </div>
@@ -844,73 +513,12 @@
           </div>
           <div class="grid gap-3">
             {#each filteredVisibleCompleted as job, i}
-              <div
-                class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 border-l-success animate-fade-slide-in"
-                style="animation-delay: {i * 50}ms"
-              >
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <!-- Left: Title + timestamp -->
-                  <div class="min-w-0 flex-1">
-                    <div class="flex items-center gap-2.5">
-                      <span class="w-2 h-2 rounded-full bg-success shrink-0"></span>
-                      <h3 class="text-base font-semibold text-text-primary truncate">
-                        {formatNicheTitle(job.niche)}
-                      </h3>
-                    </div>
-                    <p class="text-xs text-text-muted mt-1 ml-[18px]">
-                      Completed {formatRelativeDate(job.completedAt || job.createdAt)}
-                    </p>
-                  </div>
-
-                  <!-- Right: Actions -->
-                  <div class="flex items-center gap-2 shrink-0">
-                    <a href="/jobs/{job.id}/report" class="btn-primary text-sm py-2 px-4">
-                      View Report
-                    </a>
-                    {#if job.hasLandingPage}
-                      <a
-                        href="/api/jobs/{job.id}/landingpage"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="btn-secondary text-sm py-2 px-4"
-                      >
-                        Landing Page
-                        <ExternalLink class="w-3.5 h-3.5" />
-                      </a>
-                    {/if}
-                    <!-- Overflow menu for downloads -->
-                    <div class="relative" data-menu-container>
-                      <button
-                        onclick={(e) => toggleMenu(job.id, e)}
-                        class="p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-                        aria-label="More options"
-                      >
-                        <MoreVertical class="w-4 h-4" />
-                      </button>
-                      {#if openMenuId === job.id}
-                        <div class="absolute right-0 top-full mt-1 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-10">
-                          <a
-                            href="/api/jobs/{job.id}/reportjson"
-                            download
-                            class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-                          >
-                            <Download class="w-4 h-4" /> Export JSON
-                          </a>
-                          {#if job.hasLandingPage}
-                            <a
-                              href="/api/jobs/{job.id}/landingpage?download=true"
-                              download
-                              class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-                            >
-                              <Download class="w-4 h-4" /> Export HTML
-                            </a>
-                          {/if}
-                        </div>
-                      {/if}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <JobCard
+                {job}
+                animationDelay={i * 50}
+                isMenuOpen={openMenuId === job.id}
+                onMenuToggle={toggleMenu}
+              />
             {/each}
           </div>
 
@@ -965,69 +573,12 @@
           {#if showFailedJobs}
             <div class="grid gap-3">
               {#each filteredFailedJobs as job, i}
-                {@const humanError = getHumanReadableError(job)}
-                {@const isQualityGate = humanError.isQualityGate}
-                <div
-                  class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 animate-fade-slide-in {isQualityGate ? 'border-l-warning' : 'border-l-error'}"
-                  style="animation-delay: {i * 50}ms"
-                >
-                  <div class="flex flex-col sm:flex-row sm:items-start gap-4">
-                    <div class="flex-1 min-w-0">
-                      <!-- Title Row with dot indicator -->
-                      <div class="flex items-center gap-2.5 mb-2">
-                        <span class="w-2 h-2 rounded-full shrink-0 {isQualityGate ? 'bg-warning' : 'bg-error'}"></span>
-                        <h3 class="text-base font-semibold text-text-primary truncate">
-                          {formatNicheTitle(job.niche)}
-                        </h3>
-                        <span class="text-xs text-text-muted ml-auto" title={formatDate(job.createdAt)}>
-                          {formatRelativeDate(job.createdAt)}
-                        </span>
-                      </div>
-
-                      <!-- User-Friendly Error/Quality Gate Container -->
-                      {#if job.errorMessage || job.stopReason}
-                        <div class="mt-3 p-3 rounded-lg {isQualityGate ? 'bg-warning/5 border border-warning/10' : 'bg-error/5 border border-error/10'}">
-                          <div class="flex items-start gap-2">
-                            <AlertCircle class="w-4 h-4 shrink-0 mt-0.5 {isQualityGate ? 'text-warning' : 'text-error'}" />
-                            <div class="flex-1">
-                              <p class="text-sm font-medium {isQualityGate ? 'text-warning' : 'text-error'}">
-                                {humanError.summary}
-                              </p>
-                              <p class="text-xs text-text-muted mt-0.5">
-                                {humanError.suggestion}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      {/if}
-
-                      <!-- Credit Refund Indicator -->
-                      {#if job.creditRefunded || isQualityGate}
-                        <div class="flex items-center gap-1.5 mt-2">
-                          <CheckCircle class="w-3.5 h-3.5 text-success" />
-                          <span class="text-xs text-success font-medium">Credit refunded</span>
-                        </div>
-                      {/if}
-                    </div>
-
-                    <!-- Action Buttons -->
-                    <div class="flex items-center gap-2 shrink-0">
-                      <button
-                        onclick={() => resumeJob(job)}
-                        disabled={resumingJobs.has(job.id)}
-                        class="btn-primary flex items-center gap-2"
-                        title="Resume from last checkpoint (no credit charge)"
-                      >
-                        <RotateCw class="w-4 h-4 {resumingJobs.has(job.id) ? 'animate-spin' : ''}" />
-                        {resumingJobs.has(job.id) ? 'Resuming...' : 'Resume'}
-                      </button>
-                      <a href="/jobs/{job.id}" class="btn-secondary">
-                        Details
-                        <ArrowRight class="w-4 h-4" />
-                      </a>
-                    </div>
-                  </div>
-                </div>
+                <JobCard
+                  {job}
+                  onResume={resumeJob}
+                  isResuming={resumingJobs.has(job.id)}
+                  animationDelay={i * 50}
+                />
               {/each}
             </div>
           {/if}
