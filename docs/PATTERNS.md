@@ -545,6 +545,88 @@ def task_2_enhance_data(self) -> Task:
 - Type safety with Pydantic validation
 - Prevents field loss during multi-stage processing
 
+### Multi-Agent Sequential Crew Pattern
+
+**Problem**: Complex tasks require multiple specialized agents working together.
+
+**Solution**: Create a crew with multiple agents and sequential tasks with context chaining.
+
+**Example**: `TechnicalBlueprintCrew` (Stage 10.5) - generates site structure and user flows.
+
+```python
+# src/nicheiq/crews/technical_blueprint_crew.py
+@CrewBase
+class TechnicalBlueprintCrew:
+    """Crew for generating site structure and user flows."""
+
+    agents_config = "config/technical_blueprint_agents.yaml"
+    tasks_config = "config/technical_blueprint_tasks.yaml"
+
+    @agent
+    def product_architect(self) -> Agent:
+        """Agent specializing in site structure design."""
+        return Agent(
+            config=self.agents_config["product_architect"],
+            llm=ChatOpenAI(**build_llm_kwargs(model=settings.openai_model_name)),
+            verbose=True,
+        )
+
+    @agent
+    def ux_designer(self) -> Agent:
+        """Agent specializing in user flow mapping."""
+        return Agent(
+            config=self.agents_config["ux_designer"],
+            llm=ChatOpenAI(**build_llm_kwargs(model=settings.openai_model_name)),
+            verbose=True,
+        )
+
+    @task
+    def site_structure_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["site_structure_task"],
+            agent=self.product_architect(),
+            output_pydantic=SiteStructure,  # Pydantic model
+        )
+
+    @task
+    def user_flows_task(self) -> Task:
+        return Task(
+            config=self.tasks_config["user_flows_task"],
+            agent=self.ux_designer(),
+            output_pydantic=UserFlowsSection,
+            context=[self.site_structure_task()],  # Uses site structure for page references
+        )
+
+    @crew
+    def crew(self) -> Crew:
+        return Crew(
+            agents=[self.product_architect(), self.ux_designer()],
+            tasks=[self.site_structure_task(), self.user_flows_task()],
+            verbose=True,
+            process="sequential",
+        )
+```
+
+**Key Features**:
+- **2 specialized agents**: Product architect (site structure) + UX designer (user flows)
+- **Context chaining**: User flows task receives site structure output automatically
+- **Anti-hallucination prompts**: YAML tasks explicitly state "ONLY use personas from target_personas list"
+- **Priority framework**: P0 (MVP), P1 (soon), P2 (later) for page prioritization
+
+**Output Extraction**:
+```python
+result = crew.kickoff(inputs={...})
+tasks_output = result.tasks_output if hasattr(result, 'tasks_output') else []
+
+if len(tasks_output) >= 1 and tasks_output[0].pydantic:
+    site_structure = tasks_output[0].pydantic
+
+if len(tasks_output) >= 2 and tasks_output[1].pydantic:
+    user_flows = tasks_output[1].pydantic
+```
+
+---
+
 ### Guardrails Pattern
 
 **Problem**: Agents may drop solutions or nullify fields during refinement tasks.

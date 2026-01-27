@@ -43,6 +43,14 @@ from .solution_idea import (
 from .solution_refinement import SolutionRefinement
 from .solution_selection import SolutionSelection
 from .seo_strategy import SEOStrategyReport
+from .technical_blueprint import (
+    SitePage,
+    SiteSection,
+    SiteStructure,
+    UserFlow,
+    UserFlowsSection,
+    UserFlowStep,
+)
 
 __all__ = [
     # Pain Points
@@ -86,4 +94,11 @@ __all__ = [
     "SolutionSelection",
     # SEO Strategy
     "SEOStrategyReport",
+    # Technical Blueprint
+    "SitePage",
+    "SiteSection",
+    "SiteStructure",
+    "UserFlowStep",
+    "UserFlow",
+    "UserFlowsSection",
 ]

@@ -3,7 +3,7 @@
 This document provides a comprehensive reference for the NicheIQ research report JSON structure. All types and structures are grounded **exclusively** on the actual JSON report output.
 
 > **Source of Truth**: Actual JSON report files (`final_report_*.json`)
-> **Generated from**: `/home/syzspectroom/Downloads/nicheiq_report_721e4ef1-11ee-40ee-aa3b-7a893deaa86d.json`
+> **Generated from**: `output/final_report_20260127_003149.json`
 
 ---
 
@@ -380,6 +380,8 @@ Actionable GTM strategy for immediate execution.
 | `solution_user_journey` | `string` | Step-by-step user workflow |
 | `solution_implementation_overview` | `string` | High-level implementation plan |
 | `mvp_scope_definition` | `string` | MVP scope definition |
+| `site_structure` | `object` | LLM-generated site architecture (Stage 10.5) |
+| `user_flows` | `object` | LLM-generated user journeys (Stage 10.5) |
 
 ### `selection_criteria_scores[0]`
 
@@ -475,6 +477,120 @@ Actionable GTM strategy for immediate execution.
 | `estimated_cac_organic_refined` | `string` | Refined organic CAC |
 | `programmatic_seo_opportunity_refined` | `string` | Refined SEO assessment |
 | `seo_refinement_metadata` | `object` | SEO calculation details |
+
+### `site_structure: object` (Stage 10.5 - LLM-generated)
+
+LLM-generated site architecture with sections, pages, URL patterns, and MVP priorities.
+
+```json
+{
+  "overview": "Programmatic SEO-first architecture leveraging user data to generate comparison and listing pages at scale.",
+  "sections": [SiteSection],
+  "total_static_pages": 8,
+  "total_programmatic_pages": 500,
+  "mvp_page_count": 12,
+  "tech_stack_recommendation": "Next.js + Supabase for SSG with dynamic data"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `overview` | `string` | 1-2 sentence architecture philosophy |
+| `sections` | `array[SiteSection]` | 2-5 logical sections with pages |
+| `total_static_pages` | `number` | Count of hand-crafted pages |
+| `total_programmatic_pages` | `number` | Count of auto-generated pages |
+| `mvp_page_count` | `number` | Pages needed for MVP launch (P0 only) |
+| `tech_stack_recommendation` | `string \| null` | Suggested tech stack |
+
+#### `SiteSection`
+
+```json
+{
+  "section_name": "Core Content",
+  "description": "Main value-generating comparison and listing pages",
+  "pages": [SitePage]
+}
+```
+
+#### `SitePage`
+
+```json
+{
+  "page_name": "Product Comparison Page",
+  "url_pattern": "/compare/[product-a]-vs-[product-b]",
+  "page_type": "programmatic",
+  "purpose": "Head-to-head comparison of two products with pricing and features",
+  "estimated_count": 250,
+  "priority": "P0"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `page_name` | `string` | Human-readable page name |
+| `url_pattern` | `string` | URL pattern using [param] syntax |
+| `page_type` | `"static" \| "programmatic" \| "dynamic"` | Page generation type |
+| `purpose` | `string` | 1-sentence purpose |
+| `estimated_count` | `number \| null` | For programmatic pages only |
+| `priority` | `"P0" \| "P1" \| "P2"` | MVP priority (P0=must-have, P1=soon, P2=later) |
+
+### `user_flows: object` (Stage 10.5 - LLM-generated)
+
+LLM-generated user journeys showing how target personas discover, use, and convert.
+
+```json
+{
+  "flows": [UserFlow],
+  "key_insight": "Both personas share the comparison page as critical decision point - optimize for mobile conversion."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `flows` | `array[UserFlow]` | 1-3 user journey flows |
+| `key_insight` | `string \| null` | Cross-flow observation or strategic insight |
+
+#### `UserFlow`
+
+```json
+{
+  "flow_name": "Organic Comparison Discovery",
+  "persona": "Cost-conscious developer evaluating LLM options",
+  "goal": "Find the most cost-effective LLM for their use case",
+  "entry_point": "Google search: 'gpt-4 vs claude pricing comparison'",
+  "steps": [UserFlowStep],
+  "conversion_point": "Email signup for price alerts on the comparison page",
+  "success_metric": "Signup conversion rate"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `flow_name` | `string` | Descriptive flow name |
+| `persona` | `string` | Target persona from solution's target_personas |
+| `goal` | `string` | What the user wants to accomplish |
+| `entry_point` | `string` | How they arrive (Google search, direct, referral) |
+| `steps` | `array[UserFlowStep]` | 3-7 sequential steps |
+| `conversion_point` | `string` | Where/how user converts |
+| `success_metric` | `string` | Measurable KPI for this flow |
+
+#### `UserFlowStep`
+
+```json
+{
+  "step_number": 1,
+  "action": "User lands on comparison page from organic search",
+  "page": "Product Comparison Page",
+  "system_response": "Shows side-by-side pricing comparison with real-time data"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `step_number` | `number` | Step sequence (1-based) |
+| `action` | `string` | What user does |
+| `page` | `string` | Which page this happens on |
+| `system_response` | `string \| null` | What system shows in response |
 
 ---
 
@@ -853,48 +969,47 @@ Overall market validation conclusion.
 | `keyword_validation_overview` | `string` | Keyword validation summary |
 | `solution_keyword_comparison` | `string` | Cross-solution comparison |
 | `content_strategy_preview` | `string` | Content strategy preview |
-| `seo_strategy_report` | `object` | Full SEO strategy (31 keys) |
+| `seo_strategy_report` | `object` | Full SEO strategy (21 keys) |
 
-### `seo_strategy_report: object` (31 keys)
+### `seo_strategy_report: object` (21 keys)
 
 ```json
 {
-  "seed_keywords_generated": ["string"],
   "total_keywords_analyzed": 172,
   "total_monthly_volume": 12210,
   "key_findings": ["string"],
 
   "tier_0_keywords": [TieredKeyword],
-  "tier_0_strategy": "string",
+  "tier_0_strategy": "string (markdown)",
   "tier_1_keywords": [TieredKeyword],
-  "tier_1_quick_win_strategy": "string",
+  "tier_1_quick_win_strategy": "string (markdown)",
   "tier_2_keywords": [TieredKeyword],
-  "tier_2_strategy": "string",
-  "tier_3_geographic_groups": [],
+  "tier_2_strategy": "string (markdown)",
+  "tier_3_geographic_groups": [GeographicKeywordGroup],
   "tier_4_category_groups": [CategoryKeywordGroup],
 
   "content_strategy": "string (markdown)",
   "topic_clusters": [TopicCluster],
   "technical_seo_recommendations": "string (markdown)",
-  "keyword_driven_site_architecture": SiteArchitecture,
-  "keyword_based_page_types": [PageType],
-  "competitive_positioning": "string",
+  "keyword_based_page_types": [KeywordBasedPageType],
+  "competitive_positioning": "string (markdown)",
   "implementation_roadmap": "string (markdown)",
   "key_metrics_to_track": ["string"],
   "risk_mitigation": "string",
   "budget_allocation": "string",
-  "long_term_strategy": "string",
   "conclusion_bottom_line": "string",
-  "competitive_advantages": ["string"],
-  "critical_success_factors": ["string"],
-  "expected_timeline": "string",
-  "next_steps_checklist": ["string"],
-
-  "universal_seo_elements": UniversalSEOElements,
-  "page_type_implementations": [PageTypeImpl],
-  "schema_markup_strategy": SchemaStrategy
+  "next_steps_checklist": ["string"]
 }
 ```
+
+**Removed Fields (v2.3):**
+- `seed_keywords_generated` - internal debug data, never displayed
+- `keyword_driven_site_architecture` - never rendered, overlapped with keyword_based_page_types
+- `long_term_strategy` - duplicated implementation_roadmap
+- `competitive_advantages` - redundant with competitive_positioning
+- `critical_success_factors` - overlapped with next_steps_checklist
+- `expected_timeline` - duplicated implementation_roadmap
+- `universal_seo_elements`, `page_type_implementations`, `schema_markup_strategy` - Task 5/6 removed, technical SEO now in technical_seo_recommendations markdown
 
 ### `TieredKeyword`
 
@@ -952,83 +1067,58 @@ Overall market validation conclusion.
 }
 ```
 
-### `keyword_driven_site_architecture`
+### `GeographicKeywordGroup` (tier_3_geographic_groups)
 
 ```json
 {
-  "url_hierarchy_diagram": "string",
-  "section_keyword_mapping": [{
-    "section_path": "/calculators",
-    "keyword_cluster": "string"
+  "region_name": "Spanish-Speaking Markets",
+  "total_volume": 4500,
+  "competition_level": "LOW",
+  "keywords": [{
+    "city": "Barcelona",
+    "keyword": "expat insurance barcelona",
+    "search_volume": 320,
+    "notes": "High expat population"
   }],
-  "total_pages_from_keywords": 172,
-  "keyword_coverage_explanation": "string"
+  "strategy_notes": "Focus on major expat destinations with established communities."
 }
 ```
 
-### `keyword_based_page_types[0]`
+| Field | Type | Description |
+|-------|------|-------------|
+| `region_name` | `string` | Region name (e.g., "Spanish-Speaking Markets") |
+| `total_volume` | `number` | Combined monthly search volume |
+| `competition_level` | `string` | Overall competition assessment |
+| `keywords` | `array[GeographicKeywordEntry]` | Keywords in this region |
+| `strategy_notes` | `string` | Strategic notes (1-3 sentences) |
+
+### `KeywordBasedPageType` (keyword_based_page_types)
 
 ```json
 {
-  "page_type_name": "string",
-  "url_pattern": "/calculators/{model}",
-  "target_keyword_cluster": "string",
-  "example_keywords": ["string"],
-  "primary_intent": "transactional",
+  "page_type_name": "Model Comparison Pages",
+  "url_pattern": "/compare/[model-a]-vs-[model-b]",
+  "target_keyword_cluster": "Tier 1 Quick Wins",
+  "example_keywords": ["gpt-4 vs claude", "llm comparison"],
+  "primary_intent": "commercial",
   "estimated_page_count": 100,
-  "priority": "High",
+  "priority": "P0",
   "required_schema": ["Product", "FAQPage"],
-  "seo_optimization_notes": "string",
-  "seo_optimization_notes_addendum": null
+  "seo_optimization_notes": "Use side-by-side comparison format with pricing tables"
 }
 ```
 
-### `universal_seo_elements`
-
-```json
-{
-  "title_tag_formula": "string",
-  "title_tag_guidelines": "string",
-  "meta_description_guidelines": "string",
-  "canonical_url_strategy": "string",
-  "open_graph_tags": "string",
-  "robots_meta_guidelines": "string",
-  "robots_meta_guidelines_note": null
-}
-```
-
-### `page_type_implementations[0]`
-
-```json
-{
-  "page_type": "string",
-  "url_pattern": "string",
-  "target_keywords": ["string"],
-  "title_tag_example": "string",
-  "meta_description_example": "string",
-  "h1_structure": "string",
-  "h2_structure": ["H2 Section 1", "H2 Section 2"],
-  "schema_types": ["Product", "FAQPage"],
-  "internal_linking_strategy": "string",
-  "content_guidelines": "string",
-  "priority": "High"
-}
-```
-
-### `schema_markup_strategy`
-
-```json
-{
-  "why_schema_matters": "string",
-  "priority_schema_types": ["Product", "FAQPage", "Organization"],
-  "implementation_method": "string",
-  "schema_examples": [{
-    "schema_type": "Product",
-    "json_ld_code": "{...}"
-  }],
-  "testing_validation": "string"
-}
-```
+| Field | Type | Description |
+|-------|------|-------------|
+| `page_type_name` | `string` | Page type name based on keyword intent |
+| `url_pattern` | `string` | URL pattern using [param] syntax |
+| `target_keyword_cluster` | `string` | Which tier/cluster this targets |
+| `example_keywords` | `array[string]` | 2-5 example keywords |
+| `primary_intent` | `string` | commercial, informational, navigational, transactional |
+| `estimated_page_count` | `number` | Number of pages needed |
+| `priority` | `string` | P0 (Tier 1), P1 (Tier 2), P2 (Tier 3-4) |
+| `required_schema` | `array[string] \| null` | Schema.org types |
+| `seo_optimization_notes` | `string` | SEO guidance for these pages |
 
 ---
 
@@ -1423,7 +1513,7 @@ Array of 7 recommended next steps.
 
 ---
 
-## Complete Top-Level Field List (52 Fields)
+## Complete Top-Level Field List (55 Fields)
 
 | # | Field | Type |
 |---|-------|------|
@@ -1444,46 +1534,74 @@ Array of 7 recommended next steps.
 | 15 | `solution_user_journey` | `string` |
 | 16 | `solution_implementation_overview` | `string` |
 | 17 | `mvp_scope_definition` | `string` |
-| 18 | `pricing_strategy` | `object` |
-| 19 | `traffic_monetization` | `object` |
-| 20 | `estimated_cac_breakdown` | `string` |
-| 21 | `pain_points_summary` | `string` |
-| 22 | `detailed_pain_points` | `array` |
-| 23 | `recommended_solutions` | `array` |
-| 24 | `solutions_summary` | `string` |
-| 25 | `competitive_summary` | `string` |
-| 26 | `competitive_analysis` | `object` |
-| 27 | `competitor_profiles` | `array` |
-| 28 | `overall_competitive_insights` | `string` |
-| 29 | `competitive_landscape_matrix` | `object` |
-| 30 | `market_validation` | `string` |
-| 31 | `market_sizing` | `object` |
-| 32 | `trend_longevity` | `object` |
-| 33 | `acquisition_strategy_summary` | `string` |
-| 34 | `keyword_validation_overview` | `string` |
-| 35 | `solution_keyword_comparison` | `string` |
-| 36 | `content_strategy_preview` | `string` |
-| 37 | `seo_strategy_report` | `object` |
-| 38 | `niche_context` | `object` |
-| 39 | `audience_mapping` | `object` |
-| 40 | `data_sourcing_recommendations` | `string` |
-| 41 | `data_source_research_full` | `object` |
-| 42 | `data_infrastructure_roadmap` | `object` |
-| 43 | `research_metadata` | `object` |
-| 44 | `evidence_appendix` | `object` |
-| 45 | `content_categorization` | `object` |
-| 46 | `next_steps` | `array` |
-| 47 | `alternative_solutions` | `array` |
-| 48 | `solution_innovation_assessment` | `object` |
-| 49 | `refinement_highlights` | `object` |
-| 50 | `stage_timing_summary` | `object` |
-| 51 | `seo_calculation_transparency` | `object` |
-| 52 | `generated_at` | `string` |
-| 53 | `pdf_path` | `null \| string` |
+| 18 | `site_structure` | `object` |
+| 19 | `user_flows` | `object` |
+| 20 | `pricing_strategy` | `object` |
+| 21 | `traffic_monetization` | `object` |
+| 22 | `estimated_cac_breakdown` | `string` |
+| 23 | `pain_points_summary` | `string` |
+| 24 | `detailed_pain_points` | `array` |
+| 25 | `recommended_solutions` | `array` |
+| 26 | `solutions_summary` | `string` |
+| 27 | `competitive_summary` | `string` |
+| 28 | `competitive_analysis` | `object` |
+| 29 | `competitor_profiles` | `array` |
+| 30 | `overall_competitive_insights` | `string` |
+| 31 | `competitive_landscape_matrix` | `object` |
+| 32 | `market_validation` | `string` |
+| 33 | `market_sizing` | `object` |
+| 34 | `trend_longevity` | `object` |
+| 35 | `acquisition_strategy_summary` | `string` |
+| 36 | `keyword_validation_overview` | `string` |
+| 37 | `solution_keyword_comparison` | `string` |
+| 38 | `content_strategy_preview` | `string` |
+| 39 | `seo_strategy_report` | `object` |
+| 40 | `niche_context` | `object` |
+| 41 | `audience_mapping` | `object` |
+| 42 | `data_sourcing_recommendations` | `string` |
+| 43 | `data_source_research_full` | `object` |
+| 44 | `data_infrastructure_roadmap` | `object` |
+| 45 | `research_metadata` | `object` |
+| 46 | `evidence_appendix` | `object` |
+| 47 | `content_categorization` | `object` |
+| 48 | `next_steps` | `array` |
+| 49 | `alternative_solutions` | `array` |
+| 50 | `solution_innovation_assessment` | `object` |
+| 51 | `refinement_highlights` | `object` |
+| 52 | `stage_timing_summary` | `object` |
+| 53 | `seo_calculation_transparency` | `object` |
+| 54 | `generated_at` | `string` |
+| 55 | `pdf_path` | `null \| string` |
 
 ---
 
 ## Version History
+
+- **v2.4** - Restored tier strategy fields
+  - Updated `seo_strategy_report` to 21 keys
+  - Restored `tier_0_strategy`, `tier_1_quick_win_strategy`, `tier_2_strategy` (used in frontend)
+  - Updated source of truth to `output/final_report_20260127_003149.json`
+
+- **v2.3** - Simplified SEO Strategy Report structure
+  - Reduced `seo_strategy_report` from 31 keys to 21 keys (originally said 19, corrected in v2.4)
+  - Removed `keyword_driven_site_architecture` (overlapped with `keyword_based_page_types`)
+  - Removed Task 5/6 implementation guide models (`universal_seo_elements`, `page_type_implementations`, `schema_markup_strategy`)
+    - Technical SEO implementation now in `technical_seo_recommendations` markdown field
+  - Removed duplicate planning fields (`long_term_strategy`, `expected_timeline`, `competitive_advantages`, `critical_success_factors`)
+  - Added `GeographicKeywordGroup` documentation for tier_3 geographic keywords
+  - Updated `KeywordBasedPageType` with current field structure
+
+- **v2.2** - Added LLM-generated Site Structure and User Flows (Stage 10.5)
+  - Added `site_structure` field: LLM-generated site architecture with sections, pages, URLs, and MVP priorities
+    - `SiteStructure`: overview, sections, page counts, tech stack recommendation
+    - `SiteSection`: section_name, description, pages
+    - `SitePage`: page_name, url_pattern, page_type (static/programmatic/dynamic), purpose, estimated_count, priority (P0/P1/P2)
+  - Added `user_flows` field: LLM-generated user journeys for target personas
+    - `UserFlowsSection`: flows array, key_insight
+    - `UserFlow`: flow_name, persona, goal, entry_point, steps, conversion_point, success_metric
+    - `UserFlowStep`: step_number, action, page, system_response
+  - Updated Complete Top-Level Field List from 52 to 55 fields
+  - New fields generated by TechnicalBlueprintCrew (CrewAI) during report generation
 
 - **v2.1** - Expanded pricing strategy diversity
   - Added 4 new pricing models: `Freemium-Lite`, `Usage-Based`, `Ad-Supported-Free`, `Affiliate-Only`

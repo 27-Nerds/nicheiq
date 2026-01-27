@@ -274,6 +274,79 @@ INTERNAL_SERVICE_SECRET= # Worker-to-backend auth
 
 ---
 
+## CrewAI Task YAML Templates
+
+When writing task descriptions in `src/nicheiq/crews/config/*.yaml` files, **avoid using `{variable}` syntax** for literal examples or documentation. CrewAI interprets `{variable}` as template variables that get replaced at runtime.
+
+**Problem:**
+```yaml
+# BAD - CrewAI will try to replace {city} with a variable
+description: >
+  URL pattern: /locations/{city}
+```
+
+**Solutions:**
+```yaml
+# GOOD - Use colon syntax for URL patterns
+description: >
+  URL pattern: /locations/:city
+
+# GOOD - Use square brackets for placeholders
+description: >
+  URL pattern: /locations/[city]
+
+# GOOD - Use double braces to escape (renders as literal {city})
+description: >
+  URL pattern: /locations/{{city}}
+```
+
+**Valid template variables** (passed via inputs dict):
+- `{niche}`, `{selected_solution_name}`, `{value_proposition}`
+- `{enriched_keywords_csv}`, `{top_pain_points}`, etc.
+
+---
+
+## Modifying Report Structure
+
+When changing the report schema (adding/removing/modifying fields), you must update **all layers** in sequence:
+
+1. **Pydantic Models** (`src/nicheiq/models/`)
+   - Define new fields in the appropriate model (e.g., `research_state.py`, `seo_strategy.py`)
+   - Use proper types and Field descriptions
+
+2. **CrewAI Crew** (`src/nicheiq/crews/`)
+   - Update task YAML configs to generate the new fields
+   - Update `output_pydantic` references if model changed
+   - Modify agent prompts if needed
+
+3. **Report Generator** (`src/nicheiq/report/report_generator.py`)
+   - Add field to `_assemble_base_report()` or related methods
+   - Handle None/fallback cases
+
+4. **Frontend Types** (`frontend/src/lib/types/report.ts`)
+   - Add/update TypeScript interfaces to match Pydantic models
+   - Keep field names identical (snake_case)
+
+5. **Frontend Components** (`frontend/src/lib/components/sections/`)
+   - Update the relevant section component to render new fields
+   - Handle optional fields with `{#if}` guards
+
+6. **Documentation** (`docs/`)
+   - Update `JSON_REPORT_SCHEMA.md` with new field documentation
+   - Update version history
+   - Update `ARCHITECTURE.md` if pipeline stages changed
+
+**Verification:**
+```bash
+# Python types
+source .venv/bin/activate && python -c "from nicheiq.models.research_state import FinalReport; print('OK')"
+
+# Frontend types
+cd frontend && npm run check
+```
+
+---
+
 ## Key Documentation
 
 - `docs/ENV_REFERENCE.md` - Complete environment variable reference
@@ -281,3 +354,4 @@ INTERNAL_SERVICE_SECRET= # Worker-to-backend auth
 - `docs/ARCHITECTURE.md` - Technical architecture details
 - `docs/PATTERNS.md` - CrewAI patterns and templates
 - `docs/TROUBLESHOOTING.md` - Common issues and fixes
+- `docs/JSON_REPORT_SCHEMA.md` - Report JSON schema reference

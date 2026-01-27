@@ -52,11 +52,11 @@
   let passwordSuccess = $state<string | null>(null);
   let isChangingPassword = $state(false);
 
-  // Notification preferences state
-  let emailEnabled = $state(notificationPrefs.emailEnabled);
-  let emailOnJobStart = $state(notificationPrefs.emailOnJobStart);
-  let emailOnJobComplete = $state(notificationPrefs.emailOnJobComplete);
-  let emailOnJobError = $state(notificationPrefs.emailOnJobError);
+  // Notification preferences state - initialized with defaults, synced via $effect below
+  let emailEnabled = $state(false);
+  let emailOnJobStart = $state(false);
+  let emailOnJobComplete = $state(false);
+  let emailOnJobError = $state(false);
   let prefsError = $state<string | null>(null);
   let prefsSuccess = $state<string | null>(null);
   let isSavingPrefs = $state(false);

@@ -863,9 +863,11 @@ def validate_final_synthesis_output(task_output) -> tuple[bool, Any]:
     Guardrail for synthesize_final_seo_strategy_task (Task 4 - MEDIUM).
 
     Validates:
-    - 2+ competitive_advantages
-    - 3+ critical_success_factors
-    - long_term_strategy has substantial content
+    - conclusion_bottom_line has substantial content (minimum 50 chars)
+
+    Note: competitive_advantages, critical_success_factors, and long_term_strategy
+    were removed from FinalSynthesis model as they were redundant with other fields
+    (competitive_positioning, implementation_roadmap, etc.)
 
     Returns:
         tuple[bool, Any]: (success, raw_string_or_error)
@@ -887,7 +889,7 @@ def validate_final_synthesis_output(task_output) -> tuple[bool, Any]:
                     return (
                         False,
                         "REPETITION LOOP DETECTED in final synthesis. "
-                        "Generate UNIQUE competitive advantages and success factors."
+                        "Generate a UNIQUE conclusion with key strategic insights."
                     )
                 return (
                     False,
@@ -900,34 +902,17 @@ def validate_final_synthesis_output(task_output) -> tuple[bool, Any]:
         if not isinstance(result, FinalSynthesis):
             return (False, f"Invalid type: expected FinalSynthesis, got {type(result)}")
 
-        # Validate competitive_advantages (minimum 2)
-        if not result.competitive_advantages or len(result.competitive_advantages) < 2:
+        # Validate conclusion_bottom_line has substantial content (minimum 50 chars)
+        if not result.conclusion_bottom_line or len(result.conclusion_bottom_line) < 50:
             return (
                 False,
-                f"Need at least 2 competitive_advantages, got {len(result.competitive_advantages or [])}. "
-                "Identify unique SEO opportunities and market positioning advantages."
-            )
-
-        # Validate critical_success_factors (minimum 3)
-        if not result.critical_success_factors or len(result.critical_success_factors) < 3:
-            return (
-                False,
-                f"Need at least 3 critical_success_factors, got {len(result.critical_success_factors or [])}. "
-                "Include factors for content, technical SEO, and market execution."
-            )
-
-        # Validate long_term_strategy has content
-        if not result.long_term_strategy or len(result.long_term_strategy) < 50:
-            return (
-                False,
-                f"long_term_strategy too short ({len(result.long_term_strategy or '')} chars, minimum 50). "
-                "Include Year 1/2/3 strategic milestones."
+                f"conclusion_bottom_line too short ({len(result.conclusion_bottom_line or '')} chars, minimum 50). "
+                "Provide a comprehensive summary of the SEO strategy and key recommendations."
             )
 
         logger.info(
             f"✓ Final synthesis guardrail passed: "
-            f"{len(result.competitive_advantages)} advantages, "
-            f"{len(result.critical_success_factors)} success factors"
+            f"conclusion has {len(result.conclusion_bottom_line)} chars"
         )
         return (True, task_output.raw)
 

@@ -34,7 +34,7 @@ function createMockStrategy(overrides: Partial<SEOStrategy> = {}): SEOStrategy {
     tier_2_keywords: [
       createMockKeyword({ keyword: 'high value 1', tier: 2 }),
     ],
-    key_findings: 'Test findings',
+    key_findings: ['Test findings'],
     ...overrides,
   };
 }
@@ -171,7 +171,7 @@ describe('SEOKeywords Component', () => {
 
     it('renders key findings when present', () => {
       const strategy = createMockStrategy({
-        key_findings: 'This niche has strong SEO potential',
+        key_findings: ['This niche has strong SEO potential'],
       });
       const analytics = createMockAnalytics();
 

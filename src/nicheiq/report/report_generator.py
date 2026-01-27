@@ -198,6 +198,25 @@ class ReportGenerator:
                 f"{len(final_report.alternative_solutions)} runner-up solutions detailed"
             )
 
+        # Stage 10.5: Technical Blueprint (Site Structure + User Flows)
+        if final_report.selected_solution_details:
+            site_structure, user_flows = self._generate_technical_blueprint(
+                final_report.selected_solution_details
+            )
+            final_report.site_structure = site_structure
+            final_report.user_flows = user_flows
+            if site_structure:
+                logger.info(
+                    f"[OK] Site structure generated: "
+                    f"{len(site_structure.sections)} sections, "
+                    f"{site_structure.mvp_page_count} MVP pages"
+                )
+            if user_flows:
+                logger.info(
+                    f"[OK] User flows generated: "
+                    f"{len(user_flows.flows)} flows"
+                )
+
         final_report.competitive_landscape_matrix = self._generate_competitive_landscape_matrix()
         if final_report.competitive_landscape_matrix:
             logger.info(
@@ -396,17 +415,13 @@ class ReportGenerator:
                 total_monthly_volume=0,
                 key_findings=["SEO strategy generation failed - manual keyword research required"],
                 tier_1_keywords=[],
-                tier_1_quick_win_strategy="SEO strategy generation failed. Conduct manual keyword research.",
+                tier_1_quick_win_strategy="Complete keyword research to identify quick win opportunities.",
                 content_strategy="Develop content strategy after completing keyword research.",
                 technical_seo_recommendations="Standard technical SEO best practices apply.",
                 competitive_positioning="Conduct keyword research to identify competitive opportunities.",
                 implementation_roadmap="1. Complete keyword research\n2. Develop SEO strategy\n3. Implement content plan",
                 key_metrics_to_track=["Keyword research completion", "Initial rankings"],
-                long_term_strategy="Year 1: Establish SEO foundation and baseline metrics",
                 conclusion_bottom_line="Complete keyword research to enable comprehensive SEO strategy.",
-                competitive_advantages=["To be determined after keyword research"],
-                critical_success_factors=["Complete keyword research"],
-                expected_timeline="TBD - awaiting keyword research",
                 next_steps_checklist=["⬜ Complete keyword research", "⬜ Develop SEO strategy"],
             )
         else:
@@ -2850,4 +2865,53 @@ Return valid JSON with this structure:
         except Exception as e:
             logger.warning(f"Failed to compute pain point analytics: {e}")
             return None
+
+    # ==================================================================================
+    # Technical Blueprint Generation (Stage 10.5)
+    # ==================================================================================
+
+    def _generate_technical_blueprint(
+        self, solution: "SolutionIdea"
+    ) -> tuple["SiteStructure | None", "UserFlowsSection | None"]:
+        """
+        Generate site structure and user flows using TechnicalBlueprintCrew.
+
+        Stage 10.5: Creates personalized site architecture and user journey maps
+        based on the selected solution's features, personas, and project type.
+
+        Args:
+            solution: Selected solution with all enrichments applied
+
+        Returns:
+            Tuple of (SiteStructure, UserFlowsSection) or (None, None) on failure
+        """
+        from ..crews.technical_blueprint_crew import TechnicalBlueprintCrew
+        from ..models.technical_blueprint import SiteStructure, UserFlowsSection
+
+        try:
+            crew = TechnicalBlueprintCrew()
+
+            site_structure, user_flows = crew.generate(
+                solution_name=solution.solution_name,
+                description=solution.description or "",
+                project_type=solution.project_type or "saas",
+                core_features=solution.core_features or [],
+                target_personas=solution.target_personas or [],
+                data_sources=solution.data_sources or [],
+                estimated_indexable_pages=solution.estimated_indexable_pages or 50,
+                content_generation_model=solution.content_generation_model or "Manual content",
+                value_proposition=solution.value_proposition or solution.description[:200] if solution.description else "",
+                organic_discovery_queries=solution.organic_discovery_queries or [],
+                pricing_strategy=solution.pricing_strategy or "Freemium model",
+            )
+
+            # Log usage metrics
+            if crew.usage_metrics:
+                logger.info(f"[Stage 10.5] Token usage: {crew.usage_metrics}")
+
+            return site_structure, user_flows
+
+        except Exception as e:
+            logger.warning(f"[Stage 10.5] Technical Blueprint generation failed: {e}")
+            return None, None
 

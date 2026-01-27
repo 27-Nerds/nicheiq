@@ -203,6 +203,8 @@
 						mvpScope={report.mvp_scope_definition}
 						userJourney={report.solution_user_journey}
 						dataInfrastructureRoadmap={report.data_infrastructure_roadmap}
+						siteStructure={report.site_structure}
+						userFlows={report.user_flows}
 					/>
 				{/if}
 

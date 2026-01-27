@@ -210,11 +210,14 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
                 f"| **{kw.keyword}** | {kw.search_volume:,} | {kw.competition} | {opp_score} | {kw.strategy} |"
             )
 
-        sections.extend([
-            "",
-            seo.tier_1_quick_win_strategy,
-            "",
-        ])
+        sections.append("")
+
+        # Tier 1 strategy narrative
+        if seo.tier_1_quick_win_strategy:
+            sections.extend([
+                f"**Quick Win Strategy:** {seo.tier_1_quick_win_strategy}",
+                "",
+            ])
 
     # TIER 2: High Value Keywords
     if seo.tier_2_keywords:
@@ -233,10 +236,12 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
                 f"| **{kw.keyword}** | {kw.search_volume:,} | {kw.competition} | {intent} |"
             )
 
+        sections.append("")
+
+        # Tier 2 strategy narrative
         if seo.tier_2_strategy:
             sections.extend([
-                "",
-                seo.tier_2_strategy,
+                f"**Strategy:** {seo.tier_2_strategy}",
                 "",
             ])
 
@@ -392,14 +397,6 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
             "",
         ])
 
-    # Long-Term Strategy
-    sections.extend([
-        "---",
-        "",
-        seo.long_term_strategy,
-        "",
-    ])
-
     # Conclusion
     sections.extend([
         "---",
@@ -407,24 +404,6 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
         "## CONCLUSION",
         "",
         f"**Bottom Line:** {seo.conclusion_bottom_line}",
-        "",
-        "**Competitive Advantages:**",
-    ])
-
-    for adv in seo.competitive_advantages:
-        sections.append(f"- {adv}")
-
-    sections.extend([
-        "",
-        "**Critical Success Factors:**",
-    ])
-
-    for factor in seo.critical_success_factors:
-        sections.append(f"- {factor}")
-
-    sections.extend([
-        "",
-        f"**Expected Timeline:** {seo.expected_timeline}",
         "",
     ])
 

@@ -9,6 +9,7 @@ from .pain_point_crew import PainPointCrew
 from .pricing_strategy_crew import PricingStrategyCrew
 from .seo_strategy_crew import SEOStrategyCrew
 from .solution_refinement_crew import SolutionRefinementCrew
+from .technical_blueprint_crew import TechnicalBlueprintCrew
 from .trend_longevity_crew import TrendLongevityCrew
 from .unified_solution_crew import UnifiedSolutionCrew
 
@@ -21,5 +22,6 @@ __all__ = [
     "PricingStrategyCrew",
     "AudienceMappingCrew",
     "MarketSizingCrew",
+    "TechnicalBlueprintCrew",
     "TrendLongevityCrew",
 ]

@@ -4,6 +4,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
+// Type for the load function result
+interface LoadResult {
+  packages: Array<{ id: string; name?: string; credits?: number; priceInCents?: number }>;
+  billing: {
+    balance: number;
+    totalPurchased: number;
+    totalUsed: number;
+    recentTransactions: unknown[];
+  };
+  success: boolean;
+  canceled: boolean;
+}
+
 // ============================================
 // T10: Billing page server load tests
 // ============================================
@@ -49,7 +62,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.packages).toHaveLength(1);
       expect(result.packages[0].name).toBe('Starter');
@@ -74,7 +87,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.packages).toEqual([]);
     });
@@ -98,7 +111,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.packages).toEqual([]);
     });
@@ -127,7 +140,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl({ success: 'true' }),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.success).toBe(true);
       expect(result.canceled).toBe(false);
@@ -155,7 +168,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl({ canceled: 'true' }),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.success).toBe(false);
       expect(result.canceled).toBe(true);
@@ -183,7 +196,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.success).toBe(false);
       expect(result.canceled).toBe(false);
@@ -203,7 +216,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.billing.balance).toBe(0);
       expect(result.billing.totalPurchased).toBe(0);
@@ -225,7 +238,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.billing.balance).toBe(0);
     });
@@ -276,7 +289,7 @@ describe('+page.server.ts load function', () => {
       const result = await load({
         parent: mockParent,
         url: createMockUrl(),
-      } as any);
+      } as any) as LoadResult;
 
       expect(result.billing.balance).toBe(0);
     });

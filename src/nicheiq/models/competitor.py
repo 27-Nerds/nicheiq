@@ -49,7 +49,7 @@ class CompetitiveLandscape(BaseModel):
 
     solution_name: str = Field(..., description="Name of the solution being analyzed")
     competitors: list[Competitor] = Field(
-        default_factory=list, min_length=2, description="All competitors (minimum 2 required)"
+        default_factory=list, min_length=1, description="All competitors (at least 1 required)"
     )
     market_gaps: list[str] = Field(
         ..., min_length=2, description="ALL unmet needs, underserved areas, user complaints, and missing features - comprehensive list"

@@ -1186,9 +1186,9 @@ develop_content_technical_strategy:
     | Page Type | URL Pattern | Example | Target Keywords |
     |-----------|-------------|---------|-----------------|
     | Homepage | / | / | brand keywords |
-    | Location | /locations/{city} | /locations/new-york | [city] [service] |
-    | Service | /services/{service} | /services/translation | [service] keywords |
-    | Guide | /guides/{topic} | /guides/getting-started | informational keywords |
+    | Location | /locations/:city | /locations/new-york | [city] [service] |
+    | Service | /services/:service | /services/translation | [service] keywords |
+    | Guide | /guides/:topic | /guides/getting-started | informational keywords |
 
     ### 3. Schema Markup Types
     List schema types to implement in priority order (NO JSON-LD code - just type names and rationale):

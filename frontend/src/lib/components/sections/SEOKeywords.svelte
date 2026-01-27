@@ -4,7 +4,6 @@
     Search,
     Zap,
     FileText,
-    FileCode,
     Layers,
     Target,
     Clock,
@@ -20,7 +19,6 @@
   import type {
     SEOStrategy,
     SEOAnalytics,
-    SchemaMarkupStrategy,
   } from "$lib/types/report";
   import {
     formatNumber,
@@ -32,7 +30,6 @@
   import {
     getDifficultyColor,
     getKeywordTierVariant,
-    getPriorityVariant,
   } from "$lib/utils/variantHelpers";
   import Badge from "$lib/components/ui/Badge.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
@@ -165,30 +162,6 @@
     (strategy.tier_1_keywords?.length || 0) === 0
   );
 
-  // Type guard to check schema markup format
-  function isStructuredSchemaMarkup(
-    schema: unknown,
-  ): schema is SchemaMarkupStrategy {
-    return (
-      typeof schema === "object" &&
-      schema !== null &&
-      ("why_schema_matters" in schema ||
-        "schema_examples" in schema ||
-        "priority_schema_types" in schema)
-    );
-  }
-
-  // Helper to normalize h2_structure from old string format or new array format
-  function getH2StructureItems(h2: string | string[] | undefined): string[] {
-    if (!h2) return [];
-    if (Array.isArray(h2)) return h2;
-    // Old format: try to split by newlines or return as single item
-    return h2
-      .split("\n")
-      .map((s) => s.replace(/^[-*]\s*/, "").trim())
-      .filter(Boolean);
-  }
-
   // View mode for keywords section
   let viewMode = $state<"table" | "insights">("table");
 
@@ -302,6 +275,9 @@
             {/if}
           </div>
         </div>
+        {#if strategy.tier_0_strategy}
+          <p class="tier-strategy">{strategy.tier_0_strategy}</p>
+        {/if}
       {/if}
       {#if previewKeywords.tier1.length > 0}
         <div class="preview-tier">
@@ -317,6 +293,9 @@
             {/if}
           </div>
         </div>
+        {#if strategy.tier_1_quick_win_strategy}
+          <p class="tier-strategy">{strategy.tier_1_quick_win_strategy}</p>
+        {/if}
       {/if}
       {#if previewKeywords.tier2.length > 0}
         <div class="preview-tier">
@@ -332,6 +311,9 @@
             {/if}
           </div>
         </div>
+        {#if strategy.tier_2_strategy}
+          <p class="tier-strategy">{strategy.tier_2_strategy}</p>
+        {/if}
       {/if}
       {#if previewKeywords.tier3.length > 0}
         <div class="preview-tier">
@@ -722,188 +704,8 @@
     </ExpandableSection>
   {/if}
 
-  <!-- Expandable: Schema Markup -->
-  {#if strategy.schema_markup_strategy}
-    <ExpandableSection title="Schema Markup Strategy" icon={Code}>
-      {#if isStructuredSchemaMarkup(strategy.schema_markup_strategy)}
-            {#if strategy.schema_markup_strategy.why_schema_matters}
-              <div class="schema-intro">
-                <p>{strategy.schema_markup_strategy.why_schema_matters}</p>
-              </div>
-            {/if}
-
-            {#if strategy.schema_markup_strategy.priority_schema_types?.length}
-              <div class="schema-types">
-                <span class="schema-types-label">Priority Schema Types</span>
-                <div class="schema-type-tags">
-                  {#each strategy.schema_markup_strategy.priority_schema_types as schemaType}
-                    <code class="schema-type-tag">{schemaType}</code>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            {#if strategy.schema_markup_strategy.schema_examples?.length}
-              <div class="schema-examples">
-                <span class="schema-examples-label"
-                  >Implementation Examples</span
-                >
-                <div class="schema-examples-grid">
-                  {#each strategy.schema_markup_strategy.schema_examples as example}
-                    <div class="schema-example-card">
-                      <span class="schema-example-type"
-                        >{example.schema_type}</span
-                      >
-                      <pre class="schema-code"><code
-                          >{example.json_ld_code}</code
-                        ></pre>
-                    </div>
-                  {/each}
-                </div>
-              </div>
-            {/if}
-
-            {#if strategy.schema_markup_strategy.implementation_method}
-              <div class="schema-method markdown-content">
-                {@html renderMarkdown(
-                  strategy.schema_markup_strategy.implementation_method,
-                )}
-              </div>
-            {/if}
-
-            {#if strategy.schema_markup_strategy.testing_validation}
-              <div class="schema-testing">
-                <span class="schema-testing-label">Testing & Validation</span>
-                <p>{strategy.schema_markup_strategy.testing_validation}</p>
-              </div>
-            {/if}
-      {:else}
-        <!-- String/markdown format fallback -->
-        <div class="schema-content markdown-content">
-          {@html renderMarkdown(String(strategy.schema_markup_strategy))}
-        </div>
-      {/if}
-    </ExpandableSection>
-  {/if}
-
-  <!-- Expandable: Page Type Implementations -->
-  {#if strategy.page_type_implementations && strategy.page_type_implementations.length > 0}
-    <ExpandableSection
-      title="Page Type Implementations"
-      icon={FileCode}
-      count={strategy.page_type_implementations.length}
-      countSuffix="types"
-    >
-      <div class="page-types-grid">
-            {#each strategy.page_type_implementations as pageType}
-              <div class="page-type-card">
-                <div class="page-type-header">
-                  <h4 class="page-type-name">{pageType.page_type}</h4>
-                  {#if pageType.priority}
-                    <Badge
-                      variant={getPriorityVariant(pageType.priority)}
-                      size="sm">{pageType.priority}</Badge
-                    >
-                  {/if}
-                </div>
-
-                {#if pageType.url_pattern}
-                  <div class="page-type-section">
-                    <span class="page-type-label">URL Pattern</span>
-                    <code class="page-type-url">{pageType.url_pattern}</code>
-                  </div>
-                {/if}
-
-                {#if pageType.target_keywords && pageType.target_keywords.length > 0}
-                  <div class="page-type-section">
-                    <span class="page-type-label">Target Keywords</span>
-                    <div class="page-type-keywords">
-                      {#each pageType.target_keywords.slice(0, 5) as keyword}
-                        <span class="cluster-keyword">{keyword}</span>
-                      {/each}
-                      {#if pageType.target_keywords.length > 5}
-                        <span class="cluster-more"
-                          >+{pageType.target_keywords.length - 5}</span
-                        >
-                      {/if}
-                    </div>
-                  </div>
-                {/if}
-
-                {#if pageType.title_tag_example}
-                  <div class="page-type-section">
-                    <span class="page-type-label">Title Example</span>
-                    <code class="page-type-example"
-                      >{pageType.title_tag_example}</code
-                    >
-                  </div>
-                {/if}
-
-                {#if pageType.meta_description_example}
-                  <div class="page-type-section">
-                    <span class="page-type-label">Meta Description</span>
-                    <code class="page-type-example"
-                      >{pageType.meta_description_example}</code
-                    >
-                  </div>
-                {/if}
-
-                {#if pageType.h1_structure}
-                  <div class="page-type-section">
-                    <span class="page-type-label">H1 Structure</span>
-                    <code class="page-type-example"
-                      >{pageType.h1_structure}</code
-                    >
-                  </div>
-                {/if}
-
-                {#if pageType.h2_structure}
-                  {@const h2Items = getH2StructureItems(pageType.h2_structure)}
-                  {#if h2Items.length > 0}
-                    <div class="page-type-section">
-                      <span class="page-type-label">H2 Sections</span>
-                      <ul class="h2-list">
-                        {#each h2Items as h2}
-                          <li>{h2}</li>
-                        {/each}
-                      </ul>
-                    </div>
-                  {/if}
-                {/if}
-
-                {#if pageType.schema_types && pageType.schema_types.length > 0}
-                  <div class="page-type-section">
-                    <span class="page-type-label">Schema Types</span>
-                    <div class="schema-type-tags">
-                      {#each pageType.schema_types as schemaType}
-                        <code class="schema-type-tag">{schemaType}</code>
-                      {/each}
-                    </div>
-                  </div>
-                {/if}
-
-                {#if pageType.internal_linking_strategy}
-                  <div class="page-type-section">
-                    <span class="page-type-label">Internal Linking</span>
-                    <div class="page-type-text markdown-content">
-                      {@html renderMarkdown(pageType.internal_linking_strategy)}
-                    </div>
-                  </div>
-                {/if}
-
-                {#if pageType.content_guidelines}
-                  <div class="page-type-section">
-                    <span class="page-type-label">Content Guidelines</span>
-                    <div class="page-type-text markdown-content">
-                      {@html renderMarkdown(pageType.content_guidelines)}
-                    </div>
-                  </div>
-                {/if}
-              </div>
-            {/each}
-          </div>
-    </ExpandableSection>
-  {/if}
+  <!-- schema_markup_strategy removed - Task 5/6 deleted -->
+  <!-- page_type_implementations removed - Task 5/6 deleted -->
 
   <!-- Expandable: Competitive Positioning -->
   {#if strategy.competitive_positioning}
@@ -1450,113 +1252,7 @@
     line-height: 1.6;
   }
 
-  /* Rich Schema Format Styles */
-  .schema-intro {
-    margin-bottom: 1rem;
-  }
-
-  .schema-intro p {
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    margin: 0;
-  }
-
-  .schema-types {
-    margin-bottom: 1rem;
-  }
-
-  .schema-types-label,
-  .schema-examples-label,
-  .schema-testing-label {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-    margin-bottom: 0.5rem;
-  }
-
-  .schema-type-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
-  }
-
-  .schema-type-tag {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    background: rgba(229, 90, 40, 0.1);
-    border: 1px solid rgba(229, 90, 40, 0.2);
-    border-radius: 0.25rem;
-    color: var(--color-accent);
-  }
-
-  .schema-examples {
-    margin-bottom: 1rem;
-  }
-
-  .schema-examples-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .schema-example-card {
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    overflow: hidden;
-  }
-
-  .schema-example-type {
-    display: block;
-    padding: 0.5rem 0.75rem;
-    background: var(--color-bg-elevated);
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--color-accent);
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .schema-code {
-    margin: 0;
-    padding: 0.75rem;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    line-height: 1.5;
-    overflow-x: auto;
-    max-height: 200px;
-    background: var(--color-bg-base);
-  }
-
-  .schema-code code {
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .schema-method {
-    margin-bottom: 1rem;
-  }
-
-  .schema-testing {
-    padding: 0.75rem;
-    background: rgba(34, 197, 94, 0.05);
-    border: 1px solid rgba(34, 197, 94, 0.2);
-    border-radius: 0.5rem;
-  }
-
-  .schema-testing p {
-    margin: 0;
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-  }
-
-  /* Advantages List and Success Factors styles removed - sections no longer rendered */
+  /* Schema markup styles removed - Task 5/6 deleted */
 
   /* Next Steps */
   .nextsteps-list {
@@ -1732,6 +1428,14 @@
     color: var(--color-text-muted);
   }
 
+  .tier-strategy {
+    font-size: 0.8125rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    margin: 0.5rem 0 0;
+    padding-left: 5.75rem; /* Align with pills (5rem label + 0.75rem gap) */
+  }
+
   /* Keyword Controls */
   .keyword-controls {
     display: flex;
@@ -1859,6 +1563,11 @@
     .tier-pills {
       padding-left: 0;
     }
+
+    .tier-strategy {
+      padding-left: 0;
+      margin-top: 0.375rem;
+    }
   }
 
   @media (max-width: 480px) {
@@ -1924,120 +1633,10 @@
   }
 
   .roadmap-content,
-  .budget-content,
-  .schema-content {
+  .budget-content {
     max-height: 500px;
     overflow-y: auto;
   }
 
-  /* Page Type Implementations */
-  .page-types-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 0.75rem;
-  }
-
-  .page-type-card {
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 1rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-  }
-
-  .page-type-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 0.5rem;
-  }
-
-  .page-type-name {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    margin: 0;
-  }
-
-  .page-type-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .page-type-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
-  .page-type-url {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    padding: 0.375rem 0.5rem;
-    background: var(--color-bg-elevated);
-    border-radius: 0.25rem;
-    color: var(--color-accent);
-    word-break: break-all;
-  }
-
-  .page-type-keywords {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-  }
-
-  .page-type-example {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    padding: 0.5rem;
-    background: var(--color-bg-base);
-    border: 1px solid var(--color-border);
-    border-radius: 0.25rem;
-    color: var(--color-text-secondary);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-
-  .page-type-text {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-    line-height: 1.5;
-  }
-
-  .page-type-text :global(p) {
-    margin: 0 0 0.375rem;
-  }
-
-  .page-type-text :global(ul) {
-    margin: 0 0 0.375rem;
-    padding-left: 1rem;
-  }
-
-  .h2-list {
-    list-style: disc;
-    margin: 0;
-    padding-left: 1.25rem;
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-  }
-
-  .h2-list li {
-    margin-bottom: 0.125rem;
-    line-height: 1.4;
-  }
-
-  @media (max-width: 768px) {
-    .page-types-grid {
-      grid-template-columns: 1fr;
-    }
-  }
+  /* Page type implementation styles removed - Task 5/6 deleted */
 </style>

@@ -29,6 +29,7 @@ from .solution_idea import (
 )
 from .solution_refinement import SolutionRefinement
 from .solution_selection import SelectionCriteriaScore, SolutionSelection
+from .technical_blueprint import SiteStructure, UserFlowsSection
 
 
 class NicheContext(BaseModel):
@@ -469,6 +470,16 @@ class FinalReport(BaseModel):
     mvp_scope_definition: Optional[str] = Field(
         default=None,
         description="Detailed MVP scope: must-have features, post-MVP features, success criteria (markdown format with sections)"
+    )
+
+    # Site Structure and User Flows (Stage 10.5 - LLM-generated, personalized)
+    site_structure: Optional[SiteStructure] = Field(
+        default=None,
+        description="LLM-generated site architecture with sections, pages, URL patterns, and MVP priorities"
+    )
+    user_flows: Optional[UserFlowsSection] = Field(
+        default=None,
+        description="LLM-generated user journeys showing how target personas discover, use, and convert"
     )
 
     # Pricing Strategy for selected solution (extracted from pricing_strategies in ResearchState)

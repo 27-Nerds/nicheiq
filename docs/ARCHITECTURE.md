@@ -170,6 +170,47 @@ def task_2_competitive(self) -> Task:
 
 ---
 
+### Stage 10.5: Technical Blueprint (TechnicalBlueprintCrew)
+
+**Responsibility**: Generate personalized site structure and user flows
+
+**2-Task Sequential Pipeline**:
+
+1. **Site Structure Task**: Design site architecture with pages, URLs, and MVP priorities
+2. **User Flows Task**: Create user journey maps for target personas
+
+**Agents**:
+- **Product Architect**: Designs SEO-optimized site structure
+- **UX Designer**: Maps user journeys from discovery to conversion
+
+**Input Data**:
+```python
+crew.generate(
+    solution_name="LLM Cost Calculator",
+    description="Compare AI model pricing...",
+    project_type="directory",
+    core_features=["Price comparison", "Usage calculator"],
+    target_personas=["Cost-conscious developer", "Startup CTO"],
+    data_sources=["Provider APIs", "Public pricing pages"],
+    estimated_indexable_pages=500,
+    content_generation_model="Programmatic from API data",
+    value_proposition="Save money on AI costs",
+    organic_discovery_queries=["gpt-4 pricing", "claude vs gpt cost"],
+    pricing_strategy="Freemium with premium alerts",
+)
+```
+
+**Output**:
+- `SiteStructure`: sections, pages, URL patterns, page counts, tech stack recommendation
+- `UserFlowsSection`: persona-based flows with steps, entry points, conversion points
+
+**Key Decisions**:
+- Sequential tasks: User flows reference pages from site structure
+- Anti-hallucination prompts: Only use features/personas from solution
+- Priority framework: P0 (MVP), P1 (soon), P2 (later)
+
+---
+
 ### Stage 10: Report Generation (Hybrid Python + LLM)
 
 **Responsibility**: Assemble final research report

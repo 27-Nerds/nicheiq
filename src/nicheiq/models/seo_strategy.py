@@ -333,9 +333,6 @@ class KeywordBasedPageType(BaseModel):
         default=None, description="Additional SEO optimization notes if needed"
     )
 
-# SectionKeywordMapping and KeywordDrivenSiteArchitecture classes removed
-# These were never rendered in frontend and overlapped with keyword_based_page_types
-# Technical SEO implementation is now handled via technical_seo_recommendations markdown field
 
 
 class SEOStrategyReport(BaseModel):
@@ -351,7 +348,6 @@ class SEOStrategyReport(BaseModel):
     # ========================================
     # METADATA
     # ========================================
-    # seed_keywords_generated removed - internal debug data, never displayed
     total_keywords_analyzed: int = Field(
         ..., description="Total number of keywords with measurable search volume (after expansion)"
     )
@@ -373,7 +369,10 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="Premium keywords with exceptional opportunity scores (>200)"
     )
-    # tier_0_strategy removed - duplicates content_strategy, never rendered
+    tier_0_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 0 premium keywords (1-2 paragraphs, markdown)"
+    )
 
     # ========================================
     # TIER 1: IMMEDIATE IMPLEMENTATION
@@ -381,7 +380,9 @@ class SEOStrategyReport(BaseModel):
     tier_1_keywords: list[TieredKeyword] = Field(
         ..., description="High volume + low competition keywords (3-5 keywords)"
     )
-    # tier_1_quick_win_strategy removed - duplicates content_strategy, never rendered
+    tier_1_quick_win_strategy: str = Field(
+        ..., description="Quick wins strategy narrative for Tier 1 (1-2 paragraphs, markdown)"
+    )
 
     # ========================================
     # TIER 2: HIGH VALUE KEYWORDS
@@ -390,7 +391,10 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="High value keywords with medium competition (3-5 keywords)"
     )
-    # tier_2_strategy removed - duplicates content_strategy, never rendered
+    tier_2_strategy: Optional[str] = Field(
+        default=None,
+        description="Strategy narrative for Tier 2 keywords (1-2 paragraphs, markdown)"
+    )
 
     # ========================================
     # TIER 3: GEOGRAPHIC/NICHE OPPORTUNITIES
@@ -407,8 +411,6 @@ class SEOStrategyReport(BaseModel):
         default=None,
         description="Category-based keyword groups (document types, service categories)"
     )
-
-    # untiered_keywords removed - internal recovery tracking, never displayed
 
     # ========================================
     # CONTENT STRATEGY
@@ -428,12 +430,6 @@ class SEOStrategyReport(BaseModel):
     technical_seo_recommendations: str = Field(
         ...,
         description="Technical SEO recommendations with URL structure, schema markup, code examples (markdown, 3-5 sections)"
-    )
-
-    # keyword_driven_site_architecture removed - never rendered, overlaps with keyword_based_page_types
-    keyword_based_page_types: Optional[list[KeywordBasedPageType]] = Field(
-        default=None,
-        description="Page types derived from keyword analysis (4-8 page types covering different keyword clusters)"
     )
 
     # ========================================
@@ -475,8 +471,6 @@ class SEOStrategyReport(BaseModel):
         description="Budget recommendations with options (markdown, Option A/B/C)"
     )
 
-    # long_term_strategy removed - duplicates implementation_roadmap, never rendered
-
     # ========================================
     # CONCLUSION
     # ========================================
@@ -484,9 +478,6 @@ class SEOStrategyReport(BaseModel):
         ...,
         description="Bottom line summary (1 paragraph)"
     )
-    # competitive_advantages removed - redundant with competitive_positioning (same info as bullet list)
-    # critical_success_factors removed - overlaps with next_steps_checklist (overlapping action items)
-    # expected_timeline removed - duplicates implementation_roadmap, never rendered
 
     # ========================================
     # NEXT STEPS
@@ -494,9 +485,6 @@ class SEOStrategyReport(BaseModel):
     next_steps_checklist: list[str] = Field(
         ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
     )
-
-    # Note: Implementation guide fields (universal_seo_elements, page_type_implementations,
-    # schema_markup_strategy) removed - technical SEO is now in technical_seo_recommendations
 
     @field_validator('total_monthly_volume', mode='before')
     @classmethod

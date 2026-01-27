@@ -1,0 +1,209 @@
+site_structure_task:
+  description: >
+    Design the site structure for {solution_name}, a {project_type} solution.
+
+
+    **SOLUTION CONTEXT:**
+
+    **Description:** {description}
+
+    **Core Features:**
+    {core_features}
+
+    **Target Personas:**
+    {target_personas}
+
+    **Data Sources:** {data_sources}
+
+    **Estimated Indexable Pages:** {estimated_indexable_pages}
+
+    **Content Generation Model:** {content_generation_model}
+
+
+    ═══ KEY PRINCIPLE ═══
+    Organize by ACCESS: Public pages (no login) vs User pages (needs auth/data).
+    ═══════════════════
+
+    **YOUR TASK:**
+
+    Create a practical site architecture with 2-5 sections, each containing
+    specific pages. For each page specify:
+
+    1. **page_name**: Human-readable name (e.g., "Product Comparison Page")
+    2. **url_pattern**: SEO-friendly URL using [param] syntax for dynamic parts
+       - Static pages: /about, /pricing, /blog
+       - Programmatic pages: /compare/[product-a]-vs-[product-b], /[city]/[category]
+    3. **page_type**: One of:
+       - "static" - hand-crafted, manually written pages
+       - "programmatic" - auto-generated from data/templates
+       - "dynamic" - user-generated content
+    4. **purpose**: One sentence explaining the page's value to users
+    5. **estimated_count**: For programmatic pages only - how many will be generated
+    6. **priority**: MVP prioritization:
+       - "P0" - MVP must-have (launch blockers)
+       - "P1" - Soon after launch (first iteration)
+       - "P2" - Later phase (growth features)
+
+
+    **PAGE DISCOVERY CHECKLIST:**
+
+    Before finalizing, ask yourself for EACH category:
+
+    □ Product pages - What's the core tool? What are its outputs/results?
+    □ SEO pages - What programmatic pages can rank? (by location, category, comparison)
+    □ Content pages - What guides/how-tos support the tool?
+    □ Trust pages - How do users verify data accuracy? (sources, methodology, about)
+    □ User pages - What do logged-in users need? (dashboard, saved items, exports, settings)
+    □ Conversion pages - How do users pay? (pricing, checkout, upgrade)
+    □ Legal/Support - FAQ, contact, terms, privacy
+
+    Group by access pattern: Public (anyone) vs User (needs auth/data).
+
+
+    **REQUIREMENTS:**
+
+    1. **Feature Alignment**: Pages must directly support core_features listed above
+       - Don't create pages for features not mentioned
+       - Don't invent new features
+
+    2. **Programmatic Pages**: Leverage content_generation_model
+       - Total programmatic pages should approximate {estimated_indexable_pages}
+       - Be specific about what varies (city, category, product, etc.)
+
+    3. **MVP Focus**: P0 pages should form a complete, usable product
+       - Typically 5-10 P0 pages for MVP
+       - P1 pages add depth, P2 pages add breadth
+
+    4. **SEO Optimization**: URL patterns should match search intent
+       - Use descriptive, keyword-rich URLs
+       - Keep URLs short and readable
+
+
+    **ANTI-HALLUCINATION RULES:**
+    - DO NOT invent features not in core_features
+    - DO NOT create pages unrelated to the solution
+    - Page counts must be realistic based on estimated_indexable_pages
+    - If data_sources is "None", limit programmatic page scope
+
+
+    **TECH STACK RECOMMENDATION:**
+
+    Provide a brief tech_stack_recommendation appropriate for {project_type}:
+    - Consider: static site generators, full-stack frameworks, headless CMS
+    - Match to content_generation_model and estimated page count
+    - Examples: "Next.js + Supabase", "SvelteKit + Prisma", "Astro for static pages"
+
+    ═══ REMEMBER ═══
+    Public tools ≠ user dashboards. If a page shows USER data, it goes in User Account.
+    ═══════════════
+
+
+  expected_output: >
+    A complete SiteStructure object with:
+    - overview: 1-2 sentence architecture philosophy for this solution
+    - sections: 2-5 logical sections with pages (each page has page_name, url_pattern, page_type, purpose, estimated_count, priority)
+    - total_static_pages: count of hand-crafted pages
+    - total_programmatic_pages: count of auto-generated pages (should approximate {estimated_indexable_pages})
+    - mvp_page_count: count of P0 pages needed for launch
+    - tech_stack_recommendation: suggested tech stack for this solution type
+
+
+user_flows_task:
+  description: >
+    Design 2-3 user flows for {solution_name} showing how different personas
+    discover, use, and convert on the product.
+
+
+    **SOLUTION CONTEXT:**
+
+    **Value Proposition:** {value_proposition}
+
+    **Target Personas:**
+    {target_personas}
+
+    **Core Features:**
+    {core_features}
+
+    **Organic Discovery Queries:** {organic_discovery_queries}
+
+    **Pricing Strategy:** {pricing_strategy}
+
+
+    **SITE STRUCTURE:**
+
+    Use the pages defined in the site structure task above for page references.
+    Each step's "page" field must reference an actual page from the site structure.
+
+
+    **YOUR TASK:**
+
+    Create 2-3 realistic user flows. For each flow:
+
+    1. **flow_name**: Descriptive name (e.g., "Organic Comparison Discovery")
+    2. **persona**: One of the target personas (use EXACT name from list above)
+    3. **goal**: What the user wants to accomplish (specific, measurable)
+    4. **entry_point**: How they arrive - be specific:
+       - "Google search: [actual query from organic_discovery_queries]"
+       - "Direct URL from bookmark"
+       - "Referral from [specific source]"
+    5. **steps**: 4-6 sequential steps:
+       - step_number: 1, 2, 3, etc.
+       - action: What user does (click, scroll, enter, select)
+       - page: Which page from site structure (use exact page_name)
+       - system_response: What system shows (optional but helpful)
+    6. **conversion_point**: Where/how user converts (must align with pricing_strategy)
+    7. **success_metric**: Measurable KPI for this flow:
+       - "Signup conversion rate"
+       - "Time to first [action]"
+       - "Feature adoption rate"
+
+
+    **FLOW VARIETY:**
+
+    Create diverse flows covering different scenarios:
+
+    - **Flow 1 (Primary)**: SEO-driven journey (most common path)
+      - Entry: Organic search from discovery queries
+      - Path: Landing -> Explore -> Convert
+
+    - **Flow 2 (Secondary)**: Different persona or entry point
+      - Entry: Direct, referral, or different search intent
+      - Path: Alternative exploration pattern
+
+    - **Flow 3 (Optional)**: Edge case or power user journey
+      - Entry: Return visitor or specific use case
+      - Path: Advanced features or repeat usage
+
+
+    **REQUIREMENTS:**
+
+    1. **Persona Accuracy**: ONLY use personas from target_personas list
+    2. **Page References**: ONLY reference pages from the site structure
+    3. **Entry Realism**: Use actual queries from organic_discovery_queries
+    4. **Conversion Alignment**: Conversion must match pricing_strategy
+    5. **Metric Specificity**: Success metrics must be measurable
+
+
+    **ANTI-HALLUCINATION RULES:**
+    - ONLY use personas from target_personas list (exact names)
+    - ONLY reference pages from site structure (use page_name)
+    - DO NOT invent monetization methods not in pricing_strategy
+    - Entry point queries should relate to organic_discovery_queries
+
+
+    **KEY INSIGHT:**
+
+    After creating flows, provide a brief key_insight (optional):
+    - Cross-flow pattern observation
+    - Critical conversion bottleneck
+    - User behavior insight
+    - Example: "Both personas share the comparison page as critical decision point"
+
+
+  expected_output: >
+    A complete UserFlowsSection object with:
+    - flows: 2-3 user flows, each with:
+      - flow_name, persona, goal, entry_point
+      - steps (4-6 steps with step_number, action, page, system_response)
+      - conversion_point, success_metric
+    - key_insight: Optional cross-flow observation or strategic insight

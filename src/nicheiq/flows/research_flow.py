@@ -3417,11 +3417,6 @@ Return a valid JSON object with this structure:
 
             self.state.seo_strategy_report = seo_strategy
 
-            # Extract seed keywords from SEO strategy report
-            if seo_strategy.seed_keywords_generated:
-                self.state.seed_keywords = seo_strategy.seed_keywords_generated
-                logger.info(f"[OK] Captured {len(seo_strategy.seed_keywords_generated)} seed keywords")
-
             logger.info(
                 f"[OK] SEO strategy complete for {selected_solution_name}: "
                 f"{seo_strategy.total_keywords_analyzed} keywords analyzed, "

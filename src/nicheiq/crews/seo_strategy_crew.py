@@ -1311,16 +1311,17 @@ class SEOStrategyCrew:
         """
         Task 4: Final Strategy Synthesis.
 
-        Generates ONLY 4 new strategic synthesis fields:
-        - long_term_strategy (Year 1/2/3 strategic milestones)
+        Generates the final conclusion field:
         - conclusion_bottom_line (Executive summary paragraph)
-        - competitive_advantages (2-4 key advantages)
-        - critical_success_factors (3-4 success factors)
+
+        Note: long_term_strategy, competitive_advantages, and critical_success_factors
+        were removed as they were redundant with implementation_roadmap, competitive_positioning,
+        and next_steps_checklist respectively.
 
         All fields from Tasks 1a-1d + 2-3 will be preserved via Python merge.
 
         Depends on: All previous tasks (1d, 2, 3)
-        Output: FinalSynthesis (4 fields only)
+        Output: FinalSynthesis (conclusion_bottom_line only)
 
         Note: This is now the final task (Task 5/6 removed).
         Technical SEO implementation is handled by Task 2's technical_seo_recommendations.
