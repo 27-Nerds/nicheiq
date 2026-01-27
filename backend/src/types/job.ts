@@ -3,7 +3,9 @@ import { z } from 'zod';
 // API request schemas
 // Note: email and userId come from authenticated session, not request body
 export const CreateJobSchema = z.object({
-  niche: z.string().min(10, 'Niche description must be at least 10 characters'),
+  niche: z.string()
+    .min(10, 'Niche description must be at least 10 characters')
+    .max(500, 'Niche description must be at most 500 characters'),
   allowedProjectTypes: z.array(z.string()).optional(),
 });
 

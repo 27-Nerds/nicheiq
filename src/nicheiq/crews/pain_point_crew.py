@@ -954,20 +954,39 @@ class PainPointCrew:
             # Hybrid approach:
             # - Task 1 (content_researcher): full content via direct injection (NO RAG)
             # - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): agent-level RAG for quote retrieval
-            crew_output = crew_instance.kickoff(inputs={
-                "niche_description": self.niche_description,
-                "market_segments": market_segments_formatted,
-                "industry_boundaries": self.industry_boundaries or "Not specified",
-                "full_reddit_content": self.formatted_reddit_content,
-                "full_twitter_content": self.formatted_twitter_content,
-                "reddit_posts_count": len(self.reddit_posts),
-                "twitter_threads_count": len(self.twitter_threads),
-                "total_reddit_comments": total_reddit_comments,
-                "total_twitter_replies": total_twitter_replies,
-                "total_content": len(self.reddit_posts) + len(self.twitter_threads),
-                "subreddits": subreddits_formatted,
-                "collection_timestamp": collection_timestamp,
-            })
+            try:
+                crew_output = crew_instance.kickoff(inputs={
+                    "niche_description": self.niche_description,
+                    "market_segments": market_segments_formatted,
+                    "industry_boundaries": self.industry_boundaries or "Not specified",
+                    "full_reddit_content": self.formatted_reddit_content,
+                    "full_twitter_content": self.formatted_twitter_content,
+                    "reddit_posts_count": len(self.reddit_posts),
+                    "twitter_threads_count": len(self.twitter_threads),
+                    "total_reddit_comments": total_reddit_comments,
+                    "total_twitter_replies": total_twitter_replies,
+                    "total_content": len(self.reddit_posts) + len(self.twitter_threads),
+                    "subreddits": subreddits_formatted,
+                    "collection_timestamp": collection_timestamp,
+                })
+            except Exception as e:
+                error_msg = str(e)
+                # Check if this is a guardrail validation failure
+                if "guardrail validation" in error_msg.lower() or "representative_quotes" in error_msg:
+                    logger.warning(
+                        f"[Stage 6] Guardrail validation failed after retries: {error_msg[:200]}. "
+                        "Returning empty result for quality gate evaluation."
+                    )
+                    return PainPointAnalysisResult(
+                        niche=self.niche_description,
+                        pain_points=[],
+                        total_mentions=0,
+                        top_categories=[],
+                        analysis_summary=f"Pain point extraction failed guardrail validation: {error_msg[:300]}. "
+                                       "The source content may lack sufficient quotes to support identified themes."
+                    )
+                # Re-raise other exceptions
+                raise
 
             # Python merge: Extract all task outputs and merge Task 2 + Task 3
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []

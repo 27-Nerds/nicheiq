@@ -3,6 +3,8 @@
   import { page } from '$app/stores';
   import { X, ArrowRight, Loader2, AlertCircle, Coins, Sparkles, Wand2 } from 'lucide-svelte';
 
+  const MAX_NICHE_LENGTH = 500;
+
   let { open = $bindable(false) } = $props();
 
   // Get credit balance from page data
@@ -198,13 +200,19 @@
               id="niche"
               bind:value={niche}
               rows={4}
+              maxlength={MAX_NICHE_LENGTH}
               class="input resize-none w-full"
               placeholder="Freelancers struggling to categorize expenses and prepare for taxes..."
               disabled={loading}
             ></textarea>
-            <p class="text-xs text-text-muted mt-1.5">
-              We'll find pain points and generate solution ideas for this market.
-            </p>
+            <div class="flex items-center justify-between mt-1.5">
+              <p class="text-xs text-text-muted">
+                We'll find pain points and generate solution ideas for this market.
+              </p>
+              <span class="text-xs {niche.length > MAX_NICHE_LENGTH * 0.9 ? 'text-warning' : 'text-text-muted'}">
+                {niche.length}/{MAX_NICHE_LENGTH}
+              </span>
+            </div>
 
             <!-- Suggestion buttons -->
             <div class="flex items-center gap-2 mt-3">

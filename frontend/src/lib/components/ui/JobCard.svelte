@@ -68,6 +68,7 @@
     onMenuToggle
   }: Props = $props();
 
+
   const TOTAL_STAGES = 16;
 
   // Derived state
@@ -256,16 +257,16 @@
 </script>
 
 <div
-  class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 {borderClass} animate-fade-slide-in"
+  class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 {borderClass} animate-fade-slide-in {isMenuOpen ? 'relative z-50' : ''}"
   style="animation-delay: {animationDelay}ms"
 >
   {#if isRunning}
     <!-- RUNNING STATE -->
     <!-- Header -->
     <div class="flex items-center justify-between gap-4 mb-3">
-      <div class="flex items-center gap-2.5 min-w-0">
+      <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
         <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
-        <h3 class="text-base font-semibold text-text-primary truncate">
+        <h3 class="text-base font-semibold text-text-primary truncate min-w-0">
           {formatNicheTitle(job.niche)}
         </h3>
       </div>
@@ -314,9 +315,9 @@
     <!-- QUEUED STATE -->
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
-      <div class="flex items-center gap-2.5 min-w-0">
+      <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
         <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
-        <h3 class="text-base font-semibold text-text-primary truncate">
+        <h3 class="text-base font-semibold text-text-primary truncate min-w-0">
           {formatNicheTitle(job.niche)}
         </h3>
       </div>
@@ -349,9 +350,9 @@
     <!-- COMPLETED STATE -->
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
-      <div class="flex items-center gap-2.5 min-w-0">
+      <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
         <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
-        <h3 class="text-base font-semibold text-text-primary truncate">
+        <h3 class="text-base font-semibold text-text-primary truncate min-w-0">
           {formatNicheTitle(job.niche)}
         </h3>
       </div>
@@ -386,7 +387,7 @@
           <MoreVertical class="w-4 h-4" />
         </button>
         {#if isMenuOpen}
-          <div class="absolute right-0 top-full mt-1 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-10">
+          <div class="absolute right-0 top-full mt-1 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-50">
             <a
               href="/api/jobs/{job.id}/reportjson"
               download
@@ -412,9 +413,9 @@
     <!-- FAILED STATE -->
     <!-- Header -->
     <div class="flex items-center justify-between gap-4">
-      <div class="flex items-center gap-2.5 min-w-0">
+      <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
         <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
-        <h3 class="text-base font-semibold text-text-primary truncate">
+        <h3 class="text-base font-semibold text-text-primary truncate min-w-0">
           {formatNicheTitle(job.niche)}
         </h3>
       </div>
