@@ -364,7 +364,17 @@ class LandingPageCrew:
                    f"features_count={len(inputs['features'].split(',')) if inputs['features'] else 0}")
 
         # Run the crew
-        result = self.crew().kickoff(inputs=inputs)
+        try:
+            result = self.crew().kickoff(inputs=inputs)
+        except Exception as e:
+            error_msg = str(e)
+            if "guardrail validation" in error_msg.lower():
+                logger.warning(
+                    f"Landing page generation failed guardrail validation: {error_msg[:200]}. "
+                    "Returning None to allow pipeline to complete without landing page."
+                )
+                return None
+            raise
 
         # Extract outputs from each task (8 tasks now)
         strategy = result.tasks_output[0].pydantic

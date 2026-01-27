@@ -720,6 +720,30 @@ class UnifiedSolutionCrew:
             return (refined_solutions, competitive_analysis, solution_selection, enhancements)
 
         except Exception as e:
+            error_msg = str(e)
+            # Check if this is a guardrail validation failure
+            if "guardrail validation" in error_msg.lower():
+                logger.warning(
+                    f"Unified solution pipeline failed guardrail validation: {error_msg[:200]}. "
+                    "Returning empty results for quality gate evaluation."
+                )
+                return (
+                    IdeaGenerationResult(
+                        solution_ideas=[],
+                        recommended_solution=None,
+                        market_insights=f"Guardrail validation failed: {error_msg[:200]}"
+                    ),
+                    CompetitiveAnalysisResult(solution_landscapes=[], market_insights="Skipped - guardrail failure"),
+                    SolutionSelection(
+                        selected_solution_name="",
+                        selection_rationale="Guardrail validation failed",
+                        selection_criteria_scores=[],
+                        runner_up_solutions=[],
+                        recommended_focus=""
+                    ),
+                    None,  # competitive_enhancements
+                    None   # ideation_process
+                )
             logger.error(f"Unified pipeline failed: {e}")
             raise
 

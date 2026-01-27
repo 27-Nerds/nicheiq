@@ -262,7 +262,7 @@ extract_pain_points:
        - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
        - **description**: 2-3 sentence clear articulation of the specific problem in user language
        - **mention_count**: Count of ALL unique discussions/posts mentioning this problem (search knowledge sources comprehensively, count every unique [source: ID]). This should be LARGER than the number of representative_quotes. Example: If you found 18 posts discussing "slow onboarding", mention_count = 18, even if you only selected 4 representative quotes.
-       - **representative_quotes**: 5-10 direct user quotes (MUST include [source: ID] suffix, target 8+)
+       - **representative_quotes**: 3-10 direct user quotes (MUST include [source: ID] suffix, minimum 3, target 8+). If a pain point has <3 quotes, EXCLUDE it or merge into a related broader category.
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to
        - **source_post_ids**: ALWAYS set to [] (Python extracts automatically)

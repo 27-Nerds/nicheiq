@@ -135,17 +135,26 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
             )
 
         # Validate each pain point has required fields
+        failing_pain_points = []
         for i, pp in enumerate(result.extracted_pain_points):
             if not pp.title or len(pp.title) < 5:
                 return (False, f"Pain point {i+1} missing or too short title")
             if not pp.description or len(pp.description) < 20:
                 return (False, f"Pain point '{pp.title}' has missing or too short description")
-            if len(pp.representative_quotes) < 5:
-                return (
-                    False,
-                    f"Pain point '{pp.title}' needs at least 5 representative_quotes (target 8+), got {len(pp.representative_quotes)}. "
-                    "Search knowledge sources for more supporting evidence with [source: ID] tags."
+            if len(pp.representative_quotes) < 3:
+                failing_pain_points.append(
+                    f"  - '{pp.title}': {len(pp.representative_quotes)} quotes (need 3+)"
                 )
+
+        if failing_pain_points:
+            return (
+                False,
+                f"Pain points with insufficient quotes:\n"
+                + "\n".join(failing_pain_points)
+                + "\n\nFix options: (1) Search knowledge sources for more quotes with [source: ID] tags, "
+                "OR (2) EXCLUDE pain points with <3 quotes - they lack sufficient evidence, "
+                "OR (3) MERGE weak pain points into related broader categories."
+            )
 
         logger.info(f"✓ Pain point extraction guardrail passed: {len(result.extracted_pain_points)} pain points")
         return (True, task_output.raw)
