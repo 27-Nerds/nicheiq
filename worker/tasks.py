@@ -108,13 +108,18 @@ def run_research_job(
         crew = LandingPageCrew()
         result = crew.generate(report, page_mode="coming_soon")
 
-        # Save landing page
-        job_landing_path = output_dir / "landing_page.html"
-        job_landing_path.write_text(result.html_output)
-        landing_path = str(job_landing_path)
-
-        progress_callback(11, "Landing Page Generation", "completed")
-        logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
+        # Handle None result (guardrail failure)
+        if result is None:
+            logger.warning(f"[Worker] Landing page generation returned None for job {job_id}")
+            progress_callback(11, "Landing Page Generation", "completed")
+            landing_path = None
+        else:
+            # Save landing page
+            job_landing_path = output_dir / "landing_page.html"
+            job_landing_path.write_text(result.html_output)
+            landing_path = str(job_landing_path)
+            progress_callback(11, "Landing Page Generation", "completed")
+            logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
 
         # Publish completion
         publish_job_completed(job_id, str(job_report_path), landing_path)
