@@ -10,6 +10,16 @@
         reverse_proxy api:3001
     }
 
+    # Stripe webhooks - route directly to backend (needs raw body for signature verification)
+    handle /api/webhooks/* {
+        reverse_proxy api:3001 {
+            header_up Host {host}
+            header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+            header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+            header_up X-Forwarded-Proto https
+        }
+    }
+
     # All routes go to SvelteKit frontend
     # Frontend handles Auth.js (/api/auth/*) and proxies other API calls to backend
     handle {
