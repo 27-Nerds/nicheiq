@@ -165,6 +165,8 @@ model Job {
   // Error tracking
   errorMessage         String?     @db.Text
   errorStage           Float?
+  errorCode            String?     @db.VarChar(50)  // Classified error code (e.g., 'RATE_LIMIT', 'NETWORK_ERROR')
+  errorDetails         Json?                        // Structured error info with user-friendly message
 
   // Quality gate stop tracking (intentional stops vs errors)
   stopReason           String?     @db.VarChar(50)  // e.g., 'INSUFFICIENT_DATA'

@@ -20,7 +20,7 @@
 		return () => observer.disconnect();
 	});
 
-	// Focused FAQs: Trust/verification first, then common objections
+	// Optimized FAQs: Trust first, consolidated competitor question, common objections
 	const faqs = [
 		{
 			question: "How do I know the AI isn't making this up?",
@@ -28,19 +28,9 @@
 				"Every pain point in your report links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination."
 		},
 		{
-			question: "How is this different from Perplexity Deep Research?",
+			question: "Can't I just use ChatGPT, Perplexity, or Grok?",
 			answer:
-				"Perplexity searches the open web for indexed social pages. NicheIQ connects directly to social platforms, accessing real-time posts, comments, and engagement data that web crawlers miss. Plus, NicheIQ validates keywords with real search APIs - actual volumes, not estimates. And you get a structured 50+ field report, not chat responses."
-		},
-		{
-			question: "Why not just use Grok's DeepSearch?",
-			answer:
-				"Grok excels at X/Twitter research but can't access other social platforms directly. NicheIQ is purpose-built for SaaS validation: community pain points + real keyword data + competitive analysis in one structured report. Grok gives you chat responses; NicheIQ gives you a professional validation report."
-		},
-		{
-			question: "Can't I just use ChatGPT with better prompts?",
-			answer:
-				"Better prompts improve output quality, but they can't solve architectural limitations. No prompt can give ChatGPT direct access to social platforms, real-time keyword data from search APIs, or live community discussions. It's not a prompting problem - it's a data access problem. NicheIQ has these integrations built-in."
+				"Better prompts improve output, but they can't solve architectural limitations. No AI chat tool has direct access to social platforms, real-time keyword APIs, or live community discussions. ChatGPT uses training data (months old). Perplexity crawls indexed pages (misses real-time posts). Grok excels at X/Twitter but can't access Reddit. NicheIQ connects directly to APIs for current data with source attribution on every claim."
 		},
 		{
 			question: 'How long does research take?',
@@ -48,14 +38,9 @@
 				'Typically around 45 minutes. The system autonomously searches social media, extracts pain points, calculates market sizing, validates pricing, and compiles your report. You submit your niche and wait while the 16-stage pipeline runs.'
 		},
 		{
-			question: 'How do you calculate market size?',
+			question: 'How do you calculate market size and pricing?',
 			answer:
-				'NicheIQ calculates TAM (Total Addressable Market), SAM (Serviceable Addressable Market), and SOM (Serviceable Obtainable Market) using real keyword search volumes and market data. These are data-driven estimates based on actual search demand, not AI guesses. The report shows the methodology so you can verify the numbers.'
-		},
-		{
-			question: 'Where does pricing data come from?',
-			answer:
-				'Pricing recommendations are based on two sources: competitor pricing analysis (what similar tools charge) and willingness-to-pay signals extracted from real customer discussions. It looks at what people say they would pay, what they complain about current pricing, and map it against the competitive landscape.'
+				"Market sizing (TAM/SAM/SOM) uses real keyword search volumes from DataForSEO API - actual search demand, not AI estimates. Pricing recommendations combine competitor analysis (what similar tools charge) with willingness-to-pay signals from customer discussions. The report shows methodology so you can verify the numbers."
 		},
 		{
 			question: 'Can I get a refund?',
@@ -68,14 +53,19 @@
 				"NicheIQ works best when there's active social discussion about your niche. Consumer SaaS, developer tools, and creator tools typically have great coverage. For highly specialized B2B niches, you might get fewer data points. The guarantee still applies: less than 5 validated pain points means a full refund."
 		},
 		{
-			question: 'What formats do reports come in?',
+			question: 'What if the research says my idea is bad?',
 			answer:
-				'Reports are delivered as structured JSON that you can download and process programmatically. The JSON includes 50+ data fields including pain points, solutions, keywords, competitive analysis, and GTM blueprint.'
+				"A 'no' is valuable data. If research shows weak pain points or saturated competition, you just saved months of building the wrong thing. Think of it as $19 insurance against building something nobody wants. Most founders who get 'negative' results tell us it was their best $19 spent - they pivoted to a better opportunity."
 		},
 		{
-			question: 'Can competitors see my research?',
+			question: 'Can I run multiple researches?',
 			answer:
-				"No. Your research reports are 100% private. No shared database, no data sharing between customers, no marketing use of your niche ideas. NicheIQ is a tool, not a marketplace."
+				"Yes - pay per research report. Run as many niches as you want to validate. This is NicheIQ's strength: fast validation means you can test 5 ideas in an afternoon instead of committing months to one. Most founders use it to narrow down from several ideas to their best opportunity."
+		},
+		{
+			question: 'Do you store my research data?',
+			answer:
+				"We store your reports for your account access only. Your research is 100% private - no shared database, no data sharing between customers, no marketing use of your niche ideas. NicheIQ is a tool, not a marketplace. Your research stays your competitive advantage."
 		}
 	];
 </script>

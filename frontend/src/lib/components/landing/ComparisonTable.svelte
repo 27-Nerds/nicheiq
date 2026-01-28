@@ -49,7 +49,7 @@
 		{
 			name: 'Cost',
 			icon: DollarSign,
-			nicheiq: '$49/report',
+			nicheiq: 'Starting at $19',
 			perplexity: '$20/mo',
 			grok: 'Free-$30/mo',
 			painonsocial: 'Varies'

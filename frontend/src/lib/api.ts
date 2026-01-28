@@ -33,6 +33,17 @@ export interface JobAsset {
   url: string;
 }
 
+export type ErrorSeverity = 'info' | 'warning' | 'error';
+
+export interface ErrorDetails {
+  code: string;
+  severity: ErrorSeverity;
+  userMessage: string;
+  actionableGuidance: string;
+  retryDelayMinutes?: number;
+  rawMessage?: string;
+}
+
 export interface Job {
   id: string;
   email: string;
@@ -67,6 +78,9 @@ export interface Job {
     };
     recommendation?: string;
   } | null;
+  // User-friendly error information
+  errorCode?: string | null;
+  errorDetails?: ErrorDetails | null;
 }
 
 export class ApiError extends Error {

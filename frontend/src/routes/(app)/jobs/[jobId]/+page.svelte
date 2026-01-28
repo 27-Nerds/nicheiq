@@ -42,6 +42,17 @@
     recommendation?: string;
   }
 
+  type ErrorSeverity = 'info' | 'warning' | 'error';
+
+  interface ErrorDetails {
+    code: string;
+    severity: ErrorSeverity;
+    userMessage: string;
+    actionableGuidance: string;
+    retryDelayMinutes?: number;
+    rawMessage?: string;
+  }
+
   interface Job {
     id: string;
     email: string;
@@ -65,6 +76,9 @@
     // Quality gate stop metadata
     stopReason?: string | null;
     stopReasonDetails?: StopReasonDetails | null;
+    // User-friendly error information
+    errorCode?: string | null;
+    errorDetails?: ErrorDetails | null;
   }
 
   let job = $state<Job | null>(null);
@@ -75,6 +89,7 @@
   let cancelError = $state('');
   let isResuming = $state(false);
   let resumeError = $state('');
+  let showTechnicalDetails = $state(false);
 
   const jobId = $derived($page.params.jobId);
 
@@ -427,15 +442,57 @@
         </div>
 
       <!-- Regular Error Message (for actual failures) -->
-      {:else if job.errorMessage && job.status === 'FAILED'}
-        <div class="p-4 rounded-lg bg-error/5 border border-error/20 mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
+      {:else if job.status === 'FAILED' && (job.errorDetails || job.errorMessage)}
+        {@const severity = job.errorDetails?.severity || 'error'}
+        {@const bgColor = severity === 'info' ? 'bg-info/5' : severity === 'warning' ? 'bg-warning/5' : 'bg-error/5'}
+        {@const borderColor = severity === 'info' ? 'border-info/20' : severity === 'warning' ? 'border-warning/20' : 'border-error/20'}
+        {@const iconBg = severity === 'info' ? 'bg-info/10' : severity === 'warning' ? 'bg-warning/10' : 'bg-error/10'}
+        {@const iconColor = severity === 'info' ? 'text-info' : severity === 'warning' ? 'text-warning' : 'text-error'}
+        {@const textColor = severity === 'info' ? 'text-info' : severity === 'warning' ? 'text-warning' : 'text-error'}
+
+        <div class="p-4 rounded-lg {bgColor} border {borderColor} mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
           <div class="flex items-start gap-3">
-            <div class="p-2 rounded-lg bg-error/10 shrink-0">
-              <XCircle class="w-5 h-5 text-error" />
+            <div class="p-2 rounded-lg {iconBg} shrink-0">
+              {#if severity === 'info'}
+                <AlertTriangle class="w-5 h-5 {iconColor}" />
+              {:else if severity === 'warning'}
+                <AlertTriangle class="w-5 h-5 {iconColor}" />
+              {:else}
+                <XCircle class="w-5 h-5 {iconColor}" />
+              {/if}
             </div>
             <div class="flex-1">
-              <h3 class="text-sm font-medium text-error">Error</h3>
-              <p class="mt-1 text-sm text-error/80">{job.errorMessage}</p>
+              {#if job.errorDetails}
+                <h3 class="text-sm font-medium {textColor}">{job.errorDetails.userMessage}</h3>
+                <p class="mt-1 text-sm text-text-muted">{job.errorDetails.actionableGuidance}</p>
+
+                {#if job.errorDetails.retryDelayMinutes}
+                  <p class="mt-2 text-xs text-text-muted">
+                    Suggested wait time: {job.errorDetails.retryDelayMinutes} minutes
+                  </p>
+                {/if}
+
+                <!-- Technical Details Toggle -->
+                {#if job.errorMessage}
+                  <button
+                    type="button"
+                    class="mt-3 text-xs text-text-muted hover:text-text-secondary underline"
+                    onclick={() => showTechnicalDetails = !showTechnicalDetails}
+                  >
+                    {showTechnicalDetails ? 'Hide' : 'Show'} technical details
+                  </button>
+
+                  {#if showTechnicalDetails}
+                    <div class="mt-2 p-3 rounded bg-bg-elevated border border-border text-xs font-mono text-text-muted overflow-x-auto">
+                      <pre class="whitespace-pre-wrap break-words">{job.errorMessage}</pre>
+                    </div>
+                  {/if}
+                {/if}
+              {:else}
+                <!-- Fallback for jobs without errorDetails (backward compatibility) -->
+                <h3 class="text-sm font-medium {textColor}">Error</h3>
+                <p class="mt-1 text-sm text-text-muted">{job.errorMessage}</p>
+              {/if}
             </div>
           </div>
         </div>

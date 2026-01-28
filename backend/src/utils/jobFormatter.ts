@@ -31,6 +31,9 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     // Quality gate stop metadata (for intentional stops, not errors)
     stopReason: job.stopReason || null,
     stopReasonDetails: job.stopReasonDetails || null,
+    // User-friendly error information
+    errorCode: (job as any).errorCode || null,
+    errorDetails: (job as any).errorDetails || null,
   };
 
   // Optional fields based on endpoint needs

@@ -257,13 +257,17 @@ export async function completeJob(
  * @param errorStage - Stage number where failure/stop occurred
  * @param stopReason - Optional quality gate stop reason (e.g., 'INSUFFICIENT_DATA')
  * @param stopReasonDetails - Optional quality metrics and recommendation
+ * @param errorCode - Classified error code for user-friendly messaging
+ * @param errorDetails - Translated error details with user message and guidance
  */
 export async function failJob(
   jobId: string,
   errorMessage: string,
   errorStage?: number,
   stopReason?: string,
-  stopReasonDetails?: Record<string, any>
+  stopReasonDetails?: Record<string, any>,
+  errorCode?: string,
+  errorDetails?: Record<string, any>
 ) {
   // Check if job is already FAILED (idempotency)
   const existingJob = await prisma.job.findUnique({
@@ -290,6 +294,8 @@ export async function failJob(
       errorStage,
       stopReason: stopReason ?? null,
       stopReasonDetails: stopReasonDetails ?? Prisma.JsonNull,
+      errorCode: errorCode ?? null,
+      errorDetails: errorDetails ?? Prisma.JsonNull,
     },
   });
 

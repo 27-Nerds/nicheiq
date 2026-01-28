@@ -15,6 +15,8 @@ from typing import Optional
 import requests
 from loguru import logger
 
+from worker.error_classifier import classify_error, build_error_details
+
 # Generate unique worker ID (persists for lifetime of process)
 WORKER_ID = f"worker-{uuid.uuid4().hex[:8]}"
 
@@ -256,6 +258,7 @@ def notify_job_failed(job_id: str, error_message: str, error_stage: Optional[int
     This is the ONLY place worker should notify about job failures.
 
     The backend endpoint is idempotent - safe to call multiple times.
+    Errors are automatically classified into user-friendly categories.
 
     Args:
         job_id: The job ID
@@ -268,6 +271,12 @@ def notify_job_failed(job_id: str, error_message: str, error_stage: Optional[int
     global _current_job_id
     _current_job_id = None
 
+    # Classify the error for user-friendly messaging
+    classified = classify_error(error_message, error_stage)
+    error_details = build_error_details(classified)
+
+    logger.debug(f"[Heartbeat] Classified error as {classified.code} for job {job_id}")
+
     try:
         response = requests.post(
             f"{_get_backend_url()}/api/workers/job-failed",
@@ -276,12 +285,14 @@ def notify_job_failed(job_id: str, error_message: str, error_stage: Optional[int
                 "job_id": job_id,
                 "error_message": error_message,
                 "error_stage": error_stage,
+                "error_code": classified.code,
+                "error_details": error_details,
             },
             headers={"x-internal-service": _get_internal_secret()},
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
-        logger.info(f"[Heartbeat] Notified backend: job {job_id} failed")
+        logger.info(f"[Heartbeat] Notified backend: job {job_id} failed (code: {classified.code})")
         return True
     except requests.exceptions.RequestException as e:
         logger.warning(f"[Heartbeat] Failed to notify job failed: {e}")

@@ -668,7 +668,8 @@ analyze_category_tier_parallel:
 
     **YOUR JOB (Simplified - Python Hydration Pattern):**
     1. Create {min_category_groups} to {max_category_groups} thematic category groups
-    2. Assign each keyword to ONE category (no duplicates)
+       - IMPORTANT: You MUST create at least {min_category_groups} distinct groups
+    2. Assign each keyword to ONE category (NO DUPLICATES - a keyword cannot appear in multiple groups)
     3. Write strategy_recommendation per category (2-4 sentences)
        - IMPORTANT: These strategies will be applied to ALL keywords in each category
     4. Write category_strategy_notes (1-2 paragraphs overall)
@@ -677,10 +678,12 @@ analyze_category_tier_parallel:
     Python will add these automatically from CSV.
 
     **CRITICAL RULES:**
+    - **NO DUPLICATE KEYWORDS**: Each keyword from the CSV must appear in EXACTLY ONE category
     - Every category MUST have at least 1 keyword from the CSV
     - Do NOT create empty categories
     - Do NOT fabricate keywords not in the CSV
     - Use ONLY keyword strings from the CSV
+    - VERIFY before submitting: count your categories (must be >= {min_category_groups})
 
     **CONTEXT:**
     - Niche: {niche}

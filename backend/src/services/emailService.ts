@@ -156,19 +156,39 @@ export async function sendCompletionEmail(
 }
 
 /**
+ * Error details interface for user-friendly error messages
+ */
+interface ErrorDetails {
+  userMessage?: string;
+  actionableGuidance?: string;
+}
+
+/**
  * Send job failure notification email
+ *
+ * @param to - Recipient email
+ * @param jobId - The job ID
+ * @param niche - The job's niche
+ * @param errorMessage - Raw error message (fallback)
+ * @param errorDetails - Optional translated error details with user-friendly message
  */
 export async function sendFailureEmail(
   to: string,
   jobId: string,
   niche: string,
-  errorMessage: string
+  errorMessage: string,
+  errorDetails?: ErrorDetails | null
 ): Promise<void> {
+  // Use friendly message if available, otherwise fall back to raw error
+  const displayMessage = errorDetails?.userMessage || errorMessage;
+  const guidance = errorDetails?.actionableGuidance || 'You can try submitting your research request again. If the problem persists, please contact support.';
+
   const vars = {
     JOB_ID: jobId,
     NICHE: truncateNiche(niche),
     STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
-    ERROR_MESSAGE: errorMessage,
+    ERROR_MESSAGE: displayMessage,
+    GUIDANCE: guidance,
   };
 
   try {

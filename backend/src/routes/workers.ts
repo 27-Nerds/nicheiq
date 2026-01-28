@@ -22,6 +22,7 @@ import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/n
 import { requireInternalService } from '../middleware/auth.js';
 import { StageStatus } from '@prisma/client';
 import { PIPELINE_STAGES } from '../types/job.js';
+import { buildErrorDetails } from '../utils/errorTranslator.js';
 
 export const workersRouter = Router();
 
@@ -123,17 +124,21 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
 
       if (job && job.status === JobStatus.RUNNING) {
         const errorMessage = `Worker shutdown: ${data.reason || 'graceful shutdown'}. Use checkpoint resume to continue.`;
-        await failJob(data.job_id, errorMessage);
+
+        // Worker shutdown is classified as WORKER_CRASH for user-friendly messaging
+        const translatedErrorDetails = buildErrorDetails('WORKER_CRASH', { rawMessage: errorMessage });
+
+        await failJob(data.job_id, errorMessage, undefined, undefined, undefined, 'WORKER_CRASH', translatedErrorDetails ?? undefined);
         console.log(`[Workers] Job ${data.job_id} marked as failed due to worker shutdown`);
 
-        // Send failure notification
+        // Send failure notification with user-friendly details
         if (job.userId) {
           const user = await prisma.user.findUnique({
             where: { id: job.userId },
             select: { email: true },
           });
           if (user?.email) {
-            notifyJobError(job.userId, user.email, data.job_id, job.niche, errorMessage).catch(emailError => {
+            notifyJobError(job.userId, user.email, data.job_id, job.niche, errorMessage, translatedErrorDetails).catch(emailError => {
               console.error(`[Workers] Failed to send failure notification for job ${data.job_id}:`, emailError);
             });
           }
@@ -251,6 +256,9 @@ const JobFailedSchema = z.object({
   job_id: z.string().uuid(),
   error_message: z.string(),
   error_stage: z.number().int().nullable().optional(),
+  // Classified error fields for user-friendly messaging
+  error_code: z.string().max(50).optional(),
+  error_details: z.record(z.any()).optional(),
   // Quality gate stop fields (for intentional stops, not errors)
   stop_reason: z.string().max(50).optional(),
   stop_reason_details: z.record(z.any()).optional(),
@@ -271,7 +279,13 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
       console.log(`[Workers] Job ${data.job_id} stopped by quality gate (${data.stop_reason}) at stage ${data.error_stage}`);
     } else {
       console.log(`[Workers] Job ${data.job_id} failed reported by worker ${data.worker_id}: ${data.error_message.substring(0, 100)}`);
+      if (data.error_code) {
+        console.log(`[Workers] Error code: ${data.error_code}`);
+      }
     }
+
+    // Build translated error details for user-friendly messaging
+    const translatedErrorDetails = buildErrorDetails(data.error_code, data.error_details);
 
     // failJob is idempotent - safe to call multiple times
     const job = await failJob(
@@ -279,7 +293,9 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
       data.error_message,
       data.error_stage ?? undefined,
       data.stop_reason,
-      data.stop_reason_details
+      data.stop_reason_details,
+      data.error_code,
+      translatedErrorDetails ?? undefined
     );
 
     // Broadcast failure to SSE clients

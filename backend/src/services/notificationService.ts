@@ -72,18 +72,34 @@ export async function notifyJobComplete(
 }
 
 /**
+ * Error details interface for user-friendly error messages
+ */
+interface ErrorDetails {
+  userMessage?: string;
+  actionableGuidance?: string;
+}
+
+/**
  * Send job failure email if user preferences allow
+ *
+ * @param userId - User ID for preference check
+ * @param email - Recipient email
+ * @param jobId - The job ID
+ * @param niche - The job's niche
+ * @param errorMessage - Raw error message (fallback)
+ * @param errorDetails - Optional translated error details with user-friendly message
  */
 export async function notifyJobError(
   userId: string | null | undefined,
   email: string,
   jobId: string,
   niche: string,
-  errorMessage: string
+  errorMessage: string,
+  errorDetails?: ErrorDetails | null
 ): Promise<void> {
   if (!(await shouldNotifyUser(userId, 'jobError'))) {
     console.log(`[Notification] Skipping failure email for job ${jobId} - disabled by preference`);
     return;
   }
-  await sendFailureEmail(email, jobId, niche, errorMessage);
+  await sendFailureEmail(email, jobId, niche, errorMessage, errorDetails);
 }

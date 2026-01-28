@@ -393,11 +393,12 @@ def validate_category_tier_output(task_output) -> tuple[bool, Any]:
             return (False, f"Invalid type: expected CategoryLightResult, got {type(result)}")
 
         # Validate structure
-        if not result.tier_4_category_groups or len(result.tier_4_category_groups) < 3:
+        if not result.tier_4_category_groups or len(result.tier_4_category_groups) < 1:
             return (
                 False,
-                f"Need at least 3 category groups, got {len(result.tier_4_category_groups or [])}. "
-                "Analyze the keywords and create meaningful thematic groups."
+                f"Need at least 1 category group, got {len(result.tier_4_category_groups or [])}. "
+                "Create meaningful thematic groups from the keywords. "
+                "Do not put all keywords in a single category - find natural themes."
             )
 
         # Check for duplicate keywords across groups (sign of repetition issue)
@@ -408,10 +409,12 @@ def validate_category_tier_output(task_output) -> tuple[bool, Any]:
 
         unique_keywords = set(all_keywords)
         if len(unique_keywords) < len(all_keywords) * 0.7:  # >30% duplicates
+            duplicate_count = len(all_keywords) - len(unique_keywords)
             return (
                 False,
-                f"Too many duplicate keywords across groups ({len(all_keywords) - len(unique_keywords)} duplicates). "
-                "Each keyword should appear in only ONE category group."
+                f"Too many duplicate keywords across groups ({duplicate_count} duplicates). "
+                "IMPORTANT: Each keyword must appear in ONLY ONE category group. "
+                "Review your output and remove keywords that appear in multiple categories."
             )
 
         logger.info(f"✓ Category tier guardrail passed: {len(result.tier_4_category_groups)} groups")

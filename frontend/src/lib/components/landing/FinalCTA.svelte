@@ -38,7 +38,7 @@
 			<div class="animate-fade-in flex flex-wrap justify-center gap-3 mb-6 sm:mb-8">
 				<div class="inline-flex items-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-accent/10 border border-accent/30">
 					<Sparkles class="w-3.5 sm:w-4 h-3.5 sm:h-4 text-accent" />
-					<span class="text-xs sm:text-sm font-medium text-accent">$49 per report</span>
+					<span class="text-xs sm:text-sm font-medium text-accent">Starting at $19</span>
 				</div>
 			</div>
 
