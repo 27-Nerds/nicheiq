@@ -25,7 +25,7 @@
 			icon: User,
 			title: 'Solo Founders',
 			tagline: 'Validate before you build',
-			description: "Stop wasting months building something nobody wants. Get proof your idea has real demand in 12 minutes.",
+			description: "Stop wasting months building something nobody wants. Get proof your idea has real demand in 45 minutes.",
 			benefits: [
 				'Know your market size (TAM/SAM/SOM)',
 				'Get validated pricing recommendations',

@@ -39,7 +39,7 @@
 	const features = [
 		{ icon: Target, text: '16-stage validation pipeline' },
 		{ icon: FileText, text: '18+ validated pain points with sources' },
-		{ icon: TrendingUp, text: '150+ keywords with live search volumes' },
+		{ icon: TrendingUp, text: '100+ keywords with live search volumes' },
 		{ icon: Users, text: 'Competitive landscape analysis' },
 		{ icon: BarChart3, text: 'Complete SEO strategy' },
 		{ icon: Clock, text: 'GTM blueprint with 30-day playbook' },
@@ -93,7 +93,7 @@
 							<div>
 								<h4 class="font-semibold text-success text-xs sm:text-sm">Zero-Risk Guarantee</h4>
 								<p class="text-[11px] sm:text-xs text-text-muted">
-									Less than 5 pain points? Full refund + $25 gift card.
+									Less than 5 pain points? Full refund.
 								</p>
 							</div>
 						</div>

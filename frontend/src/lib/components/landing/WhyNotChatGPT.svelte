@@ -51,7 +51,7 @@
 			title: 'Chat vs. Professional Report',
 			problem: "Conversational back-and-forth instead of structured deliverables",
 			competitor: 'Deep Research: 3-minute chat response you copy/paste',
-			nicheiq: 'Structured 34-field report with visualizations & source links',
+			nicheiq: 'Structured 50+ field report with visualizations & source links',
 			detail: 'Chat responses require manual organization. NicheIQ delivers a professional report: executive summary, competitive analysis, SEO strategy, and GTM blueprint.'
 		}
 	];

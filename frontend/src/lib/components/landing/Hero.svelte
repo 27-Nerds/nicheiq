@@ -23,7 +23,7 @@
     { text: "> Scanning social media for pain points...", highlight: false },
     { text: "> Found 89 relevant discussions", highlight: false },
     { text: "> Extracting 18 pain points with severity scores...", highlight: false },
-    { text: "> Validating 150+ keywords with search data...", highlight: false },
+    { text: "> Validating 100+ keywords with search data...", highlight: false },
     { text: "> Calculating market size (TAM/SAM/SOM)...", highlight: false },
     { text: "> Verification: Solo-launchable with minimal budget", highlight: true },
     { text: "> Projected revenue: $5K-15K MRR", highlight: true },
@@ -54,7 +54,7 @@
   // Trigger counting when visible
   $effect(() => {
     if (isVisible) {
-      minuteCount.set(12);
+      minuteCount.set(45);
       painPointCount.set(18);
       verifyCount.set(100);
     }
@@ -96,7 +96,7 @@
         <h1
           class="animate-fade-in delay-100 font-display text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
         >
-          Validate Your SaaS Idea in <span class="text-gradient-animated">12 Minutes.</span>
+          Validate Your SaaS Idea in <span class="text-gradient-animated">45 Minutes.</span>
           <br class="hidden sm:block" /><span class="sm:hidden"> </span>Real Pain Points. Real Data. <span class="text-gradient-animated">Zero Guesswork.</span>
         </h1>
 

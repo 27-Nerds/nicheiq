@@ -53,7 +53,7 @@
 			number: '2',
 			icon: Cpu,
 			title: 'NicheIQ Does Everything',
-			time: '~12 minutes',
+			time: '~45 minutes',
 			description: 'NicheIQ searches social communities, validates keywords, and analyzes your market'
 		},
 		{
@@ -61,7 +61,7 @@
 			icon: Download,
 			title: 'Get Personal Business Blueprint',
 			time: 'Instant download',
-			description: 'Get validated pain points, solution opportunities, 150+ SEO keywords, and a clear go/no-go verdict. Everything you need to build fast.'
+			description: 'Get validated pain points, solution opportunities, 100+ SEO keywords, and a clear go/no-go verdict. Everything you need to build fast.'
 		},
 		{
 			number: '4',
@@ -142,7 +142,7 @@
 			id: 9,
 			name: 'SEO Strategy',
 			icon: BarChart3,
-			metric: '150+ keywords tiered',
+			metric: '100+ keywords tiered',
 			description: 'Comprehensive keyword research with strategic tiering and content planning.',
 			details: 'Iterative expansion from seed keywords. Tier 0 (Premium), Tier 1 (Quick Wins), Tier 2 (Growth) classification. Full content strategy included.'
 		},

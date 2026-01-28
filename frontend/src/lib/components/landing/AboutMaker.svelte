@@ -54,7 +54,7 @@
 							</p>
 
 							<p>
-								Built with CrewAI + multi-agent AI, NicheIQ runs the same research process I used to do manually—except it takes 12 minutes instead of 3 weeks. Every claim links to a real source. Every data point is verifiable. No hallucinations, no guessing.
+								Built with CrewAI + multi-agent AI, NicheIQ runs the same research process I used to do manually—except it takes 45 minutes instead of 3 weeks. Every claim links to a real source. Every data point is verifiable. No hallucinations, no guessing.
 							</p>
 						</div>
 					</div>

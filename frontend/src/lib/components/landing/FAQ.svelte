@@ -30,7 +30,7 @@
 		{
 			question: "How is this different from Perplexity Deep Research?",
 			answer:
-				"Perplexity searches the open web for indexed social pages. NicheIQ connects directly to social platforms, accessing real-time posts, comments, and engagement data that web crawlers miss. Plus, NicheIQ validates keywords with real search APIs - actual volumes, not estimates. And you get a structured 34-field report, not chat responses."
+				"Perplexity searches the open web for indexed social pages. NicheIQ connects directly to social platforms, accessing real-time posts, comments, and engagement data that web crawlers miss. Plus, NicheIQ validates keywords with real search APIs - actual volumes, not estimates. And you get a structured 50+ field report, not chat responses."
 		},
 		{
 			question: "Why not just use Grok's DeepSearch?",
@@ -60,17 +60,17 @@
 		{
 			question: 'Can I get a refund?',
 			answer:
-				"Yes - Zero-Risk Research Guarantee. If your report doesn't deliver at least 5 validated pain points with verifiable sources, I refund 100% plus a $25 Amazon gift card for your time. Email support@nicheiq.com within 48 hours with your report ID."
+				"Yes. If your report doesn't deliver at least 5 validated pain points with verifiable sources, you get a full refund. Email support@nicheiq.com within 7 days with your report ID."
 		},
 		{
 			question: 'What if my niche is too specialized?',
 			answer:
-				"NicheIQ works best when there's active social discussion about your niche. Consumer SaaS, developer tools, and creator tools typically have great coverage. For highly specialized B2B niches, you might get fewer data points. The guarantee covers this: less than 5 validated pain points = full refund + $25."
+				"NicheIQ works best when there's active social discussion about your niche. Consumer SaaS, developer tools, and creator tools typically have great coverage. For highly specialized B2B niches, you might get fewer data points. The guarantee still applies: less than 5 validated pain points means a full refund."
 		},
 		{
 			question: 'What formats do reports come in?',
 			answer:
-				'Reports are delivered as structured JSON (for programmatic use) with optional PDF export (human-readable). The JSON includes all 34+ data fields including pain points, solutions, keywords, competitive analysis, and GTM blueprint.'
+				'Reports are delivered as structured JSON that you can download and process programmatically. The JSON includes 50+ data fields including pain points, solutions, keywords, competitive analysis, and GTM blueprint.'
 		},
 		{
 			question: 'Can competitors see my research?',

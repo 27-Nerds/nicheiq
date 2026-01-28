@@ -50,7 +50,7 @@
 
 			<!-- Subheadline - Mobile optimized -->
 			<p class="animate-fade-in delay-200 text-lg sm:text-xl text-text-muted mb-2 max-w-2xl mx-auto">
-				Real data. Real sources. 12 minutes.
+				Real data. Real sources. 45 minutes.
 			</p>
 			<p class="animate-fade-in delay-300 text-lg sm:text-xl text-text-primary font-medium mb-8 sm:mb-12 max-w-2xl mx-auto">
 				Then get back to building.

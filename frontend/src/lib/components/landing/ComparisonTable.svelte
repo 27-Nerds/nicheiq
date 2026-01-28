@@ -41,7 +41,7 @@
 		{
 			name: 'Time to Results',
 			icon: Clock,
-			nicheiq: '12 minutes',
+			nicheiq: '45 minutes',
 			perplexity: '3-5 min',
 			grok: '3-5 min',
 			painonsocial: '~10 min'
@@ -81,7 +81,7 @@
 		{
 			name: 'Structured Report',
 			icon: FileText,
-			nicheiq: '34 fields',
+			nicheiq: '50+ fields',
 			perplexity: 'Chat',
 			grok: 'Chat',
 			painonsocial: 'partial'
@@ -89,7 +89,7 @@
 		{
 			name: 'SEO Strategy',
 			icon: Search,
-			nicheiq: '150+ keywords',
+			nicheiq: '100+ keywords',
 			perplexity: 'cross',
 			grok: 'cross',
 			painonsocial: 'cross'
@@ -373,7 +373,7 @@
 				</div>
 				<div class="differentiator-callout">
 					<TrendingUp class="w-5 h-5 text-accent flex-shrink-0" />
-					<span><strong>SEO Strategy</strong> — 150+ keywords validated</span>
+					<span><strong>SEO Strategy</strong> — 100+ keywords validated</span>
 				</div>
 				<div class="differentiator-callout">
 					<Shield class="w-5 h-5 text-accent flex-shrink-0" />

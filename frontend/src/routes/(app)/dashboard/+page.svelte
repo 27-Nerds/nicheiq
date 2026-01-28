@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { onDestroy } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
   import { browser } from '$app/environment';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
   import { subscribeToProgress, isTerminalStatus } from '$lib/api';
@@ -61,7 +61,8 @@
   const initialJobs = $derived(data.jobs as Job[]);
 
   // Track SSE subscriptions and live job updates
-  let sseUnsubscribers = new SvelteMap<string, () => void>();
+  // Use regular Map for sseUnsubscribers since it doesn't need to trigger reactive updates
+  const sseUnsubscribers = new Map<string, () => void>();
   let jobUpdates = new SvelteMap<string, Job>();
 
   // Merge initial jobs with live updates and sort by priority
@@ -169,40 +170,46 @@
   }
 
   // Connect SSE for active jobs (including queued to catch status changes)
-  $effect(() => {
-    const activeJobsList = initialJobs.filter(j =>
-      !isTerminalStatus(j.status)
-    );
+  // Use $effect.pre with untrack() to prevent reactive tracking of map mutations
+  $effect.pre(() => {
+    // Only track initialJobs for dependencies
+    const activeJobsList = initialJobs.filter(j => !isTerminalStatus(j.status));
 
-    // Connect to SSE for each active job
-    for (const job of activeJobsList) {
-      if (!sseUnsubscribers.has(job.id)) {
-        const unsubscribe = subscribeToProgress(
-          job.id,
-          (data) => {
-            jobUpdates.set(job.id, data as Job);
+    // Use untrack to prevent tracking map mutations
+    untrack(() => {
+      // Connect to SSE for each active job
+      for (const job of activeJobsList) {
+        if (!sseUnsubscribers.has(job.id)) {
+          const unsubscribe = subscribeToProgress(
+            job.id,
+            (data) => {
+              jobUpdates.set(job.id, data as Job);
 
-            // Cleanup subscription if job reached terminal state
-            if (isTerminalStatus(data.status)) {
-              sseUnsubscribers.get(job.id)?.();
-              sseUnsubscribers.delete(job.id);
-            }
-          },
-          (err) => console.warn(`SSE error for job ${job.id}:`, err.message)
-        );
+              // Cleanup subscription if job reached terminal state
+              if (isTerminalStatus(data.status)) {
+                sseUnsubscribers.get(job.id)?.();
+                sseUnsubscribers.delete(job.id);
+                // Prune completed job data after brief delay (allows final UI update)
+                setTimeout(() => jobUpdates.delete(job.id), 5000);
+              }
+            },
+            (err) => console.warn(`SSE error for job ${job.id}:`, err.message)
+          );
 
-        sseUnsubscribers.set(job.id, unsubscribe);
+          sseUnsubscribers.set(job.id, unsubscribe);
+        }
       }
-    }
 
-    // Cleanup subscriptions for jobs no longer active
-    for (const [jobId, unsubscribe] of sseUnsubscribers) {
-      const job = getJobData(jobId);
-      if (!job || isTerminalStatus(job.status)) {
-        unsubscribe();
-        sseUnsubscribers.delete(jobId);
+      // Cleanup subscriptions for jobs no longer active
+      // Use initialJobs.find() instead of getJobData() to avoid reading jobUpdates
+      for (const [jobId] of sseUnsubscribers) {
+        const job = initialJobs.find(j => j.id === jobId);
+        if (!job || isTerminalStatus(job.status)) {
+          sseUnsubscribers.get(jobId)?.();
+          sseUnsubscribers.delete(jobId);
+        }
       }
-    }
+    });
   });
 
   // Cleanup on destroy

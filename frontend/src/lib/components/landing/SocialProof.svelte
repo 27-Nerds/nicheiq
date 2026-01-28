@@ -48,7 +48,7 @@
 		{ value: '47', label: 'Reports delivered' },
 		{ value: '800+', label: 'Pain points discovered' },
 		{ value: '89%', label: 'Satisfaction rate' },
-		{ value: '12 min', label: 'Average delivery' }
+		{ value: '45 min', label: 'Average delivery' }
 	];
 </script>
 
