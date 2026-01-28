@@ -22,7 +22,7 @@
 
 NicheIQ is built on **CrewAI**, a framework for orchestrating collaborative AI agent teams. The architecture combines:
 
-- **Flow-based orchestration** (ResearchFlow) - Main 10-stage pipeline
+- **Flow-based orchestration** (ResearchFlow) - Main 16-stage pipeline
 - **Multi-agent Crews** - Specialized teams for complex tasks (pain point analysis, solution development, SEO strategy)
 - **Knowledge Sources (RAG)** - Semantic search over 400-2000+ embedded items
 - **Hybrid Python + LLM generation** - Cost-optimized report assembly
@@ -33,7 +33,7 @@ ResearchFlow (Flow[ResearchState])
 ├── Stage 5: Search & discover (Flow + validation utilities)
 ├── Stage 6: PainPointCrew (3 agents, RAG)
 ├── Stages 7-8.75: UnifiedSolutionCrew (6 agents, context chaining)
-├── Stage 9: SEOStrategyCrew (3 agents, CSV input)
+├── Stage 9: SEOStrategyCrew (11 agents, CSV input)
 └── Stage 10: ReportGenerator (Hybrid Python + LLM)
 ```
 

@@ -4,7 +4,7 @@ Deep technical architecture documentation for developers and contributors.
 
 ## Table of Contents
 - [Design Philosophy](#design-philosophy)
-- [10-Stage Pipeline](#10-stage-pipeline)
+- [16-Stage Pipeline](#16-stage-pipeline)
 - [Structured Output Strategy](#structured-output-strategy)
 - [Data Passing Architecture](#data-passing-architecture)
 - [Multi-Agent Design Patterns](#multi-agent-design-patterns)
@@ -38,7 +38,7 @@ NicheIQ uses a hybrid architecture combining CrewAI Flows (orchestration) with s
 
 ---
 
-## 10-Stage Pipeline
+## 16-Stage Pipeline
 
 ### Stage 1-4: Niche Validation (Flow Methods)
 

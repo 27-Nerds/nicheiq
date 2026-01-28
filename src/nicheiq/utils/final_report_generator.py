@@ -70,7 +70,7 @@ def _generate_header(report: FinalReport) -> str:
 ---
 
 **Generated:** {timestamp}
-**Research Pipeline:** NicheIQ 10-Stage Analysis"""
+**Research Pipeline:** NicheIQ 16-Stage Analysis"""
 
 def _generate_executive_summary(report: FinalReport) -> str:
     """Generate executive summary section."""

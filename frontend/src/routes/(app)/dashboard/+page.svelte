@@ -449,7 +449,7 @@
           Start Your First Research
         </button>
         <p class="text-xs text-text-muted mt-4">
-          Average research takes 5-10 minutes to complete
+          Average research takes ~45 minutes to complete
         </p>
       </div>
     </div>

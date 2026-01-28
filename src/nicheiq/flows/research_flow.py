@@ -1,5 +1,5 @@
 """
-ResearchFlow - Main orchestration flow for the 10-stage market research pipeline.
+ResearchFlow - Main orchestration flow for the 16-stage market research pipeline.
 Combines Flow-based orchestration with specialized Crews for complex analysis.
 """
 
@@ -55,7 +55,7 @@ class QualityGateStopException(Exception):
 
 class ResearchFlow(Flow[ResearchState]):
     """
-    Main research flow orchestrating all 10 stages of the NicheIQ pipeline.
+    Main research flow orchestrating all 16 stages of the NicheIQ pipeline.
 
     Stages:
     1-4: Niche Input & Validation (Flow)

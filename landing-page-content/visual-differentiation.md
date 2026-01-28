@@ -4,7 +4,7 @@
 
 ---
 
-## Visual 1: Interactive 10-Stage Pipeline
+## Visual 1: Interactive 16-Stage Pipeline
 
 ### Concept
 Animated flowchart showing data flowing through each stage with real metrics.
@@ -38,7 +38,7 @@ Interactive SVG/HTML animation
 │ [Progress: ████████████] Complete          │
 └─────────────────────────────────────────────┘
          ↓
-[Continues through all 10 stages...]
+[Continues through all 16 stages...]
 
 Interaction:
 • Hover over any stage → See methodology details
@@ -56,7 +56,7 @@ Interaction:
 ### Copy to Accompany
 ```
 "Not just another ChatGPT prompt.
-A 10-stage autonomous research pipeline."
+A 16-stage autonomous research pipeline."
 
 Watch live as NicheIQ:
 ✓ Searches social media (Stage 5)
@@ -71,7 +71,7 @@ This is AI orchestrating a research agency.
 
 ### Why It Works
 - **Tangible proof:** See the actual process
-- **Complexity visualization:** 10 stages vs 1 ChatGPT prompt
+- **Complexity visualization:** 16 stages vs 1 ChatGPT prompt
 - **Trust building:** Transparency in methodology
 - **Engagement:** Interactive elements keep visitors on page
 

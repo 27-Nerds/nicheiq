@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestrated through a 10-stage research pipeline. Each agent has a specific role, named framework, and verification standards.
+NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestrated through a 16-stage research pipeline. Each agent has a specific role, named framework, and verification standards.
 
 ---
 
@@ -139,7 +139,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────┐
 │                              NicheIQ Research Pipeline                              │
-│                           10-Stage Autonomous AI Research                           │
+│                           16-Stage Autonomous AI Research                           │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 
                                     ┌─────────────┐
@@ -383,7 +383,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
 
 
     ┌─────────────────────────────────────────────────────────┐
-    │  36 AI AGENTS • 11 SPECIALIZED CREWS • 10 STAGES        │
+    │  36 AI AGENTS • 11 SPECIALIZED CREWS • 16 STAGES        │
     │  From idea to validated opportunity in minutes          │
     └─────────────────────────────────────────────────────────┘
 ```

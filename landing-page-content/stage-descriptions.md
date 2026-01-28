@@ -2,7 +2,7 @@
 
 ## Why NicheIQ is Different
 
-Unlike ChatGPT or Claude where you prompt and hope for the best, NicheIQ runs a **10-stage autonomous research pipeline** with built-in validation, live data collection, and multi-agent collaboration. Each stage builds on the previous one, transforming raw data into validated, actionable insights.
+Unlike ChatGPT or Claude where you prompt and hope for the best, NicheIQ runs a **16-stage autonomous research pipeline** with built-in validation, live data collection, and multi-agent collaboration. Each stage builds on the previous one, transforming raw data into validated, actionable insights.
 
 ---
 
@@ -168,7 +168,7 @@ Uses `SolutionRefinementCrew` with Strategic Advisor agent. Early exit if `deman
 <details>
 <summary>🔧 Technical details</summary>
 
-Uses `SEOStrategyCrew` with 3 agents: Keyword Strategist (temp=0.0, zero-temp data analysis, CSV input), Content Strategist (temp=0.5, creative strategy), SEO Specialist (temp=0.4, 180s timeout for technical precision). `KeywordSeedGenerator` creates hybrid seeds, `DataForSEO` provides bulk validation + expansion API. `KeywordRelevanceValidator` filters irrelevant suggestions per round. `_validate_seo_synthesis` guardrail ensures 12 critical fields populated. Python merge combines 5 task outputs into 29-field `SEOStrategyReport`.
+Uses `SEOStrategyCrew` with 11 agents: 3 core agents (Keyword Strategist, Content Strategist, SEO Specialist) plus 8 tier analysts (premium_tier, high_priority, tier_0, tier_1, strategic_tier, geographic_tier, category_tier, keyword_summary). `KeywordSeedGenerator` creates hybrid seeds, `DataForSEO` provides bulk validation + expansion API. `KeywordRelevanceValidator` filters irrelevant suggestions per round. `_validate_seo_synthesis` guardrail ensures 12 critical fields populated. Python merge combines 5 task outputs into 29-field `SEOStrategyReport`.
 </details>
 
 ---
@@ -246,7 +246,7 @@ Uses `ReportGenerator` class. Step 1: Python generates 27 fields via direct copy
 
 ## The Result
 
-At the end of this 10-stage pipeline, you have:
+At the end of this 16-stage pipeline, you have:
 
 ✅ **All important pain points** with direct quotes from real people
 ✅ **Multiple solution concepts** with competitive analysis and market gaps

@@ -210,7 +210,7 @@ pytest -v --cov          # With coverage
 src/nicheiq/
 ├── main.py              # CLI entry point
 ├── flows/
-│   └── research_flow.py # 10-stage orchestrator
+│   └── research_flow.py # 16-stage orchestrator
 ├── crews/               # CrewAI crews
 │   ├── pain_point_crew.py
 │   ├── unified_solution_crew.py

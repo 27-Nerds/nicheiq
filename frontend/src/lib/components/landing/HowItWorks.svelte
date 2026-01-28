@@ -214,7 +214,7 @@
 						<!-- Section Header for Stages -->
 						<div class="text-center mb-8 sm:mb-12">
 							<h3 class="font-display text-xl sm:text-2xl font-semibold text-text-primary mb-2">
-								10-Stage Autonomous Pipeline
+								16-Stage Autonomous Pipeline
 							</h3>
 							<p class="text-text-muted text-xs sm:text-sm">
 								Each stage is built with validation and quality checks

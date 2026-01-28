@@ -45,7 +45,7 @@ class TestGenerateHeader:
         header = _generate_header(mock_report)
 
         assert "NicheIQ" in header
-        assert "10-Stage" in header
+        assert "16-Stage" in header
 
 
 class TestGenerateExecutiveSummary:

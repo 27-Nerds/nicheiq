@@ -4,7 +4,7 @@ Your market research for "{{NICHE}}" has started processing.
 
 Our AI agents are now analyzing social media discussions, validating market opportunities, and generating your comprehensive research report.
 
-This typically takes about 1 hour. We'll email you when it's ready!
+This typically takes about 45 minutes. We'll email you when it's ready!
 
 Track Progress: {{STATUS_URL}}
 

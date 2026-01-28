@@ -15,7 +15,7 @@ Frontend (SvelteKit) → Backend (Express) → Redis Queue → Worker → Python
 | Frontend | SvelteKit 5, Tailwind CSS | Web dashboard for job management |
 | Backend | Express.js, Prisma, PostgreSQL | REST API with job queue |
 | Worker | Python 3.12, RQ | Async job processor |
-| Pipeline | CrewAI, GPT-4o | 10-stage research automation |
+| Pipeline | CrewAI, GPT-4o | 16-stage research automation |
 
 ---
 
@@ -25,7 +25,7 @@ Frontend (SvelteKit) → Backend (Express) → Redis Queue → Worker → Python
 - **Real-time Updates** - SSE-based progress tracking with stage indicators
 - **OAuth Authentication** - Google and GitHub login
 - **Email Notifications** - Job completion alerts
-- **10-Stage Research Pipeline** - Pain point analysis, solution ideation, competitive analysis, SEO strategy
+- **16-Stage Research Pipeline** - Pain point analysis, solution ideation, competitive analysis, SEO strategy
 - **Landing Page Generation** - AI-generated HTML landing pages from research reports
 
 ---
@@ -126,7 +126,7 @@ nicheiq/
 │   └── progress.py        # Progress reporting
 │
 ├── src/nicheiq/           # Python research pipeline
-│   ├── flows/             # 10-stage orchestrator
+│   ├── flows/             # 16-stage orchestrator
 │   ├── crews/             # CrewAI agent crews
 │   ├── models/            # Pydantic data models
 │   ├── tools/             # Reddit, Twitter, DataForSEO tools

@@ -35,7 +35,7 @@ NicheIQ: Low - objective data from social media, no confirmation bias
 
 REPEATABILITY
 Upwork: Different analyst = different methodology each time
-NicheIQ: Same 10-stage pipeline, consistent quality
+NicheIQ: Same 16-stage pipeline, consistent quality
 
 VERIFICATION
 Upwork: You trust analyst's word, some spot-check sourcing
@@ -246,7 +246,7 @@ You handle the strategic thinking (positioning, vision, storytelling).
 ```
 How we ensure quality despite automation:
 
-✓ 10-stage pipeline with validation at each step
+✓ 16-stage pipeline with validation at each step
 ✓ Anti-hallucination checks (min 3 discussions, 5 comments required)
 ✓ Source tracking (every claim traceable to post)
 ✓ Relevance scoring (semantic validation, threshold 0.6)

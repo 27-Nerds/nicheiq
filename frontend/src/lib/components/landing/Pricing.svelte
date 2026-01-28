@@ -37,7 +37,7 @@
 	});
 
 	const features = [
-		{ icon: Target, text: '10-stage validation pipeline' },
+		{ icon: Target, text: '16-stage validation pipeline' },
 		{ icon: FileText, text: '18+ validated pain points with sources' },
 		{ icon: TrendingUp, text: '150+ keywords with live search volumes' },
 		{ icon: Users, text: 'Competitive landscape analysis' },

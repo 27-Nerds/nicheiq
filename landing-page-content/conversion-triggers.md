@@ -317,7 +317,7 @@ we'll refund you if it doesn't deliver.
 │ send you a $25 Amazon gift card for your time. │
 │                                                 │
 │ Why we can offer this:                         │
-│ Our 10-stage pipeline has successfully         │
+│ Our 16-stage pipeline has successfully         │
 │ validated markets across 347 research runs     │
 │ with a 96% success rate. The data is out       │
 │ there - we find it.                            │

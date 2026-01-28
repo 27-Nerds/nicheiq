@@ -445,7 +445,7 @@ python -m nicheiq.main --niche "AI tools for content creators"
 
 ### What to Expect
 
-The research will run through 10 stages:
+The research will run through 16 stages:
 
 ```
 ================================================================================
@@ -477,7 +477,7 @@ Running pain point analysis crew...
 ✓ Total mentions: 87
 ✓ High-opportunity pain points: 5
 
-... (continues through all 10 stages) ...
+... (continues through all 16 stages) ...
 
 ================================================================================
 RESEARCH COMPLETE - EXECUTIVE SUMMARY

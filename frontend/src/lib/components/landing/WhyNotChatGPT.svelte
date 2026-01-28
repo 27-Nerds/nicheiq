@@ -35,7 +35,7 @@
 			title: 'General vs. Specialized',
 			problem: "AI research tools answer any question with no structure",
 			competitor: 'ChatGPT/Perplexity: "Based on my analysis..." (open-ended)',
-			nicheiq: '10-stage SaaS validation pipeline with defined outputs',
+			nicheiq: '16-stage SaaS validation pipeline with defined outputs',
 			detail: 'Deep Research tools are general-purpose. NicheIQ is purpose-built for SaaS validation: pain points → solutions → keywords → competitors → SEO strategy.'
 		},
 		{

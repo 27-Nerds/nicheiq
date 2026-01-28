@@ -45,7 +45,7 @@
 		{
 			question: 'How long does research take?',
 			answer:
-				'Typically 10-15 minutes. The system autonomously searches social media, extracts pain points, calculates market sizing, validates pricing, and compiles your report. You submit your niche and wait while the 10-stage pipeline runs.'
+				'Typically 10-15 minutes. The system autonomously searches social media, extracts pain points, calculates market sizing, validates pricing, and compiles your report. You submit your niche and wait while the 16-stage pipeline runs.'
 		},
 		{
 			question: 'How do you calculate market size?',

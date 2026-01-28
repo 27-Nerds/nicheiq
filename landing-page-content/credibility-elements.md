@@ -222,7 +222,7 @@ Tertiary: "Preview Sample Pain Point Analysis"
 ## Element 4: Methodology Transparency Page
 
 ### Headline
-**"How NicheIQ Research Works: Our 10-Stage Pipeline"**
+**"How NicheIQ Research Works: Our 16-Stage Pipeline"**
 
 ### Copy Example
 ```
@@ -255,7 +255,7 @@ Process:
 Output: Scored pain points with quotes + attribution
 Quality check: Anti-hallucination (min 3 discussions, 5 comments required)
 
-[Continue for all 10 stages...]
+[Continue for all 16 stages...]
 
 Why Transparency Matters:
 ✓ You understand where data comes from
@@ -513,7 +513,7 @@ Overall Confidence: ████████░░ HIGH (0.84)
 
 Before launch, ensure:
 - [ ] At least one sample report downloadable
-- [ ] Methodology page explains all 10 stages
+- [ ] Methodology page explains all 16 stages
 - [ ] Evidence examples with working Reddit/social links
 - [ ] Quality metrics visible and explained
 - [ ] Guarantee terms clear and prominent

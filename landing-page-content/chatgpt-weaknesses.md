@@ -270,7 +270,7 @@ NicheIQ isn't "ChatGPT with better prompts."
 It's a different architecture designed for research:
 ✅ Live API integrations (Reddit, social media, DataForSEO)
 ✅ Multi-stage validation pipeline (10 quality checkpoints)
-✅ Autonomous tool orchestration (6 specialized AI crews)
+✅ Autonomous tool orchestration (11 specialized AI crews)
 ✅ Source attribution system (every claim traceable)
 
 The difference: Research tools vs conversational AI.
