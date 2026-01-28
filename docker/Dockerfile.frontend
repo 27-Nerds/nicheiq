@@ -7,7 +7,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 
 # Build arguments for SvelteKit (needed at build time)
-ARG PUBLIC_API_URL=https://nicheiq.27n.gg
+ARG PUBLIC_API_URL=https://nicheiq.dev
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
 
 # Copy package files

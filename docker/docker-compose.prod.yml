@@ -95,8 +95,8 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
       # CORS & URLs
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://nicheiq.27n.gg}
-      BASE_URL: ${BASE_URL:-https://nicheiq.27n.gg}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://nicheiq.dev}
+      BASE_URL: ${BASE_URL:-https://nicheiq.dev}
       # Email (optional)
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -207,7 +207,7 @@ services:
       context: ../frontend
       dockerfile: ../docker/Dockerfile.frontend
       args:
-        PUBLIC_API_URL: ${PUBLIC_API_URL:-https://nicheiq.27n.gg}
+        PUBLIC_API_URL: ${PUBLIC_API_URL:-https://nicheiq.dev}
     container_name: nicheiq-frontend
     restart: unless-stopped
     environment:
@@ -216,7 +216,7 @@ services:
       PUBLIC_API_URL: http://api:3001
       BACKEND_URL: http://api:3001
       # External API URL for client-side requests (passed at build time)
-      ORIGIN: ${ORIGIN:-https://nicheiq.27n.gg}
+      ORIGIN: ${ORIGIN:-https://nicheiq.dev}
       # Database for Auth.js
       DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
       # Auth.js configuration
