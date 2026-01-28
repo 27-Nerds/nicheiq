@@ -97,12 +97,17 @@ services:
       # CORS & URLs
       CORS_ORIGINS: ${CORS_ORIGINS:-https://nicheiq.dev}
       BASE_URL: ${BASE_URL:-https://nicheiq.dev}
-      # Email (optional)
+      # Email (optional) - set EMAIL_PROVIDER to 'sendgrid' or 'smtp'
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp}
+      SENDGRID_API_KEY: ${SENDGRID_API_KEY:-}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       FROM_EMAIL: ${FROM_EMAIL:-}
+      # Stripe
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       # Job settings
       JOB_TTL_SECONDS: ${JOB_TTL_SECONDS:-604800}
       # Niche suggestion settings
