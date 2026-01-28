@@ -735,7 +735,7 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes CSV data provided in task context
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,  # Zero temperature (ignored for reasoning models)
+                temperature=0.1,  # Low temperature to avoid repetition loops
             )),
             verbose=True,
         )
@@ -763,7 +763,7 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Low temperature to avoid repetition loops
             )),
             verbose=True,
         )
@@ -793,7 +793,7 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Low temperature to avoid repetition loops
             )),
             verbose=True,
         )
@@ -816,7 +816,7 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Low temperature to avoid repetition loops
             )),
             verbose=True,
         )
@@ -839,7 +839,7 @@ class SEOStrategyCrew:
             tools=[],  # No tools needed - analyzes pre-filtered CSV data
             llm=ChatOpenAI(**build_llm_kwargs(
                 model=settings.openai_model_name,
-                temperature=0.0,
+                temperature=0.1,  # Low temperature to avoid repetition loops
             )),
             verbose=True,
         )

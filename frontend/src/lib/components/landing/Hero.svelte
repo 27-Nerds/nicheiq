@@ -116,7 +116,7 @@
         <p
           class="animate-fade-in delay-300 text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-xl mx-auto"
         >
-          I scour Reddit & Twitter to find real problems people are willing to pay to solve. You get a validated opportunity report with market sizing, competitive analysis, and a clear go/no-go verdict.
+          NicheIQ scours Reddit & Twitter to find real problems people are willing to pay to solve. You get a validated opportunity report with market sizing, competitive analysis, and a clear go/no-go verdict.
         </p>
 
         <!-- Terminal Animation - Mobile optimized with responsive height -->

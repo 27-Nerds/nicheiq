@@ -25,7 +25,7 @@
 			icon: Shield,
 			title: 'Zero Hallucination Guarantee',
 			description:
-				"80% of the report is programmatic data assembly. Only 20% uses LLM synthesis. If any claim can't be traced to a source, I refund 100% + $25.",
+				'80% of the report is programmatic data assembly. Only 20% uses LLM synthesis.',
 			metric: '<1%',
 			metricLabel: 'Hallucination Rate'
 		},
