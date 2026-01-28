@@ -60,6 +60,37 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
   });
   res.write(`data: ${JSON.stringify(initialData)}\n\n`);
 
+  // Queue position polling interval (only for QUEUED jobs)
+  // This ensures users see updated queue positions as other jobs complete
+  let queuePollInterval: NodeJS.Timeout | null = null;
+
+  if (job.status === JobStatus.QUEUED) {
+    queuePollInterval = setInterval(async () => {
+      try {
+        const currentJob = await getJob(jobId);
+        if (currentJob?.status === JobStatus.QUEUED) {
+          const stats = await getQueueStats(jobId);
+          const data = formatJobResponse(currentJob, {
+            includeProgress: true,
+            includeAssets: true,
+            includeCreatedAt: true,
+            includeAssetFlags: true,
+            queueStats: stats,
+          });
+          res.write(`data: ${JSON.stringify(data)}\n\n`);
+        } else {
+          // Job no longer queued, stop polling (progress updates will take over)
+          if (queuePollInterval) {
+            clearInterval(queuePollInterval);
+            queuePollInterval = null;
+          }
+        }
+      } catch (error) {
+        console.error('Error polling queue position:', error);
+      }
+    }, 10000); // Poll every 10 seconds
+  }
+
   // Subscribe to progress updates via EventEmitter
   // Note: progressData is unused because we fetch fresh state from DB
   const unsubscribe = subscribeToJobProgress(jobId, async (_progressData: ProgressData) => {
@@ -67,6 +98,12 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
       // Fetch updated job state from DB and send to client
       const updatedJob = await getJob(jobId);
       if (updatedJob) {
+        // Stop queue polling if job is no longer queued
+        if (updatedJob.status !== JobStatus.QUEUED && queuePollInterval) {
+          clearInterval(queuePollInterval);
+          queuePollInterval = null;
+        }
+
         const updatedQueueStats = updatedJob.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
         const data = formatJobResponse(updatedJob, {
           includeProgress: true,
@@ -82,6 +119,10 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
             updatedJob.status === JobStatus.FAILED ||
             updatedJob.status === JobStatus.CANCELLED) {
           clearInterval(heartbeat);
+          if (queuePollInterval) {
+            clearInterval(queuePollInterval);
+            queuePollInterval = null;
+          }
           unsubscribe();
           res.end();
         }
@@ -99,6 +140,10 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
   // Cleanup on client disconnect
   req.on('close', () => {
     clearInterval(heartbeat);
+    if (queuePollInterval) {
+      clearInterval(queuePollInterval);
+      queuePollInterval = null;
+    }
     unsubscribe();
     console.log(`SSE connection closed for job ${jobId}`);
   });
