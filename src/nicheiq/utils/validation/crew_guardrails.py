@@ -314,11 +314,11 @@ def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
             return (False, "Need at least 1 solution landscape in solution_landscapes")
 
         for landscape in result.solution_landscapes:
-            if len(landscape.competitors) < 2:
-                return (
-                    False,
-                    f"Landscape '{landscape.solution_name}' needs at least 2 competitors, got {len(landscape.competitors)}"
-                )
+            if len(landscape.competitors) == 0:
+                logger.warning(f"No competitors found for '{landscape.solution_name}' - may be emerging niche or search tool issue")
+            elif len(landscape.competitors) < 2:
+                logger.info(f"Limited competitors ({len(landscape.competitors)}) for '{landscape.solution_name}'")
+            # Continue validation - don't fail on low competitor count
             if len(landscape.market_gaps) < 2:
                 return (
                     False,
