@@ -382,6 +382,14 @@ class Settings(BaseSettings):
         description="Minimum tiering coverage (tiered_keywords/enriched_keywords). Warn if below this threshold"
     )
 
+    @field_validator('reddit_comment_limit', 'target_location', mode='before')
+    @classmethod
+    def parse_empty_string_as_none(cls, v):
+        """Convert empty string to None for optional int fields."""
+        if v == '':
+            return None
+        return v
+
     @field_validator('keyword_validation_top_pain_points', 'keyword_validation_top_competitors')
     @classmethod
     def validate_positive_count(cls, v):

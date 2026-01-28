@@ -47,21 +47,21 @@
 			icon: MousePointer,
 			title: 'Enter Your Niche',
 			time: '30 seconds',
-			description: "Pick any niche you want to explore—NicheIQ validates it for you"
+			description: "Pick any niche you're curious about—we'll tell you if it's worth pursuing"
 		},
 		{
 			number: '2',
 			icon: Cpu,
-			title: 'NicheIQ Does Everything',
+			title: 'We Run 16 Stages of Research',
 			time: '~45 minutes',
-			description: 'NicheIQ searches social communities, validates keywords, and analyzes your market'
+			description: 'NicheIQ searches social communities, discovers keywords, and analyzes your market'
 		},
 		{
 			number: '3',
 			icon: Download,
 			title: 'Get Personal Business Blueprint',
 			time: 'Instant download',
-			description: 'Get validated pain points, solution opportunities, 100+ SEO keywords, and a clear go/no-go verdict. Everything you need to build fast.'
+			description: 'Get discovered pain points, solution concepts, 100+ SEO keywords, and a clear GO or NO-GO verdict. Everything you need to move fast.'
 		},
 		{
 			number: '4',
@@ -76,7 +76,7 @@
 	const stages = [
 		{
 			id: 1,
-			name: 'Niche Validation',
+			name: 'Niche Analysis',
 			icon: Target,
 			metric: '3-7 segments defined',
 			description: 'Your niche idea gets refined into a precise market definition with specific customer segments.',
@@ -168,7 +168,7 @@
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl">
-					Enter a niche. Get validated research. Start building.
+					Pick your niche. Get your verdict in 45 minutes. Start building.
 				</p>
 			</div>
 
@@ -202,7 +202,7 @@
 					onclick={() => (showStages = !showStages)}
 					class="w-full flex items-center justify-center gap-3 py-3 sm:py-4 text-text-secondary hover:text-accent transition-colors group"
 				>
-					<span class="font-medium text-sm sm:text-base">See what happens under the hood</span>
+					<span class="font-medium text-sm sm:text-base">See why our research is different</span>
 					<ChevronDown
 						class="w-4 sm:w-5 h-4 sm:h-5 transition-transform duration-300
 						{showStages ? 'rotate-180' : ''}"

@@ -109,11 +109,11 @@
 			<div class="mb-12">
 				<span class="section-label animate-fade-in">Sample Report</span>
 				<h2 class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6">
-					What You'll <span class="text-gradient italic">Actually Get</span>
+					This Is Your <span class="text-gradient italic">Actual Report</span>
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl">
-					Real data from a sample "content repurposing tool" validation. Every metric is verifiable.
+					Here's a real report for a content repurposing tool. Every metric comes from actual discussions and live keyword data.
 				</p>
 			</div>
 
@@ -164,7 +164,7 @@
 									<Target class="w-5 h-5 text-accent" />
 								</div>
 								<div>
-									<h3 class="font-display font-semibold text-text-primary">Validated Pain Points</h3>
+									<h3 class="font-display font-semibold text-text-primary">Pain Points We Found</h3>
 									<p class="text-sm text-text-muted">Extracted from 89 social discussions</p>
 								</div>
 							</div>

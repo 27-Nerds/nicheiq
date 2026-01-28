@@ -23,7 +23,7 @@
 	const trustElements = [
 		{
 			icon: Shield,
-			title: 'Zero Hallucination Guarantee',
+			title: '80% Real Data. Zero Made-Up Numbers.',
 			description:
 				'80% of the report is programmatic data assembly. Only 20% uses LLM synthesis.',
 			metric: '<1%',
@@ -74,11 +74,11 @@
 			<div class="mb-16">
 				<span class="section-label animate-fade-in">Verified Research</span>
 				<h2 class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6">
-					Every Claim. <span class="text-gradient italic">Verified.</span>
+					Every Claim. Verified. <span class="text-gradient italic">Clickable.</span>
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl">
-					Every claim in your report is backed by verifiable sources. Click any link to see the original discussion.
+					Every claim links to its source. Click through, verify it yourself, then decide whether to build.
 				</p>
 			</div>
 

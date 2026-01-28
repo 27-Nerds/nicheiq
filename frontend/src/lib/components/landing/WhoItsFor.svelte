@@ -24,11 +24,11 @@
 		{
 			icon: User,
 			title: 'Solo Founders',
-			tagline: 'Validate before you build',
-			description: "Stop wasting months building something nobody wants. Get proof your idea has real demand in 45 minutes.",
+			tagline: 'Stop building the wrong thing',
+			description: "Stop wasting months on ideas nobody wants. Get market proof in 45 minutes—then build with confidence.",
 			benefits: [
 				'Know your market size (TAM/SAM/SOM)',
-				'Get validated pricing recommendations',
+				'Get data-backed pricing recommendations',
 				'Clear go/no-go verdict with confidence score'
 			]
 		},
@@ -36,7 +36,7 @@
 			icon: Rocket,
 			title: 'Indie Hackers',
 			tagline: 'Find proven niches fast',
-			description: "Skip the guesswork. Let AI analyze thousands of Reddit threads to find niches with real problems worth solving.",
+			description: "Test 5 ideas in an afternoon instead of committing 6 months to one. Find the winners fast.",
 			benefits: [
 				'Analyze 1,000+ posts in minutes',
 				'See WTP (willingness-to-pay) scores',
@@ -47,7 +47,7 @@
 			icon: Users,
 			title: 'Product Teams',
 			tagline: 'Data-driven ideation',
-			description: "Back your product decisions with verified market data. Every insight links to its source for easy validation.",
+			description: "Walk into stakeholder meetings with proof, not guesses. Every insight links to its source.",
 			benefits: [
 				'Market sizing for stakeholder buy-in',
 				'Risk assessment with confidence scores',
@@ -74,7 +74,7 @@
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl">
-					NicheIQ is built for makers who want to validate fast and build with confidence.
+					For makers who'd rather validate in 45 minutes than guess for 6 months.
 				</p>
 			</div>
 
@@ -121,7 +121,7 @@
 						Not the right fit for everyone
 					</h4>
 					<p class="text-text-muted text-xs sm:text-sm text-center mb-3 sm:mb-4">
-						NicheIQ is specialized for fast SaaS validation. For these use cases, consider alternatives:
+						NicheIQ is specialized for fast SaaS market research. For these use cases, consider alternatives:
 					</p>
 					<ul class="space-y-2">
 						{#each antiPersonas as antiPersona}

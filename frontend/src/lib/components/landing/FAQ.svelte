@@ -23,9 +23,9 @@
 	// Optimized FAQs: Trust first, consolidated competitor question, common objections
 	const faqs = [
 		{
-			question: "How do I know the AI isn't making this up?",
+			question: "Can I trust the numbers? Or is this AI hallucinating?",
 			answer:
-				"Every pain point in your report links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination."
+				"No hallucinations. 80% of your report is real data from APIs—keyword volumes, source discussions, engagement metrics. Every pain point links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination."
 		},
 		{
 			question: "Can't I just use ChatGPT, Perplexity, or Grok?",
@@ -40,7 +40,7 @@
 		{
 			question: 'How do you calculate market size and pricing?',
 			answer:
-				"Market sizing (TAM/SAM/SOM) uses real keyword search volumes from DataForSEO API - actual search demand, not AI estimates. Pricing recommendations combine competitor analysis (what similar tools charge) with willingness-to-pay signals from customer discussions. The report shows methodology so you can verify the numbers."
+				"Market sizing (TAM/SAM/SOM) uses real keyword search volumes from DataForSEO API - actual search demand, not AI estimates. Pricing recommendations combine competitor analysis (what similar tools charge) with willingness-to-pay signals from customer discussions. The report shows methodology so you can analyze the numbers."
 		},
 		{
 			question: 'Can I get a refund?',

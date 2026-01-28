@@ -96,8 +96,8 @@
         <h1
           class="animate-fade-in delay-100 font-display text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
         >
-          Validate Your SaaS Idea in <span class="text-gradient-animated">45 Minutes.</span>
-          <br class="hidden sm:block" /><span class="sm:hidden"> </span>Real Pain Points. Real Data. <span class="text-gradient-animated">Zero Guesswork.</span>
+          Discover Your Next SaaS Opportunity in <span class="text-gradient-animated">45 Minutes.</span>
+          <br class="hidden sm:block" /><span class="sm:hidden"> </span>Real Problems. Real Data. <span class="text-gradient-animated">No More Guessing.</span>
         </h1>
 
         <!-- Accent line -->
@@ -109,14 +109,14 @@
         <p
           class="animate-fade-in delay-200 text-lg sm:text-xl lg:text-2xl text-text-secondary leading-relaxed mb-4 sm:mb-6 max-w-2xl mx-auto"
         >
-          Real data from real discussions.
-          <span class="text-text-primary font-medium">Every claim is verifiable.</span>
+          Real conversations from real people.
+          <span class="text-text-primary font-medium">Every insight you get—verified.</span>
         </p>
 
         <p
           class="animate-fade-in delay-300 text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-xl mx-auto"
         >
-          NicheIQ scours Reddit & Twitter to find real problems people are willing to pay to solve. You get a validated opportunity report with market sizing, competitive analysis, and a clear go/no-go verdict.
+          We scan hundreds of Reddit & Twitter discussions to surface problems worth solving—that people will actually pay for. You get a research-backed opportunity report with market sizing, competitive analysis, and a clear go/no-go verdict.
         </p>
 
         <!-- Terminal Animation - Mobile optimized with responsive height -->
@@ -164,7 +164,7 @@
               href="/register"
               class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
             >
-              Get My First Report
+              Validate My First Idea
               <ArrowRight class="w-5 h-5" />
             </a>
           {/if}
@@ -178,7 +178,7 @@
             <span class="block text-2xl sm:text-3xl font-display font-bold text-accent tracking-tight">
               {Math.round($minuteCount)}<span class="text-lg sm:text-xl font-semibold ml-0.5">min</span>
             </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block">To validated research</span>
+            <span class="small-caps text-[10px] sm:text-xs mt-1 block">To your verdict</span>
           </div>
           <div class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-success hover:shadow-md transition-shadow">
             <span class="block text-2xl sm:text-3xl font-display font-bold text-success tracking-tight">

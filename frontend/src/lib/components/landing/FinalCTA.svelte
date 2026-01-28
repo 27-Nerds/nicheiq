@@ -44,16 +44,16 @@
 
 			<!-- Headline - Mobile optimized -->
 			<h2 class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-text-primary tracking-tight mb-4 sm:mb-6">
-				Validate With
-				<br class="hidden sm:block" /><span class="sm:hidden"> </span><span class="text-gradient italic">Confidence.</span>
+				Validate Your Next Idea.
+				<br class="hidden sm:block" /><span class="sm:hidden"> </span>With <span class="text-gradient italic">Confidence.</span>
 			</h2>
 
 			<!-- Subheadline - Mobile optimized -->
 			<p class="animate-fade-in delay-200 text-lg sm:text-xl text-text-muted mb-2 max-w-2xl mx-auto">
-				Real data. Real sources. 45 minutes.
+				Real Data. Real Sources. 45 Minutes.
 			</p>
 			<p class="animate-fade-in delay-300 text-lg sm:text-xl text-text-primary font-medium mb-8 sm:mb-12 max-w-2xl mx-auto">
-				Then get back to building.
+				Then ship.
 			</p>
 
 			<!-- CTA Buttons - Mobile optimized with full width on small screens -->
@@ -71,7 +71,7 @@
 						href="/register"
 						class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
 					>
-						Get My First Report
+						Validate My First Idea
 						<ArrowRight class="w-5 h-5" />
 					</a>
 				{/if}

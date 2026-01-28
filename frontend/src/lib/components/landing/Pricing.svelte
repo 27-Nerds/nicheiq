@@ -125,7 +125,7 @@
 									href="/register"
 									class="w-full text-sm sm:text-base py-3 text-center {tier.popular ? 'btn-primary' : 'btn-secondary'}"
 								>
-									Get Started
+									Validate My First Idea
 									<ArrowRight class="w-4 h-4" />
 								</a>
 							{/if}
@@ -156,7 +156,7 @@
 					<div>
 						<h4 class="font-semibold text-success text-sm">Zero-Risk Guarantee</h4>
 						<p class="text-xs text-text-muted">
-							Less than 5 pain points? Full refund.
+							If your report has fewer than 5 validated pain points with sources, full refund within 7 days.
 						</p>
 					</div>
 				</div>
