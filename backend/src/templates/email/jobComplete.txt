@@ -11,9 +11,4 @@ What's included:
 
 View Your Results: {{STATUS_URL}}
 
-Quick Links:
-- Download Research Report: {{REPORT_URL}}
-- View Landing Page: {{LANDING_URL}}
-- Download Landing Page: {{LANDING_URL}}?download=true
-
 Job ID: {{JOB_ID}}
