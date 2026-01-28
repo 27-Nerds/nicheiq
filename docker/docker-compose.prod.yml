@@ -201,7 +201,7 @@ services:
       MIN_TWITTER_LIKES: ${MIN_TWITTER_LIKES:-10}
       MIN_TWITTER_REPLIES: ${MIN_TWITTER_REPLIES:-5}
       # Geo/Language Targeting
-      TARGET_LOCATION: ${TARGET_LOCATION:-}
+      # TARGET_LOCATION: omitted = None (global data). Set to location code e.g. 2840 for US.
       TARGET_LANGUAGE: ${TARGET_LANGUAGE:-}
       # API Reliability
       MAX_RETRIES: ${MAX_RETRIES:-3}
