@@ -44,7 +44,7 @@
 
 			<!-- Headline - Mobile optimized -->
 			<h2 class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl xl:text-6xl font-bold text-text-primary tracking-tight mb-4 sm:mb-6">
-				Validate Your Next Idea.
+				Find Your Next SaaS Idea.
 				<br class="hidden sm:block" /><span class="sm:hidden"> </span>With <span class="text-gradient italic">Confidence.</span>
 			</h2>
 
@@ -71,7 +71,7 @@
 						href="/register"
 						class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
 					>
-						Validate My First Idea
+						Find My First Opportunity
 						<ArrowRight class="w-5 h-5" />
 					</a>
 				{/if}

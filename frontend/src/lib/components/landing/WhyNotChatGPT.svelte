@@ -35,8 +35,8 @@
 			title: 'General vs. Specialized',
 			problem: "AI research tools answer any question with no structure",
 			competitor: 'ChatGPT/Perplexity: "Based on my analysis..." (open-ended)',
-			nicheiq: '16-stage SaaS validation pipeline with defined outputs',
-			detail: 'Deep Research tools are general-purpose. NicheIQ is purpose-built for SaaS validation: pain points → solutions → keywords → competitors → SEO strategy.'
+			nicheiq: '16-stage SaaS research pipeline with defined outputs',
+			detail: 'Deep Research tools are general-purpose. NicheIQ is purpose-built for SaaS opportunity discovery: pain points → solutions → keywords → competitors → SEO strategy.'
 		},
 		{
 			icon: Database,
@@ -68,7 +68,7 @@
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl">
-					Perplexity, Grok, ChatGPT—they're powerful, but they can't access real data sources or validate your market.
+					Perplexity, Grok, ChatGPT—they're powerful, but they can't access real data sources or research your market.
 				</p>
 			</div>
 
@@ -140,7 +140,7 @@
 			<div class="animate-fade-in delay-500 text-center mt-12">
 				<div class="divider max-w-xs mx-auto"></div>
 				<p class="text-text-muted italic text-lg mt-8">
-					"Deep Research tools search the web. NicheIQ validates with APIs."
+					"Deep Research tools search the web. NicheIQ researches with APIs."
 				</p>
 			</div>
 		{/if}

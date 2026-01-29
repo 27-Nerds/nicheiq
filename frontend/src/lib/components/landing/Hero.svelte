@@ -164,7 +164,7 @@
               href="/register"
               class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
             >
-              Validate My First Idea
+              Find My First Opportunity
               <ArrowRight class="w-5 h-5" />
             </a>
           {/if}

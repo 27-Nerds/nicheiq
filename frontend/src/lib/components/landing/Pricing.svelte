@@ -58,7 +58,7 @@
 	];
 
 	const features = [
-		{ icon: Target, text: '16-stage validation pipeline' },
+		{ icon: Target, text: '16-stage research pipeline' },
 		{ icon: FileText, text: '18+ validated pain points with sources' },
 		{ icon: TrendingUp, text: '100+ keywords with live search volumes' },
 		{ icon: Users, text: 'Competitive landscape analysis' },
@@ -125,7 +125,7 @@
 									href="/register"
 									class="w-full text-sm sm:text-base py-3 text-center {tier.popular ? 'btn-primary' : 'btn-secondary'}"
 								>
-									Validate My First Idea
+									Find My First Opportunity
 									<ArrowRight class="w-4 h-4" />
 								</a>
 							{/if}

@@ -74,7 +74,7 @@
 				</h2>
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl">
-					For makers who'd rather validate in 45 minutes than guess for 6 months.
+					For makers who'd rather research in 45 minutes than guess for 6 months.
 				</p>
 			</div>
 

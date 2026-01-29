@@ -70,7 +70,7 @@
 				<h2 class="font-display text-xl sm:text-2xl font-semibold text-text-primary mb-2">
 					Join Founders Who Ship
 				</h2>
-				<p class="text-text-muted text-sm sm:text-base">You're not alone in validating smarter</p>
+				<p class="text-text-muted text-sm sm:text-base">You're not alone in researching smarter</p>
 			</div>
 
 			<!-- Testimonials Grid - Mobile optimized -->

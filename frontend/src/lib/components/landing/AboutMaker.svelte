@@ -49,7 +49,7 @@
 							</p>
 
 							<p>
-								After validating my own SaaS ideas the hard way—manually reading hundreds of Reddit threads,
+								After researching my own SaaS ideas the hard way—manually reading hundreds of Reddit threads,
 								cross-referencing keyword tools, and building spreadsheets—I decided to automate it.
 							</p>
 

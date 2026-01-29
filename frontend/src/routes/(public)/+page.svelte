@@ -21,7 +21,7 @@
 
 <svelte:head>
   <title>NicheIQ - AI-Powered Market Research for SaaS Founders</title>
-  <meta name="description" content="Validate your SaaS idea in 12 minutes with verified market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict." />
+  <meta name="description" content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict." />
 </svelte:head>
 
 <main class="overflow-hidden">

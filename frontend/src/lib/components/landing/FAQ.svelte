@@ -60,7 +60,7 @@
 		{
 			question: 'Can I run multiple researches?',
 			answer:
-				"Yes - pay per research report. Run as many niches as you want to validate. This is NicheIQ's strength: fast validation means you can test 5 ideas in an afternoon instead of committing months to one. Most founders use it to narrow down from several ideas to their best opportunity."
+				"Yes - pay per research report. Explore as many niches as you want. This is NicheIQ's strength: fast research means you can explore 5 niches in an afternoon instead of committing months to one. Most founders use it to narrow down from several niches to their best opportunity."
 		},
 		{
 			question: 'Do you store my research data?',

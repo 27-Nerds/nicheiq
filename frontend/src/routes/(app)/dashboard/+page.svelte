@@ -446,7 +446,7 @@
           <Search class="w-10 h-10 text-accent" />
         </div>
         <h2 class="text-2xl font-bold text-text-primary mb-3">
-          Ready to validate your next idea?
+          Ready to discover your next opportunity?
         </h2>
         <p class="text-text-secondary mb-8 max-w-lg mx-auto leading-relaxed">
           NicheIQ analyzes Reddit discussions, identifies pain points, and generates a comprehensive market research report in minutes.

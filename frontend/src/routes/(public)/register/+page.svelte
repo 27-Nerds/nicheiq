@@ -75,7 +75,7 @@
   <div class="w-full max-w-md space-y-8">
     <div class="text-center">
       <h1 class="text-3xl font-display font-bold text-text-primary tracking-tight">Create your account</h1>
-      <p class="mt-2 text-text-muted">Start validating your SaaS ideas today</p>
+      <p class="mt-2 text-text-muted">Start discovering SaaS opportunities today</p>
     </div>
 
     <div class="bg-bg-surface border border-border rounded-xl p-8 shadow-lg border-l-4 border-l-accent animate-fade-slide-in">

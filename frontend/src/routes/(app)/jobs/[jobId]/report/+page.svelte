@@ -2,7 +2,8 @@
 	import type { Report } from '$lib/types/report';
 	import {
 		ArrowLeft,
-		AlertTriangle
+		AlertTriangle,
+		Info
 	} from 'lucide-svelte';
 
 	// PHASE 1: DECISION (Go/No-Go verdict)
@@ -94,6 +95,18 @@
 				<ArrowLeft class="w-4 h-4" />
 				<span>Back to Job Status</span>
 			</a>
+
+			<!-- AI Disclaimer Banner -->
+			<div class="mb-4 p-4 rounded-lg bg-gradient-to-r from-secondary/5 via-accent/5 to-secondary/5 border border-secondary/10">
+				<div class="flex items-start gap-3">
+					<div class="p-2 rounded-lg bg-secondary/10 shrink-0">
+						<Info class="w-4 h-4 text-secondary" />
+					</div>
+					<p class="text-sm text-text-secondary">
+						We're always improving report quality, but at the end of the day, AI is AI — it does a solid job, though it can occasionally get things wrong. Use this as your research starting point, not your final answer.
+					</p>
+				</div>
+			</div>
 
 			<!-- Unified Hero Section (merged header + executive summary) -->
 			{#if report.executive_dashboard}

@@ -388,7 +388,7 @@
 			<!-- Bottom Note -->
 			<div class="animate-fade-in delay-600 mt-10 text-center">
 				<p class="text-text-muted text-sm italic">
-					Only NicheIQ combines market sizing + pricing strategy + risk assessment with verified social data in one complete validation pipeline.
+					Only NicheIQ combines market sizing + pricing strategy + risk assessment with verified social data in one complete research pipeline.
 				</p>
 			</div>
 		{/if}
