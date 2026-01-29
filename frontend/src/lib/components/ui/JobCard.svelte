@@ -44,6 +44,7 @@
     totalQueued?: number;
     stopReason?: string | null;
     stopReasonDetails?: StopReasonDetails | null;
+    allowedProjectTypes?: string[] | null;
   }
 
   interface Props {
@@ -80,6 +81,22 @@
   // Human-readable error for failed jobs
   const humanError = $derived(getHumanReadableError(job));
   const isQualityGate = $derived(humanError.isQualityGate);
+
+  // Project type labels
+  const PROJECT_TYPE_LABELS: Record<string, string> = {
+    'saas': 'SaaS',
+    'directory': 'Directory',
+    'aggregator': 'Aggregator',
+    'comparison-tool': 'Comparison Tool',
+    'marketplace': 'Marketplace',
+  };
+  const ALL_PROJECT_TYPE_COUNT = Object.keys(PROJECT_TYPE_LABELS).length;
+
+  const showAllTypes = $derived(
+    !job.allowedProjectTypes ||
+    job.allowedProjectTypes.length === 0 ||
+    job.allowedProjectTypes.length === ALL_PROJECT_TYPE_COUNT
+  );
 
   // Border and dot colors based on state
   const borderClass = $derived(
@@ -256,6 +273,20 @@
   );
 </script>
 
+{#snippet projectTypeBadges()}
+  <div class="flex flex-wrap items-center gap-1 mt-2">
+    {#if showAllTypes}
+      <span class="text-[11px] px-2 py-0.5 rounded bg-bg-surface border border-border text-text-muted">All types</span>
+    {:else}
+      {#each job.allowedProjectTypes ?? [] as typeValue}
+        <span class="text-[11px] px-2 py-0.5 rounded bg-accent/5 border border-accent/20 text-accent">
+          {PROJECT_TYPE_LABELS[typeValue] ?? typeValue}
+        </span>
+      {/each}
+    {/if}
+  </div>
+{/snippet}
+
 <div
   class="card hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 {borderClass} animate-fade-slide-in {isMenuOpen ? 'relative z-50' : ''}"
   style="animation-delay: {animationDelay}ms"
@@ -276,6 +307,7 @@
         </span>
       {/if}
     </div>
+    {@render projectTypeBadges()}
 
     <!-- Body: Progress bar -->
     {@const stageCounts = getAdjustedStageCounts(job)}
@@ -325,6 +357,7 @@
         {queuePositionText}
       </span>
     </div>
+    {@render projectTypeBadges()}
 
     <!-- Footer -->
     <div class="flex items-center justify-end gap-2 mt-3">
@@ -360,6 +393,7 @@
         {formatRelativeDate(job.completedAt || job.createdAt)}
       </span>
     </div>
+    {@render projectTypeBadges()}
 
     <!-- Footer -->
     <div class="flex items-center justify-end gap-2 mt-3">
@@ -423,6 +457,7 @@
         {formatRelativeDate(job.createdAt)}
       </span>
     </div>
+    {@render projectTypeBadges()}
 
     <!-- Body: Error box -->
     {#if job.errorMessage || job.stopReason}

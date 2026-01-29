@@ -19,6 +19,7 @@ interface Job {
   hasReport: boolean;
   hasLandingPage: boolean;
   creditRefunded?: boolean;
+  allowedProjectTypes?: string[] | null;
 }
 
 export const load: PageServerLoad = async ({ parent }) => {

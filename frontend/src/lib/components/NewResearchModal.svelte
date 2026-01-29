@@ -11,10 +11,27 @@
   const creditBalance = $derived($page.data.creditBalance as number ?? 0);
   const hasCredits = $derived(creditBalance > 0);
 
+  const PROJECT_TYPES = [
+    { value: 'saas', label: 'SaaS' },
+    { value: 'directory', label: 'Directory' },
+    { value: 'aggregator', label: 'Aggregator' },
+    { value: 'comparison-tool', label: 'Comparison Tool' },
+    { value: 'marketplace', label: 'Marketplace' },
+  ] as const;
+
   let niche = $state('');
+  let selectedProjectTypes = $state<string[]>(PROJECT_TYPES.map(t => t.value));
   let loading = $state(false);
   let error = $state('');
   let isInsufficientCredits = $state(false);
+
+  function toggleProjectType(value: string) {
+    if (selectedProjectTypes.includes(value)) {
+      selectedProjectTypes = selectedProjectTypes.filter(t => t !== value);
+    } else {
+      selectedProjectTypes = [...selectedProjectTypes, value];
+    }
+  }
 
   // Suggestion state
   let suggestLoading = $state(false);
@@ -33,7 +50,10 @@
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ niche: niche.trim() }),
+        body: JSON.stringify({
+          niche: niche.trim(),
+          ...(selectedProjectTypes.length > 0 && { allowedProjectTypes: selectedProjectTypes }),
+        }),
       });
 
       const data = await res.json();
@@ -52,6 +72,7 @@
 
       open = false;
       niche = '';
+      selectedProjectTypes = PROJECT_TYPES.map(t => t.value);
       // Refresh to update credit balance in header
       await invalidateAll();
       goto(`/jobs/${data.id}`);
@@ -212,6 +233,29 @@
               <span class="text-xs {niche.length > MAX_NICHE_LENGTH * 0.9 ? 'text-warning' : 'text-text-muted'}">
                 {niche.length}/{MAX_NICHE_LENGTH}
               </span>
+            </div>
+
+            <!-- Project Type Filter (optional) -->
+            <div class="mt-3">
+              <span class="block text-xs font-medium text-text-muted mb-1.5">
+                Project types <span class="text-text-muted font-normal">(optional — leave empty for all)</span>
+              </span>
+              <div class="flex flex-wrap gap-1.5">
+                {#each PROJECT_TYPES as type}
+                  <button
+                    type="button"
+                    onclick={() => toggleProjectType(type.value)}
+                    disabled={loading}
+                    class="text-xs px-3 py-1.5 rounded-md border transition-colors
+                           {selectedProjectTypes.includes(type.value)
+                             ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                             : 'bg-bg-surface border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {type.label}
+                  </button>
+                {/each}
+              </div>
             </div>
 
             <!-- Suggestion buttons -->

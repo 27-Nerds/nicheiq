@@ -81,6 +81,8 @@ export interface Job {
   // User-friendly error information
   errorCode?: string | null;
   errorDetails?: ErrorDetails | null;
+  // Project type filter selected at creation
+  allowedProjectTypes?: string[] | null;
 }
 
 export class ApiError extends Error {

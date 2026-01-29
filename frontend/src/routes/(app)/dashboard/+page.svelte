@@ -53,6 +53,7 @@
     // Quality gate stop metadata
     stopReason?: string | null;
     stopReasonDetails?: StopReasonDetails | null;
+    allowedProjectTypes?: string[] | null;
   }
 
   let { data } = $props();
