@@ -132,13 +132,14 @@ https://yourdomain.com/api/auth/callback/github
 ### Deploy Script Commands
 
 ```bash
-./scripts/deploy.sh              # Deploy/update
-./scripts/deploy.sh --build      # Rebuild and deploy
-./scripts/deploy.sh --logs       # View logs
-./scripts/deploy.sh --status     # Container status
-./scripts/deploy.sh --down       # Stop services
-./scripts/deploy.sh --restart    # Restart services
-./scripts/deploy.sh --migrate    # Run migrations only
+./scripts/deploy.sh                          # Deploy/update
+./scripts/deploy.sh --build                  # Rebuild and deploy
+./scripts/deploy.sh --build --scale-workers 3 # Rebuild with 3 workers
+./scripts/deploy.sh --logs                   # View logs
+./scripts/deploy.sh --status                 # Container status
+./scripts/deploy.sh --down                   # Stop services
+./scripts/deploy.sh --restart                # Restart services
+./scripts/deploy.sh --migrate                # Run migrations only
 ```
 
 ### Verification Checklist
@@ -471,11 +472,19 @@ frontend:
 Scale workers horizontally for increased throughput:
 
 ```bash
-# Scale to 3 worker instances
-docker compose -f docker/docker-compose.yml --profile production up -d --scale worker=3
+# Using the helper script (recommended)
+./scripts/scale-workers.sh 3          # Scale to 3 workers
+./scripts/scale-workers.sh 1          # Scale back to 1
+./scripts/scale-workers.sh            # Show current worker count
+
+# Or during deployment
+./scripts/deploy.sh --build --scale-workers 3
+
+# Or directly with docker compose
+docker compose --env-file .env -f docker/docker-compose.prod.yml up -d --no-recreate --scale worker=3
 
 # Check worker instances
-docker compose -f docker/docker-compose.yml ps worker
+docker compose --env-file .env -f docker/docker-compose.prod.yml ps worker
 ```
 
 ### Worker Resource Allocation
@@ -540,7 +549,9 @@ docker compose -f docker/docker-compose.yml logs --tail=100 worker
 docker compose -f docker/docker-compose.yml --profile production ps
 
 # Resource usage
-docker stats nicheiq-api nicheiq-worker nicheiq-frontend nicheiq-postgres nicheiq-redis
+docker stats nicheiq-api nicheiq-frontend nicheiq-postgres nicheiq-redis
+# Or use compose to include all worker instances:
+docker compose -f docker/docker-compose.prod.yml ps -q | xargs docker stats
 ```
 
 ### Queue Monitoring
@@ -714,7 +725,7 @@ docker exec nicheiq-redis redis-cli LLEN nicheiq:jobs
 docker compose -f docker/docker-compose.yml logs -f worker
 
 # Verify worker is connected to Redis
-docker exec nicheiq-worker python -c "import redis; r=redis.from_url('redis://redis:6379'); print(r.ping())"
+docker compose -f docker/docker-compose.prod.yml exec worker python -c "import redis; r=redis.from_url('redis://redis:6379'); print(r.ping())"
 
 # Check for stuck jobs
 docker exec nicheiq-redis redis-cli LRANGE nicheiq:jobs 0 -1
@@ -1123,7 +1134,7 @@ CHROMA_OPENAI_API_KEY=sk-proj-AbCdEfGhIjKlMnOpQrStUvWxYz1234567890
 docker exec -it nicheiq-api printenv | grep OPENAI
 
 # Test API connection (production)
-docker exec -it nicheiq-worker python -c "
+docker compose -f docker/docker-compose.prod.yml exec worker python -c "
 from openai import OpenAI
 client = OpenAI()
 response = client.chat.completions.create(
@@ -1183,7 +1194,7 @@ SERPER_API_KEY=a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0
 docker exec -it nicheiq-api printenv | grep SERPER
 
 # Test API connection (production)
-docker exec -it nicheiq-worker python -c "
+docker compose -f docker/docker-compose.prod.yml exec worker python -c "
 import os
 import requests
 response = requests.post(
@@ -1259,7 +1270,7 @@ REDDIT_USER_AGENT=NicheIQ/1.0.0 (by /u/yourusername)
 docker exec -it nicheiq-api printenv | grep REDDIT
 
 # Test API connection (production)
-docker exec -it nicheiq-worker python -c "
+docker compose -f docker/docker-compose.prod.yml exec worker python -c "
 import praw
 import os
 reddit = praw.Reddit(
@@ -1359,7 +1370,7 @@ TARGET_LANGUAGE=en
 docker exec -it nicheiq-api printenv | grep DATAFORSEO
 
 # Test API connection (production)
-docker exec -it nicheiq-worker python -c "
+docker compose -f docker/docker-compose.prod.yml exec worker python -c "
 import os
 import requests
 from requests.auth import HTTPBasicAuth

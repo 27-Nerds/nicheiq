@@ -3,7 +3,7 @@
 # NicheIQ Deployment Script
 # =============================================================================
 # One-command deployment for DigitalOcean
-# Usage: ./scripts/deploy.sh [--build] [--down] [--logs] [--migrate]
+# Usage: ./scripts/deploy.sh [--build] [--scale-workers N] [--down] [--logs] [--migrate]
 # =============================================================================
 
 set -e # Exit on error
@@ -53,19 +53,21 @@ show_help() {
   echo "Usage: ./scripts/deploy.sh [OPTIONS]"
   echo ""
   echo "Options:"
-  echo "  --build      Force rebuild all images"
-  echo "  --down       Stop and remove containers"
-  echo "  --logs       Show container logs"
-  echo "  --migrate    Run database migrations only"
-  echo "  --status     Show container status"
-  echo "  --restart    Restart all services"
-  echo "  --help       Show this help message"
+  echo "  --build              Force rebuild all images"
+  echo "  --scale-workers N    Run N worker instances (default: 1)"
+  echo "  --down               Stop and remove containers"
+  echo "  --logs               Show container logs"
+  echo "  --migrate            Run database migrations only"
+  echo "  --status             Show container status"
+  echo "  --restart            Restart all services"
+  echo "  --help               Show this help message"
   echo ""
   echo "Examples:"
-  echo "  ./scripts/deploy.sh              # Deploy/update services"
-  echo "  ./scripts/deploy.sh --build      # Rebuild and deploy"
-  echo "  ./scripts/deploy.sh --logs       # View logs"
-  echo "  ./scripts/deploy.sh --down       # Stop services"
+  echo "  ./scripts/deploy.sh                          # Deploy/update services"
+  echo "  ./scripts/deploy.sh --build                  # Rebuild and deploy"
+  echo "  ./scripts/deploy.sh --build --scale-workers 3 # Rebuild with 3 workers"
+  echo "  ./scripts/deploy.sh --logs                   # View logs"
+  echo "  ./scripts/deploy.sh --down                   # Stop services"
 }
 
 check_env() {
@@ -111,11 +113,6 @@ run_migrations() {
 }
 
 deploy() {
-  local BUILD_FLAG=""
-  if [ "$1" == "--build" ]; then
-    BUILD_FLAG="--build"
-  fi
-
   log_info "Starting deployment..."
 
   # Pull latest images
@@ -124,7 +121,10 @@ deploy() {
 
   # Build and start services
   log_info "Building and starting services..."
-  $DC up -d $BUILD_FLAG
+  local UP_ARGS="-d"
+  [ "$DO_BUILD" = true ] && UP_ARGS="$UP_ARGS --build"
+  [ -n "$SCALE_WORKERS" ] && UP_ARGS="$UP_ARGS --scale worker=$SCALE_WORKERS"
+  $DC up $UP_ARGS
 
   # Wait for services to be healthy
   log_info "Waiting for services to be healthy..."
@@ -146,45 +146,84 @@ deploy() {
 # Main Script
 # =============================================================================
 
-case "${1:-}" in
---help | -h)
-  show_help
-  ;;
---down)
-  log_info "Stopping services..."
-  $DC down
-  log_success "Services stopped"
-  ;;
---logs)
-  $DC logs -f --tail=100
-  ;;
---migrate)
-  check_env
-  run_migrations
-  ;;
---status)
-  $DC ps
-  echo ""
-  log_info "Container health:"
-  $DC ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
-  ;;
---restart)
-  log_info "Restarting services..."
-  $DC restart
-  log_success "Services restarted"
-  $DC ps
-  ;;
---build)
-  check_env
-  deploy --build
-  ;;
-"")
-  check_env
-  deploy
-  ;;
-*)
-  log_error "Unknown option: $1"
-  show_help
-  exit 1
-  ;;
+# Parse arguments
+DO_BUILD=false
+SCALE_WORKERS=""
+ACTION="deploy"
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+  --help | -h)
+    show_help
+    exit 0
+    ;;
+  --down)
+    ACTION="down"
+    shift
+    ;;
+  --logs)
+    ACTION="logs"
+    shift
+    ;;
+  --migrate)
+    ACTION="migrate"
+    shift
+    ;;
+  --status)
+    ACTION="status"
+    shift
+    ;;
+  --restart)
+    ACTION="restart"
+    shift
+    ;;
+  --build)
+    DO_BUILD=true
+    shift
+    ;;
+  --scale-workers)
+    if [ -z "${2:-}" ] || [[ ! "$2" =~ ^[0-9]+$ ]] || [ "$2" -le 0 ]; then
+      log_error "--scale-workers requires a positive integer (e.g. --scale-workers 3)"
+      exit 1
+    fi
+    SCALE_WORKERS="$2"
+    shift 2
+    ;;
+  *)
+    log_error "Unknown option: $1"
+    show_help
+    exit 1
+    ;;
+  esac
+done
+
+case "$ACTION" in
+  down)
+    log_info "Stopping services..."
+    $DC down
+    log_success "Services stopped"
+    ;;
+  logs)
+    $DC logs -f --tail=100
+    ;;
+  migrate)
+    check_env
+    run_migrations
+    ;;
+  status)
+    $DC ps
+    echo ""
+    log_info "Container health:"
+    $DC ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+    ;;
+  restart)
+    log_info "Restarting services..."
+    $DC restart
+    log_success "Services restarted"
+    $DC ps
+    ;;
+  deploy)
+    check_env
+    deploy
+    ;;
 esac

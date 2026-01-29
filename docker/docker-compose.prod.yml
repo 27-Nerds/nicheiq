@@ -137,7 +137,6 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.worker
-    container_name: nicheiq-worker
     restart: unless-stopped
     environment:
       # Database & Redis (internal network)
