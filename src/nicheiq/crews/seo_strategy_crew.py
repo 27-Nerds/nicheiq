@@ -1262,6 +1262,10 @@ class SEOStrategyCrew:
         """
         Task 2: Content & Technical Strategy (Lightweight Output Pattern).
 
+        NOTE: This @task method is used by the LEGACY SEQUENTIAL flow only.
+        The parallel flow constructs Task 2 inline in _create_strategy_parallel()
+        to wire context to synthesize_keyword_summary_parallel_task instead.
+
         Develops content strategy, topic clusters, and technical SEO recommendations
         based on keyword analysis from Tasks 1a-1d (via synthesize_keyword_summary_task).
 
@@ -1269,7 +1273,7 @@ class SEOStrategyCrew:
         - LLM outputs strategic/creative content only (ContentStrategyResultLight)
         - Python hydrates numeric fields (volumes, page counts) from CSV data
 
-        Depends on: synthesize_keyword_summary_task (which aggregates Tasks 1a-1d)
+        Depends on: synthesize_keyword_summary_task (legacy sequential summary)
         Output: ContentStrategyResultLight - Python will hydrate to ContentStrategyResult
         """
         return Task(
@@ -1286,10 +1290,14 @@ class SEOStrategyCrew:
         """
         Task 3: Implementation Planning.
 
+        NOTE: This @task method is used by the LEGACY SEQUENTIAL flow only.
+        The parallel flow constructs Task 3 inline in _create_strategy_parallel()
+        to wire context to the parallel summary task and inline Task 2.
+
         Creates phased implementation roadmap with metrics, timeline, budget, and risks
         based on keyword analysis and content strategy.
 
-        Depends on: synthesize_keyword_summary_task, develop_content_technical_strategy_task
+        Depends on: synthesize_keyword_summary_task (legacy), develop_content_technical_strategy_task
         Output: ImplementationPlanResult with roadmap, metrics, timeline.
         """
         return Task(
@@ -2274,8 +2282,28 @@ class SEOStrategyCrew:
             task_1c = self.analyze_geographic_tier_parallel_task()   # Task 1c (async)
             task_1d = self.analyze_category_tier_parallel_task()     # Task 1d (async)
             task_1e = self.synthesize_keyword_summary_parallel_task()  # Task 1e (sync)
-            task_2 = self.develop_content_technical_strategy_task()  # Task 2 (includes tech SEO)
-            task_3 = self.create_implementation_plan_task()          # Task 3 (final task)
+
+            # Task 2 and Task 3 are constructed inline (not via @task methods) to ensure
+            # they reference task_1e (the parallel summary task) in their context.
+            # The @task-decorated methods cache Task objects with context pointing to
+            # synthesize_keyword_summary_task() (the legacy sequential task), which is NOT
+            # in this crew's task list. Using inline Task() ensures correct context wiring.
+            task_2 = Task(
+                config=self.tasks_config["develop_content_technical_strategy"],
+                agent=self.content_strategist(),
+                context=[task_1e],  # Parallel flow: depends on parallel summary task
+                output_pydantic=ContentStrategyResultLight,
+                guardrail=validate_content_strategy_output,
+                guardrail_max_retries=2,
+            )
+            task_3 = Task(
+                config=self.tasks_config["create_implementation_plan"],
+                agent=self.seo_specialist(),
+                context=[task_1e, task_2],  # Parallel flow: depends on parallel summary + task 2
+                output_pydantic=ImplementationPlanResult,
+                guardrail=validate_implementation_plan_output,
+                guardrail_max_retries=2,
+            )
 
             strategy_crew = Crew(
                 agents=[

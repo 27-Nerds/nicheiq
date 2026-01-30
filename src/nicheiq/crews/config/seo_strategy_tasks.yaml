@@ -200,7 +200,7 @@ analyze_geographic_tier:
 
     **GEOGRAPHIC KEYWORD CRITERIA:**
     - Keyword text must contain EXPLICIT location name (city, country, region)
-    - ✓ VALID: "expat insurance spain", "moving to bangkok", "london relocation services"
+    - ✓ VALID: "pet grooming tokyo", "moving to bangkok", "london relocation services"
     - ✗ INVALID: "international moving", "global health insurance" (no specific location)
 
     **CONTEXT:**
@@ -286,7 +286,7 @@ analyze_category_tier:
        Create {min_category_groups} to {max_category_groups} thematic category groups.
 
        For each category:
-       - category_name: Theme (e.g., "Health Insurance Options", "Document Translation", "Cost Comparisons")
+       - category_name: Theme (e.g., "Product Comparisons", "How-To Guides", "Pricing Options")
        - total_volume: Sum of keyword volumes
        - keywords: List of CategoryKeywordEntry (MUST have at least 1 keyword from CSV)
        - strategy_recommendation: 2-4 sentences on targeting this category
@@ -368,28 +368,33 @@ synthesize_keyword_summary:
 
        - **top_tier_0_keywords**: List top 3-5 Tier 0 keyword strings
          (from Task 1a PremiumTierResult.tier_0_keywords[].keyword)
-         Example: ["budget expat health insurance", "cheap international health coverage"]
+         FORMAT EXAMPLE (DO NOT COPY): ["beginner underwater basket weaving kits", "waterproof reed suppliers online"]
 
        - **top_tier_1_keywords**: List top 5-10 Tier 1 keyword strings
          (from Task 1a PremiumTierResult.tier_1_keywords[].keyword)
-         Example: ["expat insurance comparison", "digital nomad health plans"]
+         FORMAT EXAMPLE (DO NOT COPY): ["underwater weaving certification course", "submersible craft tools review"]
 
        - **top_tier_2_keywords**: List top 5-10 Tier 2 keyword strings
          (from Task 1a PremiumTierResult.tier_2_keywords[].keyword)
-         Example: ["international health insurance for families", "expat medical coverage options"]
+         FORMAT EXAMPLE (DO NOT COPY): ["advanced aquatic basket techniques guide", "underwater weaving competition rules"]
 
        - **sample_geographic_regions**: List 3-5 region names from Tier 3 groups
          (from Task 1b GeographicTierResult.tier_3_geographic_groups[].region_name)
-         Example: ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
+         FORMAT EXAMPLE (DO NOT COPY): ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
 
        - **sample_category_themes**: List 5-8 category names from Tier 4 groups
          (from Task 1c CategoryTierResult.tier_4_category_groups[].category_name)
-         Example: ["Health Insurance Options", "Cost Comparisons", "Coverage Types"]
+         FORMAT EXAMPLE (DO NOT COPY): ["Weaving Materials", "Certification Programs", "Competition Events"]
 
        **WHY THIS MATTERS:**
        Task 2 (Content Strategy) needs REAL keywords to create topic clusters.
        Without these sample keywords, Task 2 will output placeholders like
-       <TIER_1_KEYWORD_1> instead of actual keywords like "budget expat insurance".
+       <TIER_1_KEYWORD_1> instead of actual niche-specific keywords from your context.
+
+       **ANTI-COPYING RULE:** The examples above use "underwater basket weaving" as a
+       deliberately absurd placeholder. Your output MUST contain keywords from YOUR
+       context about {niche}. If your output contains "underwater", "basket", "weaving",
+       or "reed", you copied the examples instead of using real data.
 
        **RULES:**
        - Extract ONLY actual keyword strings that appear in your context
@@ -749,28 +754,33 @@ synthesize_keyword_summary_parallel:
 
        - **top_tier_0_keywords**: List top 3-5 Tier 0 keyword strings
          (from Task 1a-i Tier0LightResult.tier_0_keywords[].keyword)
-         Example: ["budget expat health insurance", "cheap international health coverage"]
+         FORMAT EXAMPLE (DO NOT COPY): ["beginner underwater basket weaving kits", "waterproof reed suppliers online"]
 
        - **top_tier_1_keywords**: List top 5-10 Tier 1 keyword strings
          (from Task 1a-ii Tier1LightResult.tier_1_keywords[].keyword)
-         Example: ["expat insurance comparison", "digital nomad health plans"]
+         FORMAT EXAMPLE (DO NOT COPY): ["underwater weaving certification course", "submersible craft tools review"]
 
        - **top_tier_2_keywords**: List top 5-10 Tier 2 keyword strings
          (from Task 1b StrategicLightResult.tier_2_keywords[].keyword)
-         Example: ["international health insurance for families", "expat medical coverage options"]
+         FORMAT EXAMPLE (DO NOT COPY): ["advanced aquatic basket techniques guide", "underwater weaving competition rules"]
 
        - **sample_geographic_regions**: List 3-5 region names from Tier 3 groups
          (from Task 1c GeographicLightResult.tier_3_geographic_groups[].region_name)
-         Example: ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
+         FORMAT EXAMPLE (DO NOT COPY): ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
 
        - **sample_category_themes**: List 5-8 category names from Tier 4 groups
          (from Task 1d CategoryLightResult.tier_4_category_groups[].category_name)
-         Example: ["Health Insurance Options", "Cost Comparisons", "Coverage Types"]
+         FORMAT EXAMPLE (DO NOT COPY): ["Weaving Materials", "Certification Programs", "Competition Events"]
 
        **WHY THIS MATTERS:**
        Task 2 (Content Strategy) needs REAL keywords to create topic clusters.
        Without these sample keywords, Task 2 will output placeholders like
-       <TIER_1_KEYWORD_1> instead of actual keywords like "budget expat insurance".
+       <TIER_1_KEYWORD_1> instead of actual niche-specific keywords from your context.
+
+       **ANTI-COPYING RULE:** The examples above use "underwater basket weaving" as a
+       deliberately absurd placeholder. Your output MUST contain keywords from YOUR
+       context about {niche}. If your output contains "underwater", "basket", "weaving",
+       or "reed", you copied the examples instead of using real data.
 
        **RULES:**
        - Extract ONLY actual keyword strings that appear in your context
@@ -1004,12 +1014,12 @@ analyze_keywords_and_tier:
 
     **IMPORTANT DISTINCTION:**
 
-    ✅ **CORRECT** - Return populated JSON with real data:
+    ✅ **CORRECT** - Return populated JSON with real data (FORMAT EXAMPLE - DO NOT COPY these keywords):
     ```json
     {
       "tier_0_keywords": [
         {
-          "keyword": "budget expat health insurance",
+          "keyword": "beginner underwater basket weaving kits",
           "search_volume": 2400,
           "competition": "LOW (18)",
           "opportunity_score": 133,
@@ -1105,27 +1115,32 @@ develop_content_technical_strategy:
     Use these ACTUAL keyword strings when building topic clusters and content recommendations:
 
     - **top_tier_0_keywords**: Premium keywords for immediate targeting (if present)
-      Example: ["budget expat health insurance", "cheap international coverage"]
+      FORMAT EXAMPLE (DO NOT COPY): ["beginner underwater basket weaving kits", "waterproof reed suppliers online"]
 
     - **top_tier_1_keywords**: Quick-win keywords for first 30 days
-      Example: ["expat insurance comparison", "digital nomad health plans"]
+      FORMAT EXAMPLE (DO NOT COPY): ["underwater weaving certification course", "submersible craft tools review"]
 
     - **top_tier_2_keywords**: Strategic keywords for content pillars
-      Example: ["international health insurance for families", "expat medical coverage"]
+      FORMAT EXAMPLE (DO NOT COPY): ["advanced aquatic basket techniques guide", "underwater weaving competition rules"]
 
     - **sample_geographic_regions**: Regional targeting opportunities
-      Example: ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
+      FORMAT EXAMPLE (DO NOT COPY): ["Spanish-Speaking Markets", "Southeast Asia", "UK Markets"]
 
     - **sample_category_themes**: Category clusters for programmatic SEO
-      Example: ["Health Insurance Options", "Cost Comparisons", "Coverage Types"]
+      FORMAT EXAMPLE (DO NOT COPY): ["Weaving Materials", "Certification Programs", "Competition Events"]
 
     - **key_findings**: Strategic insights to build upon
     - **competitive_positioning**: Differentiation angles
 
+    **ANTI-COPYING RULE:** The examples above use "underwater basket weaving" as a
+    deliberately absurd placeholder. Your output MUST contain keywords from YOUR
+    context about {niche}. If your output contains "underwater", "basket", "weaving",
+    or "reed", you copied the examples instead of using real data.
+
     **CRITICAL RULES:**
     - Use the ACTUAL keyword strings from Task 1e context in your topic clusters
     - DO NOT create placeholder syntax like <TIER_1_KEYWORD_1> or [KEYWORD_HERE]
-    - Reference specific keywords when building topic clusters (e.g., "budget expat health insurance" not "<tier_1_keyword>")
+    - Reference specific keywords when building topic clusters using actual keywords from your context, not examples
     - If a tier has no keywords (field is null), note "None identified" and focus on other tiers
     - DO NOT fabricate keywords - use ONLY what Task 1e provided
     - **JSON FORMAT**: All numeric values MUST be digits (e.g., 60) NOT words (e.g., "sixty"). Invalid: `"count": sixty` Valid: `"count": 60`
@@ -1150,12 +1165,12 @@ develop_content_technical_strategy:
 
     NOTE: Do NOT include total_monthly_volume or estimated_traffic_potential - Python calculates these from CSV data.
 
-    **Example Topic Cluster (CORRECT - uses actual keywords, no volume):**
+    **FORMAT EXAMPLE Topic Cluster (DO NOT COPY - uses fictional keywords, no volume):**
     ```
-    cluster_name: "Budget Health Insurance for Expats"
-    primary_keyword: "budget expat health insurance"  ← From top_tier_1_keywords
-    supporting_keywords: ["cheap international coverage", "affordable expat plans", "low cost expat insurance"]
-    content_recommendation: "Create a comprehensive guide comparing budget-friendly options..."
+    cluster_name: "Beginner Underwater Weaving Supplies"
+    primary_keyword: "beginner underwater basket weaving kits"  ← From top_tier_1_keywords
+    supporting_keywords: ["waterproof reed suppliers", "submersible weaving frames", "aquatic craft starter set"]
+    content_recommendation: "Create a comprehensive guide comparing beginner-friendly options..."
     priority: 1
     ```
 
