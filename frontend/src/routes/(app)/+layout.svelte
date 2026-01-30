@@ -1,7 +1,7 @@
 <script lang="ts">
   import { page } from '$app/stores';
   import { signOut } from '@auth/sveltekit/client';
-  import { LogOut, LayoutDashboard, Plus, Coins, CreditCard, Settings } from 'lucide-svelte';
+  import { LogOut, LayoutDashboard, Plus, Coins, CreditCard, Settings, Shield } from 'lucide-svelte';
   import NewResearchModal from '$lib/components/NewResearchModal.svelte';
   import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
@@ -118,6 +118,15 @@
                     {creditBalance} credits
                   </span>
                 </a>
+                {#if session?.user?.role === 'ADMIN'}
+                  <a
+                    href="/admin"
+                    class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors"
+                  >
+                    <Shield class="w-4 h-4" />
+                    Admin Panel
+                  </a>
+                {/if}
                 <button
                   onclick={handleSignOut}
                   class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors"

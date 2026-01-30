@@ -8,6 +8,7 @@ export interface AuthenticatedRequest extends Request {
     id: string;
     email?: string;
     name?: string | null;
+    role?: string;
   };
 }
 
@@ -80,6 +81,7 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
       sub?: string;
       email?: string;
       name?: string | null;
+      role?: string;
     };
 
     // Auth.js JWT structure uses 'sub' for user ID, but we added 'id' in callbacks
@@ -94,6 +96,7 @@ export function requireAuth(req: AuthenticatedRequest, res: Response, next: Next
       id: userId,
       email: decoded.email,
       name: decoded.name,
+      role: decoded.role,
     };
 
     next();
@@ -180,15 +183,56 @@ export function requireInternalAuth(req: AuthenticatedRequest, res: Response, ne
   if (serviceSecret === expectedSecret) {
     const userId = req.headers['x-user-id'] as string;
     const userEmail = req.headers['x-user-email'] as string;
+    const userRole = req.headers['x-user-role'] as string;
 
     if (userId) {
-      req.user = { id: userId, email: userEmail };
+      req.user = { id: userId, email: userEmail, role: userRole };
       return next();
     }
   }
 
   // Reject if internal auth fails - no fallback for security
   res.status(401).json({ error: 'Authentication required' });
+}
+
+/**
+ * Internal admin authentication - for SvelteKit admin panel calls
+ * Validates internal service secret and requires ADMIN role
+ */
+export function requireInternalAdmin(req: AuthenticatedRequest, res: Response, next: NextFunction): void {
+  const serviceSecret = req.headers['x-internal-service'] as string;
+  const expectedSecret = process.env.INTERNAL_SERVICE_SECRET;
+
+  if (!expectedSecret) {
+    console.error('INTERNAL_SERVICE_SECRET not configured');
+    res.status(500).json({ error: 'Server misconfigured' });
+    return;
+  }
+
+  if (serviceSecret !== expectedSecret) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  const userId = req.headers['x-user-id'] as string;
+  const userRole = req.headers['x-user-role'] as string;
+
+  if (!userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return;
+  }
+
+  if (userRole !== 'ADMIN') {
+    res.status(403).json({ error: 'Admin access required' });
+    return;
+  }
+
+  req.user = {
+    id: userId,
+    email: req.headers['x-user-email'] as string,
+    role: userRole,
+  };
+  next();
 }
 
 /**

@@ -73,6 +73,7 @@ function buildProviders() {
             email: user.email,
             name: user.name,
             image: user.image,
+            role: user.role,
           };
         } catch (error) {
           console.error('Credentials auth error:', error);
@@ -139,16 +140,28 @@ export const { handle, signIn, signOut } = SvelteKitAuth({
         token.email = user.email;
         token.name = user.name;
         token.image = user.image;
+        // For credentials auth, role comes from the login response
+        // For OAuth users, look up role from DB
+        if ((user as any).role) {
+          token.role = (user as any).role;
+        } else if (user.id) {
+          const dbUser = await prisma.user.findUnique({
+            where: { id: user.id },
+            select: { role: true },
+          });
+          token.role = dbUser?.role || 'USER';
+        }
       }
       return token;
     },
     async session({ session, token }) {
-      // Add user id to session from JWT token
+      // Add user id and role to session from JWT token
       if (session.user && token) {
         session.user.id = token.id as string;
         session.user.email = token.email as string;
         session.user.name = token.name as string | null;
         session.user.image = token.image as string | null;
+        session.user.role = token.role as string | undefined;
       }
       return session;
     },
@@ -163,6 +176,7 @@ declare module '@auth/core/types' {
       email: string;
       name?: string | null;
       image?: string | null;
+      role?: string;
     };
   }
 }

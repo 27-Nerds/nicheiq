@@ -36,6 +36,12 @@ enum AssetType {
   LANDING_PAGE  // Generated HTML landing page
 }
 
+// User roles
+enum UserRole {
+  USER
+  ADMIN
+}
+
 // ============================================
 // Authentication Models (Auth.js compatible)
 // ============================================
@@ -51,6 +57,9 @@ model User {
   // For email/password auth (nullable for OAuth-only users)
   passwordHash  String?   @db.VarChar(255)
 
+  // Role
+  role          UserRole  @default(USER)
+
   // Timestamps
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -61,6 +70,7 @@ model User {
   jobs          Job[]
 
   @@index([email])
+  @@index([role])
 }
 
 // OAuth accounts (one user can have multiple providers)

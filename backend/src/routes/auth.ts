@@ -102,6 +102,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
         name: true,
         image: true,
         passwordHash: true,
+        role: true,
       },
     });
 
@@ -124,6 +125,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
       email: user.email,
       name: user.name,
       image: user.image,
+      role: user.role,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
