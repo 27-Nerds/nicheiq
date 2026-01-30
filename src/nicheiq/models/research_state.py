@@ -630,7 +630,7 @@ class FinalReport(BaseModel):
     # Data Richness Enhancements - Preserve Full Objects
     solution_innovation_assessment: Optional[dict] = Field(
         default=None,
-        description="Innovation metrics: novelty_score, novelty_justification, solo_dev_feasibility"
+        description="Innovation metrics: novelty_score, conventional_approach, innovation_angle, why_it_works, solo_dev_feasibility"
     )
     # solution_organic_discovery removed - use selected_solution_details.organic_discovery_queries instead
     competitor_profiles: list[CompetitorCard] = Field(

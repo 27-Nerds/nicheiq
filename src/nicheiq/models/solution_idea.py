@@ -280,20 +280,47 @@ class BaseSolutionIdea(BaseModel):
         le=1.0,
         description=(
             "Innovation/uniqueness score (0-1 scale). "
-            "0.9-1.0: Novel mechanism, no direct competitors doing it this way. "
-            "0.6-0.8: Unique combination of existing approaches. "
-            "0.3-0.5: Better execution of known pattern. "
-            "0.0-0.2: Minor variation on obvious/generic solution."
+            "Assign AFTER filling conventional_approach, innovation_angle, and why_it_works. "
+            "Derive the score from the strength of those three fields: "
+            "0.8-1.0: innovation_angle describes a mechanism no competitor uses, "
+            "AND why_it_works cites specific community evidence. "
+            "0.5-0.7: innovation_angle shows a genuine structural difference, "
+            "AND why_it_works references validated pain point data. "
+            "0.3-0.4: innovation_angle is a minor twist on conventional_approach, "
+            "OR why_it_works relies on general reasoning without research data. "
+            "0.0-0.2: No meaningful divergence from conventional_approach."
         )
     )
 
-    novelty_justification: Optional[str] = Field(
+    conventional_approach: Optional[str] = Field(
         default=None,
         description=(
-            "Explanation of why this solution is non-obvious. "
-            "Format: 'This is surprising because most would try [obvious approach] "
-            "but this does [unexpected thing] which works because [reason].' "
-            "Required when novelty_score > 0.5 to validate the innovation claim."
+            "What most builders would attempt for this problem space. "
+            "Describe the obvious, default strategy that a typical founder or developer "
+            "would pursue — the well-trodden path. Be specific about the approach, not vague. "
+            "Example: 'Most would build a full comparison platform with user reviews and editorial content.'"
+        )
+    )
+
+    innovation_angle: Optional[str] = Field(
+        default=None,
+        description=(
+            "How this solution diverges from the conventional approach. "
+            "Explain the specific twist, constraint, or mechanism that makes this solution "
+            "different from what most would try. Focus on the structural difference. "
+            "Example: 'This focuses exclusively on automated speed tests from 50+ global locations, "
+            "publishing objective latency data rather than subjective reviews.'"
+        )
+    )
+
+    why_it_works: Optional[str] = Field(
+        default=None,
+        description=(
+            "Evidence-based reason why the innovation angle succeeds. "
+            "Ground this in specific pain point data, community signals, or market evidence "
+            "from the research. Reference real user behavior or validated frustrations. "
+            "Example: 'Community threads show users distrust subjective reviews and specifically "
+            "ask for real-world speed data — 14 threads with 200+ upvotes mention this gap.'"
         )
     )
 

@@ -245,38 +245,54 @@
 
 				<!-- Signal Chips -->
 				<div class="signal-chips">
-					<div class="signal-chip" title={tooltips.opportunity}>
-						<span class="signal-value">{formatPercent(opportunityScore)}</span>
-						<span class="signal-label">Opportunity</span>
-					</div>
+					<Tooltip content={tooltips.opportunity} position="bottom">
+						{#snippet children()}
+							<div class="signal-chip">
+								<span class="signal-value">{formatPercent(opportunityScore)}</span>
+								<span class="signal-label">Opportunity</span>
+							</div>
+						{/snippet}
+					</Tooltip>
 
-					<div class="signal-chip" title={tooltips.trend}>
-						<span class="signal-value {getTrendClass(trendDirection)}-text">
-							{#if trendDirection?.toLowerCase().includes('grow')}
-								<TrendingUp size={14} class="signal-icon-inline" />
-							{:else if trendDirection?.toLowerCase().includes('declin')}
-								<TrendingDown size={14} class="signal-icon-inline" />
-							{:else}
-								<Minus size={14} class="signal-icon-inline" />
-							{/if}
-							{trendDirection}
-						</span>
-						<span class="signal-label">Trend</span>
-					</div>
+					<Tooltip content={tooltips.trend} position="bottom">
+						{#snippet children()}
+							<div class="signal-chip">
+								<span class="signal-value {getTrendClass(trendDirection)}-text">
+									{#if trendDirection?.toLowerCase().includes('grow')}
+										<TrendingUp size={14} class="signal-icon-inline" />
+									{:else if trendDirection?.toLowerCase().includes('declin')}
+										<TrendingDown size={14} class="signal-icon-inline" />
+									{:else}
+										<Minus size={14} class="signal-icon-inline" />
+									{/if}
+									{trendDirection}
+								</span>
+								<span class="signal-label">Trend</span>
+							</div>
+						{/snippet}
+					</Tooltip>
 
-					<div class="signal-chip" title={tooltips.saturation}>
-						<span class="signal-value {getSaturationClass(saturationScore)}-text">
-							{getSaturationLabel(saturationScore)}
-						</span>
-						<span class="signal-label">Saturation</span>
-					</div>
+					<Tooltip content={tooltips.saturation} position="bottom">
+						{#snippet children()}
+							<div class="signal-chip">
+								<span class="signal-value {getSaturationClass(saturationScore)}-text">
+									{getSaturationLabel(saturationScore)}
+								</span>
+								<span class="signal-label">Saturation</span>
+							</div>
+						{/snippet}
+					</Tooltip>
 
-					<div class="signal-chip" title={tooltips.risk}>
-						<span class="signal-value {getRiskClass(verdict?.risk_level ?? 'Medium')}-text">
-							{verdict?.risk_level ?? 'Unknown'}
-						</span>
-						<span class="signal-label">Risk</span>
-					</div>
+					<Tooltip content={tooltips.risk} position="bottom">
+						{#snippet children()}
+							<div class="signal-chip">
+								<span class="signal-value {getRiskClass(verdict?.risk_level ?? 'Medium')}-text">
+									{verdict?.risk_level ?? 'Unknown'}
+								</span>
+								<span class="signal-label">Risk</span>
+							</div>
+						{/snippet}
+					</Tooltip>
 				</div>
 			</div>
 		</div>

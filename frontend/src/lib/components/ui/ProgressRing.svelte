@@ -1,4 +1,6 @@
 <script lang="ts">
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
+
 	interface Props {
 		value: number;
 		size?: number;
@@ -69,6 +71,15 @@
 		return 'Critical';
 	});
 
+	// Build tooltip content string
+	const tooltipContent = $derived.by(() => {
+		const parts: string[] = [];
+		if (description) parts.push(description);
+		parts.push(`${Math.round(value * 100)}% — ${scoreInterpretation}`);
+		if (label) parts.push(label);
+		return parts.join('\n');
+	});
+
 	let visible = $state(false);
 	let isHovered = $state(false);
 	let ref: HTMLDivElement;
@@ -92,19 +103,17 @@
 	});
 </script>
 
+{#snippet ring()}
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
 	bind:this={ref}
 	class="progress-ring {className}"
 	class:hovered={isHovered}
 	class:glow={glow}
-	role={showTooltip ? "button" : "img"}
+	role="img"
 	aria-label="{label || 'Score'}: {Math.round(value * 100)}%"
 	onmouseenter={() => (isHovered = true)}
 	onmouseleave={() => (isHovered = false)}
-	onfocus={() => (isHovered = true)}
-	onblur={() => (isHovered = false)}
-	tabindex={showTooltip ? 0 : -1}
 	style:--ring-color={colorVar}
 >
 	<svg width={size} height={size} class="progress-ring-svg" overflow="visible">
@@ -159,21 +168,18 @@
 			{/if}
 		</div>
 	{/if}
-
-	<!-- Tooltip -->
-	{#if showTooltip && isHovered}
-		<div class="progress-ring-tooltip" style:--tooltip-color={colorVar}>
-			{#if description}
-				<span class="tooltip-description">{description}</span>
-			{/if}
-			<span class="tooltip-value">{Math.round(value * 100)}%</span>
-			<span class="tooltip-interpretation">{scoreInterpretation}</span>
-			{#if label}
-				<span class="tooltip-label">{label}</span>
-			{/if}
-		</div>
-	{/if}
 </div>
+{/snippet}
+
+{#if showTooltip}
+	<Tooltip content={tooltipContent} position="top">
+		{#snippet children()}
+			{@render ring()}
+		{/snippet}
+	</Tooltip>
+{:else}
+	{@render ring()}
+{/if}
 
 <style>
 	.progress-ring {
@@ -256,78 +262,5 @@
 		text-transform: uppercase;
 		letter-spacing: 0.05em;
 		color: var(--color-text-muted);
-	}
-
-	/* Tooltip */
-	.progress-ring-tooltip {
-		position: absolute;
-		bottom: calc(100% + 8px);
-		left: 50%;
-		transform: translateX(-50%);
-		padding: 0.5rem 0.75rem;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border);
-		border-radius: 0.5rem;
-		box-shadow: var(--shadow-md);
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 0.125rem;
-		z-index: 50;
-		animation: tooltipFadeIn 0.15s ease;
-	}
-
-	.progress-ring-tooltip::after {
-		content: '';
-		position: absolute;
-		top: 100%;
-		left: 50%;
-		transform: translateX(-50%);
-		border: 6px solid transparent;
-		border-top-color: var(--color-bg-elevated);
-	}
-
-	@keyframes tooltipFadeIn {
-		from {
-			opacity: 0;
-			transform: translateX(-50%) translateY(4px);
-		}
-		to {
-			opacity: 1;
-			transform: translateX(-50%) translateY(0);
-		}
-	}
-
-	.tooltip-description {
-		font-size: 0.6875rem;
-		color: var(--color-text-secondary);
-		line-height: 1.4;
-		margin-bottom: 0.375rem;
-		max-width: 180px;
-		text-align: center;
-		white-space: normal;
-	}
-
-	.tooltip-value {
-		font-family: var(--font-display);
-		font-size: 1rem;
-		font-weight: 700;
-		color: var(--tooltip-color, var(--color-text-primary));
-	}
-
-	.tooltip-interpretation {
-		font-size: 0.75rem;
-		font-weight: 500;
-		color: var(--tooltip-color, var(--color-text-secondary));
-	}
-
-	.tooltip-label {
-		font-family: var(--font-mono);
-		font-size: 0.625rem;
-		font-weight: 500;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--color-text-muted);
-		margin-top: 0.125rem;
 	}
 </style>

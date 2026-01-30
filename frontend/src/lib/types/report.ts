@@ -665,7 +665,9 @@ export interface SolutionDetails {
 	seo_scalability_score_refined?: number;
 	estimated_indexable_pages?: number;
 	novelty_score?: number;
-	novelty_justification?: string;
+	conventional_approach?: string;
+	innovation_angle?: string;
+	why_it_works?: string;
 	solo_dev_feasibility?: number;
 	keyword_geographic_priorities?: string[];
 	keyword_feature_priorities?: string[];

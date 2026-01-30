@@ -294,9 +294,12 @@ solution_refinement:
     - target_personas: 2-4 personas, 1 sentence each
     - pricing_strategy: 2-3 sentences
     - differentiation_factors: 3-5 items, 1 sentence each
-    - novelty_justification: 1-2 sentences following template
+    - conventional_approach: 1-2 sentences (what most would try)
+    - innovation_angle: 1-2 sentences (how this diverges)
+    - why_it_works: 1-2 sentences (evidence-based reason)
+    - novelty_score: decimal derived from the three fields above
     - organic_discovery_queries: 5-10 queries
-    - All numeric scores: decimal only (e.g., 0.75)
+    - All other numeric scores: decimal only (e.g., 0.75)
     </output_verbosity_spec>
 
     ═══════════════════════════════════════════════════════════════════════════
@@ -352,8 +355,8 @@ solution_refinement:
 
     **Scores (from above criteria):**
     - market_fit_score, technical_feasibility_score
-    - novelty_score, novelty_justification ("This is surprising because...")
-    - solo_dev_feasibility
+    - conventional_approach, innovation_angle, why_it_works (fill FIRST)
+    - novelty_score (derive from above), solo_dev_feasibility
 
     **Strategy:**
     - pricing_strategy (see PRICING STRATEGY guidance below), differentiation_factors, project_type
@@ -388,14 +391,36 @@ solution_refinement:
 
     ═══════════════════════════════════════════════════════════════════════════
 
-    **NOVELTY JUSTIFICATION REQUIREMENT:**
+    **NOVELTY ASSESSMENT REQUIREMENT:**
 
-    For each solution with novelty_score > 0.5, complete:
+    For EVERY solution, fill THREE fields:
 
-    "This is surprising because most would try [obvious approach] but this does [unexpected thing] which works because [specific reason based on pain point data]."
+    **conventional_approach** — What most builders would try:
+    - Be specific about the obvious strategy (not vague)
+    - Example: "Most would build a full comparison platform with user reviews and editorial content."
+    - Example: "The standard approach is a generic job board aggregating listings from multiple sources."
+    - Low-novelty example: "Conventional approach: standard directory. Innovation angle: minor UX improvement."
 
-    ❌ Bad: "This is surprising because it uses AI"
-    ✓ Good: "This is surprising because most would try to build a full comparison platform, but this only does automated speed testing for VPNs which works because users care most about speed and existing reviews are subjective."
+    **innovation_angle** — How this solution diverges:
+    - Describe the structural twist or constraint that differentiates
+    - Example: "This focuses exclusively on automated speed tests from 50+ global locations, publishing objective latency data."
+    - Example: "Instead of aggregating listings, this reverse-engineers salary data from public filings to generate pay transparency pages."
+
+    **why_it_works** — Evidence-based reason grounded in research data:
+    - Reference specific pain points, community signals, or user behavior
+    - Example: "Community threads show users distrust subjective reviews and specifically ask for real-world speed data."
+    - Example: "Pain point analysis shows 'salary opacity' is the #2 frustration with 0.87 severity — users want data, not listings."
+
+    **SCORING ORDER:** Fill the three text fields FIRST. Then assign novelty_score
+    based on the strength of your own analysis — not the other way around.
+    See the novelty_score field description for the rubric linking score bands
+    to the quality of conventional_approach, innovation_angle, and why_it_works.
+
+    ❌ Bad: Leaving all three fields with the same sentence structure
+    ❌ Bad: Generic claims without referencing pain point data
+    ❌ Bad: Picking novelty_score first, then writing fields to justify it
+    ✓ Good: Each field answers a distinct question with specific evidence
+    ✓ Good: Score derived from the strength of the three text fields
 
   expected_output: >
     IdeaGenerationResult with:
@@ -405,7 +430,7 @@ solution_refinement:
     Each solution must include:
     - All basic fields (name, description, value_prop, pain_points, features, personas)
     - All score fields (market_fit, technical_feasibility, novelty, solo_dev_feasibility)
-    - novelty_justification for solutions with novelty > 0.5
+    - conventional_approach, innovation_angle, why_it_works for ALL solutions
     - All SEO fields (seo_scalability, cac estimates, discovery queries)
 
 # =============================================================================

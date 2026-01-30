@@ -447,7 +447,9 @@ class ReportGenerator:
         if selected_solution_details:
             solution_innovation_assessment = {
                 "novelty_score": getattr(selected_solution_details, 'novelty_score', None),
-                "novelty_justification": getattr(selected_solution_details, 'novelty_justification', None),
+                "conventional_approach": getattr(selected_solution_details, 'conventional_approach', None),
+                "innovation_angle": getattr(selected_solution_details, 'innovation_angle', None),
+                "why_it_works": getattr(selected_solution_details, 'why_it_works', None),
                 "solo_dev_feasibility": getattr(selected_solution_details, 'solo_dev_feasibility', None)
             }
 

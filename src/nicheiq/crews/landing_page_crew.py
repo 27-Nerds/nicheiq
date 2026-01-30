@@ -621,7 +621,76 @@ class LandingPageCrew:
             "market_verdict": market_verdict,
             # Competitor links for creative inspiration
             "competitor_links": self._extract_competitor_links(report),
+            # Model-conditional per-agent guidance
+            **self._get_model_guidance(),
         }
+
+    def _get_model_guidance(self) -> dict[str, str]:
+        """Return per-agent model-specific guidance for execution agents.
+
+        GPT-5/Codex models produce rich CSS natively and don't need extra guidance.
+        Kimi and other models benefit from explicit technique patterns tailored
+        to each agent's role.
+        """
+        model = settings.landing_page_execution_llm.lower()
+        if model.startswith("gpt-5") or "codex" in model:
+            return {
+                "html_build_guidance": "",
+                "animation_enhance_guidance": "",
+                "qa_review_guidance": "",
+            }
+
+        return {
+            "html_build_guidance": self._html_build_guidance(),
+            "animation_enhance_guidance": self._animation_enhance_guidance(),
+            "qa_review_guidance": self._qa_review_guidance(),
+        }
+
+    def _html_build_guidance(self) -> str:
+        """HTML Developer: branded prefix and Tailwind config guidance."""
+        return """
+## HTML Implementation Notes
+
+BRANDED PREFIX: Derive a 2-3 letter prefix from the product name (e.g.,
+"FlowCast" -> fc-, "PriceGuard" -> pg-). Use this prefix for ALL custom
+CSS classes and @keyframes. Never use generic names like "animate1" or "fadeIn".
+
+TAILWIND CONFIG: Extend the Tailwind theme with brand colors, fonts, and
+named box-shadows derived from the brand identity. Include custom keyframes
+and animations that reflect the product personality.
+
+ACCESSIBILITY: Include @media(prefers-reduced-motion:reduce) to disable animations.
+Content must be visible without JavaScript.
+"""
+
+    def _animation_enhance_guidance(self) -> str:
+        """Animation Enhancer: anti-regression rule only."""
+        return """
+## Animation Enhancement Rules
+
+CRITICAL: NEVER remove existing @keyframes, class names, SVGs, or structure.
+Only ADD or ENHANCE. Removing anything from the HTML Developer's output is
+a regression — even if you plan to replace it with something "better".
+
+Preserve all branded prefixes. If adding new animations, use the same prefix
+the HTML Developer established.
+
+ACCESSIBILITY: Ensure @media(prefers-reduced-motion:reduce) is present.
+Content must remain visible without JavaScript.
+"""
+
+    def _qa_review_guidance(self) -> str:
+        """QA Reviewer: structural validation only."""
+        return """
+## QA Review Notes
+
+CRITICAL: NEVER remove existing animations, keyframes, SVGs, or content.
+Only fix structural issues (broken layout, accessibility, responsive problems).
+
+Verify branded CSS prefix is used consistently (no generic class names).
+Verify @media(prefers-reduced-motion:reduce) is present.
+Verify content is visible without JavaScript.
+"""
 
     def _extract_competitor_links(self, report: FinalReport) -> str:
         """Extract competitor URLs from report for creative inspiration.

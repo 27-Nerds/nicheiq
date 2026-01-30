@@ -315,8 +315,27 @@
           </div>
         </div>
       {/snippet}
-      {#if solution.novelty_justification}
-        <p class="innovation-text">{solution.novelty_justification}</p>
+      {#if solution.conventional_approach || solution.innovation_angle || solution.why_it_works}
+        <div class="innovation-breakdown">
+          {#if solution.conventional_approach}
+            <div class="innovation-facet">
+              <span class="facet-label">Conventional Path</span>
+              <p class="facet-text">{solution.conventional_approach}</p>
+            </div>
+          {/if}
+          {#if solution.innovation_angle}
+            <div class="innovation-facet facet-highlight">
+              <span class="facet-label">What's Different</span>
+              <p class="facet-text">{solution.innovation_angle}</p>
+            </div>
+          {/if}
+          {#if solution.why_it_works}
+            <div class="innovation-facet">
+              <span class="facet-label">Why It Works</span>
+              <p class="facet-text">{solution.why_it_works}</p>
+            </div>
+          {/if}
+        </div>
       {/if}
     </InsightCard>
   {/if}
@@ -1106,12 +1125,48 @@
     color: #a1a1aa;
   }
 
-  .innovation-text {
+  .innovation-breakdown {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-top: 0.25rem;
+  }
+
+  .innovation-facet {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .innovation-facet.facet-highlight {
+    background: rgba(245, 158, 11, 0.06);
+    border-left: 2px solid #f59e0b;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0 0.375rem 0.375rem 0;
+  }
+
+  .facet-label {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #a1a1aa;
+    text-transform: uppercase;
+  }
+
+  .facet-highlight .facet-label {
+    color: #f59e0b;
+  }
+
+  .facet-text {
     font-size: 0.8125rem;
     color: #71717a;
     line-height: 1.55;
     margin: 0;
-    font-style: italic;
+  }
+
+  .facet-highlight .facet-text {
+    color: #d4d4d8;
   }
 
   /* =========================
