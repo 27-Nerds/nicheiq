@@ -30,6 +30,67 @@ def clean_llm_response(raw_text: str) -> str:
     return cleaned.strip()
 
 
+def extract_json_object_from_text(text: str) -> dict | None:
+    """
+    Extract first complete JSON object from text using bracket matching.
+
+    Handles cases where LLM output contains markdown or explanation text
+    surrounding a JSON object.
+
+    Args:
+        text: Raw text potentially containing a JSON object
+
+    Returns:
+        Parsed JSON dict or None if extraction fails
+    """
+    cleaned_text = clean_llm_response(text)
+
+    # Fast path: text is already clean JSON
+    text_stripped = cleaned_text.strip()
+    if text_stripped.startswith('{'):
+        try:
+            return json.loads(text_stripped)
+        except json.JSONDecodeError:
+            pass  # Fall through to bracket matching
+
+    # Find the first '{' and use bracket matching
+    start_idx = cleaned_text.find('{')
+    if start_idx == -1:
+        return None
+
+    bracket_count = 0
+    in_string = False
+    escape_next = False
+
+    for i, char in enumerate(cleaned_text[start_idx:], start=start_idx):
+        if escape_next:
+            escape_next = False
+            continue
+
+        if char == '\\' and in_string:
+            escape_next = True
+            continue
+
+        if char == '"' and not escape_next:
+            in_string = not in_string
+
+        if not in_string:
+            if char == '{':
+                bracket_count += 1
+            elif char == '}':
+                bracket_count -= 1
+                if bracket_count == 0:
+                    candidate = cleaned_text[start_idx:i + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"JSON object extraction failed at bracket close: {e}")
+                        return None
+
+    logger.warning("No matching closing brace found for JSON object")
+    return None
+
+
 def extract_json_array_from_text(text: str) -> list | None:
     """
     Extract first complete JSON array from text (shared utility).
