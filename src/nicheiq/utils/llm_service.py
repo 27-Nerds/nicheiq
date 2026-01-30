@@ -45,10 +45,16 @@ def is_codex_model(model: str) -> bool:
     return "codex" in model_lower
 
 
+def is_kimi_model(model: str) -> bool:
+    """Check if a model is a Kimi/Moonshot model requiring the Moonshot API."""
+    return model.lower().startswith("kimi")
+
+
 def build_llm_kwargs(
     model: str,
     temperature: float | None = None,
     api_key: str | None = None,
+    base_url: str | None = None,
     timeout: int | None = None,
     reasoning_effort: str | None = None,
     **extra_kwargs
@@ -63,6 +69,7 @@ def build_llm_kwargs(
         model: Model name
         temperature: Temperature setting (ignored for reasoning models)
         api_key: OpenAI API key (defaults to settings)
+        base_url: Base URL for the API (auto-detected for Kimi models)
         timeout: Timeout in seconds
         reasoning_effort: Reasoning effort for GPT-5/o1/o3 models ('none', 'minimal', 'low', 'medium', 'high', 'xhigh')
         **extra_kwargs: Additional kwargs (frequency_penalty, presence_penalty, etc.)
@@ -74,8 +81,20 @@ def build_llm_kwargs(
 
     if api_key:
         kwargs["api_key"] = api_key
+    elif is_kimi_model(model):
+        if not settings.moonshot_api_key:
+            raise ValueError(
+                "MOONSHOT_API_KEY required when using Kimi models. "
+                "Get one at https://platform.moonshot.ai"
+            )
+        kwargs["api_key"] = settings.moonshot_api_key
+        kwargs["base_url"] = "https://api.moonshot.ai/v1"
     else:
         kwargs["api_key"] = settings.openai_api_key
+
+    # Explicit base_url overrides auto-detected one
+    if base_url:
+        kwargs["base_url"] = base_url
 
     if timeout:
         kwargs["timeout"] = timeout
@@ -130,12 +149,14 @@ def build_llm(
     model: str,
     reasoning_effort: str | None = None,
     api_key: str | None = None,
+    base_url: str | None = None,
     max_output_tokens: int = 16384,
     **extra_kwargs: Any,
 ) -> Any:
     """
     Build the appropriate LLM instance based on model type.
 
+    For Kimi models, returns ChatOpenAI pointed at Moonshot's API.
     For Codex models (gpt-5.1-codex-max, etc.), returns CodexLLM which uses
     the Responses API. For all other models, returns ChatOpenAI.
 
@@ -143,13 +164,48 @@ def build_llm(
         model: Model name
         reasoning_effort: Reasoning effort for GPT-5/o1/o3 models
         api_key: OpenAI API key (defaults to settings)
+        base_url: Base URL for the API (auto-detected for Kimi models)
         max_output_tokens: Max output tokens for Codex models
         **extra_kwargs: Additional kwargs passed to the LLM
 
     Returns:
         LLM instance (CodexLLM or ChatOpenAI)
     """
-    if is_codex_model(model):
+    if is_kimi_model(model):
+        # Use CrewAI's native LLM class directly so CrewAI preserves base_url.
+        # ChatOpenAI stores it as openai_api_base, which CrewAI's create_llm()
+        # can't read (it looks for base_url), causing requests to hit api.openai.com.
+        from crewai.llm import LLM as CrewAILLM
+
+        resolved_api_key = api_key
+        resolved_base_url = base_url or "https://api.moonshot.ai/v1"
+        if not resolved_api_key:
+            if not settings.moonshot_api_key:
+                raise ValueError(
+                    "MOONSHOT_API_KEY required when using Kimi models. "
+                    "Get one at https://platform.moonshot.ai"
+                )
+            resolved_api_key = settings.moonshot_api_key
+
+        thinking = settings.kimi_thinking
+        kimi_kwargs: dict[str, Any] = {
+            "model": model,
+            "provider": "openai",
+            "base_url": resolved_base_url,
+            "api_key": resolved_api_key,
+        }
+        if thinking:
+            # Thinking mode: deeper reasoning, temperature must be 1.0
+            kimi_kwargs["temperature"] = 1.0
+        else:
+            # Instant mode: faster, cheaper, deterministic code output
+            kimi_kwargs["temperature"] = 0.6
+            kimi_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        if max_output_tokens:
+            kimi_kwargs["max_tokens"] = max_output_tokens
+
+        return CrewAILLM(**kimi_kwargs)
+    elif is_codex_model(model):
         # Use custom CodexLLM for Codex models (Responses API)
         from .codex_llm import CodexLLM
         return CodexLLM(

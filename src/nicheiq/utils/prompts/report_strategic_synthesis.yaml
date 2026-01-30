@@ -1,5 +1,5 @@
-# Strategic Synthesis Prompt
-# Used by: ReportGenerator._enhance_report_with_llm()
+# Strategic Synthesis Prompt — Market Narrative
+# Used by: ReportGenerator._llm_market_narrative()
 # Variables: niche, selected_solution_name, pain_points_count, market_validation,
 #            seo_scalability, selection_rationale, top_pain_points, project_type,
 #            indexable_pages, cac_organic
@@ -15,7 +15,7 @@ template: |
   SEO Scalability: {seo_scalability}/10
 
   **Your Task:**
-  Generate ONLY these 3 strategic synthesis fields:
+  Generate ONLY these 2 strategic synthesis fields:
 
   1. **executive_summary** (4-6 sentences):
      - Compelling narrative synthesizing the entire research
@@ -26,11 +26,6 @@ template: |
      - Explain HOW the product architecture creates indexable pages
      - What search queries users will use to discover the solution
      - How organic acquisition will scale (programmatic SEO approach)
-
-  3. **next_steps** (5-8 action items):
-     - Concrete, prioritized, sequenced actions
-     - Include validation, MVP development, SEO implementation
-     - Be specific and actionable
 
   **Key Data for Context:**
   - Selection Rationale: {selection_rationale}
@@ -43,13 +38,12 @@ template: |
   First, state the solution category and the key market opportunity in one sentence.
   </brief_explanation>
 
-  Return JSON with these 3 fields only.
+  Return JSON with exactly 2 fields: executive_summary, acquisition_strategy_summary.
 
   <verification>
   Before returning, verify:
-  - JSON contains exactly 3 fields: executive_summary, acquisition_strategy_summary, next_steps
+  - JSON contains exactly 2 fields: executive_summary, acquisition_strategy_summary
   - executive_summary is 4-6 sentences
   - acquisition_strategy_summary is 2-3 paragraphs
-  - next_steps contains 5-8 action items
   - All content references actual data provided (no invented metrics)
   </verification>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MessageSquare, Users, BarChart3, Quote, Star, Shield, TrendingUp, Hash } from 'lucide-svelte';
+	import { MessageSquare, Users, BarChart3, Quote, Star, Shield, Hash } from 'lucide-svelte';
 	import type { ContentCategorization } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
@@ -197,31 +197,20 @@
 		{/if}
 
 		<!-- Expandable: Quality Assessment -->
-		{#if contentCategorization.overall_quality_justification || contentCategorization.discussion_quality_assessment}
+		{#if contentCategorization.overall_quality_justification}
 			<ExpandableSection
 				title="Quality Assessment"
 				icon={Star}
 				variant="warning"
 			>
 				<div class="assessment-grid">
-					{#if contentCategorization.overall_quality_justification}
-						<div class="assessment-card">
-							<h4 class="assessment-title">
-								<Star class="assessment-icon" />
-								Quality Justification
-							</h4>
-							<p class="assessment-text">{contentCategorization.overall_quality_justification}</p>
-						</div>
-					{/if}
-					{#if contentCategorization.discussion_quality_assessment}
-						<div class="assessment-card">
-							<h4 class="assessment-title">
-								<TrendingUp class="assessment-icon" />
-								Discussion Assessment
-							</h4>
-							<p class="assessment-text">{contentCategorization.discussion_quality_assessment}</p>
-						</div>
-					{/if}
+					<div class="assessment-card">
+						<h4 class="assessment-title">
+							<Star class="assessment-icon" />
+							Quality Justification
+						</h4>
+						<p class="assessment-text">{contentCategorization.overall_quality_justification}</p>
+					</div>
 				</div>
 			</ExpandableSection>
 		{/if}

@@ -3,18 +3,17 @@
 export interface Report {
 	niche: string;
 	executive_summary: string;
-	executive_dashboard: ExecutiveDashboard;
-	go_to_market_blueprint: GoToMarketBlueprint;
-	market_analytics: MarketAnalytics;
-	seo_analytics: SEOAnalytics;
-	competitive_analytics: CompetitiveAnalytics;
-	pain_point_analytics: PainPointAnalytics;
-	visualization_manifest?: VisualizationManifest;
+	executive_dashboard?: ExecutiveDashboard;
+	go_to_market_blueprint?: GoToMarketBlueprint;
+	market_analytics?: MarketAnalytics;
+	seo_analytics?: SEOAnalytics;
+	competitive_analytics?: CompetitiveAnalytics;
+	pain_point_analytics?: PainPointAnalytics;
 	selected_solution_name: string;
 	selection_rationale: string;
 	// runner_up_solutions removed - extract names from alternative_solutions instead
 	selection_criteria_scores?: SelectionCriteriaScore[];
-	recommended_focus: string;
+	recommended_focus?: string;
 	selected_solution_details?: SolutionDetails;
 	solution_user_journey?: string;
 	solution_implementation_overview?: string;
@@ -22,34 +21,33 @@ export interface Report {
 	// Site Structure and User Flows (Stage 10.5 - LLM-generated)
 	site_structure?: SiteStructure;
 	user_flows?: UserFlowsSection;
-	pricing_strategy: PricingStrategy;
-	market_sizing: MarketSizing;
+	pricing_strategy?: PricingStrategy;
+	market_sizing?: MarketSizing;
 	trend_longevity?: TrendLongevity;
 	// top_pain_points removed - use detailed_pain_points instead
 	pain_points_summary?: string;
 	// pain_point_categories removed - derive from detailed_pain_points.categories
 	audience_mapping?: AudienceMapping;
-	recommended_solutions?: RecommendedSolution[];
+	recommended_solutions?: string[];
 	solutions_summary?: string;
 	competitive_summary?: string;
-	competitive_analysis: CompetitiveAnalysis;
-	market_validation?: MarketValidation;
+	competitive_analysis?: CompetitiveAnalysis;
+	market_validation?: string;
 	acquisition_strategy_summary?: string;
-	estimated_cac_breakdown?: CACBreakdown;
+	estimated_cac_breakdown?: string;
 	keyword_validation_overview?: string;
-	solution_keyword_comparison?: SolutionKeywordComparison[];
+	solution_keyword_comparison?: string;
 	content_strategy_preview?: string;
-	data_source_research?: DataSourceResearch;
 	data_sourcing_recommendations?: string;
-	next_steps: string;
-	research_metadata: ResearchMetadata;
+	next_steps?: string[];
+	research_metadata?: ResearchMetadata;
 	alternative_solutions?: AlternativeSolution[];
 	competitive_landscape_matrix?: CompetitiveLandscapeMatrix;
 	evidence_appendix?: EvidenceAppendix;
-	data_infrastructure_roadmap?: string;
+	data_infrastructure_roadmap?: DataInfrastructureRoadmap;
 	content_categorization?: ContentCategorization;
-	detailed_pain_points: DetailedPainPoint[];
-	solution_innovation_assessment?: string;
+	detailed_pain_points?: DetailedPainPoint[];
+	solution_innovation_assessment?: Record<string, unknown>;
 	// solution_organic_discovery removed - use selected_solution_details.organic_discovery_queries instead
 	competitor_profiles: CompetitorProfile[];
 	generated_at: string;
@@ -80,6 +78,32 @@ export interface Report {
 
 	// Data Quality Summary (top-level)
 	data_quality_summary?: DataQualitySummary;
+
+	// Stage timing summary (pipeline execution timing)
+	stage_timing_summary?: StageTimingSummary;
+}
+
+// Stage timing summary
+export interface StageTimingSummary {
+	total_duration_seconds: number;
+	stage_durations: Record<string, number>;
+	slowest_stage?: string;
+	fastest_stage?: string;
+}
+
+// Data Infrastructure Roadmap
+export interface DataInfrastructureRoadmap {
+	phases: DataInfrastructurePhase[];
+	cost_scaling_insight: string;
+}
+
+export interface DataInfrastructurePhase {
+	phase_number: number;
+	phase_name: string;
+	timeline: string;
+	data_sources: string[];
+	estimated_monthly_cost: string;
+	key_risks: string[];
 }
 
 // Traffic Monetization interface
@@ -111,20 +135,20 @@ export interface TrafficMonetization {
 // Refinement Highlights interface
 export interface RefinementHighlights {
 	top_strategic_insights: string[];
-	geographic_priority: string;
-	feature_priority: string;
+	geographic_priority?: string | null;
+	feature_priority?: string | null;
 	category_pivot_recommendation: string | null;
 }
 
 // SEO Calculation Transparency interface
 export interface SEOCalculationTransparency {
-	baseline_seo_score: number;
-	refined_seo_score: number;
-	volume_multiplier: number;
-	competition_modifier: number;
-	tier1_multiplier: number;
-	estimated_year1_pages: number;
-	calculation_rationale: string;
+	baseline_seo_score?: number | null;
+	refined_seo_score?: number | null;
+	volume_multiplier?: number | null;
+	competition_modifier?: number | null;
+	tier1_multiplier?: number | null;
+	estimated_year1_pages?: number | null;
+	calculation_rationale?: string | null;
 }
 
 export interface ExecutiveDashboard {
@@ -343,15 +367,15 @@ export interface SEOStrategy {
 	keyword_based_page_types?: PageType[];
 	competitive_positioning?: string;
 	implementation_roadmap?: string;
-	key_metrics_to_track?: string[];
-	risk_mitigation?: string;
+	// key_metrics_to_track removed - generic boilerplate
+	// risk_mitigation removed - generic boilerplate
 	budget_allocation?: string;
 	// long_term_strategy removed - duplicates implementation_roadmap
-	conclusion_bottom_line?: string;
+	// conclusion_bottom_line removed - generic boilerplate
 	// competitive_advantages removed - redundant with competitive_positioning
-	// critical_success_factors removed - overlaps with next_steps_checklist
+	// critical_success_factors removed - generic boilerplate
 	// expected_timeline removed - duplicates implementation_roadmap
-	next_steps_checklist?: string[];
+	// next_steps_checklist removed - generic boilerplate
 	// universal_seo_elements removed - Task 5/6 deleted, technical SEO in technical_seo_recommendations
 	// page_type_implementations removed - Task 5/6 deleted
 	// schema_markup_strategy removed - Task 5/6 deleted
@@ -447,7 +471,6 @@ export interface SolutionLandscape {
 	competitive_intensity: string;
 	recommended_positioning: string;
 	pricing_insights: string;
-	positioning?: string;  // Legacy/backwards compatibility
 }
 
 export interface CompetitorProfile {
@@ -504,13 +527,7 @@ export interface PricingStrategy {
 	value_proposition_delta?: string;
 	pricing_confidence?: 'High' | 'Medium' | 'Low';
 	wtp_validation?: string;
-	market_segment_pricing?: MarketSegmentPricing[];
-}
-
-export interface MarketSegmentPricing {
-	segment: string;
-	recommended_price: string;
-	rationale?: string;
+	market_segment_pricing?: Record<string, string | null>;
 }
 
 export interface MarketSizing {
@@ -563,23 +580,18 @@ export interface TrendLongevity {
 
 	// Seasonality
 	seasonal_pattern?: string;
-	peak_periods?: string | null;
+	peak_periods?: string[] | null;
 
 	// Assessment
 	market_maturity?: string;
 	longevity_verdict?: string; // Sustainable | Risky | Fad
 	longevity_rationale?: string;
 	timing_recommendation?: string;
-	risk_factors?: string[];
+	trend_reversal_risks?: string[];
 
 	// Metadata
-	data_sources_analyzed?: string;
+	data_sources_analyzed?: string[];
 	analysis_timeframe?: string;
-
-	// Legacy fields (for backward compatibility)
-	overall_score?: number;
-	trend_analysis?: string;
-	longevity_factors?: string[];
 }
 
 export interface ResearchMetadata {
@@ -593,14 +605,11 @@ export interface ResearchMetadata {
 	completed_stages?: number[];
 	fallback_stages?: number[];
 	filtering_stats?: Record<string, unknown>;
-	// Legacy/optional fields
-	research_id?: string;
+	// Timing metadata
 	started_at?: string;
 	completed_at?: string;
 	total_duration_minutes?: number;
-	stages_completed?: string[];
-	data_sources?: DataSource[];
-	token_usage?: TokenUsage;
+	// Quality summary
 	data_quality_summary?: DataQualitySummary;
 }
 
@@ -615,32 +624,6 @@ export interface DataQualitySummary {
 	pain_point_confidence_score?: number; // 0-1
 	overall_data_quality: string; // HIGH, MEDIUM, LOW
 	quality_caveats: string[];
-	stages_with_fallback_data?: string[];
-}
-
-export interface DataSource {
-	source: string;
-	items_collected: number;
-	quality_score?: number;
-}
-
-export interface TokenUsage {
-	total_tokens?: number;
-	prompt_tokens?: number;
-	completion_tokens?: number;
-	estimated_cost?: string;
-}
-
-export interface VisualizationManifest {
-	charts?: ChartConfig[];
-	generated_at?: string;
-}
-
-export interface ChartConfig {
-	chart_id: string;
-	chart_type: string;
-	title: string;
-	data_source: string;
 }
 
 // RunnerUpSolution interface removed - use alternative_solutions instead
@@ -653,14 +636,9 @@ export interface SelectionCriteriaScore {
 }
 
 export interface SolutionDetails {
-	// Basic info (may use solution_name or name)
-	name?: string;
+	// Basic info
 	solution_name?: string;
 	description: string;
-	key_features?: string[];
-	target_audience?: string;
-	unique_value_proposition?: string;
-	technical_requirements?: string[];
 	estimated_development_time?: string;
 
 	// Extended solution data
@@ -703,8 +681,6 @@ export interface SolutionDetails {
 		volume_discount?: number;
 		estimated_year1_pages?: number;
 	};
-	// MVP complexity indicator
-	mvp_complexity?: string;
 }
 
 // PainPointCategory interface removed - derive from detailed_pain_points.categories
@@ -730,18 +706,13 @@ export interface AudienceMapping {
 
 	// Strategy
 	recommended_channels?: string[];
-	content_strategy_direction?: string;
 	early_adopter_tactics?: string;
-
-	// Legacy fields (for backward compatibility)
-	primary_segments?: AudienceSegment[];
-	secondary_segments?: AudienceSegment[];
 }
 
 export interface Influencer {
 	name: string;
 	platform: string;
-	follower_estimate?: number;
+	follower_estimate?: string;
 	relevance_score?: number;
 	engagement_level?: string;
 	outreach_priority?: string;
@@ -756,129 +727,7 @@ export interface AudienceSegment {
 	expertise_level?: string;
 	budget_sensitivity?: string;
 	discovery_channels?: string[];
-
-	// Legacy fields (for backward compatibility)
-	characteristics?: string[];
-	pain_points?: string[];
-	channels?: string[];
-}
-
-export interface RecommendedSolution {
-	name: string;
-	description: string;
-	fit_score: number;
-	rationale: string;
-}
-
-export interface MarketValidation {
-	validation_score: number;
-	key_indicators: string[];
-	risks: string[];
-	opportunities: string[];
-}
-
-export interface CACBreakdown {
-	paid_acquisition?: string;
-	organic_acquisition?: string;
-	referral?: string;
-	blended_cac?: string;
-}
-
-export interface SolutionKeywordComparison {
-	solution_name: string;
-	total_volume: number;
-	keyword_count: number;
-	avg_difficulty?: number;
-}
-
-export interface DataSourceResearch {
-	recommended_sources: DataSourceRecommendation[];
-	integration_complexity?: string;
-	estimated_costs?: string;
-}
-
-export interface DataSourceRecommendation {
-	source_name: string;
-	source_type: string;
-	relevance: string;
-	access_method?: string;
-}
-
-// Full data source research from Stage 9.7 (when requires_data_aggregation=true)
-export interface DataSourceResearchFull {
-	solution_name: string;
-	primary_data_sources: DataSourceProvider[];
-	fallback_sources?: DataSourceProvider[];
-	source_evaluation?: SourceEvaluationReport;
-	implementation_phases?: DataRoadmapPhase[];
-	data_partnerships_needed?: DataPartnership[];
-	estimated_monthly_cost?: string;
-	data_quality_risks?: string[];
-	implementation_roadmap: string;
-	competitive_data_insights?: string;
-	seo_aligned_priorities?: string;
-}
-
-export interface DataSourceProvider {
-	provider: string;
-	url?: string;
-	access_model: string;
-	cost_estimate?: string;
-	coverage?: string;
-	update_frequency?: string;
-	integration_effort?: string;
-	data_format?: string;
-	relevance_score?: number;
-	reliability_rating?: string;
-	rate_limits?: string;
-}
-
-export interface SourceEvaluationReport {
-	evaluated_sources: EvaluatedDataSource[];
-	recommended_stack: string[];
-	total_mvp_cost?: string;
-	total_scale_cost?: string;
-	primary_risks: string[];
-	risk_mitigation_strategies?: string[];
-	seo_keyword_alignment?: string;
-}
-
-export interface EvaluatedDataSource {
-	provider: string;
-	url?: string;
-	priority: string;
-	priority_rationale: string;
-	quality_metrics: DataQualityMetrics;
-	mvp_cost_estimate?: string;
-	scale_cost_estimate?: string;
-	integration_risks?: string[];
-	alternatives?: string[];
-}
-
-export interface DataQualityMetrics {
-	coverage_score?: string;
-	freshness?: string;
-	integration_complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW-MEDIUM' | 'MEDIUM-HIGH';
-	cost_viability?: string;
-	quality_assessment?: string;
-}
-
-export interface DataRoadmapPhase {
-	phase_number: number;
-	phase_name: string;
-	timeline: string;
-	goal: string;
-	data_sources: string[];
-	estimated_monthly_cost: string;
-	key_milestones: string[];
-	fallback_strategies: string[];
-}
-
-export interface DataPartnership {
-	partner_type: string;
-	potential_partners?: string[];
-	value_exchange?: string;
-	acquisition_difficulty?: string;
+	influencers_followed?: string[];
 }
 
 export interface AlternativeSolution {
@@ -886,12 +735,8 @@ export interface AlternativeSolution {
 	solution_name: string;
 	summary: string;
 
-	// Legacy fields (for backward compatibility)
-	name?: string;
+	// Description
 	description?: string;
-	pros?: string[];
-	cons?: string[];
-	fit_score?: number;
 
 	// Existing score fields
 	market_fit_score?: number;
@@ -904,22 +749,22 @@ export interface AlternativeSolution {
 	best_suited_for?: string;
 	pivot_trigger?: string;
 
-	// NEW: Core solution details
+	// Core solution details
 	value_proposition?: string;
 	core_features?: string[];
 	target_personas?: string[];
 	technical_approach?: string;
 
-	// NEW: Additional scores and feasibility
+	// Additional scores and feasibility
 	novelty_score?: number;
 	solo_dev_feasibility?: number; // 0-1 scale matching Python float
 
-	// NEW: Competitive landscape for this solution
+	// Competitive landscape for this solution
 	top_competitors?: string[];
 	market_gaps?: string[];
 	competitive_intensity?: string; // LOW, MEDIUM, HIGH
 
-	// NEW: Economic indicators
+	// Economic indicators
 	estimated_development_time?: string;
 	estimated_cac_organic?: string;  // Matches Python: str format like "$15-30"
 	pricing_model?: string;
@@ -930,6 +775,7 @@ export interface CompetitiveLandscapeMatrix {
 	selected_solution_competitors?: string[];
 	competitor_overlap: CompetitorOverlap[];
 	competitive_intensity_by_solution?: SolutionIntensity[];
+	market_insight?: string;
 }
 
 export interface CompetitorOverlap {
@@ -975,7 +821,6 @@ export interface ContentCategorization {
 	executive_summary: string;
 	theme_categories: ThemeCategory[];
 	user_segments: UserSegment[];
-	discussion_quality_assessment: string;
 	overall_quality: string;
 	overall_quality_justification: string;
 }
@@ -1079,4 +924,81 @@ export interface UserFlow {
 export interface UserFlowsSection {
 	flows: UserFlow[];
 	key_insight?: string;
+}
+
+// Full data source research from Stage 9.7 (when requires_data_aggregation=true)
+export interface DataSourceResearchFull {
+	solution_name: string;
+	primary_data_sources: DataSourceProvider[];
+	fallback_sources?: DataSourceProvider[];
+	source_evaluation?: SourceEvaluationReport;
+	implementation_phases?: DataRoadmapPhase[];
+	data_partnerships_needed?: DataPartnership[];
+	estimated_monthly_cost?: string;
+	data_quality_risks?: string[];
+	implementation_roadmap: string;
+	competitive_data_insights?: string;
+	seo_aligned_priorities?: string;
+}
+
+export interface DataSourceProvider {
+	provider: string;
+	url?: string;
+	access_model: string;
+	cost_estimate?: string;
+	coverage?: string;
+	update_frequency?: string;
+	integration_effort?: string;
+	data_format?: string;
+	relevance_score?: number;
+	reliability_rating?: string;
+	rate_limits?: string;
+}
+
+export interface SourceEvaluationReport {
+	evaluated_sources: EvaluatedDataSource[];
+	recommended_stack: string[];
+	total_mvp_cost?: string;
+	total_scale_cost?: string;
+	primary_risks: string[];
+	risk_mitigation_strategies?: string[];
+	seo_keyword_alignment?: string;
+}
+
+export interface EvaluatedDataSource {
+	provider: string;
+	url?: string;
+	priority: string;
+	priority_rationale: string;
+	quality_metrics: DataQualityMetrics;
+	mvp_cost_estimate?: string;
+	scale_cost_estimate?: string;
+	integration_risks?: string[];
+	alternatives?: string[];
+}
+
+export interface DataQualityMetrics {
+	coverage_score?: string;
+	freshness?: string;
+	integration_complexity?: 'LOW' | 'MEDIUM' | 'HIGH' | 'LOW-MEDIUM' | 'MEDIUM-HIGH';
+	cost_viability?: string;
+	quality_assessment?: string;
+}
+
+export interface DataRoadmapPhase {
+	phase_number: number;
+	phase_name: string;
+	timeline: string;
+	goal: string;
+	data_sources: string[];
+	estimated_monthly_cost: string;
+	key_milestones: string[];
+	fallback_strategies: string[];
+}
+
+export interface DataPartnership {
+	partner_type: string;
+	potential_partners?: string[];
+	value_exchange?: string;
+	acquisition_difficulty?: string;
 }

@@ -401,7 +401,6 @@ solution_refinement:
     IdeaGenerationResult with:
     - solution_ideas: 3-5 complete BaseSolutionIdea objects with all 25+ fields
     - recommended_solution: null (will be set in Task 6)
-    - market_insights: 4-6 sentences on opportunity landscape
 
     Each solution must include:
     - All basic fields (name, description, value_prop, pain_points, features, personas)
@@ -556,8 +555,6 @@ competitive_analysis:
     - competitive_intensity: LOW/MEDIUM/HIGH
     - recommended_positioning: Strategic positioning angle (2-3 sentences)
     - pricing_insights: Optional pricing strategy recommendations
-
-    **market_insights** (str): Cross-cutting competitive themes (3-4 sentences)
 
     Complete competitive context ready for solution refinement.
 

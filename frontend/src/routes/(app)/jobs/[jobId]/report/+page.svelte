@@ -148,7 +148,7 @@
 			<!-- PHASE 2: VALIDATE (Is the opportunity real?) -->
 			<div class="phase-section phase-validate">
 				<div class="phase-label">Validate</div>
-				{#if report.detailed_pain_points && report.detailed_pain_points.length > 0}
+				{#if report.detailed_pain_points && report.detailed_pain_points.length > 0 && report.pain_point_analytics}
 					<PainAnalysis
 						painPoints={report.detailed_pain_points}
 						analytics={report.pain_point_analytics}
@@ -156,9 +156,11 @@
 					/>
 				{/if}
 
+				{#if report.market_sizing}
 				<MarketSizing data={report.market_sizing} />
+			{/if}
 
-				{#if report.pricing_strategy || report.traffic_monetization}
+				{#if report.pricing_strategy}
 					<MonetizationStrategy
 						pricingData={report.pricing_strategy}
 						trafficData={report.traffic_monetization}
@@ -169,7 +171,7 @@
 					<TrendSection data={report.trend_longevity} />
 				{/if}
 
-				{#if report.competitive_analytics}
+				{#if report.competitive_analytics && report.competitive_analysis}
 					<Competitors
 						profiles={report.competitor_profiles || []}
 						analysis={report.competitive_analysis}
@@ -202,7 +204,7 @@
 					/>
 				{/if}
 
-				{#if report.seo_strategy_report}
+				{#if report.seo_strategy_report && report.seo_analytics}
 					<SEOKeywords
 						strategy={report.seo_strategy_report}
 						analytics={report.seo_analytics}

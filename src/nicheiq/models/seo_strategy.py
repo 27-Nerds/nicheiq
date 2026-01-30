@@ -448,20 +448,8 @@ class SEOStrategyReport(BaseModel):
         description="Phased implementation plan (markdown, 3-4 phases with timelines and specific targets)"
     )
 
-    # ========================================
-    # METRICS & TRACKING
-    # ========================================
-    key_metrics_to_track: list[str] = Field(
-        ..., description="4-6 critical KPIs (SEO Performance + Business Metrics)"
-    )
-
-    # ========================================
-    # RISK MITIGATION
-    # ========================================
-    risk_mitigation: Optional[str] = Field(
-        default=None,
-        description="Potential challenges and mitigation strategies (markdown, 2-4 challenges)"
-    )
+    # key_metrics_to_track removed - generic boilerplate
+    # risk_mitigation removed - generic boilerplate
 
     # ========================================
     # BUDGET ALLOCATION
@@ -471,20 +459,8 @@ class SEOStrategyReport(BaseModel):
         description="Budget recommendations with options (markdown, Option A/B/C)"
     )
 
-    # ========================================
-    # CONCLUSION
-    # ========================================
-    conclusion_bottom_line: str = Field(
-        ...,
-        description="Bottom line summary (1 paragraph)"
-    )
-
-    # ========================================
-    # NEXT STEPS
-    # ========================================
-    next_steps_checklist: list[str] = Field(
-        ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
-    )
+    # conclusion_bottom_line removed - generic boilerplate
+    # next_steps_checklist removed - generic boilerplate
 
     @field_validator('total_monthly_volume', mode='before')
     @classmethod
@@ -1222,7 +1198,7 @@ class ImplementationPlanResult(BaseModel):
     Intermediate result from Task 3: Implementation Planning.
 
     The seo_specialist agent creates phased implementation roadmap with
-    metrics, timeline, budget, and risk mitigation strategies.
+    budget allocation.
     """
 
     model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
@@ -1231,40 +1207,17 @@ class ImplementationPlanResult(BaseModel):
     implementation_roadmap: str = Field(
         ..., description="Phased implementation plan (markdown, 3-4 phases with timelines and targets)"
     )
-    key_metrics_to_track: list[str] = Field(
-        ..., description="4-6 critical KPIs (SEO Performance + Business Metrics)"
-    )
+    # key_metrics_to_track removed - generic boilerplate
     # expected_timeline removed - duplicates implementation_roadmap
-    next_steps_checklist: list[str] = Field(
-        ..., description="Actionable checklist (5-8 items with ✅/⬜ checkboxes)"
-    )
+    # next_steps_checklist removed - generic boilerplate
 
     # Optional planning elements
-    risk_mitigation: Optional[str] = Field(
-        default=None, description="Potential challenges and mitigation strategies (markdown, 2-4 challenges)"
-    )
+    # risk_mitigation removed - generic boilerplate
     budget_allocation: Optional[str] = Field(
         default=None, description="Budget recommendations with options (markdown, Option A/B/C)"
     )
 
-class FinalSynthesis(BaseModel):
-    """
-    Task 4 output: Final SEO Strategy Synthesis.
-
-    Contains the final conclusion/summary. Other fields removed as they were
-    redundant with existing fields (implementation_roadmap, competitive_positioning, etc.)
-    """
-
-    model_config = ConfigDict(extra='ignore')  # Ignore extra fields from LLM (e.g., additionalProperties)
-
-    # long_term_strategy removed - duplicates implementation_roadmap
-    conclusion_bottom_line: str = Field(
-        ...,
-        min_length=50,
-        description="Bottom line summary (1 paragraph, minimum 50 chars)"
-    )
-    # competitive_advantages removed - redundant with competitive_positioning
-    # critical_success_factors removed - overlaps with next_steps_checklist
+# FinalSynthesis class deleted - only had conclusion_bottom_line (generic boilerplate)
 
 
 # SyncFinalOutputs, ImplementationGuide, and all Light models (UniversalSEOElementsLight,

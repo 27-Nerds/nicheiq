@@ -88,10 +88,23 @@ site_structure_task:
 
     **TECH STACK RECOMMENDATION:**
 
-    Provide a brief tech_stack_recommendation appropriate for {project_type}:
-    - Consider: static site generators, full-stack frameworks, headless CMS
-    - Match to content_generation_model and estimated page count
-    - Examples: "Next.js + Supabase", "SvelteKit + Prisma", "Astro for static pages"
+    Provide a tech_stack_recommendation with JUSTIFICATION tied to this solution's specifics:
+
+    1. **Page Volume:** If estimated_indexable_pages < 10,000 → favor static site generation
+       (Astro, Next.js SSG). If > 10,000 → favor dynamic rendering with ISR/SSR (Next.js, SvelteKit).
+    2. **Data Aggregation:** If data_sources is not "None" → requires robust backend with
+       job queue/scheduler (e.g., "Next.js + Supabase + BullMQ" or "SvelteKit + Prisma + Redis").
+       If no data aggregation → simpler stack is fine.
+    3. **Content Model:** If content_generation_model mentions "programmatic" → needs headless CMS
+       or database-driven page generation. If "editorial" → simpler CMS or markdown-based.
+    4. **Project Type Alignment:** {project_type} determines architecture:
+       - directory → database-driven listings + search + filters
+       - aggregator → ETL pipeline + data normalization + scheduled updates
+       - saas → user auth + dashboards + API layer
+       - comparison → structured data + scoring + programmatic pages
+
+    DO NOT default to "Next.js + Supabase" without explaining WHY it fits this specific solution.
+    State the reasoning: "Recommended X because [page count/data needs/content model justifies it]."
 
     ═══ REMEMBER ═══
     Public tools ≠ user dashboards. If a page shows USER data, it goes in User Account.

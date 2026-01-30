@@ -58,7 +58,7 @@ class ThemeCategory(BaseModel):
         ..., description="User types in this category"
     )
     representative_quotes: list[str] = Field(
-        ..., description="3+ quotes from discussions"
+        ..., description="2+ quotes from discussions"
     )
 
 class UserSegment(BaseModel):
@@ -83,9 +83,6 @@ class ContentCategorizationReport(BaseModel):
     )
     user_segments: list[UserSegment] = Field(
         ..., min_length=3, description="User segment profiles (minimum 3)"
-    )
-    discussion_quality_assessment: str = Field(
-        ..., description="Quality assessment narrative"
     )
     overall_quality: str = Field(
         ..., description="High/Medium/Low rating"

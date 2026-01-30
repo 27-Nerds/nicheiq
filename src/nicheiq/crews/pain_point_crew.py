@@ -141,9 +141,9 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
                 return (False, f"Pain point {i+1} missing or too short title")
             if not pp.description or len(pp.description) < 20:
                 return (False, f"Pain point '{pp.title}' has missing or too short description")
-            if len(pp.representative_quotes) < 3:
+            if len(pp.representative_quotes) < 2:
                 failing_pain_points.append(
-                    f"  - '{pp.title}': {len(pp.representative_quotes)} quotes (need 3+)"
+                    f"  - '{pp.title}': {len(pp.representative_quotes)} quotes (need 2+)"
                 )
 
         if failing_pain_points:
@@ -152,7 +152,7 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
                 f"Pain points with insufficient quotes:\n"
                 + "\n".join(failing_pain_points)
                 + "\n\nFix options: (1) Search knowledge sources for more quotes with [source: ID] tags, "
-                "OR (2) EXCLUDE pain points with <3 quotes - they lack sufficient evidence, "
+                "OR (2) EXCLUDE pain points with <2 quotes - they lack sufficient evidence, "
                 "OR (3) MERGE weak pain points into related broader categories."
             )
 
@@ -656,7 +656,7 @@ class PainPointCrew:
         Task: Read and categorize all social content.
 
         Output: Structured categorization of discussions by theme and user segment.
-        Guardrail: Validates 4+ themes with 3+ quotes each, and 3+ user segments.
+        Guardrail: Validates 4+ themes with 2+ quotes each, and 3+ user segments.
         """
         return Task(
             config=self.tasks_config["categorize_content"],

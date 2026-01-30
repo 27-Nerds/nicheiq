@@ -109,7 +109,7 @@ audience_mapping_analysis:
     If any stop condition is met:
     - Return low-confidence output with segment_prioritization_rationale: "Low confidence - [specify which condition triggered]"
     - Provide best-effort segmentation based on available data
-    - Flag limitations explicitly in content_strategy_direction
+    - Flag limitations explicitly in segment_prioritization_rationale
 
 
     **SEGMENTATION GUIDELINES:**
@@ -177,8 +177,6 @@ audience_mapping_analysis:
     - **frustrations_with_existing:** List of top 5 frustrations
 
     - **recommended_channels:** List of top 3-5 marketing channels
-
-    - **content_strategy_direction:** High-level strategy (2-3 sentences)
 
     - **early_adopter_tactics:** Optional tactics for first 100 users
 

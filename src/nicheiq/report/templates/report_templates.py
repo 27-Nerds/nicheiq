@@ -35,66 +35,6 @@ class ReportTemplates:
         return "## User Journey\n\n" + "\n".join(steps)
 
     @staticmethod
-    def implementation_overview(solution: "SolutionIdea") -> str | None:
-        """
-        Generate implementation overview with 3-phase plan.
-
-        Args:
-            solution: SolutionIdea with estimated_development_time and technical_approach
-
-        Returns:
-            Formatted implementation overview markdown, or None if no solution
-        """
-        if not solution:
-            return None
-
-        dev_time = solution.estimated_development_time or "Development timeline not estimated"
-        tech = solution.technical_approach or "Technical approach not specified"
-
-        return f"""## Implementation Overview
-
-**Phase 1: MVP Development** ({dev_time})
-Build core functionality using {tech}. Focus on delivering essential features.
-
-**Phase 2: Enhancement & Scaling**
-Add advanced features, optimize performance, implement user feedback.
-
-**Phase 3: Market Expansion**
-Expand to new markets or segments based on validated learnings."""
-
-    @staticmethod
-    def mvp_scope(solution: "SolutionIdea") -> str | None:
-        """
-        Generate MVP scope definition with must-have vs post-MVP features.
-
-        Args:
-            solution: SolutionIdea with core_features
-
-        Returns:
-            Formatted MVP scope markdown, or None if no features
-        """
-        if not solution or not solution.core_features:
-            return None
-
-        # Phase 1.4: Show all features as MVP (removed arbitrary 4-feature split)
-        must_have = solution.core_features
-        post_mvp = []  # All features considered MVP-critical
-
-        mvp_text = "## MVP Scope\n\n### Must-Have Features\n"
-        mvp_text += "\n".join([f"- {f}" for f in must_have])
-
-        if post_mvp:
-            mvp_text += "\n\n### Post-MVP Features\n"
-            mvp_text += "\n".join([f"- {f}" for f in post_mvp])
-
-        mvp_text += "\n\n### Success Criteria\n"
-        mvp_text += "- 100+ active users within 3 months\n"
-        mvp_text += "- 60%+ weekly active users\n"
-        mvp_text += "- First paying customer within 6 months"
-
-        return mvp_text
-
-    @staticmethod
     def acquisition_strategy(solution: "SolutionIdea") -> str | None:
         """
         Generate customer acquisition strategy overview.
@@ -170,6 +110,42 @@ Expand to new markets or segments based on validated learnings."""
 
             table += f"\n**SEO Scalability:** {scalability:.1f}/10 - {rating} organic growth potential.\n"
 
-        table += "\n**CAC Advantage:** Organic acquisition through programmatic SEO significantly reduces customer acquisition costs compared to paid channels."
+        # Data-driven CAC advantage sentence
+        cac_advantage = ReportTemplates._compute_cac_advantage(
+            cac_organic, cac_paid, solution
+        )
+        table += f"\n{cac_advantage}"
 
         return table
+
+    @staticmethod
+    def _compute_cac_advantage(
+        cac_organic: str, cac_paid: str, solution: "SolutionIdea"
+    ) -> str:
+        """Compute a data-driven CAC advantage sentence from actual values."""
+        niche = getattr(solution, 'solution_name', 'this niche') or 'this niche'
+        indexable_pages = solution.estimated_indexable_pages if solution else None
+
+        # Try to extract midpoint numbers from CAC strings like "$5-15" or "$10"
+        def extract_midpoint(val: str) -> float | None:
+            if not val or val == "N/A":
+                return None
+            import re
+            numbers = re.findall(r'[\d.]+', val)
+            if not numbers:
+                return None
+            nums = [float(n) for n in numbers]
+            return sum(nums) / len(nums)
+
+        org_mid = extract_midpoint(cac_organic) if isinstance(cac_organic, str) else None
+        paid_mid = extract_midpoint(cac_paid) if isinstance(cac_paid, str) else None
+
+        if org_mid and paid_mid and org_mid > 0:
+            ratio = paid_mid / org_mid
+            page_note = f", driven by {indexable_pages:,}+ programmatic pages" if indexable_pages else ""
+            return f"**CAC Advantage:** Organic acquisition costs approximately {ratio:.0f}x less than paid channels for {niche}{page_note}."
+
+        # Fallback with whatever data is available
+        if indexable_pages:
+            return f"**CAC Advantage:** Programmatic SEO across {indexable_pages:,}+ pages enables low-cost organic acquisition for {niche}."
+        return f"**CAC Advantage:** Organic acquisition through programmatic SEO reduces customer acquisition costs for {niche}."

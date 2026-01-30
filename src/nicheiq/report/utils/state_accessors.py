@@ -195,8 +195,9 @@ class StateAccessor:
         Returns:
             Summary text or default message if unavailable
         """
-        if self.state.idea_generation:
-            return self.state.idea_generation.market_insights
+        if self.state.idea_generation and self.state.idea_generation.solution_ideas:
+            names = [s.solution_name for s in self.state.idea_generation.solution_ideas]
+            return f"Generated {len(names)} solution concepts: {', '.join(names)}."
         return "No solution ideas generated."
 
     def get_competitive_summary(self) -> str:
@@ -648,8 +649,9 @@ class StateAccessor:
 
         # Strategic insights
         strategic_insights = safe_get_attr(refinement, 'strategic_insights')
-        content_strategy = safe_get_attr(refinement, 'content_strategy_preview')
         if strategic_insights:
-            preview_parts.append(f"\n{content_strategy}")
+            preview_parts.append("\n## Strategic Insights\n\n")
+            for insight in strategic_insights:
+                preview_parts.append(f"- {insight}\n")
 
         return "".join(preview_parts)

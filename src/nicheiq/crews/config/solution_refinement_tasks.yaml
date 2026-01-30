@@ -108,7 +108,6 @@ refine_solution_strategy:
     - geographic_priorities: List[str] with 3-5 markets ranked by opportunity
     - category_pivot_recommendation: Optional[str] - only if >40% keyword evidence supports pivot
     - feature_priorities: List[FeaturePriority] with top 5-10 features (each has feature_name, priority, keyword_support, rationale)
-    - content_strategy_preview: str - 2-3 paragraphs outlining content roadmap tied to keyword clusters
     - strategic_insights: List[str] - 3-8 actionable, non-obvious insights
 
   expected_output: >
@@ -141,22 +140,6 @@ refine_solution_strategy:
       "rationale": "8 validated keywords (avg 1,200 volume) mention tax filing, compliance, or accounting - highest search intent of all features with moderate competition (45)"
     }
 
-    **content_strategy_preview** (str):
-    2-3 paragraph narrative outlining content roadmap based on keyword themes.
-    Should specify:
-    - Which pillar pages to create (tied to broad keywords)
-    - Comparison content opportunities (competitor keywords)
-    - Geographic landing page strategy (location keywords)
-    - Topic cluster organization (thematic groups)
-    - Programmatic SEO potential (if structure supports it)
-
-    Example:
-    "The keyword analysis reveals a three-tier content strategy. First, create pillar pages for the two dominant keyword clusters: 'expat relocation services' (4,200/mo volume) and 'visa assistance platforms' (2,800/mo). These broad terms should anchor comprehensive guides covering the full relocation journey.
-
-    Second, leverage the strong geographic signal (45% of keywords are location-specific) by building dedicated landing pages for top markets: Spain, Germany, and UK. Each page should target '[service] in [country]' keywords and feature localized provider listings.
-
-    Third, capitalize on comparison keyword volume ('[competitor] alternative' keywords at 1,500/mo) by creating structured comparison pages highlighting differentiation vs the 3 main competitors. This addresses commercial intent and captures users actively evaluating options."
-
     **strategic_insights** (List[str]):
     3-8 specific, actionable insights based on keyword patterns.
     Each insight should:
@@ -179,7 +162,6 @@ refine_solution_strategy:
     ✗ Empty geographic_priorities → Guardrail will reject (must have at least 1 market)
     ✗ Empty feature_priorities → Guardrail will reject (must have 1-10 features)
     ✗ strategic_insights with <3 items → Guardrail will reject (minimum 3 insights)
-    ✗ content_strategy_preview <100 chars → Guardrail will reject (must be substantive)
 
     **DATA ACCURACY:**
     ✗ Inventing keywords not in input → Hallucination (only cite provided data)

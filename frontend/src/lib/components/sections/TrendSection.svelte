@@ -170,15 +170,15 @@
 	{/if}
 
 	<!-- Expandable: Risk Factors -->
-	{#if data.risk_factors && data.risk_factors.length > 0}
+	{#if data.trend_reversal_risks && data.trend_reversal_risks.length > 0}
 		<ExpandableSection
 			title="Risk Factors"
 			icon={AlertTriangle}
-			count={data.risk_factors.length}
+			count={data.trend_reversal_risks.length}
 			variant="error"
 		>
 			<div class="item-list">
-				{#each data.risk_factors as risk}
+				{#each data.trend_reversal_risks as risk}
 					<IconListItem icon={AlertTriangle} iconVariant="error">{risk}</IconListItem>
 				{/each}
 			</div>

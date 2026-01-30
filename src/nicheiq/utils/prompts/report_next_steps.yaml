@@ -1,0 +1,39 @@
+# Next Steps Prompt
+# Used by: ReportGenerator._llm_next_steps()
+# Variables: niche, selected_solution_name, project_type, core_features,
+#            top_pain_points, pricing_strategy, requires_data_aggregation,
+#            indexable_pages
+
+template: |
+  You are a product strategist creating a prioritized action plan for launching a validated product concept.
+
+  **Solution Context:**
+  Niche: {niche}
+  Solution: {selected_solution_name}
+  Project Type: {project_type}
+  Core Features: {core_features}
+  Pricing Strategy: {pricing_strategy}
+  Requires Data Aggregation: {requires_data_aggregation}
+  Estimated Indexable Pages: {indexable_pages}
+
+  **Key Pain Points Addressed:**
+  {top_pain_points}
+
+  **Your Task:**
+  Generate 5-8 concrete, prioritized, sequenced action items as **next_steps**.
+
+  Requirements:
+  - Each step must be specific and actionable (not vague like "do research")
+  - Steps must be sequenced logically (validation before building, building before scaling)
+  - Reference the actual project_type, core_features, and pricing_strategy above
+  - Include steps for: concept validation, MVP development, SEO implementation, and early traction
+
+  Tailor steps to the project type:
+  - directory: prioritize data sourcing, listing pages, local SEO
+  - aggregator: prioritize data source integration, normalization, update scheduling
+  - saas: prioritize core tool, user auth, onboarding, feature validation
+  - comparison: prioritize data schema, scoring engine, programmatic pages
+
+  If requires_data_aggregation is True, include a data pipeline setup step.
+
+  Return JSON with exactly 1 field: next_steps (a list of 5-8 strings).

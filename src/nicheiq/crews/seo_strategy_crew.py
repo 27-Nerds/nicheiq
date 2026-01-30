@@ -22,7 +22,6 @@ from ..models.seo_strategy import (
     ContentStrategyResult,
     ContentStrategyResultLight,
     ExpandedKeywordList,
-    FinalSynthesis,
     GeographicKeywordEntry,
     GeographicKeywordGroup,
     GeographicLightGroup,
@@ -57,7 +56,6 @@ from ..utils.generation import KeywordSeedGenerator
 from ..utils.validation import (
     validate_category_tier_output,
     validate_content_strategy_output,
-    validate_final_synthesis_output,
     validate_geographic_tier_output,
     validate_implementation_plan_output,
     validate_strategic_tier_output,
@@ -1306,40 +1304,7 @@ class SEOStrategyCrew:
             guardrail_max_retries=2,
         )
 
-    @task
-    def synthesize_final_seo_strategy_task(self) -> Task:
-        """
-        Task 4: Final Strategy Synthesis.
-
-        Generates the final conclusion field:
-        - conclusion_bottom_line (Executive summary paragraph)
-
-        Note: long_term_strategy, competitive_advantages, and critical_success_factors
-        were removed as they were redundant with implementation_roadmap, competitive_positioning,
-        and next_steps_checklist respectively.
-
-        All fields from Tasks 1a-1d + 2-3 will be preserved via Python merge.
-
-        Depends on: All previous tasks (1d, 2, 3)
-        Output: FinalSynthesis (conclusion_bottom_line only)
-
-        Note: This is now the final task (Task 5/6 removed).
-        Technical SEO implementation is handled by Task 2's technical_seo_recommendations.
-        """
-        return Task(
-            config=self.tasks_config["synthesize_final_seo_strategy"],
-            agent=self.seo_specialist(),
-            context=[
-                self.synthesize_keyword_summary_task(),  # Task 1d (keyword reference)
-                self.develop_content_technical_strategy_task(),  # Task 2 (reference)
-                self.create_implementation_plan_task(),  # Task 3 (reference)
-            ],
-            output_pydantic=FinalSynthesis,
-            guardrail=validate_final_synthesis_output,
-            guardrail_max_retries=2,
-            # async_execution removed - Task 4 is now the final task
-        )
-
+    # synthesize_final_seo_strategy_task (Task 4) removed - only produced conclusion_bottom_line (generic boilerplate)
     # create_implementation_guide_task (Task 5) and sync_final_outputs_task (Task 6) removed
     # Technical SEO is now part of Task 2's technical_seo_recommendations markdown field
 
@@ -1927,9 +1892,9 @@ class SEOStrategyCrew:
                     self.geographic_tier_analyst(),   # Task 1b
                     self.category_tier_analyst(),     # Task 1c
                     self.keyword_summary_analyst(),   # Task 1d
-                    # Tasks 2-4: Strategy development agents
+                    # Tasks 2-3: Strategy development agents
                     self.content_strategist(),        # Task 2
-                    self.seo_specialist(),            # Tasks 3-4
+                    self.seo_specialist(),            # Task 3
                 ],
                 tasks=[
                     # Split keyword analysis (Tasks 1a-1d)
@@ -1937,10 +1902,9 @@ class SEOStrategyCrew:
                     self.analyze_geographic_tier_task(),      # Task 1b (context: 1a)
                     self.analyze_category_tier_task(),        # Task 1c (context: 1a, 1b)
                     self.synthesize_keyword_summary_task(),   # Task 1d (context: 1a, 1b, 1c)
-                    # Strategy development (Tasks 2-4)
+                    # Strategy development (Tasks 2-3)
                     self.develop_content_technical_strategy_task(),  # Task 2 (context: 1d, includes tech SEO)
-                    self.create_implementation_plan_task(),          # Task 3
-                    self.synthesize_final_seo_strategy_task(),       # Task 4 (final task)
+                    self.create_implementation_plan_task(),          # Task 3 (final task)
                 ],
                 verbose=True,
                 process_type="sequential",
@@ -2211,42 +2175,29 @@ class SEOStrategyCrew:
                     "Check ImplementationPlanResult schema and agent prompt."
                 )
 
-            task_4_output = task_outputs[6].pydantic  # FinalSynthesis
-            if task_4_output is None:
-                raise ValueError(
-                    "Task 4 (Final Synthesis) returned None pydantic output. "
-                    "Check FinalSynthesis schema and agent prompt."
-                )
-
-            # Note: Task 5 (Implementation Guide) removed - technical SEO is now in Task 2's
-            # technical_seo_recommendations field
+            # Task 4 (Final Synthesis) removed - only produced conclusion_bottom_line (generic boilerplate)
+            # Task 5 (Implementation Guide) removed - technical SEO is now in Task 2
 
             # ========================================
             # Python merge: Combine all task outputs into SEOStrategyReport
             # ========================================
-            # Note: seed_keywords_generated, tier_X_strategy, untiered_keywords,
-            # keyword_driven_site_architecture, long_term_strategy, expected_timeline,
-            # competitive_advantages, critical_success_factors removed - never rendered
 
             result = SEOStrategyReport(
                 # Merged keyword analysis (Tasks 1a-1d) - extra fields ignored via extra='ignore'
                 **keyword_analysis.model_dump(),
                 # Task 2 fields (includes technical_seo_recommendations)
                 **task_2_output.model_dump(),
-                # Task 3 fields (implementation_roadmap, key_metrics, next_steps, etc.)
+                # Task 3 fields (implementation_roadmap, budget_allocation)
                 **task_3_output.model_dump(),
-                # Task 4 field (only conclusion_bottom_line remains)
-                conclusion_bottom_line=task_4_output.conclusion_bottom_line,
             )
 
             logger.info(
-                f"[OK] 7-Task SEO Strategy Flow complete (Tasks 1a-1d + 2-4 merged via Python):\n"
+                f"[OK] 6-Task SEO Strategy Flow complete (Tasks 1a-1d + 2-3 merged via Python):\n"
                 f"  - Tier 1 keywords: {len(result.tier_1_keywords) if result.tier_1_keywords else 0}\n"
                 f"  - Topic clusters: {len(result.topic_clusters) if result.topic_clusters else 0}\n"
                 f"  - Total monthly volume: {result.total_monthly_volume if result.total_monthly_volume is not None else 0}\n"
                 f"  - Technical SEO: {'✓' if result.technical_seo_recommendations else '✗'}\n"
-                f"  - Implementation roadmap: {'✓' if result.implementation_roadmap else '✗'}\n"
-                f"  - Conclusion: {'✓' if result.conclusion_bottom_line else '✗'}"
+                f"  - Implementation roadmap: {'✓' if result.implementation_roadmap else '✗'}"
             )
             return result
 
@@ -2262,7 +2213,7 @@ class SEOStrategyCrew:
 
         Tasks 1a-i, 1a-ii, 1b, 1c, 1d run in parallel using CrewAI's async_execution=True pattern.
         Task 1e waits for all 5 async tasks via context dependency.
-        Tasks 2-4 run sequentially. Task 5/6 removed - technical SEO in Task 2.
+        Tasks 2-3 run sequentially. Task 4/5/6 removed.
 
         Benefits:
         - ~5x faster keyword analysis (Tasks 1a-i, 1a-ii, 1b, 1c, 1d run concurrently)
@@ -2313,7 +2264,7 @@ class SEOStrategyCrew:
             # Create 9-task crew with parallel keyword analysis
             # Tasks 1a-i, 1a-ii, 1b, 1c, 1d run concurrently (async_execution=True)
             # Task 1e waits for all via context dependency
-            # Task 4 is final task (Task 5/6 removed - technical SEO in Task 2)
+            # Task 3 is final task (Task 4/5/6 removed)
             #
             # IMPORTANT: Store task references to access task.output directly after crew completes
             # (crew_output.tasks_output has bugs with async tasks - may not include all outputs)
@@ -2324,8 +2275,7 @@ class SEOStrategyCrew:
             task_1d = self.analyze_category_tier_parallel_task()     # Task 1d (async)
             task_1e = self.synthesize_keyword_summary_parallel_task()  # Task 1e (sync)
             task_2 = self.develop_content_technical_strategy_task()  # Task 2 (includes tech SEO)
-            task_3 = self.create_implementation_plan_task()          # Task 3
-            task_4 = self.synthesize_final_seo_strategy_task()       # Task 4 (final task)
+            task_3 = self.create_implementation_plan_task()          # Task 3 (final task)
 
             strategy_crew = Crew(
                 agents=[
@@ -2336,13 +2286,13 @@ class SEOStrategyCrew:
                     self.geographic_tier_analyst(),    # Task 1c (async)
                     self.category_tier_analyst(),      # Task 1d (async)
                     self.keyword_summary_analyst(),    # Task 1e (sync)
-                    # Tasks 2-4: Strategy development agents
+                    # Tasks 2-3: Strategy development agents
                     self.content_strategist(),         # Task 2
-                    self.seo_specialist(),             # Tasks 3-4
+                    self.seo_specialist(),             # Task 3
                 ],
                 tasks=[
                     task_1a_i, task_1a_ii, task_1b, task_1c, task_1d, task_1e,
-                    task_2, task_3, task_4,
+                    task_2, task_3,
                 ],
                 verbose=True,
                 process_type="sequential",  # CrewAI handles async within sequential
@@ -2872,33 +2822,24 @@ class SEOStrategyCrew:
             task_3_output = _parse_output(task_3_raw, ImplementationPlanResult, "Task 3")
             logger.info("✅ Task 3 output extracted")
 
-            task_4_raw = _get_task_output(task_4, "Task 4 (Final Synthesis)", "FinalSynthesis")
-            task_4_output = _parse_output(task_4_raw, FinalSynthesis, "Task 4")
-            logger.info("✅ Task 4 output extracted")
-
-            # Note: Task 5 (Implementation Guide) removed - technical SEO is now in Task 2's
-            # technical_seo_recommendations field
+            # Task 4 (Final Synthesis) removed - only produced conclusion_bottom_line (generic boilerplate)
+            # Task 5 (Implementation Guide) removed - technical SEO is now in Task 2
 
             # ========================================
             # Python merge: Combine all task outputs into SEOStrategyReport
             # ========================================
-            # Note: seed_keywords_generated, tier_X_strategy, untiered_keywords,
-            # keyword_driven_site_architecture, long_term_strategy, expected_timeline,
-            # competitive_advantages, critical_success_factors removed - never rendered
 
             result = SEOStrategyReport(
                 # Merged keyword analysis (Tasks 1a-1e) - extra fields ignored via extra='ignore'
                 **keyword_analysis.model_dump(),
                 # Task 2 fields (includes technical_seo_recommendations)
                 **task_2_output.model_dump(),
-                # Task 3 fields (implementation_roadmap, key_metrics, next_steps, etc.)
+                # Task 3 fields (implementation_roadmap, budget_allocation)
                 **task_3_output.model_dump(),
-                # Task 4 field (only conclusion_bottom_line remains)
-                conclusion_bottom_line=task_4_output.conclusion_bottom_line,
             )
 
             logger.info(
-                f"[OK] 9-Task SEO Strategy Flow complete (PARALLEL: Tasks 1a-i/ii, 1b-1e + 2-4):\n"
+                f"[OK] 8-Task SEO Strategy Flow complete (PARALLEL: Tasks 1a-i/ii, 1b-1e + 2-3):\n"
                 f"  - Tier 0 keywords: {tier0_selected}\n"
                 f"  - Tier 1 keywords: {tier1_selected}\n"
                 f"  - Tier 2 keywords: {tier2_selected}\n"
@@ -2906,8 +2847,7 @@ class SEOStrategyCrew:
                 f"  - Topic clusters: {len(result.topic_clusters) if result.topic_clusters else 0}\n"
                 f"  - Total monthly volume: {result.total_monthly_volume if result.total_monthly_volume is not None else 0}\n"
                 f"  - Technical SEO: {'✓' if result.technical_seo_recommendations else '✗'}\n"
-                f"  - Implementation roadmap: {'✓' if result.implementation_roadmap else '✗'}\n"
-                f"  - Conclusion: {'✓' if result.conclusion_bottom_line else '✗'}"
+                f"  - Implementation roadmap: {'✓' if result.implementation_roadmap else '✗'}"
             )
             return result
 

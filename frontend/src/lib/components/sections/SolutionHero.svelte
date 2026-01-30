@@ -408,38 +408,41 @@
   <!-- How It Works -->
   {#if solution.description && solution.description !== solution.value_proposition}
     <div class="how-it-works-section">
-      <SubsectionHeader title="How It Works" icon={FileText} variant="default" />
-      <InsightCard variant="muted" border="left" padding="md">
-        <div class="how-it-works-content">
-          {@html renderMarkdown(solution.description)}
-        </div>
-      </InsightCard>
+      <ExpandableSection title="How It Works" icon={FileText} defaultOpen={false} variant="muted">
+        <InsightCard variant="muted" border="left" padding="md">
+          <div class="how-it-works-content">
+            {@html renderMarkdown(solution.description)}
+          </div>
+        </InsightCard>
+      </ExpandableSection>
     </div>
   {/if}
 
   <!-- Core Features -->
   {#if solution.core_features && solution.core_features.length > 0}
     <div class="core-features-section">
-      <SubsectionHeader title="Core Features" icon={Layers} count={solution.core_features.length} variant="default" />
-      <InsightCard variant="muted" border="left" padding="md">
-        <ul class="feature-list">
-          {#each solution.core_features as feature}
-            <CheckListItem color="accent">{feature}</CheckListItem>
-          {/each}
-        </ul>
-      </InsightCard>
+      <ExpandableSection title="Core Features" icon={Layers} count={solution.core_features.length} defaultOpen={false} variant="muted">
+        <InsightCard variant="muted" border="left" padding="md">
+          <ul class="feature-list">
+            {#each solution.core_features as feature}
+              <CheckListItem color="accent">{feature}</CheckListItem>
+            {/each}
+          </ul>
+        </InsightCard>
+      </ExpandableSection>
     </div>
   {/if}
 
   <!-- SEO Content Engine -->
   {#if solution.content_generation_model}
     <div class="seo-engine-section">
-      <SubsectionHeader title="SEO Content Engine" icon={Globe} variant="default" />
-      <InsightCard variant="muted" border="left" padding="md">
-        <div class="seo-engine-content">
-          {@html renderMarkdown(solution.content_generation_model)}
-        </div>
-      </InsightCard>
+      <ExpandableSection title="SEO Content Engine" icon={Globe} defaultOpen={false} variant="muted">
+        <InsightCard variant="muted" border="left" padding="md">
+          <div class="seo-engine-content">
+            {@html renderMarkdown(solution.content_generation_model)}
+          </div>
+        </InsightCard>
+      </ExpandableSection>
     </div>
   {/if}
 

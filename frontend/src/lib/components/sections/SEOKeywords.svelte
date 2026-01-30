@@ -7,10 +7,8 @@
     Layers,
     Target,
     Clock,
-    CheckCircle,
     AlertTriangle,
     Code,
-    BarChart3,
     ChevronRight,
     Hash,
     Table,
@@ -673,37 +671,8 @@
     </ExpandableSection>
   {/if}
 
-  <!-- Expandable: Key Metrics to Track -->
-  {#if strategy.key_metrics_to_track && strategy.key_metrics_to_track.length > 0}
-    <ExpandableSection
-      title="Key Metrics to Track"
-      icon={BarChart3}
-      count={strategy.key_metrics_to_track.length}
-    >
-      <div class="metrics-list">
-        {#each strategy.key_metrics_to_track as metric, i}
-          <div class="metric-item">
-            <span class="metric-number">{i + 1}</span>
-            <span class="metric-text">{metric}</span>
-          </div>
-        {/each}
-      </div>
-    </ExpandableSection>
-  {/if}
-
-  <!-- Expandable: Risk Mitigation -->
-  {#if strategy.risk_mitigation}
-    <ExpandableSection
-      title="Risk Mitigation"
-      icon={AlertTriangle}
-      variant="warning"
-    >
-      <div class="markdown-content risk-content timeline-styled">
-        {@html renderMarkdown(strategy.risk_mitigation)}
-      </div>
-    </ExpandableSection>
-  {/if}
-
+  <!-- key_metrics_to_track removed - generic boilerplate -->
+  <!-- risk_mitigation removed - generic boilerplate -->
   <!-- schema_markup_strategy removed - Task 5/6 deleted -->
   <!-- page_type_implementations removed - Task 5/6 deleted -->
 
@@ -718,40 +687,7 @@
     </ExpandableSection>
   {/if}
   <!-- competitive_advantages removed - redundant with competitive_positioning -->
-
-  <!-- Expandable: Conclusion & Next Steps -->
-  <!-- critical_success_factors removed - overlaps with next_steps_checklist -->
-  {#if strategy.conclusion_bottom_line || (strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0)}
-    <ExpandableSection
-      title="Conclusion & Next Steps"
-      icon={CheckCircle}
-      variant="success"
-    >
-      <CardGrid minWidth={260} gap="md">
-        {#if strategy.conclusion_bottom_line}
-          <div class="bottomline-card">
-            <h4 class="card-label accent">Bottom Line</h4>
-            <div class="bottomline-content">
-              {@html renderMarkdown(strategy.conclusion_bottom_line)}
-            </div>
-          </div>
-        {/if}
-        {#if strategy.next_steps_checklist && strategy.next_steps_checklist.length > 0}
-          <div class="nextsteps-card">
-            <h4 class="card-label success">Next Steps</h4>
-            <ol class="nextsteps-list">
-              {#each strategy.next_steps_checklist as step, i}
-                <li class="nextstep-item">
-                  <span class="step-number">{i + 1}</span>
-                  <span class="step-text">{step}</span>
-                </li>
-              {/each}
-            </ol>
-          </div>
-        {/if}
-      </CardGrid>
-    </ExpandableSection>
-  {/if}
+  <!-- conclusion_bottom_line + next_steps_checklist removed - generic boilerplate -->
 </section>
 
 <style>
@@ -1153,9 +1089,7 @@
 
   /* Strategy Cards */
   .strategy-card,
-  .positioning-card,
-  .bottomline-card,
-  .nextsteps-card {
+  .positioning-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
@@ -1172,25 +1106,15 @@
     margin: 0 0 0.75rem;
   }
 
-  .card-label.success {
-    color: var(--color-success);
-  }
-
-  .card-label.accent {
-    color: var(--color-accent);
-  }
-
   .strategy-content,
-  .positioning-content,
-  .bottomline-content {
+  .positioning-content {
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
     line-height: 1.6;
   }
 
   .strategy-content :global(p),
-  .positioning-content :global(p),
-  .bottomline-content :global(p) {
+  .positioning-content :global(p) {
     margin: 0 0 0.5rem;
   }
 
@@ -1207,89 +1131,8 @@
     line-height: 1.6;
   }
 
-  /* Metrics List */
-  .metrics-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 0.5rem;
-  }
-
-  .metric-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    padding: 0.625rem 0.875rem;
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.375rem;
-  }
-
-  .metric-number {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    background: rgba(229, 90, 40, 0.15);
-    border-radius: 50%;
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    color: var(--color-accent);
-    flex-shrink: 0;
-  }
-
-  .metric-text {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-    line-height: 1.4;
-  }
-
-  /* Risk Content */
-  .risk-content {
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-  }
-
+  /* Metrics list, risk content, next steps styles removed - generic boilerplate sections deleted */
   /* Schema markup styles removed - Task 5/6 deleted */
-
-  /* Next Steps */
-  .nextsteps-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .nextstep-item {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  .step-number {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    background: rgba(34, 197, 94, 0.15);
-    border-radius: 50%;
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    color: var(--color-success);
-    flex-shrink: 0;
-  }
-
-  .step-text {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-    line-height: 1.4;
-  }
 
   /* Keyword Preview Card */
   .keyword-preview-card {

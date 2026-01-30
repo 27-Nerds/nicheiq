@@ -1333,19 +1333,21 @@ create_implementation_plan:
     - Deliverables: Geographic/category pages at scale
     - Targets: 20+ ranking KWs, 5-10K visits/mo
 
-    **KEY METRICS** (4-6 KPIs as simple strings):
-    - Organic traffic (visits/month)
-    - Keyword rankings (positions)
-    - Conversions from organic
-    - Indexed page count
+    **BUDGET ALLOCATION (Niche-Specific):**
 
-    **TIMELINE MILESTONES** (brief, one paragraph):
-    Month 3/6/12/18 targets in a single concise paragraph.
+    The budget_allocation field MUST be tailored to this specific solution context.
+    DO NOT output generic 3-tier bootstrap/moderate/aggressive templates.
 
-    **NEXT STEPS CHECKLIST** (5-8 simple action items):
-    - Set up analytics tracking
-    - Complete technical SEO audit
-    - Create content brief templates
+    Consider the solution's actual cost drivers:
+    - For directories/aggregators: data sourcing costs (API access, scraping, partnerships)
+    - For SaaS products: development, hosting, API costs
+    - For content platforms: content creation, editorial costs
+    - Use actual keyword volume from Task 1 to estimate content investment needs
+    - Reference the competitive landscape intensity to justify budget level
+
+    Example (GOOD): "Bootstrap ($200-500/mo): Focus 70% on content creation for {selected_solution_name}'s
+    top 5 Tier 1 keywords, 20% on data sourcing APIs, 10% on technical SEO tools."
+    Example (BAD): "Bootstrap: $500/mo, Moderate: $2000/mo, Aggressive: $5000/mo" (generic tiers)
 
     ═══ CRITICAL OUTPUT RULES ═══
     ✗ Do NOT include markdown tables (use bullet points only)
@@ -1360,60 +1362,16 @@ create_implementation_plan:
     - Each string field must be under 400 chars
 
   expected_output: >
-    ImplementationPlanResult JSON with ONLY these 5 fields (NO extras):
+    ImplementationPlanResult JSON with ONLY these 2 fields (NO extras):
 
     - implementation_roadmap: str (3 phases as bullet points, ~300 chars MAX)
-    - key_metrics_to_track: List[str] (4-6 simple strings)
-    - next_steps_checklist: List[str] (5-8 action items)
-    - risk_mitigation: Optional[str] (~100 chars)
-    - budget_allocation: Optional[str] (~100 chars)
+    - budget_allocation: Optional[str] (~200 chars, niche-specific cost breakdown referencing
+      solution type, key cost categories, and keyword data from Task 1)
 
-    NOTE: expected_timeline removed - timeline info should be in implementation_roadmap phases.
+    NOTE: key_metrics_to_track, next_steps_checklist, risk_mitigation removed (generic boilerplate).
+    Timeline info should be in implementation_roadmap phases.
 
     TOTAL OUTPUT MUST BE UNDER 2000 CHARACTERS.
 
-synthesize_final_seo_strategy:
-  description: >
-    ═══ TASK 4: FINAL SYNTHESIS ═══
-    ✓ Generate the final conclusion/summary for the SEO strategy
-    ✓ Synthesize insights from Tasks 1-3 into an executive bottom line
-    ✓ NO new keyword analysis - synthesis only
-
-    **Task 4: Final Strategy Synthesis**
-
-    **HOW TO ACCESS CONTEXT:**
-
-    Tasks 1-3 are available in your context for reference:
-    - Task 1: KeywordAnalysisResult (keyword tiers, volumes, competitive positioning)
-    - Task 2: ContentStrategyResult (content plan, technical SEO, site architecture)
-    - Task 3: ImplementationPlanResult (roadmap, metrics, next steps)
-
-    **YOUR TASK: Generate Bottom Line Summary**
-
-    Write a compelling conclusion_bottom_line paragraph that:
-    - Summarizes the overall SEO opportunity
-    - States the key competitive advantage this strategy provides
-    - Explains why this approach will succeed for {selected_solution_name}
-    - Provides confidence in the recommended path forward
-
-    **CONCLUSION FORMAT:**
-    One paragraph (3-5 sentences) that serves as the executive summary of the
-    entire SEO strategy. This is the "bottom line" takeaway for stakeholders.
-
-    ═══ CRITICAL RULES (Read Last) ═══
-    ✗ This is SYNTHESIS only - do NOT generate new keyword analysis
-    ✗ Other strategic fields (competitive_advantages, long_term_strategy) removed -
-      these are now covered by competitive_positioning and implementation_roadmap from earlier tasks
-
-  expected_output: >
-    FinalSynthesis Pydantic model with 1 field ONLY:
-
-    1. conclusion_bottom_line: str
-       - Executive summary (1 paragraph, 3-5 sentences)
-       - Bottom line: Why this SEO strategy will succeed
-       - Minimum 50 characters
-
-    NOTE: Tasks 1-3 fields will be merged automatically by Python.
-    Long-term vision is now in implementation_roadmap, competitive insights in competitive_positioning.
-
+# Task 4 (synthesize_final_seo_strategy) removed - only produced conclusion_bottom_line (generic boilerplate)
 # Tasks 5 and 6 removed - technical SEO implementation is now part of Task 2's technical_seo_recommendations field

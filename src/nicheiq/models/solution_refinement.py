@@ -57,17 +57,6 @@ class SolutionRefinement(BaseModel):
         )
     )
 
-    content_strategy_preview: str = Field(
-        ...,
-        min_length=100,
-        description=(
-            "Early content strategy recommendations based on top keyword themes and clusters (minimum 100 chars). "
-            "Should be 2-3 paragraphs outlining which content types to prioritize, "
-            "what topics resonate most with search demand, and how to structure the content roadmap. "
-            "Examples: pillar pages, comparison content, geographic landing pages, how-to guides."
-        )
-    )
-
     strategic_insights: list[str] = Field(
         ...,
         min_length=3,

@@ -83,7 +83,7 @@
 	const scoreImprovement = $derived.by(() => {
 		if (!seoCalculationTransparency) return null;
 		const { baseline_seo_score, refined_seo_score } = seoCalculationTransparency;
-		if (baseline_seo_score === 0) return null;
+		if (baseline_seo_score == null || refined_seo_score == null || baseline_seo_score === 0) return null;
 		return (((refined_seo_score - baseline_seo_score) / baseline_seo_score) * 100).toFixed(1);
 	});
 
@@ -106,7 +106,7 @@
 	);
 
 	const hasRiskAssessment = $derived(
-		trends?.risk_factors?.length || trends?.trend_direction || trends?.timing_recommendation
+		trends?.trend_reversal_risks?.length || trends?.trend_direction || trends?.timing_recommendation
 	);
 
 	// Semantic score color - communicates health at a glance
@@ -357,11 +357,11 @@
 						<p class="teaser-value-prop">{solution.core_value_prop}</p>
 					{/if}
 
-					<!-- Target audience (unique data, not in metrics panel) -->
-					{#if solutionDetails?.target_audience}
+					<!-- Target personas (unique data, not in metrics panel) -->
+					{#if solutionDetails?.target_personas?.length}
 						<div class="teaser-target">
 							<Users class="teaser-target-icon" />
-							<span class="teaser-target-text">{solutionDetails.target_audience}</span>
+							<span class="teaser-target-text">{solutionDetails.target_personas.join(', ')}</span>
 						</div>
 					{/if}
 
@@ -620,14 +620,14 @@
 						<div class="seo-flow">
 							<div class="seo-score baseline">
 								<span class="seo-value"
-									>{(seoCalculationTransparency.baseline_seo_score * 100).toFixed(0)}%</span
+									>{((seoCalculationTransparency.baseline_seo_score ?? 0) * 100).toFixed(0)}%</span
 								>
 								<span class="seo-label">Baseline</span>
 							</div>
 							<span class="seo-arrow">→</span>
 							<div class="seo-score refined">
 								<span class="seo-value"
-									>{(seoCalculationTransparency.refined_seo_score * 100).toFixed(0)}%</span
+									>{((seoCalculationTransparency.refined_seo_score ?? 0) * 100).toFixed(0)}%</span
 								>
 								<span class="seo-label">Refined</span>
 							</div>
@@ -678,18 +678,18 @@
 			<ExpandableSection
 				title="Risk Assessment & Timing"
 				icon={Shield}
-				count={trends?.risk_factors?.length ?? null}
+				count={trends?.trend_reversal_risks?.length ?? null}
 				countSuffix="risks"
 				variant="error"
 			>
 				<!-- Risk Factors -->
-				{#if trends?.risk_factors && trends.risk_factors.length > 0}
+				{#if trends?.trend_reversal_risks && trends.trend_reversal_risks.length > 0}
 					<InsightCard variant="error" border="left" padding="md" class="risk-card">
 						{#snippet header()}
 							<h4 class="risk-card-title">Risk Factors</h4>
 						{/snippet}
 						<div class="risk-items-list">
-							{#each trends.risk_factors as risk}
+							{#each trends.trend_reversal_risks as risk}
 								<IconListItem icon={AlertCircle} iconVariant="error">{risk}</IconListItem>
 							{/each}
 						</div>

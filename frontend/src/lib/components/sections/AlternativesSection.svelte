@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Lightbulb, Target, Zap, Clock, DollarSign, Users, Shield, TrendingUp, Check, X, Code } from 'lucide-svelte';
+	import { Lightbulb, Target, Zap, Clock, DollarSign, Users, Shield, TrendingUp, Code } from 'lucide-svelte';
 	import type { AlternativeSolution } from '$lib/types/report';
 	import { renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
@@ -134,44 +134,6 @@
 						</div>
 					{/if}
 
-					<!-- Pros and Cons (Legacy fields) -->
-					{#if (solution.pros && solution.pros.length > 0) || (solution.cons && solution.cons.length > 0)}
-						<div class="grid md:grid-cols-2 gap-4 mb-4">
-							{#if solution.pros && solution.pros.length > 0}
-								<div class="card-surface border-l-2 border-l-success">
-									<div class="flex items-center gap-2 mb-2">
-										<Check class="w-4 h-4 text-success" />
-										<span class="text-sm font-medium text-text-primary">Pros</span>
-									</div>
-									<ul class="space-y-1">
-										{#each solution.pros as pro}
-											<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-1">
-												<span class="text-success">+</span>
-												{pro}
-											</li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-							{#if solution.cons && solution.cons.length > 0}
-								<div class="card-surface border-l-2 border-l-error">
-									<div class="flex items-center gap-2 mb-2">
-										<X class="w-4 h-4 text-error" />
-										<span class="text-sm font-medium text-text-primary">Cons</span>
-									</div>
-									<ul class="space-y-1">
-										{#each solution.cons as con}
-											<li class="text-sm text-text-secondary leading-relaxed flex items-start gap-1">
-												<span class="text-error">-</span>
-												{con}
-											</li>
-										{/each}
-									</ul>
-								</div>
-							{/if}
-						</div>
-					{/if}
-
 					<!-- Details Grid -->
 					<div class="grid md:grid-cols-2 gap-4 mb-4">
 						<!-- Core Features -->
@@ -257,7 +219,7 @@
 									<span class="text-text-muted inline-flex items-center gap-1">
 										CAC: <Tooltip content={getTermTooltip('CAC')} position="top" />
 									</span>
-									<span class="text-text-primary">${solution.estimated_cac_organic}</span>
+									<span class="text-text-primary">{solution.estimated_cac_organic}</span>
 								</div>
 							{/if}
 							{#if solution.pricing_model}

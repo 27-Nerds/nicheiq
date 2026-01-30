@@ -5,6 +5,7 @@
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
 	import InsightCard from '$lib/components/ui/InsightCard.svelte';
@@ -275,100 +276,97 @@
 		{#snippet header()}
 			<SectionLabel text="Pricing Rationale" variant="accent" icon={FileText} />
 		{/snippet}
-		<div class="markdown-content narrative">
+		<div class="markdown-content">
 			{@html renderMarkdown(pricingData.pricing_rationale)}
 		</div>
 	</InsightCard>
 
 	<!-- Unit Economics -->
-	<SubsectionHeader title="Unit Economics" icon={Calculator} />
-	<CardGrid minWidth={180} gap="md" class="mb-8">
-		{#if pricingData.estimated_arpu}
-			{@const parsed = parseMetricValue(pricingData.estimated_arpu)}
-			<InsightCard variant={getMetricVariant('arpu', pricingData.estimated_arpu)} border="left" padding="md">
-				{#snippet meta()}
-					<div class="metric-label">
-						<CircleDollarSign class="w-3.5 h-3.5" />
-						<span class="mono-label">Estimated ARPU</span>
-						<Tooltip content={getTermTooltip('ARPU')} position="top" />
-					</div>
-				{/snippet}
-				<div class="metric-value">{parsed.display}</div>
-				{#if parsed.description}
-					<p class="metric-desc">{parsed.description}</p>
-				{/if}
-			</InsightCard>
-		{/if}
-		{#if pricingData.estimated_ltv}
-			{@const parsed = parseMetricValue(pricingData.estimated_ltv)}
-			<InsightCard variant={getMetricVariant('ltv', pricingData.estimated_ltv)} border="left" padding="md">
-				{#snippet meta()}
-					<div class="metric-label">
-						<TrendingUp class="w-3.5 h-3.5" />
-						<span class="mono-label">Estimated LTV</span>
-						<Tooltip content={getTermTooltip('LTV')} position="top" />
-					</div>
-				{/snippet}
-				<div class="metric-value">{parsed.display}</div>
-				{#if parsed.description}
-					<p class="metric-desc">{parsed.description}</p>
-				{/if}
-			</InsightCard>
-		{/if}
-		{#if pricingData.ltv_to_cac_ratio}
-			{@const parsed = parseMetricValue(pricingData.ltv_to_cac_ratio)}
-			<InsightCard variant={getMetricVariant('ltv_cac', pricingData.ltv_to_cac_ratio)} border="left" padding="md">
-				{#snippet meta()}
-					<div class="metric-label">
-						<Scale class="w-3.5 h-3.5" />
-						<span class="mono-label">LTV:CAC Ratio</span>
-						<Tooltip content={getTermTooltip('LTV:CAC')} position="top" />
-					</div>
-				{/snippet}
-				<div class="metric-value">{parsed.display}</div>
-				{#if parsed.description}
-					<p class="metric-desc">{parsed.description}</p>
-				{/if}
-			</InsightCard>
-		{/if}
-		{#if pricingData.price_vs_competitors}
-			{@const parsed = parseMetricValue(pricingData.price_vs_competitors)}
-			<InsightCard variant={getMetricVariant('competitor', pricingData.price_vs_competitors)} border="left" padding="md">
-				{#snippet meta()}
-					<div class="metric-label">
-						<BarChart3 class="w-3.5 h-3.5" />
-						<span class="mono-label">vs Competitors</span>
-						<Tooltip content="How your pricing compares to competitor offerings in the market" position="top" />
-					</div>
-				{/snippet}
-				<div class="metric-value">{parsed.display}</div>
-				{#if parsed.description}
-					<p class="metric-desc">{parsed.description}</p>
-				{/if}
-			</InsightCard>
-		{/if}
-	</CardGrid>
+	<ExpandableSection title="Unit Economics" icon={Calculator} defaultOpen={false} variant="muted">
+		<CardGrid minWidth={180} gap="md" class="mb-8">
+			{#if pricingData.estimated_arpu}
+				{@const parsed = parseMetricValue(pricingData.estimated_arpu)}
+				<InsightCard variant={getMetricVariant('arpu', pricingData.estimated_arpu)} border="left" padding="md">
+					{#snippet meta()}
+						<div class="metric-label">
+							<CircleDollarSign class="w-3.5 h-3.5" />
+							<span class="mono-label">Estimated ARPU</span>
+							<Tooltip content={getTermTooltip('ARPU')} position="top" />
+						</div>
+					{/snippet}
+					<div class="metric-value">{parsed.display}</div>
+					{#if parsed.description}
+						<p class="metric-desc">{parsed.description}</p>
+					{/if}
+				</InsightCard>
+			{/if}
+			{#if pricingData.estimated_ltv}
+				{@const parsed = parseMetricValue(pricingData.estimated_ltv)}
+				<InsightCard variant={getMetricVariant('ltv', pricingData.estimated_ltv)} border="left" padding="md">
+					{#snippet meta()}
+						<div class="metric-label">
+							<TrendingUp class="w-3.5 h-3.5" />
+							<span class="mono-label">Estimated LTV</span>
+							<Tooltip content={getTermTooltip('LTV')} position="top" />
+						</div>
+					{/snippet}
+					<div class="metric-value">{parsed.display}</div>
+					{#if parsed.description}
+						<p class="metric-desc">{parsed.description}</p>
+					{/if}
+				</InsightCard>
+			{/if}
+			{#if pricingData.ltv_to_cac_ratio}
+				{@const parsed = parseMetricValue(pricingData.ltv_to_cac_ratio)}
+				<InsightCard variant={getMetricVariant('ltv_cac', pricingData.ltv_to_cac_ratio)} border="left" padding="md">
+					{#snippet meta()}
+						<div class="metric-label">
+							<Scale class="w-3.5 h-3.5" />
+							<span class="mono-label">LTV:CAC Ratio</span>
+							<Tooltip content={getTermTooltip('LTV:CAC')} position="top" />
+						</div>
+					{/snippet}
+					<div class="metric-value">{parsed.display}</div>
+					{#if parsed.description}
+						<p class="metric-desc">{parsed.description}</p>
+					{/if}
+				</InsightCard>
+			{/if}
+			{#if pricingData.price_vs_competitors}
+				{@const parsed = parseMetricValue(pricingData.price_vs_competitors)}
+				<InsightCard variant={getMetricVariant('competitor', pricingData.price_vs_competitors)} border="left" padding="md">
+					{#snippet meta()}
+						<div class="metric-label">
+							<BarChart3 class="w-3.5 h-3.5" />
+							<span class="mono-label">vs Competitors</span>
+							<Tooltip content="How your pricing compares to competitor offerings in the market" position="top" />
+						</div>
+					{/snippet}
+					<div class="metric-value">{parsed.display}</div>
+					{#if parsed.description}
+						<p class="metric-desc">{parsed.description}</p>
+					{/if}
+				</InsightCard>
+			{/if}
+		</CardGrid>
+	</ExpandableSection>
 
 	<!-- WTP Validation -->
 	{#if pricingData.wtp_validation}
-		<div class="highlight-box mb-8">
-			<h4 class="font-semibold text-text-primary mb-2 inline-flex items-center gap-2">
-				WTP Validation <Tooltip content={getTermTooltip('WTP')} position="right" />
-			</h4>
-			<div class="markdown-content narrative">
+		<ExpandableSection title="WTP Validation" defaultOpen={false} variant="muted">
+			<div class="markdown-content">
 				{@html renderMarkdown(pricingData.wtp_validation)}
 			</div>
-		</div>
+		</ExpandableSection>
 	{/if}
 
 	<!-- Value Proposition Delta -->
 	{#if pricingData.value_proposition_delta}
-		<div class="card mb-8">
-			<h4 class="font-semibold text-text-primary mb-2">Value Proposition Delta</h4>
-			<div class="markdown-content narrative">
+		<ExpandableSection title="Value Proposition Delta" defaultOpen={false} variant="muted">
+			<div class="markdown-content">
 				{@html renderMarkdown(pricingData.value_proposition_delta)}
 			</div>
-		</div>
+		</ExpandableSection>
 	{/if}
 
 	<!-- ═══════════════════════════════════════════════════════════════════

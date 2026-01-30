@@ -10,10 +10,10 @@ This module tests:
 import pytest
 from unittest.mock import Mock, MagicMock
 
-from src.nicheiq.report.utils.score_accessor import ScoreAccessor
-from src.nicheiq.report.utils.state_accessors import StateAccessor
-from src.nicheiq.report.report_generator import ReportGenerator
-from src.nicheiq.models.marketing_blueprint import MarketingChannel
+from nicheiq.report.utils.score_accessor import ScoreAccessor
+from nicheiq.report.utils.state_accessors import StateAccessor
+from nicheiq.report.report_generator import ReportGenerator
+from nicheiq.models.marketing_blueprint import MarketingChannel
 
 
 # ==================================================================================

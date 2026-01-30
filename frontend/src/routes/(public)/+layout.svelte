@@ -11,9 +11,7 @@
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-16 items-center">
         <a href="/" class="flex items-center space-x-2">
-          <span class="text-2xl font-bold text-accent">
-            NicheIQ
-          </span>
+          <img src="/niche-logo.svg" alt="NicheIQ" class="h-11" />
         </a>
         <nav class="flex items-center space-x-4">
           {#if session?.user}

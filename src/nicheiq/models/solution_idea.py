@@ -434,10 +434,6 @@ class IdeaGenerationResult(BaseModel):
     recommended_solution: Optional[str] = Field(
         default=None, description="Recommended solution name from the list"
     )
-    market_insights: str = Field(
-        ..., description="Market insights and opportunity assessment"
-    )
-
     @field_validator('solution_ideas')
     @classmethod
     def validate_required_fields(cls, v: list[BaseSolutionIdea]) -> list[BaseSolutionIdea]:

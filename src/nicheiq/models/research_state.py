@@ -223,6 +223,11 @@ class ResearchMetadata(BaseModel):
         description="Stage 5 URL filtering statistics (searched, relevant, filtering rate)"
     )
 
+    # Pipeline timing metadata
+    started_at: Optional[str] = Field(default=None, description="Pipeline start time (ISO 8601)")
+    completed_at: Optional[str] = Field(default=None, description="Pipeline completion time (ISO 8601)")
+    total_duration_minutes: Optional[float] = Field(default=None, description="Total pipeline duration in minutes")
+
 class AlternativeSolution(BaseModel):
     """Enhanced alternative solution with competitive analysis details."""
 
@@ -252,7 +257,7 @@ class AlternativeSolution(BaseModel):
 
     # NEW: Additional scores and feasibility
     novelty_score: Optional[float] = Field(None, ge=0.0, le=1.0, description="Innovation/novelty score")
-    solo_dev_feasibility: Optional[str] = Field(default=None, description="Solo developer feasibility: HIGH, MEDIUM, LOW")
+    solo_dev_feasibility: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Solo developer feasibility score (0-1)")
 
     # NEW: Competitive landscape for this solution
     top_competitors: Optional[list[str]] = Field(default=None, description="Top 3 competitors for this solution")
@@ -261,7 +266,7 @@ class AlternativeSolution(BaseModel):
 
     # NEW: Economic indicators
     estimated_development_time: Optional[str] = Field(default=None, description="Estimated development time")
-    estimated_cac_organic: Optional[float] = Field(default=None, description="Estimated organic customer acquisition cost")
+    estimated_cac_organic: Optional[str] = Field(default=None, description="Estimated organic customer acquisition cost (e.g. '$15-30')")
     pricing_model: Optional[str] = Field(default=None, description="Recommended pricing model")
 
 class CompetitorMatrixEntry(BaseModel):
@@ -925,7 +930,6 @@ class AudienceMappingResult(BaseModel):
 
     # Acquisition Strategy Implications
     recommended_channels: list[str] = Field(..., description="Top 3-5 marketing channels for this audience")
-    content_strategy_direction: str = Field(..., description="High-level content strategy recommendation (2-3 sentences)")
     early_adopter_tactics: Optional[str] = Field(default=None, description="Tactics to acquire first 100 users")
 
 

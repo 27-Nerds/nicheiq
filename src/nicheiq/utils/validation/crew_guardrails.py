@@ -28,7 +28,6 @@ from ...models.research_state import AudienceMappingResult
 from ...models.seo_strategy import (
     CategoryLightResult,
     ContentStrategyResultLight,
-    FinalSynthesis,
     GeographicLightResult,
     ImplementationPlanResult,
     StrategicLightResult,
@@ -784,8 +783,6 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
     Guardrail for create_implementation_plan_task (Task 3 - HIGH).
 
     Validates:
-    - 4+ key_metrics_to_track
-    - 5+ next_steps_checklist items
     - implementation_roadmap has substantial content
 
     Returns:
@@ -821,22 +818,6 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
         if not isinstance(result, ImplementationPlanResult):
             return (False, f"Invalid type: expected ImplementationPlanResult, got {type(result)}")
 
-        # Validate key_metrics_to_track (minimum 4)
-        if not result.key_metrics_to_track or len(result.key_metrics_to_track) < 4:
-            return (
-                False,
-                f"Need at least 4 key_metrics_to_track, got {len(result.key_metrics_to_track or [])}. "
-                "Include SEO metrics (rankings, traffic) and business metrics (conversions, revenue)."
-            )
-
-        # Validate next_steps_checklist (minimum 5)
-        if not result.next_steps_checklist or len(result.next_steps_checklist) < 5:
-            return (
-                False,
-                f"Need at least 5 next_steps_checklist items, got {len(result.next_steps_checklist or [])}. "
-                "Include actionable items for immediate implementation."
-            )
-
         # Validate implementation_roadmap has content
         if not result.implementation_roadmap or len(result.implementation_roadmap) < 100:
             return (
@@ -847,8 +828,7 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
 
         logger.info(
             f"✓ Implementation plan guardrail passed: "
-            f"{len(result.key_metrics_to_track)} metrics, "
-            f"{len(result.next_steps_checklist)} checklist items"
+            f"roadmap has {len(result.implementation_roadmap)} chars"
         )
         return (True, task_output.raw)
 
@@ -856,71 +836,7 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
         return (False, f"Implementation plan validation error: {str(e)}")
 
 
-# ========================================
-# TASK 4: FINAL SYNTHESIS GUARDRAIL (MEDIUM)
-# ========================================
-
-
-def validate_final_synthesis_output(task_output) -> tuple[bool, Any]:
-    """
-    Guardrail for synthesize_final_seo_strategy_task (Task 4 - MEDIUM).
-
-    Validates:
-    - conclusion_bottom_line has substantial content (minimum 50 chars)
-
-    Note: competitive_advantages, critical_success_factors, and long_term_strategy
-    were removed from FinalSynthesis model as they were redundant with other fields
-    (competitive_positioning, implementation_roadmap, etc.)
-
-    Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
-    """
-    try:
-        result = task_output.pydantic
-        if result is None:
-            if not hasattr(task_output, 'raw') or not task_output.raw:
-                return (False, "Final synthesis returned empty output (no pydantic or raw)")
-
-            try:
-                cleaned_raw = clean_llm_response(task_output.raw)
-                raw_json = json.loads(cleaned_raw)
-                result = FinalSynthesis.model_validate(raw_json)
-                logger.debug("Final synthesis guardrail: Parsed from .raw")
-            except json.JSONDecodeError as e:
-                raw_sample = task_output.raw[:2000] if task_output.raw else ""
-                if _detect_repetition_pattern(raw_sample):
-                    return (
-                        False,
-                        "REPETITION LOOP DETECTED in final synthesis. "
-                        "Generate a UNIQUE conclusion with key strategic insights."
-                    )
-                return (
-                    False,
-                    f"JSON truncated/malformed at line {e.lineno}: {e.msg}. "
-                    "Reduce output: focus on key strategic insights."
-                )
-            except Exception as e:
-                return (False, f"Failed to parse FinalSynthesis: {e}")
-
-        if not isinstance(result, FinalSynthesis):
-            return (False, f"Invalid type: expected FinalSynthesis, got {type(result)}")
-
-        # Validate conclusion_bottom_line has substantial content (minimum 50 chars)
-        if not result.conclusion_bottom_line or len(result.conclusion_bottom_line) < 50:
-            return (
-                False,
-                f"conclusion_bottom_line too short ({len(result.conclusion_bottom_line or '')} chars, minimum 50). "
-                "Provide a comprehensive summary of the SEO strategy and key recommendations."
-            )
-
-        logger.info(
-            f"✓ Final synthesis guardrail passed: "
-            f"conclusion has {len(result.conclusion_bottom_line)} chars"
-        )
-        return (True, task_output.raw)
-
-    except Exception as e:
-        return (False, f"Final synthesis validation error: {str(e)}")
+# validate_final_synthesis_output removed - Task 4 deleted (generic boilerplate)
 
 
 # ========================================
@@ -1038,13 +954,13 @@ def validate_content_categorization(task_output) -> tuple[bool, Any]:
             "Identify more thematic categories from the discussion content."
         )
 
-    # Validate each theme has at least 3 representative_quotes
-    # Note: Prompt targets 5-10 quotes, but guardrail minimum is 3 to avoid hallucination pressure
+    # Validate each theme has at least 2 representative_quotes
+    # Note: Prompt targets 5-10 quotes, but guardrail minimum is 2 to avoid hallucination pressure
     for theme in result.theme_categories:
-        if not theme.representative_quotes or len(theme.representative_quotes) < 3:
+        if not theme.representative_quotes or len(theme.representative_quotes) < 2:
             return (
                 False,
-                f"Theme '{theme.category_name}' needs at least 3 representative_quotes, "
+                f"Theme '{theme.category_name}' needs at least 2 representative_quotes, "
                 f"got {len(theme.representative_quotes or [])}. "
                 "Include quotes from discussions WITH [source: ID] tags to support this theme."
             )

@@ -153,7 +153,7 @@
 						<div class="influencer-meta">
 							<span class="influencer-platform">{influencer.platform}</span>
 							{#if influencer.follower_estimate}
-								<span class="influencer-followers">{influencer.follower_estimate.toLocaleString()} followers</span>
+								<span class="influencer-followers">{influencer.follower_estimate} followers</span>
 							{/if}
 						</div>
 					</div>

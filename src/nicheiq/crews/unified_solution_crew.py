@@ -507,9 +507,8 @@ class UnifiedSolutionCrew:
                 IdeaGenerationResult(
                     solution_ideas=[],
                     recommended_solution=None,
-                    market_insights="No pain points available"
                 ),
-                CompetitiveAnalysisResult(solution_landscapes=[], market_insights="Skipped - no solutions"),
+                CompetitiveAnalysisResult(solution_landscapes=[]),
                 SolutionSelection(
                     selected_solution_name="",
                     selection_rationale="No solutions generated",
@@ -731,9 +730,8 @@ class UnifiedSolutionCrew:
                     IdeaGenerationResult(
                         solution_ideas=[],
                         recommended_solution=None,
-                        market_insights=f"Guardrail validation failed: {error_msg[:200]}"
                     ),
-                    CompetitiveAnalysisResult(solution_landscapes=[], market_insights="Skipped - guardrail failure"),
+                    CompetitiveAnalysisResult(solution_landscapes=[]),
                     SolutionSelection(
                         selected_solution_name="",
                         selection_rationale="Guardrail validation failed",

@@ -1,0 +1,83 @@
+# Implementation Planning Prompt
+# Used by: ReportGenerator._generate_implementation_fields()
+# Variables: selected_solution_name, project_type, core_features,
+#            estimated_development_time, technical_approach,
+#            requires_data_aggregation, pricing_strategy,
+#            content_generation_model, indexable_pages
+
+template: |
+  You are a technical product strategist creating an implementation plan for a validated SaaS/directory/aggregator concept.
+
+  **Solution Context:**
+  Solution: {selected_solution_name}
+  Project Type: {project_type}
+  Core Features: {core_features}
+  Development Time: {estimated_development_time}
+  Technical Approach: {technical_approach}
+  Requires Data Aggregation: {requires_data_aggregation}
+  Pricing Strategy: {pricing_strategy}
+  Content Generation Model: {content_generation_model}
+  Estimated Indexable Pages: {indexable_pages}
+
+  **Your Task:**
+  Generate exactly 2 fields tailored to this specific solution:
+
+  1. **solution_implementation_overview** (markdown, 3 phases):
+     Create a phased implementation plan that references the ACTUAL core features and project type above.
+
+     Phase 1 priorities by project type:
+     - directory: data ingestion pipelines, listing page templates, search/filter UI
+     - aggregator: data source integration, normalization layer, scheduled updates
+     - saas: core tool functionality, user auth, onboarding flow
+     - comparison: structured data schema, scoring engine, programmatic comparison pages
+
+     Use "{estimated_development_time}" as the Phase 1 timeline.
+     Reference specific features from the core_features list in each phase.
+     Mention the technical approach where relevant.
+
+     Format as:
+     ## Implementation Overview
+
+     **Phase 1: MVP Development** (timeline)
+     Description referencing actual features...
+
+     **Phase 2: Enhancement & Scaling**
+     Description referencing remaining features...
+
+     **Phase 3: Market Expansion**
+     Description with growth strategy...
+
+  2. **mvp_scope_definition** (markdown, features + success criteria):
+     List ALL core features as must-have MVP features.
+     Then define 3-4 success criteria specific to this project type:
+
+     - directory: listings indexed, organic traffic, geographic coverage
+     - aggregator: data sources integrated, update freshness, data accuracy
+     - saas: active users, weekly retention, feature adoption
+     - comparison: pages generated, organic rankings, user engagement
+
+     Tailor revenue milestones to the pricing strategy:
+     - free/ad-supported → traffic and engagement metrics
+     - freemium → free-to-paid conversion rate
+     - subscription → first paying customer timeline
+
+     Format as:
+     ## MVP Scope
+
+     ### Must-Have Features
+     - feature 1
+     - feature 2
+     ...
+
+     ### Success Criteria
+     - metric 1
+     - metric 2
+     ...
+
+  **CRITICAL RULES:**
+  - Reference ACTUAL features from core_features — do not invent new ones
+  - Success criteria must be specific to {project_type} — NOT generic "100+ users"
+  - Keep each field under 500 characters
+  - Do not include content unrelated to implementation planning
+
+  Return JSON with exactly 2 fields: solution_implementation_overview, mvp_scope_definition.

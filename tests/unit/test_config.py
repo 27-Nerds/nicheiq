@@ -12,7 +12,7 @@ def test_settings_default_values():
     assert Settings.model_fields["openai_model_name"].default == "gpt-4o"
     assert Settings.model_fields["log_level"].default == "INFO"
     assert Settings.model_fields["max_retries"].default == 3
-    assert Settings.model_fields["timeout_seconds"].default == 30
+    assert Settings.model_fields["timeout_seconds"].default == 60
 
 
 def test_settings_field_types():

@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { Code, Database, Clock, Server, CheckCircle, Layers, Globe, User, Cpu, Zap, HardDrive, LayoutGrid, Route, ExternalLink, ArrowRight, Target, ChevronDown, ChevronUp, FileText } from 'lucide-svelte';
-	import type { SolutionDetails, SiteStructure, UserFlowsSection, SiteSection, UserFlow } from '$lib/types/report';
+	import type { SolutionDetails, SiteStructure, UserFlowsSection, SiteSection, UserFlow, DataInfrastructureRoadmap } from '$lib/types/report';
 	import { formatPercent, renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import ProgressRing from '$lib/components/ui/ProgressRing.svelte';
 	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import SectionHeader from '$lib/components/ui/SectionHeader.svelte';
@@ -15,7 +16,7 @@
 		implementationOverview?: string;
 		mvpScope?: string;
 		userJourney?: string;
-		dataInfrastructureRoadmap?: string;
+		dataInfrastructureRoadmap?: DataInfrastructureRoadmap;
 		siteStructure?: SiteStructure;
 		userFlows?: UserFlowsSection;
 	}
@@ -87,7 +88,7 @@
 					<div class="bento-icon-large bg-accent/10 border border-accent/30">
 						<Clock class="w-6 h-6 text-accent" />
 					</div>
-					<div class="bento-value bento-value-lg text-accent">{solution.estimated_development_time}</div>
+					<div class="dev-time-value text-accent">{solution.estimated_development_time}</div>
 					<div class="bento-label">Development Time</div>
 					<div class="bento-sublabel inline-flex items-center gap-1">
 						Estimated to MVP <Tooltip content={getTermTooltip('MVP')} position="top" />
@@ -159,16 +160,6 @@
 				</div>
 			{/if}
 
-			<!-- Complexity Indicator -->
-			{#if solution.mvp_complexity}
-				<div class="bento-card stat-card-animated">
-					<div class="flex items-center gap-2 mb-2">
-						<Cpu class="w-4 h-4 text-text-muted" />
-						<span class="text-xs text-text-muted uppercase tracking-wider">Complexity</span>
-					</div>
-					<div class="stat-value text-xl text-text-primary">{solution.mvp_complexity}</div>
-				</div>
-			{/if}
 		</div>
 	</AnimateOnScroll>
 
@@ -378,10 +369,11 @@
 	{#if userJourney}
 		<AnimateOnScroll animation="fade-up" delay={500}>
 			<div class="journey-section">
-				<SubsectionHeader title="User Journey Flow" icon={User} />
-				<div class="markdown-content journey-content">
-					{@html renderMarkdown(userJourney)}
-				</div>
+				<ExpandableSection title="User Journey Flow" icon={User} defaultOpen={false} variant="muted">
+					<div class="markdown-content journey-content">
+						{@html renderMarkdown(userJourney)}
+					</div>
+				</ExpandableSection>
 			</div>
 		</AnimateOnScroll>
 	{/if}
@@ -423,6 +415,14 @@
 </section>
 
 <style>
+	.dev-time-value {
+		font-family: var(--font-display);
+		font-size: 1.5rem;
+		font-weight: 700;
+		color: var(--color-text-primary);
+		line-height: 1.4;
+	}
+
 	.tech-approach-card {
 		background: var(--color-bg-surface);
 		border: 1px solid var(--color-border);

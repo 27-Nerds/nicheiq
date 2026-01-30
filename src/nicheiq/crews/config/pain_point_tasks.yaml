@@ -40,7 +40,7 @@ categorize_content:
     2. **Theme Extraction**: Identify 5-10 recurring theme categories from patterns (let data guide you, not assumptions)
     3. **Segment Mapping**: For each category, identify user segments from explicit self-descriptions in discussions
     4. **Frequency Assignment**: Assign High/Medium/Low based on actual mention counts (count occurrences)
-    5. **Quote Collection**: Gather 5-10 representative quotes per theme (minimum 3), preserving [source: ID] suffixes exactly as written
+    5. **Quote Collection**: Gather 5-10 representative quotes per theme (minimum 2), preserving [source: ID] suffixes exactly as written
     6. **Quality Verification**: Verify each quote exists verbatim in content above before including - NEVER fabricate quotes to reach quota
 
     **Pattern Keywords:**
@@ -53,7 +53,7 @@ categorize_content:
     **Acceptance Criteria:**
 
     - Minimum 5 distinct theme categories identified
-    - Each category has clear definition and 5-10 representative quotes (minimum 3) from the content above - all verified to exist verbatim
+    - Each category has clear definition and 5-10 representative quotes (minimum 2) from the content above - all verified to exist verbatim
     - User segments are specific enough to inform product targeting
     - Frequency indicators (high/medium/low) assigned to each theme based on mention count
 
@@ -96,19 +96,13 @@ categorize_content:
        - **frequency**: Either "High", "Medium", or "Low" based on mention count
        - **mention_count**: Number of distinct discussions mentioning this theme (integer)
        - **primary_user_segments**: List of specific user types discussing this theme (e.g., ["Budget-conscious consumers", "Luxury skincare aspirants"])
-       - **representative_quotes**: 5-10 direct user quotes that exemplify this theme (minimum 3 - if fewer exist, exclude the category rather than fabricating). CRITICAL: Copy quotes EXACTLY as they appear in content, INCLUDING the [source: POST_ID] suffix at the end of each quote (e.g., "I spent 3 hours on setup [source: abc123]"). DO NOT strip the [source: ...] tags - they are required for Task 2 traceability. VERIFY each quote exists verbatim before including.
+       - **representative_quotes**: 5-10 direct user quotes that exemplify this theme (minimum 2 - if fewer exist, exclude the category rather than fabricating). CRITICAL: Copy quotes EXACTLY as they appear in content, INCLUDING the [source: POST_ID] suffix at the end of each quote (e.g., "I spent 3 hours on setup [source: abc123]"). DO NOT strip the [source: ...] tags - they are required for Task 2 traceability. VERIFY each quote exists verbatim before including.
 
     **user_segments**: List of UserSegment objects (aim for 4-8 segments based on distinct user types in discussions).
     Each UserSegment object must contain:
        - **segment_name**: User segment name from self-descriptions in discussions (e.g., "Sensitive Skin Sufferers", "Skincare Minimalists")
        - **primary_concerns**: List of main pain points/topics for this segment (3-6 concerns)
        - **mention_frequency**: Either "High", "Medium", or "Low"
-
-    **discussion_quality_assessment**: Narrative assessment (2-3 paragraphs) covering:
-       - Engagement levels (upvotes, likes, replies across discussions)
-       - Discussion depth (how detailed and substantive are conversations)
-       - Authenticity (do pain points seem genuine vs hypothetical)
-       - Any patterns in community interaction
 
     **overall_quality**: One of "High", "Medium", or "Low" with 1-sentence justification
 
@@ -127,7 +121,7 @@ extract_pain_points:
     **WORKFLOW** (Apply Thorough Evidence Gathering Protocol):
 
     1. Review categorization report → identify high/medium-frequency categories
-    2. For each category → extract 2-5 specific pain points with supporting evidence
+    2. For each category → extract ALL specific pain points with sufficient supporting evidence (minimum 2 verified quotes each)
     3. **EXHAUSTIVE SEARCH** → For each potential pain point, run MULTIPLE knowledge source queries using different phrasings:
        - Query 1: Main problem keywords (e.g., "slow loading", "performance issues")
        - Query 2: Synonyms and variants (e.g., "laggy", "takes forever", "waiting")
@@ -143,7 +137,7 @@ extract_pain_points:
     7. Identify severity indicators → "frustrating", "critical", "showstopper"
     8. Note current solutions/workarounds users mention
     9. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
-    10. **QUALITY GATE**: If <3 VERIFIED quotes with [source: ID] → EXCLUDE pain point entirely
+    10. **QUALITY GATE**: If <2 VERIFIED quotes with [source: ID] → EXCLUDE pain point entirely
 
     **CRITICAL**: mention_count and quote count are DIFFERENT:
     - mention_count = ALL unique posts discussing this problem (typically 10-50+)
@@ -175,9 +169,9 @@ extract_pain_points:
 
     **Acceptance Criteria:**
 
-    - Minimum 10 distinct pain points extracted (if evidence supports it)
+    - Extract ALL distinct pain points supported by discussion evidence (do NOT target a specific number — let the data determine quantity)
     - Each pain point has clear problem articulation
-    - Supporting evidence includes 5-10 direct user quotes from knowledge sources (target 8+)
+    - Supporting evidence includes direct user quotes from knowledge sources (as many as available, minimum 2)
     - Mention frequency quantified for each
     - Source platforms identified (Reddit/Twitter)
     - Source post IDs tracked for traceability
@@ -185,10 +179,10 @@ extract_pain_points:
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
 
     **STOP CONDITIONS:**
-    ✗ <3 quotes found for a pain point → EXCLUDE that pain point
-      ❌ Example: Creating pain point with only 1-2 quotes to reach quota
+    ✗ <2 quotes found for a pain point → EXCLUDE that pain point
+      ❌ Example: Creating pain point with only 1 quote to reach quota
     ✗ Knowledge source query returns no results → pain point does NOT exist in data
-      ✅ Example: Return "Insufficient evidence in knowledge sources" if <10 validated pain points
+      ✅ Example: Return "Insufficient evidence in knowledge sources" if very few validated pain points found
 
     **DATA ACCURACY:**
     ✗ Every quote MUST be direct copy from knowledge sources - NO paraphrasing
@@ -208,8 +202,8 @@ extract_pain_points:
     ✗ Source post IDs must be extracted from [source: ID] suffixes in quotes - NO placeholders
       ❌ Example: ["post001", "post002"] (fabricated placeholder IDs)
       ✅ Example: ["1a2b3c", "4d5e6f"] (extracted from [source: ...] suffixes in quote text)
-    ✗ DO NOT merge unrelated problems to reach 10 pain points quota
-      ✅ Example: If only 7 validated pain points exist with ≥3 quotes → return 7
+    ✗ DO NOT merge unrelated problems to inflate pain point count
+      ✅ Example: If only 7 validated pain points exist with ≥2 quotes → return all 7
 
     **ANTI-HALLUCINATION GUARDRAILS:**
     ✗ NEVER fabricate post IDs - if you cannot find [source: ID], use empty list []
@@ -224,15 +218,15 @@ extract_pain_points:
       ✅ Example: Skip quotes lacking [source: ID] and find other quotes with proper attribution
     ✗ NEVER invent quotes to reach a quota - quality over quantity
       ❌ Example: Creating plausible-sounding quotes when knowledge sources are sparse
-      ✅ Example: Return 5 pain points with 4 quotes each, instead of 10 with fabricated quotes
+      ✅ Example: Return ALL well-evidenced pain points (even if only 5) rather than padding with fabricated quotes to reach a target
 
     **WHEN DATA IS SPARSE** (Critical Decision Point):
     If you cannot find sufficient quotes for a pain point despite thorough searching:
     1. DO NOT fabricate quotes to fill the gap
-    2. DO NOT include the pain point if <3 verified quotes exist
+    2. DO NOT include the pain point if <2 verified quotes exist
     3. Return fewer pain points rather than lower-quality pain points
     4. Document in extraction_summary: "Limited to X pain points due to sparse evidence for [category Y]"
-    5. Quality with 6 well-evidenced pain points > quantity with 12 weakly-evidenced pain points
+    5. Include ALL well-evidenced pain points — never sacrifice evidence quality to inflate count, and never cap count artificially
 
     **EXTRACTION CHAIN-OF-THOUGHT PROCEDURE:**
     For EACH pain point you identify, follow this mandatory procedure:
@@ -241,7 +235,7 @@ extract_pain_points:
     Step 2: **Multi-Query Search** - Run 3-4 different queries with synonyms and variants
     Step 3: **Collect Candidates** - Gather ALL quotes with [source: ID] from all queries
     Step 4: **Verify Each Quote** - Confirm each quote exists verbatim in knowledge sources
-    Step 5: **Count Verified** - If <3 verified quotes with [source: ID] → EXCLUDE this pain point
+    Step 5: **Count Verified** - If <2 verified quotes with [source: ID] → EXCLUDE this pain point
     Step 6: **Select Best 5-10** - From verified quotes, pick most detailed and impactful ones
     Step 7: **Preserve Exactly** - Include full quote WITH [source: ID] suffix intact
     Step 8: **Final Check** - Verify all included quotes are verbatim copies with visible [source: ID] tags
@@ -258,11 +252,11 @@ extract_pain_points:
     **niche**: The niche being analyzed
 
 
-    **extracted_pain_points**: List of UnvalidatedPainPoint objects (10-20 pain points), each containing:
+    **extracted_pain_points**: List of UnvalidatedPainPoint objects (ALL evidence-backed pain points), each containing:
        - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
        - **description**: 2-3 sentence clear articulation of the specific problem in user language
        - **mention_count**: Count of ALL unique discussions/posts mentioning this problem (search knowledge sources comprehensively, count every unique [source: ID]). This should be LARGER than the number of representative_quotes. Example: If you found 18 posts discussing "slow onboarding", mention_count = 18, even if you only selected 4 representative quotes.
-       - **representative_quotes**: 3-10 direct user quotes (MUST include [source: ID] suffix, minimum 3, target 8+). If a pain point has <3 quotes, EXCLUDE it or merge into a related broader category.
+       - **representative_quotes**: 2-10 direct user quotes (MUST include [source: ID] suffix, minimum 2). If a pain point has <2 quotes, EXCLUDE it or merge into a related broader category.
        - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
        - **categories**: List of categories this pain point belongs to
        - **source_post_ids**: ALWAYS set to [] (Python extracts automatically)
@@ -282,7 +276,7 @@ extract_pain_points:
 
     **extraction_summary**: 3-4 sentences overview of pain point landscape and key patterns
 
-    CRITICAL: Return structured Pydantic data. Minimum 3 verified quotes per pain point (target 5-10), all with [source: ID]. Quality over quantity - exclude pain points with insufficient evidence rather than fabricating quotes.
+    CRITICAL: Return structured Pydantic data. Minimum 2 verified quotes per pain point, all with [source: ID]. Extract ALL qualifying pain points — do not cap at a fixed number. Quality over quantity - exclude pain points with insufficient evidence rather than fabricating quotes.
 
 validate_pain_points:
   description: >

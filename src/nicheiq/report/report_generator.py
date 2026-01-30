@@ -350,8 +350,7 @@ class ReportGenerator:
 
         # Generate template-based sections using ReportTemplates
         solution_user_journey = ReportTemplates.user_journey(selected_solution_details)
-        solution_implementation_overview = ReportTemplates.implementation_overview(selected_solution_details)
-        mvp_scope_definition = ReportTemplates.mvp_scope(selected_solution_details)
+        # implementation_overview and mvp_scope are now LLM-generated in _enhance_report_with_llm()
         acquisition_strategy_summary = ReportTemplates.acquisition_strategy(selected_solution_details)
         estimated_cac_breakdown = ReportTemplates.cac_breakdown(selected_solution_details)
 
@@ -420,9 +419,6 @@ class ReportGenerator:
                 technical_seo_recommendations="Standard technical SEO best practices apply.",
                 competitive_positioning="Conduct keyword research to identify competitive opportunities.",
                 implementation_roadmap="1. Complete keyword research\n2. Develop SEO strategy\n3. Implement content plan",
-                key_metrics_to_track=["Keyword research completion", "Initial rankings"],
-                conclusion_bottom_line="Complete keyword research to enable comprehensive SEO strategy.",
-                next_steps_checklist=["⬜ Complete keyword research", "⬜ Develop SEO strategy"],
             )
         else:
             seo_strategy = self.state.seo_strategy_report
@@ -473,11 +469,12 @@ class ReportGenerator:
             selection_criteria_scores=selection_criteria_scores,
             recommended_focus=recommended_focus,
 
-            # Detailed solution description (NEW - production-quality templates)
+            # Detailed solution description
             selected_solution_details=selected_solution_details,
             solution_user_journey=solution_user_journey,
-            solution_implementation_overview=solution_implementation_overview,
-            mvp_scope_definition=mvp_scope_definition,
+            # implementation_overview and mvp_scope set to None here, populated by LLM in _enhance_report_with_llm()
+            solution_implementation_overview=None,
+            mvp_scope_definition=None,
 
             # Pricing strategy (Stage 8)
             pricing_strategy=pricing_strategy,
@@ -514,14 +511,8 @@ class ReportGenerator:
             # Data sourcing (summary only - full data in state.data_source_research)
             data_sourcing_recommendations=data_sourcing_recommendations,
 
-            # Next steps (generic template)
-            next_steps=[
-                "Review detailed research findings",
-                "Validate top pain points with target users",
-                "Design and develop MVP",
-                "Implement SEO strategy",
-                "Set up data sourcing infrastructure" if self.state.data_source_research else "Launch beta version",
-            ],
+            # Populated by _llm_next_steps(); empty list as fallback
+            next_steps=[],
 
             # Data Richness Enhancements - Preserve Full Objects
             solution_innovation_assessment=solution_innovation_assessment,
@@ -717,35 +708,33 @@ class ReportGenerator:
 
     def _enhance_report_with_llm(self, base_report: FinalReport) -> FinalReport:
         """
-        Enhance Python-generated report with LLM for 3 strategic synthesis fields only.
+        Enhance Python-generated report with LLM using 3 focused calls.
 
-        Takes a complete report from _assemble_base_report() and uses LLM to generate:
-        1. executive_summary (4-6 sentence strategic synthesis)
-        2. acquisition_strategy_summary (2-3 paragraph SEO strategy narrative)
-        3. next_steps (5-8 prioritized action items)
-
-        All other fields are preserved from base_report.
+        Each call targets a specific domain to reduce hallucination risk:
+        Call 1: Market narrative (executive_summary, acquisition_strategy_summary)
+        Call 2: Next steps (next_steps — can reference implementation context)
+        Call 3: Product planning (implementation_overview, mvp_scope_definition)
         """
+        base_report = self._llm_market_narrative(base_report)
+        base_report = self._llm_next_steps(base_report)
+        base_report = self._llm_implementation_planning(base_report)
+        return base_report
+
+    def _llm_market_narrative(self, base_report: FinalReport) -> FinalReport:
+        """LLM Call 1/3: Market narrative — executive_summary + acquisition_strategy_summary."""
         from ..utils.prompts import load_prompt
 
-        # Define minimal Pydantic model for 3 fields only
-        class StrategicSynthesis(BaseModel):
+        details = base_report.selected_solution_details
+
+        class MarketNarrative(BaseModel):
             executive_summary: str = Field(
-                ...,
-                description="4-6 sentence executive summary synthesizing the entire research"
+                ..., description="4-6 sentence executive summary synthesizing the entire research"
             )
             acquisition_strategy_summary: str = Field(
-                ...,
-                description="2-3 paragraph overview of customer acquisition strategy emphasizing organic channels"
-            )
-            next_steps: list[str] = Field(
-                ...,
-                description="5-8 prioritized, specific action items for implementation"
+                ..., description="2-3 paragraph overview of customer acquisition strategy emphasizing organic channels"
             )
 
-        # Load prompt template from YAML
         template = load_prompt("report_strategic_synthesis")
-        # Get pain points from detailed_pain_points
         pain_points = base_report.detailed_pain_points or []
         pain_point_titles = [pp.title for pp in pain_points[:3]]
         prompt = template.format(
@@ -753,36 +742,110 @@ class ReportGenerator:
             selected_solution_name=base_report.selected_solution_name,
             pain_points_count=len(pain_points),
             market_validation=base_report.market_validation,
-            seo_scalability=base_report.selected_solution_details.seo_scalability_score if base_report.selected_solution_details else 'N/A',
+            seo_scalability=details.seo_scalability_score if details else 'N/A',
             selection_rationale=base_report.selection_rationale,
             top_pain_points=', '.join(pain_point_titles),
-            project_type=base_report.selected_solution_details.project_type if base_report.selected_solution_details else 'N/A',
-            indexable_pages=base_report.selected_solution_details.estimated_indexable_pages if base_report.selected_solution_details else 'N/A',
-            cac_organic=base_report.selected_solution_details.estimated_cac_organic if base_report.selected_solution_details else 'N/A'
+            project_type=details.project_type if details else 'N/A',
+            indexable_pages=details.estimated_indexable_pages if details else 'N/A',
+            cac_organic=details.estimated_cac_organic if details else 'N/A',
         )
 
         try:
-            logger.info("Enhancing report with LLM for strategic synthesis (3 fields)...")
+            logger.info("LLM Call 1/3: Market narrative (2 fields)...")
+            narrative, _usage = LLMService.invoke_structured(
+                prompt=prompt, output_model=MarketNarrative, temperature=0.7
+            )
+            base_report.executive_summary = narrative.executive_summary
+            base_report.acquisition_strategy_summary = narrative.acquisition_strategy_summary
+            logger.info("[OK] Market narrative complete")
+        except Exception as e:
+            logger.warning(f"Market narrative LLM failed: {e}. Using template-based fields.")
 
-            # Use LLMService for structured output (temp 0.7 for strategic creativity)
-            synthesis, _usage = LLMService.invoke_structured(
-                prompt=prompt,
-                output_model=StrategicSynthesis,
-                temperature=0.7
+        return base_report
+
+    def _llm_next_steps(self, base_report: FinalReport) -> FinalReport:
+        """LLM Call 2/3: Next steps — context-aware action items."""
+        from ..utils.prompts import load_prompt
+
+        details = base_report.selected_solution_details
+
+        class NextStepsResult(BaseModel):
+            next_steps: list[str] = Field(
+                ..., description="5-8 prioritized, specific action items for implementation"
             )
 
-            # Update only the 3 strategic fields, preserve everything else
-            base_report.executive_summary = synthesis.executive_summary
-            base_report.acquisition_strategy_summary = synthesis.acquisition_strategy_summary
-            base_report.next_steps = synthesis.next_steps
+        template = load_prompt("report_next_steps")
+        pain_points = base_report.detailed_pain_points or []
+        pain_point_titles = [pp.title for pp in pain_points[:3]]
+        prompt = template.format(
+            niche=base_report.niche,
+            selected_solution_name=base_report.selected_solution_name,
+            project_type=(details.project_type if details else None) or 'SaaS',
+            core_features=', '.join((details.core_features if details else None) or [])[:200] or 'N/A',
+            top_pain_points=', '.join(pain_point_titles),
+            pricing_strategy=(details.pricing_strategy if details else None) or 'freemium',
+            requires_data_aggregation=(details.requires_data_aggregation if details else None) or False,
+            indexable_pages=(details.estimated_indexable_pages if details else None) or 'N/A',
+        )
 
-            logger.info("[OK] Report enhanced with LLM strategic synthesis")
-            return base_report
-
+        try:
+            logger.info("LLM Call 2/3: Next steps (1 field)...")
+            result, _usage = LLMService.invoke_structured(
+                prompt=prompt, output_model=NextStepsResult, temperature=0.7,
+                model_name=settings.function_calling_llm
+            )
+            base_report.next_steps = result.next_steps
+            logger.info("[OK] Next steps complete")
         except Exception as e:
-            logger.warning(f"LLM enhancement failed: {e}. Using template-based fields.")
-            # Return base report unchanged if LLM fails
-            return base_report
+            logger.warning(f"Next steps LLM failed: {e}. Keeping fallback next_steps.")
+
+        return base_report
+
+    def _llm_implementation_planning(self, base_report: FinalReport) -> FinalReport:
+        """LLM Call 3/3: Product planning — implementation_overview + mvp_scope."""
+        from ..utils.prompts import load_prompt
+
+        details = base_report.selected_solution_details
+        project_type = (details.project_type if details else None) or 'SaaS'
+        core_features = (details.core_features if details else None) or []
+        dev_time = (details.estimated_development_time if details else None) or 'TBD'
+        tech_approach = (details.technical_approach if details else None) or 'N/A'
+        pricing_strategy = (details.pricing_strategy if details else None) or 'freemium'
+
+        class ImplementationPlanning(BaseModel):
+            solution_implementation_overview: str = Field(
+                ..., description="Markdown implementation overview with 3 phases tailored to the project type and core features"
+            )
+            mvp_scope_definition: str = Field(
+                ..., description="Markdown MVP scope with must-have features and project-type-specific success criteria"
+            )
+
+        template = load_prompt("report_implementation_planning")
+        prompt = template.format(
+            selected_solution_name=base_report.selected_solution_name,
+            project_type=project_type,
+            core_features=', '.join(core_features[:5]) if core_features else 'N/A',
+            estimated_development_time=dev_time,
+            technical_approach=tech_approach,
+            requires_data_aggregation=(details.requires_data_aggregation if details else None) or False,
+            pricing_strategy=pricing_strategy,
+            content_generation_model=(details.content_generation_model if details else None) or 'N/A',
+            indexable_pages=(details.estimated_indexable_pages if details else None) or 0,
+        )
+
+        try:
+            logger.info("LLM Call 3/3: Implementation planning (2 fields)...")
+            planning, _usage = LLMService.invoke_structured(
+                prompt=prompt, output_model=ImplementationPlanning, temperature=0.7,
+                model_name=settings.function_calling_llm
+            )
+            base_report.solution_implementation_overview = planning.solution_implementation_overview
+            base_report.mvp_scope_definition = planning.mvp_scope_definition
+            logger.info("[OK] Implementation planning complete")
+        except Exception as e:
+            logger.warning(f"Implementation planning LLM failed: {e}. Fields will be None.")
+
+        return base_report
 
     def _generate_pain_solution_mappings(
         self,
@@ -908,6 +971,10 @@ class ReportGenerator:
                 completed_stages=self.state.completed_stages if self.state.completed_stages else None,
                 fallback_stages=self.state.fallback_stages if self.state.fallback_stages else None,
                 filtering_stats=self.state.filtering_stats,
+                # Pipeline timing metadata
+                started_at=self.state.started_at.isoformat() if self.state.started_at else None,
+                completed_at=self.state.completed_at.isoformat() if self.state.completed_at else None,
+                total_duration_minutes=round((self.state.completed_at - self.state.started_at).total_seconds() / 60, 1) if self.state.started_at and self.state.completed_at else None,
             )
         except Exception as e:
             logger.warning(f"Failed to generate research metadata: {e}")
@@ -1143,28 +1210,16 @@ class ReportGenerator:
 
                 solution = all_solutions[runner_up_name]
 
-                # Defensive extraction of optional fields with fallbacks
-                description = solution.description or "Solution description not available"
-                tech_approach = solution.technical_approach or "Technical approach not specified"
+                description = solution.description or ""
+                tech_approach = solution.technical_approach or ""
 
-                # Handle differentiation factors safely
-                if solution.differentiation_factors and len(solution.differentiation_factors) > 0:
-                    key_differentiator = solution.differentiation_factors[0]
-                    diff_text = key_differentiator
-                else:
-                    key_differentiator = "Unique approach to solving the core problem"
-                    diff_text = "unique positioning"
+                key_differentiator = solution.differentiation_factors[0] if solution.differentiation_factors else ""
+                diff_text = key_differentiator or ""
 
-                # Handle target personas safely
-                if solution.target_personas and len(solution.target_personas) > 0:
-                    best_suited_for = solution.target_personas[0]
-                    personas_text = ', '.join(solution.target_personas[:2])
-                else:
-                    best_suited_for = "Target users seeking this solution"
-                    personas_text = "target users"
+                best_suited_for = solution.target_personas[0] if solution.target_personas else ""
+                personas_text = ', '.join(solution.target_personas[:2]) if solution.target_personas else ""
 
-                # Handle core features safely
-                features_text = ', '.join(solution.core_features[:5]) if solution.core_features else 'Features not specified'
+                features_text = ', '.join(solution.core_features[:5]) if solution.core_features else ""
 
                 # Generate 2-3 paragraph summary with validated inputs
                 summary = f"""**Overview:** {description}
@@ -1224,27 +1279,21 @@ It differentiates through {diff_text}.
                         market_gaps = landscape.market_gaps[:3]
                     competitive_intensity = landscape.competitive_intensity
 
-                # Type conversion: solo_dev_feasibility (float → string)
-                solo_dev_score = getattr(solution, 'solo_dev_feasibility', None)
-                if solo_dev_score is not None and isinstance(solo_dev_score, (int, float)):
-                    if solo_dev_score >= 0.7:
-                        solo_dev_feasibility_str = "HIGH"
-                    elif solo_dev_score >= 0.4:
-                        solo_dev_feasibility_str = "MEDIUM"
-                    else:
-                        solo_dev_feasibility_str = "LOW"
+                # Pass through solo_dev_feasibility as float (no conversion needed)
+                solo_dev_feasibility_val = getattr(solution, 'solo_dev_feasibility', None)
+                if isinstance(solo_dev_feasibility_val, (int, float)):
+                    solo_dev_feasibility_val = float(solo_dev_feasibility_val)
                 else:
-                    solo_dev_feasibility_str = solo_dev_score if isinstance(solo_dev_score, str) else None
+                    solo_dev_feasibility_val = None
 
-                # Type conversion: estimated_cac_organic (string → float)
-                cac_raw = getattr(solution, 'estimated_cac_organic', None)
-                if cac_raw and isinstance(cac_raw, str):
-                    match = re.search(r'\$?(\d+(?:\.\d+)?)', cac_raw)
-                    estimated_cac_organic_float = float(match.group(1)) if match else None
-                elif isinstance(cac_raw, (int, float)):
-                    estimated_cac_organic_float = float(cac_raw)
+                # Pass through estimated_cac_organic as string (no conversion needed)
+                estimated_cac_organic_val = getattr(solution, 'estimated_cac_organic', None)
+                if isinstance(estimated_cac_organic_val, (int, float)):
+                    estimated_cac_organic_val = f"${estimated_cac_organic_val:.0f}"
+                elif isinstance(estimated_cac_organic_val, str):
+                    estimated_cac_organic_val = estimated_cac_organic_val
                 else:
-                    estimated_cac_organic_float = None
+                    estimated_cac_organic_val = None
 
                 alternative_solutions.append(AlternativeSolution(
                     # Existing fields (using pre-validated variables)
@@ -1267,7 +1316,7 @@ It differentiates through {diff_text}.
 
                     # NEW: Additional scores and feasibility
                     novelty_score=getattr(solution, 'novelty_score', None),
-                    solo_dev_feasibility=solo_dev_feasibility_str,  # Type-converted
+                    solo_dev_feasibility=solo_dev_feasibility_val,  # Pass-through float
 
                     # NEW: Competitive landscape for this solution
                     top_competitors=top_competitors,
@@ -1276,7 +1325,7 @@ It differentiates through {diff_text}.
 
                     # NEW: Economic indicators
                     estimated_development_time=getattr(solution, 'estimated_development_time', None),
-                    estimated_cac_organic=estimated_cac_organic_float,  # Type-converted
+                    estimated_cac_organic=estimated_cac_organic_val,  # Pass-through string
                     pricing_model=getattr(solution, 'pricing_model', None),
                 ))
 
@@ -1463,7 +1512,7 @@ It differentiates through {diff_text}.
                 # Get source_post_ids directly from PainPoint model (more reliable than regex extraction)
                 source_ids = pain_point.source_post_ids if pain_point.source_post_ids else []
 
-                for i, quote in enumerate(pain_point.representative_quotes[:3]):  # Top 3 quotes
+                for i, quote in enumerate(pain_point.representative_quotes):
                     # Try to match source_id from the parallel list, fallback to regex extraction, then "unknown"
                     source_id = "unknown"
 
@@ -1548,16 +1597,10 @@ It differentiates through {diff_text}.
                 for phase in data_research.implementation_phases[:3]
             ]
 
-            # Generate cost scaling insight from data
             first_cost = phases[0].estimated_monthly_cost
-            primary_risk = data_research.data_quality_risks[0] if data_research.data_quality_risks else "Monitor API rate limits and implement fallback strategies"
-
-            cost_scaling_insight = (
-                f"Data infrastructure costs start at {first_cost} during MVP, scaling with user growth. "
-                f"{primary_risk}. "
-                f"Critical mitigation: Implement tiered data source strategy with free/low-cost sources for baseline features, "
-                f"premium APIs for advanced personalization."
-            )
+            cost_scaling_insight = f"Data infrastructure costs start at {first_cost} during MVP, scaling with user growth."
+            if data_research.data_quality_risks:
+                cost_scaling_insight += f" Primary risk: {data_research.data_quality_risks[0]}."
 
             return DataInfrastructureRoadmap(
                 phases=phases,

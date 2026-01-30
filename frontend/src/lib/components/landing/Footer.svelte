@@ -21,10 +21,7 @@
 			<!-- Brand -->
 			<div class="sm:col-span-2 md:col-span-1">
 				<a href="/" class="inline-flex items-center gap-2.5 sm:gap-3 mb-3 sm:mb-4 group">
-					<div class="w-9 sm:w-10 h-9 sm:h-10 rounded-lg bg-accent/10 border border-accent/50 flex items-center justify-center group-hover:shadow-glow transition-shadow">
-						<span class="text-accent font-display font-bold text-base sm:text-lg">N</span>
-					</div>
-					<span class="font-display font-bold text-lg sm:text-xl text-text-primary">NicheIQ</span>
+					<img src="/niche-logo.svg" alt="NicheIQ" class="h-8" />
 				</a>
 				<p class="text-xs sm:text-sm text-text-muted leading-relaxed mb-4">
 					Built by a solo founder for solo founders. Validated data, verified sources, zero hallucination.

@@ -17,6 +17,7 @@
 	import SubsectionHeader from '$lib/components/ui/SubsectionHeader.svelte';
 	import HeroStrip from '$lib/components/ui/HeroStrip.svelte';
 	import InsightCard from '$lib/components/ui/InsightCard.svelte';
+	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
 	import HeroMetric from '$lib/components/ui/HeroMetric.svelte';
 	import MarketFunnel from '$lib/components/charts/MarketFunnel.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
@@ -229,34 +230,36 @@
 	<!-- Methodology -->
 	{#if data.methodology_explanation}
 		<div class="methodology-section">
-			<SubsectionHeader title="Methodology" icon={Database} count={data.data_sources_used?.length} />
-			<InsightCard variant="muted" border="left" padding="md">
-				<div class="methodology-content">
-					{@html renderMarkdown(data.methodology_explanation)}
-				</div>
-				{#if data.data_sources_used && data.data_sources_used.length > 0}
-					<div class="sources-row">
-						<span class="sources-label">Data Sources:</span>
-						<div class="sources-tags">
-							{#each data.data_sources_used as source}
-								<span class="source-tag">{source}</span>
-							{/each}
-						</div>
+			<ExpandableSection title="Methodology" icon={Database} count={data.data_sources_used?.length} variant="muted" defaultOpen={false}>
+				<InsightCard variant="muted" border="left" padding="md">
+					<div class="methodology-content">
+						{@html renderMarkdown(data.methodology_explanation)}
 					</div>
-				{/if}
-			</InsightCard>
+					{#if data.data_sources_used && data.data_sources_used.length > 0}
+						<div class="sources-row">
+							<span class="sources-label">Data Sources:</span>
+							<div class="sources-tags">
+								{#each data.data_sources_used as source}
+									<span class="source-tag">{source}</span>
+								{/each}
+							</div>
+						</div>
+					{/if}
+				</InsightCard>
+			</ExpandableSection>
 		</div>
 	{/if}
 
 	<!-- Viability Rationale -->
 	{#if data.viability_rationale}
 		<div class="viability-rationale-section">
-			<SubsectionHeader title="Viability Rationale" icon={CheckCircle} variant="success" />
-			<InsightCard variant="success" border="left" padding="md">
-				<div class="rationale-content">
-					{@html renderMarkdown(data.viability_rationale)}
-				</div>
-			</InsightCard>
+			<ExpandableSection title="Viability Rationale" icon={CheckCircle} variant="success" defaultOpen={false}>
+				<InsightCard variant="success" border="left" padding="md">
+					<div class="rationale-content">
+						{@html renderMarkdown(data.viability_rationale)}
+					</div>
+				</InsightCard>
+			</ExpandableSection>
 		</div>
 	{/if}
 </section>

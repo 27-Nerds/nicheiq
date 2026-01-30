@@ -273,6 +273,8 @@ generate_html_page:
 
     If "coming_soon": Include visible "launching soon" indicator.
 
+    {html_build_guidance}
+
     <scope_constraints>
     - Implement EXACTLY what creative direction specifies
     - Do not add extra sections, features, or decorative elements
@@ -297,6 +299,8 @@ enhance_animations:
     ## Technical Tools
     CSS @keyframes, Tailwind animation utilities, IntersectionObserver for scroll reveals.
 
+    {animation_enhance_guidance}
+
     <scope_constraints>
     - Match animation energy to visual_intensity EXACTLY
     - NEVER remove existing content or structure - only ADD animations
@@ -320,6 +324,8 @@ qa_review_html:
     5. Creative direction compliance: heading_scale, section_density, hero_archetype
 
     Score 0-100 based on compliance. passes_qa = True if score >= 80.
+
+    {qa_review_guidance}
 
     <scope_constraints>
     - Validate against CREATIVE DIRECTION, not personal preferences

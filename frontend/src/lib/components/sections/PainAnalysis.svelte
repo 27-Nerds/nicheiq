@@ -206,8 +206,8 @@
 							{:else if solution.core_features && solution.core_features[i]}
 								<!-- Fallback: Old index-based mapping for legacy reports -->
 								<p class="solution-text">{solution.core_features[i]}</p>
-							{:else if solution.key_features && solution.key_features[i]}
-								<p class="solution-text">{solution.key_features[i]}</p>
+							{:else if solution.core_features && solution.core_features[i]}
+								<p class="solution-text">{solution.core_features[i]}</p>
 							{:else}
 								<!-- Final fallback: Generic value proposition -->
 								<p class="solution-text solution-generic">
@@ -256,7 +256,7 @@
 					<span class="stat-label">High Severity Issues</span>
 				</div>
 				<div class="stat-item">
-					<span class="stat-value">{solution.core_features?.length || solution.key_features?.length || 0}</span>
+					<span class="stat-value">{solution.core_features?.length || 0}</span>
 					<span class="stat-label">Solution Features</span>
 				</div>
 				<div class="stat-item">
