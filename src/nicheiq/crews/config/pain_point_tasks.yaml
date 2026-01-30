@@ -121,7 +121,7 @@ extract_pain_points:
     **WORKFLOW** (Apply Thorough Evidence Gathering Protocol):
 
     1. Review categorization report → identify high/medium-frequency categories
-    2. For each category → extract ALL specific pain points with sufficient supporting evidence (minimum 2 verified quotes each)
+    2. For each category → extract ALL specific pain points with sufficient supporting evidence (minimum 3 verified quotes each)
     3. **EXHAUSTIVE SEARCH** → For each potential pain point, run MULTIPLE knowledge source queries using different phrasings:
        - Query 1: Main problem keywords (e.g., "slow loading", "performance issues")
        - Query 2: Synonyms and variants (e.g., "laggy", "takes forever", "waiting")
@@ -137,7 +137,7 @@ extract_pain_points:
     7. Identify severity indicators → "frustrating", "critical", "showstopper"
     8. Note current solutions/workarounds users mention
     9. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
-    10. **QUALITY GATE**: If <2 VERIFIED quotes with [source: ID] → EXCLUDE pain point entirely
+    10. **QUALITY GATE**: If <3 VERIFIED quotes with [source: ID] → EXCLUDE pain point entirely
 
     **CRITICAL**: mention_count and quote count are DIFFERENT:
     - mention_count = ALL unique posts discussing this problem (typically 10-50+)
@@ -171,7 +171,7 @@ extract_pain_points:
 
     - Extract ALL distinct pain points supported by discussion evidence (do NOT target a specific number — let the data determine quantity)
     - Each pain point has clear problem articulation
-    - Supporting evidence includes direct user quotes from knowledge sources (as many as available, minimum 2)
+    - Supporting evidence includes direct user quotes from knowledge sources (as many as available, minimum 3)
     - Mention frequency quantified for each
     - Source platforms identified (Reddit/Twitter)
     - Source post IDs tracked for traceability
@@ -179,7 +179,7 @@ extract_pain_points:
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
 
     **STOP CONDITIONS:**
-    ✗ <2 quotes found for a pain point → EXCLUDE that pain point
+    ✗ <3 quotes found for a pain point → EXCLUDE that pain point
       ❌ Example: Creating pain point with only 1 quote to reach quota
     ✗ Knowledge source query returns no results → pain point does NOT exist in data
       ✅ Example: Return "Insufficient evidence in knowledge sources" if very few validated pain points found
@@ -203,7 +203,7 @@ extract_pain_points:
       ❌ Example: ["post001", "post002"] (fabricated placeholder IDs)
       ✅ Example: ["1a2b3c", "4d5e6f"] (extracted from [source: ...] suffixes in quote text)
     ✗ DO NOT merge unrelated problems to inflate pain point count
-      ✅ Example: If only 7 validated pain points exist with ≥2 quotes → return all 7
+      ✅ Example: If only 7 validated pain points exist with ≥3 quotes → return all 7
 
     **ANTI-HALLUCINATION GUARDRAILS:**
     ✗ NEVER fabricate post IDs - if you cannot find [source: ID], use empty list []
@@ -223,7 +223,7 @@ extract_pain_points:
     **WHEN DATA IS SPARSE** (Critical Decision Point):
     If you cannot find sufficient quotes for a pain point despite thorough searching:
     1. DO NOT fabricate quotes to fill the gap
-    2. DO NOT include the pain point if <2 verified quotes exist
+    2. DO NOT include the pain point if <3 verified quotes exist
     3. Return fewer pain points rather than lower-quality pain points
     4. Document in extraction_summary: "Limited to X pain points due to sparse evidence for [category Y]"
     5. Include ALL well-evidenced pain points — never sacrifice evidence quality to inflate count, and never cap count artificially
@@ -235,7 +235,7 @@ extract_pain_points:
     Step 2: **Multi-Query Search** - Run 3-4 different queries with synonyms and variants
     Step 3: **Collect Candidates** - Gather ALL quotes with [source: ID] from all queries
     Step 4: **Verify Each Quote** - Confirm each quote exists verbatim in knowledge sources
-    Step 5: **Count Verified** - If <2 verified quotes with [source: ID] → EXCLUDE this pain point
+    Step 5: **Count Verified** - If <3 verified quotes with [source: ID] → EXCLUDE this pain point
     Step 6: **Select Best 5-10** - From verified quotes, pick most detailed and impactful ones
     Step 7: **Preserve Exactly** - Include full quote WITH [source: ID] suffix intact
     Step 8: **Final Check** - Verify all included quotes are verbatim copies with visible [source: ID] tags
@@ -268,7 +268,7 @@ extract_pain_points:
 
     Rules:
     - Return ONLY raw JSON starting with { and ending with } — no markdown, no **bold**, no explanation text
-    - Minimum 2 verified quotes per pain point (all with [source: ID] suffix)
+    - Minimum 3 verified quotes per pain point (all with [source: ID] suffix)
     - source_post_ids ALWAYS [] (Python extracts automatically)
     - mention_count must be LARGER than quote count (count ALL unique [source: ID] discussions, not just selected quotes)
     - Extract ALL qualifying pain points — do not cap at a fixed number

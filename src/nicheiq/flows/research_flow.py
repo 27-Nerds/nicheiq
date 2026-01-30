@@ -498,12 +498,12 @@ class ResearchFlow(Flow[ResearchState]):
 
         # WTP (Willingness-to-Pay) signal strength
         # NOTE: WTP thresholds aligned with task prompt rubric:
-        # - Explicit payment mentions: ≥0.5
-        # - Inferred from severity/workflow: 0.35-0.45
-        # - Inferred from productivity loss: 0.25-0.35
-        # High WTP threshold lowered to 0.5 (explicit signals) to avoid always-zero metrics
-        high_wtp = len([pp for pp in pain_points if pp.willingness_to_pay >= 0.5])
-        medium_wtp = len([pp for pp in pain_points if 0.3 <= pp.willingness_to_pay < 0.5])
+        # - Explicit payment mentions: ≥0.6
+        # - Inferred from severity/workflow: 0.45-0.55
+        # - Inferred from productivity loss: 0.3-0.4
+        # High WTP threshold at 0.45 to capture inferred-WTP pain points (severity+workflow)
+        high_wtp = len([pp for pp in pain_points if pp.willingness_to_pay >= 0.45])
+        medium_wtp = len([pp for pp in pain_points if 0.3 <= pp.willingness_to_pay < 0.45])
 
         # Quote evidence density (average quotes per pain point)
         quote_density = sum(len(pp.representative_quotes) for pp in pain_points) / total_count if total_count > 0 else 0
@@ -551,7 +551,7 @@ class ResearchFlow(Flow[ResearchState]):
         confidence_score = (
             (high_severity / max(total_count, 1)) * weights["high_severity"] +
             (high_wtp / max(total_count, 1)) * weights["high_wtp"] +
-            (min(quote_density / 10, 1.0)) * weights["quote_density"] +
+            (min(quote_density / 8, 1.0)) * weights["quote_density"] +
             (cross_platform_count / max(total_count, 1)) * weights["cross_platform"] +
             source_coverage * weights["source_coverage"] +
             (high_opportunity / max(total_count, 1)) * weights["high_opportunity"]
@@ -564,7 +564,7 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info(f"Total pain points: {total_count}")
         logger.info(f"Severity distribution: {high_severity} high | {medium_severity} medium | {total_count - high_severity - medium_severity} low")
         logger.info(f"WTP signal: {high_wtp} high | {medium_wtp} medium")
-        logger.info(f"Quote density: {quote_density:.1f} quotes/pain point (target: ≥10 for GOLD)")
+        logger.info(f"Quote density: {quote_density:.1f} quotes/pain point (target: ≥8 for GOLD)")
         if single_platform_mode:
             logger.info("Platform mode: Single-platform (Twitter disabled) - cross-platform metric skipped")
         else:
@@ -577,7 +577,7 @@ class ResearchFlow(Flow[ResearchState]):
         gold_cross_platform_ok = single_platform_mode or cross_platform_count >= 3
         if (
             high_severity >= 5 and
-            quote_density >= 10 and
+            quote_density >= 8 and
             gold_cross_platform_ok and
             source_coverage >= 0.90 and
             high_opportunity >= 3
