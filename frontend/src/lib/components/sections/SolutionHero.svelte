@@ -1139,7 +1139,7 @@
   }
 
   .innovation-facet.facet-highlight {
-    background: rgba(245, 158, 11, 0.06);
+    background: transparent;
     border-left: 2px solid #f59e0b;
     padding: 0.5rem 0.75rem;
     border-radius: 0 0.375rem 0.375rem 0;

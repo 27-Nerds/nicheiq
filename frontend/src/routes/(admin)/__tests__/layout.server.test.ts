@@ -51,9 +51,9 @@ describe('Admin layout server load', () => {
   it('returns session when user role is ADMIN', async () => {
     const { load } = await import('../+layout.server');
 
-    const result = await load(
+    const result = (await load(
       createMockEvent({ id: 'admin-123', email: 'admin@test.com', role: 'ADMIN' }) as any
-    );
+    )) as { session: { user: { id: string; role: string } } };
 
     expect(result.session.user.id).toBe('admin-123');
     expect(result.session.user.role).toBe('ADMIN');
