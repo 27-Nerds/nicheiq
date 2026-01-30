@@ -119,12 +119,24 @@ deploy() {
   log_info "Pulling base images..."
   $DC pull postgres redis caddy
 
+  # Determine worker count: CLI flag > state file > default (1)
+  local WORKER_COUNT="${SCALE_WORKERS:-1}"
+  if [ -z "$SCALE_WORKERS" ] && [ -f "$PROJECT_ROOT/docker/.worker-scale" ]; then
+    WORKER_COUNT=$(cat "$PROJECT_ROOT/docker/.worker-scale")
+    log_info "Restoring worker scale from state file: $WORKER_COUNT"
+  fi
+
   # Build and start services
   log_info "Building and starting services..."
   local UP_ARGS="-d"
   [ "$DO_BUILD" = true ] && UP_ARGS="$UP_ARGS --build"
-  [ -n "$SCALE_WORKERS" ] && UP_ARGS="$UP_ARGS --scale worker=$SCALE_WORKERS"
+  UP_ARGS="$UP_ARGS --scale worker=$WORKER_COUNT"
   $DC up $UP_ARGS
+
+  # Persist worker count if explicitly set via --scale-workers
+  if [ -n "$SCALE_WORKERS" ]; then
+    echo "$SCALE_WORKERS" > "$PROJECT_ROOT/docker/.worker-scale"
+  fi
 
   # Wait for services to be healthy
   log_info "Waiting for services to be healthy..."

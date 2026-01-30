@@ -97,5 +97,8 @@ fi
 log_info "Scaling workers to $COUNT..."
 $DC up -d --no-recreate --scale worker="$COUNT"
 
+# Persist desired worker count for deploy.sh to read
+echo "$COUNT" > "$PROJECT_ROOT/docker/.worker-scale"
+
 show_status
 log_success "Workers scaled to $COUNT."
