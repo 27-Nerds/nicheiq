@@ -112,43 +112,151 @@ function getRandomSeeds(count: number = 3): string[] {
   return shuffled.slice(0, count);
 }
 
-// System prompts
-const FEELING_LUCKY_SYSTEM_PROMPT = `You generate random niche/audience ideas for market research. Be creative and unexpected.
+// Niche archetypes for structural variety in "Feeling Lucky" suggestions
+interface NicheArchetype {
+  name: string;
+  pattern: string;
+  examples: string[];
+}
+
+const NICHE_ARCHETYPES: NicheArchetype[] = [
+  {
+    name: 'B2B Workflow',
+    pattern: '[Professional role] managing [operational task]',
+    examples: [
+      'Dental offices managing patient recall systems',
+      'Auto shops tracking parts warranty claims',
+      'Property managers coordinating maintenance requests',
+    ],
+  },
+  {
+    name: 'Service Provider',
+    pattern: '[Service] providers handling [operational challenge]',
+    examples: [
+      'Mobile dog groomers scheduling repeat clients',
+      'Freelance translators managing multilingual projects',
+      'Private tutors tracking student progress',
+    ],
+  },
+  {
+    name: 'Hobbyist Community',
+    pattern: '[Activity] enthusiasts [collaborating on specific task]',
+    examples: [
+      'Home fermentation enthusiasts troubleshooting batches',
+      'Amateur radio operators logging contacts',
+      'Reef tank hobbyists monitoring water chemistry',
+    ],
+  },
+  {
+    name: 'Demographic Segment',
+    pattern: '[Life stage group] navigating [specific challenge]',
+    examples: [
+      'First-time parents navigating daycare selection',
+      'Recent retirees planning phased downsizing',
+      'International students navigating off-campus housing',
+    ],
+  },
+  {
+    name: 'Creator / Monetization',
+    pattern: '[Creator type] growing [specific aspect of business]',
+    examples: [
+      'Etsy sellers optimizing product photography',
+      'Newsletter writers growing paid subscriber base',
+      'Podcast hosts coordinating guest bookings',
+    ],
+  },
+  {
+    name: 'Compliance / Regulation',
+    pattern: '[Role] navigating [regulation or bureaucratic process]',
+    examples: [
+      'Food truck owners navigating multi-city permits',
+      'Home-based bakers meeting cottage food laws',
+      'Short-term rental hosts tracking tax obligations',
+    ],
+  },
+  {
+    name: 'Community Coordination',
+    pattern: '[Organizer role] coordinating [group activity]',
+    examples: [
+      'Youth sports coaches scheduling practice facilities',
+      'HOA boards managing shared amenity reservations',
+      'Volunteer coordinators tracking shift coverage',
+    ],
+  },
+  {
+    name: 'Underserved Vertical',
+    pattern: '[Traditional trade] dealing with [legacy process pain]',
+    examples: [
+      'Plumbers managing quote follow-ups',
+      'Independent pharmacists handling compound orders',
+      'Locksmiths tracking key-code inventories',
+    ],
+  },
+];
+
+// Pick a random archetype each request
+function getRandomArchetype(): NicheArchetype {
+  return NICHE_ARCHETYPES[Math.floor(Math.random() * NICHE_ARCHETYPES.length)];
+}
+
+// Build system prompt (archetype-aware, no hobby bias)
+function buildFeelingLuckySystemPrompt(): string {
+  return `You generate random niche/audience ideas for market research. You MUST follow the archetype structure provided in the user prompt.
 
 OUTPUT THE NICHE ONLY - not the solution. We research the niche first, then figure out what to build.
 
-GOOD examples (niche/audience only):
-- "Vintage board game collectors"
-- "DIY drone repair hobbyists"
-- "Food truck owners scheduling events"
-- "Chiropractors managing patient intake"
-
-BAD examples (includes solution - DO NOT do this):
-- "Vintage board game collectors marketplace" ❌
-- "DIY drone repair parts finder app" ❌
-- "Food truck booking platform" ❌
-
 REQUIREMENTS:
-1. Must have online communities (Reddit/Twitter/forums)
-2. Keep it concise: 4-8 words maximum
-3. Be specific, not generic
-4. Describe WHO or WHAT ACTIVITY - never the solution
+1. Follow the archetype pattern given in the user prompt — match its structure closely
+2. Must have online communities (Reddit/Twitter/forums)
+3. Keep it concise: 4-8 words maximum
+4. Be specific, not generic
+5. Use action verbs (managing, coordinating, navigating, tracking, building, scheduling, optimizing, growing)
+6. Describe WHO + WHAT THEY STRUGGLE WITH — never the solution
+
+GOOD examples (diverse archetype structures):
+- "Dental offices managing patient recall systems"
+- "Youth sports coaches scheduling practice facilities"
+- "Etsy sellers optimizing product photography"
+- "Food truck owners navigating multi-city permits"
+
+BAD examples (includes solution words — DO NOT do this):
+- "Dental offices patient recall platform" ❌
+- "Youth sports scheduling app" ❌
+- "Etsy photography tool" ❌
+
+DO NOT default to hobby/collector patterns (e.g. "Vintage X collectors", "DIY Y hobbyists") unless the archetype specifically calls for a hobbyist community.
 
 AVOID:
-- Solution words: "marketplace", "platform", "app", "tool", "software", "directory", "finder"
+- Solution words: "marketplace", "platform", "app", "tool", "software", "directory", "finder", "system", "service", "hub"
 - Generic terms: "small businesses", "entrepreneurs", "startups"
 - Long multi-clause descriptions
+- Repeating any of the examples above verbatim
 
 Respond with JSON:
 {
   "suggestions": [
     {
-      "niche": "Audience or activity description (NO solution)",
+      "niche": "Audience + activity description (NO solution)",
       "category": "Industry category",
       "appeal": "Why underserved (1 sentence)"
     }
   ]
 }`;
+}
+
+// Build user prompt with archetype directive
+function buildFeelingLuckyUserPrompt(archetype: NicheArchetype, seeds: string[]): string {
+  return `Generate 1 random niche idea following this archetype:
+
+ARCHETYPE: ${archetype.name}
+PATTERN: ${archetype.pattern}
+REFERENCE EXAMPLES (do NOT copy these, create something new):
+${archetype.examples.map(e => `- "${e}"`).join('\n')}
+
+For industry inspiration, consider: ${seeds.join(', ')}.
+
+Follow the archetype pattern closely. Use an action verb. Do NOT include solution words.`;
+}
 
 const AUTO_COMPLETE_SYSTEM_PROMPT = `You are a market research assistant helping users refine vague niche ideas into specific, researchable market opportunities.
 
@@ -232,13 +340,18 @@ suggestRouter.post('/', requireInternalAuth, async (req: AuthenticatedRequest, r
     }
 
     // Prepare prompt based on mode
-    const systemPrompt = mode === 'feeling_lucky'
-      ? FEELING_LUCKY_SYSTEM_PROMPT
-      : AUTO_COMPLETE_SYSTEM_PROMPT;
+    let systemPrompt: string;
+    let userPrompt: string;
 
-    const userPrompt = mode === 'feeling_lucky'
-      ? `Generate 1 random niche idea. For inspiration, consider industries like: ${getRandomSeeds(3).join(', ')}. But feel free to pick something completely different.`
-      : `Expand this partial niche description into ${count} specific, researchable market segments: "${partial_input}"`;
+    if (mode === 'feeling_lucky') {
+      const archetype = getRandomArchetype();
+      const seeds = getRandomSeeds(3);
+      systemPrompt = buildFeelingLuckySystemPrompt();
+      userPrompt = buildFeelingLuckyUserPrompt(archetype, seeds);
+    } else {
+      systemPrompt = AUTO_COMPLETE_SYSTEM_PROMPT;
+      userPrompt = `Expand this partial niche description into ${count} specific, researchable market segments: "${partial_input}"`;
+    }
 
     // Call OpenAI API
     const completion = await openai.chat.completions.create({

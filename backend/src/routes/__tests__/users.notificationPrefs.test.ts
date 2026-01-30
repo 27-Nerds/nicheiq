@@ -16,7 +16,7 @@ vi.mock('../../services/db.js', () => ({
 
 // Mock auth middleware
 vi.mock('../../middleware/auth.js', () => ({
-  requireInternalAuth: (req: any, res: any, next: any) => {
+  requireInternalAuth: (req: any, _res: any, next: any) => {
     req.user = { id: 'user-123' };
     next();
   },
