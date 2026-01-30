@@ -157,7 +157,7 @@ describe('notificationService', () => {
 
       await notifyJobError('user-123', 'test@example.com', 'job-456', 'test niche', 'Something went wrong');
 
-      expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Something went wrong');
+      expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Something went wrong', undefined);
     });
 
     it('skips email when emailOnJobError is false', async () => {

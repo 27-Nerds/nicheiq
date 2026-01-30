@@ -195,9 +195,12 @@ describe('emailService', () => {
 
   describe('no email configured', () => {
     beforeEach(() => {
-      delete process.env.EMAIL_PROVIDER;
-      delete process.env.SMTP_HOST;
-      delete process.env.SENDGRID_API_KEY;
+      // Set to empty string instead of deleting — dotenv.config() (called at
+      // module load in config.ts) won't overwrite existing keys, but WILL
+      // populate deleted keys from the .env file.
+      process.env.EMAIL_PROVIDER = '';
+      process.env.SMTP_HOST = '';
+      process.env.SENDGRID_API_KEY = '';
     });
 
     it('skips sending when not configured', async () => {
@@ -262,7 +265,7 @@ describe('emailService', () => {
     });
 
     it('defaults to smtp', async () => {
-      delete process.env.EMAIL_PROVIDER;
+      process.env.EMAIL_PROVIDER = '';
       const { getEmailProvider } = await import('../emailService.js');
 
       expect(getEmailProvider()).toBe('smtp');

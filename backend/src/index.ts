@@ -11,6 +11,7 @@ import { billingRouter } from './routes/billing.js';
 import { workersRouter } from './routes/workers.js';
 import { suggestRouter } from './routes/suggest.js';
 import { adminRouter } from './routes/admin.js';
+import { sharesRouter, publicShareRouter } from './routes/shares.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
@@ -44,7 +45,9 @@ if (CONFIG.isDev) {
 app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/jobs', jobsRouter);
+app.use('/api/jobs', sharesRouter);
 app.use('/api/jobs', eventsRouter);
+app.use('/api/shared', publicShareRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/workers', workersRouter);
 app.use('/api/suggest', suggestRouter);

@@ -8,25 +8,10 @@ import { CreateJobSchema } from '../types/job.js';
 import { JobStatus, AssetType, CreditTransactionType } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { requireInternalAuth, requireInternalService, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-/**
- * Resolve asset file path - handles both absolute (Docker) and relative (dev) paths
- */
-function resolveAssetPath(filePath: string): string {
-  if (path.isAbsolute(filePath)) {
-    return filePath; // Docker: already absolute
-  }
-  // Dev: resolve relative to project root (parent of backend/)
-  return path.resolve(__dirname, '../../../', filePath);
-}
+import { resolveAssetPath } from '../utils/assetPath.js';
 
 export const jobsRouter = Router();
 

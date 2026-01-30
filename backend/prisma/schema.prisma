@@ -198,6 +198,7 @@ model Job {
   progress             JobProgress[]
   assets               JobAsset[]
   creditTransactions   CreditTransaction[]
+  share                ReportShare?
 
   // Indexes for common queries
   @@index([userId])
@@ -379,4 +380,21 @@ model TokenPackage {
 
   @@index([isActive])
   @@index([sortOrder])
+}
+
+// ============================================
+// Report Sharing
+// ============================================
+
+model ReportShare {
+  id           String    @id @default(uuid())
+  jobId        String    @unique
+  job          Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId       String
+  shareToken   String    @unique
+  isActive     Boolean   @default(true)
+  viewCount    Int       @default(0)
+  lastViewedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }

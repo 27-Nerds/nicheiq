@@ -51,7 +51,6 @@ export interface Report {
 	// solution_organic_discovery removed - use selected_solution_details.organic_discovery_queries instead
 	competitor_profiles: CompetitorProfile[];
 	generated_at: string;
-	pdf_path?: string;
 
 	// ========== NEW FULL STAGE DATA FIELDS ==========
 
@@ -337,14 +336,8 @@ export interface DetailedPainPoint {
 	source_platforms: string[];
 	categories: string[];
 	source_post_ids: string[];
-	source_engagement_metrics: EngagementMetric[];
 	affected_segments?: string[];
 	solution_approach?: string;
-}
-
-export interface EngagementMetric {
-	post_id: string;
-	score: number;  // Matches Python field name (upvotes/engagement score)
 }
 
 export interface SEOStrategy {
@@ -607,8 +600,6 @@ export interface ResearchMetadata {
 	filtering_stats?: Record<string, unknown>;
 	// Timing metadata
 	started_at?: string;
-	completed_at?: string;
-	total_duration_minutes?: number;
 	// Quality summary
 	data_quality_summary?: DataQualitySummary;
 }
@@ -954,7 +945,6 @@ export interface DataSourceProvider {
 	data_format?: string;
 	relevance_score?: number;
 	reliability_rating?: string;
-	rate_limits?: string;
 }
 
 export interface SourceEvaluationReport {

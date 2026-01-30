@@ -270,6 +270,54 @@ export function getLandingPageUrl(jobId: string, download = false): string {
 }
 
 // ============================================
+// Report Sharing
+// ============================================
+
+export interface ShareInfo {
+  isShared: boolean;
+  shareToken?: string;
+  viewCount?: number;
+}
+
+/**
+ * Get share status for a job
+ */
+export async function getShareStatus(jobId: string): Promise<ShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/share`);
+  return handleResponse<ShareInfo>(response);
+}
+
+/**
+ * Enable sharing for a job
+ */
+export async function enableSharing(jobId: string): Promise<ShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/share`, {
+    method: 'POST',
+  });
+  return handleResponse<ShareInfo>(response);
+}
+
+/**
+ * Disable sharing for a job
+ */
+export async function disableSharing(jobId: string): Promise<ShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/share`, {
+    method: 'DELETE',
+  });
+  return handleResponse<ShareInfo>(response);
+}
+
+/**
+ * Regenerate share token (invalidates old link)
+ */
+export async function regenerateShareToken(jobId: string): Promise<ShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/share/regenerate`, {
+    method: 'POST',
+  });
+  return handleResponse<ShareInfo>(response);
+}
+
+// ============================================
 // Notification Preferences
 // ============================================
 

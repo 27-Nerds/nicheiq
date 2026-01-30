@@ -3,7 +3,6 @@
 		Shield,
 		AlertTriangle,
 		CheckCircle,
-		Clock,
 		Database,
 		Activity,
 		TrendingUp,
@@ -33,15 +32,6 @@
 		}
 		return null;
 	});
-
-	// Format duration
-	const formatDuration = (minutes?: number) => {
-		if (!minutes) return null;
-		if (minutes < 60) return `${minutes} min`;
-		const hours = Math.floor(minutes / 60);
-		const mins = minutes % 60;
-		return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
-	};
 </script>
 
 <section id="research-metadata" class="report-section">
@@ -125,24 +115,6 @@
 						<div>
 							<div class="text-sm text-text-muted">Started</div>
 							<div class="text-text-primary">{formatDate(metadata.started_at)}</div>
-						</div>
-					</div>
-				{/if}
-				{#if metadata.completed_at}
-					<div class="flex items-start gap-3">
-						<CheckCircle class="w-5 h-5 text-success shrink-0 mt-0.5" />
-						<div>
-							<div class="text-sm text-text-muted">Completed</div>
-							<div class="text-text-primary">{formatDate(metadata.completed_at)}</div>
-						</div>
-					</div>
-				{/if}
-				{#if metadata.total_duration_minutes}
-					<div class="flex items-start gap-3">
-						<Clock class="w-5 h-5 text-accent shrink-0 mt-0.5" />
-						<div>
-							<div class="text-sm text-text-muted">Duration</div>
-							<div class="text-text-primary font-medium">{formatDuration(metadata.total_duration_minutes)}</div>
 						</div>
 					</div>
 				{/if}
