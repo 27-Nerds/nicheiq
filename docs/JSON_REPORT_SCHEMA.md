@@ -35,14 +35,12 @@ This document provides a comprehensive reference for the NicheIQ research report
 |-------|------|-------------|
 | `niche` | `string` | The niche being researched |
 | `generated_at` | `string` (ISO datetime) | Report generation timestamp |
-| `pdf_path` | `null \| string` | Path to generated PDF |
 
 **Example:**
 ```json
 {
   "niche": "ai llm cost calculator",
-  "generated_at": "2026-01-19T20:43:34.549973",
-  "pdf_path": null
+  "generated_at": "2026-01-19T20:43:34.549973"
 }
 ```
 
@@ -759,9 +757,6 @@ Summary with severity/WTP insights.
   "source_platforms": ["Reddit"],
   "categories": ["string"],
   "source_post_ids": ["abc123"],
-  "source_engagement_metrics": [
-    {"post_id": "abc123", "score": 45}
-  ],
   "affected_segments": ["string"]
 }
 ```
@@ -778,7 +773,6 @@ Summary with severity/WTP insights.
 | `source_platforms` | `array[string]` | Source platforms |
 | `categories` | `array[string]` | Categories |
 | `source_post_ids` | `array[string]` | Post IDs for traceability |
-| `source_engagement_metrics` | `array[object]` | Engagement data |
 | `affected_segments` | `array[string]` | Affected audience segments |
 
 ---
@@ -1222,9 +1216,7 @@ Data sourcing strategy for aggregation projects.
   "integration_complexity": "LOW",
   "priority": "HIGH",
   "priority_rationale": "string",
-  "rate_limits": null,
-  "data_quality_notes": "string",
-  "fallback_for": null
+  "data_quality_notes": "string"
 }
 ```
 
@@ -1519,7 +1511,7 @@ Array of 7 recommended next steps.
 
 ---
 
-## Complete Top-Level Field List (55 Fields)
+## Complete Top-Level Field List (54 Fields)
 
 | # | Field | Type |
 |---|-------|------|
@@ -1577,11 +1569,16 @@ Array of 7 recommended next steps.
 | 52 | `stage_timing_summary` | `object` |
 | 53 | `seo_calculation_transparency` | `object` |
 | 54 | `generated_at` | `string` |
-| 55 | `pdf_path` | `null \| string` |
 
 ---
 
 ## Version History
+
+- **v2.5** - Removed dead fields
+  - Removed `pdf_path` from `FinalReport` (always null, no PDF generation exists)
+  - Removed `source_engagement_metrics` from pain points (always empty)
+  - Removed `rate_limits` and `fallback_for` from `DataSource` (always null)
+  - Updated Complete Top-Level Field List from 55 to 54 fields
 
 - **v2.4** - Restored tier strategy fields
   - Updated `seo_strategy_report` to 21 keys

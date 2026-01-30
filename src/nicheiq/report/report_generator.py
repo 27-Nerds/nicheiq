@@ -266,8 +266,6 @@ class ReportGenerator:
                 f"{len(final_report.data_quality_summary.quality_caveats)} caveats"
             )
 
-        # REMOVED: pain_segment_matrix - depends on affected_segments which is never populated
-
         final_report.refinement_highlights = self._generate_refinement_highlights()
         if final_report.refinement_highlights:
             logger.info(
@@ -975,8 +973,6 @@ class ReportGenerator:
                 filtering_stats=self.state.filtering_stats,
                 # Pipeline timing metadata
                 started_at=self.state.started_at.isoformat() if self.state.started_at else None,
-                completed_at=self.state.completed_at.isoformat() if self.state.completed_at else None,
-                total_duration_minutes=round((self.state.completed_at - self.state.started_at).total_seconds() / 60, 1) if self.state.started_at and self.state.completed_at else None,
             )
         except Exception as e:
             logger.warning(f"Failed to generate research metadata: {e}")
@@ -1040,8 +1036,6 @@ class ReportGenerator:
         except Exception as e:
             logger.warning(f"Failed to generate data quality summary: {e}")
             return None
-
-    # REMOVED: _generate_pain_segment_matrix - depends on affected_segments which is never populated
 
     def _generate_refinement_highlights(self) -> RefinementHighlights | None:
         """

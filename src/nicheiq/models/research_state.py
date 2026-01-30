@@ -111,7 +111,6 @@ class DataQualitySummary(BaseModel):
     )
 
 
-# REMOVED: PainSegmentMapping - depends on affected_segments which is never populated
 
 
 class RefinementHighlights(BaseModel):
@@ -225,8 +224,6 @@ class ResearchMetadata(BaseModel):
 
     # Pipeline timing metadata
     started_at: Optional[str] = Field(default=None, description="Pipeline start time (ISO 8601)")
-    completed_at: Optional[str] = Field(default=None, description="Pipeline completion time (ISO 8601)")
-    total_duration_minutes: Optional[float] = Field(default=None, description="Total pipeline duration in minutes")
 
 class AlternativeSolution(BaseModel):
     """Enhanced alternative solution with competitive analysis details."""
@@ -432,7 +429,6 @@ class FinalReport(BaseModel):
         default=None,
         description="Data quality assessment: quality tiers, confidence scores, caveats"
     )
-    # REMOVED: pain_segment_matrix - depends on affected_segments which is never populated
     refinement_highlights: Optional[RefinementHighlights] = Field(
         default=None,
         description="Key strategic insights from Stage 8.7 solution refinement"
@@ -691,7 +687,6 @@ class FinalReport(BaseModel):
     generated_at: datetime = Field(
         default_factory=datetime.utcnow, description="Report generation timestamp"
     )
-    pdf_path: Optional[str] = Field(default=None, description="Path to generated PDF report")
 
 
 # Stage 8.7: Pricing Strategy Validation

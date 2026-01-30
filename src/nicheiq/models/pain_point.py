@@ -9,14 +9,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .keyword_data import OpportunityLevel
 
 
-class EngagementMetric(BaseModel):
-    """Engagement metric for a single post."""
-
-    model_config = ConfigDict(extra='ignore')
-
-    post_id: str = Field(..., description="Post ID")
-    score: int = Field(..., description="Engagement score (upvotes, likes, etc.)")
-
 class UnvalidatedPainPoint(BaseModel):
     """Pain point extracted by analyst without severity/WTP scores yet."""
 
@@ -187,12 +179,7 @@ class PainPoint(BaseModel):
         default_factory=list,
         description="List of post IDs (Reddit/Twitter) where this pain point was found (for traceability)"
     )
-    source_engagement_metrics: list[EngagementMetric] = Field(
-        default_factory=list,
-        description="Engagement metrics for source posts (for traceability)"
-    )
-
-    # NEW: Audience segment mapping (from Stage 6.5 audience mapping)
+    # Audience segment mapping (from Stage 6.5 audience mapping)
     affected_segments: Optional[list[str]] = Field(
         default=None,
         description=(

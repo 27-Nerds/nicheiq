@@ -1582,6 +1582,8 @@ Return a valid JSON object with this structure:
             # This alignment happens AFTER both crews complete
             if self.state.pain_point_analysis and audience_result.audience_segments:
                 self._map_pain_points_to_segments(audience_result)
+                # Re-save pain points with affected_segments populated
+                self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
 
             # Mark Stage 6.5 complete
             self._mark_stage_complete(6.5)
@@ -1617,6 +1619,12 @@ Return a valid JSON object with this structure:
         # Check if audience mapping was already completed in parallel
         if self.state.audience_mapping:
             logger.info("[Stage 6.5] Audience mapping already completed (parallel execution)")
+            # Re-run segment mapping if pain points lack affected_segments (checkpoint resume case)
+            if (self.state.pain_point_analysis
+                    and self.state.audience_mapping.audience_segments
+                    and any(pp.affected_segments is None for pp in self.state.pain_point_analysis.pain_points)):
+                self._map_pain_points_to_segments(self.state.audience_mapping)
+                self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
             self.state.current_stage = 7
             return
 
@@ -1665,6 +1673,8 @@ Return a valid JSON object with this structure:
         # Post-processing: Map pain points to audience segments
         if self.state.pain_point_analysis and audience_result.audience_segments:
             self._map_pain_points_to_segments(audience_result)
+            # Re-save pain points with affected_segments populated
+            self.checkpoint_mgr.save_stage("stage_6_pain_points", self.state.pain_point_analysis)
 
         # Mark stage complete with tracking
         self._mark_stage_complete(6.5)

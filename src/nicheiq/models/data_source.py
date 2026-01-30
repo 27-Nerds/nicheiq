@@ -42,17 +42,9 @@ class DataSource(BaseModel):
         default=None,
         description="Why this priority (e.g., 'Supports job listings keyword with 12k searches/month')"
     )
-    rate_limits: Optional[str] = Field(
-        default=None,
-        description="API rate limits if known (e.g., '100 requests/min', '10k requests/day')"
-    )
     data_quality_notes: Optional[str] = Field(
         default=None,
         description="Notes on data quality, completeness, or reliability"
-    )
-    fallback_for: Optional[list[str]] = Field(
-        default=None,
-        description="List of other providers this serves as a fallback for"
     )
 
 class DataPartnership(BaseModel):

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { fade } from 'svelte/transition';
-	import { Target, MessageSquare, TrendingUp, ChevronDown, ChevronUp, AlertTriangle, DollarSign, ArrowRight, CheckCircle, Sparkles } from 'lucide-svelte';
+	import { Target, MessageSquare, TrendingUp, ChevronDown, ChevronUp, AlertTriangle, DollarSign, ArrowRight, CheckCircle, Sparkles, Users } from 'lucide-svelte';
 	import type { DetailedPainPoint, PainPointAnalytics, SolutionDetails } from '$lib/types/report';
 	import { formatPercent, getOpportunityClass, getScoreClass, getScoreBarClass } from '$lib/utils/format';
 	import { getOpportunityVariant, getPlatformVariant } from '$lib/utils/variantHelpers';
@@ -181,6 +181,15 @@
 									{#if painPoint.mention_count > 0}
 										<span class="mention-count">{painPoint.mention_count} mentions</span>
 									{/if}
+								</div>
+							{/if}
+
+							{#if painPoint.affected_segments && painPoint.affected_segments.length > 0}
+								<div class="pain-segments">
+									<Users class="w-3 h-3 text-secondary shrink-0" />
+									{#each painPoint.affected_segments.slice(0, 3) as segment}
+										<Badge variant="info" size="sm">{segment}</Badge>
+									{/each}
 								</div>
 							{/if}
 						</div>
@@ -367,6 +376,16 @@
 							<div class="pain-point-categories">
 								{#each point.categories as category}
 									<span class="category-tag">{category}</span>
+								{/each}
+							</div>
+						{/if}
+
+						<!-- Affected Segments -->
+						{#if point.affected_segments && point.affected_segments.length > 0}
+							<div class="pain-segments">
+								<Users class="w-3.5 h-3.5 text-secondary shrink-0 mt-0.5" />
+								{#each point.affected_segments as segment}
+									<Badge variant="info" size="sm">{segment}</Badge>
 								{/each}
 							</div>
 						{/if}
@@ -966,6 +985,14 @@
 		flex-wrap: wrap;
 		gap: 0.5rem;
 		margin-bottom: 1rem;
+	}
+
+	.pain-segments {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 0.375rem;
+		margin-bottom: 0.75rem;
 	}
 
 	.category-tag {
