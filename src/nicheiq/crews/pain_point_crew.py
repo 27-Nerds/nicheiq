@@ -22,7 +22,7 @@ from ..models.pain_point import (
     ValidationResult,
 )
 from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
-from ..utils.parsing.json_extractor import clean_llm_response
+from ..utils.parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 from ..utils.token_monitor import ContentTokenMonitor
 from ..utils.validation.crew_guardrails import (
     _fix_common_json_errors,
@@ -78,15 +78,18 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
     Guardrail for extract_pain_points_task to handle JSON parsing errors.
 
     CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
-    Must parse from .raw and return (True, raw_string) on success.
+    Must parse from .raw and return (True, clean_json_string) on success.
 
     Validates:
     - JSON is parseable (catches malformed output)
     - Has at least 3 extracted_pain_points
     - Each pain point has minimum required fields
 
+    Falls back to bracket-matching JSON extraction when json.loads() fails
+    (e.g., when agent wraps JSON in markdown text).
+
     Returns:
-        tuple[bool, Any]: (success, raw_string_or_error)
+        tuple[bool, Any]: (success, model_dump_json_or_error)
     """
     try:
         # CrewAI 1.7.0: When guardrails exist, pydantic is intentionally None
@@ -107,15 +110,25 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
                 # Provide helpful error message for retry
                 logger.warning(f"JSON parse error in pain point extraction: {e}")
                 logger.warning(f"Raw output first 500 chars: {task_output.raw[:500] if task_output.raw else 'empty'}")
-                return (
-                    False,
-                    f"Invalid JSON at line {e.lineno}, column {e.colno}: {e.msg}. "
-                    "Ensure your JSON output is valid: "
-                    "1) No trailing commas before } or ] "
-                    "2) All strings use double quotes "
-                    "3) No comments in JSON. "
-                    "Return a valid PainPointExtraction JSON object."
-                )
+
+                # Fallback: try to extract a JSON object from surrounding text
+                extracted_obj = extract_json_object_from_text(task_output.raw)
+                if extracted_obj is not None:
+                    try:
+                        result = PainPointExtraction.model_validate(extracted_obj)
+                        logger.info("Pain point extraction guardrail: Recovered JSON object from text")
+                    except Exception as e2:
+                        logger.warning(f"Extracted JSON object failed Pydantic validation: {e2}")
+                        result = None
+
+                if extracted_obj is None or result is None:
+                    return (
+                        False,
+                        "Your output is NOT valid JSON — it appears to be markdown-formatted text. "
+                        "Return ONLY a raw JSON object starting with { and ending with }. "
+                        "Do NOT use **bold** markdown formatting. Do NOT include any text before or after the JSON. "
+                        "The JSON must have keys: niche, extracted_pain_points, extraction_summary."
+                    )
             except Exception as e:
                 logger.warning(f"Failed to validate PainPointExtraction: {e}")
                 return (False, f"Failed to parse PainPointExtraction: {e}")
@@ -157,7 +170,7 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
             )
 
         logger.info(f"✓ Pain point extraction guardrail passed: {len(result.extracted_pain_points)} pain points")
-        return (True, task_output.raw)
+        return (True, result.model_dump_json())
 
     except Exception as e:
         return (False, f"Pain point extraction validation error: {str(e)}")

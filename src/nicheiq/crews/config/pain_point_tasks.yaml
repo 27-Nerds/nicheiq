@@ -242,41 +242,38 @@ extract_pain_points:
 
     CRITICAL: DO NOT remove [source: ID] suffixes yourself - Python will extract them post-processing.
 
-    # Brief Explanation (GPT-5 Pattern)
-    Give a brief explanation (2-3 bullets) summarizing your pain point extraction approach at the start of your answer, then output the structured results.
+    CRITICAL: DO NOT include any text, explanation, or bullets before or after your JSON output. Return ONLY a raw JSON object.
 
   expected_output: >
-    A PainPointExtraction object with the following structure:
+    Return a single JSON object (no markdown, no explanation text before or after) with this exact structure:
 
-
-    **niche**: The niche being analyzed
-
-
-    **extracted_pain_points**: List of UnvalidatedPainPoint objects (ALL evidence-backed pain points), each containing:
-       - **title**: Short, descriptive name (e.g., "Manual Data Entry Consuming Hours Daily")
-       - **description**: 2-3 sentence clear articulation of the specific problem in user language
-       - **mention_count**: Count of ALL unique discussions/posts mentioning this problem (search knowledge sources comprehensively, count every unique [source: ID]). This should be LARGER than the number of representative_quotes. Example: If you found 18 posts discussing "slow onboarding", mention_count = 18, even if you only selected 4 representative quotes.
-       - **representative_quotes**: 2-10 direct user quotes (MUST include [source: ID] suffix, minimum 2). If a pain point has <2 quotes, EXCLUDE it or merge into a related broader category.
-       - **source_platforms**: List of platforms where mentioned (["Reddit"], ["Twitter"], or ["Reddit", "Twitter"])
-       - **categories**: List of categories this pain point belongs to
-       - **source_post_ids**: ALWAYS set to [] (Python extracts automatically)
-
-    **SOURCE ATTRIBUTION (3 RULES):**
-    1. Every quote MUST end with [source: POST_ID] - copy exactly from content
-    2. Set source_post_ids = [] for ALL pain points (Python extracts automatically)
-    3. If quote has no visible [source: ID] suffix → exclude that quote
-
-    EXAMPLE (correct format):
-      representative_quotes: [
-        "I spent 3 hours on setup and still couldn't get it working [source: abc123]",
-        "The pricing changes every month without warning [source: def456]",
-        "Support never responded to my ticket after 2 weeks [source: ghi789]"
+    {
+      "niche": "the niche being analyzed",
+      "extracted_pain_points": [
+        {
+          "title": "Short descriptive name",
+          "description": "2-3 sentence problem articulation in user language",
+          "mention_count": 18,
+          "representative_quotes": [
+            "Quote text here [source: abc123]",
+            "Another quote [source: def456]"
+          ],
+          "source_platforms": ["Reddit"],
+          "categories": ["Category Name"],
+          "source_post_ids": []
+        }
       ],
-      source_post_ids: []
+      "extraction_summary": "3-4 sentences overview of pain point landscape and key patterns"
+    }
 
-    **extraction_summary**: 3-4 sentences overview of pain point landscape and key patterns
-
-    CRITICAL: Return structured Pydantic data. Minimum 2 verified quotes per pain point, all with [source: ID]. Extract ALL qualifying pain points — do not cap at a fixed number. Quality over quantity - exclude pain points with insufficient evidence rather than fabricating quotes.
+    Rules:
+    - Return ONLY raw JSON starting with { and ending with } — no markdown, no **bold**, no explanation text
+    - Minimum 2 verified quotes per pain point (all with [source: ID] suffix)
+    - source_post_ids ALWAYS [] (Python extracts automatically)
+    - mention_count must be LARGER than quote count (count ALL unique [source: ID] discussions, not just selected quotes)
+    - Extract ALL qualifying pain points — do not cap at a fixed number
+    - Quality over quantity — exclude pain points with insufficient evidence rather than fabricating quotes
+    - Every quote MUST end with [source: POST_ID] — copy exactly from content; if quote has no [source: ID] suffix, exclude it
 
 validate_pain_points:
   description: >
