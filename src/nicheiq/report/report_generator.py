@@ -1175,6 +1175,169 @@ class ReportGenerator:
             logger.warning(f"Failed to generate SEO calculation transparency: {e}")
             return None
 
+    def _build_pivot_trigger(
+        self,
+        runner_up_name: str,
+        runner_up_scores: dict[str, float],
+        selected_scores: dict[str, float] | None,
+        *,
+        key_differentiator: str = "",
+        project_type: str | None = None,
+        selected_project_type: str | None = None,
+        competitive_intensity: str | None = None,
+        solo_dev_feasibility: float | None = None,
+        selected_solo_dev: float | None = None,
+    ) -> str:
+        """
+        Build a data-driven pivot trigger by comparing runner-up scores against the selected solution.
+
+        Uses relative deltas rather than absolute thresholds so runner-up solutions
+        get meaningful pivot guidance even when their raw scores are moderate.
+
+        Args:
+            runner_up_name: Name of the runner-up solution
+            runner_up_scores: Dict from ScoreAccessor.get_all_scores() for the runner-up
+            selected_scores: Dict from ScoreAccessor.get_all_scores() for the selected solution,
+                             or None if the selected solution was not found
+            key_differentiator: Runner-up's key differentiator text
+            project_type: Runner-up's project type
+            selected_project_type: Selected solution's project type
+            competitive_intensity: Runner-up's competitive intensity (LOW/MEDIUM/HIGH)
+            solo_dev_feasibility: Runner-up's solo dev feasibility score
+            selected_solo_dev: Selected solution's solo dev feasibility score
+
+        Returns:
+            Data-driven pivot trigger string with scores and reasoning
+        """
+        prefix = f"Pivot to {runner_up_name} if: "
+
+        # If no selected scores available, use lower absolute thresholds as fallback
+        if selected_scores is None:
+            conditions = []
+            mf = runner_up_scores.get("market_fit", 0.5)
+            sg = runner_up_scores.get("seo_growth", 0.5)
+            tf = runner_up_scores.get("technical_feasibility", 0.5)
+            if mf > 0.65:
+                conditions.append(f"market fit score ({mf:.2f}) suggests strong demand")
+            if sg > 0.60:
+                conditions.append(f"SEO growth potential ({sg:.2f}) indicates viable organic channel")
+            if tf > 0.65:
+                conditions.append(f"technical feasibility ({tf:.2f}) enables faster time-to-market")
+            if conditions:
+                return prefix + "; ".join(conditions) + "."
+            return (
+                f"Pivot to {runner_up_name} if customer discovery validates demand. "
+                f"Scores not yet compared against selected solution."
+            )
+
+        # Check if all scores are defaults (0.5) — data not yet validated
+        all_default = all(
+            abs(runner_up_scores.get(k, 0.5) - 0.5) < 0.01
+            and abs(selected_scores.get(k, 0.5) - 0.5) < 0.01
+            for k in ("market_fit", "seo_growth", "technical_feasibility", "competitive_advantage")
+        )
+        if all_default:
+            differentiator_note = f" Key differentiator: {key_differentiator}." if key_differentiator else ""
+            return (
+                f"Pivot to {runner_up_name} if: Scores not yet validated — "
+                f"pivot decision should be based on customer discovery.{differentiator_note}"
+            )
+
+        # Compute deltas: positive means runner-up is stronger
+        dimension_labels = {
+            "market_fit": "market fit",
+            "seo_growth": "SEO growth potential",
+            "technical_feasibility": "technical feasibility",
+            "competitive_advantage": "competitive advantage",
+        }
+
+        strong_signals = []    # delta > 0.05
+        near_parity = []       # |delta| <= 0.05
+        moderate_gaps = []     # -0.15 <= delta < -0.05
+
+        for key, label in dimension_labels.items():
+            ru_val = runner_up_scores.get(key, 0.5)
+            sel_val = selected_scores.get(key, 0.5)
+            delta = ru_val - sel_val
+
+            if delta > 0.05:
+                strong_signals.append((label, ru_val, sel_val, delta))
+            elif abs(delta) <= 0.05:
+                near_parity.append((label, ru_val, sel_val, delta))
+            elif delta >= -0.15:
+                moderate_gaps.append((label, ru_val, sel_val, delta))
+            # delta < -0.15: skip (too far behind)
+
+        parts = []
+
+        if strong_signals:
+            phrases = []
+            for label, ru_val, sel_val, _delta in strong_signals:
+                phrases.append(f"{label} ({ru_val:.2f} vs selected {sel_val:.2f})")
+            parts.append("Strong pivot signal: " + ", ".join(phrases))
+
+        if near_parity:
+            phrases = []
+            for label, ru_val, sel_val, _delta in near_parity:
+                phrases.append(f"{label} closely matched ({ru_val:.2f} vs {sel_val:.2f})")
+            parts.append("Near-parity: " + ", ".join(phrases))
+
+        if moderate_gaps:
+            phrases = []
+            for label, ru_val, sel_val, _delta in moderate_gaps:
+                phrases.append(f"{label} ({ru_val:.2f} vs {sel_val:.2f})")
+            parts.append("Worth monitoring: " + ", ".join(phrases))
+
+        # Contextual (non-score) signals
+        contextual = []
+        if competitive_intensity and competitive_intensity.upper() == "LOW":
+            contextual.append("less saturated market segment")
+        if (
+            solo_dev_feasibility is not None
+            and selected_solo_dev is not None
+            and (solo_dev_feasibility - selected_solo_dev) > 0.15
+        ):
+            contextual.append("easier solo-dev path")
+        if (
+            project_type
+            and selected_project_type
+            and project_type.lower() != selected_project_type.lower()
+        ):
+            contextual.append(f"if user research favors {project_type} model")
+
+        if contextual:
+            parts.append("Also consider: " + ", ".join(contextual))
+
+        if parts:
+            return prefix + ". ".join(parts) + "."
+
+        # Ultimate fallback: all dimensions behind, but still data-driven
+        # Find the dimension with the smallest gap
+        best_dim = None
+        best_delta = -float("inf")
+        for key, label in dimension_labels.items():
+            ru_val = runner_up_scores.get(key, 0.5)
+            sel_val = selected_scores.get(key, 0.5)
+            delta = ru_val - sel_val
+            if delta > best_delta:
+                best_delta = delta
+                best_dim = (label, ru_val, sel_val, delta)
+
+        if best_dim:
+            label, ru_val, sel_val, delta = best_dim
+            differentiator_note = f" Key differentiator: {key_differentiator}." if key_differentiator else ""
+            return (
+                f"Pivot to {runner_up_name} if: Strongest relative dimension is "
+                f"{label} ({ru_val:.2f} vs selected {sel_val:.2f}, delta {delta:+.2f}). "
+                f"Validation would need to close the gap in other areas.{differentiator_note}"
+            )
+
+        # Should not reach here, but defensive
+        return (
+            f"Pivot to {runner_up_name} if validation reveals "
+            f"stronger market demand or competitive positioning."
+        )
+
     def _generate_alternative_solutions(self) -> list["AlternativeSolution | None"]:
         """
         Generate enhanced alternative solution summaries for runner-up solutions.
@@ -1203,6 +1366,20 @@ class ReportGenerator:
             if self.state.competitive_analysis:
                 for landscape in self.state.competitive_analysis.solution_landscapes:
                     competitive_landscapes[landscape.solution_name] = landscape
+
+            # Fetch selected solution and its scores for relative comparison
+            selected_solution = self.accessor.get_selected_solution_details()
+            selected_scores = None
+            selected_project_type = None
+            selected_solo_dev = None
+            if selected_solution:
+                selected_scores = self.score_accessor.get_all_scores(selected_solution)
+                selected_project_type = getattr(selected_solution, 'project_type', None)
+                selected_solo_dev = getattr(selected_solution, 'solo_dev_feasibility', None)
+                if isinstance(selected_solo_dev, (int, float)):
+                    selected_solo_dev = float(selected_solo_dev)
+                else:
+                    selected_solo_dev = None
 
             alternative_solutions = []
             for runner_up_name in runner_up_names[:4]:  # Top 4 runners-up (enhanced from 2)
@@ -1245,31 +1422,10 @@ It differentiates through {diff_text}.
                 competitive_advantage = self.score_accessor.get_competitive_advantage(solution)
                 seo_growth = self.score_accessor.get_seo_growth(solution)
 
-                # Determine pivot trigger based on solution characteristics (handle None scores)
-                pivot_trigger = f"Pivot to {runner_up_name} if: "
-                conditions_added = False
-
-                if market_fit is not None and market_fit > 0.9:
-                    pivot_trigger += "user research reveals significantly higher demand for this specific pain point, "
-                    conditions_added = True
-                if seo_growth is not None and seo_growth > 0.85:
-                    pivot_trigger += "SEO keyword volume for this solution is 2x higher than primary choice, "
-                    conditions_added = True
-                if technical_feasibility is not None and technical_feasibility > 0.9:
-                    pivot_trigger += "faster time-to-market is critical and this solution has simpler tech requirements"
-                    conditions_added = True
-
-                # Fallback if no conditions met - provide meaningful generic guidance
-                if not conditions_added:
-                    logger.warning(f"⚠️ No pivot conditions met for {runner_up_name} - using generic fallback")
-                    pivot_trigger = f"Pivot to {runner_up_name} if validation reveals stronger market demand, better competitive positioning, or faster path to revenue"
-                else:
-                    pivot_trigger = pivot_trigger.rstrip(", ")
-
-                # Get competitive landscape for this solution (NEW)
+                # Get competitive landscape for this solution
                 landscape = competitive_landscapes.get(runner_up_name)
 
-                # Extract competitive details from landscape (NEW)
+                # Extract competitive details from landscape
                 top_competitors = None
                 market_gaps = None
                 competitive_intensity = None
@@ -1287,6 +1443,20 @@ It differentiates through {diff_text}.
                     solo_dev_feasibility_val = float(solo_dev_feasibility_val)
                 else:
                     solo_dev_feasibility_val = None
+
+                # Build pivot trigger using relative comparison against selected solution
+                runner_up_scores = self.score_accessor.get_all_scores(solution)
+                pivot_trigger = self._build_pivot_trigger(
+                    runner_up_name=runner_up_name,
+                    runner_up_scores=runner_up_scores,
+                    selected_scores=selected_scores,
+                    key_differentiator=key_differentiator,
+                    project_type=getattr(solution, 'project_type', None),
+                    selected_project_type=selected_project_type,
+                    competitive_intensity=competitive_intensity,
+                    solo_dev_feasibility=solo_dev_feasibility_val,
+                    selected_solo_dev=selected_solo_dev,
+                )
 
                 # Pass through estimated_cac_organic as string (no conversion needed)
                 estimated_cac_organic_val = getattr(solution, 'estimated_cac_organic', None)
