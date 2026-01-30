@@ -1166,7 +1166,7 @@
   }
 
   .facet-highlight .facet-text {
-    color: #d4d4d8;
+    color: inherit;
   }
 
   /* =========================
