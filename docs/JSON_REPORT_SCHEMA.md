@@ -376,7 +376,7 @@ Actionable GTM strategy for immediate execution.
 | `selection_rationale` | `string` | Why selected over alternatives |
 | `selection_criteria_scores` | `array` | Scoring breakdown |
 | `recommended_focus` | `string` | Strategic focus recommendation |
-| `selected_solution_details` | `object` | Complete solution details (33 keys) |
+| `selected_solution_details` | `object` | Complete solution details (35 keys) |
 | `solution_user_journey` | `string` | Step-by-step user workflow |
 | `solution_implementation_overview` | `string` | High-level implementation plan |
 | `mvp_scope_definition` | `string` | MVP scope definition |
@@ -393,7 +393,7 @@ Actionable GTM strategy for immediate execution.
 }
 ```
 
-### `selected_solution_details` (33 keys)
+### `selected_solution_details` (35 keys)
 
 ```json
 {
@@ -420,7 +420,9 @@ Actionable GTM strategy for immediate execution.
   "seo_scalability_score": 0.75,
   "estimated_indexable_pages": 1000,
   "novelty_score": 0.7,
-  "novelty_justification": "string",
+  "conventional_approach": "string",
+  "innovation_angle": "string",
+  "why_it_works": "string",
   "solo_dev_feasibility": 0.6,
   "keyword_geographic_priorities": ["string"],
   "keyword_feature_priorities": ["string"],
@@ -467,7 +469,9 @@ Actionable GTM strategy for immediate execution.
 | `seo_scalability_score` | `number` (0-1) | SEO scalability |
 | `estimated_indexable_pages` | `number` | Year 1 pages |
 | `novelty_score` | `number` (0-1) | Novelty assessment |
-| `novelty_justification` | `string` | Novelty explanation |
+| `conventional_approach` | `string` | What most builders would try |
+| `innovation_angle` | `string` | How this solution diverges |
+| `why_it_works` | `string` | Evidence-based reason it succeeds |
 | `solo_dev_feasibility` | `number` (0-1) | Solo developer feasibility |
 | `keyword_geographic_priorities` | `array[string]` | Geographic priorities |
 | `keyword_feature_priorities` | `array[string]` | Feature priorities |
@@ -1417,7 +1421,9 @@ Array of 7 recommended next steps.
 ```json
 {
   "novelty_score": 0.7,
-  "novelty_justification": "string",
+  "conventional_approach": "string",
+  "innovation_angle": "string",
+  "why_it_works": "string",
   "solo_dev_feasibility": 0.6
 }
 ```

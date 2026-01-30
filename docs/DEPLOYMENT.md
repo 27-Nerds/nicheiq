@@ -16,6 +16,7 @@ This guide covers deploying NicheIQ to a production server using Docker Compose.
 - [Updating & Maintenance](#updating--maintenance)
 - [Troubleshooting](#troubleshooting)
 - [Admin Operations](#admin-operations)
+  - [User Roles & Admin Access](#user-roles--admin-access)
   - [Stripe Configuration](#stripe-configuration)
   - [SendGrid Configuration](#sendgrid-configuration)
   - [Google OAuth Configuration](#google-oauth-configuration)
@@ -783,6 +784,48 @@ docker exec nicheiq-postgres psql -U nicheiq -c "SELECT id, status, current_stag
 ---
 
 ## Admin Operations
+
+### User Roles & Admin Access
+
+NicheIQ has two user roles: `USER` (default) and `ADMIN`. Admin users can access the admin panel at `/admin` to manage dashboard stats, reports, promo codes, users, and token packages.
+
+#### Promote a User to Admin
+
+**Development (local):**
+
+```bash
+cd backend
+npx tsx prisma/seed-admin.ts user@example.com
+```
+
+**Production (Docker):**
+
+```bash
+# Option 1: Run the seed script inside the API container
+docker compose --env-file .env -f docker/docker-compose.prod.yml exec api npx tsx prisma/seed-admin.ts user@example.com
+
+# Option 2: Direct SQL via PostgreSQL container
+docker exec -it nicheiq-postgres psql -U nicheiq nicheiq -c \
+  "UPDATE \"User\" SET role = 'ADMIN' WHERE email = 'user@example.com';"
+```
+
+**Verify:**
+
+```bash
+docker exec -it nicheiq-postgres psql -U nicheiq nicheiq -c \
+  "SELECT email, name, role FROM \"User\" WHERE role = 'ADMIN';"
+```
+
+#### Demote an Admin back to User
+
+```bash
+docker exec -it nicheiq-postgres psql -U nicheiq nicheiq -c \
+  "UPDATE \"User\" SET role = 'USER' WHERE email = 'user@example.com';"
+```
+
+**Note:** Role changes take effect after the user logs out and back in (the role is stored in the JWT).
+
+---
 
 ### Stripe Configuration
 

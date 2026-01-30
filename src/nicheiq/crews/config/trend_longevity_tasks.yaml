@@ -220,10 +220,10 @@ trend_longevity_analysis:
     ALLOWED RISK CATEGORIES (derive from actual data):
 
     1. **Search Demand Decline** (from keyword trends - Stage 8.5):
-       - HIGH: >60% of keywords declining
-       - MEDIUM: 40-60% declining
-       - LOW: <40% declining
-       Example: "HIGH - Search demand decline - Evidence: 57% keywords declining - Stage 8.5"
+       - HIGH: >70% of keywords declining AND <10% rising
+       - MEDIUM: >50% declining
+       - LOW: <50% declining
+       Example: "HIGH - Search demand decline - Evidence: 72% keywords declining, 8% rising - Stage 8.5"
 
     2. **Community Stagnation** (from discussion data - Stage 5):
        - HIGH: Most recent post >6 months old OR avg <5 engagement
@@ -316,13 +316,14 @@ trend_longevity_analysis:
     **IF ACTUAL 12-MONTH TREND DATA IS AVAILABLE** (preferred - use this first):
     Use the actual trend distribution to calculate momentum_score:
 
-    | Rising % | Market Momentum | momentum_score | trend_direction |
-    |----------|-----------------|----------------|-----------------|
-    | >60%     | Growing         | 0.75-0.90      | Growing         |
-    | 40-60%   | Growing         | 0.60-0.75      | Growing         |
-    | 30-40%   | Stable          | 0.50-0.60      | Stable          |
-    | 20-30%   | Stable          | 0.40-0.50      | Stable          |
-    | <20%     | Declining       | 0.20-0.40      | Declining       |
+    | Rising % | Declining % | Market Momentum | momentum_score | trend_direction |
+    |----------|-------------|-----------------|----------------|-----------------|
+    | >60%     | any         | Growing         | 0.75-0.90      | Growing         |
+    | 40-60%   | any         | Growing         | 0.60-0.75      | Growing         |
+    | 30-40%   | any         | Stable          | 0.50-0.60      | Stable          |
+    | 20-30%   | any         | Stable          | 0.40-0.50      | Stable          |
+    | <20%     | <50%        | Stable          | 0.40-0.50      | Stable          |
+    | <20%     | >50%        | Declining       | 0.20-0.40      | Declining       |
 
     **Example with actual data:**
     - Trend Distribution: rising=45, stable=30, declining=25 (100 keywords)
@@ -349,8 +350,9 @@ trend_longevity_analysis:
     3. IF trend_duration <12 months OR sharp spike → "Risky"
     4. IF trend_duration <6 months AND trend_direction="Declining" → "Fad"
     5. IF trend_duration >=5 years AND trend_direction="Stable" → "Sustainable"
-    6. IF actual trend data shows >40% declining keywords → "Risky" or "Fad"
-    7. DEFAULT: "Risky" (when uncertain, be conservative)
+    6. IF actual trend data shows >60% declining keywords AND <15% rising keywords → "Risky"
+    7. IF actual trend data shows >75% declining keywords → "Fad"
+    8. DEFAULT: "Sustainable" with Low confidence (when uncertain, data is insufficient to claim decline)
 
 
     **EXPECTED OUTPUT FORMAT:**

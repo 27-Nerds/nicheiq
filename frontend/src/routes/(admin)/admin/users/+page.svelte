@@ -6,7 +6,9 @@
 
   let { data } = $props();
 
-  let searchInput = $state(data.search || '');
+  const initialSearch = $derived(data.search || '');
+  let searchInput = $state('');
+  $effect(() => { searchInput = initialSearch; });
   let updatingRole = $state<string | null>(null);
 
   function formatDate(dateStr: string): string {

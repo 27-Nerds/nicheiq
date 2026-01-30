@@ -355,10 +355,13 @@ class ResearchFlow(Flow[ResearchState]):
         else:
             trend_pct = 0
 
-        # Trend direction thresholds
-        if trend_pct > 15:
+        # Trend direction thresholds (asymmetric to reduce declining bias)
+        # Low-volume noise floor: if both averages < 50, classify as stable
+        if recent_avg < 50 and older_avg < 50:
+            trend_direction = "stable"
+        elif trend_pct > 20:
             trend_direction = "rising"
-        elif trend_pct < -15:
+        elif trend_pct < -25:
             trend_direction = "declining"
         else:
             trend_direction = "stable"
@@ -434,13 +437,19 @@ class ResearchFlow(Flow[ResearchState]):
         seasonal_keywords.sort(key=lambda x: x["seasonality"], reverse=True)
         evergreen_keywords.sort(key=lambda x: x["volume"], reverse=True)
 
-        # Determine market momentum
-        if trends["rising"] > trends["declining"] * 1.5:
-            market_momentum = "Growing"
-        elif trends["declining"] > trends["rising"] * 1.5:
-            market_momentum = "Declining"
-        else:
+        # Determine market momentum (percentage-based, excludes unknowns)
+        known_total = trends["rising"] + trends["stable"] + trends["declining"]
+        if known_total < 5:
             market_momentum = "Stable"
+        else:
+            rising_pct = trends["rising"] / known_total
+            declining_pct = trends["declining"] / known_total
+            if rising_pct > 0.35 and rising_pct > declining_pct:
+                market_momentum = "Growing"
+            elif declining_pct > 0.50:
+                market_momentum = "Declining"
+            else:
+                market_momentum = "Stable"
 
         return {
             "trend_distribution": trends,

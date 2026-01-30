@@ -108,6 +108,25 @@ class TestComputeCacAdvantage:
         result = ReportTemplates._compute_cac_advantage("$.50", "$100", sol)
         assert "approximately 200x" in result
 
+    def test_unparseable_regex_match_does_not_crash(self):
+        """Hardening: if re.findall returns something float() can't parse,
+        extract_midpoint skips it gracefully instead of raising ValueError."""
+        from unittest.mock import patch
+        sol = _make_solution()
+        # Simulate a regex returning a bare '.' (the original bug's root cause)
+        with patch("re.findall", return_value=[".", "100"]):
+            result = ReportTemplates._compute_cac_advantage("$5-10", "$100", sol)
+            assert "CAC Advantage" in result
+
+    def test_all_unparseable_regex_matches_returns_fallback(self):
+        """Hardening: if every regex match is unparseable, falls back to
+        generic message instead of crashing."""
+        from unittest.mock import patch
+        sol = _make_solution()
+        with patch("re.findall", return_value=[".", "..", "abc"]):
+            result = ReportTemplates._compute_cac_advantage("$5-10", "$bad", sol)
+            assert "CAC Advantage" in result
+
 
 # ---------------------------------------------------------------------------
 # cac_breakdown integration tests

@@ -134,7 +134,14 @@ class ReportTemplates:
             numbers = re.findall(r'\d+\.?\d*|\.\d+', val)
             if not numbers:
                 return None
-            nums = [float(n) for n in numbers]
+            nums = []
+            for n in numbers:
+                try:
+                    nums.append(float(n))
+                except ValueError:
+                    continue
+            if not nums:
+                return None
             return sum(nums) / len(nums)
 
         org_mid = extract_midpoint(cac_organic) if isinstance(cac_organic, str) else None

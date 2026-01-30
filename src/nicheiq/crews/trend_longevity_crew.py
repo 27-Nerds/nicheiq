@@ -339,19 +339,34 @@ class TrendLongevityCrew:
 
             # Format monthly trend as sparkline-style summary
             if monthly and len(monthly) >= 2:
-                # Compare first 3 months vs last 3 months to determine trend
-                first_3_avg = (
-                    sum(m.get('search_volume', 0) for m in monthly[:3]) / 3
-                    if len(monthly) >= 3 else monthly[0].get('search_volume', 0)
+                # Sort newest-first to match _calculate_trend_metrics
+                sorted_monthly = sorted(
+                    monthly,
+                    key=lambda x: (x.get('year', 0), x.get('month', 0)),
+                    reverse=True
                 )
-                last_3_avg = (
-                    sum(m.get('search_volume', 0) for m in monthly[-3:]) / 3
-                    if len(monthly) >= 3 else monthly[-1].get('search_volume', 0)
+                # Compare recent 3 months vs older 3 months
+                recent_3_avg = (
+                    sum(m.get('search_volume', 0) for m in sorted_monthly[:3]) / 3
+                    if len(sorted_monthly) >= 3 else sorted_monthly[0].get('search_volume', 0)
+                )
+                older_3_avg = (
+                    sum(m.get('search_volume', 0) for m in sorted_monthly[-3:]) / 3
+                    if len(sorted_monthly) >= 3 else sorted_monthly[-1].get('search_volume', 0)
                 )
 
-                if last_3_avg > first_3_avg * 1.1:
+                # Use asymmetric thresholds aligned with _calculate_trend_metrics
+                if older_3_avg > 0:
+                    trend_pct = ((recent_3_avg - older_3_avg) / older_3_avg) * 100
+                else:
+                    trend_pct = 0
+
+                # Low-volume noise floor
+                if recent_3_avg < 50 and older_3_avg < 50:
+                    trend_arrow = "→ Stable"
+                elif trend_pct > 20:
                     trend_arrow = "↑ Rising"
-                elif last_3_avg < first_3_avg * 0.9:
+                elif trend_pct < -25:
                     trend_arrow = "↓ Declining"
                 else:
                     trend_arrow = "→ Stable"
