@@ -131,7 +131,7 @@ class ReportTemplates:
             if not val or val == "N/A":
                 return None
             import re
-            numbers = re.findall(r'[\d.]+', val)
+            numbers = re.findall(r'\d+\.?\d*|\.\d+', val)
             if not numbers:
                 return None
             nums = [float(n) for n in numbers]
