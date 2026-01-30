@@ -62,12 +62,12 @@
         // Handle insufficient credits error
         if (res.status === 402 && data.code === 'INSUFFICIENT_CREDITS') {
           isInsufficientCredits = true;
-          error = 'You need research credits to start a new job.';
+          error = 'You need credits to start a new research.';
           // Refresh page data to update credit balance
           await invalidateAll();
           return;
         }
-        throw new Error(data.error || 'Failed to create research job');
+        throw new Error(data.error || 'Failed to start research');
       }
 
       open = false;
@@ -110,8 +110,8 @@
       if (!res.ok) {
         suggestError =
           res.status === 429
-            ? `Rate limited. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} min.`
-            : data.error || 'Failed to generate suggestion';
+            ? `Too many requests. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} minutes.`
+            : data.error || 'Could not generate a suggestion. Please try again.';
         return;
       }
       // Directly set textarea value
@@ -119,7 +119,7 @@
         niche = data.suggestions[0].niche;
       }
     } catch {
-      suggestError = 'Failed to connect';
+      suggestError = 'Connection error. Please try again.';
     } finally {
       suggestLoading = false;
       suggestMode = null;
@@ -142,8 +142,8 @@
       if (!res.ok) {
         suggestError =
           res.status === 429
-            ? `Rate limited. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} min.`
-            : data.error || 'Failed to expand';
+            ? `Too many requests. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} minutes.`
+            : data.error || 'Could not refine your input. Please try again.';
         return;
       }
       // Directly replace textarea value
@@ -151,7 +151,7 @@
         niche = data.suggestions[0].niche;
       }
     } catch {
-      suggestError = 'Failed to connect';
+      suggestError = 'Connection error. Please try again.';
     } finally {
       suggestLoading = false;
       suggestMode = null;
@@ -204,7 +204,7 @@
             <div>
               <p class="text-sm font-medium text-text-primary">No credits available</p>
               <p class="text-xs text-text-muted mt-1">
-                You need at least 1 research credit to start a new job.
+                You need at least 1 credit to start a new research.
               </p>
               <a href="/billing" onclick={() => open = false} class="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-2">
                 Get credits
@@ -213,9 +213,10 @@
             </div>
           </div>
         {:else}
+          <!-- Section 1: Research Input -->
           <div>
             <label for="niche" class="block text-sm font-medium text-text-primary mb-2">
-              Describe a niche or audience
+              What market should we research?
             </label>
             <textarea
               id="niche"
@@ -223,39 +224,16 @@
               rows={4}
               maxlength={MAX_NICHE_LENGTH}
               class="input resize-none w-full"
-              placeholder="Freelancers struggling to categorize expenses and prepare for taxes..."
+              placeholder="e.g., Solo web entrepreneurs, car repair shop managers, people moving abroad..."
               disabled={loading}
             ></textarea>
             <div class="flex items-center justify-between mt-1.5">
               <p class="text-xs text-text-muted">
-                We'll find pain points and generate solution ideas for this market.
+                Enter a niche, audience, or business type. We'll find pain points and generate business ideas.
               </p>
               <span class="text-xs {niche.length > MAX_NICHE_LENGTH * 0.9 ? 'text-warning' : 'text-text-muted'}">
                 {niche.length}/{MAX_NICHE_LENGTH}
               </span>
-            </div>
-
-            <!-- Project Type Filter (optional) -->
-            <div class="mt-3">
-              <span class="block text-xs font-medium text-text-muted mb-1.5">
-                Project types <span class="text-text-muted font-normal">(optional — leave empty for all)</span>
-              </span>
-              <div class="flex flex-wrap gap-1.5">
-                {#each PROJECT_TYPES as type}
-                  <button
-                    type="button"
-                    onclick={() => toggleProjectType(type.value)}
-                    disabled={loading}
-                    class="text-xs px-3 py-1.5 rounded-md border transition-colors
-                           {selectedProjectTypes.includes(type.value)
-                             ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                             : 'bg-bg-surface border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
-                           disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {type.label}
-                  </button>
-                {/each}
-              </div>
             </div>
 
             <!-- Suggestion buttons -->
@@ -264,17 +242,17 @@
                 type="button"
                 onclick={handleFeelingLucky}
                 disabled={loading || suggestLoading}
-                class="text-sm px-4 py-2 rounded-lg border border-border bg-bg-surface
-                       hover:border-accent hover:bg-accent/5 text-text-primary
-                       transition-colors flex items-center gap-2
+                class="text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-surface
+                       hover:border-accent hover:bg-accent/5 text-text-secondary
+                       transition-colors flex items-center gap-1.5
                        disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {#if suggestLoading && suggestMode === 'lucky'}
-                  <Loader2 class="w-4 h-4 animate-spin" />
+                  <Loader2 class="w-3.5 h-3.5 animate-spin" />
                   Generating...
                 {:else}
-                  <Sparkles class="w-4 h-4 text-accent" />
-                  Feeling Lucky
+                  <Sparkles class="w-3.5 h-3.5 text-accent" />
+                  Surprise me
                 {/if}
               </button>
 
@@ -282,25 +260,53 @@
                 type="button"
                 onclick={handleExpandThis}
                 disabled={loading || suggestLoading || !niche.trim()}
-                class="text-sm px-4 py-2 rounded-lg border border-border bg-bg-surface
-                       hover:border-accent hover:bg-accent/5 text-text-primary
-                       transition-colors flex items-center gap-2
+                class="text-xs px-3 py-1.5 rounded-lg border border-border bg-bg-surface
+                       hover:border-accent hover:bg-accent/5 text-text-secondary
+                       transition-colors flex items-center gap-1.5
                        disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {#if suggestLoading && suggestMode === 'complete'}
-                  <Loader2 class="w-4 h-4 animate-spin" />
-                  Expanding...
+                  <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                  Refining...
                 {:else}
-                  <Wand2 class="w-4 h-4 text-accent" />
-                  Expand This
+                  <Wand2 class="w-3.5 h-3.5 text-accent" />
+                  Refine my input
                 {/if}
               </button>
             </div>
 
-            <!-- Error only -->
+            <!-- Suggest error -->
             {#if suggestError}
               <p class="text-xs text-error mt-2">{suggestError}</p>
             {/if}
+          </div>
+
+          <!-- Section 2: Project Type Filter -->
+          <div class="pt-3 border-t border-border/50">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="text-xs font-medium text-text-muted">
+                Project types to focus on
+              </span>
+              <span class="text-xs text-text-muted">
+                {selectedProjectTypes.length === PROJECT_TYPES.length ? 'All types' : `${selectedProjectTypes.length} of ${PROJECT_TYPES.length}`}
+              </span>
+            </div>
+            <div class="flex flex-wrap gap-1.5">
+              {#each PROJECT_TYPES as type}
+                <button
+                  type="button"
+                  onclick={() => toggleProjectType(type.value)}
+                  disabled={loading}
+                  class="text-xs px-3 py-1.5 rounded-md border transition-colors
+                         {selectedProjectTypes.includes(type.value)
+                           ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                           : 'bg-bg-surface border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {type.label}
+                </button>
+              {/each}
+            </div>
           </div>
         {/if}
 
