@@ -1,6 +1,6 @@
 # Query Generation Prompt
 # Used by: QueryGenerator.generate_queries()
-# Variables: context_section (pre-built), num_queries
+# Variables: context_section (pre-built), num_queries, platform_instructions
 #
 # DESIGN PRINCIPLES:
 # 1. SHORT queries (3-6 words) - long queries return no results
@@ -8,7 +8,7 @@
 # 3. DISCOVERY-focused - find what exists, don't confirm assumptions
 
 template: |
-  You are a search query strategist. Generate SHORT, NATURAL search queries to find pain points on Reddit and Twitter.
+  You are a search query strategist. Generate SHORT, NATURAL search queries to find pain points on social media.
 
   {context_section}
 
@@ -74,39 +74,33 @@ template: |
 
   ---
 
-  ## STEP 2: GENERATE QUERIES (4 PATTERNS)
+  ## STEP 2: GENERATE QUERIES (5 PATTERNS)
 
-  ### 1. Pain Expression (35%)
+  ### 1. Pain Expression (25%)
   **Pattern**: [emotion] + [niche-specific activity]
   **3-5 words**
 
-  Examples (note: each includes WHO or WHAT domain):
+  Examples:
   - "freelancer overwhelmed invoicing clients"
   - "entrepreneur customer support nightmare"
-  - "beginner guitarist finger pain practice"
-  - "home cook meal prep family"
   - "solopreneur no work life balance"
 
-  ### 2. Help-Seeking (25%)
+  ### 2. Help-Seeking (20%)
   **Pattern**: "anyone else" / "how do you" + [niche pain]
   **4-6 words**
 
-  Examples (note: includes niche context):
+  Examples:
   - "freelancer anyone else hate invoicing"
   - "entrepreneur how do you find clients"
-  - "solopreneur anyone else overwhelmed solo"
-  - "beginner cook meal planning family help"
   - "guitarist how do you practice daily"
 
-  ### 3. Role + Pain (20%)
+  ### 3. Role + Pain (15%)
   **Pattern**: [segment role] + [pain/question]
   **3-5 words**
 
   Examples:
   - "beginner programmer frustrated"
   - "career changer coding advice"
-  - "adult learning to code help"
-  - "busy parent meal prep"
   - "freelancer budgeting struggles"
 
   ### 4. Progress Barrier (20%)
@@ -115,10 +109,21 @@ template: |
 
   Examples:
   - "stuck after coding tutorials"
-  - "can't build real projects"
   - "3 months coding no progress"
   - "plateau after initial weight loss"
-  - "stuck after basic budgeting"
+
+  ### 5. Discovery (20%)
+  **Pattern**: neutral probes that let people describe problems in their own words
+  **3-6 words**
+
+  Examples:
+  - "biggest challenge [niche topic]"
+  - "what went wrong [niche activity]"
+  - "hardest part [niche]"
+  - "complaints about [niche topic]"
+  - "wish i knew before [niche activity]"
+
+  Discovery queries do NOT assume a specific emotion or problem — they ask open-ended questions that surface whatever pain exists.
 
   ---
 
@@ -141,6 +146,8 @@ template: |
 
   ## STEP 3: BIAS PREVENTION (CRITICAL)
 
+  ### A. No Technology/Brand Names
+
   **DO NOT inject specific technologies, tools, brands, or products.**
 
   The goal is DISCOVERY - let the data reveal what people actually use.
@@ -149,10 +156,21 @@ template: |
   - ❌ "debugging JavaScript errors" → ✅ "frustrated debugging code"
   - ❌ "should I learn Python or JavaScript" → ✅ "overwhelmed choosing programming language"
   - ❌ "VSCode vs Atom slow" → ✅ "code editor frustrations beginner"
-  - ❌ "React too complex" → ✅ "frontend development overwhelming"
-  - ❌ "Stripe vs Paddle pricing" → ✅ "payment processing frustrating"
 
   **EXCEPTION**: Only include specific names if the niche itself IS that technology/brand.
+
+  ### B. No Solution-Seeking Queries
+
+  Queries must find PROBLEMS, not people shopping for solutions.
+
+  **BANNED patterns** — do NOT use these words/phrases in queries:
+  - "best", "recommended", "top"
+  - "how to solve", "tool for", "app for", "software for", "alternative to"
+
+  **Transformations:**
+  - ❌ "best invoicing tool freelancer" → ✅ "freelancer invoicing taking forever"
+  - ❌ "recommended app for meal prep" → ✅ "meal prep planning overwhelming"
+  - ❌ "software for tracking expenses" → ✅ "losing track of expenses freelancer"
 
   ---
 
@@ -168,13 +186,7 @@ template: |
 
   ## STEP 5: PLATFORM SELECTION
 
-  **Reddit (60%)**: Discussion, advice-seeking
-  - "anyone else", "how do you", "advice needed"
-
-  **Twitter (30%)**: Venting, real-time frustration
-  - "just spent", "every time", "why is"
-
-  **Both (10%)**: Universal topics only
+  {platform_instructions}
 
   ---
 
@@ -185,7 +197,7 @@ template: |
   [
     {{
       "query": "3-6 word query here",
-      "type": "pain|help|role|progress",
+      "type": "pain|help|role|progress|discovery",
       "platform": "reddit|twitter|both"
     }}
   ]
@@ -200,6 +212,8 @@ template: |
   - [ ] Does it include WHO has the problem or WHAT specific activity?
   - [ ] No specific tech/tool/brand names?
   - [ ] Discovery-focused (not leading)?
+  - [ ] No solution-seeking language? (no "best", "recommended", "tool for", "app for")
+  - [ ] Contains at least one term from your niche vocabulary (Step 1)?
 
   <brief_explanation>
   First, state the core niche topic and primary pain expression pattern you'll use.
@@ -212,6 +226,7 @@ template: |
   - Array has exactly {num_queries} queries
   - Each query is 3-6 words (count them!)
   - No technology/tool/brand names (unless niche IS that tech)
-  - Platform distribution: ~60% reddit, ~30% twitter, ~10% both
+  - Platform distribution matches instructions in Step 5
+  - Query type distribution: ~25% pain, ~20% help, ~15% role, ~20% progress, ~20% discovery
   - You completed ALL {num_queries} queries before returning
   </verification>

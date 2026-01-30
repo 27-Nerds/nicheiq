@@ -1063,11 +1063,19 @@ Return a valid JSON object with this structure:
         from ..utils.generation import QueryGenerator
         query_gen = QueryGenerator()
 
-        logger.info(f"Generating {settings.num_search_queries} strategic search queries...")
+        # Build enabled platforms list from settings
+        enabled_platforms = []
+        if settings.enable_reddit:
+            enabled_platforms.append("reddit")
+        if settings.enable_twitter:
+            enabled_platforms.append("twitter")
+
+        logger.info(f"Generating {settings.num_search_queries} strategic search queries (platforms: {enabled_platforms or 'all'})...")
         queries = query_gen.generate_queries(
             niche_description=self.niche_description,
             niche_context=self.state.niche_context,
-            num_queries=settings.num_search_queries
+            num_queries=settings.num_search_queries,
+            enabled_platforms=enabled_platforms if enabled_platforms else None,
         )
 
         # Convert to SearchQuery objects

@@ -58,7 +58,7 @@ dmypy.json
 
 # Output and Data
 output/
-reports/
+/reports/
 data/  # Twitter cache and authentication data
 *.pdf
 *.pkl

@@ -46,13 +46,14 @@ class QueryGenerator:
 
     def _calculate_specificity_score(self, query: str) -> int:
         """
-        Calculate specificity score for a query (0-4 scale).
+        Calculate specificity score for a query (0-5 scale).
 
         Universal scoring that rewards:
         1. Pain expressions (frustrated, stuck, overwhelmed)
         2. Role identifiers (beginner, career changer, etc.)
         3. Help-seeking patterns (anyone else, how do you)
-        4. Short length (3-6 words is optimal)
+        4. Discovery probes (biggest challenge, hardest part, etc.)
+        5. Short length (3-6 words is optimal)
 
         Does NOT reward specific tool/tech names to avoid bias.
 
@@ -60,7 +61,7 @@ class QueryGenerator:
             query: The search query text
 
         Returns:
-            Score from 0-4 based on marker presence
+            Score from 0-5 based on marker presence
         """
         query_lower = query.lower()
         word_count = len(query.split())
@@ -95,7 +96,16 @@ class QueryGenerator:
         if any(pattern in query_lower for pattern in help_patterns):
             score += 1
 
-        # D. Optimal Length (3-6 words = good for search)
+        # D. Discovery Probes (open-ended pain discovery)
+        discovery_markers = [
+            'biggest challenge', 'hardest part', 'what went wrong',
+            'complaints about', 'most annoying', 'worst part',
+            'regret', 'mistake', 'problem with', 'wish i knew'
+        ]
+        if any(marker in query_lower for marker in discovery_markers):
+            score += 1
+
+        # E. Optimal Length (3-6 words = good for search)
         if 3 <= word_count <= 6:
             score += 1
 
@@ -105,7 +115,8 @@ class QueryGenerator:
         self,
         niche_description: str,
         niche_context: "NicheContext | None" = None,
-        num_queries: int = 20
+        num_queries: int = 20,
+        enabled_platforms: list[str] | None = None,
     ) -> list[dict]:
         """
         Generate strategic search queries for a niche using LLM.
@@ -114,6 +125,8 @@ class QueryGenerator:
             niche_description: Description of the niche to generate queries for
             niche_context: Optional structured context with market segments and boundaries
             num_queries: Number of queries to generate
+            enabled_platforms: List of enabled platforms (e.g. ["reddit", "twitter"]).
+                None means all platforms enabled (backward compatible).
 
         Returns:
             List of query dictionaries with 'query', 'type', 'platform', and 'rationale' keys
@@ -150,10 +163,43 @@ Market Segments: [Not provided - use broad discovery queries]
 Industry Boundaries: [Not provided - use general heuristics]
 """
 
+        # Build dynamic platform instructions based on enabled platforms
+        platforms = enabled_platforms if enabled_platforms else ["reddit", "twitter"]
+        has_reddit = "reddit" in platforms
+        has_twitter = "twitter" in platforms
+
+        if has_reddit and has_twitter:
+            platform_instructions = (
+                '**Reddit (60%)**: Discussion, advice-seeking\n'
+                '- "anyone else", "how do you", "advice needed"\n\n'
+                '**Twitter (30%)**: Venting, real-time frustration\n'
+                '- "just spent", "every time", "why is"\n\n'
+                '**Both (10%)**: Universal topics only'
+            )
+        elif has_reddit and not has_twitter:
+            platform_instructions = (
+                'All queries target **Reddit only**. Set platform to "reddit" for every query.\n\n'
+                'Reddit-style language hints: "anyone else", "how do you", "advice needed", '
+                '"is it worth", "should I", "does anyone"'
+            )
+        elif has_twitter and not has_reddit:
+            platform_instructions = (
+                'All queries target **Twitter/X only**. Set platform to "twitter" for every query.\n\n'
+                'Twitter-style language hints: "just spent", "every time", "why is", '
+                '"tired of", "can\'t believe", "so frustrated"'
+            )
+        else:
+            # Neither enabled — fallback to both
+            platform_instructions = (
+                'Set platform to "both" for every query.\n'
+                'Use general search language suitable for any platform.'
+            )
+
         prompt = get_prompt(
             "query_generation",
             context_section=context_section,
-            num_queries=num_queries
+            num_queries=num_queries,
+            platform_instructions=platform_instructions,
         )
 
         try:
@@ -205,7 +251,7 @@ Industry Boundaries: [Not provided - use general heuristics]
                     # Support current and legacy type names for backwards compatibility
                     valid_types = [
                         # Current archetypes (short universal prompt)
-                        'pain', 'help', 'role', 'progress',
+                        'pain', 'help', 'role', 'progress', 'discovery',
                         # Legacy archetypes (for backwards compatibility)
                         'workflow_friction', 'decision_paralysis', 'gap_limitation',
                         'comparative_frustration', 'temporal_threshold',
@@ -226,6 +272,19 @@ Industry Boundaries: [Not provided - use general heuristics]
                     logger.warning(f"Filtered out {len(queries) - len(valid_queries)} invalid queries")
 
                 queries = valid_queries
+
+                # Post-generation safety-net: filter queries targeting disabled platforms
+                if enabled_platforms:
+                    allowed = set(enabled_platforms) | {"both"}
+                    before_count = len(queries)
+                    queries = [q for q in queries if q.get("platform", "both") in allowed]
+                    removed = before_count - len(queries)
+                    if removed:
+                        logger.warning(
+                            f"Safety-net removed {removed} queries targeting disabled platforms "
+                            f"(allowed: {sorted(allowed)})"
+                        )
+
                 logger.info(f"[OK] Generated {len(queries)} valid search queries")
 
                 # Log each query at DEBUG level with rationale and specificity score
@@ -238,13 +297,13 @@ Industry Boundaries: [Not provided - use general heuristics]
                     score_indicator = "✓" if score >= 3 else "⚠"
                     logger.debug(
                         f"  {i}. [{q.get('type', 'unknown')}|{q.get('platform', 'reddit')}] "
-                        f"(spec:{score}/4 {score_indicator}) {q.get('query', 'N/A')}\n"
+                        f"(spec:{score}/5 {score_indicator}) {q.get('query', 'N/A')}\n"
                         f"     Rationale: {q.get('rationale', 'N/A')}"
                     )
 
                 # Log specificity distribution
                 specificity_pct = (high_specificity_count / len(queries) * 100) if queries else 0
-                logger.info(f"  Specificity: {high_specificity_count}/{len(queries)} queries scored 3+/4 ({specificity_pct:.0f}%)")
+                logger.info(f"  Specificity: {high_specificity_count}/{len(queries)} queries scored 3+/5 ({specificity_pct:.0f}%)")
 
                 # Validate queries semantically (log warnings for suspicious patterns)
                 suspicious_count = 0
@@ -256,7 +315,7 @@ Industry Boundaries: [Not provided - use general heuristics]
                     # Check for low specificity (score < 3)
                     if spec_score < 3:
                         low_specificity_count += 1
-                        logger.warning(f"[WARN] Low specificity ({spec_score}/4): {q.get('query')}")
+                        logger.warning(f"[WARN] Low specificity ({spec_score}/5): {q.get('query')}")
 
                     # Check for generic terms that should be avoided
                     generic_terms = ['problems', 'struggles', 'challenges', 'issues', 'difficulties']
@@ -278,10 +337,19 @@ Industry Boundaries: [Not provided - use general heuristics]
                             logger.warning(f"[WARN] Suspicious query (B2B terms for B2C niche): {q.get('query')}")
                             suspicious_count += 1
 
+                    # Check for solution-seeking patterns (should find problems, not solutions)
+                    solution_patterns = [
+                        'best ', 'recommended', 'top ', 'how to solve',
+                        'tool for', 'app for', 'software for', 'alternative to'
+                    ]
+                    if any(pat in query_text for pat in solution_patterns):
+                        logger.warning(f"[WARN] Solution-seeking query (should find problems, not solutions): {q.get('query')}")
+                        suspicious_count += 1
+
                 if suspicious_count > 0:
                     logger.warning(f"[WARN] Found {suspicious_count} suspicious queries - review rationales above")
                 if low_specificity_count > len(queries) * 0.2:  # More than 20% low specificity
-                    logger.warning(f"[WARN] {low_specificity_count}/{len(queries)} queries have low specificity (<3/4)")
+                    logger.warning(f"[WARN] {low_specificity_count}/{len(queries)} queries have low specificity (<3/5)")
 
                 return queries
             else:
