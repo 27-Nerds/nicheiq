@@ -63,6 +63,7 @@ from ..models.research_state import (
     TopRedditThread,
 )
 from ..utils.helpers import find_solution_by_name
+from ..utils.prompts import safe_format
 from .templates import ReportTemplates
 from ..utils.llm_service import LLMService
 from .utils import ScoreAccessor, StateAccessor
@@ -737,7 +738,7 @@ class ReportGenerator:
         template = load_prompt("report_strategic_synthesis")
         pain_points = base_report.detailed_pain_points or []
         pain_point_titles = [pp.title for pp in pain_points[:3]]
-        prompt = template.format(
+        prompt = safe_format(template,
             niche=base_report.niche,
             selected_solution_name=base_report.selected_solution_name,
             pain_points_count=len(pain_points),
@@ -777,7 +778,7 @@ class ReportGenerator:
         template = load_prompt("report_next_steps")
         pain_points = base_report.detailed_pain_points or []
         pain_point_titles = [pp.title for pp in pain_points[:3]]
-        prompt = template.format(
+        prompt = safe_format(template,
             niche=base_report.niche,
             selected_solution_name=base_report.selected_solution_name,
             project_type=(details.project_type if details else None) or 'SaaS',
@@ -821,7 +822,7 @@ class ReportGenerator:
             )
 
         template = load_prompt("report_implementation_planning")
-        prompt = template.format(
+        prompt = safe_format(template,
             selected_solution_name=base_report.selected_solution_name,
             project_type=project_type,
             core_features=', '.join(core_features[:5]) if core_features else 'N/A',
@@ -866,6 +867,7 @@ class ReportGenerator:
         """
         from ..utils.prompts import load_prompt
         from ..models.pain_point import PainPoint
+        from .utils.report_pre_compute import format_pain_point_with_scores
 
         if not pain_points or not solution:
             return {}
@@ -884,12 +886,11 @@ class ReportGenerator:
                 description="List of mappings from pain point titles to solution explanations"
             )
 
-        # Format pain points for prompt (limit to top 10)
+        # Format pain points for prompt (limit to top 10) with severity/WTP scores
         pain_points_to_map = pain_points[:10]
-        pain_points_formatted = "\n".join([
-            f"- {pp.title}: {pp.description[:200]}{'...' if len(pp.description) > 200 else ''}"
-            for pp in pain_points_to_map
-        ])
+        pain_points_formatted = "\n".join(
+            format_pain_point_with_scores(pp) for pp in pain_points_to_map
+        )
 
         # Format core features
         core_features = solution.core_features or solution.key_features or []
@@ -900,7 +901,7 @@ class ReportGenerator:
         # Load and format prompt
         try:
             template = load_prompt("pain_solution_mapping")
-            prompt = template.format(
+            prompt = safe_format(template,
                 solution_name=solution.solution_name,
                 value_proposition=solution.value_proposition or solution.description or "Comprehensive solution",
                 core_features=core_features_formatted,
@@ -1650,6 +1651,7 @@ It differentiates through {diff_text}.
                     score=post.score,
                     num_comments=post.num_comments,
                     url=post.url,
+                    created_utc=post.created_utc,
                     key_insight=f"High-engagement discussion ({post.score} score, {post.num_comments} comments) in r/{post.subreddit}"
                 )
                 for post in reddit_posts
@@ -2060,7 +2062,7 @@ It differentiates through {diff_text}.
             # Load prompt template from YAML
             from ..utils.prompts import load_prompt
             template = load_prompt("report_executive_narrative")
-            prompt = template.format(
+            prompt = safe_format(template,
                 solution_name=selected_solution.solution_name,
                 solution_description=selected_solution.description,
                 target_personas=target_personas_str,
@@ -2549,7 +2551,7 @@ It differentiates through {diff_text}.
             goals_list = '\n'.join(f"- {goal}" for goal in icp.goals[:3])
             max_content_angles = min(len(top_pain_points), 5)
 
-            prompt = template.format(
+            prompt = safe_format(template,
                 solution_name=selected_solution_name,
                 solution_description=solution_description,
                 niche_description=self.state.niche_context.niche_description,
@@ -2591,6 +2593,7 @@ It differentiates through {diff_text}.
             format_channels_for_prompt,
             format_icp_for_prompt
         )
+        from .utils.report_pre_compute import compute_metric_calibration
 
         # Get top research-discovered pain points (not solution assumptions)
         top_pain_points = self.accessor.get_sorted_pain_points()[:3]
@@ -2610,9 +2613,12 @@ It differentiates through {diff_text}.
         if self.state.competitive_analysis:
             competitor_count = len(self.state.competitive_analysis.solution_landscapes)
 
+        # Pre-compute metric calibration
+        metric_calibration = compute_metric_calibration(total_keyword_count, tier1_keyword_count)
+
         # Load template and generate prompt
         template = load_prompt("report_first_30_days_playbook")
-        prompt = template.format(
+        prompt = safe_format(template,
             solution_name=selected_solution.solution_name,
             solution_description=selected_solution.description,
             value_proposition=selected_solution.value_proposition,
@@ -2626,7 +2632,8 @@ It differentiates through {diff_text}.
             total_keyword_count=total_keyword_count,
             tier0_keyword_count=tier0_keyword_count,
             tier1_keyword_count=tier1_keyword_count,
-            competitor_count=competitor_count
+            competitor_count=competitor_count,
+            metric_calibration=metric_calibration,
         )
 
         # Use LLMService for structured output
@@ -2665,6 +2672,7 @@ It differentiates through {diff_text}.
         from ..models.marketing_blueprint import BudgetEstimateResult
         from ..utils.prompts import load_prompt
         from .utils.prompt_formatters import format_channels_for_prompt
+        from .utils.report_pre_compute import compute_budget_range
 
         try:
             # Extract pricing data - find pricing strategy for selected solution
@@ -2701,13 +2709,17 @@ It differentiates through {diff_text}.
             # Format channels
             channels_summary = format_channels_for_prompt(channels)
 
+            # Pre-compute budget range anchor
+            channel_count = len(channels) if channels else 0
+            suggested_budget_range = compute_budget_range(pricing_model, channel_count)
+
             # Get solution and ICP details
             project_type = selected_solution.project_type or "SaaS Tool"
             persona_name = icp.persona_name if icp else "Target Customer"
 
             # Load template and generate prompt
             template = load_prompt("report_budget_estimate")
-            prompt = template.format(
+            prompt = safe_format(template,
                 solution_name=selected_solution.solution_name,
                 pricing_model=pricing_model,
                 starter_price=starter_price,
@@ -2720,7 +2732,9 @@ It differentiates through {diff_text}.
                 tam=tam,
                 channels_summary=channels_summary,
                 project_type=project_type,
-                persona_name=persona_name
+                persona_name=persona_name,
+                suggested_budget_range=suggested_budget_range,
+                channel_count=channel_count,
             )
 
             # Use LLMService for structured output

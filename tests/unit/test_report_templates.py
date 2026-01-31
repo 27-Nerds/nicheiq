@@ -162,6 +162,13 @@ class TestCacBreakdown:
         sol_moderate = _make_solution(seo_scalability_score=0.4)
         assert "Moderate" in ReportTemplates.cac_breakdown(sol_moderate)
 
+    def test_cac_breakdown_seo_scalability_score_scaled(self):
+        """SEO scalability score should be displayed as X.Y/10 (multiplied by 10)."""
+        sol = _make_solution(seo_scalability_score=0.85)
+        result = ReportTemplates.cac_breakdown(sol)
+        assert "8.5/10" in result  # 0.85 * 10 = 8.5
+        assert "0.8/10" not in result  # must not show raw 0-1 value
+
     def test_cac_breakdown_no_seo_score(self):
         """No SEO scalability section when score is None."""
         sol = _make_solution(seo_scalability_score=None)

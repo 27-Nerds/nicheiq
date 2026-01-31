@@ -11,17 +11,22 @@ template: |
   **Core Features:**
   {core_features}
 
-  **Pain Points to Map:**
+  **Pain Points to Map (with severity, WTP, and mention scores):**
   {pain_points_formatted}
 
   For each pain point, write a 1-2 sentence explanation of how this solution's features
   directly address it. Be specific about WHICH features help and HOW they solve the problem.
+
+  **Priority Guidance:** Pain points with higher severity and WTP scores (shown in brackets)
+  represent the strongest product-market fit signals. Prioritize depth of explanation for
+  high-severity, high-WTP pain points.
 
   Guidelines:
   - Reference specific features from the list above
   - Explain the mechanism (how it solves the problem, not just that it does)
   - Keep each explanation concise but informative (1-2 sentences max)
   - Use active voice and concrete language
+  - For high-severity pain points (>=7.0/10), emphasize the urgency of the solution
 
   Return a JSON object where keys are the EXACT pain point titles (as provided above)
   and values are the solution approach explanations.

@@ -166,6 +166,18 @@ class TestFormatPainPointsForAgents:
         assert "High Priority Issue" in result
         assert "Severity:" in result or "/10" in result  # Standardized format
 
+    def test_metrics_only_scores_scaled_to_10(self, sample_pain_points):
+        """Scores are 0.0-1.0 internally but must display as X.Y/10."""
+        result = format_pain_points_for_agents(
+            sample_pain_points, format_type="metrics_only"
+        )
+        # sample_pain_points has severity_score=0.9, wtp=0.8
+        assert "Severity: 9.0/10" in result
+        assert "WTP: 8.0/10" in result
+        # Must NOT show raw 0-1 values
+        assert "Severity: 0.9/10" not in result
+        assert "WTP: 0.8/10" not in result
+
     def test_priority_filter_high(self, sample_pain_points):
         """Test that priority_filter='high' returns only high-priority pain points."""
         result = format_pain_points_for_agents(

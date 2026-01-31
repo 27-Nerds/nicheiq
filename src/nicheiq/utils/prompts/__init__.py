@@ -37,6 +37,19 @@ def load_prompt(name: str) -> str:
 
     return data["template"]
 
+def safe_format(template: str, **kwargs) -> str:
+    """Format a template, escaping curly braces in string values.
+
+    Prevents KeyError/ValueError when user or LLM content contains
+    literal { or } characters (e.g., JSON snippets, code blocks).
+    """
+    escaped = {
+        k: v.replace("{", "{{").replace("}", "}}") if isinstance(v, str) else v
+        for k, v in kwargs.items()
+    }
+    return template.format(**escaped)
+
+
 def get_prompt(name: str, **kwargs) -> str:
     """
     Load and format a prompt template.
@@ -49,4 +62,4 @@ def get_prompt(name: str, **kwargs) -> str:
         Formatted prompt string
     """
     template = load_prompt(name)
-    return template.format(**kwargs)
+    return safe_format(template, **kwargs)

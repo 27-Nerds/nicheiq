@@ -33,6 +33,12 @@ pricing_strategy_analysis:
     {wtp_scores}
 
 
+    **PRE-COMPUTED WTP ANALYSIS (from Python -- treat as facts):**
+    - {wtp_summary}
+    - Average WTP Score: {avg_wtp}
+    - Suggested CAC Range: {suggested_cac_range}
+
+
     **YOUR TASK:**
 
     Conduct comprehensive pricing analysis following these steps:

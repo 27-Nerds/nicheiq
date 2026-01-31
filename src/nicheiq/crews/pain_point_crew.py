@@ -305,7 +305,8 @@ class PainPointCrew:
             token_monitor = ContentTokenMonitor()
             self.reddit_posts = token_monitor.filter_posts_to_token_budget(
                 self.reddit_posts,
-                settings.max_reddit_content_tokens
+                settings.max_reddit_content_tokens,
+                score_fn=ContentTokenMonitor.pain_point_priority_score,
             )
 
         self.niche_description = niche_description
@@ -545,11 +546,27 @@ class PainPointCrew:
         Format Reddit posts with discussions for knowledge source with metadata headers.
         Includes POST_ID for traceability in pain point attribution.
 
+        Posts are interleaved by priority: highest-value posts at the beginning and end
+        of the formatted content (where LLM attention is strongest), with lower-value
+        posts in the middle. This exploits the U-shaped attention curve in transformer
+        models to maximize pain point extraction from the most valuable discussions.
+
         Returns:
             Formatted string with embedded metadata for semantic search
         """
+        # Sort posts by pain point priority, then interleave:
+        # best at beginning and end, weakest in the middle
+        scored = sorted(
+            self.reddit_posts,
+            key=ContentTokenMonitor.pain_point_priority_score,
+            reverse=True,
+        )
+        front = scored[::2]    # 1st, 3rd, 5th... (odd-ranked by priority)
+        back = scored[1::2]    # 2nd, 4th, 6th... (even-ranked)
+        ordered_posts = front + list(reversed(back))
+
         formatted = []
-        for post in self.reddit_posts:
+        for post in ordered_posts:
             formatted.append(f"""[PLATFORM: REDDIT]
 [POST_ID: {post.post_id}]
 [SUBREDDIT: r/{post.subreddit}]
@@ -899,10 +916,10 @@ class PainPointCrew:
             while content_tokens > max_content_tokens and len(self.reddit_posts) > 1 and reduction_iterations < max_iterations:
                 reduction_iterations += 1
 
-                # Sort posts by engagement/recency score (lowest first)
+                # Sort posts by pain point priority score (lowest first)
                 sorted_posts = sorted(
                     self.reddit_posts,
-                    key=monitor.engagement_recency_score,
+                    key=ContentTokenMonitor.pain_point_priority_score,
                     reverse=False  # Lowest score first
                 )
 
@@ -976,6 +993,17 @@ class PainPointCrew:
             # Hybrid approach:
             # - Task 1 (content_researcher): full content via direct injection (NO RAG)
             # - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): agent-level RAG for quote retrieval
+            # Compute discussion quality stats for Task 3
+            comment_counts = [
+                len(p.comments) if p.comments else 0
+                for p in self.reddit_posts
+            ]
+            avg_comments_per_post = (
+                f"{sum(comment_counts) / len(comment_counts):.1f}"
+                if comment_counts else "0.0"
+            )
+            rich_discussion_count = sum(1 for c in comment_counts if c >= 20)
+
             try:
                 crew_output = crew_instance.kickoff(inputs={
                     "niche_description": self.niche_description,
@@ -990,6 +1018,8 @@ class PainPointCrew:
                     "total_content": len(self.reddit_posts) + len(self.twitter_threads),
                     "subreddits": subreddits_formatted,
                     "collection_timestamp": collection_timestamp,
+                    "avg_comments_per_post": avg_comments_per_post,
+                    "rich_discussion_count": rich_discussion_count,
                 })
             except Exception as e:
                 error_msg = str(e)

@@ -108,7 +108,7 @@ class ReportTemplates:
             else:
                 rating = "Moderate"
 
-            table += f"\n**SEO Scalability:** {scalability:.1f}/10 - {rating} organic growth potential.\n"
+            table += f"\n**SEO Scalability:** {scalability * 10:.1f}/10 - {rating} organic growth potential.\n"
 
         # Data-driven CAC advantage sentence
         cac_advantage = ReportTemplates._compute_cac_advantage(

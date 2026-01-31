@@ -17,6 +17,16 @@ traffic_monetization_analysis:
     **Competitor Landscape:**
     {competitor_analysis}
 
+    ## Pre-Computed Estimates (from Python -- treat as facts)
+
+    **Traffic Projection:**
+    {traffic_projection}
+
+    **Suggested CPM:** {suggested_cpm}
+    **Pre-Computed Ad Revenue Estimate:** {ad_revenue_estimate}
+
+    Use these pre-computed values as anchors. Adjust based on competitive analysis and niche specifics.
+
     ## Your Analysis Framework
 
     ### Step 1: Estimate Traffic Potential

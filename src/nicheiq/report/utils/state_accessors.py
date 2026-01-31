@@ -109,7 +109,7 @@ class StateAccessor:
         """
         sorted_pps = self.get_sorted_pain_points()
         return [
-            f"{pp.title} - {pp.description} (Severity: {pp.severity_score:.1f}/10, WTP: {pp.willingness_to_pay:.1f}/10)"
+            f"{pp.title} - {pp.description} (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10)"
             for pp in sorted_pps
         ]
 

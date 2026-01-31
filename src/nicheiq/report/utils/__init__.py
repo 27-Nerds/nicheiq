@@ -14,6 +14,11 @@ from .prompt_formatters import (
     format_icp_for_prompt,
     format_pain_points_for_prompt,
 )
+from .report_pre_compute import (
+    compute_budget_range,
+    compute_metric_calibration,
+    format_pain_point_with_scores,
+)
 from .score_accessor import ScoreAccessor
 from .state_accessors import StateAccessor
 
@@ -24,4 +29,7 @@ __all__ = [
     "format_pain_points_for_prompt",
     "format_channels_for_prompt",
     "format_icp_for_prompt",
+    "compute_budget_range",
+    "compute_metric_calibration",
+    "format_pain_point_with_scores",
 ]

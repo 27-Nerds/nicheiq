@@ -16,6 +16,11 @@ from loguru import logger
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import TrafficMonetizationResult
+from ..utils.crew_helpers import (
+    compute_traffic_projection,
+    match_niche_to_cpm,
+    compute_ad_revenue_estimate,
+)
 
 
 @CrewBase
@@ -225,6 +230,19 @@ class TrafficMonetizationCrew:
         )
         logger.debug(f"  Competitor info formatted: {len(competitor_info)} chars")
 
+        # Pre-compute deterministic traffic and monetization values
+        total_volume = 0
+        if keyword_validation_results:
+            for validation in keyword_validation_results:
+                if validation.solution_name == selected_solution.solution_name:
+                    total_volume = validation.total_volume or 0
+                    break
+
+        traffic_projection, total_low, total_high = compute_traffic_projection(total_volume)
+        cpm_low, cpm_high, cpm_vertical = match_niche_to_cpm(niche_description)
+        suggested_cpm = f"${cpm_low}-${cpm_high} CPM ({cpm_vertical} vertical)"
+        ad_revenue_estimate = compute_ad_revenue_estimate(total_low, total_high, cpm_low, cpm_high)
+
         # Prepare inputs for the task
         inputs = {
             "solution_name": selected_solution.solution_name,
@@ -233,6 +251,9 @@ class TrafficMonetizationCrew:
             "niche_description": niche_description,
             "keyword_data": keyword_data,
             "competitor_analysis": competitor_info,
+            "traffic_projection": traffic_projection,
+            "suggested_cpm": suggested_cpm,
+            "ad_revenue_estimate": ad_revenue_estimate,
         }
 
         try:

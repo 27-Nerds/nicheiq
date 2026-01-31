@@ -24,6 +24,9 @@ audience_mapping_analysis:
     - Twitter: {twitter_threads_count} threads with {total_twitter_replies} replies
     - Total Discussions: {total_discussions}
 
+    **Discussion Quality:**
+    {discussion_quality_summary}
+
     **Subreddit Distribution:**
     {subreddit_distribution}
 
@@ -49,6 +52,13 @@ audience_mapping_analysis:
     2. Extract EXACT usernames, tool names, vocabulary from returned chunks
     3. Note [source: ID] tags for traceability
     4. Cross-reference multiple queries to validate findings
+
+    **EVIDENCE WEIGHTING:**
+    Posts with many comments (20+) represent richer audience signal than
+    low-engagement posts. When extracting vocabulary, influencers, and
+    segment indicators, prioritize evidence from high-engagement discussions.
+    Use [AGE: ...] tags to assess recency — recent discussions (< 6 months)
+    reflect current audience behavior more accurately.
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -113,6 +123,11 @@ audience_mapping_analysis:
 
 
     **SEGMENTATION GUIDELINES:**
+
+    **Temporal Awareness:**
+    - Check [AGE: ...] tags on discussions to identify emerging vs established segments
+    - If most evidence for a segment comes from dated discussions (1+ year), note this
+    - Recent high-engagement discussions are the strongest segment indicators
 
     **Segment Differentiation:**
     - Good: "Solo Technical Founders (low budget, high expertise, seek open-source)"

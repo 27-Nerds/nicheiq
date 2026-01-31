@@ -20,6 +20,12 @@ from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import MarketSizingResult
 from ..models.solution_idea import SolutionIdea
+from ..utils.crew_helpers import (
+    compute_strive_pre_check,
+    compute_saturation_level,
+    compute_tam_seed,
+    compute_wtp_stats,
+)
 from ..utils.parsing.json_extractor import clean_llm_response
 
 
@@ -257,6 +263,16 @@ class MarketSizingCrew:
         # Extract solution context
         solution_context = self._format_solution_context(selected_solution)
 
+        # Pre-compute deterministic values
+        kv_volume = keyword_validation.total_volume if keyword_validation else 0
+        pp_mentions = pain_point_analysis.total_mentions if pain_point_analysis else 0
+        competitor_count = sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes) if competitive_analysis and competitive_analysis.solution_landscapes else 0
+
+        strive_pre_check = compute_strive_pre_check(kv_volume, pp_mentions, competitor_count)
+        suggested_saturation_level = compute_saturation_level(competitor_count)
+        tam_seed = compute_tam_seed(kv_volume)
+        wtp = compute_wtp_stats(pain_point_analysis)
+
         # Prepare inputs for market sizing task
         inputs = {
             "solution_name": selected_solution.solution_name,
@@ -269,7 +285,13 @@ class MarketSizingCrew:
             "total_keyword_volume": keyword_validation.total_volume if keyword_validation else 0,
             "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
             "pain_point_count": len(pain_point_analysis.pain_points) if pain_point_analysis else 0,
-            "competitor_count": sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes) if competitive_analysis and competitive_analysis.solution_landscapes else 0,
+            "competitor_count": competitor_count,
+            "strive_pre_check": strive_pre_check,
+            "suggested_saturation_level": suggested_saturation_level,
+            "tam_seed": tam_seed,
+            "high_severity_count": wtp["high_severity_count"],
+            "high_wtp_count": wtp["high_wtp_count"],
+            "avg_wtp": wtp["avg_wtp"],
         }
 
         try:

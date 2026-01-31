@@ -17,6 +17,7 @@
 #   - total_keyword_count, tier0_keyword_count, tier1_keyword_count
 #   - competitor_count
 #   - niche
+#   - metric_calibration: Pre-computed 30-day visitor target from keyword data
 
 template: |
   Generate a tactical 30-day Go-to-Market action plan with week-by-week steps for launching {solution_name}.
@@ -109,6 +110,15 @@ template: |
   2. **Channel reference** (where it happens - use exact channel name)
   3. **Pain point tie-in** (at least 50% must reference exact pain point title)
   4. **Measurable outcome** (what success looks like)
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **PRE-COMPUTED METRIC CALIBRATION (from Python -- treat as anchor)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {metric_calibration}
+
+  Use this keyword-calibrated target as the primary anchor for your 30-day visitor goals.
+  Adjust the weekly breakdown below accordingly.
 
   **═════════════════════════════════════════════════════════════════════════**
   **SUCCESS METRICS CALIBRATION (Conservative Niche Market Ranges)**

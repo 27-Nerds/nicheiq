@@ -18,6 +18,10 @@ categorize_content:
     - Twitter threads: {twitter_threads_count} threads with {total_twitter_replies} replies
     - Total content pieces: {total_content}
 
+    **NOTE:** Posts are ordered by discussion richness (comment depth,
+    engagement quality). Posts appearing earlier have richer discussions
+    and more reliable pain point signals.
+
     ═══════════════════════════════════════════════════════════════════════════
 
     ## COMPLETE REDDIT DISCUSSIONS:
@@ -36,7 +40,8 @@ categorize_content:
     # Reasoning Strategy
     Follow this step-by-step analysis approach:
 
-    1. **Content Scan**: Skim all Reddit + Twitter content above to assess volume and density of discussions
+    1. **Content Scan**: Skim all content. Posts with more comments and higher scores
+       contain richer pain point signals — weight findings from these more heavily
     2. **Theme Extraction**: Identify 5-10 recurring theme categories from patterns (let data guide you, not assumptions)
     3. **Segment Mapping**: For each category, identify user segments from explicit self-descriptions in discussions
     4. **Frequency Assignment**: Assign High/Medium/Low based on actual mention counts (count occurrences)
@@ -287,9 +292,15 @@ validate_pain_points:
     **RESEARCH METADATA:**
     - Data Sources: {reddit_posts_count} Reddit posts from r/{subreddits}, {twitter_threads_count} Twitter threads
     - Total Engagement: {total_reddit_comments} Reddit comments, {total_twitter_replies} Twitter replies
+    - Discussion Quality: Posts averaged {avg_comments_per_post} comments/post,
+      {rich_discussion_count} posts had 20+ comments
     - Collection Date: {collection_timestamp}
 
     Use this metadata for context when scoring pain points. More diverse subreddit sources and higher engagement counts indicate stronger validation signals.
+
+    Pain points supported by evidence from high-engagement discussions
+    (20+ comments) carry stronger validation signals than those from
+    low-engagement posts.
 
     **HOW TO ACCESS CONTEXT:**
 

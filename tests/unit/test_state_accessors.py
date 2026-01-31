@@ -126,6 +126,27 @@ class TestSortedPainPoints:
         assert isinstance(result, list)
         assert len(result) == 2
 
+    def test_get_formatted_pain_points_scores_scaled_to_10(self):
+        """Scores are 0.0-1.0 internally but must display as X.Y/10."""
+        pp = MagicMock()
+        pp.title = "Slow Onboarding"
+        pp.description = "Users drop off during setup"
+        pp.severity_score = 0.75
+        pp.willingness_to_pay = 0.6
+
+        mock_state = MagicMock()
+        mock_state.pain_point_analysis = MagicMock()
+        mock_state.pain_point_analysis.pain_points = [pp]
+
+        accessor = StateAccessor(mock_state)
+        result = accessor.get_formatted_pain_points()
+
+        assert len(result) == 1
+        assert "Severity: 7.5/10" in result[0]
+        assert "WTP: 6.0/10" in result[0]
+        assert "Severity: 0.7/10" not in result[0]
+        assert "WTP: 0.6/10" not in result[0]
+
 
 class TestSelectionDataExtraction:
     """Tests for solution selection data extraction."""

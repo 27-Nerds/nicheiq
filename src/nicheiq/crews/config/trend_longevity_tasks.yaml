@@ -1,462 +1,113 @@
 trend_longevity_analysis:
   description: >
-    **CRITICAL RULES:**
-    1. MANDATORY: Assess trend_direction as "Growing", "Stable", or "Declining" based on 2+ signal alignment
-    2. MANDATORY: Assign momentum_score (0.0-1.0) matching trend direction (Growing >=0.6, Declining <=0.4)
-    3. MANDATORY: Provide longevity_verdict ("Sustainable", "Risky", "Fad") with specific trend data justification
-    4. MANDATORY: Recommend timing ("Enter Now", "Monitor & Wait", "Missed Window") aligned with momentum
-    5. MANDATORY: Distinguish short-term spikes (<6 months) from sustained trends (12+ months) - recent activity alone does NOT equal "Growing" without historical validation
+    Analyze market positioning for the {niche_description} market.
 
+    **PRE-COMPUTED QUANTITATIVE SIGNALS (from Python — treat as facts):**
+    - Keyword Volume Trend: {keyword_volume_trend}
+    - Momentum Score: {momentum_score} (0-1 scale; represents % of search
+      volume in growing keywords. >0.7 = strong growth, 0.4-0.6 = stable,
+      <0.3 = declining)
+    - Trend Direction: {trend_direction} (Confidence: {trend_confidence})
+    - Seasonal Pattern: {seasonal_pattern}
+    - Discussion Recency: {discussion_recency}
+    - Discussion Activity: {discussion_frequency_trend} (based on post
+      recency, not posting frequency)
+    - Suggested Longevity Verdict: {suggested_longevity_verdict}
 
-    Analyze market momentum, trend sustainability, and optimal entry timing for the {niche_description} market
-    by examining keyword trends, social discussion activity, and competitive dynamics.
+    NOTE: Discussion Data includes quality metrics (comment counts, rich
+    discussion counts). Weight high-comment discussions more heavily when
+    assessing community engagement and trend sustainability.
 
+    Market size: {total_keyword_volume:,} monthly searches across
+    {validated_keyword_count} keywords. {discussion_count} discussions.
+    {competitor_count} competitors.
 
-    **DATA SOURCES FOR TREND ANALYSIS:**
+    **YOUR TASK — provide expert judgment for these fields:**
 
-    **Keyword Trend Data (includes ACTUAL 12-month historical trends if available):**
+    1. **market_maturity** ("Emerging" / "Growth" / "Mature")
+       - Emerging: few competitors (<5), limited discussion history, new tech
+       - Growth: increasing competitors, active discussions, rising volume
+       - Mature: established competitors, stable discussions, saturated volume
+
+    2. **longevity_verdict** ("Sustainable" / "Risky" / "Fad")
+       Suggested: {suggested_longevity_verdict}. Confirm or override.
+
+       Assessment framework:
+       - **Sustainable**: Solves a real, recurring problem. Steady or growing
+         search demand over 2+ years. High evergreen keyword ratio. Multiple
+         competitors validating market viability.
+       - **Risky**: Rapid adoption but uncertain staying power. Search volume
+         concentrated in few keywords. Limited problem validation. May be
+         driven by hype rather than genuine need.
+       - **Fad**: Novelty-driven demand without underlying utility (like a
+         viral product with no repeat use case). Characterized by: spike
+         then rapid decline in discussions, zero or very low pain point
+         count, consumer interest driven by scarcity/novelty not need.
+
+       Rules: 2+ years steady growth → Sustainable. <12 months of data with
+       spike pattern → Risky. Clear novelty-driven spike + declining → Fad.
+       5+ years stable → Sustainable.
+
+    3. **longevity_rationale**: 2-3 sentences with SPECIFIC data citations.
+       Reference the pre-computed signals AND raw data. Example: "Sustainable
+       because momentum score of 0.72 indicates 72% of search volume is in
+       growing keywords, with {keyword_volume_trend} keyword volume, and
+       {discussion_recency} discussion activity. Competitive data shows N
+       active competitors validating market demand..."
+
+    4. **new_entrants_trend** ("Increasing" / "Stable" / "Consolidating")
+       Based on competitive data: competitor count, market gaps, competitor
+       age mix. Many newer/smaller competitors = Increasing. Few large
+       established players = Consolidating.
+
+    5. **competitive_activity_level** ("High" / "Moderate" / "Low")
+       Based on: total competitor count ({competitor_count}), market gap
+       count, competitor feature overlap. >15 competitors = High.
+       5-15 = Moderate. <5 = Low.
+
+    6. **volume_growth_rate**: "+X% YoY", "-X% YoY", "Stable", or "Unknown"
+       Estimate from the keyword trend data provided.
+
+    7. **trend_duration**: "2+ years growth", "6 months spike", etc.
+       Infer from discussion dates and keyword trend patterns.
+
+    8. **peak_periods**: ["Q4", "November-December"] or null if not seasonal.
+       Only if seasonal_pattern is "Strong Seasonal" or "Mild Seasonal".
+
+    9. **community_growth_indicators**: 3-5 signals with stage citations.
+       Format: "[Signal] - Source: [data section] showing [metric]"
+       ONLY cite data visible in the RAW DATA sections above: keyword data
+       (volumes, trends, evergreen/seasonal keywords), discussion data
+       (post counts, timestamps, pain point count/mentions), and competitive
+       data (competitor count, market gaps).
+       High-comment discussions (20+ comments) are stronger community
+       engagement signals than post count alone. Reference discussion
+       quality metrics when citing community growth evidence.
+       FORBIDDEN: Discord, Slack, subreddit creation dates, funding, conferences.
+
+    10. **trend_reversal_risks**: 3-5 risks with severity + evidence.
+        Format: "[HIGH/MEDIUM/LOW] - [Risk] - Evidence: [metric from raw data]"
+        Consider: technology shifts, regulatory changes, market saturation,
+        dependence on single platform, declining search interest.
+
+    **RAW DATA:**
+
+    **Keyword Data:**
     {keyword_trend_data}
 
-    **CRITICAL:** If "ACTUAL 12-MONTH TREND DATA" section is present above, you MUST use:
-    - **Keyword Trend Distribution** to determine keyword_volume_trend (Increasing if rising > declining)
-    - **Market Momentum** (Growing/Stable/Declining) to inform trend_direction
-    - **Volume in Rising Keywords %** to calibrate momentum_score
-    - **Evergreen Keywords** for longevity assessment (Sustainable indicators)
-    - **Seasonal Keywords** for seasonal_pattern detection
-
-    **Total Monthly Search Volume:** {total_keyword_volume:,} searches
-    **Validated Keywords:** {validated_keyword_count}
-
-    **Discussion Trend Data (Social Signals):**
+    **Discussion Data:**
     {discussion_trend_data}
 
-    **Total Discussions Analyzed:** {discussion_count}
-
-    **Competitive Momentum Data:**
+    **Competitive Data:**
     {competitive_momentum_data}
 
-    **Total Competitors:** {competitor_count}
-
-
-    **YOUR TASK:**
-
-    Conduct comprehensive trend longevity and timing analysis following the Momentum Triangle Analysis (MTA) framework:
-
-    ### 1. Search Momentum Assessment
-
-    **A. Keyword Volume Trend Analysis:**
-    - Based on total monthly volume ({total_keyword_volume:,}), assess if this indicates growing, stable, or declining interest
-    - High volume (>100K/month) suggests established market
-    - Low volume (<20K/month) could be emerging OR declining - use other signals to determine
-
-    - **keyword_volume_trend:** "Increasing", "Stable", or "Decreasing"
-      - Increasing: Evidence of growth in discussions, new keywords emerging, rising mentions
-      - Stable: Consistent volume across time periods, steady baseline
-      - Decreasing: Declining mentions, dated content, fading interest
-
-    - **volume_growth_rate:** Estimate YoY growth if possible
-      - Format: "+25% YoY", "-10% YoY", "Stable", or "Unknown" if insufficient data
-      - Base on: Discussion recency, pain point frequency, keyword diversity
-
-    - **trend_duration:** How long has this trend been active?
-      - Format: "2+ years growth", "6 months spike", "Emerging (<6 months)", "Mature (5+ years)"
-      - Indicators: Competitor launch dates, discussion history depth, technology maturity
-
-    ### 2. Discussion Momentum Analysis
-
-    **B. Social Signal Evaluation:**
-    - Analyze discussion recency from {discussion_count} total discussions
-    - Recent discussions (<6 months) = active community
-    - Dated discussions (12+ months with no recent activity) = declining interest
-
-    - **discussion_frequency_trend:** "Increasing", "Stable", or "Decreasing"
-      - Increasing: Active recent posts, growing subreddits, new community formation
-      - Stable: Consistent discussion levels, established communities
-      - Decreasing: Dead forums, low engagement, no recent activity
-
-    - **discussion_recency:** Overall freshness of conversations
-      - "Recent" (<6 months): Active, current discussions dominate dataset
-      - "Moderate" (6-12 months): Mix of recent and older discussions
-      - "Dated" (12+ months): Mostly old discussions, minimal recent activity
-
-    - **community_growth_indicators:** List 3-5 specific signals with MANDATORY data citations
-
-      CRITICAL RULE: Every signal MUST cite a specific data point from provided inputs.
-      If you cannot cite actual data, use null or "Insufficient data for assessment".
-
-      ALLOWED DATA SOURCES (cite these explicitly):
-        * Reddit engagement: "Sample of [X] posts averaging [Y] upvotes, [Z] comments - Stage 5"
-        * Discussion recency: "Most recent post from [date] ([X] days ago) - Stage 5"
-        * Discussion volume: "[X] total Reddit threads collected - Stage 5"
-        * Pain point signals: "[X] pain points with [Y] total mentions - Stage 6"
-        * Competitor landscape: "[X] competitors identified; market gaps in [areas] - Stage 7"
-
-      REQUIRED CITATION FORMAT: "[Signal] - Source: Stage X data showing [metric]"
-      Example GOOD: "Active community - Source: Stage 5 shows 5 posts from last 30 days, avg 45 upvotes"
-
-      FORBIDDEN CLAIMS (will be considered hallucination):
-        ✗ Subreddit creation dates, subscriber counts, growth rates
-        ✗ Discord, Slack, forum, or any non-Reddit/Twitter community data
-        ✗ Twitter Spaces, live events, conferences, meetups
-        ✗ "No evidence of X" for any data source not collected
-        ✗ Comparative statements without baseline (e.g., "growing faster than...")
-
-      HALLUCINATION EXAMPLE (never output this):
-        ✗ "No new Discord communities detected" - Discord data NOT collected
-        ✗ "3 new subreddits in 2024" - Subreddit creation dates NOT collected
-
-      SELF-CHECK: Before finalizing, verify each signal maps to Stage 5, 6, or 7 data.
-
-    ### 3. Competitive Momentum Analysis
-
-    **C. Market Activity Assessment:**
-    - Analyze competitive landscape with {competitor_count} total competitors
-    - High competitor count (15+) can mean mature OR saturating market
-    - Low competitor count (<5) can mean emerging OR unviable market
-
-    - **new_entrants_trend:**
-      - "Increasing": Many new competitors launching (signals opportunity)
-      - "Stable": Moderate new entrants, some exits (equilibrium)
-      - "Consolidating": M&A activity, shutdowns, market maturation
-
-    - **competitive_activity_level:**
-      - "High": Active launches, funding rounds, product announcements
-      - "Moderate": Steady competition, incremental updates
-      - "Low": Stagnant market, no new innovation, zombie companies
-
-    ### 4. Seasonality & Pattern Detection
-
-    **D. Temporal Patterns:**
-    - IF actual trend data is available: Use "Seasonal Keywords" list as primary indicator
-      - Many seasonal keywords (>30% of top keywords) → "Strong Seasonal" or "Mild Seasonal"
-      - Few/no seasonal keywords → "Year-Round"
-    - FALLBACK: Detect seasonal patterns from discussion timing or keyword context
-
-    - **seasonal_pattern:**
-      - "Strong Seasonal": >40% keywords are seasonal (high volume variation in 12-month data)
-      - "Mild Seasonal": 20-40% keywords are seasonal, year-round demand with peaks
-      - "Year-Round": <20% seasonal keywords, consistent demand (many evergreen keywords)
-      - "Unknown": Insufficient data for pattern detection
-
-    - **peak_periods:** If seasonal, list peak months/quarters
-      - Format: ["Q4", "November-December"] OR ["Q1", "January-April"]
-      - If Year-Round or Unknown, use null
-
-    ### 5. Overall Trend Direction & Momentum
-
-    **E. Synthesize Signals (Momentum Triangle):**
-
-    Apply Signal Alignment Rule: Assign trend_direction based on 2+ signals agreeing:
-
-    | Signal | Growing | Stable | Declining |
-    |--------|---------|--------|-----------|
-    | **Keyword Volume Trend** | Increasing | Stable | Decreasing |
-    | **Discussion Frequency Trend** | Increasing | Stable | Decreasing |
-    | **Competitive Activity** | High | Moderate | Low/Consolidating |
-
-    **SIGNAL ALIGNMENT DECISION MATRIX (Explicit Edge Cases):**
-
-    | Keyword Trend | Discussion Trend | Competitive Activity | Result | Confidence |
-    |---------------|------------------|----------------------|--------|------------|
-    | Increasing | Increasing | High/Increasing | **Growing** | High (3/3 align) |
-    | Increasing | Increasing | Moderate | **Growing** | Medium (2/3 align) |
-    | Increasing | Stable | High | **Growing** | Medium (2/3 lean growth) |
-    | Increasing | Decreasing | Low | **Stable** | Low (1-1-1 conflict) |
-    | Stable | Stable | Moderate | **Stable** | High (3/3 align) |
-    | Stable | Increasing | High | **Growing** | Medium (2/3 lean growth) |
-    | Decreasing | Decreasing | Low/Consolidating | **Declining** | High (3/3 align) |
-    | Decreasing | Decreasing | High | **Stable** | Low (conflict: competitive contradicts) |
-    | Decreasing | Stable | Low | **Declining** | Medium (2/3 lean decline) |
-
-    **Rule for Conflicts (1-1-1 split):** Default to "Stable" with "Low" or "Medium" confidence when signals don't clearly agree.
-
-    - **trend_direction:** "Growing", "Stable", or "Declining"
-      - Growing: 2+ signals show growth (keywords up, discussions active, new competitors)
-      - Stable: Mixed signals OR all signals show stability
-      - Declining: 2+ signals show decline (keywords down, dated discussions, consolidation)
-
-    - **trend_confidence:**
-      - "High": All 3 signals align (strong consensus)
-      - "Medium": 2 signals align, 1 contradicts
-      - "Low": Conflicting signals OR insufficient data
-
-    - **momentum_score:** 0.0-1.0 numeric score (2 decimal places)
-      - Growing: 0.6-1.0 (0.7-0.8 typical, 0.9+ for explosive growth)
-      - Stable: 0.4-0.6 (0.5 typical)
-      - Declining: 0.0-0.4 (0.2-0.3 typical, <0.2 for steep decline)
-      - CRITICAL: momentum_score must align with trend_direction
-
-    ### 6. Longevity Assessment
-
-    **F. Sustainability Evaluation:**
-
-    - **market_maturity:**
-      - "Emerging" (<2 years): New technology, early adopters, high risk/reward
-      - "Growth" (2-5 years): Proven concept, expanding rapidly, optimal entry window
-      - "Mature" (5+ years): Established players, saturated, requires differentiation
-      - Indicators: Competitor age, technology adoption curve, discussion history depth
-
-    - **longevity_verdict:** "Sustainable", "Risky", or "Fad"
-      - **Sustainable**: 2+ years consistent growth OR 5+ years stable + solves persistent problems
-        - Example: "Remote work SaaS" (pandemic-driven but lasting shift)
-      - **Risky**: <12 months trend OR sharp spike + uncertain fundamentals
-        - Example: "Web3 gaming" (hype-driven, unproven monetization)
-      - **Fad**: <6 months spike + novelty-based + already declining
-        - Example: "Clubhouse clones" (viral spike, rapid decline)
-
-    - **longevity_rationale:** 2-3 sentences explaining verdict with SPECIFIC trend data
-      - Format: "[Verdict] because [trend duration], [momentum signals], [fundamental strength]"
-      - Example: "Sustainable because 3+ years of steady growth (50K→200K searches), active daily discussions, and solves persistent remote work coordination problems. 12 new competitors in 2024 validate market opportunity."
-
-    ### 7. Risk Factors & Timing
-
-    **G. Trend Reversal Risks:**
-
-    CORE PRINCIPLE: Every risk MUST be derived from quantitative signals in provided data.
-    You are PROHIBITED from general market speculation not grounded in the dataset.
-
-    REQUIRED FORMAT: "[Severity: HIGH/MEDIUM/LOW] - [Risk] - Evidence: [metric] - Stage X"
-
-    ALLOWED RISK CATEGORIES (derive from actual data):
-
-    1. **Search Demand Decline** (from keyword trends - Stage 8.5):
-       - HIGH: >70% of keywords declining AND <10% rising
-       - MEDIUM: >50% declining
-       - LOW: <50% declining
-       Example: "HIGH - Search demand decline - Evidence: 72% keywords declining, 8% rising - Stage 8.5"
-
-    2. **Community Stagnation** (from discussion data - Stage 5):
-       - HIGH: Most recent post >6 months old OR avg <5 engagement
-       - MEDIUM: Most recent post 3-6 months old
-       - LOW: Recent activity within 3 months
-       Example: "HIGH - Community stagnation - Evidence: Most recent post 8 months old - Stage 5"
-
-    3. **Market Saturation** (from competitive analysis - Stage 7):
-       - HIGH: >15 competitors AND <3 market gaps
-       - MEDIUM: 10-15 competitors
-       - LOW: <10 competitors OR >5 clear gaps
-       Example: "MEDIUM - Market saturation - Evidence: 12 competitors, 3 gaps - Stage 7"
-
-    4. **Weak Problem Validation** (from pain points - Stage 6):
-       - HIGH: <5 pain points OR <20 total mentions
-       - MEDIUM: 5-10 pain points
-       - LOW: >10 pain points
-       Example: "LOW - Strong validation - Evidence: 15 pain points, 87 mentions - Stage 6"
-
-    FORBIDDEN RISK CATEGORIES (data not available - NEVER use):
-      ✗ Economic conditions, regulatory changes, policy shifts
-      ✗ Technology disruption (unless in >30% of discussions)
-      ✗ Competitor funding/acquisition speculation
-      ✗ "Big tech entry" or "market leader pivot"
-
-    OUTPUT: List 3-5 risks using ONLY categories 1-4 above with stage citations.
-
-    - **trend_reversal_risks:** List 3-5 risks with severity + data citations
-
-    **H. Timing Recommendation:**
-    - **timing_recommendation:** "Enter Now", "Monitor & Wait", or "Missed Window"
-
-      - **Enter Now**: Growing trend + Early/Growth maturity + High momentum (0.7+)
-        - Rationale: "Market expanding, validated demand, room for differentiation"
-
-      - **Monitor & Wait**: Mixed signals OR Risky verdict OR Low confidence
-        - Rationale: "Track trend for 3-6 months to validate sustainability before committing capital"
-
-      - **Missed Window**: Declining trend + Mature market + Low momentum (<0.4)
-        - Rationale: "Market saturated or declining - high CAC, low growth potential"
-
-      CRITICAL: timing_recommendation must align with trend_direction and longevity_verdict
-
-    ### 8. Supporting Data Summary
-
-    - **data_sources_analyzed:** List sources used
-
-      STAGE NUMBER VALIDATION (CRITICAL):
-
-      You MUST use ONLY these exact stage identifiers:
-        ✓ Stage 5: Social discussions (Reddit/Twitter)
-        ✓ Stage 6: Pain point analysis
-        ✓ Stage 7: Competitive analysis
-        ✓ Stage 8.5: Keyword validation
-        ✓ Stage 9: SEO strategy (if enriched data provided)
-
-      FORBIDDEN stage references (will be flagged as hallucination):
-        ✗ Stage 8.8, 8.75, 7-8.75 (don't exist)
-        ✗ Stage 1-4, 8, 8.6, 8.7, 9.5 (no trend data from these)
-
-      - Examples: ["Keyword validation (Stage 8.5)", "Social discussions (Stage 5)", "Competitive analysis (Stage 7)"]
-
-    - **analysis_timeframe:** Period analyzed
-      - Format: "12 months" (ideal), "6 months" (sufficient), "3 months" (limited)
-      - Note: Limited timeframes reduce confidence - flag in trend_confidence
-
-
-    **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
-
-    - Total keyword volume <5K monthly searches (insufficient market signal)
-    - Discussion count <20 total (cannot assess momentum trends)
-    - No competitive data AND no discussion recency data (no triangulation possible)
-
-    If any stop condition is met:
-    - Set trend_confidence: "Low"
-    - Set trend_direction: "Stable" (default when uncertain)
-    - Set longevity_verdict: "Risky"
-    - Set timing_recommendation: "Monitor & Wait"
-    - Provide rationale explaining insufficient data in longevity_rationale
-
-
-    **TREND ASSESSMENT GUIDELINES:**
-
-    **Signal Alignment Examples:**
-    - Good: Keywords Increasing + Discussions Recent + 10 new competitors → "Growing" ✅
-    - Bad: Keywords Decreasing + Discussions Dated + 2 competitors → "Growing" ❌ (contradicts data)
-
-    **Momentum Score Calibration:**
-
-    **IF ACTUAL 12-MONTH TREND DATA IS AVAILABLE** (preferred - use this first):
-    Use the actual trend distribution to calculate momentum_score:
-
-    | Rising % | Declining % | Market Momentum | momentum_score | trend_direction |
-    |----------|-------------|-----------------|----------------|-----------------|
-    | >60%     | any         | Growing         | 0.75-0.90      | Growing         |
-    | 40-60%   | any         | Growing         | 0.60-0.75      | Growing         |
-    | 30-40%   | any         | Stable          | 0.50-0.60      | Stable          |
-    | 20-30%   | any         | Stable          | 0.40-0.50      | Stable          |
-    | <20%     | <50%        | Stable          | 0.40-0.50      | Stable          |
-    | <20%     | >50%        | Declining       | 0.20-0.40      | Declining       |
-
-    **Example with actual data:**
-    - Trend Distribution: rising=45, stable=30, declining=25 (100 keywords)
-    - Rising % = 45%, Market Momentum = Growing
-    - momentum_score = 0.65 (40-60% rising range)
-    - trend_direction = "Growing"
-
-    **IF NO ACTUAL TREND DATA (inference fallback):**
-    When historical time-series data is unavailable, infer momentum from cross-signal strength:
-
-    | Score Range | Keyword Signal | Discussion Signal | Competitive Signal | Example Scenario |
-    |-------------|----------------|-------------------|--------------------|------------------|
-    | **0.9-1.0** | >200K volume + diverse keywords | Very recent (<3 months), high engagement | 15+ competitors, market gaps | AI automation tools (2024) |
-    | **0.7-0.8** | 50K-200K volume | Recent (<6 months), active communities | 8-15 competitors, new launches | Remote work SaaS (2023) |
-    | **0.5-0.6** | 20K-50K volume | Mixed recency (6-12 months) | 5-8 competitors, mature players | Project management tools |
-    | **0.3-0.4** | 10K-20K volume | Mostly dated (12+ months) | 3-5 competitors, stagnant | Legacy tech categories |
-    | **0.0-0.2** | <10K volume | Very dated (18+ months), ghost towns | <3 competitors or consolidating | Obsolete platforms |
-
-    **CRITICAL:** Prefer actual trend data over inference. Do NOT fabricate YoY percentages if historical data is unavailable.
-
-    **Longevity Verdict Decision Tree:**
-    1. IF actual trend data shows >50% evergreen keywords AND market_momentum != "Declining" → "Sustainable"
-    2. IF trend_duration >=2 years AND trend_direction="Growing" → "Sustainable"
-    3. IF trend_duration <12 months OR sharp spike → "Risky"
-    4. IF trend_duration <6 months AND trend_direction="Declining" → "Fad"
-    5. IF trend_duration >=5 years AND trend_direction="Stable" → "Sustainable"
-    6. IF actual trend data shows >60% declining keywords AND <15% rising keywords → "Risky"
-    7. IF actual trend data shows >75% declining keywords → "Fad"
-    8. DEFAULT: "Sustainable" with Low confidence (when uncertain, data is insufficient to claim decline)
-
-
-    **EXPECTED OUTPUT FORMAT:**
-
-    You MUST provide ALL required fields in the TrendLongevityResult model:
-
-    **Overall Trend Assessment:**
-    - **trend_direction:** "Growing"/"Stable"/"Declining" ONLY
-    - **trend_confidence:** "High"/"Medium"/"Low" ONLY
-    - **momentum_score:** 0.00-1.00 (2 decimals, e.g., 0.75 not 0.8)
-
-    **Keyword Trend Analysis:**
-    - **keyword_volume_trend:** "Increasing"/"Stable"/"Decreasing" ONLY
-    - **volume_growth_rate:** "+25% YoY", "-10% YoY", "Stable", "Unknown" (use null if truly unavailable)
-    - **trend_duration:** "2+ years growth", "Emerging (<6 months)", etc.
-
-    **Discussion Momentum:**
-    - **discussion_frequency_trend:** "Increasing"/"Stable"/"Decreasing" ONLY
-    - **discussion_recency:** "Recent"/"Moderate"/"Dated" ONLY
-    - **community_growth_indicators:** List 3-5 specific signals (not generic)
-
-    **Competitive Momentum:**
-    - **new_entrants_trend:** "Increasing"/"Stable"/"Consolidating" ONLY
-    - **competitive_activity_level:** "High"/"Moderate"/"Low" ONLY
-
-    **Seasonality:**
-    - **seasonal_pattern:** "Strong Seasonal"/"Mild Seasonal"/"Year-Round"/"Unknown" OR null
-    - **peak_periods:** ["Q4", "November-December"] OR null if not seasonal
-
-    **Longevity Assessment:**
-    - **market_maturity:** "Emerging"/"Growth"/"Mature" ONLY
-    - **longevity_verdict:** "Sustainable"/"Risky"/"Fad" ONLY
-    - **longevity_rationale:** 2-3 sentences with specific trend data
-
-    **Risk & Timing:**
-    - **trend_reversal_risks:** List 3-5 specific risks from data analysis
-    - **timing_recommendation:** "Enter Now"/"Monitor & Wait"/"Missed Window" ONLY
-
-    **Supporting Data:**
-    - **data_sources_analyzed:** List of data sources used
-    - **analysis_timeframe:** "12 months", "6 months", etc.
-
-
-    **ANTI-HALLUCINATION PROTOCOL (CRITICAL - READ BEFORE ANALYSIS):**
-
-    STEP 1: DATA AVAILABILITY CHECK
-    Before making ANY claim, verify data exists in inputs:
-
-    | Analysis Need | Check Input | If Present | If Absent |
-    |--------------|-------------|------------|-----------|
-    | Keyword trends | `keyword_trend_distribution` | Cite rising/stable/declining counts | "Insufficient keyword trend data" |
-    | Community activity | `reddit_sample_posts` | Cite timestamps + engagement | "Insufficient community data" |
-    | Pain point trends | `pain_points` | Cite count + mentions | null |
-    | Competitor timeline | `competitive_analysis` | Cite names + count only | "Competitor timeline not available" |
-
-    STEP 2: FORBIDDEN PHRASES (will trigger hallucination flags)
-    NEVER use:
-      ✗ "No evidence of..." (implies you checked data you don't have)
-      ✗ "Analysis shows..." (without citing specific stage)
-      ✗ "Market research indicates..." (you have no general research)
-      ✗ "Industry trends suggest..." (you have no industry reports)
-
-    ALWAYS use:
-      ✓ "Stage 5 Reddit data shows..."
-      ✓ "Stage 8.5 keyword analysis indicates..."
-      ✓ "Data not available for [metric]"
-
-    STEP 3: SELF-VALIDATION CHECKLIST (execute before submission)
-    □ Every claim cites a specific stage (5, 6, 7, 8.5, or 9)
-    □ Missing data uses null or "Insufficient data" (never "no evidence")
-    □ No mentions of Discord, subreddit dates, funding, economics
-    □ All stage numbers are valid (no 8.8, 8.75, etc.)
-    □ Risk severities match quantitative thresholds
-
-
-    **CRITICAL REQUIREMENTS:**
-
-    1. **Use ACTUAL data:** All assessments must be based on provided keyword, discussion, and competitive data
-    2. **Signal alignment:** trend_direction requires 2+ signals agreeing (Momentum Triangle)
-    3. **Score consistency:** momentum_score must match trend_direction (Growing >=0.6, Declining <=0.4)
-    4. **Conservative bias:** When signals conflict or data is limited, choose more conservative assessment
-    5. **Specific evidence:** longevity_rationale must cite SPECIFIC numbers from data, not generic claims
-
-
-    Provide your comprehensive trend longevity analysis in the exact TrendLongevityResult format.
-
-
-    **CRITICAL RULES (REMINDER - PREVENT RECENCY BIAS):**
-    - trend_direction: "Growing"/"Stable"/"Declining" ONLY (2+ signals must align)
-    - momentum_score: 0.00-1.00 (2 decimals, matching trend direction: Growing >=0.6, Declining <=0.4)
-    - longevity_verdict: "Sustainable"/"Risky"/"Fad" ONLY (with specific trend data in rationale)
-    - timing_recommendation: "Enter Now"/"Monitor & Wait"/"Missed Window" ONLY (aligned with momentum)
-    - All enum fields use EXACT values specified (no custom values)
-    - RECENCY BIAS WARNING: Recent activity (<6 months) ≠ sustained trend. Use trend_duration to distinguish spikes from growth.
+    **ANTI-HALLUCINATION:**
+    - Every claim must reference specific data from the RAW DATA sections above
+    - Never fabricate data not in inputs
+    - Use "Insufficient data" when data missing
+    - Never reference Discord, Slack, subreddit creation dates, funding rounds
 
   expected_output: >
-    A complete TrendLongevityResult object with all required fields populated:
-    - Overall trend assessment (direction, confidence, momentum score)
-    - Keyword trend analysis (volume trend, growth rate, duration)
-    - Discussion momentum (frequency trend, recency, community indicators)
-    - Competitive momentum (new entrants, activity level)
-    - Seasonality assessment (pattern, peak periods if applicable)
-    - Longevity evaluation (maturity, verdict, rationale)
-    - Risk factors and timing recommendation
-    - Supporting data summary (sources, timeframe)
-    - All assessments backed by ACTUAL data from provided inputs
-    - Momentum score aligned with trend direction (consistency validation)
+    A TrendNarrativeOutput with all fields populated based on the raw data
+    and pre-computed signals provided. Every narrative claim must reference
+    specific data from the keyword, discussion, or competitive data sections.

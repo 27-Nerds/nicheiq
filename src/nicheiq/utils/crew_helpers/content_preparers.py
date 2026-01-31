@@ -4,11 +4,13 @@ Used by crews to prepare pain points and competitor intelligence for RAG.
 """
 
 import re
+from datetime import datetime, timezone
 
 from loguru import logger
 
 from ...models.pain_point import PainPointAnalysisResult
 from ...models.social_content import SocialContentCollection
+from ...utils.token_monitor import ContentTokenMonitor
 
 
 def prepare_pain_point_content(pain_point_analysis: PainPointAnalysisResult) -> str:
@@ -135,23 +137,49 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
         logger.info("No competitor mentions found in social content")
         return ""
 
+    # Sort filtered Reddit posts by discussion richness (highest quality first)
+    if filtered_reddit:
+        filtered_reddit = sorted(
+            filtered_reddit,
+            key=ContentTokenMonitor.pain_point_priority_score,
+            reverse=True,
+        )
+
     # Format filtered content
     formatted = []
+    now = datetime.now(timezone.utc)
 
     # Reddit competitor intelligence
     if filtered_reddit:
         formatted.append("[REDDIT COMPETITOR INTELLIGENCE]\n")
         for post in filtered_reddit:
+            n_comments = len(post.comments) if post.comments else 0
+
+            # Compute age label
+            age_label = "Unknown"
+            created = getattr(post, 'created_utc', None)
+            if created:
+                days_ago = (now - created).days
+                if days_ago < 30:
+                    age_label = f"Recent: {days_ago}d ago"
+                elif days_ago < 180:
+                    age_label = f"Moderate: {days_ago // 30}mo ago"
+                else:
+                    years_ago = days_ago // 365
+                    age_label = f"Dated: {years_ago}yr ago" if years_ago >= 2 else f"Dated: {days_ago}d ago"
+
             formatted.append(
                 f"""[SUBREDDIT: r/{post.subreddit}]
 [SCORE: {post.score}]
+[COMMENTS: {n_comments}]
+[AGE: {age_label}]
 
 ### {post.title}
 
 {post.selftext}
 
 ---
-## Discussion ({len(post.comments)} comments):
+## Discussion ({n_comments} comments):
 {chr(10).join(f'- "{c.body}"' for c in post.comments[:10])}
 """
             )

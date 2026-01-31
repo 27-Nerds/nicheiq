@@ -122,8 +122,19 @@ template: |
   - "hardest part [niche]"
   - "complaints about [niche topic]"
   - "wish i knew before [niche activity]"
+  - "too expensive [niche activity]"
+  - "not worth the money [niche]"
+  - "switching from [niche tool/approach]"
+  - "gave up on [niche activity]"
 
   Discovery queries do NOT assume a specific emotion or problem — they ask open-ended questions that surface whatever pain exists.
+
+  ### Financial Pain Emphasis
+  At least 3-4 queries should target financial/cost discussions:
+  - "[niche] too expensive"
+  - "[niche role] budget struggle"
+  - "paying too much [niche activity]"
+  These surface willingness-to-pay signals that are critical for market validation.
 
   ---
 

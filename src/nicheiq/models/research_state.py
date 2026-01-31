@@ -330,6 +330,7 @@ class TopRedditThread(BaseModel):
     score: int = Field(..., description="Post score (upvotes)")
     num_comments: int = Field(..., description="Number of comments")
     url: str = Field(..., description="Link to Reddit post")
+    created_utc: Optional[datetime] = Field(default=None, description="Post creation timestamp")
     key_insight: str = Field(..., description="1-sentence summary of why this thread is significant")
 
 class QuoteSource(BaseModel):
@@ -982,6 +983,46 @@ class MarketSizingResult(BaseModel):
     market_viability_verdict: str = Field(..., description="'Strong', 'Moderate', 'Weak' - overall market attractiveness")
     viability_rationale: str = Field(..., description="2-3 sentences justifying the viability verdict with specific metrics")
     recommended_entry_strategy: str = Field(..., description="Market entry recommendation: 'Aggressive Growth', 'Measured Expansion', 'Niche Focus', 'Reconsider'")
+
+
+class TrendNarrativeOutput(BaseModel):
+    """LLM-generated narrative/judgment fields for trend analysis (crew-internal)."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    market_maturity: Literal["Emerging", "Growth", "Mature"] = Field(
+        ..., description="Market maturity stage based on competitor age, tech adoption, discussion depth"
+    )
+    longevity_verdict: Literal["Sustainable", "Risky", "Fad"] = Field(
+        ..., description="Long-term viability assessment"
+    )
+    longevity_rationale: str = Field(
+        ..., description="2-3 sentences explaining longevity verdict with specific trend data"
+    )
+
+    new_entrants_trend: str = Field(
+        ..., description="'Increasing', 'Stable', or 'Consolidating'"
+    )
+    competitive_activity_level: str = Field(
+        ..., description="'High', 'Moderate', or 'Low'"
+    )
+
+    volume_growth_rate: Optional[str] = Field(
+        default=None, description="Estimated YoY growth rate (e.g., '+25% YoY', '-10% YoY', 'Stable', 'Unknown')"
+    )
+    trend_duration: Optional[str] = Field(
+        default=None, description="How long trend has been active (e.g., '2+ years growth', '6 months spike')"
+    )
+    peak_periods: Optional[list[str]] = Field(
+        default=None, description="Peak months/quarters if seasonal (e.g., ['Q4', 'November-December'])"
+    )
+
+    community_growth_indicators: list[str] = Field(
+        ..., description="3-5 signals of community growth or decline with stage citations"
+    )
+    trend_reversal_risks: list[str] = Field(
+        ..., description="3-5 factors that could reverse positive trends with severity and evidence"
+    )
 
 
 class TrendLongevityResult(BaseModel):

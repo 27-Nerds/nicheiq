@@ -314,3 +314,955 @@ class TestEdgeCases:
             [{"keyword": "shuffled", "search_volume": 200, "monthly_searches": shuffled}]
         )
         assert "Rising" in formatted
+
+
+# ===================================================================
+# F. Deterministic signal computation (_compute_deterministic_signals)
+# ===================================================================
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import MagicMock
+
+
+def _make_enriched(
+    rising=10, stable=5, declining=5, unknown=0,
+    rising_volume_pct=50, total_keywords_analyzed=20,
+    seasonal_count=2, evergreen_count=8,
+    market_momentum="Stable",
+):
+    """Build a minimal enriched_keywords_trends dict."""
+    return {
+        "trend_distribution": {
+            "rising": rising,
+            "stable": stable,
+            "declining": declining,
+            "unknown": unknown,
+        },
+        "rising_volume_pct": rising_volume_pct,
+        "total_keywords_analyzed": total_keywords_analyzed,
+        "seasonal_count": seasonal_count,
+        "evergreen_count": evergreen_count,
+        "market_momentum": market_momentum,
+    }
+
+
+def _make_social_content(reddit_days_ago=None, twitter_days_ago=None):
+    """Build a minimal SocialContentCollection with posts at given ages."""
+    from nicheiq.models.social_content import (
+        SocialContentCollection, RedditPost, TwitterThread, TwitterTweet,
+    )
+    now = datetime.now(timezone.utc)
+    reddit_posts = []
+    if reddit_days_ago:
+        for i, days in enumerate(reddit_days_ago):
+            reddit_posts.append(RedditPost(
+                post_id=f"r{i}",
+                title=f"Post {i}",
+                selftext="text",
+                author="user",
+                subreddit="test",
+                score=10,
+                num_comments=5,
+                created_utc=now - timedelta(days=days),
+                url=f"https://reddit.com/r/test/{i}",
+            ))
+
+    twitter_threads = []
+    if twitter_days_ago:
+        for i, days in enumerate(twitter_days_ago):
+            tweet = TwitterTweet(
+                tweet_id=f"t{i}",
+                author_username="tweeter",
+                text="tweet",
+                likes=10,
+                retweets=5,
+                replies_count=2,
+                created_at=now - timedelta(days=days),
+                url=f"https://twitter.com/{i}",
+            )
+            twitter_threads.append(TwitterThread(
+                thread_id=f"t{i}",
+                original_tweet=tweet,
+                replies=[],
+                total_engagement=15,
+            ))
+
+    return SocialContentCollection(
+        reddit_posts=reddit_posts,
+        twitter_threads=twitter_threads,
+    )
+
+
+def _make_competitive(intensities=None, competitor_counts=None, gap_counts=None):
+    """Build a minimal CompetitiveAnalysisResult."""
+    from nicheiq.models.competitor import (
+        CompetitiveAnalysisResult, CompetitiveLandscape, Competitor, CompetitorType,
+    )
+    landscapes = []
+    if intensities:
+        for i, intensity in enumerate(intensities):
+            comps = [
+                Competitor(
+                    name=f"Comp{j}",
+                    competitor_type=CompetitorType.DIRECT,
+                    description="desc",
+                    key_features=["f1"],
+                )
+                for j in range(competitor_counts[i] if competitor_counts else 3)
+            ]
+            landscapes.append(CompetitiveLandscape(
+                solution_name=f"Sol{i}",
+                competitors=comps,
+                market_gaps=[f"gap{j}" for j in range(max(2, gap_counts[i] if gap_counts else 3))],
+                differentiation_opportunities=["diff1"],
+                competitive_intensity=intensity,
+                recommended_positioning="pos",
+                pricing_insights="pricing",
+            ))
+    elif competitor_counts:
+        for i, count in enumerate(competitor_counts):
+            comps = [
+                Competitor(
+                    name=f"Comp{j}",
+                    competitor_type=CompetitorType.DIRECT,
+                    description="desc",
+                    key_features=["f1"],
+                )
+                for j in range(count)
+            ]
+            landscapes.append(CompetitiveLandscape(
+                solution_name=f"Sol{i}",
+                competitors=comps,
+                market_gaps=[f"gap{j}" for j in range(max(2, gap_counts[i] if gap_counts else 3))],
+                differentiation_opportunities=["diff1"],
+                competitive_intensity="Medium",
+                recommended_positioning="pos",
+                pricing_insights="pricing",
+            ))
+
+    return CompetitiveAnalysisResult(
+        solution_landscapes=landscapes,
+        top_opportunities=["opp1"],
+        strategic_recommendations="Strategic recommendations for market entry." * 3,
+    )
+
+
+from nicheiq.utils.trend_scoring import (
+    compute_deterministic_signals,
+    compute_momentum_score,
+    compute_trend_direction,
+    compute_keyword_volume_trend,
+    compute_discussion_signals,
+    compute_trend_confidence,
+    compute_seasonal_pattern,
+    compute_longevity_suggestion,
+    compute_timing,
+)
+
+
+class TestKeywordVolumeTrend:
+    """keyword_volume_trend uses rising_volume_pct (volume-weighted)."""
+
+    def test_kw_trend_increasing(self):
+        """rvp >= 55 -> Increasing."""
+        enriched = _make_enriched(rising_volume_pct=60)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Increasing"
+
+    def test_kw_trend_decreasing(self):
+        """rvp <= 30 -> Decreasing."""
+        enriched = _make_enriched(rising_volume_pct=25)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Decreasing"
+
+    def test_kw_trend_stable_mid(self):
+        """30 < rvp < 55 -> Stable."""
+        enriched = _make_enriched(rising_volume_pct=42)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Stable"
+
+    def test_kw_trend_no_enriched_data(self):
+        result = compute_deterministic_signals(None, None, None, None)
+        assert result["keyword_volume_trend"] == "Stable"
+
+
+class TestMomentumScore:
+    """momentum_score computed entirely from rising_volume_pct."""
+
+    def test_momentum_high_rvp(self):
+        """rvp=75 -> score in 0.80-0.90 range."""
+        enriched = _make_enriched(rising_volume_pct=75)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert 0.80 <= result["momentum_score"] <= 0.90
+
+    def test_momentum_moderate_rvp(self):
+        """rvp=60 -> score in 0.65-0.80 range."""
+        enriched = _make_enriched(rising_volume_pct=60)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert 0.65 <= result["momentum_score"] <= 0.80
+
+    def test_momentum_neutral_rvp(self):
+        """rvp=45 -> score in 0.50-0.65 range."""
+        enriched = _make_enriched(rising_volume_pct=45)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert 0.50 <= result["momentum_score"] <= 0.65
+
+    def test_momentum_low_rvp(self):
+        """rvp=30 -> score in 0.35-0.50 range."""
+        enriched = _make_enriched(rising_volume_pct=30)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert 0.35 <= result["momentum_score"] <= 0.50
+
+    def test_momentum_declining_rvp(self):
+        """rvp=10 -> score in 0.15-0.35 range."""
+        enriched = _make_enriched(rising_volume_pct=10)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert 0.15 <= result["momentum_score"] <= 0.35
+
+    def test_momentum_default_no_data(self):
+        """No enriched data -> 0.50."""
+        result = compute_deterministic_signals(None, None, None, None)
+        assert result["momentum_score"] == 0.50
+
+    def test_momentum_insufficient_keywords(self):
+        """<5 known keywords -> 0.50 default."""
+        enriched = _make_enriched(rising=1, stable=1, declining=1, unknown=17, rising_volume_pct=80)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["momentum_score"] == 0.50
+
+    def test_direction_derived_from_score(self):
+        """trend_direction is derived from momentum_score (no independent voting)."""
+        # High rvp -> high score -> Growing
+        enriched_high = _make_enriched(rising_volume_pct=75)
+        result_high = compute_deterministic_signals(None, None, None, enriched_high)
+        assert result_high["trend_direction"] == "Growing"
+        assert result_high["momentum_score"] >= 0.60
+
+        # Low rvp -> low score -> Declining
+        enriched_low = _make_enriched(rising_volume_pct=10)
+        result_low = compute_deterministic_signals(None, None, None, enriched_low)
+        assert result_low["trend_direction"] == "Declining"
+        assert result_low["momentum_score"] <= 0.40
+
+        # Mid rvp -> mid score -> Stable
+        enriched_mid = _make_enriched(rising_volume_pct=45)
+        result_mid = compute_deterministic_signals(None, None, None, enriched_mid)
+        assert result_mid["trend_direction"] == "Stable"
+        assert 0.40 < result_mid["momentum_score"] < 0.60
+
+    def test_no_reconciliation_clamping(self):
+        """Score is never clamped — it reflects actual rvp regardless of
+        secondary signal disagreement."""
+        # High rvp with conflicting discussion signal (dated posts)
+        social = _make_social_content(reddit_days_ago=[400, 500, 600])
+        enriched = _make_enriched(rising_volume_pct=75)
+        result = compute_deterministic_signals(None, social, None, enriched)
+        # Score should still be in the 0.80-0.90 range, not clamped
+        assert 0.80 <= result["momentum_score"] <= 0.90
+        assert result["trend_direction"] == "Growing"
+        # But confidence should be lower due to disagreement
+        assert result["trend_confidence"] in ("Low", "Medium")
+
+
+class TestDiscussionSignals:
+    """discussion_recency and discussion_frequency_trend."""
+
+    def test_discussion_recency_recent(self):
+        """Majority <180 days → Recent."""
+        social = _make_social_content(reddit_days_ago=[10, 30, 60, 90, 120])
+        result = compute_deterministic_signals(None, social, None, None)
+        assert result["discussion_recency"] == "Recent"
+        assert result["discussion_frequency_trend"] == "Increasing"
+
+    def test_discussion_recency_dated(self):
+        """Majority >365 days → Dated."""
+        social = _make_social_content(reddit_days_ago=[400, 500, 600, 700])
+        result = compute_deterministic_signals(None, social, None, None)
+        assert result["discussion_recency"] == "Dated"
+        assert result["discussion_frequency_trend"] == "Decreasing"
+
+    def test_discussion_empty_posts(self):
+        """No posts → Dated, Decreasing."""
+        from nicheiq.models.social_content import SocialContentCollection
+        empty = SocialContentCollection(reddit_posts=[], twitter_threads=[])
+        result = compute_deterministic_signals(None, empty, None, None)
+        assert result["discussion_recency"] == "Dated"
+        assert result["discussion_frequency_trend"] == "Decreasing"
+
+    def test_discussion_none_social(self):
+        """None social_content → Dated, Decreasing."""
+        result = compute_deterministic_signals(None, None, None, None)
+        assert result["discussion_recency"] == "Dated"
+        assert result["discussion_frequency_trend"] == "Decreasing"
+
+    def test_discussion_includes_twitter(self):
+        """Twitter threads should be counted too."""
+        social = _make_social_content(twitter_days_ago=[10, 20, 30, 40, 50])
+        result = compute_deterministic_signals(None, social, None, None)
+        assert result["discussion_recency"] == "Recent"
+
+
+class TestSeasonalPattern:
+    """seasonal_pattern computation with raised thresholds."""
+
+    def test_seasonal_strong(self):
+        """>50% seasonal -> Strong Seasonal."""
+        enriched = _make_enriched(seasonal_count=12, total_keywords_analyzed=20)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["seasonal_pattern"] == "Strong Seasonal"
+
+    def test_seasonal_year_round(self):
+        """<30% seasonal -> Year-Round."""
+        enriched = _make_enriched(seasonal_count=4, total_keywords_analyzed=20)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["seasonal_pattern"] == "Year-Round"
+
+    def test_seasonal_mild(self):
+        """30-50% seasonal -> Mild Seasonal."""
+        enriched = _make_enriched(seasonal_count=8, total_keywords_analyzed=20)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["seasonal_pattern"] == "Mild Seasonal"
+
+    def test_seasonal_no_data(self):
+        result = compute_deterministic_signals(None, None, None, None)
+        assert result["seasonal_pattern"] == "Unknown"
+
+
+class TestTrendConfidence:
+    """trend_confidence from secondary signal agreement."""
+
+    def test_confidence_high_all_agree(self):
+        """Both secondary signals agree with direction -> High."""
+        social = _make_social_content(reddit_days_ago=[10, 20, 30])  # Recent -> Growing
+        # rising > declining in counts -> kw_count_signal = Growing
+        # rvp=75 -> score ~0.82 -> direction = Growing
+        enriched = _make_enriched(rising=15, stable=3, declining=2, rising_volume_pct=75)
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Growing"
+        assert result["trend_confidence"] == "High"
+
+    def test_confidence_medium_one_agrees(self):
+        """One secondary signal agrees with direction -> Medium."""
+        social = _make_social_content(reddit_days_ago=[400, 500, 600])  # Dated -> Declining
+        # But keyword counts rising > declining -> Growing (disagrees with Declining disc)
+        # rvp=75 -> Growing direction
+        enriched = _make_enriched(rising=15, stable=3, declining=2, rising_volume_pct=75)
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Growing"
+        assert result["trend_confidence"] == "Medium"  # kw agrees, disc disagrees
+
+    def test_confidence_low_none_agree(self):
+        """Neither secondary signal agrees with direction -> Low."""
+        social = _make_social_content(reddit_days_ago=[400, 500, 600])  # Dated -> Declining
+        # keyword counts: declining > rising -> Declining
+        # But rvp=45 -> Stable direction (neither agrees with Stable)
+        enriched = _make_enriched(rising=2, stable=3, declining=15, rising_volume_pct=45)
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Stable"
+        assert result["trend_confidence"] == "Low"
+
+    def test_confidence_low_insufficient_data(self):
+        """<5 known keywords -> always Low."""
+        enriched = _make_enriched(rising=1, stable=1, declining=1, unknown=17)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_confidence"] == "Low"
+
+
+class TestLongevityVerdictSuggestion:
+    """suggested_longevity_verdict computation (no more Fad)."""
+
+    def test_verdict_sustainable(self):
+        """>50% evergreen + not declining -> Sustainable."""
+        enriched = _make_enriched(
+            rising=10, stable=5, declining=5,
+            evergreen_count=15, total_keywords_analyzed=20,
+            market_momentum="Growing",
+        )
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Sustainable"
+
+    def test_verdict_risky_high_decline(self):
+        """>60% declining -> Risky (never Fad)."""
+        enriched = _make_enriched(rising=2, stable=2, declining=80)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Risky"
+
+    def test_verdict_risky_moderate_decline(self):
+        """>60% declining + low rising -> Risky."""
+        enriched = _make_enriched(rising=10, stable=28, declining=62)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Risky"
+
+    def test_verdict_undetermined(self):
+        """Ambiguous data -> Undetermined."""
+        enriched = _make_enriched(rising=30, stable=30, declining=30, evergreen_count=5)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Undetermined"
+
+    def test_verdict_undetermined_no_data(self):
+        result = compute_deterministic_signals(None, None, None, None)
+        assert result["suggested_longevity_verdict"] == "Undetermined"
+
+    def test_never_suggests_fad(self):
+        """Python never suggests Fad — that requires temporal LLM judgment."""
+        # Even with extreme decline, should be Risky not Fad
+        enriched = _make_enriched(rising=0, stable=0, declining=100)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] != "Fad"
+
+
+class TestTiming:
+    """compute_timing standalone function."""
+
+    def test_timing_enter_now(self):
+        assert compute_timing("Growing", "Sustainable", 0.75) == "Enter Now"
+
+    def test_timing_risky_override(self):
+        """Risky verdict → always Monitor & Wait regardless of momentum."""
+        assert compute_timing("Growing", "Risky", 0.80) == "Monitor & Wait"
+
+    def test_timing_fad_override(self):
+        """Fad verdict → always Missed Window."""
+        assert compute_timing("Growing", "Fad", 0.80) == "Missed Window"
+
+    def test_timing_missed_window(self):
+        """Declining + low momentum → Missed Window."""
+        assert compute_timing("Declining", "Sustainable", 0.30) == "Missed Window"
+
+    def test_timing_monitor_moderate(self):
+        """Growing but momentum < 0.7 → Monitor & Wait."""
+        assert compute_timing("Growing", "Sustainable", 0.65) == "Monitor & Wait"
+
+
+# ===================================================================
+# G. Momentum score mathematical properties
+# ===================================================================
+
+class TestMomentumScoreMathProperties:
+    """Verify mathematical properties of the momentum scoring function.
+
+    Grounded in financial momentum scoring practice:
+    - Monotonicity: higher rvp must always produce higher score (like ROC)
+    - Continuity: no jumps at band boundaries (unlike discrete buckets)
+    - Winsorization: extreme values are capped (like MSCI ±3 z-score)
+    - Range: output is always in [0.10, 0.95] (bounded like normalized scores)
+    """
+
+    def test_monotonicity_across_full_range(self):
+        """Higher rvp must always produce higher or equal momentum_score.
+        This ensures the scoring function has no inversions."""
+        prev_score = 0.0
+        for rvp in range(0, 101, 5):
+            enriched = _make_enriched(rising_volume_pct=rvp)
+            result = compute_deterministic_signals(None, None, None, enriched)
+            assert result["momentum_score"] >= prev_score, (
+                f"Monotonicity violated: rvp={rvp} gave score={result['momentum_score']}, "
+                f"but rvp={rvp-5} gave score={prev_score}"
+            )
+            prev_score = result["momentum_score"]
+
+    def test_continuity_at_band_boundaries(self):
+        """Score should not jump more than 0.05 at band boundaries.
+        Boundary points: rvp=25, 40, 55, 70."""
+        boundaries = [25, 40, 55, 70]
+        for boundary in boundaries:
+            enriched_below = _make_enriched(rising_volume_pct=boundary - 1)
+            enriched_at = _make_enriched(rising_volume_pct=boundary)
+            result_below = compute_deterministic_signals(None, None, None, enriched_below)
+            result_at = compute_deterministic_signals(None, None, None, enriched_at)
+            gap = abs(result_at["momentum_score"] - result_below["momentum_score"])
+            assert gap <= 0.05, (
+                f"Discontinuity at rvp={boundary}: "
+                f"score({boundary-1})={result_below['momentum_score']}, "
+                f"score({boundary})={result_at['momentum_score']}, gap={gap}"
+            )
+
+    def test_winsorization_floor(self):
+        """Score never goes below 0.10 (analogous to MSCI z-score floor)."""
+        enriched = _make_enriched(rising_volume_pct=0)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["momentum_score"] >= 0.10
+
+    def test_winsorization_ceiling(self):
+        """Score never exceeds 0.95 (analogous to MSCI z-score cap)."""
+        enriched = _make_enriched(rising_volume_pct=100)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["momentum_score"] <= 0.95
+
+    def test_score_range_always_valid(self):
+        """Score is always in [0.10, 0.95] for any valid rvp input."""
+        for rvp in range(0, 101):
+            enriched = _make_enriched(rising_volume_pct=rvp)
+            result = compute_deterministic_signals(None, None, None, enriched)
+            assert 0.10 <= result["momentum_score"] <= 0.95, (
+                f"Score out of range for rvp={rvp}: {result['momentum_score']}"
+            )
+
+    def test_neutral_point(self):
+        """rvp=50 (equal volume in rising vs other) should produce ~0.55-0.65.
+        This is the 'fair value' — neither bullish nor bearish signal."""
+        enriched = _make_enriched(rising_volume_pct=50)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert 0.55 <= result["momentum_score"] <= 0.65, (
+            f"Neutral point (rvp=50) should be ~0.60, got {result['momentum_score']}"
+        )
+
+
+# ===================================================================
+# H. Boundary conditions
+# ===================================================================
+
+class TestBoundaryConditions:
+    """Test exact boundary values for all threshold-based classifications."""
+
+    # ── keyword_volume_trend boundaries ──
+    def test_kw_trend_boundary_at_55(self):
+        """rvp=55 is the boundary for Increasing."""
+        enriched = _make_enriched(rising_volume_pct=55)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Increasing"
+
+    def test_kw_trend_boundary_at_54(self):
+        """rvp=54 should be Stable (just below Increasing threshold)."""
+        enriched = _make_enriched(rising_volume_pct=54)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Stable"
+
+    def test_kw_trend_boundary_at_30(self):
+        """rvp=30 is the boundary for Decreasing."""
+        enriched = _make_enriched(rising_volume_pct=30)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Decreasing"
+
+    def test_kw_trend_boundary_at_31(self):
+        """rvp=31 should be Stable (just above Decreasing threshold)."""
+        enriched = _make_enriched(rising_volume_pct=31)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["keyword_volume_trend"] == "Stable"
+
+    # ── trend_direction boundaries (derived from score) ──
+    def test_direction_growing_boundary(self):
+        """rvp=55 maps to score ~0.65 -> Growing."""
+        enriched = _make_enriched(rising_volume_pct=55)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_direction"] == "Growing"
+        assert result["momentum_score"] >= 0.60
+
+    def test_direction_stable_upper(self):
+        """rvp=49 maps to score=0.59 -> Stable (just below Growing threshold of 0.60)."""
+        enriched = _make_enriched(rising_volume_pct=49)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_direction"] == "Stable"  # score=0.59, just below 0.60
+
+    def test_direction_declining_boundary(self):
+        """rvp=25 maps to score ~0.35 -> Declining."""
+        enriched = _make_enriched(rising_volume_pct=25)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_direction"] == "Declining"
+        assert result["momentum_score"] <= 0.40
+
+    def test_direction_stable_lower(self):
+        """rvp=26 maps to score ~0.36 -> should still be Declining or Stable."""
+        enriched = _make_enriched(rising_volume_pct=26)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        # At rvp=26, score = 0.35 + (26-25)/15 * 0.15 = 0.36 -> Declining
+        assert result["momentum_score"] <= 0.40
+
+    # ── seasonal boundaries ──
+    def test_seasonal_boundary_at_50(self):
+        """Exactly 50% seasonal -> Mild Seasonal (>50% needed for Strong)."""
+        enriched = _make_enriched(seasonal_count=10, total_keywords_analyzed=20)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["seasonal_pattern"] == "Mild Seasonal"  # >50% needed, 50% is not >50%
+
+    def test_seasonal_boundary_at_51(self):
+        """51% seasonal -> Strong Seasonal."""
+        enriched = _make_enriched(seasonal_count=51, total_keywords_analyzed=100)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["seasonal_pattern"] == "Strong Seasonal"
+
+    # ── longevity verdict boundary ──
+    def test_verdict_boundary_at_60(self):
+        """Exactly 60% declining is not >60%, should be Undetermined."""
+        enriched = _make_enriched(rising=20, stable=20, declining=60, evergreen_count=5)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Undetermined"
+
+    def test_verdict_boundary_at_61(self):
+        """61% declining -> Risky."""
+        enriched = _make_enriched(rising=19, stable=20, declining=61, evergreen_count=5)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Risky"
+
+    # ── known keywords threshold ──
+    def test_known_exactly_5(self):
+        """Exactly 5 known keywords should use real computation, not default."""
+        enriched = _make_enriched(rising=3, stable=1, declining=1, unknown=15, rising_volume_pct=75)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["momentum_score"] != 0.50  # Should use real computation
+
+    def test_known_exactly_4(self):
+        """Exactly 4 known keywords should fall back to default 0.50."""
+        enriched = _make_enriched(rising=2, stable=1, declining=1, unknown=16, rising_volume_pct=75)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["momentum_score"] == 0.50  # Insufficient data
+
+
+# ===================================================================
+# I. Score-direction consistency (Pydantic validator guarantee)
+# ===================================================================
+
+class TestScoreDirectionConsistency:
+    """Verify that momentum_score and trend_direction are ALWAYS consistent.
+
+    The Pydantic validator requires:
+    - Growing -> score >= 0.6
+    - Declining -> score <= 0.4
+
+    Our score-first architecture guarantees this by construction.
+    These tests verify the guarantee across many rvp values.
+    """
+
+    @pytest.mark.parametrize("rvp", list(range(0, 101, 3)))
+    def test_score_direction_always_consistent(self, rvp):
+        """For any rvp value, score and direction must satisfy Pydantic constraints."""
+        enriched = _make_enriched(rising_volume_pct=rvp)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        score = result["momentum_score"]
+        direction = result["trend_direction"]
+
+        if direction == "Growing":
+            assert score >= 0.60, f"Growing but score={score} < 0.6 (rvp={rvp})"
+        elif direction == "Declining":
+            assert score <= 0.40, f"Declining but score={score} > 0.4 (rvp={rvp})"
+        else:
+            assert 0.40 < score < 0.60, f"Stable but score={score} outside (0.4, 0.6) (rvp={rvp})"
+
+
+# ===================================================================
+# J. Real-world scenarios
+# ===================================================================
+
+class TestRealWorldScenarios:
+    """Test with realistic niche profiles to verify outputs make real-world sense.
+
+    Each scenario is a plausible niche configuration. We verify that
+    the computed signals match what a human analyst would expect.
+    """
+
+    def test_booming_saas_niche(self):
+        """Growing SaaS niche: high rvp, recent discussions, many competitors.
+        Example: 'AI writing tools' in early 2024."""
+        social = _make_social_content(
+            reddit_days_ago=[5, 15, 30, 45, 60, 90, 120],
+            twitter_days_ago=[10, 20, 40],
+        )
+        enriched = _make_enriched(
+            rising=45, stable=30, declining=10, unknown=15,
+            rising_volume_pct=72,
+            total_keywords_analyzed=100,
+            seasonal_count=10,
+            evergreen_count=55,
+            market_momentum="Growing",
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+
+        assert result["trend_direction"] == "Growing"
+        assert result["momentum_score"] >= 0.75
+        assert result["keyword_volume_trend"] == "Increasing"
+        assert result["discussion_recency"] == "Recent"
+        assert result["trend_confidence"] == "High"  # Both secondaries agree
+        assert result["seasonal_pattern"] == "Year-Round"
+        assert result["suggested_longevity_verdict"] == "Sustainable"
+
+    def test_dying_niche(self):
+        """Declining niche: low rvp, old discussions, few competitors.
+        Example: 'RSS reader software' in 2023."""
+        social = _make_social_content(
+            reddit_days_ago=[400, 500, 600, 700, 800],
+        )
+        enriched = _make_enriched(
+            rising=3, stable=12, declining=70, unknown=15,
+            rising_volume_pct=8,
+            total_keywords_analyzed=100,
+            seasonal_count=5,
+            evergreen_count=10,
+            market_momentum="Declining",
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+
+        assert result["trend_direction"] == "Declining"
+        assert result["momentum_score"] <= 0.30
+        assert result["keyword_volume_trend"] == "Decreasing"
+        assert result["discussion_recency"] == "Dated"
+        assert result["trend_confidence"] == "High"  # Both secondaries agree (Declining)
+        assert result["suggested_longevity_verdict"] == "Risky"
+
+    def test_stable_evergreen_niche(self):
+        """Stable evergreen niche: balanced rvp, moderate discussions.
+        Example: 'project management software' — always in demand."""
+        social = _make_social_content(
+            reddit_days_ago=[30, 90, 200, 300, 400],
+        )
+        enriched = _make_enriched(
+            rising=20, stable=55, declining=15, unknown=10,
+            rising_volume_pct=42,
+            total_keywords_analyzed=100,
+            seasonal_count=8,
+            evergreen_count=65,
+            market_momentum="Stable",
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+
+        assert result["trend_direction"] == "Stable"
+        assert 0.45 <= result["momentum_score"] <= 0.55
+        assert result["keyword_volume_trend"] == "Stable"
+        assert result["seasonal_pattern"] == "Year-Round"
+        assert result["suggested_longevity_verdict"] == "Sustainable"  # High evergreen
+
+    def test_seasonal_niche(self):
+        """Seasonal niche: moderate rvp, strong seasonality.
+        Example: 'tax preparation software' — Q1 spike."""
+        social = _make_social_content(
+            reddit_days_ago=[60, 120, 250, 350],
+        )
+        enriched = _make_enriched(
+            rising=15, stable=30, declining=10, unknown=5,
+            rising_volume_pct=48,
+            total_keywords_analyzed=60,
+            seasonal_count=35,  # 58% seasonal
+            evergreen_count=20,
+            market_momentum="Stable",
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+
+        assert result["seasonal_pattern"] == "Strong Seasonal"
+        assert result["trend_direction"] == "Stable"
+
+    def test_emerging_niche_few_keywords(self):
+        """Emerging niche with insufficient keyword data.
+        Example: very new market with only 3 analyzed keywords."""
+        enriched = _make_enriched(
+            rising=2, stable=1, declining=0, unknown=7,
+            rising_volume_pct=85,
+            total_keywords_analyzed=10,
+            seasonal_count=0,
+            evergreen_count=3,
+            market_momentum="Growing",
+        )
+        result = compute_deterministic_signals(None, None, None, enriched)
+
+        # Only 3 known keywords — should use conservative defaults
+        assert result["momentum_score"] == 0.50
+        assert result["trend_direction"] == "Stable"
+        assert result["trend_confidence"] == "Low"
+
+    def test_conflicting_signals_niche(self):
+        """Niche with conflicting signals: high volume momentum but old discussions.
+        Example: niche growing in search but community has moved to newer alternatives."""
+        social = _make_social_content(
+            reddit_days_ago=[500, 600, 700],  # Very old discussions
+        )
+        enriched = _make_enriched(
+            rising=35, stable=30, declining=20, unknown=15,
+            rising_volume_pct=65,  # Strong volume momentum
+            total_keywords_analyzed=100,
+            seasonal_count=5,
+            evergreen_count=50,
+            market_momentum="Growing",
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+
+        # Volume says Growing, but discussions are dated
+        assert result["trend_direction"] == "Growing"
+        assert result["momentum_score"] >= 0.65
+        # Confidence should reflect the disagreement
+        assert result["trend_confidence"] in ("Low", "Medium")
+        assert result["discussion_recency"] == "Dated"
+
+    def test_no_data_at_all(self):
+        """No input data at all — maximum conservatism."""
+        result = compute_deterministic_signals(None, None, None, None)
+
+        assert result["trend_direction"] == "Stable"
+        assert result["momentum_score"] == 0.50
+        assert result["trend_confidence"] == "Low"
+        assert result["keyword_volume_trend"] == "Stable"
+        assert result["discussion_recency"] == "Dated"
+        assert result["discussion_frequency_trend"] == "Decreasing"
+        assert result["seasonal_pattern"] == "Unknown"
+        assert result["suggested_longevity_verdict"] == "Undetermined"
+
+
+# ===================================================================
+# K. Breadth vs volume divergence
+# ===================================================================
+
+class TestBreadthVsVolumeDivergence:
+    """Verify that breadth (keyword count) and volume (rvp) divergence
+    correctly affects confidence without distorting the score.
+
+    Grounded in financial market breadth analysis: a rally driven by
+    a few large-caps (narrow breadth) is less reliable than one where
+    many stocks participate (broad breadth).
+    """
+
+    def test_broad_rally_high_confidence(self):
+        """Many keywords rising + high rvp = broad rally, High confidence."""
+        social = _make_social_content(reddit_days_ago=[10, 30, 60])
+        enriched = _make_enriched(
+            rising=50, stable=30, declining=20,  # Breadth: rising > declining
+            rising_volume_pct=70,  # Volume confirms
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Growing"
+        assert result["trend_confidence"] == "High"
+
+    def test_narrow_rally_lower_confidence(self):
+        """Few keywords rising but high rvp = narrow rally, lower confidence.
+        A few high-volume keywords drive the growth — fragile."""
+        social = _make_social_content(reddit_days_ago=[10, 30, 60])
+        enriched = _make_enriched(
+            rising=5, stable=30, declining=65,  # Breadth: declining > rising
+            rising_volume_pct=70,  # Volume still strong (few big keywords)
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Growing"  # Volume drives direction
+        # But breadth says Declining, so confidence drops
+        assert result["trend_confidence"] in ("Low", "Medium")
+
+    def test_broad_decline_high_confidence(self):
+        """Many keywords declining + low rvp = broad decline, High confidence."""
+        social = _make_social_content(reddit_days_ago=[400, 500, 600])
+        enriched = _make_enriched(
+            rising=5, stable=10, declining=85,  # Breadth: declining >> rising
+            rising_volume_pct=8,  # Volume confirms decline
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Declining"
+        assert result["trend_confidence"] == "High"
+
+    def test_volume_stable_but_breadth_declining(self):
+        """rvp in stable range but many keywords declining.
+        This could mean: a few large keywords carry the market while
+        smaller keywords are dying off. Direction stays Stable (from volume)
+        but confidence reflects the breadth disagreement."""
+        social = _make_social_content(reddit_days_ago=[400, 500, 600])  # Dated -> Declining
+        enriched = _make_enriched(
+            rising=5, stable=15, declining=80,  # Breadth: strongly declining
+            rising_volume_pct=45,  # Volume: stable range
+        )
+        result = compute_deterministic_signals(None, social, None, enriched)
+        assert result["trend_direction"] == "Stable"
+        # Breadth says Declining, disc says Declining -> neither agrees with Stable
+        assert result["trend_confidence"] == "Low"
+
+
+# ===================================================================
+# L. Merge integration
+# ===================================================================
+
+class TestMergeIntegration:
+    """Verify that deterministic + narrative merge into valid TrendLongevityResult."""
+
+    def test_merge_produces_valid_result(self):
+        from nicheiq.models.research_state import TrendLongevityResult, TrendNarrativeOutput
+
+        enriched = _make_enriched(rising_volume_pct=60)
+        deterministic = compute_deterministic_signals(None, None, None, enriched)
+
+        narrative = TrendNarrativeOutput(
+            market_maturity="Growth",
+            longevity_verdict="Sustainable",
+            longevity_rationale="Sustainable because strong keyword growth.",
+            new_entrants_trend="Increasing",
+            competitive_activity_level="Moderate",
+            volume_growth_rate="+15% YoY",
+            trend_duration="2+ years growth",
+            peak_periods=None,
+            community_growth_indicators=["Signal 1 - Stage 5", "Signal 2 - Stage 6", "Signal 3 - Stage 7"],
+            trend_reversal_risks=["MEDIUM - Risk 1 - Stage 5", "LOW - Risk 2 - Stage 7", "LOW - Risk 3 - Stage 8.5"],
+        )
+
+        timing = compute_timing(
+            deterministic["trend_direction"],
+            narrative.longevity_verdict,
+            deterministic["momentum_score"],
+        )
+
+        result = TrendLongevityResult(
+            keyword_volume_trend=deterministic["keyword_volume_trend"],
+            momentum_score=deterministic["momentum_score"],
+            trend_direction=deterministic["trend_direction"],
+            trend_confidence=deterministic["trend_confidence"],
+            seasonal_pattern=deterministic["seasonal_pattern"],
+            discussion_recency=deterministic["discussion_recency"],
+            discussion_frequency_trend=deterministic["discussion_frequency_trend"],
+            timing_recommendation=timing,
+            analysis_timeframe=deterministic["analysis_timeframe"],
+            data_sources_analyzed=deterministic["data_sources_analyzed"],
+            market_maturity=narrative.market_maturity,
+            longevity_verdict=narrative.longevity_verdict,
+            longevity_rationale=narrative.longevity_rationale,
+            new_entrants_trend=narrative.new_entrants_trend,
+            competitive_activity_level=narrative.competitive_activity_level,
+            volume_growth_rate=narrative.volume_growth_rate,
+            trend_duration=narrative.trend_duration,
+            peak_periods=narrative.peak_periods,
+            community_growth_indicators=narrative.community_growth_indicators,
+            trend_reversal_risks=narrative.trend_reversal_risks,
+        )
+
+        assert result.trend_direction in ("Growing", "Stable", "Declining")
+        assert result.longevity_verdict == "Sustainable"
+
+    def test_merge_passes_pydantic_validator(self):
+        from nicheiq.models.research_state import TrendLongevityResult, TrendNarrativeOutput
+
+        # Test all three directions via rvp
+        for rvp, expected_dir in [(75, "Growing"), (45, "Stable"), (10, "Declining")]:
+            enriched = _make_enriched(rising_volume_pct=rvp)
+            deterministic = compute_deterministic_signals(None, None, None, enriched)
+            assert deterministic["trend_direction"] == expected_dir
+
+            narrative = TrendNarrativeOutput(
+                market_maturity="Growth",
+                longevity_verdict="Sustainable",
+                longevity_rationale="Test rationale.",
+                new_entrants_trend="Stable",
+                competitive_activity_level="Moderate",
+                community_growth_indicators=["s1", "s2", "s3"],
+                trend_reversal_risks=["r1", "r2", "r3"],
+            )
+
+            timing = compute_timing(
+                deterministic["trend_direction"],
+                narrative.longevity_verdict,
+                deterministic["momentum_score"],
+            )
+
+            # This will raise ValueError if validate_consistency fails
+            result = TrendLongevityResult(
+                keyword_volume_trend=deterministic["keyword_volume_trend"],
+                momentum_score=deterministic["momentum_score"],
+                trend_direction=deterministic["trend_direction"],
+                trend_confidence=deterministic["trend_confidence"],
+                seasonal_pattern=deterministic["seasonal_pattern"],
+                discussion_recency=deterministic["discussion_recency"],
+                discussion_frequency_trend=deterministic["discussion_frequency_trend"],
+                timing_recommendation=timing,
+                analysis_timeframe=deterministic["analysis_timeframe"],
+                data_sources_analyzed=deterministic["data_sources_analyzed"],
+                market_maturity=narrative.market_maturity,
+                longevity_verdict=narrative.longevity_verdict,
+                longevity_rationale=narrative.longevity_rationale,
+                new_entrants_trend=narrative.new_entrants_trend,
+                competitive_activity_level=narrative.competitive_activity_level,
+                community_growth_indicators=narrative.community_growth_indicators,
+                trend_reversal_risks=narrative.trend_reversal_risks,
+            )
+
+            if result.trend_direction == "Growing":
+                assert result.momentum_score >= 0.6
+            elif result.trend_direction == "Declining":
+                assert result.momentum_score <= 0.4

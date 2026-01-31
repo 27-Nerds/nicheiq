@@ -103,21 +103,40 @@ class AudienceMappingCrew:
     def _prepare_reddit_content(self) -> str:
         """
         Format Reddit posts with discussions for knowledge source with metadata headers.
-        Includes usernames and post IDs for traceability.
+        Includes usernames, post IDs, comment counts, and timestamps for traceability.
 
         Returns:
             Formatted string with embedded metadata for semantic search
         """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
         formatted = []
         for post in self.reddit_posts:
             # Format comments with usernames
             comments_formatted = self._format_comments(post.comments, post.post_id)
+
+            # Compute age label from created_utc
+            n_comments = len(post.comments) if post.comments else 0
+            age_label = "Unknown"
+            created = getattr(post, 'created_utc', None)
+            if created:
+                days_ago = (now - created).days
+                if days_ago < 30:
+                    age_label = f"Recent: {days_ago}d ago"
+                elif days_ago < 180:
+                    age_label = f"Moderate: {days_ago // 30}mo ago"
+                else:
+                    years_ago = days_ago // 365
+                    age_label = f"Dated: {years_ago}yr ago" if years_ago >= 2 else f"Dated: {days_ago}d ago"
 
             formatted.append(f"""[PLATFORM: REDDIT]
 [POST_ID: {post.post_id}]
 [SUBREDDIT: r/{post.subreddit}]
 [AUTHOR: u/{getattr(post, 'author', 'unknown')}]
 [SCORE: {post.score}]
+[COMMENTS: {n_comments}]
+[AGE: {age_label}]
 [URL: {post.url}]
 
 ### {post.title}
@@ -125,7 +144,7 @@ class AudienceMappingCrew:
 {post.selftext} [source: {post.post_id}]
 
 ---
-## Discussion ({len(post.comments)} comments):
+## Discussion ({n_comments} comments):
 
 {comments_formatted}
 """)
@@ -339,6 +358,16 @@ class AudienceMappingCrew:
             for sub, count in sorted(subreddits.items(), key=lambda x: x[1], reverse=True)[:10]
         ])
 
+        # Compute discussion quality summary
+        comment_counts = [len(p.comments) for p in self.reddit_posts if p.comments]
+        avg_comments = sum(comment_counts) / max(len(comment_counts), 1) if comment_counts else 0
+        rich_count = sum(1 for c in comment_counts if c >= 20)
+        discussion_quality_summary = (
+            f"- Average comments per post: {avg_comments:.1f}\n"
+            f"- Posts with 20+ comments (rich discussions): {rich_count}/{len(self.reddit_posts)}\n"
+            f"- Total comments: {total_reddit_comments}, Total replies: {total_twitter_replies}"
+        )
+
         # Prepare inputs - knowledge sources handle full content
         inputs = {
             "niche_description": niche_description,
@@ -349,6 +378,7 @@ class AudienceMappingCrew:
             "total_twitter_replies": total_twitter_replies,
             "subreddit_distribution": subreddit_summary if subreddits else "No Reddit data",
             "pain_points_summary": pain_points_summary,
+            "discussion_quality_summary": discussion_quality_summary,
         }
 
         try:

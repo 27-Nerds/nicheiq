@@ -48,6 +48,15 @@ market_sizing_analysis:
     **Total Competitors Identified:** {competitor_count}
 
 
+    **PRE-COMPUTED MARKET SIGNALS (from Python -- treat as facts):**
+    - Suggested Saturation Level: {suggested_saturation_level}
+    - {strive_pre_check}
+    - {tam_seed}
+    - High-Severity Pain Points (>=0.7): {high_severity_count}
+    - High-WTP Pain Points (>=0.5): {high_wtp_count}
+    - Average WTP Score: {avg_wtp}
+
+
     **YOUR TASK:**
 
     Conduct comprehensive market sizing and validation analysis following these steps:
@@ -131,10 +140,8 @@ market_sizing_analysis:
 
     ### 5. Market Risk Assessment
 
-    - **market_saturation_level:** Classify based on competitor count:
-      - "Low" (<5 competitors): Blue ocean opportunity
-      - "Medium" (5-15 competitors): Validated but competitive
-      - "High" (15+ competitors): Saturated, differentiation critical
+    - **market_saturation_level:** Use the pre-computed Suggested Saturation Level ({suggested_saturation_level}) from PRE-COMPUTED MARKET SIGNALS above.
+      Reference: "Low" (<5 competitors), "Medium" (5-15), "High" (15+)
 
     - **market_timing_assessment:** Assess market maturity:
       - "Early" (emerging): <3 years old, high risk/reward
@@ -147,11 +154,15 @@ market_sizing_analysis:
 
     ### 6. Viability Conclusion & Entry Strategy
 
-    Apply the "STRIVE Viability Rule" - count how many criteria are met (4+ = Strong, 2-3 = Moderate, 0-1 = Weak):
+    Apply the "STRIVE Viability Rule" - 3 of 6 criteria are pre-computed above in STRIVE Pre-Check.
+    Evaluate the remaining 3 criteria below, then count total met (4+ = Strong, 2-3 = Moderate, 0-1 = Weak):
 
-    ✅ **Searchable** (100K+ monthly keyword volume)
-    ✅ **Talked About** (50+ pain point mentions)
-    ✅ **Rivalry** (5-15 competitors, not 0 or 20+)
+    Pre-computed (see PRE-COMPUTED MARKET SIGNALS above):
+    ✅ **Searchable** (100K+ monthly keyword volume) -- see STRIVE Pre-Check
+    ✅ **Talked About** (50+ pain point mentions) -- see STRIVE Pre-Check
+    ✅ **Rivalry** (5-15 competitors, not 0 or 20+) -- see STRIVE Pre-Check
+
+    LLM to evaluate:
     ✅ **Income Potential** (SAM >$50M)
     ✅ **Velocity** (10%+ annual growth rate)
     ✅ **Enterable** (Clear acquisition channels)

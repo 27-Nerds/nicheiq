@@ -15,6 +15,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import PricingStrategyResult
+from ..utils.crew_helpers import compute_wtp_summary, compute_cac_range
 
 
 @CrewBase
@@ -225,6 +226,11 @@ class PricingStrategyCrew:
         wtp_scores = self._extract_wtp_scores(pain_point_analysis)
         solution_features = self._format_solution_features(selected_solution)
 
+        # Pre-compute deterministic values
+        wtp_summary, avg_wtp = compute_wtp_summary(pain_point_analysis)
+        mfs = selected_solution.market_fit_score if hasattr(selected_solution, 'market_fit_score') else None
+        suggested_cac_range = compute_cac_range(mfs)
+
         # Prepare inputs for the pricing analysis task
         inputs = {
             "solution_name": selected_solution.solution_name,
@@ -234,7 +240,10 @@ class PricingStrategyCrew:
             "wtp_scores": wtp_scores,
             "niche_description": niche_description,
             "market_fit_score": f"{selected_solution.market_fit_score:.2f}",
-            "allowed_project_types": ', '.join(allowed_project_types) if allowed_project_types else "All types allowed"
+            "allowed_project_types": ', '.join(allowed_project_types) if allowed_project_types else "All types allowed",
+            "wtp_summary": wtp_summary,
+            "avg_wtp": avg_wtp,
+            "suggested_cac_range": suggested_cac_range,
         }
 
         try:

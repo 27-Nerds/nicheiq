@@ -20,6 +20,11 @@ template: |
   - Discusses unrelated topics that happened to use similar words
   - Is spam, promotional content, or off-topic
 
+  Additionally, note the ENGAGEMENT QUALITY of each thread:
+  - Threads with many comments and high scores contain richer pain point signals
+  - Factor engagement into confidence: high-engagement relevant threads → confidence 0.8-1.0,
+    low-engagement relevant threads → confidence 0.5-0.7
+
   Evaluate ALL {batch_size} threads and return a JSON object with a 'results' array containing {batch_size} validation objects.
 
   **CRITICAL: Include Thread Index**

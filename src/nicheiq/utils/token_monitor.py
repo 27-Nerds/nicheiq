@@ -276,28 +276,87 @@ class ContentTokenMonitor:
         days_old = max((datetime.now(timezone.utc) - post.created_utc).days, 1)
         return post.score / days_old
 
+    @staticmethod
+    def pain_point_priority_score(post: "RedditPost") -> float:
+        """
+        Calculate priority score optimized for pain point extraction.
+
+        Weights discussion richness and content depth over raw engagement,
+        with gentle recency decay so old-but-rich discussions aren't buried.
+
+        Formula:
+            0.40 * discussion_richness + 0.25 * engagement +
+            0.20 * content_depth + 0.15 * recency
+
+        - discussion_richness: log2(1 + comments) * min(avg_comment_len / 200, 1.5)
+        - engagement: log2(1 + upvotes)
+        - content_depth: log2(1 + selftext_len) / log2(1 + 2000)
+        - recency: 1 / log2(1 + days_old)  (365-day post retains ~49%)
+
+        Args:
+            post: RedditPost object with score, comments, selftext, created_utc
+
+        Returns:
+            Pain point priority score (higher is better)
+        """
+        from datetime import datetime, timezone
+        from math import log2
+
+        # Discussion richness (40%): comment count weighted by avg comment quality
+        comment_count = len(post.comments)
+        if comment_count > 0:
+            total_comment_len = sum(len(c.body) for c in post.comments)
+            avg_comment_len = total_comment_len / comment_count
+        else:
+            avg_comment_len = 0.0
+        discussion_richness = log2(1 + comment_count) * min(avg_comment_len / 200, 1.5)
+
+        # Engagement (25%): log-scaled upvotes
+        engagement = log2(1 + max(post.score, 0))
+
+        # Content depth (20%): selftext length relative to a "good" post (~2000 chars)
+        selftext_len = len(post.selftext) if post.selftext else 0
+        content_depth = log2(1 + selftext_len) / log2(1 + 2000)
+
+        # Recency (15%): gentle decay using log
+        days_old = max((datetime.now(timezone.utc) - post.created_utc).days, 1)
+        recency = 1.0 / log2(1 + days_old)
+
+        return (
+            0.40 * discussion_richness
+            + 0.25 * engagement
+            + 0.20 * content_depth
+            + 0.15 * recency
+        )
+
     def filter_posts_to_token_budget(
         self,
         posts: list["RedditPost"],
-        max_tokens: int
+        max_tokens: int,
+        score_fn=None,
     ) -> list["RedditPost"]:
         """
-        Sort posts by engagement/recency and keep what fits in token budget.
+        Sort posts by scoring function and keep what fits in token budget.
 
         Args:
             posts: List of RedditPost objects to filter
             max_tokens: Maximum total tokens to include
+            score_fn: Callable that takes a RedditPost and returns a float score.
+                       Defaults to engagement_recency_score.
 
         Returns:
-            Filtered list of posts sorted by engagement/recency
+            Filtered list of posts sorted by score
         """
         if not posts:
             return posts
 
-        # Sort by hybrid score (highest engagement relative to age first)
+        if score_fn is None:
+            score_fn = self.engagement_recency_score
+
+        # Sort by score (highest first)
         sorted_posts = sorted(
             posts,
-            key=self.engagement_recency_score,
+            key=score_fn,
             reverse=True
         )
 

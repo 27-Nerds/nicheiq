@@ -399,6 +399,52 @@ CHROMA_OPENAI_API_KEY=
 # Default: Uses OPENAI_API_KEY if not set
 ```
 
+### Alternative LLM Providers (Experimental)
+
+NicheIQ supports using non-OpenAI models for specific agents. The provider is
+auto-detected from the model name — just change the model and set the API key.
+
+#### Moonshot AI (Kimi K2.5)
+
+Kimi K2.5 is Moonshot AI's multimodal MoE model (1T total / 32B active params)
+with a 256K context window. It's OpenAI-compatible and can be used as a drop-in
+replacement for the landing page HTML execution agents.
+
+```bash
+# Step 1: Get an API key at https://platform.moonshot.ai
+MOONSHOT_API_KEY=your_moonshot_api_key_here
+
+# Step 2: Set the execution LLM to a Kimi model
+LANDING_PAGE_EXECUTION_LLM=kimi-k2.5
+
+# Step 3 (optional): Enable thinking mode for deeper reasoning
+KIMI_THINKING=false  # default: false (instant mode)
+```
+
+**Modes:**
+
+| Setting | Temperature | Behavior |
+|---------|-------------|----------|
+| `KIMI_THINKING=false` (default) | 0.6 | Instant mode — direct output, faster, cheaper |
+| `KIMI_THINKING=true` | 1.0 | Thinking mode — internal reasoning before output, deeper analysis |
+
+**Available Kimi models:**
+
+| Model | Description |
+|-------|-------------|
+| `kimi-k2.5` | Multimodal MoE model, 256K context (instant mode) |
+
+**Pricing:** $0.60/M input tokens. Free tier: 1.5M tokens/day.
+
+**How it works:** When a model name starts with `kimi`, NicheIQ automatically
+routes API calls to `https://api.moonshot.ai/v1` using your `MOONSHOT_API_KEY`.
+The `reasoning_effort` parameter is ignored (only applies to GPT-5 series).
+
+**To switch back:** Just change the model name back to an OpenAI model:
+```bash
+LANDING_PAGE_EXECUTION_LLM=gpt-5.1-codex-max
+```
+
 **Cost Impact Example** (expat relocation niche):
 - All gpt-4o: ~$2.20 per run
 - Multi-model (default): ~$0.85 per run (60% savings)

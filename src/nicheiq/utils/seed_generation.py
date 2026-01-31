@@ -13,7 +13,7 @@ from ..config.settings import settings
 from .llm_service import build_llm_kwargs
 from ..tools.dataforseo_tool import DataForSEOBaseClient
 from .keyword_filtering import filter_single_word_keywords
-from .prompts import load_prompt
+from .prompts import load_prompt, safe_format
 
 if TYPE_CHECKING:
     from ..models.pain_point import PainPointAnalysisResult
@@ -466,7 +466,7 @@ class SeedGenerator:
                 "core_features": ", ".join(solution.core_features[:5]) if solution.core_features else "Not specified",
                 "target_personas": ", ".join(solution.target_personas[:3]) if solution.target_personas else "General users",
                 "pain_points": "; ".join([
-                    f"{pp.title} (Severity: {pp.severity_score}/10)"
+                    f"{pp.title} (Severity: {pp.severity_score * 10:.1f}/10)"
                     for pp in self.pain_point_analysis.pain_points[:5]
                 ]) if self.pain_point_analysis and self.pain_point_analysis.pain_points else "Not specified",
                 "project_type": solution.project_type or "saas",
@@ -479,7 +479,7 @@ class SeedGenerator:
                         comp.name for comp in solution.competitive_landscape.competitors[:3]
                     ])
 
-            seed_prompt = SEED_GENERATION_PROMPT.format(**prompt_context)
+            seed_prompt = safe_format(SEED_GENERATION_PROMPT, **prompt_context)
 
             result = structured_llm.invoke(seed_prompt)
             seed_keywords = result.seeds

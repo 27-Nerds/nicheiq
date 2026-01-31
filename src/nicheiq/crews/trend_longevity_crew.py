@@ -4,6 +4,10 @@ Trend Longevity Analysis Crew (Stage 9.2).
 Analyzes keyword trends, discussion momentum, and competitive activity to assess
 market timing, trend sustainability, and longevity. Determines if the market is
 growing, stable, or declining, and whether now is the right time to enter.
+
+Deterministic fields (keyword_volume_trend, momentum_score, trend_direction, etc.)
+are pre-computed in Python; the LLM only generates narrative/judgment fields via
+TrendNarrativeOutput. Both are merged into the unchanged TrendLongevityResult.
 """
 
 from crewai import Agent, Crew, Task
@@ -12,12 +16,14 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..utils.llm_service import build_llm_kwargs
 from ..models.competitor import CompetitiveAnalysisResult
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
-from ..models.research_state import TrendLongevityResult
+from ..models.research_state import TrendLongevityResult, TrendNarrativeOutput
 from ..models.social_content import SocialContentCollection
+from ..utils.llm_service import build_llm_kwargs
+from ..utils.token_monitor import ContentTokenMonitor
+from ..utils.trend_scoring import compute_deterministic_signals, compute_timing
 
 
 @CrewBase
@@ -74,7 +80,7 @@ class TrendLongevityCrew:
         return Task(
             config=self.tasks_config["trend_longevity_analysis"],
             agent=self.trend_analyst(),
-            output_pydantic=TrendLongevityResult,
+            output_pydantic=TrendNarrativeOutput,
         )
 
     @crew
@@ -90,6 +96,8 @@ class TrendLongevityCrew:
             verbose=True,
         )
 
+    # ── Main entry point ────────────────────────────────────────────
+
     def analyze(
         self,
         keyword_validation: CrewKeywordValidationResult,
@@ -103,43 +111,61 @@ class TrendLongevityCrew:
         """
         Execute trend longevity crew to analyze market momentum and timing.
 
+        Pre-computes deterministic fields in Python, then runs the LLM crew
+        for narrative/judgment fields only (TrendNarrativeOutput). Merges both
+        into the unchanged TrendLongevityResult.
+
         Args:
-            keyword_validation: Keyword validation data from Stage 8.5 (search volumes)
-            social_content: Social media discussions from Stage 5 (discussion trends)
-            pain_point_analysis: Pain point data from Stage 6 (problem validation recency)
-            competitive_analysis: Competitive landscape from Stage 7-8.75 (new entrants)
+            keyword_validation: Keyword validation data from Stage 8.5
+            social_content: Social media discussions from Stage 5
+            pain_point_analysis: Pain point data from Stage 6
+            competitive_analysis: Competitive landscape from Stage 7-8.75
             niche_description: Niche description for context
-            enriched_keywords_trends: Aggregated trend data from Stage 9.5c monthly_searches
-                Contains: trend_distribution, rising_volume_pct, top_seasonal_keywords,
-                top_evergreen_keywords, market_momentum
-            top_enriched_keywords: Top 20 keywords with their 12-month monthly_searches arrays
-                for per-keyword trend analysis
+            enriched_keywords_trends: Aggregated trend data from Stage 9.5c
+            top_enriched_keywords: Top 20 keywords with 12-month monthly_searches
 
         Returns:
-            TrendLongevityResult with trend analysis and timing recommendation, or None if analysis fails
+            TrendLongevityResult with trend analysis and timing recommendation,
+            or None if analysis fails
         """
         logger.info("[Stage 9.5] Starting Trend Longevity Analysis...")
         logger.info(f"  Niche: {niche_description}")
 
-        # Extract keyword trend signals (now enhanced with actual 12-month trend data)
-        keyword_signals = self._format_keyword_trends(keyword_validation, enriched_keywords_trends)
+        # 1. Pre-compute deterministic signals
+        deterministic = compute_deterministic_signals(
+            keyword_validation, social_content, competitive_analysis,
+            enriched_keywords_trends,
+        )
+        logger.info(
+            f"  Pre-computed: direction={deterministic['trend_direction']}, "
+            f"momentum={deterministic['momentum_score']:.2f}, "
+            f"suggested_verdict={deterministic['suggested_longevity_verdict']}"
+        )
 
-        # Add per-keyword monthly trends if available
+        # 2. Format raw data for LLM context (keep existing _format_* methods)
+        keyword_signals = self._format_keyword_trends(keyword_validation, enriched_keywords_trends)
         if top_enriched_keywords:
             keyword_signals += self._format_keyword_monthly_trends(top_enriched_keywords)
-
-        # Extract social discussion trends
         discussion_signals = self._format_discussion_trends(social_content, pain_point_analysis)
-
-        # Extract competitive momentum
         competitive_signals = self._format_competitive_momentum(competitive_analysis)
 
-        # Prepare inputs for trend analysis task
+        # 3. Build inputs: pre-computed values + raw data + counts
         inputs = {
-            "niche_description": niche_description,
+            # Pre-computed values visible to LLM in prompt
+            "keyword_volume_trend": deterministic["keyword_volume_trend"],
+            "momentum_score": deterministic["momentum_score"],
+            "trend_direction": deterministic["trend_direction"],
+            "trend_confidence": deterministic["trend_confidence"],
+            "seasonal_pattern": deterministic["seasonal_pattern"],
+            "discussion_recency": deterministic["discussion_recency"],
+            "discussion_frequency_trend": deterministic["discussion_frequency_trend"],
+            "suggested_longevity_verdict": deterministic["suggested_longevity_verdict"],
+            # Raw data for LLM context
             "keyword_trend_data": keyword_signals,
             "discussion_trend_data": discussion_signals,
             "competitive_momentum_data": competitive_signals,
+            # Counts
+            "niche_description": niche_description,
             "total_keyword_volume": keyword_validation.total_volume if keyword_validation else 0,
             "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
             "discussion_count": (
@@ -147,32 +173,78 @@ class TrendLongevityCrew:
                 if social_content else 0
             ),
             "competitor_count": (
-                sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes)
+                sum(len(ls.competitors or []) for ls in competitive_analysis.solution_landscapes)
                 if competitive_analysis and competitive_analysis.solution_landscapes else 0
             ),
         }
 
         try:
-            # Execute crew
+            # 4. Run crew (output_pydantic=TrendNarrativeOutput)
             crew_instance = self.crew()
-            self._last_crew = crew_instance  # Store for usage_metrics access
+            self._last_crew = crew_instance
             result = crew_instance.kickoff(inputs=inputs)
 
-            if result and result.pydantic:
-                trend_result = result.pydantic
-                logger.info("[Stage 9.2] Trend Longevity Analysis Complete")
-                logger.info(f"  Trend Direction: {trend_result.trend_direction}")
-                logger.info(f"  Momentum Score: {trend_result.momentum_score:.2f}")
-                logger.info(f"  Longevity Verdict: {trend_result.longevity_verdict}")
-                logger.info(f"  Timing Recommendation: {trend_result.timing_recommendation}")
-                return trend_result
-            else:
+            if not result or not result.pydantic:
                 logger.error("[Stage 9.2] Trend analysis failed - no Pydantic output")
                 return None
+
+            narrative: TrendNarrativeOutput = result.pydantic
+
+            # 5. Post-merge consistency: log if LLM overrides suggested verdict
+            if (
+                deterministic["suggested_longevity_verdict"] != "Undetermined"
+                and narrative.longevity_verdict != deterministic["suggested_longevity_verdict"]
+            ):
+                logger.warning(
+                    f"LLM overrode suggested verdict: "
+                    f"{deterministic['suggested_longevity_verdict']} → {narrative.longevity_verdict}"
+                )
+
+            # 6. Compute timing_recommendation (needs LLM's longevity_verdict)
+            timing = compute_timing(
+                deterministic["trend_direction"],
+                narrative.longevity_verdict,
+                deterministic["momentum_score"],
+            )
+
+            # 7. Merge into TrendLongevityResult (UNCHANGED model)
+            trend_result = TrendLongevityResult(
+                # Python-computed (deterministic)
+                keyword_volume_trend=deterministic["keyword_volume_trend"],
+                momentum_score=deterministic["momentum_score"],
+                trend_direction=deterministic["trend_direction"],
+                trend_confidence=deterministic["trend_confidence"],
+                seasonal_pattern=deterministic["seasonal_pattern"],
+                discussion_recency=deterministic["discussion_recency"],
+                discussion_frequency_trend=deterministic["discussion_frequency_trend"],
+                timing_recommendation=timing,
+                analysis_timeframe=deterministic["analysis_timeframe"],
+                data_sources_analyzed=deterministic["data_sources_analyzed"],
+                # LLM-generated (narrative/judgment)
+                market_maturity=narrative.market_maturity,
+                longevity_verdict=narrative.longevity_verdict,
+                longevity_rationale=narrative.longevity_rationale,
+                new_entrants_trend=narrative.new_entrants_trend,
+                competitive_activity_level=narrative.competitive_activity_level,
+                volume_growth_rate=narrative.volume_growth_rate,
+                trend_duration=narrative.trend_duration,
+                peak_periods=narrative.peak_periods,
+                community_growth_indicators=narrative.community_growth_indicators,
+                trend_reversal_risks=narrative.trend_reversal_risks,
+            )
+
+            logger.info("[Stage 9.2] Trend Longevity Analysis Complete")
+            logger.info(f"  Trend Direction: {trend_result.trend_direction}")
+            logger.info(f"  Momentum Score: {trend_result.momentum_score:.2f}")
+            logger.info(f"  Longevity Verdict: {trend_result.longevity_verdict}")
+            logger.info(f"  Timing Recommendation: {trend_result.timing_recommendation}")
+            return trend_result
 
         except Exception as e:
             logger.error(f"[Stage 9.2] Trend analysis error: {str(e)}")
             return None
+
+    # ── Formatting helpers (unchanged) ──────────────────────────────
 
     def _format_keyword_trends(
         self,
@@ -233,9 +305,6 @@ class TrendLongevityCrew:
                 for kw in seasonal[:5]:
                     signals.append(f"- {kw}")
 
-            signals.append("\n**IMPORTANT:** Use the above ACTUAL trend data to inform your trend_direction and momentum_score.")
-            signals.append("This data is calculated from 12 months of historical search volumes, NOT inferred.")
-
         else:
             # Fallback: No actual trend data available
             signals.append("\n**Note:** No 12-month historical data available. Trend direction must be inferred from current volumes, discussion recency, and competitive activity.")
@@ -262,12 +331,20 @@ class TrendLongevityCrew:
         if social_content.reddit_posts:
             from datetime import datetime, timedelta, timezone
 
-            signals.append("\n**Discussion Recency (Reddit sample with timestamps):**")
+            signals.append("\n**Discussion Recency (top 5 by discussion richness):**")
             now = datetime.now(timezone.utc)
 
-            for post in social_content.reddit_posts[:5]:
+            # Sort by discussion richness (pain_point_priority_score) to show best posts
+            sorted_posts = sorted(
+                social_content.reddit_posts,
+                key=ContentTokenMonitor.pain_point_priority_score,
+                reverse=True,
+            )
+
+            for post in sorted_posts[:5]:
                 title = getattr(post, 'title', 'Untitled')[:60]
                 created = getattr(post, 'created_utc', None)
+                n_comments = len(post.comments) if post.comments else 0
 
                 age_label = ""
                 if created:
@@ -284,7 +361,21 @@ class TrendLongevityCrew:
                         else:
                             age_label = f" [Dated: {days_ago}d ago]"
 
-                signals.append(f"- {title}{age_label}")
+                signals.append(f"- {title} [{post.score} pts, {n_comments} comments]{age_label}")
+
+            # Aggregate discussion quality metrics
+            all_comment_counts = [
+                len(p.comments) if p.comments else 0
+                for p in social_content.reddit_posts
+            ]
+            total_comments = sum(all_comment_counts)
+            avg_comments = total_comments / max(len(all_comment_counts), 1)
+            rich_discussions = sum(1 for c in all_comment_counts if c >= 20)
+
+            signals.append(f"\n**Discussion Quality Metrics:**")
+            signals.append(f"- Total comments across all posts: {total_comments}")
+            signals.append(f"- Average comments per post: {avg_comments:.1f}")
+            signals.append(f"- Posts with 20+ comments (rich discussions): {rich_discussions}")
 
         if pain_point_analysis and pain_point_analysis.pain_points:
             signals.append(f"\n**Pain Point Validation:** {len(pain_point_analysis.pain_points)} pain points identified")

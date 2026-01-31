@@ -23,6 +23,8 @@
 #   - channels_summary: Formatted marketing channels with types
 #   - project_type: Type of project (SaaS, Tool, etc.)
 #   - persona_name: Target customer persona name
+#   - suggested_budget_range: Pre-computed budget range anchor
+#   - channel_count: Number of marketing channels
 
 template: |
   Generate a realistic monthly marketing budget estimate for launching {solution_name}.
@@ -76,6 +78,16 @@ template: |
   **Solution:** {solution_name}
   **Type:** {project_type}
   **Target Persona:** {persona_name}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **PRE-COMPUTED BUDGET ANCHOR (from Python -- treat as starting point)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Suggested Budget Range:** {suggested_budget_range}
+  **Marketing Channels:** {channel_count} channels identified
+
+  This range is pre-computed from the pricing model and channel count. Use it as an anchor
+  and adjust based on the specific economics and market context below.
 
   **═════════════════════════════════════════════════════════════════════════**
   **BUDGET CALIBRATION GUIDE**

@@ -127,6 +127,16 @@ class Settings(BaseSettings):
         description="Model for execution agents (HTML Developer, Animation Enhancer, QA Reviewer). Codex models recommended for reliable code generation."
     )
 
+    # Moonshot AI (Kimi) Configuration
+    moonshot_api_key: str | None = Field(
+        default=None,
+        description="Moonshot AI API key for Kimi models (get from platform.moonshot.ai)"
+    )
+    kimi_thinking: bool = Field(
+        default=False,
+        description="Enable Kimi thinking mode (deeper reasoning, temp=1.0). Default: False (instant mode, temp=0.6, faster and cheaper)."
+    )
+
     # CrewAI+ (Enterprise) - Optional
     crewai_api_key: str | None = Field(default=None, description="CrewAI+ API key")
 

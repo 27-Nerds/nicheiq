@@ -134,7 +134,7 @@ def format_pain_points_for_agents(
     elif format_type == "metrics_only":
         # SEOStrategyCrew format: Standardized metrics with /10 scale
         lines = [
-            f"- {pp.title} (Severity: {pp.severity_score:.1f}/10, WTP: {pp.willingness_to_pay:.1f}/10, Mentions: {pp.mention_count})"
+            f"- {pp.title} (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10, Mentions: {pp.mention_count})"
             for pp in filtered
         ]
         return "\n".join(lines) if lines else ""
