@@ -2,7 +2,7 @@
 	import { fade } from 'svelte/transition';
 	import { Target, MessageSquare, TrendingUp, ChevronDown, ChevronUp, AlertTriangle, DollarSign, ArrowRight, CheckCircle, Sparkles, Users } from 'lucide-svelte';
 	import type { DetailedPainPoint, PainPointAnalytics, SolutionDetails } from '$lib/types/report';
-	import { formatPercent, getOpportunityClass, getScoreClass, getScoreBarClass } from '$lib/utils/format';
+	import { formatScorePercent, getOpportunityClass, getScoreClass, getScoreBarClass } from '$lib/utils/format';
 	import { getOpportunityVariant, getPlatformVariant } from '$lib/utils/variantHelpers';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import MetricCard from '$lib/components/ui/MetricCard.svelte';
@@ -40,6 +40,12 @@
 		[...painPoints]
 			.sort((a, b) => b.severity_score - a.severity_score)
 			.slice(0, 5)
+	);
+
+	const avgWtp = $derived(
+		topPainPoints.length > 0
+			? topPainPoints.reduce((sum, p) => sum + p.willingness_to_pay, 0) / topPainPoints.length
+			: 0
 	);
 
 	function toggleQuotes(index: number) {
@@ -162,7 +168,7 @@
 									<AlertTriangle class="w-4 h-4 absolute text-error" />
 								</div>
 								<div class="pain-meta">
-									<span class="pain-severity-value">{Math.round(painPoint.severity_score * 100)}%</span>
+									<span class="pain-severity-value">{formatScorePercent(painPoint.severity_score)}</span>
 									<span class="pain-severity-label">Severity</span>
 								</div>
 							</div>
@@ -245,7 +251,7 @@
 						{#each topPainPoints.filter(p => p.willingness_to_pay > 0.5).slice(0, 3) as point}
 							<div class="wtp-item">
 								<span class="wtp-name">{point.title.slice(0, 30)}{point.title.length > 30 ? '...' : ''}</span>
-								<span class="wtp-value">{Math.round(point.willingness_to_pay * 100)}% WTP</span>
+								<span class="wtp-value">{formatScorePercent(point.willingness_to_pay)} WTP</span>
 							</div>
 						{/each}
 					</div>
@@ -270,7 +276,7 @@
 				</div>
 				<div class="stat-item">
 					<span class="stat-value">
-						{Math.round((topPainPoints.reduce((sum, p) => sum + p.willingness_to_pay, 0) / topPainPoints.length) * 100)}%
+						{formatScorePercent(avgWtp)}
 					</span>
 					<span class="stat-label inline-flex items-center gap-1">
 						Avg. WTP Score <Tooltip content={getTermTooltip('WTP')} position="top" />
@@ -366,8 +372,8 @@
 
 						<!-- Metrics Row -->
 						<div class="insight-card__meta">
-							<MetaItem icon={AlertTriangle} value={formatPercent(point.severity_score)} label="Severity" iconClass="w-4 h-4 text-error" />
-							<MetaItem icon={DollarSign} value={formatPercent(point.willingness_to_pay)} label="WTP" iconClass="w-4 h-4 text-success" />
+							<MetaItem icon={AlertTriangle} value={formatScorePercent(point.severity_score)} label="Severity" iconClass="w-4 h-4 text-error" />
+							<MetaItem icon={DollarSign} value={formatScorePercent(point.willingness_to_pay)} label="WTP" iconClass="w-4 h-4 text-success" />
 							<MetaItem icon={MessageSquare} value={point.mention_count} label="Mentions" iconClass="w-4 h-4 text-accent" />
 						</div>
 

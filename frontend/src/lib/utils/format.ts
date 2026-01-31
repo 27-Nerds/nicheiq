@@ -108,6 +108,29 @@ export function formatScore(num: number | undefined | null): string {
 	return num.toFixed(2);
 }
 
+/** Format a 0-1 score as "XX%" (e.g. 0.85 -> "85%") */
+export function formatScorePercent(
+	score: number | undefined | null,
+	decimals = 0,
+	fallback = 'N/A'
+): string {
+	if (score === undefined || score === null || Number.isNaN(score)) return fallback;
+	return `${(score * 100).toFixed(decimals)}%`;
+}
+
+/** Format a 0-1 score as "X.Y/10" (e.g. 0.85 -> "8.5/10") */
+export function formatScoreOutOf10(score: number | undefined | null): string {
+	if (score === undefined || score === null || Number.isNaN(score)) return 'N/A';
+	return `${(score * 10).toFixed(1)}/10`;
+}
+
+/** Format a 0-1 score as "X.Y" on a 10 scale, without "/10" suffix (e.g. 0.85 -> "8.5") */
+export function formatScoreOn10(score: number | undefined | null): string {
+	if (score === undefined || score === null || Number.isNaN(score)) return '-';
+	const clamped = Math.max(0, Math.min(1, score));
+	return (clamped * 10).toFixed(1);
+}
+
 export function formatCurrency(value: string | number | undefined | null): string {
 	if (value === undefined || value === null) return 'N/A';
 	if (typeof value === 'string') return value;

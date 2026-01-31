@@ -16,9 +16,10 @@
 	interface Props {
 		pricingData: PricingStrategy;
 		trafficData?: TrafficMonetization;
+		cacBreakdown?: string;
 	}
 
-	let { pricingData, trafficData }: Props = $props();
+	let { pricingData, trafficData, cacBreakdown }: Props = $props();
 
 	// Parse traffic source breakdown for display
 	const trafficSources = $derived(() => {
@@ -350,6 +351,15 @@
 			{/if}
 		</CardGrid>
 	</ExpandableSection>
+
+	<!-- CAC Breakdown -->
+	{#if cacBreakdown}
+		<ExpandableSection title="CAC Breakdown" icon={DollarSign} defaultOpen={false} variant="muted">
+			<div class="markdown-content">
+				{@html renderMarkdown(cacBreakdown)}
+			</div>
+		</ExpandableSection>
+	{/if}
 
 	<!-- WTP Validation -->
 	{#if pricingData.wtp_validation}

@@ -27,7 +27,7 @@
 		SEOCalculationTransparency,
 		TrendLongevity
 	} from '$lib/types/report';
-	import { formatNumber, formatPercent, renderMarkdown } from '$lib/utils/format';
+	import { formatNumber, formatScorePercent, renderMarkdown } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import ExpandableSection from '$lib/components/ui/ExpandableSection.svelte';
@@ -195,7 +195,7 @@
 			<!-- Left Column: Verdict Box + Risk Badge -->
 			<div class="hero-left">
 				<div class="verdict-giant {getVerdictClass(verdict?.verdict ?? 'No-Go')}">
-					<span class="verdict-percentage">{Math.round(confidenceScore * 100)}%</span>
+					<span class="verdict-percentage">{formatScorePercent(confidenceScore)}</span>
 					<div class="verdict-label-row">
 						{#if verdict?.verdict === 'Go'}
 							<CheckCircle class="verdict-icon-large" />
@@ -248,7 +248,7 @@
 					<Tooltip content={tooltips.opportunity} position="bottom">
 						{#snippet children()}
 							<div class="signal-chip">
-								<span class="signal-value">{formatPercent(opportunityScore)}</span>
+								<span class="signal-value">{formatScorePercent(opportunityScore)}</span>
 								<span class="signal-label">Opportunity</span>
 							</div>
 						{/snippet}
@@ -336,13 +336,13 @@
 
 					<div class="pain-stats">
 						<div class="pain-stat">
-							<span class="pain-stat-value">{formatPercent(corePain.severity_score)}</span>
+							<span class="pain-stat-value">{formatScorePercent(corePain.severity_score)}</span>
 							<span class="pain-stat-label">Severity</span>
 						</div>
 						<div class="pain-stat-divider"></div>
 						<div class="pain-stat">
 							<span class="pain-stat-value"
-								>{formatPercent(corePain.willingness_to_pay_score)}</span
+								>{formatScorePercent(corePain.willingness_to_pay_score)}</span
 							>
 							<span class="pain-stat-label">
 								WTP <Tooltip content={getTermTooltip('WTP')} position="top" />
@@ -543,7 +543,7 @@
 						<span class="rationale-verdict-text">{verdict.verdict.toUpperCase()}</span>
 					</div>
 					<div class="rationale-info">
-						<span class="rationale-confidence">{formatPercent(confidenceScore)} confidence</span>
+						<span class="rationale-confidence">{formatScorePercent(confidenceScore)} confidence</span>
 						<Badge
 							variant={verdict.risk_level.toLowerCase() === 'low'
 								? 'success'
@@ -636,14 +636,14 @@
 						<div class="seo-flow">
 							<div class="seo-score baseline">
 								<span class="seo-value"
-									>{((seoCalculationTransparency.baseline_seo_score ?? 0) * 100).toFixed(0)}%</span
+									>{formatScorePercent(seoCalculationTransparency.baseline_seo_score ?? 0)}</span
 								>
 								<span class="seo-label">Baseline</span>
 							</div>
 							<span class="seo-arrow">→</span>
 							<div class="seo-score refined">
 								<span class="seo-value"
-									>{((seoCalculationTransparency.refined_seo_score ?? 0) * 100).toFixed(0)}%</span
+									>{formatScorePercent(seoCalculationTransparency.refined_seo_score ?? 0)}</span
 								>
 								<span class="seo-label">Refined</span>
 							</div>
@@ -733,7 +733,7 @@
 										<div class="signal-row">
 											<span class="signal-row-label">Momentum:</span>
 											<span class="signal-row-value"
-												>{Math.round(trends.momentum_score * 100)}%</span
+												>{formatScorePercent(trends.momentum_score)}</span
 											>
 										</div>
 									{/if}

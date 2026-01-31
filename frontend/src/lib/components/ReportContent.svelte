@@ -159,6 +159,7 @@
 				<MonetizationStrategy
 					pricingData={report.pricing_strategy}
 					trafficData={report.traffic_monetization}
+					cacBreakdown={report.estimated_cac_breakdown}
 				/>
 			{/if}
 

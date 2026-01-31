@@ -3,6 +3,7 @@
 	import ChartTheme from './ChartTheme.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import type { DetailedPainPoint } from '$lib/types/report';
+	import { formatScorePercent } from '$lib/utils/format';
 
 	interface Props {
 		painPoints: DetailedPainPoint[];
@@ -181,7 +182,7 @@
 						onmouseleave={handleMouseLeave}
 						role="button"
 						tabindex="0"
-						aria-label="{point.title}: Severity {(point.y * 100).toFixed(0)}%, WTP {(point.x * 100).toFixed(0)}%"
+						aria-label="{point.title}: Severity {formatScorePercent(point.y)}, WTP {formatScorePercent(point.x)}"
 					/>
 				{/each}
 			</g>
@@ -195,8 +196,8 @@
 			>
 				<div class="tooltip-title">{hoveredPoint.title}</div>
 				<div class="tooltip-stats">
-					<span>Severity: <strong>{(hoveredPoint.y * 100).toFixed(0)}%</strong></span>
-					<span>WTP: <strong>{(hoveredPoint.x * 100).toFixed(0)}%</strong></span>
+					<span>Severity: <strong>{formatScorePercent(hoveredPoint.y)}</strong></span>
+					<span>WTP: <strong>{formatScorePercent(hoveredPoint.x)}</strong></span>
 				</div>
 				<div class="tooltip-meta">
 					<span class="tooltip-mentions">{hoveredPoint.mentionCount} mentions</span>

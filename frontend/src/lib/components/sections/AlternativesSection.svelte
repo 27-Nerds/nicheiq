@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Lightbulb, Target, Zap, Clock, DollarSign, Users, Shield, TrendingUp, Code } from 'lucide-svelte';
 	import type { AlternativeSolution } from '$lib/types/report';
-	import { renderMarkdown } from '$lib/utils/format';
+	import { renderMarkdown, formatScorePercent } from '$lib/utils/format';
 	import Badge from '$lib/components/ui/Badge.svelte';
 	import AnimateOnScroll from '$lib/components/ui/AnimateOnScroll.svelte';
 	import ProgressBar from '$lib/components/ui/ProgressBar.svelte';
@@ -14,12 +14,6 @@
 	}
 
 	let { data }: Props = $props();
-
-	// Score display helper
-	function formatScore(score: number | undefined): string {
-		if (score === undefined || score === null) return '-';
-		return Math.round(score * 100) + '%';
-	}
 
 	// Determine competitive intensity color
 	function getIntensityColor(intensity: string | undefined): string {
@@ -59,7 +53,7 @@
 								{@const feasibility = solution.solo_dev_feasibility}
 								{#if Number.isFinite(feasibility)}
 									<Badge variant={feasibility >= 0.7 ? 'success' : feasibility >= 0.4 ? 'warning' : 'error'} size="sm">
-										Solo Dev: {Math.round(feasibility * 100)}%
+										Solo Dev: {formatScorePercent(feasibility, 0, '-')}
 									</Badge>
 								{/if}
 							{/if}
@@ -80,35 +74,35 @@
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Market Fit</div>
 									<ProgressBar value={(solution.market_fit_score ?? 0) * 100} max={100} showValue={false} />
-									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.market_fit_score)}</div>
+									<div class="text-sm font-medium text-text-primary mt-1">{formatScorePercent(solution.market_fit_score)}</div>
 								</div>
 							{/if}
 							{#if solution.technical_feasibility_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Technical</div>
 									<ProgressBar value={(solution.technical_feasibility_score ?? 0) * 100} max={100} showValue={false} />
-									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.technical_feasibility_score)}</div>
+									<div class="text-sm font-medium text-text-primary mt-1">{formatScorePercent(solution.technical_feasibility_score)}</div>
 								</div>
 							{/if}
 							{#if solution.competitive_advantage_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Competitive</div>
 									<ProgressBar value={(solution.competitive_advantage_score ?? 0) * 100} max={100} showValue={false} />
-									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.competitive_advantage_score)}</div>
+									<div class="text-sm font-medium text-text-primary mt-1">{formatScorePercent(solution.competitive_advantage_score)}</div>
 								</div>
 							{/if}
 							{#if solution.seo_growth_potential_score != null}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">SEO Potential</div>
 									<ProgressBar value={(solution.seo_growth_potential_score ?? 0) * 100} max={100} showValue={false} />
-									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.seo_growth_potential_score)}</div>
+									<div class="text-sm font-medium text-text-primary mt-1">{formatScorePercent(solution.seo_growth_potential_score)}</div>
 								</div>
 							{/if}
 							{#if solution.novelty_score !== undefined}
 								<div class="text-center">
 									<div class="text-xs text-text-muted mb-1">Novelty</div>
 									<ProgressBar value={solution.novelty_score * 100} max={100} showValue={false} />
-									<div class="text-sm font-medium text-text-primary mt-1">{formatScore(solution.novelty_score)}</div>
+									<div class="text-sm font-medium text-text-primary mt-1">{formatScorePercent(solution.novelty_score)}</div>
 								</div>
 							{/if}
 						</div>

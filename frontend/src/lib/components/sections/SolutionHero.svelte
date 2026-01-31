@@ -28,7 +28,7 @@
     SelectionCriteriaScore,
     BudgetEstimate,
   } from "$lib/types/report";
-  import { renderMarkdown, parseRationaleMetrics } from "$lib/utils/format";
+  import { renderMarkdown, parseRationaleMetrics, formatScoreOn10 } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
@@ -90,14 +90,6 @@
   };
 
   const budgetDisplay = $derived(formatBudgetRange(budgetEstimate));
-
-  // Format novelty score with validation for invalid values
-  function formatNoveltyScore(score: number | null | undefined): string {
-    if (score == null || isNaN(score)) return '-';
-    // Clamp to valid range and convert to 0-10 scale
-    const clamped = Math.max(0, Math.min(1, score));
-    return (clamped * 10).toFixed(1);
-  }
 
   // Get semantic variant for Selection Rationale metrics based on value
   const getMetricCardVariant = (metric: { label: string; value: string }): 'default' | 'success' | 'warning' | 'accent' => {
@@ -310,7 +302,7 @@
             <span>INNOVATION</span>
           </div>
           <div class="innovation-score">
-            <span class="score-value">{formatNoveltyScore(solution.novelty_score)}</span>
+            <span class="score-value">{formatScoreOn10(solution.novelty_score)}</span>
             <span class="score-max">/10</span>
           </div>
         </div>

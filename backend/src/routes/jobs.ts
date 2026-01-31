@@ -5,7 +5,7 @@ import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueServ
 import { createJobWithCreditDeduction, InsufficientCreditsError, refundCreditsForJob } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema } from '../types/job.js';
-import { JobStatus, AssetType, CreditTransactionType } from '@prisma/client';
+import { JobStatus, AssetType, CreditTransactionType, StageStatus } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import { requireInternalAuth, requireInternalService, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
@@ -294,6 +294,15 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, async (req: Authenticated
         status: JobStatus.CANCELLED,
         errorMessage: 'Cancelled by user',
         completedAt: new Date(),
+      },
+    });
+
+    // Mark any RUNNING stages as FAILED
+    await prisma.jobProgress.updateMany({
+      where: { jobId, status: StageStatus.RUNNING },
+      data: {
+        status: StageStatus.FAILED,
+        errorMessage: 'Cancelled by user',
       },
     });
 

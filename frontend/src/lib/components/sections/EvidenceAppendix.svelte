@@ -12,7 +12,8 @@
 		ChevronDown,
 		Database,
 		Link2,
-		Layers
+		Layers,
+		Clock
 	} from 'lucide-svelte';
 	import type { EvidenceAppendix, RedditThread, PainPointQuoteSource } from '$lib/types/report';
 	import Badge from '$lib/components/ui/Badge.svelte';
@@ -36,6 +37,28 @@
 		if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
 		if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
 		return num.toString();
+	};
+
+	// Format relative time from ISO date string
+	const formatRelativeTime = (isoDate: string): string => {
+		try {
+			const date = new Date(isoDate);
+			const now = new Date();
+			const diffMs = now.getTime() - date.getTime();
+			const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+			if (diffDays < 1) return 'today';
+			if (diffDays === 1) return '1 day ago';
+			if (diffDays < 30) return `${diffDays} days ago`;
+			const diffMonths = Math.floor(diffDays / 30);
+			if (diffMonths === 1) return '1 month ago';
+			if (diffMonths < 12) return `${diffMonths} months ago`;
+			const diffYears = Math.floor(diffDays / 365);
+			if (diffYears === 1) return '1 year ago';
+			return `${diffYears} years ago`;
+		} catch {
+			return '';
+		}
 	};
 
 	// Sort threads by score
@@ -235,6 +258,12 @@
 												<MessageCircle class="stat-icon" />
 												{formatNumber(thread.num_comments)} comments
 											</div>
+											{#if thread.created_utc}
+												<div class="thread-stat">
+													<Clock class="stat-icon" />
+													{formatRelativeTime(thread.created_utc)}
+												</div>
+											{/if}
 											<div class="thread-stat">
 												<Hash class="stat-icon" />
 												<code class="thread-id">{thread.post_id}</code>

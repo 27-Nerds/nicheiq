@@ -129,9 +129,11 @@
       }
 
       // Update local state to show it's queued again
-      // Reset any FAILED stages to PENDING for proper visual feedback
+      // Reset any FAILED or RUNNING stages to PENDING for proper visual feedback
       const updatedProgress = job.progress.map(stage =>
-        stage.status === 'FAILED' ? { ...stage, status: 'PENDING' as const } : stage
+        (stage.status === 'FAILED' || stage.status === 'RUNNING')
+          ? { ...stage, status: 'PENDING' as const }
+          : stage
       );
       job = { ...job, status: 'QUEUED', errorMessage: null, progress: updatedProgress };
 
@@ -224,7 +226,7 @@
   };
 
   // Process stages to combine parallel stages into single lines
-  function processStagesForDisplay(stages: StageProgress[]): StageProgress[] {
+  function processStagesForDisplay(stages: StageProgress[], jobStatus: string): StageProgress[] {
     const hiddenStages = new Set<number>();
 
     // Collect all stages that should be hidden
@@ -236,14 +238,16 @@
       .filter(stage => !hiddenStages.has(stage.stageNumber))
       .map(stage => {
         const group = PARALLEL_STAGE_GROUPS[stage.stageNumber];
-        if (group) {
-          return { ...stage, stageName: group.combinedName };
+        let processed = group ? { ...stage, stageName: group.combinedName } : stage;
+        // Safety net: terminal jobs shouldn't show spinning stages
+        if ((jobStatus === 'FAILED' || jobStatus === 'CANCELLED') && processed.status === 'RUNNING') {
+          processed = { ...processed, status: 'FAILED' };
         }
-        return stage;
+        return processed;
       });
   }
 
-  const displayStages = $derived(job ? processStagesForDisplay(job.progress) : []);
+  const displayStages = $derived(job ? processStagesForDisplay(job.progress, job.status) : []);
 
   // Adjusted stage counts (subtract hidden stages)
   const adjustedStagesCompleted = $derived.by(() => {
@@ -367,7 +371,7 @@
           </div>
           <div class="progress-bar h-3">
             <div
-              class="progress-bar-fill {job.status === 'RUNNING' ? 'animate-shimmer' : ''}"
+              class="progress-bar-fill {job.status === 'RUNNING' ? 'animate-shimmer' : ''} {job.status === 'FAILED' ? 'progress-failed' : ''}"
               style="width: {job.progressPercent}%"
             ></div>
           </div>

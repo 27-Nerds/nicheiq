@@ -795,6 +795,7 @@ export interface RedditThread {
 	score: number;
 	num_comments: number;
 	url: string;
+	created_utc?: string;
 	key_insight: string;
 }
 

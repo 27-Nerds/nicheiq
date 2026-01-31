@@ -20,6 +20,7 @@
   } from "$lib/types/report";
   import {
     formatNumber,
+    formatScorePercent,
     parseCompetition,
     getTierLabel,
     renderMarkdown,
@@ -496,7 +497,7 @@
                       <span
                         class="competition-value"
                         style="color: {getDifficultyColor(difficulty)}"
-                        >{(difficulty * 100).toFixed(0)}</span
+                        >{formatScorePercent(difficulty)}</span
                       >
                     </td>
                     <td class="td-tier">
@@ -532,7 +533,7 @@
                     <span
                       class="metric-value"
                       style="color: {getDifficultyColor(difficulty)}"
-                      >{(difficulty * 100).toFixed(0)}</span
+                      >{formatScorePercent(difficulty)}</span
                     >
                     <span class="metric-label">Competition</span>
                   </div>

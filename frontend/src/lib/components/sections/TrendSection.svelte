@@ -90,6 +90,16 @@
 			</div>
 		{/if}
 
+		<!-- Trend Confidence -->
+		{#if data.trend_confidence}
+			<div class="confidence-metric">
+				<span class="confidence-label">Confidence</span>
+				<Badge variant={data.trend_confidence === 'High' ? 'success' : data.trend_confidence === 'Medium' ? 'warning' : 'error'} size="sm">
+					{data.trend_confidence}
+				</Badge>
+			</div>
+		{/if}
+
 		<!-- Longevity Verdict -->
 		{#if data.longevity_verdict}
 			<div class="verdict-metric" style="--verdict-color: {verdictConfig.color}">
@@ -122,6 +132,18 @@
 		{/if}
 		{#if data.market_maturity}
 			<StatPill label="Maturity" value={data.market_maturity} />
+		{/if}
+		{#if data.discussion_recency}
+			<StatPill label="Discussion Recency" value={data.discussion_recency} />
+		{/if}
+		{#if data.competitive_activity_level}
+			<StatPill label="Competition" value={data.competitive_activity_level} />
+		{/if}
+		{#if data.volume_growth_rate}
+			<StatPill label="Volume Growth" value={data.volume_growth_rate} />
+		{/if}
+		{#if data.trend_duration}
+			<StatPill label="Trend Duration" value={data.trend_duration} />
 		{/if}
 	</div>
 
@@ -248,6 +270,22 @@
 		font-family: var(--font-display);
 		font-size: 0.9375rem;
 		font-weight: 700;
+	}
+
+	/* Confidence Metric */
+	.confidence-metric {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.confidence-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-text-muted);
 	}
 
 	/* Verdict Metric */

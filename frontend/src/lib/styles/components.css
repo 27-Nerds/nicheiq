@@ -459,6 +459,11 @@
 	position: relative;
 }
 
+/* Error state for failed jobs */
+.progress-bar-fill.progress-failed {
+	background: linear-gradient(90deg, var(--color-error) 0%, var(--color-error-light) 100%);
+}
+
 /* Animated shimmer for active progress */
 .progress-bar-fill.animate-shimmer::after {
 	content: '';

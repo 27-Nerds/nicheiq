@@ -131,6 +131,31 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
         await failJob(data.job_id, errorMessage, undefined, undefined, undefined, 'WORKER_CRASH', translatedErrorDetails ?? undefined);
         console.log(`[Workers] Job ${data.job_id} marked as failed due to worker shutdown`);
 
+        // Mark ALL running stages as FAILED
+        try {
+          await prisma.jobProgress.updateMany({
+            where: { jobId: data.job_id, status: StageStatus.RUNNING },
+            data: {
+              status: StageStatus.FAILED,
+              errorMessage,
+            },
+          });
+        } catch (stageErr) {
+          console.error(`[Workers] Failed to update running stages to FAILED:`, stageErr);
+        }
+
+        // Broadcast failure to SSE clients
+        try {
+          broadcastProgress(data.job_id, {
+            stage: 1,
+            name: 'Failed',
+            status: 'failed',
+            error: errorMessage,
+          });
+        } catch (broadcastErr) {
+          console.error('[Workers] Broadcast failed but DB updated:', broadcastErr);
+        }
+
         // Send failure notification with user-friendly details
         if (job.userId) {
           const user = await prisma.user.findUnique({
@@ -297,6 +322,21 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
       data.error_code,
       translatedErrorDetails ?? undefined
     );
+
+    // Mark ALL running stages as FAILED (handles parallel stages 6 & 6.5)
+    try {
+      const { prisma } = await import('../services/db.js');
+      await prisma.jobProgress.updateMany({
+        where: { jobId: data.job_id, status: StageStatus.RUNNING },
+        data: {
+          status: StageStatus.FAILED,
+          errorMessage: data.error_message,
+          // Do NOT set completedAt - preserve null so resume gets correct duration
+        },
+      });
+    } catch (stageErr) {
+      console.error(`[Workers] Failed to update running stages to FAILED:`, stageErr);
+    }
 
     // Broadcast failure to SSE clients
     try {
