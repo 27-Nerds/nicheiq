@@ -89,7 +89,7 @@ divergent_exploration:
 
     Each example shows a DIFFERENT SEO acquisition pattern, not just different verticals.
     These are architectural pattern illustrations only — do NOT reuse these names, verticals, or keywords in your output.
-    Generate concepts relevant to the actual niche: {niche}.
+    Generate concepts relevant to the actual niche: {niche_description}.
 
     1. concept_name: "PlumbingCostCalc"
        one_liner: "Aggregates plumber pricing data from 50 cities to generate '[City] plumbing cost 2025' pages."
