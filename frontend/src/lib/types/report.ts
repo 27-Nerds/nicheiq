@@ -171,6 +171,7 @@ export interface GoNoGoVerdict {
 	rationale: string;
 	risk_level: 'Low' | 'Medium' | 'High';
 	primary_concern: string | null;
+	trend_context?: string | null;
 }
 
 export interface CorePainPoint {
@@ -189,7 +190,8 @@ export interface KeyMetrics {
 	tier3_keyword_count: number;
 	tier4_keyword_count: number;
 	total_keyword_count: number;
-	high_priority_pain_points: number;
+	high_severity_pain_points?: number;
+	high_priority_pain_points?: number; // deprecated: backward compat for old reports
 	primary_competitor_count: number;
 	avg_pain_point_severity: number;
 	avg_willingness_to_pay: number;
@@ -311,7 +313,9 @@ export interface CompetitiveAnalytics {
 
 export interface PainPointAnalytics {
 	total_pain_points: number;
-	high_priority_count: number;
+	high_severity_count?: number;
+	high_priority_count?: number; // deprecated: backward compat for old reports
+	high_opportunity_count?: number;
 	quadrant_distribution: QuadrantDistribution;
 	avg_severity?: number;
 	avg_willingness_to_pay?: number;

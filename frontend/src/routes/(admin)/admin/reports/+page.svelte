@@ -1,9 +1,16 @@
 <script lang="ts">
   import Badge from '$lib/components/ui/Badge.svelte';
+  import { ChevronDown, ChevronRight, Download, FileText } from 'lucide-svelte';
 
   let { data } = $props();
 
   const stats = $derived(data.reportStats);
+
+  let expandedJobId = $state<string | null>(null);
+
+  function toggleExpand(jobId: string) {
+    expandedJobId = expandedJobId === jobId ? null : jobId;
+  }
 
   function formatDuration(seconds: number | null): string {
     if (!seconds) return 'N/A';
@@ -31,6 +38,30 @@
       CANCELLED: 'muted',
     };
     return map[status] || 'muted';
+  }
+
+  function errorCodeVariant(code: string | null): StatusVariant {
+    if (!code) return 'muted';
+    const map: Record<string, StatusVariant> = {
+      RATE_LIMIT: 'warning',
+      API_AUTH_ERROR: 'error',
+      NETWORK_ERROR: 'warning',
+      TIMEOUT: 'warning',
+      VALIDATION_ERROR: 'error',
+      WORKER_CRASH: 'error',
+      SERVICE_UNAVAILABLE: 'warning',
+      INTERNAL_ERROR: 'error',
+    };
+    return map[code] || 'muted';
+  }
+
+  function parseErrorDetails(details: unknown): Record<string, unknown> | null {
+    if (!details) return null;
+    if (typeof details === 'object') return details as Record<string, unknown>;
+    if (typeof details === 'string') {
+      try { return JSON.parse(details); } catch { return null; }
+    }
+    return null;
   }
 </script>
 
@@ -97,6 +128,7 @@
         <table class="w-full text-sm">
           <thead>
             <tr class="border-b border-border">
+              <th class="w-8 py-2"></th>
               <th class="text-left py-2 pr-4 text-text-muted font-medium">Niche</th>
               <th class="text-left py-2 pr-4 text-text-muted font-medium">User</th>
               <th class="text-left py-2 pr-4 text-text-muted font-medium">Status</th>
@@ -106,7 +138,21 @@
           </thead>
           <tbody>
             {#each stats.recentJobs as job}
-              <tr class="border-b border-border/50">
+              {@const isFailed = job.status === 'FAILED'}
+              {@const isExpanded = expandedJobId === job.id}
+              <tr
+                class="border-b border-border/50 {isFailed ? 'cursor-pointer hover:bg-bg-elevated/50' : ''}"
+                onclick={() => isFailed && toggleExpand(job.id)}
+              >
+                <td class="py-2 pl-2 w-8">
+                  {#if isFailed}
+                    {#if isExpanded}
+                      <ChevronDown size={16} class="text-text-muted" />
+                    {:else}
+                      <ChevronRight size={16} class="text-text-muted" />
+                    {/if}
+                  {/if}
+                </td>
                 <td class="py-2 pr-4 text-text-primary max-w-48 truncate">{job.niche}</td>
                 <td class="py-2 pr-4 text-text-secondary">{job.user?.email || 'N/A'}</td>
                 <td class="py-2 pr-4">
@@ -115,6 +161,86 @@
                 <td class="py-2 pr-4 text-text-secondary">{job.currentStageName || '-'}</td>
                 <td class="py-2 text-text-muted">{formatDate(job.createdAt)}</td>
               </tr>
+
+              {#if isFailed && isExpanded}
+                {@const details = parseErrorDetails(job.errorDetails)}
+                <tr class="border-b border-border/50 bg-bg-elevated/30">
+                  <td colspan="6" class="px-4 py-4">
+                    <div class="space-y-3 text-sm">
+                      <!-- Error Code & Stage -->
+                      <div class="flex flex-wrap gap-x-8 gap-y-2">
+                        {#if job.errorCode}
+                          <div>
+                            <span class="text-text-muted">Error Code:</span>
+                            <Badge variant={errorCodeVariant(job.errorCode)} size="sm" class="ml-2">{job.errorCode}</Badge>
+                          </div>
+                        {/if}
+                        {#if job.errorStage}
+                          <div>
+                            <span class="text-text-muted">Failed Stage:</span>
+                            <span class="text-text-primary ml-2">{job.errorStage}</span>
+                          </div>
+                        {/if}
+                        {#if job.workerId}
+                          <div>
+                            <span class="text-text-muted">Worker:</span>
+                            <span class="text-text-secondary ml-2 font-mono text-xs">{job.workerId}</span>
+                          </div>
+                        {/if}
+                      </div>
+
+                      <!-- User-facing message -->
+                      {#if details?.userMessage}
+                        <div>
+                          <span class="text-text-muted">Summary:</span>
+                          <span class="text-text-primary ml-2">{details.userMessage}</span>
+                        </div>
+                      {/if}
+
+                      <!-- Stop reason -->
+                      {#if job.stopReason}
+                        <div class="flex items-center gap-2">
+                          <span class="text-text-muted">Stop Reason:</span>
+                          <Badge variant={errorCodeVariant(job.stopReason)} size="sm">{job.stopReason}</Badge>
+                          {#if job.stopReasonDetails}
+                            <span class="text-text-secondary">{job.stopReasonDetails}</span>
+                          {/if}
+                        </div>
+                      {/if}
+
+                      <!-- Raw error message -->
+                      {#if job.errorMessage}
+                        <div>
+                          <span class="text-text-muted block mb-1">Raw Error:</span>
+                          <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-text-secondary bg-bg-surface border border-border rounded-lg p-3 font-mono">{job.errorMessage}</pre>
+                        </div>
+                      {/if}
+
+                      <!-- Download buttons -->
+                      <div class="flex gap-3 pt-1">
+                        <a
+                          href="/api/admin/jobs/{job.id}/checkpoint"
+                          download
+                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:bg-bg-elevated transition-colors"
+                          onclick={(e) => e.stopPropagation()}
+                        >
+                          <Download size={14} />
+                          Download Checkpoint
+                        </a>
+                        <a
+                          href="/api/admin/jobs/{job.id}/logs"
+                          download
+                          class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:bg-bg-elevated transition-colors"
+                          onclick={(e) => e.stopPropagation()}
+                        >
+                          <FileText size={14} />
+                          Download Logs
+                        </a>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>

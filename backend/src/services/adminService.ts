@@ -1,5 +1,8 @@
 import { prisma } from './db.js';
 import { UserRole } from '@prisma/client';
+import path from 'path';
+import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
+import { resolveAssetPath } from '../utils/assetPath.js';
 
 /**
  * Get dashboard statistics
@@ -57,6 +60,11 @@ export async function getReportStats() {
         currentStageName: true,
         errorMessage: true,
         errorStage: true,
+        errorCode: true,
+        errorDetails: true,
+        stopReason: true,
+        stopReasonDetails: true,
+        workerId: true,
         createdAt: true,
         startedAt: true,
         completedAt: true,
@@ -331,4 +339,129 @@ export async function updatePackage(id: string, data: {
     where: { id },
     data,
   });
+}
+
+/**
+ * Convert niche string to slug matching Python's checkpoint_manager.py logic
+ */
+function nicheToSlug(niche: string): string {
+  const truncated = niche.slice(0, 50);
+  let slug = '';
+  for (const c of truncated) {
+    slug += /[\p{L}\p{N}]/u.test(c) ? c : '_';
+  }
+  slug = slug.toLowerCase();
+  return slug.replace(/^_+|_+$/g, '');
+}
+
+/**
+ * Find checkpoint directory for a given job
+ */
+export async function findCheckpointForJob(jobId: string): Promise<string | null> {
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { niche: true, startedAt: true, completedAt: true, createdAt: true },
+  });
+  if (!job) return null;
+
+  const slug = nicheToSlug(job.niche);
+  const checkpointBaseDir = path.resolve(resolveAssetPath('output/checkpoints'));
+
+  if (!existsSync(checkpointBaseDir)) return null;
+
+  const prefix = `checkpoint_${slug}_`;
+  const entries = readdirSync(checkpointBaseDir)
+    .filter(name => name.startsWith(prefix))
+    .map(name => {
+      const fullPath = path.resolve(checkpointBaseDir, name);
+      return { name, fullPath, mtime: statSync(fullPath).mtimeMs };
+    })
+    .filter(entry => entry.fullPath.startsWith(checkpointBaseDir + path.sep))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  if (entries.length === 0) return null;
+
+  const jobStart = (job.startedAt || job.createdAt).getTime();
+  const jobEnd = (job.completedAt || new Date()).getTime();
+
+  // Match by timestamp proximity to job runtime
+  for (const entry of entries) {
+    if (entry.mtime >= jobStart - 60000 && entry.mtime <= jobEnd + 60000) {
+      return entry.fullPath;
+    }
+  }
+
+  // Fallback: parse timestamp from folder name
+  for (const entry of entries) {
+    const match = entry.name.match(/_(\d{8}_\d{6})$/);
+    if (match) {
+      const ts = match[1];
+      const folderDate = new Date(
+        `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}T${ts.slice(9, 11)}:${ts.slice(11, 13)}:${ts.slice(13, 15)}`
+      );
+      if (folderDate.getTime() >= jobStart - 300000 && folderDate.getTime() <= jobEnd + 300000) {
+        return entry.fullPath;
+      }
+    }
+  }
+
+  // Last resort: newest checkpoint for this niche
+  return entries[0]?.fullPath || null;
+}
+
+/**
+ * Get filtered log content for a given job
+ */
+export async function getLogsForJob(jobId: string): Promise<string | null> {
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { niche: true, startedAt: true, completedAt: true, createdAt: true },
+  });
+  if (!job) return null;
+
+  const logsDir = path.resolve(resolveAssetPath('output/logs'));
+  if (!existsSync(logsDir)) return 'No logs directory found.';
+
+  const startDate = job.startedAt || job.createdAt;
+  const endDate = job.completedAt || new Date();
+  const dates: string[] = [];
+  const current = new Date(startDate);
+  current.setHours(0, 0, 0, 0);
+  const end = new Date(endDate);
+  end.setHours(23, 59, 59, 999);
+  while (current <= end) {
+    dates.push(current.toISOString().slice(0, 10));
+    current.setDate(current.getDate() + 1);
+  }
+
+  const logLines: string[] = [
+    `=== Logs for Job ${jobId} ===`,
+    `Niche: ${job.niche}`,
+    `Started: ${startDate.toISOString()}`,
+    `Ended: ${endDate.toISOString()}`,
+    '',
+  ];
+
+  for (const date of dates) {
+    for (const prefix of ['worker', 'nicheiq']) {
+      const logPath = path.resolve(logsDir, `${prefix}_${date}.log`);
+      if (!logPath.startsWith(logsDir + path.sep)) continue;
+      if (!existsSync(logPath)) continue;
+
+      const content = readFileSync(logPath, 'utf-8');
+      const filtered = content.split('\n').filter(line => line.includes(jobId));
+      if (filtered.length > 0) {
+        logLines.push(`--- ${prefix}_${date}.log (${filtered.length} lines) ---`);
+        logLines.push(...filtered);
+        logLines.push('');
+      }
+    }
+  }
+
+  if (logLines.length <= 5) {
+    logLines.push('No log entries found for this job.');
+    logLines.push('Possible reasons: log rotation (7-day retention), standalone mode, or job not started.');
+  }
+
+  return logLines.join('\n');
 }

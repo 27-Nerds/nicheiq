@@ -1,6 +1,8 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { UserRole } from '@prisma/client';
+import archiver from 'archiver';
+import path from 'path';
 import { requireInternalAdmin, AuthenticatedRequest } from '../middleware/auth.js';
 import * as adminService from '../services/adminService.js';
 
@@ -234,5 +236,72 @@ adminRouter.patch('/packages/:id', async (req: AuthenticatedRequest, res: Respon
     }
     console.error('Failed to update package:', error);
     res.status(500).json({ error: 'Failed to update package' });
+  }
+});
+
+// ============================================
+// Job Debug Downloads
+// ============================================
+
+const JobIdParam = z.object({ jobId: z.string().uuid() });
+
+adminRouter.get('/jobs/:jobId/checkpoint', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = JobIdParam.parse(req.params);
+    const checkpointPath = await adminService.findCheckpointForJob(jobId);
+
+    if (!checkpointPath) {
+      res.status(404).json({ error: 'No checkpoint found for this job' });
+      return;
+    }
+
+    const folderName = path.basename(checkpointPath);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${folderName}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', (err) => {
+      console.error('Archiver error:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to create checkpoint archive' });
+      }
+    });
+    res.on('close', () => archive.destroy());
+    archive.pipe(res);
+    archive.directory(checkpointPath, folderName);
+    await archive.finalize();
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Invalid job ID format' });
+      return;
+    }
+    console.error('Failed to download checkpoint:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to download checkpoint' });
+    }
+  }
+});
+
+adminRouter.get('/jobs/:jobId/logs', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = JobIdParam.parse(req.params);
+    const logContent = await adminService.getLogsForJob(jobId);
+
+    if (logContent === null) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    const filename = `job_${jobId}_logs.txt`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(logContent);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Invalid job ID format' });
+      return;
+    }
+    console.error('Failed to get job logs:', error);
+    res.status(500).json({ error: 'Failed to get job logs' });
   }
 });
