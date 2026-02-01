@@ -44,6 +44,11 @@ from ..models.landing_page import (
     VisualDesignSpec,
 )
 from ..models.research_state import FinalReport
+from ..utils.validation.crew_guardrails import (
+    validate_animated_html_result,
+    validate_html_page_result,
+    validate_qa_review_result,
+)
 
 
 @CrewBase
@@ -281,6 +286,8 @@ class LandingPageCrew:
                 self.generate_landing_copy_task(),
             ],
             output_pydantic=HTMLPageResult,
+            guardrail=validate_html_page_result,
+            guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
     @task
@@ -297,6 +304,8 @@ class LandingPageCrew:
                 self.generate_html_page_task(),  # The HTML to enhance
             ],
             output_pydantic=AnimatedHTMLResult,
+            guardrail=validate_animated_html_result,
+            guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
     @task
@@ -313,6 +322,8 @@ class LandingPageCrew:
                 self.enhance_animations_task(),  # The animated HTML to review
             ],
             output_pydantic=QAReviewResult,
+            guardrail=validate_qa_review_result,
+            guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
     # ========== CREW ==========

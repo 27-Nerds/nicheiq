@@ -23,6 +23,7 @@ _TRAILING_COMMA_RE = re.compile(r',(\s*[}\]])')
 
 from ...models.competitor import CompetitiveAnalysisResult
 from ...models.data_source import SourceEvaluationReport
+from ...models.landing_page import AnimatedHTMLResult, HTMLPageResult, QAReviewResult
 from ...models.pain_point import ContentCategorizationReport
 from ...models.research_state import AudienceMappingResult
 from ...models.seo_strategy import (
@@ -37,7 +38,7 @@ from ...models.solution_idea import (
     IdeaGenerationResult,
     RawConceptList,
 )
-from ..parsing.json_extractor import clean_llm_response
+from ..parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 
 
 def validate_diversity(
@@ -1222,5 +1223,221 @@ def validate_data_source_evaluation(task_output) -> tuple[bool, Any]:
     logger.info(
         f"✓ Data source evaluation guardrail passed: "
         f"{len(result.high_priority_sources)} high priority, {total_sources} total sources"
+    )
+    return (True, task_output.raw)
+
+
+# ========================================
+# LANDING PAGE CREW: HTML OUTPUT GUARDRAILS
+# ========================================
+# These guardrails catch JSON serialization errors caused by large HTML content
+# in html_content fields. The HTML Developer, Animation Enhancer, and QA Reviewer
+# agents produce ~20-30K character HTML outputs that frequently break JSON escaping.
+
+
+def _parse_html_task_output(task_output, model_class, task_name: str) -> tuple[Any | None, str | None]:
+    """
+    Parse HTML-heavy task output with fallback to bracket-matching extraction.
+
+    HTML content (~20-30K chars) frequently causes JSON parse errors due to
+    unescaped characters. This helper tries:
+    1. Standard pydantic parsing
+    2. Clean + json.loads from .raw
+    3. Bracket-matching extraction (handles broken escaping in strings)
+
+    Args:
+        task_output: CrewAI task output object
+        model_class: Pydantic model class to validate against
+        task_name: Name of the task for error messages
+
+    Returns:
+        tuple[result | None, error_message | None]
+    """
+    # Try the standard unified helper first
+    result, error = _parse_pydantic_from_task_output(task_output, model_class, task_name)
+    if result is not None:
+        return (result, None)
+
+    # Standard parsing failed - try bracket-matching extraction as fallback
+    # This handles cases where HTML content breaks json.loads() but the
+    # overall JSON structure is valid (bracket matching respects string literals)
+    if hasattr(task_output, 'raw') and task_output.raw:
+        try:
+            cleaned_raw = clean_llm_response(task_output.raw)
+            extracted = extract_json_object_from_text(cleaned_raw)
+            if extracted:
+                result = model_class.model_validate(extracted)
+                logger.info(f"{task_name} guardrail: Recovered via bracket-matching extraction")
+                return (result, None)
+        except Exception as e:
+            logger.debug(f"{task_name} bracket-matching fallback also failed: {e}")
+
+    # Both methods failed - return the original error
+    return (None, error)
+
+
+def validate_html_page_result(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for generate_html_page_task (Task 5) to handle JSON errors
+    from large HTML content.
+
+    The HTML Developer agent produces ~20-30K chars of HTML wrapped in JSON.
+    Common failure: unescaped characters in html_content break JSON parsing.
+
+    Validates:
+    - JSON is parseable (with bracket-matching fallback)
+    - html_content is non-empty and looks like HTML
+    - sections_included has at least 1 section
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    result, error = _parse_html_task_output(task_output, HTMLPageResult, "HTML page generation")
+    if error:
+        return (
+            False,
+            f"{error} "
+            "IMPORTANT: The html_content field contains HTML that must be properly JSON-escaped. "
+            "Ensure all double quotes inside HTML are escaped as \\\" and all backslashes as \\\\. "
+            "Return a valid JSON object with keys: html_content, sections_included, design_notes."
+        )
+
+    # Validate html_content looks like HTML
+    if not result.html_content or len(result.html_content) < 500:
+        return (
+            False,
+            f"html_content too short ({len(result.html_content or '')} chars, minimum 500). "
+            "Generate a complete HTML page with <!DOCTYPE html>, <head>, and <body>."
+        )
+
+    html_lower = result.html_content.lower()
+    if '<!doctype html>' not in html_lower and '<html' not in html_lower:
+        return (
+            False,
+            "html_content does not contain <!DOCTYPE html> or <html> tag. "
+            "Generate a complete, standalone HTML file."
+        )
+
+    # Validate sections_included
+    if not result.sections_included or len(result.sections_included) < 1:
+        return (
+            False,
+            "sections_included is empty. List the section types included in the HTML "
+            "(e.g., hero, problem, solution, pricing, cta)."
+        )
+
+    logger.info(
+        f"✓ HTML page guardrail passed: "
+        f"{len(result.html_content)} chars, {len(result.sections_included)} sections"
+    )
+    return (True, task_output.raw)
+
+
+def validate_animated_html_result(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for enhance_animations_task (Task 6) to handle JSON errors
+    from large animated HTML content.
+
+    Validates:
+    - JSON is parseable (with bracket-matching fallback)
+    - html_content is non-empty and looks like HTML
+    - animations_added has at least 1 animation type
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    result, error = _parse_html_task_output(task_output, AnimatedHTMLResult, "Animation enhancement")
+    if error:
+        return (
+            False,
+            f"{error} "
+            "IMPORTANT: The html_content field contains HTML that must be properly JSON-escaped. "
+            "Ensure all double quotes inside HTML are escaped as \\\" and all backslashes as \\\\. "
+            "Return a valid JSON object with keys: html_content, animations_added, animation_notes."
+        )
+
+    # Validate html_content
+    if not result.html_content or len(result.html_content) < 500:
+        return (
+            False,
+            f"html_content too short ({len(result.html_content or '')} chars, minimum 500). "
+            "Return the COMPLETE enhanced HTML, not just the changed parts."
+        )
+
+    html_lower = result.html_content.lower()
+    if '<!doctype html>' not in html_lower and '<html' not in html_lower:
+        return (
+            False,
+            "html_content does not contain <!DOCTYPE html> or <html> tag. "
+            "Return the complete HTML file with animations added."
+        )
+
+    # Validate animations_added
+    if not result.animations_added or len(result.animations_added) < 1:
+        return (
+            False,
+            "animations_added is empty. List the animation types added "
+            "(e.g., page_load, scroll, hover, micro)."
+        )
+
+    logger.info(
+        f"✓ Animated HTML guardrail passed: "
+        f"{len(result.html_content)} chars, animations: {result.animations_added}"
+    )
+    return (True, task_output.raw)
+
+
+def validate_qa_review_result(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for qa_review_task (Task 7) to handle JSON errors
+    from large QA-reviewed HTML content.
+
+    Validates:
+    - JSON is parseable (with bracket-matching fallback)
+    - html_content is non-empty and looks like HTML
+    - quality_score is within range
+    - issues_fixed_count is present
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    result, error = _parse_html_task_output(task_output, QAReviewResult, "QA review")
+    if error:
+        return (
+            False,
+            f"{error} "
+            "IMPORTANT: The html_content field contains HTML that must be properly JSON-escaped. "
+            "Ensure all double quotes inside HTML are escaped as \\\" and all backslashes as \\\\. "
+            "Return a valid JSON object with keys: html_content, issues_found, issues_fixed_count, "
+            "quality_score, passes_qa, review_notes."
+        )
+
+    # Validate html_content
+    if not result.html_content or len(result.html_content) < 500:
+        return (
+            False,
+            f"html_content too short ({len(result.html_content or '')} chars, minimum 500). "
+            "Return the COMPLETE QA-reviewed HTML, not just the changed parts."
+        )
+
+    html_lower = result.html_content.lower()
+    if '<!doctype html>' not in html_lower and '<html' not in html_lower:
+        return (
+            False,
+            "html_content does not contain <!DOCTYPE html> or <html> tag. "
+            "Return the complete reviewed HTML file."
+        )
+
+    # quality_score range is enforced by Pydantic (ge=0, le=100), but validate here too
+    if result.quality_score < 0 or result.quality_score > 100:
+        return (
+            False,
+            f"quality_score must be 0-100, got {result.quality_score}."
+        )
+
+    logger.info(
+        f"✓ QA review guardrail passed: "
+        f"{len(result.html_content)} chars, score: {result.quality_score}/100, "
+        f"issues fixed: {result.issues_fixed_count}"
     )
     return (True, task_output.raw)
