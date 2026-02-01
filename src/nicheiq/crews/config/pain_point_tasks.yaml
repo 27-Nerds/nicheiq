@@ -134,9 +134,9 @@ extract_pain_points:
        - **Broad themes** (multiple distinct problems bundled): Split into 2-3 specific pain points. Assign quotes to the most relevant sub-pain-point. Distribute the parent theme's mention_count proportionally based on quote distribution.
        - Example split: "Housing Challenges" → separate "Affordability Crisis", "Safety Concerns", "Housing Instability" pain points
     3. **Collect Quotes** → For each pain point:
-       - **Primary source**: Task 1's representative_quotes for that theme (already verified with [source: ID] tags)
-       - **Supplementary source**: Any additional relevant quotes from knowledge source context (RAG chunks available at task start)
-       - Select 5-10 best quotes that clearly articulate the pain, include impact statements, and have [source: ID] suffix intact
+       - **Primary source (ALWAYS USE FIRST)**: Task 1's representative_quotes for that theme — these have verified [source: ID] tags
+       - **Supplementary source (ONLY if needed)**: Additional quotes from knowledge source context, but ONLY if the quote has a complete [source: ID] suffix. If a knowledge source quote does NOT end with [source: POST_ID], DO NOT use it — find another quote that does.
+       - Select 5-10 best quotes that clearly articulate the pain and have [source: ID] suffix intact
     4. **Set mention_count** → Use Task 1's theme mention_count as the base:
        - For 1:1 mappings: carry over Task 1's mention_count directly
        - For split themes: distribute proportionally (e.g., theme with 30 mentions split into 3 pain points → ~10 each, adjusted by quote evidence)

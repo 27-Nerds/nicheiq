@@ -117,6 +117,10 @@ class ReportGenerator:
             f"{len(final_report.recommended_solutions)} solutions"
         )
 
+        # Store enriched solution for all downstream methods to share (RC1 fix)
+        # final_report.selected_solution_details has Stage 9.5 SEO refinements merged
+        self._enriched_solution = final_report.selected_solution_details
+
         # Step 2: Enhance with LLM for strategic synthesis
         logger.info("Step 2: Enhancing with LLM for strategic synthesis (optional)...")
         final_report = self._enhance_report_with_llm(final_report)
@@ -286,6 +290,26 @@ class ReportGenerator:
                 f"[OK] SEO calculation transparency: "
                 f"baseline={final_report.seo_calculation_transparency.baseline_seo_score}, "
                 f"refined={final_report.seo_calculation_transparency.refined_seo_score}"
+            )
+
+        # Cross-section consistency validation (Layer 4: safety net)
+        from ..validators.report_consistency import ReportConsistencyValidator
+        validator = ReportConsistencyValidator()
+        fixes, warnings = validator.reconcile(final_report, self.state)
+        if fixes:
+            logger.info(f"Report consistency: {len(fixes)} auto-fixes applied")
+            for fix in fixes:
+                logger.debug(f"  Fix: {fix}")
+        if warnings:
+            logger.warning(f"Report consistency: {len(warnings)} warnings")
+            for w in warnings:
+                logger.warning(f"  [{w.severity}] {w.message}")
+            if not final_report.data_quality_summary:
+                final_report.data_quality_summary = DataQualitySummary(
+                    overall_data_quality="MEDIUM", quality_caveats=[]
+                )
+            final_report.data_quality_summary.quality_caveats.extend(
+                [w.message for w in warnings if w.severity in ("ERROR", "WARNING")]
             )
 
         logger.info("[OK] Final report generation complete (Hybrid approach: 80% Python, 20% LLM)")
@@ -635,6 +659,17 @@ class ReportGenerator:
                 f"refined scalability {scalability_str}, "
                 f"{pages_str} pages"
             )
+
+        # Apply pricing enrichment (Stage 8) — overwrite Stage 7 estimate with validated pricing
+        if self.state.pricing_strategies:
+            matching_pricing = next(
+                (p for p in self.state.pricing_strategies
+                 if p.solution_name == enriched.solution_name),
+                None
+            )
+            if matching_pricing:
+                enriched.pricing_strategy = matching_pricing.format_summary()
+                logger.info(f"[Report] Applied pricing enrichment: {enriched.pricing_strategy}")
 
         return enriched
 
@@ -1625,9 +1660,68 @@ It differentiates through {diff_text}.
             logger.warning(f"Failed to build competitor profiles: {e}")
             return []
 
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """Lowercase, collapse whitespace, strip."""
+        return re.sub(r'\s+', ' ', text.lower().strip())
+
+    @staticmethod
+    def _flatten_comments(comments: list, _depth: int = 0) -> list:
+        """Recursively flatten nested RedditComment trees.
+
+        Args:
+            comments: List of RedditComment objects (with .replies)
+            _depth: Current recursion depth (safety guard)
+
+        Returns:
+            Flat list of all RedditComment objects
+        """
+        if _depth > 5:
+            return []
+        flat = []
+        for comment in comments:
+            flat.append(comment)
+            if comment.replies:
+                flat.extend(ReportGenerator._flatten_comments(comment.replies, _depth + 1))
+        return flat
+
+    @staticmethod
+    def _fuzzy_match_quote(
+        quote: str,
+        content_index: list[tuple[str, str]],
+        min_length: int = 30,
+    ) -> str | None:
+        """Substring containment match for a quote against indexed content.
+
+        Args:
+            quote: The cleaned quote text to match
+            content_index: List of (normalized_text, post_id) tuples
+            min_length: Minimum normalized quote length to attempt matching
+
+        Returns:
+            post_id if a match is found, None otherwise
+        """
+        normalized_quote = re.sub(r'\s+', ' ', quote.lower().strip())
+        # Strip leading/trailing quote marks (use regex, not str.strip)
+        normalized_quote = re.sub(r'^["\']+|["\']+$', '', normalized_quote)
+        normalized_quote = re.sub(r'^\.{2,}|\.{2,}$', '', normalized_quote).strip()
+
+        if len(normalized_quote) < min_length:
+            return None
+
+        for content_text, post_id in content_index:
+            if normalized_quote in content_text:
+                return post_id
+
+        return None
+
     def _generate_evidence_appendix(self) -> "EvidenceAppendix | None":
         """
         Generate evidence appendix with top Reddit threads and pain point quote sources.
+
+        Uses a 2-tier resolution strategy for quote→source mapping:
+        - Tier 0: Parallel source_post_ids array (primary)
+        - Tier 1: Fuzzy substring match against original content (fallback)
 
         Returns:
             EvidenceAppendix with traceability from pain points to original posts
@@ -1672,30 +1766,61 @@ It differentiates through {diff_text}.
                     "url": thread.original_tweet.url
                 }
 
+            # Build content index for fuzzy matching: list of (normalized_text, post_id)
+            content_index: list[tuple[str, str]] = []
+            for post in self.state.social_content.reddit_posts:
+                # Index post body
+                normalized_body = self._normalize_text(post.selftext)
+                if len(normalized_body) >= 30:
+                    content_index.append((normalized_body, post.post_id))
+                # Index all comments (flattened)
+                for comment in self._flatten_comments(post.comments):
+                    normalized_comment = self._normalize_text(comment.body)
+                    if len(normalized_comment) >= 30:
+                        content_index.append((normalized_comment, post.post_id))
+            for thread in self.state.social_content.twitter_threads:
+                # Index original tweet
+                normalized_tweet = self._normalize_text(thread.original_tweet.text)
+                if len(normalized_tweet) >= 30:
+                    content_index.append((normalized_tweet, thread.thread_id))
+                # Index replies
+                for reply in thread.replies:
+                    normalized_reply = self._normalize_text(reply.text)
+                    if len(normalized_reply) >= 30:
+                        content_index.append((normalized_reply, thread.thread_id))
+
             # Map pain points to source posts
             pain_point_quote_sources = []
             for pain_point in self.state.pain_point_analysis.pain_points:
                 quotes_with_sources = []
 
-                # Get source_post_ids directly from PainPoint model (more reliable than regex extraction)
+                # Get source_post_ids directly from PainPoint model (parallel array)
                 source_ids = pain_point.source_post_ids if pain_point.source_post_ids else []
 
                 for i, quote in enumerate(pain_point.representative_quotes):
-                    # Try to match source_id from the parallel list, fallback to regex extraction, then "unknown"
-                    source_id = "unknown"
-
-                    # First try: Use source_post_ids if available for this index
+                    # Tier 0: Use parallel source_post_ids array
+                    source_id = ""
                     if i < len(source_ids):
                         source_id = source_ids[i]
-                    else:
-                        # Fallback: Try regex extraction from quote suffix [source: ID]
-                        source_match = re.search(r'\[source:\s*([^\]]+)\]', quote)
-                        if source_match:
-                            source_id = source_match.group(1).strip()
-                        else:
-                            logger.warning(f"⚠️ Pain point quote missing source attribution: '{quote[:50]}...'")
 
-                    # Clean quote for display (remove [source: ID] suffix if present)
+                    # Tier 1: Fuzzy match fallback for empty source IDs
+                    if not source_id:
+                        matched_id = self._fuzzy_match_quote(quote, content_index)
+                        if matched_id:
+                            source_id = matched_id
+                            logger.debug(
+                                f"Fuzzy matched quote to source '{matched_id}': '{quote[:50]}...'"
+                            )
+
+                    # Final: "unknown" with debug log
+                    if not source_id:
+                        source_id = "unknown"
+                        logger.debug(
+                            f"Quote source unresolved: '{quote[:50]}...'"
+                        )
+
+                    # Quotes are already cleaned by _extract_and_clean_sources,
+                    # but clean again defensively
                     cleaned_quote = re.sub(r'\s*\[source:[^\]]+\]', '', quote).strip()
 
                     metadata = post_metadata.get(source_id, {"subreddit": "Unknown", "score": 0})
@@ -1848,8 +1973,10 @@ It differentiates through {diff_text}.
                 narrative_rationale=narrative.verdict_rationale if narrative else None
             )
 
-            # Compute confidence score using ScoreAccessor
-            confidence_score = self.score_accessor.get_confidence_score(selected_solution)
+            # Compute confidence score using ScoreAccessor (adjusted for data quality)
+            confidence_score = self.score_accessor.get_confidence_score(
+                selected_solution, **self._get_confidence_quality_kwargs()
+            )
 
             executive_dashboard = ExecutiveDashboard(
                 recommended_solution_snapshot=solution_snapshot,
@@ -1904,13 +2031,13 @@ It differentiates through {diff_text}.
             total_keyword_search_volume = self.accessor.get_total_keyword_search_volume()
 
             # Pain point metrics
-            high_priority_pain_points = 0
+            high_severity_pain_points = 0
             avg_pain_point_severity = 0.0
             avg_willingness_to_pay = 0.0
 
             if self.state.pain_point_analysis and self.state.pain_point_analysis.pain_points:
                 pain_points = self.state.pain_point_analysis.pain_points
-                high_priority_pain_points = len([
+                high_severity_pain_points = len([
                     pp for pp in pain_points
                     if pp.severity_score >= settings.pain_point_high_priority_threshold
                 ])
@@ -1940,12 +2067,10 @@ It differentiates through {diff_text}.
             competitive_advantage_score = score_map.get('competitive_advantage')
             technical_feasibility_score = score_map.get('technical_feasibility')
 
-            # SEO score: prefer refined (Stage 9.5), fall back to selection criteria (Stage 8.5)
-            # This ensures KeyMetrics shows the same SEO score as selected_solution_details
-            # Use enriched_solution parameter which has Stage 9.5 refinements already merged
-            seo_refined = getattr(enriched_solution, 'seo_scalability_score_refined', None) if enriched_solution else None
-            if seo_refined is not None:
-                seo_potential_score = seo_refined
+            # SEO score: use canonical resolution (RC2 fix: unified SEO score path)
+            # This ensures KeyMetrics shows the same SEO score as all other sections
+            if enriched_solution:
+                seo_potential_score = self.score_accessor.get_seo_score_canonical(enriched_solution)
             else:
                 seo_potential_score = score_map.get('seo_growth_potential')
 
@@ -1957,7 +2082,7 @@ It differentiates through {diff_text}.
                 tier3_keyword_count=tier3_keyword_count,
                 tier4_keyword_count=tier4_keyword_count,
                 total_keyword_count=total_keyword_count,
-                high_priority_pain_points=high_priority_pain_points,
+                high_severity_pain_points=high_severity_pain_points,
                 primary_competitor_count=primary_competitor_count,
                 avg_pain_point_severity=avg_pain_point_severity,
                 avg_willingness_to_pay=avg_willingness_to_pay,
@@ -2090,7 +2215,7 @@ It differentiates through {diff_text}.
                 total_keyword_count=key_metrics.total_keyword_count,
                 tier1_keyword_count=key_metrics.tier1_keyword_count,
                 competitor_count=key_metrics.primary_competitor_count,
-                high_priority_pain_points=key_metrics.high_priority_pain_points,
+                high_severity_pain_points=key_metrics.high_severity_pain_points,
                 zero_keywords_note=zero_keywords_note,
                 zero_competitors_note=zero_competitors_note
             )
@@ -2204,6 +2329,14 @@ It differentiates through {diff_text}.
             logger.warning(f"Narrative validation error: {e}")
             return False
 
+    def _get_confidence_quality_kwargs(self) -> dict:
+        """Return quality-signal kwargs for ScoreAccessor.get_confidence_score()."""
+        return dict(
+            pain_point_quality_tier=self.state.pain_point_quality_tier,
+            social_content_quality_tier=self.state.social_content_quality_tier,
+            pain_point_confidence_score=self.state.pain_point_confidence_score,
+        )
+
     def _compute_go_no_go_verdict(
         self,
         selected_solution,
@@ -2213,6 +2346,8 @@ It differentiates through {diff_text}.
         Compute go/no-go verdict based on selection criteria scores (Python-only).
 
         Uses score thresholds to determine verdict automatically.
+        Uses enriched solution (self._enriched_solution) to ensure same object identity
+        as other report sections.
 
         Args:
             selected_solution: SolutionIdea object
@@ -2223,11 +2358,14 @@ It differentiates through {diff_text}.
         """
         from ..models.executive_summary import GoNoGoVerdict
 
+        # Use enriched solution if available (RC1 fix: object identity)
+        solution = getattr(self, '_enriched_solution', None) or selected_solution
+
         # Get scores using ScoreAccessor with fallbacks
-        market_fit = self.score_accessor.get_market_fit(selected_solution)
-        competitive_adv = self.score_accessor.get_competitive_advantage(selected_solution)
-        tech_feasibility = self.score_accessor.get_technical_feasibility(selected_solution)
-        seo_potential = self.score_accessor.get_seo_growth(selected_solution)
+        market_fit = self.score_accessor.get_market_fit(solution)
+        competitive_adv = self.score_accessor.get_competitive_advantage(solution)
+        tech_feasibility = self.score_accessor.get_technical_feasibility(solution)
+        seo_potential = self.score_accessor.get_seo_score_canonical(solution)
 
         # Validate scores are not None before calculations (Phase 1.2: None/NaN validation)
         scores = [market_fit, competitive_adv, tech_feasibility, seo_potential]
@@ -2273,11 +2411,33 @@ It differentiates through {diff_text}.
             else:
                 rationale = f"Scores below threshold (avg {avg_score:.2f}). {primary_concern}"
 
+        # Phase 2: Apply trend-based downgrades (downgrade-only, never upgrades)
+        trend_context = None
+        trend_data = self.state.trend_longevity
+        if trend_data is not None:
+            from ..validators.score_validators import VerdictValidator
+            trend_validator = VerdictValidator()
+            verdict, risk_level, primary_concern, trend_context = (
+                trend_validator.apply_trend_downgrade(
+                    verdict=verdict,
+                    risk_level=risk_level,
+                    primary_concern=primary_concern,
+                    trend_direction=trend_data.trend_direction,
+                    momentum_score=trend_data.momentum_score,
+                    timing_recommendation=trend_data.timing_recommendation,
+                    longevity_verdict=trend_data.longevity_verdict,
+                    market_maturity=trend_data.market_maturity,
+                )
+            )
+            if trend_context:
+                logger.info(f"[Verdict Trend Adjustment] {trend_context}")
+
         return GoNoGoVerdict(
             verdict=verdict,
             rationale=rationale,
             risk_level=risk_level,
-            primary_concern=primary_concern
+            primary_concern=primary_concern,
+            trend_context=trend_context,
         )
 
     # ==================================================================================
@@ -2483,7 +2643,7 @@ It differentiates through {diff_text}.
             result, _usage = LLMService.invoke_structured(
                 prompt=prompt,
                 output_model=IdealCustomerProfile,
-                temperature=0.4,
+                temperature=0.2,
             )
             logger.info(f"[OK] LLM ICP generation successful: persona={result.persona_name}")
             return result
@@ -2878,7 +3038,8 @@ It differentiates through {diff_text}.
         try:
             from ..models.analytics import MarketAnalytics
 
-            selected_solution = self.accessor.get_selected_solution_details()
+            # Use enriched solution (RC1 fix: object identity)
+            selected_solution = getattr(self, '_enriched_solution', None) or self.accessor.get_selected_solution_details()
             if not selected_solution:
                 return None
 
@@ -2887,7 +3048,7 @@ It differentiates through {diff_text}.
                 self.score_accessor.get_market_fit(selected_solution) +
                 self.score_accessor.get_competitive_advantage(selected_solution) +
                 self.score_accessor.get_technical_feasibility(selected_solution) +
-                self.score_accessor.get_seo_growth(selected_solution)
+                self.score_accessor.get_seo_score_canonical(selected_solution)
             ) / 4
 
             # Market size from keyword volume
@@ -2916,8 +3077,10 @@ It differentiates through {diff_text}.
             else:
                 recommendation = "No-Go"
 
-            # Calculate selection confidence using ScoreAccessor
-            selection_confidence = self.score_accessor.get_confidence_score(selected_solution)
+            # Calculate selection confidence using ScoreAccessor (adjusted for data quality)
+            selection_confidence = self.score_accessor.get_confidence_score(
+                selected_solution, **self._get_confidence_quality_kwargs()
+            )
 
             return MarketAnalytics(
                 overall_opportunity_score=overall_score,
@@ -2957,24 +3120,27 @@ It differentiates through {diff_text}.
                 diversity = 1.0 - (max(tier0_count, tier1_count, tier2_count, tier3_count, tier4_count) / total)
 
             # High volume keywords (Tier 0, 1 and 2 - premium and quick wins)
-            # Direct access to tier keyword lists
+            # Direct access to tier keyword lists, deduplicated
             seo = self.state.seo_strategy_report
             tier0_keywords = seo.tier_0_keywords or []
             tier1_keywords = seo.tier_1_keywords or []
             tier2_keywords = seo.tier_2_keywords or []
 
-            high_volume = sum(
-                1 for kw in (tier0_keywords + tier1_keywords + tier2_keywords)
-                if (kw.search_volume or 0) > 1000
-            )
-
-            # Calculate avg_competition from all tiered keywords
-            # Competition strings are formatted as "MEDIUM (53)" - extract numeric value
-            all_keywords = tier0_keywords + tier1_keywords + tier2_keywords
+            seen: set[str] = set()
+            high_volume = 0
             competition_values = []
-            for kw in all_keywords:
+
+            for kw in (tier0_keywords + tier1_keywords + tier2_keywords):
+                key = kw.keyword.lower().strip()
+                if key in seen:
+                    continue
+                seen.add(key)
+
+                if (kw.search_volume or 0) > 1000:
+                    high_volume += 1
+
+                # Competition strings are formatted as "MEDIUM (53)" - extract numeric value
                 if kw.competition:
-                    # Parse competition string like "MEDIUM (53)" -> 53
                     comp_match = re.search(r'\((\d+)\)', kw.competition)
                     if comp_match:
                         competition_values.append(int(comp_match.group(1)))
@@ -3146,7 +3312,8 @@ Return valid JSON with this structure:
 
             pain_points = self.state.pain_point_analysis.pain_points
             total = len(pain_points)
-            high_priority = sum(1 for pp in pain_points if pp.severity_score >= settings.pain_point_high_priority_threshold)
+            high_severity = sum(1 for pp in pain_points if pp.severity_score >= settings.pain_point_high_priority_threshold)
+            high_opportunity = sum(1 for pp in pain_points if pp.opportunity_level.value == "high")
 
             # Quadrant distribution
             quadrants = {
@@ -3178,7 +3345,8 @@ Return valid JSON with this structure:
 
             return PainPointAnalytics(
                 total_pain_points=total,
-                high_priority_count=high_priority,
+                high_severity_count=high_severity,
+                high_opportunity_count=high_opportunity,
                 quadrant_distribution=quadrants,
                 avg_severity=avg_severity,
                 avg_willingness_to_pay=avg_wtp,

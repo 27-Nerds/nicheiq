@@ -1851,6 +1851,147 @@ class SEOStrategyCrew:
         else:
             return self._create_strategy_sequential(enriched_keywords, expanded_keywords)
 
+    @staticmethod
+    def _deduplicate_across_tiers(
+        keyword_analysis: KeywordAnalysisResult,
+    ) -> KeywordAnalysisResult:
+        """
+        Remove keywords that appear in multiple tiers, keeping the highest-priority copy.
+
+        Priority order: T0 > T1 > T2 > T3 > T4 > Untiered.
+        Lower tier number = higher priority.
+
+        Returns a **new** KeywordAnalysisResult (immutable pattern).
+        """
+        seen: set[str] = set()
+        stats: dict[str, int] = {}
+
+        def _dedup_tiered(
+            keywords: list[TieredKeyword] | None, tier_name: str
+        ) -> list[TieredKeyword] | None:
+            if not keywords:
+                stats[tier_name] = 0
+                return keywords
+            kept = []
+            removed = 0
+            for kw in keywords:
+                key = kw.keyword.lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    kept.append(kw)
+                else:
+                    removed += 1
+            stats[tier_name] = removed
+            return kept if kept else None
+
+        def _dedup_geographic_groups(
+            groups: list[GeographicKeywordGroup] | None, tier_name: str
+        ) -> list[GeographicKeywordGroup] | None:
+            if not groups:
+                stats[tier_name] = 0
+                return groups
+            removed = 0
+            new_groups = []
+            for group in groups:
+                # Deduplicate within the group first, then against seen
+                internal_seen: set[str] = set()
+                kept_entries = []
+                for entry in group.keywords:
+                    key = entry.keyword.lower().strip()
+                    if key in internal_seen:
+                        removed += 1
+                        continue
+                    internal_seen.add(key)
+                    if key not in seen:
+                        seen.add(key)
+                        kept_entries.append(entry)
+                    else:
+                        removed += 1
+                if kept_entries:
+                    new_groups.append(
+                        GeographicKeywordGroup(
+                            region_name=group.region_name,
+                            total_volume=sum(e.search_volume or 0 for e in kept_entries),
+                            competition_level=group.competition_level,
+                            keywords=kept_entries,
+                            strategy_notes=group.strategy_notes,
+                        )
+                    )
+            stats[tier_name] = removed
+            return new_groups if new_groups else None
+
+        def _dedup_category_groups(
+            groups: list[CategoryKeywordGroup] | None, tier_name: str
+        ) -> list[CategoryKeywordGroup] | None:
+            if not groups:
+                stats[tier_name] = 0
+                return groups
+            removed = 0
+            new_groups = []
+            for group in groups:
+                # Deduplicate within the group first, then against seen
+                internal_seen: set[str] = set()
+                kept_entries = []
+                for entry in group.keywords:
+                    key = entry.keyword_name.lower().strip()
+                    if key in internal_seen:
+                        removed += 1
+                        continue
+                    internal_seen.add(key)
+                    if key not in seen:
+                        seen.add(key)
+                        kept_entries.append(entry)
+                    else:
+                        removed += 1
+                if kept_entries:
+                    new_groups.append(
+                        CategoryKeywordGroup(
+                            category_name=group.category_name,
+                            total_volume=sum(e.search_volume or 0 for e in kept_entries),
+                            keywords=kept_entries,
+                            strategy_recommendation=group.strategy_recommendation,
+                        )
+                    )
+            stats[tier_name] = removed
+            return new_groups if new_groups else None
+
+        # Walk tiers in priority order
+        new_t0 = _dedup_tiered(keyword_analysis.tier_0_keywords, "T0")
+        new_t1 = _dedup_tiered(keyword_analysis.tier_1_keywords, "T1")
+        new_t2 = _dedup_tiered(keyword_analysis.tier_2_keywords, "T2")
+        new_t3 = _dedup_geographic_groups(keyword_analysis.tier_3_geographic_groups, "T3")
+        new_t4 = _dedup_category_groups(keyword_analysis.tier_4_category_groups, "T4")
+        new_untiered = _dedup_tiered(keyword_analysis.untiered_keywords, "Untiered")
+
+        total_removed = sum(stats.values())
+        if total_removed > 0:
+            breakdown = ", ".join(f"{k}: {v}" for k, v in stats.items() if v > 0)
+            logger.warning(
+                f"⚠️ Cross-tier dedup: removed {total_removed} duplicates ({breakdown})"
+            )
+        else:
+            logger.info("✅ Cross-tier dedup: no duplicates found")
+
+        # Ensure tier_1 is never None (required field with min_length=1)
+        if new_t1 is None:
+            new_t1 = keyword_analysis.tier_1_keywords
+
+        return KeywordAnalysisResult(
+            tier_0_keywords=new_t0,
+            tier_0_strategy=keyword_analysis.tier_0_strategy,
+            tier_1_keywords=new_t1,
+            tier_1_quick_win_strategy=keyword_analysis.tier_1_quick_win_strategy,
+            tier_2_keywords=new_t2,
+            tier_2_strategy=keyword_analysis.tier_2_strategy,
+            tier_3_geographic_groups=new_t3,
+            tier_4_category_groups=new_t4,
+            untiered_keywords=new_untiered,
+            total_keywords_analyzed=keyword_analysis.total_keywords_analyzed,
+            total_monthly_volume=keyword_analysis.total_monthly_volume,
+            key_findings=keyword_analysis.key_findings,
+            competitive_positioning=keyword_analysis.competitive_positioning,
+        )
+
     def _create_strategy_sequential(
         self, enriched_keywords: list, expanded_keywords: ExpandedKeywordList | None = None
     ) -> SEOStrategyReport:
@@ -2071,6 +2212,9 @@ class SEOStrategyCrew:
                 key_findings=task_1d_output.key_findings,
                 competitive_positioning=task_1d_output.competitive_positioning,
             )
+
+            # ═══ Cross-tier deduplication ═══
+            keyword_analysis = self._deduplicate_across_tiers(keyword_analysis)
 
             # ═══ GUARDRAIL: Log tier keyword selection for visibility ═══
             tier0_in_csv = sum(
@@ -2749,6 +2893,9 @@ class SEOStrategyCrew:
                 key_findings=task_1e_output.key_findings,
                 competitive_positioning=task_1e_output.competitive_positioning,
             )
+
+            # ═══ Cross-tier deduplication ═══
+            keyword_analysis = self._deduplicate_across_tiers(keyword_analysis)
 
             # ═══ GUARDRAIL: Log tier keyword selection for visibility ═══
             tier0_selected = len(keyword_analysis.tier_0_keywords or [])

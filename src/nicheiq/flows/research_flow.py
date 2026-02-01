@@ -23,6 +23,7 @@ from ..crews.solution_refinement_crew import SolutionRefinementCrew
 from ..crews.traffic_monetization_crew import TrafficMonetizationCrew
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.research_state import ResearchState
+from ..models.solution_selection import SelectionCriteriaScore
 from ..tools.reddit_tool import RedditCollectorTool
 from ..tools.twitter_tool import TwitterCollectorTool
 from ..utils.helpers import find_solution_by_name
@@ -515,7 +516,7 @@ class ResearchFlow(Flow[ResearchState]):
                 cross_platform_count += 1
 
         # Source attribution coverage (% of pain points with source_post_ids)
-        sourced_count = len([pp for pp in pain_points if pp.source_post_ids])
+        sourced_count = len([pp for pp in pain_points if any(pp.source_post_ids)])
         source_coverage = sourced_count / total_count if total_count > 0 else 0
 
         # High-opportunity pain points
@@ -1546,7 +1547,7 @@ Return a valid JSON object with this structure:
             pain_points = self.state.pain_point_analysis.pain_points if self.state.pain_point_analysis else []
             total_count = len(pain_points)
             quote_density = sum(len(pp.representative_quotes) for pp in pain_points) / total_count if total_count > 0 else 0
-            sourced_count = len([pp for pp in pain_points if pp.source_post_ids])
+            sourced_count = len([pp for pp in pain_points if any(pp.source_post_ids)])
             source_coverage = sourced_count / total_count if total_count > 0 else 0
 
             raise QualityGateStopException(
@@ -1828,6 +1829,35 @@ Return a valid JSON object with this structure:
                             solution=fallback_solution,
                             keyword_validation=None,
                         )
+                    )
+
+                    # Rebuild selection_criteria_scores for fallback solution
+                    fallback_scores_obj = None
+                    if self.state.solution_selection.all_solution_scores:
+                        fallback_scores_obj = next(
+                            (s for s in self.state.solution_selection.all_solution_scores
+                             if s.solution_name.strip() == fallback_name.strip()),
+                            None
+                        )
+                    if fallback_scores_obj:
+                        self.state.solution_selection.selection_criteria_scores = (
+                            self._build_selection_criteria_from_scores(
+                                fallback_scores_obj,
+                                justification_prefix="[AUTO-FALLBACK] Scores from all_solution_scores.",
+                            )
+                        )
+                    else:
+                        self.state.solution_selection.selection_criteria_scores = (
+                            self._build_selection_criteria_from_solution_idea(
+                                fallback_solution,
+                                justification_prefix="[AUTO-FALLBACK] Scores from SolutionIdea fields.",
+                            )
+                        )
+
+                    # Re-save checkpoint with fallback mutations
+                    self.checkpoint_mgr.save_stage(
+                        "stage_7_6_selection",
+                        self.state.solution_selection.model_dump(),
                     )
 
                     # Track fallback for visibility
@@ -2198,7 +2228,13 @@ Return a valid JSON object with this structure:
             pain_point_analysis=self.state.pain_point_analysis,
             competitive_analysis=self.state.competitive_analysis,
             niche_description=self.niche_description,
-            allowed_project_types=self.state.allowed_project_types
+            allowed_project_types=self.state.allowed_project_types,
+            market_sizing=self.state.market_sizing,
+            audience_mapping=self.state.audience_mapping,
+            solution_scores=(
+                self.state.solution_selection.all_solution_scores
+                if self.state.solution_selection else None
+            ),
         )
 
         if pricing_result:
@@ -2438,11 +2474,37 @@ Return a valid JSON object with this structure:
                 logger.info(f"[Parallel] {solution_name} - SUCCESS at attempt {attempt}")
                 break
 
+        # Compute niche-relevant volume from semantically filtered keywords
+        # If semantic validation clearly failed (low relevance), leave as None
+        # so downstream falls back to total_volume
+        if best_relevance_score >= 0.3:
+            niche_relevant_volume = sum(
+                kw.get('search_volume', 0) for kw in accumulated_good_keywords
+            )
+        else:
+            niche_relevant_volume = None
+            logger.warning(
+                f"[Parallel] {solution_name} - best_relevance_score={best_relevance_score:.2f} < 0.3, "
+                "skipping niche_relevant_volume (semantic filtering unreliable)"
+            )
+
         # Return result
         if best_validation_result:
             best_validation_result["attempts_made"] = final_attempt
             best_validation_result["best_relevance_score"] = best_relevance_score
             best_validation_result["accumulated_keywords_count"] = len(accumulated_good_keywords)
+            best_validation_result["niche_relevant_volume"] = niche_relevant_volume
+
+            # Log filter ratio when both volumes are available
+            if niche_relevant_volume is not None:
+                raw_volume = best_validation_result.get("total_volume", 0)
+                if raw_volume > 0:
+                    ratio = niche_relevant_volume / raw_volume
+                    logger.info(
+                        f"[Parallel] {solution_name} - niche_relevant_volume={niche_relevant_volume:,} "
+                        f"vs total_volume={raw_volume:,} (ratio={ratio:.1%})"
+                    )
+
             logger.info(f"[Parallel] {solution_name} complete: {final_attempt} attempts, relevance={best_relevance_score:.2f}")
         else:
             logger.warning(f"[Parallel] {solution_name} - All attempts failed")
@@ -2721,6 +2783,18 @@ Return a valid JSON object with this structure:
 
                 self.state.solution_selection.runner_up_solutions = new_runner_ups
                 logger.info(f"[Stage 8.5] Updated runner-ups after pivot: {new_runner_ups}")
+
+                # Rebuild selection_criteria_scores for the new winner
+                self.state.solution_selection.selection_criteria_scores = (
+                    self._build_selection_criteria_from_scores(
+                        new_winner_score,
+                        justification_prefix=(
+                            f"Updated after Stage 8.5 keyword validation pivot. "
+                            f"Previous winner: {original_winner}."
+                        ),
+                    )
+                )
+                logger.info("[Stage 8.5] Rebuilt selection_criteria_scores for new winner")
             else:
                 logger.info(f"[Stage 8.5] Winner confirmed by keyword validation: {new_winner}")
 
@@ -2743,6 +2817,71 @@ Return a valid JSON object with this structure:
             logger.debug("[Stage 8.5] Updated solution_selection checkpoint after keyword re-ranking")
 
         logger.info(f"[Stage 8.5] Keyword validation complete - {len(validation_results)} solutions validated")
+
+    @staticmethod
+    def _build_selection_criteria_from_scores(
+        solution_scores: "SolutionScores",
+        justification_prefix: str = "",
+    ) -> list[SelectionCriteriaScore]:
+        """Convert SolutionScores into a list of SelectionCriteriaScore entries.
+
+        Used when the winner changes at Stage 8.5 (keyword-validation pivot)
+        to rebuild selection_criteria_scores from the structured score object.
+
+        Args:
+            solution_scores: The SolutionScores object for the new winner.
+            justification_prefix: Optional prefix for each criterion's justification.
+
+        Returns:
+            List of 4 SelectionCriteriaScore entries.
+        """
+        mapping = [
+            ("market_fit", solution_scores.market_fit_score),
+            ("competitive_advantage", solution_scores.competitive_advantage_score),
+            ("technical_feasibility", solution_scores.technical_feasibility_score),
+            ("seo_growth_potential", solution_scores.seo_growth_potential_score),
+        ]
+        return [
+            SelectionCriteriaScore(
+                criterion=name,
+                score=score,
+                justification=justification_prefix,
+            )
+            for name, score in mapping
+        ]
+
+    @staticmethod
+    def _build_selection_criteria_from_solution_idea(
+        solution: "BaseSolutionIdea",
+        justification_prefix: str = "",
+    ) -> list[SelectionCriteriaScore]:
+        """Build SelectionCriteriaScore entries from BaseSolutionIdea fields.
+
+        Fallback for Stage 7 when all_solution_scores is unavailable.
+        BaseSolutionIdea has no competitive_advantage field, so only 3 criteria
+        are produced (downstream .get() returns None for the missing key).
+
+        Args:
+            solution: The BaseSolutionIdea to extract scores from.
+            justification_prefix: Optional prefix for each criterion's justification.
+
+        Returns:
+            List of SelectionCriteriaScore entries (only non-None scores).
+        """
+        mapping = [
+            ("market_fit", getattr(solution, "market_fit_score", None)),
+            ("technical_feasibility", getattr(solution, "technical_feasibility_score", None)),
+            ("seo_growth_potential", getattr(solution, "seo_scalability_score", None)),
+        ]
+        return [
+            SelectionCriteriaScore(
+                criterion=name,
+                score=score,
+                justification=justification_prefix,
+            )
+            for name, score in mapping
+            if score is not None
+        ]
 
     def _build_recommended_focus(
         self,

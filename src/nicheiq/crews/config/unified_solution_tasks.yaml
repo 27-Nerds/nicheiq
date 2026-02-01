@@ -88,6 +88,8 @@ divergent_exploration:
     **EXAMPLES (showing SEO-friendly architectural diversity):**
 
     Each example shows a DIFFERENT SEO acquisition pattern, not just different verticals.
+    These are architectural pattern illustrations only — do NOT reuse these names, verticals, or keywords in your output.
+    Generate concepts relevant to the actual niche: {niche}.
 
     1. concept_name: "PlumbingCostCalc"
        one_liner: "Aggregates plumber pricing data from 50 cities to generate '[City] plumbing cost 2025' pages."
@@ -349,7 +351,7 @@ solution_refinement:
 
     **Basic Info:**
     - solution_name, description (4-6 sentence HOW IT WORKS), value_proposition
-    - pain_points_addressed (use exact titles from data)
+    - pain_points_addressed (MUST include the #1 highest-severity pain point from {high_priority_list}; use exact titles from data)
     - core_features (5-7 MVP features)
     - target_personas (2-4 aligned with user segments)
 
@@ -689,7 +691,10 @@ competitive_refinement:
       ❌ Example: "Competitive evidence is strongest for Solution A" (biased before Task 4 selection)
       ✅ Example: "Solution A has pricing transparency advantages; Solution B excels at community features; Solution C offers unique privacy positioning" (neutral comparison)
 
-    **EXAMPLE OUTPUT:**
+    **FORMAT EXAMPLE (DO NOT COPY — names and content are placeholders only):**
+
+    **ANTI-COPYING RULE:** The example below uses "RelocatePro Directory" as a placeholder.
+    Your output MUST use the actual solution names from Task 1. Do NOT reference "RelocatePro" or any relocation-related content.
 
     {
       "solution_enhancements": [

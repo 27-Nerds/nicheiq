@@ -10,6 +10,75 @@ from typing import Literal, Optional
 from pydantic import BaseModel, Field
 
 
+class ConfidenceThresholds(BaseModel):
+    """
+    Thresholds for data-quality-based confidence score adjustments.
+
+    Each multiplier is applied independently. Missing/unknown tiers
+    default to 1.0 (no penalty). Final score is clamped to floor.
+    """
+
+    # Pain point quality tier multipliers (GOLD = 1.0 implicit)
+    pain_point_silver: float = Field(
+        default=0.95, ge=0.0, le=1.0,
+        description="Multiplier for SILVER pain point quality tier",
+    )
+    pain_point_bronze: float = Field(
+        default=0.85, ge=0.0, le=1.0,
+        description="Multiplier for BRONZE pain point quality tier",
+    )
+    pain_point_insufficient: float = Field(
+        default=0.70, ge=0.0, le=1.0,
+        description="Multiplier for INSUFFICIENT pain point quality tier",
+    )
+
+    # Social content quality tier multipliers (EXCELLENT/GOOD = 1.0 implicit)
+    social_minimal: float = Field(
+        default=0.90, ge=0.0, le=1.0,
+        description="Multiplier for MINIMAL social content quality tier",
+    )
+    social_insufficient: float = Field(
+        default=0.75, ge=0.0, le=1.0,
+        description="Multiplier for INSUFFICIENT social content quality tier",
+    )
+
+    # Pain point confidence score thresholds
+    pp_confidence_low_threshold: float = Field(
+        default=0.5, ge=0.0, le=1.0,
+        description="PP confidence below this triggers low multiplier",
+    )
+    pp_confidence_low_multiplier: float = Field(
+        default=0.90, ge=0.0, le=1.0,
+        description="Multiplier when PP confidence is below low threshold",
+    )
+    pp_confidence_very_low_threshold: float = Field(
+        default=0.3, ge=0.0, le=1.0,
+        description="PP confidence below this triggers very low multiplier",
+    )
+    pp_confidence_very_low_multiplier: float = Field(
+        default=0.80, ge=0.0, le=1.0,
+        description="Multiplier when PP confidence is below very low threshold",
+    )
+
+    # Floor (minimum adjusted score)
+    floor: float = Field(
+        default=0.10, ge=0.0, le=1.0,
+        description="Minimum adjusted confidence score",
+    )
+
+
+class ConfidenceAdjustmentResult(BaseModel):
+    """Result of a confidence score adjustment."""
+
+    base_score: float = Field(description="Original base confidence score")
+    adjusted_score: float = Field(description="Adjusted confidence score after quality penalties")
+    quality_multiplier: float = Field(description="Combined quality multiplier applied")
+    adjustment_notes: list[str] = Field(
+        default_factory=list,
+        description="Explanation of each adjustment applied",
+    )
+
+
 class ScoreThresholds(BaseModel):
     """
     Validation thresholds for scoring logic.
@@ -84,12 +153,40 @@ class ScoreThresholds(BaseModel):
         description="Minimum competitor count for 'High' competitive intensity",
     )
 
+    # Confidence adjustment thresholds
+    confidence: ConfidenceThresholds = Field(
+        default_factory=ConfidenceThresholds,
+        description="Thresholds for data-quality-based confidence adjustments",
+    )
+
     # Score Defaults
     score_accessor_default_fallback: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
         description="Default score when data is missing (ScoreAccessor fallback)",
+    )
+
+    # Trend-Based Verdict Downgrade Flags
+    trend_missed_window_caps_conditional: bool = Field(
+        default=True,
+        description="Rule 1: Declining + Missed Window caps verdict at Conditional, risk at least Medium",
+    )
+    trend_fad_caps_conditional: bool = Field(
+        default=True,
+        description="Rule 2: Fad longevity caps verdict at Conditional, risk at least Medium",
+    )
+    trend_declining_downgrades_go: bool = Field(
+        default=True,
+        description="Rule 3: Declining trend downgrades Go to Conditional (not Conditional to No-Go)",
+    )
+    trend_risky_downgrades_go: bool = Field(
+        default=True,
+        description="Rule 4: Risky longevity downgrades Go to Conditional (not Conditional to No-Go)",
+    )
+    trend_monitor_wait_raises_risk: bool = Field(
+        default=True,
+        description="Rule 5 (additive): Monitor & Wait timing raises risk one level",
     )
 
 
@@ -215,9 +312,142 @@ class VerdictValidator:
         else:
             return "High"
 
+    def apply_trend_downgrade(
+        self,
+        verdict: Literal["Go", "No-Go", "Conditional"],
+        risk_level: Literal["Low", "Medium", "High"],
+        primary_concern: Optional[str],
+        trend_direction: str,
+        momentum_score: float,
+        timing_recommendation: str,
+        longevity_verdict: str,
+        market_maturity: str,
+    ) -> tuple[
+        Literal["Go", "No-Go", "Conditional"],
+        Literal["Low", "Medium", "High"],
+        Optional[str],
+        Optional[str],
+    ]:
+        """
+        Apply trend-based downgrades to an existing verdict.
+
+        Downgrades only — never upgrades a verdict. Maximum downgrade is to
+        Conditional (never forces No-Go from trend data alone). If no rule
+        applies, returns inputs unchanged with trend_context=None.
+
+        Rules (1-4 are mutually exclusive elif chain, 5 is additive):
+            1. Declining + Missed Window → cap at Conditional, risk >= Medium
+            2. Fad longevity → cap at Conditional, risk >= Medium
+            3. Declining trend → Go→Conditional only
+            4. Risky longevity → Go→Conditional only
+            5. Monitor & Wait → raise risk one level (additive)
+
+        Args:
+            verdict: Current verdict from score-based logic
+            risk_level: Current risk level
+            primary_concern: Current primary concern (may be None)
+            trend_direction: "Growing", "Stable", or "Declining"
+            momentum_score: 0.0-1.0 momentum score
+            timing_recommendation: "Enter Now", "Monitor & Wait", or "Missed Window"
+            longevity_verdict: "Sustainable", "Risky", or "Fad"
+            market_maturity: "Emerging", "Growth", or "Mature"
+
+        Returns:
+            Tuple of (verdict, risk_level, primary_concern, trend_context)
+            where trend_context documents the adjustment or None if unchanged.
+        """
+        original_verdict = verdict
+        original_risk = risk_level
+        trend_context = None
+        risk_raised = False
+
+        # Helper to raise risk one level
+        def _raise_risk(current: str) -> str:
+            if current == "Low":
+                return "Medium"
+            if current == "Medium":
+                return "High"
+            return "High"  # Already High
+
+        # Rules 1-4: mutually exclusive (elif chain)
+        is_declining = trend_direction == "Declining"
+        is_missed_window = timing_recommendation == "Missed Window"
+        is_fad = longevity_verdict == "Fad"
+        is_risky = longevity_verdict == "Risky"
+
+        # Rule 1: Declining + Missed Window → cap at Conditional, risk >= Medium
+        if (
+            self.thresholds.trend_missed_window_caps_conditional
+            and is_declining
+            and is_missed_window
+        ):
+            if verdict == "Go":
+                verdict = "Conditional"
+            if risk_level == "Low":
+                risk_level = "Medium"
+            trend_context = (
+                f"Downgraded from {original_verdict}/{original_risk} to {verdict}/{risk_level}: "
+                f"Declining trend + Missed Window timing"
+            )
+
+        # Rule 2: Fad longevity → cap at Conditional, risk >= Medium
+        elif self.thresholds.trend_fad_caps_conditional and is_fad:
+            if verdict == "Go":
+                verdict = "Conditional"
+            if risk_level == "Low":
+                risk_level = "Medium"
+            trend_context = (
+                f"Downgraded from {original_verdict}/{original_risk} to {verdict}/{risk_level}: "
+                f"Fad longevity verdict"
+            )
+
+        # Rule 3: Declining trend → Go→Conditional only
+        elif self.thresholds.trend_declining_downgrades_go and is_declining:
+            if verdict == "Go":
+                verdict = "Conditional"
+                trend_context = (
+                    f"Downgraded from Go/{original_risk} to Conditional/{risk_level}: "
+                    f"Declining market trend (momentum={momentum_score:.2f})"
+                )
+
+        # Rule 4: Risky longevity → Go→Conditional only
+        elif self.thresholds.trend_risky_downgrades_go and is_risky:
+            if verdict == "Go":
+                verdict = "Conditional"
+                trend_context = (
+                    f"Downgraded from Go/{original_risk} to Conditional/{risk_level}: "
+                    f"Risky longevity verdict ({market_maturity} market)"
+                )
+
+        # Rule 5: Monitor & Wait → raise risk one level (additive, independent of 1-4)
+        if (
+            self.thresholds.trend_monitor_wait_raises_risk
+            and timing_recommendation == "Monitor & Wait"
+        ):
+            new_risk = _raise_risk(risk_level)
+            if new_risk != risk_level:
+                risk_raised = True
+                risk_level = new_risk
+                rule5_msg = f"Risk raised {original_risk if not trend_context else risk_level}→{risk_level}: Monitor & Wait timing"
+                if trend_context:
+                    trend_context = f"{trend_context}; {rule5_msg}"
+                else:
+                    trend_context = rule5_msg
+
+        # Only set primary_concern from trend if none exists from score logic
+        if trend_context and primary_concern is None:
+            primary_concern = f"Trend concern: {trend_direction} market, {longevity_verdict} longevity, timing={timing_recommendation}"
+
+        return verdict, risk_level, primary_concern, trend_context
+
     def is_high_priority_pain_point(self, severity_score: float) -> bool:
         """
-        Check if pain point qualifies as high priority.
+        Check if pain point qualifies as high priority (severity-only criterion).
+
+        Note: This single-criterion check feeds the ``high_severity_count`` /
+        ``high_severity_pain_points`` report fields.  It is distinct from
+        ``opportunity_level == "high"`` which requires *both* severity >= 0.6
+        and WTP >= 0.6 (dual criteria).
 
         Args:
             severity_score: Pain point severity score (0.0-1.0)
@@ -226,3 +456,107 @@ class VerdictValidator:
             True if severity exceeds high priority threshold
         """
         return severity_score >= self.thresholds.pain_point_high_priority_threshold
+
+
+class ConfidenceAdjuster:
+    """
+    Applies data-quality-based penalties to a base confidence score.
+
+    Follows the VerdictValidator pattern: downgrade-only, multiplicative
+    penalties. Missing data = multiplier 1.0 (no change). Floor at
+    configurable minimum.
+    """
+
+    # Tier → multiplier mappings (tiers not listed here get 1.0)
+    _PAIN_POINT_TIER_MAP: dict[str, str] = {
+        "SILVER": "pain_point_silver",
+        "BRONZE": "pain_point_bronze",
+        "INSUFFICIENT": "pain_point_insufficient",
+    }
+    _SOCIAL_TIER_MAP: dict[str, str] = {
+        "MINIMAL": "social_minimal",
+        "INSUFFICIENT": "social_insufficient",
+    }
+
+    def __init__(self, thresholds: Optional[ConfidenceThresholds] = None):
+        self.thresholds = thresholds or ConfidenceThresholds()
+
+    def adjust_confidence(
+        self,
+        base_score: float,
+        pain_point_quality_tier: Optional[str] = None,
+        social_content_quality_tier: Optional[str] = None,
+        pain_point_confidence_score: Optional[float] = None,
+    ) -> ConfidenceAdjustmentResult:
+        """
+        Adjust base confidence score using data quality signals.
+
+        Args:
+            base_score: Raw confidence score (0.0-1.0)
+            pain_point_quality_tier: GOLD, SILVER, BRONZE, or INSUFFICIENT
+            social_content_quality_tier: EXCELLENT, GOOD, MINIMAL, or INSUFFICIENT
+            pain_point_confidence_score: Pipeline's PP confidence (0.0-1.0)
+
+        Returns:
+            ConfidenceAdjustmentResult with adjusted score and notes.
+        """
+        notes: list[str] = []
+        multiplier = 1.0
+
+        # Short-circuit: zero base score can't be improved
+        if base_score == 0.0:
+            notes.append("Base score is 0.0; no adjustment possible")
+            return ConfidenceAdjustmentResult(
+                base_score=base_score,
+                adjusted_score=0.0,
+                quality_multiplier=1.0,
+                adjustment_notes=notes,
+            )
+
+        # Pain point quality tier penalty
+        if pain_point_quality_tier is not None:
+            attr = self._PAIN_POINT_TIER_MAP.get(pain_point_quality_tier)
+            if attr is not None:
+                tier_mult = getattr(self.thresholds, attr)
+                multiplier *= tier_mult
+                notes.append(
+                    f"Pain point tier {pain_point_quality_tier}: {tier_mult:.2f}x"
+                )
+
+        # Social content quality tier penalty
+        if social_content_quality_tier is not None:
+            attr = self._SOCIAL_TIER_MAP.get(social_content_quality_tier)
+            if attr is not None:
+                tier_mult = getattr(self.thresholds, attr)
+                multiplier *= tier_mult
+                notes.append(
+                    f"Social tier {social_content_quality_tier}: {tier_mult:.2f}x"
+                )
+
+        # Pain point confidence score penalty
+        if pain_point_confidence_score is not None:
+            if pain_point_confidence_score < self.thresholds.pp_confidence_very_low_threshold:
+                pp_mult = self.thresholds.pp_confidence_very_low_multiplier
+                multiplier *= pp_mult
+                notes.append(
+                    f"PP confidence {pain_point_confidence_score:.2f} < "
+                    f"{self.thresholds.pp_confidence_very_low_threshold}: {pp_mult:.2f}x"
+                )
+            elif pain_point_confidence_score < self.thresholds.pp_confidence_low_threshold:
+                pp_mult = self.thresholds.pp_confidence_low_multiplier
+                multiplier *= pp_mult
+                notes.append(
+                    f"PP confidence {pain_point_confidence_score:.2f} < "
+                    f"{self.thresholds.pp_confidence_low_threshold}: {pp_mult:.2f}x"
+                )
+
+        # Apply multiplier and clamp to floor
+        adjusted = base_score * multiplier
+        adjusted = max(adjusted, self.thresholds.floor)
+
+        return ConfidenceAdjustmentResult(
+            base_score=base_score,
+            adjusted_score=adjusted,
+            quality_multiplier=multiplier,
+            adjustment_notes=notes,
+        )

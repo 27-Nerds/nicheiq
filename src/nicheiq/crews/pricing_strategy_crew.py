@@ -15,7 +15,13 @@ from loguru import logger
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import PricingStrategyResult
-from ..utils.crew_helpers import compute_wtp_summary, compute_cac_range
+from ..utils.crew_helpers import (
+    compute_wtp_summary,
+    compute_cac_range,
+    format_market_sizing_summary,
+    format_audience_budget_sensitivity,
+    format_solution_rank_context,
+)
 
 
 @CrewBase
@@ -196,13 +202,55 @@ class PricingStrategyCrew:
 
         return "\n".join(features) if features else "Features not detailed."
 
+    def _extract_competitive_context(self, competitive_analysis, solution_name: str) -> str:
+        """
+        Extract competitive intensity and market gaps from competitive landscape.
+
+        Returns:
+            Formatted string with competitive intensity + market gaps
+        """
+        if not competitive_analysis or not competitive_analysis.solution_landscapes:
+            return "Competitive context not available"
+
+        landscape = None
+        for l in competitive_analysis.solution_landscapes:
+            if solution_name and l.solution_name == solution_name:
+                landscape = l
+                break
+        if not landscape:
+            landscape = competitive_analysis.solution_landscapes[0]
+
+        parts: list[str] = []
+        if landscape.competitive_intensity:
+            parts.append(f"Intensity: {landscape.competitive_intensity}")
+        if landscape.market_gaps:
+            gaps = "; ".join(landscape.market_gaps[:5])
+            parts.append(f"Market Gaps: {gaps}")
+
+        return " | ".join(parts) if parts else "Competitive context not available"
+
+    def _format_target_personas(self, selected_solution) -> str:
+        """
+        Format solution target_personas list for template injection.
+
+        Returns:
+            Formatted bullet list or fallback text
+        """
+        personas = getattr(selected_solution, "target_personas", None)
+        if not personas:
+            return "Target personas not specified"
+        return "\n".join(f"- {p}" for p in personas)
+
     def analyze(
         self,
         selected_solution,
         pain_point_analysis,
         competitive_analysis,
         niche_description: str,
-        allowed_project_types: list[str] | None = None
+        allowed_project_types: list[str] | None = None,
+        market_sizing=None,
+        audience_mapping=None,
+        solution_scores: list | None = None,
     ) -> PricingStrategyResult | None:
         """
         Execute pricing strategy crew to generate pricing recommendations.
@@ -213,6 +261,9 @@ class PricingStrategyCrew:
             competitive_analysis: Competitive analysis from Stage 8 (CompetitiveAnalysisResult)
             niche_description: Niche description for context
             allowed_project_types: Optional project type constraints from user
+            market_sizing: Optional market sizing result from Stage 8.6
+            audience_mapping: Optional audience mapping result from Stage 6.5
+            solution_scores: Optional list of SolutionScores from Stage 8.5
 
         Returns:
             PricingStrategyResult with recommended pricing strategy, or None if analysis fails
@@ -231,6 +282,15 @@ class PricingStrategyCrew:
         mfs = selected_solution.market_fit_score if hasattr(selected_solution, 'market_fit_score') else None
         suggested_cac_range = compute_cac_range(mfs)
 
+        # New data formatting
+        project_type = getattr(selected_solution, "project_type", None) or "Not specified"
+        value_proposition = getattr(selected_solution, "value_proposition", None) or "Not specified"
+        target_personas = self._format_target_personas(selected_solution)
+        competitive_intensity = self._extract_competitive_context(competitive_analysis, selected_solution.solution_name)
+        market_sizing_summary = format_market_sizing_summary(market_sizing)
+        audience_budget_sensitivity = format_audience_budget_sensitivity(audience_mapping)
+        solution_rank_context = format_solution_rank_context(solution_scores, selected_solution.solution_name)
+
         # Prepare inputs for the pricing analysis task
         inputs = {
             "solution_name": selected_solution.solution_name,
@@ -244,6 +304,14 @@ class PricingStrategyCrew:
             "wtp_summary": wtp_summary,
             "avg_wtp": avg_wtp,
             "suggested_cac_range": suggested_cac_range,
+            # New template variables
+            "project_type": project_type,
+            "value_proposition": value_proposition,
+            "target_personas": target_personas,
+            "competitive_intensity": competitive_intensity,
+            "market_sizing_summary": market_sizing_summary,
+            "audience_budget_sensitivity": audience_budget_sensitivity,
+            "solution_rank_context": solution_rank_context,
         }
 
         try:

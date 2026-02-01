@@ -357,3 +357,52 @@ class TestCrewKeywordValidationResult:
         # Verify crew-specific metadata is preserved
         assert refinement_input["attempts_made"] == 2
         assert refinement_input["best_relevance_score"] == 0.72
+
+
+class TestNicheRelevantVolume:
+    """Tests for niche_relevant_volume field on CrewKeywordValidationResult."""
+
+    def _make_result(self, **overrides):
+        """Helper to create a CrewKeywordValidationResult with defaults."""
+        defaults = dict(
+            solution_name="Test Solution",
+            validated_count=20,
+            total_volume=10000,
+            avg_competition=40.0,
+            keyword_demand_score=0.6,
+            demand_signal="moderate",
+            validation_signals={"has_search_demand": True},
+            attempts_made=1,
+            best_relevance_score=0.7,
+        )
+        defaults.update(overrides)
+        return CrewKeywordValidationResult(**defaults)
+
+    def test_backward_compat_none_by_default(self):
+        """Legacy data without niche_relevant_volume defaults to None."""
+        result = self._make_result()
+        assert result.niche_relevant_volume is None
+        dumped = result.model_dump()
+        assert dumped["niche_relevant_volume"] is None
+
+    def test_with_value(self):
+        """niche_relevant_volume can be set to a positive int."""
+        result = self._make_result(niche_relevant_volume=5000)
+        assert result.niche_relevant_volume == 5000
+
+    def test_zero_is_valid(self):
+        """niche_relevant_volume=0 is a valid value (no relevant keywords found)."""
+        result = self._make_result(niche_relevant_volume=0)
+        assert result.niche_relevant_volume == 0
+
+    def test_negative_rejected(self):
+        """Negative niche_relevant_volume is rejected by ge=0 constraint."""
+        with pytest.raises(ValueError):
+            self._make_result(niche_relevant_volume=-100)
+
+    def test_model_dump_includes_field(self):
+        """model_dump() includes niche_relevant_volume."""
+        result = self._make_result(niche_relevant_volume=8000)
+        dumped = result.model_dump()
+        assert "niche_relevant_volume" in dumped
+        assert dumped["niche_relevant_volume"] == 8000

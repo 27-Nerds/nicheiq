@@ -65,7 +65,7 @@ class MarketAnalytics(BaseModel):
     selection_confidence: float = Field(
         ge=0.0,
         le=1.0,
-        description="Confidence in solution selection (avg of top 2 criteria)"
+        description="Confidence in solution selection, adjusted for data quality signals"
     )
     competitive_intensity: str = Field(
         description="Competition level: Low (<3 competitors), Medium (3-7), High (8+)"
@@ -154,8 +154,11 @@ class PainPointAnalytics(BaseModel):
     total_pain_points: int = Field(
         description="Total pain points identified"
     )
-    high_priority_count: int = Field(
-        description="Pain points with severity >= 0.7"
+    high_severity_count: int = Field(
+        description="Pain points with severity >= 0.7 (single-criterion severity threshold)"
+    )
+    high_opportunity_count: int = Field(
+        description="Pain points with both severity >= 0.6 and WTP >= 0.6 (opportunity_level == high)"
     )
     quadrant_distribution: dict[str, int] = Field(
         description="Distribution across priority quadrants"

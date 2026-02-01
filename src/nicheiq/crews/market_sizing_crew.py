@@ -264,7 +264,23 @@ class MarketSizingCrew:
         solution_context = self._format_solution_context(selected_solution)
 
         # Pre-compute deterministic values
-        kv_volume = keyword_validation.total_volume if keyword_validation else 0
+        # Use niche_relevant_volume (semantically filtered) when available;
+        # explicit None check — 0 is a valid filtered result and must NOT fallback.
+        unfiltered_volume = keyword_validation.total_volume if keyword_validation else 0
+        if keyword_validation and keyword_validation.niche_relevant_volume is not None:
+            kv_volume = keyword_validation.niche_relevant_volume
+        else:
+            kv_volume = unfiltered_volume
+
+        if kv_volume != unfiltered_volume:
+            logger.info(
+                f"[Stage 8.6] Using niche-relevant volume {kv_volume:,} "
+                f"(unfiltered: {unfiltered_volume:,}, "
+                f"reduction: {(1 - kv_volume / unfiltered_volume) * 100:.0f}%)"
+                if unfiltered_volume > 0
+                else f"[Stage 8.6] Using niche-relevant volume {kv_volume:,}"
+            )
+
         pp_mentions = pain_point_analysis.total_mentions if pain_point_analysis else 0
         competitor_count = sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes) if competitive_analysis and competitive_analysis.solution_landscapes else 0
 
@@ -282,7 +298,8 @@ class MarketSizingCrew:
             "keyword_demand_signals": keyword_signals,
             "pain_point_signals": pain_signals,
             "competitive_signals": competitive_signals,
-            "total_keyword_volume": keyword_validation.total_volume if keyword_validation else 0,
+            "total_keyword_volume": kv_volume,
+            "unfiltered_keyword_volume": unfiltered_volume,
             "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
             "pain_point_count": len(pain_point_analysis.pain_points) if pain_point_analysis else 0,
             "competitor_count": competitor_count,

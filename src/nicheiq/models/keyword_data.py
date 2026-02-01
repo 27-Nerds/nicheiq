@@ -408,3 +408,12 @@ class CrewKeywordValidationResult(BaseModel):
         default=None,
         description="Total keywords accumulated across attempts"
     )
+    niche_relevant_volume: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Sum of monthly search volumes for keywords that pass BOTH volume threshold "
+            "AND semantic relevance filtering (from expanded keyword set). "
+            "None = not computed (legacy data). Preferred over total_volume for TAM."
+        )
+    )

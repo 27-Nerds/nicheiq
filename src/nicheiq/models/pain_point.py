@@ -31,7 +31,11 @@ class UnvalidatedPainPoint(BaseModel):
     )
     source_post_ids: list[str] = Field(
         default_factory=list,
-        description="List of post IDs (Reddit/Twitter) where this pain point was found (for traceability)"
+        description=(
+            "Parallel array with representative_quotes: source_post_ids[i] is the "
+            "post/thread ID where representative_quotes[i] was found. "
+            "Empty string means source unknown. May contain duplicates."
+        )
     )
 
 class ThemeCategory(BaseModel):
@@ -177,7 +181,11 @@ class PainPoint(BaseModel):
     )
     source_post_ids: list[str] = Field(
         default_factory=list,
-        description="List of post IDs (Reddit/Twitter) where this pain point was found (for traceability)"
+        description=(
+            "Parallel array with representative_quotes: source_post_ids[i] is the "
+            "post/thread ID where representative_quotes[i] was found. "
+            "Empty string means source unknown. May contain duplicates."
+        )
     )
     # Audience segment mapping (from Stage 6.5 audience mapping)
     affected_segments: Optional[list[str]] = Field(

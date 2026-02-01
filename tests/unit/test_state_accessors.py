@@ -5,6 +5,8 @@ Note: This test file focuses on the basic accessor patterns.
 Complex extraction logic is tested via integration tests.
 """
 
+import logging
+
 import pytest
 from unittest.mock import MagicMock
 from nicheiq.report.utils.state_accessors import StateAccessor
@@ -282,3 +284,256 @@ class TestKeywordValidation:
         result = accessor.has_keyword_validation()
 
         assert isinstance(result, bool)
+
+
+class TestTrendLongevityAccessor:
+    """Tests for trend longevity data extraction."""
+
+    def test_get_trend_longevity_when_present(self):
+        """Test getting trend longevity when data is present."""
+        mock_trend = MagicMock()
+        mock_state = MagicMock()
+        mock_state.trend_longevity = mock_trend
+
+        accessor = StateAccessor(mock_state)
+        result = accessor.get_trend_longevity()
+
+        assert result is mock_trend
+
+    def test_get_trend_longevity_when_none(self):
+        """Test getting trend longevity when None."""
+        mock_state = MagicMock()
+        mock_state.trend_longevity = None
+
+        accessor = StateAccessor(mock_state)
+        result = accessor.get_trend_longevity()
+
+        assert result is None
+
+    def test_has_stage_data_trend_when_present(self):
+        """Test has_stage_data('trend') returns True when trend data exists."""
+        mock_state = MagicMock()
+        mock_state.trend_longevity = MagicMock()
+
+        accessor = StateAccessor(mock_state)
+        assert accessor.has_stage_data('trend') is True
+
+    def test_has_stage_data_trend_when_none(self):
+        """Test has_stage_data('trend') returns False when trend data is None."""
+        mock_state = MagicMock()
+        mock_state.trend_longevity = None
+
+        accessor = StateAccessor(mock_state)
+        assert accessor.has_stage_data('trend') is False
+
+
+# ==================================================================================
+# Helpers for keyword dedup tests
+# ==================================================================================
+
+def _make_tiered_kw(keyword: str, search_volume: int = 100):
+    """Create a mock TieredKeyword-like object."""
+    kw = MagicMock()
+    kw.keyword = keyword
+    kw.search_volume = search_volume
+    kw.competition = "MEDIUM (50)"
+    return kw
+
+
+def _make_geo_entry(keyword: str, search_volume: int = 100):
+    """Create a mock GeographicKeywordEntry-like object."""
+    entry = MagicMock()
+    entry.keyword = keyword
+    entry.search_volume = search_volume
+    return entry
+
+
+def _make_cat_entry(keyword_name: str, search_volume: int = 100):
+    """Create a mock CategoryKeywordEntry-like object."""
+    entry = MagicMock()
+    entry.keyword_name = keyword_name
+    entry.search_volume = search_volume
+    return entry
+
+
+def _make_geo_group(keywords):
+    """Create a mock GeographicKeywordGroup."""
+    group = MagicMock()
+    group.keywords = keywords
+    return group
+
+
+def _make_cat_group(keywords):
+    """Create a mock CategoryKeywordGroup."""
+    group = MagicMock()
+    group.keywords = keywords
+    return group
+
+
+def _make_seo_state(
+    tier_0=None, tier_1=None, tier_2=None,
+    tier_3_groups=None, tier_4_groups=None,
+):
+    """Create a mock state with seo_strategy_report populated."""
+    mock_state = MagicMock()
+    seo = MagicMock()
+    seo.tier_0_keywords = tier_0
+    seo.tier_1_keywords = tier_1
+    seo.tier_2_keywords = tier_2
+    seo.tier_3_geographic_groups = tier_3_groups
+    seo.tier_4_category_groups = tier_4_groups
+    mock_state.seo_strategy_report = seo
+    return mock_state
+
+
+class TestKeywordDeduplication:
+    """Tests for cross-tier keyword deduplication in state accessors."""
+
+    def test_dedup_t0_t1_duplicate_counted_once(self):
+        """Same keyword in T0 and T1 → total count = 1, not 2."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("beer brewing")],
+            tier_1=[_make_tiered_kw("beer brewing")],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["tier_0"] == 1
+        assert counts["tier_1"] == 0  # duplicate stripped
+        assert counts["total"] == 1
+
+    def test_dedup_t1_t3_duplicate_counted_once(self):
+        """Same keyword in T1 and T3 geographic group → counted once."""
+        state = _make_seo_state(
+            tier_1=[_make_tiered_kw("craft beer")],
+            tier_3_groups=[
+                _make_geo_group([_make_geo_entry("craft beer")])
+            ],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["tier_1"] == 1
+        assert counts["tier_3"] == 0
+        assert counts["total"] == 1
+
+    def test_dedup_t2_t4_duplicate_counted_once(self):
+        """Same keyword in T2 and T4 category group → counted once."""
+        state = _make_seo_state(
+            tier_2=[_make_tiered_kw("home brewing kit")],
+            tier_4_groups=[
+                _make_cat_group([_make_cat_entry("home brewing kit")])
+            ],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["tier_2"] == 1
+        assert counts["tier_4"] == 0
+        assert counts["total"] == 1
+
+    def test_dedup_case_insensitive(self):
+        """'Beer Brewing' in T0 + 'beer brewing' in T1 → counted once."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("Beer Brewing")],
+            tier_1=[_make_tiered_kw("beer brewing")],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["tier_0"] == 1
+        assert counts["tier_1"] == 0
+        assert counts["total"] == 1
+
+    def test_dedup_whitespace_normalization(self):
+        """' keyword ' and 'keyword' → counted once."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw(" keyword ")],
+            tier_1=[_make_tiered_kw("keyword")],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["total"] == 1
+
+    def test_dedup_no_duplicates_unchanged(self):
+        """All unique keywords → counts unchanged."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("alpha")],
+            tier_1=[_make_tiered_kw("beta"), _make_tiered_kw("gamma")],
+            tier_2=[_make_tiered_kw("delta")],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["tier_0"] == 1
+        assert counts["tier_1"] == 2
+        assert counts["tier_2"] == 1
+        assert counts["total"] == 4
+
+    def test_dedup_empty_tiers(self):
+        """All tiers empty/None → zero counts, no crash."""
+        state = _make_seo_state()
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["total"] == 0
+        assert all(v == 0 for v in counts.values())
+
+    def test_dedup_volume_counted_once(self):
+        """Duplicate keyword volume only added once (from higher-priority tier)."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("beer brewing", search_volume=5000)],
+            tier_1=[_make_tiered_kw("beer brewing", search_volume=5000)],
+            tier_2=[_make_tiered_kw("unique kw", search_volume=1000)],
+        )
+        accessor = StateAccessor(state)
+        volume = accessor.get_total_keyword_search_volume()
+
+        # Should be 5000 (T0) + 1000 (T2) = 6000, NOT 5000 + 5000 + 1000
+        assert volume == 6000
+
+    def test_dedup_triple_duplicate(self):
+        """Same keyword in T0, T1, T2 → counted once."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("triple kw")],
+            tier_1=[_make_tiered_kw("triple kw")],
+            tier_2=[_make_tiered_kw("triple kw")],
+        )
+        accessor = StateAccessor(state)
+        counts = accessor.get_tier_keyword_counts()
+
+        assert counts["tier_0"] == 1
+        assert counts["tier_1"] == 0
+        assert counts["tier_2"] == 0
+        assert counts["total"] == 1
+
+    def test_dedup_logs_warning_on_duplicates(self, caplog):
+        """Verify warning logged when duplicates detected."""
+        from loguru import logger
+
+        # Enable loguru → standard logging propagation for caplog
+        handler_id = logger.add(
+            logging.getLogger("loguru_propagate").handlers[0]
+            if logging.getLogger("loguru_propagate").handlers
+            else logging.StreamHandler(),
+            format="{message}",
+            level="WARNING",
+        )
+
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("beer brewing")],
+            tier_1=[_make_tiered_kw("beer brewing")],
+        )
+        accessor = StateAccessor(state)
+
+        # Use a loguru sink to capture messages directly
+        messages = []
+        capture_id = logger.add(lambda msg: messages.append(str(msg)), level="WARNING")
+        try:
+            accessor.get_tier_keyword_counts()
+        finally:
+            logger.remove(capture_id)
+            logger.remove(handler_id)
+
+        assert any("duplicate keywords across tiers" in m for m in messages)

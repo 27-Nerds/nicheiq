@@ -16,11 +16,24 @@ from .field_validators import (
     validate_score_range,
     validate_url,
 )
-from .score_validators import ScoreThresholds, VerdictValidator
+from .report_consistency import ConsistencyWarning, ReportConsistencyValidator
+from .score_validators import (
+    ConfidenceAdjuster,
+    ConfidenceAdjustmentResult,
+    ConfidenceThresholds,
+    ScoreThresholds,
+    VerdictValidator,
+)
 from .text_validators import TextValidator
 
 __all__ = [
+    # Report consistency
+    "ConsistencyWarning",
+    "ReportConsistencyValidator",
     # Score validators
+    "ConfidenceAdjuster",
+    "ConfidenceAdjustmentResult",
+    "ConfidenceThresholds",
     "ScoreThresholds",
     "VerdictValidator",
     # Text validators

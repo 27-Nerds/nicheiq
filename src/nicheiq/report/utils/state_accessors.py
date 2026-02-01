@@ -14,6 +14,8 @@ Design Benefits:
 
 from typing import TYPE_CHECKING, Optional
 
+from loguru import logger
+
 if TYPE_CHECKING:
     from ...models.competitor import CompetitiveAnalysisResult
     from ...models.data_source import DataSourceResearchResult
@@ -79,6 +81,10 @@ class StateAccessor:
     def get_social_content(self) -> Optional["SocialContentCollection"]:
         """Get Stage 5 social media content result."""
         return self.state.social_content
+
+    def get_trend_longevity(self):
+        """Get Stage 9.2 trend longevity analysis result."""
+        return self.state.trend_longevity
 
     # ==================================================================================
     # Derived Data Access Methods
@@ -342,7 +348,10 @@ class StateAccessor:
 
     def get_tier_keyword_counts(self) -> dict[str, int]:
         """
-        Get keyword counts for all SEO tiers.
+        Get keyword counts for all SEO tiers (deduplicated across tiers).
+
+        Keywords appearing in multiple tiers are counted only in the
+        highest-priority tier (lowest tier number).
 
         Returns:
             Dict with keys: tier_0, tier_1, tier_2, tier_3, tier_4, total
@@ -358,23 +367,66 @@ class StateAccessor:
             }
 
         seo = self.state.seo_strategy_report
+        seen: set[str] = set()
+        duplicates_found = 0
 
-        # Tier 0, 1, 2 are simple lists
-        tier0_count = len(seo.tier_0_keywords) if seo.tier_0_keywords else 0
-        tier1_count = len(seo.tier_1_keywords) if seo.tier_1_keywords else 0
-        tier2_count = len(seo.tier_2_keywords) if seo.tier_2_keywords else 0
+        # Tier 0, 1, 2 are simple TieredKeyword lists
+        tier0_count = 0
+        for kw in (seo.tier_0_keywords or []):
+            key = kw.keyword.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                tier0_count += 1
+            else:
+                duplicates_found += 1
 
-        # Tier 3: Count keywords in geographic groups
+        tier1_count = 0
+        for kw in (seo.tier_1_keywords or []):
+            key = kw.keyword.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                tier1_count += 1
+            else:
+                duplicates_found += 1
+
+        tier2_count = 0
+        for kw in (seo.tier_2_keywords or []):
+            key = kw.keyword.lower().strip()
+            if key not in seen:
+                seen.add(key)
+                tier2_count += 1
+            else:
+                duplicates_found += 1
+
+        # Tier 3: Geographic groups (GeographicKeywordEntry.keyword)
         tier3_count = 0
         if seo.tier_3_geographic_groups:
             for group in seo.tier_3_geographic_groups:
-                tier3_count += len(group.keywords)
+                for entry in group.keywords:
+                    key = entry.keyword.lower().strip()
+                    if key not in seen:
+                        seen.add(key)
+                        tier3_count += 1
+                    else:
+                        duplicates_found += 1
 
-        # Tier 4: Count keywords in category groups
+        # Tier 4: Category groups (CategoryKeywordEntry.keyword_name)
         tier4_count = 0
         if seo.tier_4_category_groups:
             for group in seo.tier_4_category_groups:
-                tier4_count += len(group.keywords)
+                for entry in group.keywords:
+                    key = entry.keyword_name.lower().strip()
+                    if key not in seen:
+                        seen.add(key)
+                        tier4_count += 1
+                    else:
+                        duplicates_found += 1
+
+        if duplicates_found > 0:
+            logger.warning(
+                f"⚠️ Found {duplicates_found} duplicate keywords across tiers "
+                f"(source-side dedup may have failed)"
+            )
 
         total_count = tier0_count + tier1_count + tier2_count + tier3_count + tier4_count
 
@@ -389,7 +441,10 @@ class StateAccessor:
 
     def get_total_keyword_search_volume(self) -> int:
         """
-        Get total search volume across all keywords.
+        Get total search volume across all keywords (deduplicated across tiers).
+
+        Keywords appearing in multiple tiers have their volume counted only once,
+        from the highest-priority tier (lowest tier number).
 
         Primary source: seo_strategy_report (Stage 9 tiered keywords)
         Fallback: keyword_validation_results (Stage 8.5 validated keywords)
@@ -401,26 +456,59 @@ class StateAccessor:
         if self.state.seo_strategy_report:
             total_volume = 0
             seo = self.state.seo_strategy_report
+            seen: set[str] = set()
+            duplicates_found = 0
 
             # Sum tier 0, 1, 2
             for kw in (seo.tier_0_keywords or []):
-                total_volume += kw.search_volume or 0
+                key = kw.keyword.lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    total_volume += kw.search_volume or 0
+                else:
+                    duplicates_found += 1
             for kw in (seo.tier_1_keywords or []):
-                total_volume += kw.search_volume or 0
+                key = kw.keyword.lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    total_volume += kw.search_volume or 0
+                else:
+                    duplicates_found += 1
             for kw in (seo.tier_2_keywords or []):
-                total_volume += kw.search_volume or 0
+                key = kw.keyword.lower().strip()
+                if key not in seen:
+                    seen.add(key)
+                    total_volume += kw.search_volume or 0
+                else:
+                    duplicates_found += 1
 
             # Sum tier 3 geographic groups
             if seo.tier_3_geographic_groups:
                 for group in seo.tier_3_geographic_groups:
                     for kw in group.keywords:
-                        total_volume += kw.search_volume or 0
+                        key = kw.keyword.lower().strip()
+                        if key not in seen:
+                            seen.add(key)
+                            total_volume += kw.search_volume or 0
+                        else:
+                            duplicates_found += 1
 
             # Sum tier 4 category groups
             if seo.tier_4_category_groups:
                 for group in seo.tier_4_category_groups:
                     for kw in group.keywords:
-                        total_volume += kw.search_volume or 0
+                        key = kw.keyword_name.lower().strip()
+                        if key not in seen:
+                            seen.add(key)
+                            total_volume += kw.search_volume or 0
+                        else:
+                            duplicates_found += 1
+
+            if duplicates_found > 0:
+                logger.warning(
+                    f"⚠️ Found {duplicates_found} duplicate keywords in volume calculation "
+                    f"(source-side dedup may have failed)"
+                )
 
             if total_volume > 0:
                 return total_volume
@@ -482,7 +570,7 @@ class StateAccessor:
 
         Args:
             stage_name: One of 'pain_points', 'ideas', 'competitive', 'selection',
-                       'refinement', 'seo', 'data_sources', 'social'
+                       'refinement', 'seo', 'data_sources', 'social', 'trend'
 
         Returns:
             True if stage data exists
@@ -496,6 +584,7 @@ class StateAccessor:
             'seo': self.state.seo_strategy_report,
             'data_sources': self.state.data_source_research,
             'social': self.state.social_content,
+            'trend': self.state.trend_longevity,
         }
         return mapping.get(stage_name) is not None
 

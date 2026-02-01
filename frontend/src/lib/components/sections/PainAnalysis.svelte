@@ -113,8 +113,8 @@
 				<div class="analytics-label">Total Pain Points</div>
 			</div>
 			<div class="analytics-card">
-				<div class="analytics-value text-accent">{analytics.high_priority_count}</div>
-				<div class="analytics-label">High Priority</div>
+				<div class="analytics-value text-accent">{analytics.high_severity_count ?? (analytics as any).high_priority_count ?? 0}</div>
+				<div class="analytics-label">High Severity</div>
 			</div>
 			<div class="analytics-card {analytics.quadrant_distribution.high_severity_high_wtp === 0 ? 'analytics-card-error' : analytics.quadrant_distribution.high_severity_high_wtp <= 2 ? 'analytics-card-warning' : 'analytics-card-highlight'}">
 				<div class="analytics-value {analytics.quadrant_distribution.high_severity_high_wtp === 0 ? 'text-error' : analytics.quadrant_distribution.high_severity_high_wtp <= 2 ? 'text-warning' : 'text-success'}">{analytics.quadrant_distribution.high_severity_high_wtp}</div>
@@ -422,17 +422,20 @@
 							</div>
 						{/if}
 
-						<!-- Source Post IDs -->
-						{#if point.source_post_ids && point.source_post_ids.length > 0}
-							<div class="source-ids">
-								<span class="source-label">Sources:</span>
-								{#each point.source_post_ids.slice(0, 5) as postId}
-									<span class="source-id">{postId}</span>
-								{/each}
-								{#if point.source_post_ids.length > 5}
-									<span class="source-more">+{point.source_post_ids.length - 5} more</span>
-								{/if}
-							</div>
+						<!-- Source Post IDs (deduplicated, empty strings filtered) -->
+						{#if point.source_post_ids?.length}
+							{@const uniqueSourceIds = [...new Set(point.source_post_ids.filter(id => id))]}
+							{#if uniqueSourceIds.length > 0}
+								<div class="source-ids">
+									<span class="source-label">Sources:</span>
+									{#each uniqueSourceIds.slice(0, 5) as postId}
+										<span class="source-id">{postId}</span>
+									{/each}
+									{#if uniqueSourceIds.length > 5}
+										<span class="source-more">+{uniqueSourceIds.length - 5} more</span>
+									{/if}
+								</div>
+							{/if}
 						{/if}
 					</div>
 				</AnimateOnScroll>

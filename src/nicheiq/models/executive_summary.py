@@ -46,6 +46,10 @@ class GoNoGoVerdict(BaseModel):
         default=None,
         description="Main concern or blocker if verdict is No-Go or Conditional"
     )
+    trend_context: Optional[str] = Field(
+        default=None,
+        description="Trend-based adjustment explanation, if any. None = no adjustment applied."
+    )
 
 class CorePainPoint(BaseModel):
     """The single most important pain point driving this opportunity."""
@@ -100,8 +104,8 @@ class KeyMetrics(BaseModel):
     total_keyword_count: int = Field(
         description="Total number of enriched keywords analyzed"
     )
-    high_priority_pain_points: int = Field(
-        description="Number of pain points with severity >= 0.7"
+    high_severity_pain_points: int = Field(
+        description="Number of pain points with severity >= 0.7 (single-criterion severity threshold)"
     )
     primary_competitor_count: int = Field(
         description="Number of direct competitors identified"
@@ -176,7 +180,7 @@ class ExecutiveDashboard(BaseModel):
     confidence_score: float = Field(
         ge=0.0,
         le=1.0,
-        description="Overall confidence in this opportunity (0-1 scale, based on market fit + competitive advantage)"
+        description="Overall confidence in this opportunity (0-1 scale), adjusted for data quality signals"
     )
     # niche_description removed - use root report.niche instead
 

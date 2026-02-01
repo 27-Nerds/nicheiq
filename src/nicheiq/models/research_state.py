@@ -776,6 +776,25 @@ class PricingStrategyResult(BaseModel):
         default=None, description="Different pricing for different market segments if applicable"
     )
 
+    def format_summary(self) -> str:
+        """Format a concise pricing summary for display and LLM prompts."""
+        parts = [self.pricing_model]
+        if self.recommended_starter_price:
+            parts.append(f"{self.recommended_starter_price} starter")
+        if self.recommended_pro_price:
+            parts.append(f"{self.recommended_pro_price} pro")
+        if self.recommended_enterprise_price:
+            parts.append(f"{self.recommended_enterprise_price} enterprise")
+        # Ad/affiliate models with no subscription prices
+        if not self.recommended_starter_price and not self.recommended_pro_price:
+            if self.estimated_monthly_ad_revenue:
+                parts.append(f"est. {self.estimated_monthly_ad_revenue}/mo ad revenue")
+            if self.estimated_monthly_affiliate_revenue:
+                parts.append(f"est. {self.estimated_monthly_affiliate_revenue}/mo affiliate revenue")
+        if len(parts) > 1:
+            return f"{parts[0]}: {', '.join(parts[1:])}"
+        return parts[0]
+
 
 # Stage 8.55: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
 class TrafficMonetizationResult(BaseModel):

@@ -218,6 +218,103 @@ class TestScoreAccessorFallbacks:
         assert score == 0.75
 
 
+class TestSeoScoreCanonical:
+    """Test canonical SEO score resolution order."""
+
+    def test_prefers_refined_over_selection(self):
+        """Stage 9.5 refined score should take priority over selection score."""
+        solution_selection = MagicMock()
+        solution_score = MagicMock()
+        solution_score.solution_name = "TestSolution"
+        solution_score.seo_growth_potential_score = 0.78
+        solution_selection.all_solution_scores = [solution_score]
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = 0.84
+        solution.seo_scalability_score = 0.70
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_seo_score_canonical(solution)
+        assert score == 0.84
+
+    def test_uses_selection_when_no_refined(self):
+        """Fall back to selection criteria when refined is None."""
+        solution_selection = MagicMock()
+        solution_score = MagicMock()
+        solution_score.solution_name = "TestSolution"
+        solution_score.seo_growth_potential_score = 0.78
+        solution_selection.all_solution_scores = [solution_score]
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = None
+        solution.seo_scalability_score = 0.70
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_seo_score_canonical(solution)
+        assert score == 0.78
+
+    def test_uses_baseline_when_no_selection(self):
+        """Fall back to baseline when selection score is also missing."""
+        solution_selection = None
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = None
+        solution.seo_scalability_score = 0.70
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_seo_score_canonical(solution)
+        assert score == 0.70
+
+    def test_uses_default_when_all_missing(self):
+        """Return default when all sources are None."""
+        solution_selection = None
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = None
+        solution.seo_scalability_score = None
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_seo_score_canonical(solution)
+        assert score == 0.5
+
+    def test_zero_is_valid_not_falsy(self):
+        """0.0 should be returned as valid, not treated as falsy."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = 0.0
+        solution.seo_scalability_score = 0.70
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_seo_score_canonical(solution)
+        assert score == 0.0
+
+    def test_custom_default(self):
+        """Custom default value should be respected."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = None
+        solution.seo_scalability_score = None
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_seo_score_canonical(solution, default=0.3)
+        assert score == 0.3
+
+    def test_works_with_none_solution_selection(self):
+        """Should work when ScoreAccessor has None solution_selection but refined is set."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.seo_scalability_score_refined = 0.84
+        solution.seo_scalability_score = 0.70
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_seo_score_canonical(solution)
+        assert score == 0.84
+
+
 class TestScoreAccessorEdgeCases:
     """Test edge cases and None handling."""
 
@@ -268,3 +365,53 @@ class TestScoreAccessorEdgeCases:
 
         # Should fall back to solution field
         assert score == 0.75
+
+
+class TestConfidenceScoreQualityAdjustment:
+    """Test get_confidence_score with quality adjustment params."""
+
+    def _make_solution(self, market_fit=0.80):
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.market_fit_score = market_fit
+        return solution
+
+    def test_get_confidence_score_backward_compatible(self):
+        """No kwargs = old behavior (no adjustment)."""
+        solution = self._make_solution(0.80)
+        accessor = ScoreAccessor(None)
+        score = accessor.get_confidence_score(solution)
+        # avg of 0.80 + 0.80 (proxy) = 0.80
+        assert score == pytest.approx(0.80)
+
+    def test_get_confidence_score_all_none_kwargs(self):
+        """Explicit None kwargs = old behavior."""
+        solution = self._make_solution(0.80)
+        accessor = ScoreAccessor(None)
+        score = accessor.get_confidence_score(
+            solution,
+            pain_point_quality_tier=None,
+            social_content_quality_tier=None,
+            pain_point_confidence_score=None,
+        )
+        assert score == pytest.approx(0.80)
+
+    def test_get_confidence_score_with_bronze_tier(self):
+        """BRONZE tier reduces confidence score."""
+        solution = self._make_solution(0.80)
+        accessor = ScoreAccessor(None)
+        score = accessor.get_confidence_score(
+            solution, pain_point_quality_tier="BRONZE"
+        )
+        # base 0.80 * 0.85 = 0.68
+        assert score == pytest.approx(0.80 * 0.85)
+
+    def test_get_confidence_score_with_low_pp_confidence(self):
+        """Low PP confidence reduces score."""
+        solution = self._make_solution(0.80)
+        accessor = ScoreAccessor(None)
+        score = accessor.get_confidence_score(
+            solution, pain_point_confidence_score=0.4
+        )
+        # base 0.80 * 0.90 = 0.72
+        assert score == pytest.approx(0.80 * 0.90)

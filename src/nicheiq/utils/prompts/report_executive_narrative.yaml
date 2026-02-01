@@ -4,7 +4,7 @@
 #            pain_point_title, pain_point_severity, pain_point_wtp,
 #            market_fit_score, competitive_advantage_score, technical_feasibility_score,
 #            seo_growth_score, total_keyword_count, tier1_keyword_count,
-#            competitor_count, high_priority_pain_points,
+#            competitor_count, high_severity_pain_points,
 #            zero_keywords_note, zero_competitors_note
 
 template: |
@@ -31,7 +31,7 @@ template: |
   - Total Keywords: {total_keyword_count}{zero_keywords_note}
   - Tier 1 Keywords: {tier1_keyword_count}
   - Primary Competitors: {competitor_count}{zero_competitors_note}
-  - High Priority Pain Points: {high_priority_pain_points}
+  - High Severity Pain Points (severity >= 0.7): {high_severity_pain_points}
 
   **MINIMUM DATA REQUIREMENTS:**
   - All scores and metrics are provided above

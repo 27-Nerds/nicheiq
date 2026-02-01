@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
 
+from ...validators.score_validators import ConfidenceAdjuster
+
 if TYPE_CHECKING:
     from ...models.solution_idea import SolutionIdea
     from ...models.solution_selection import SolutionScores, SolutionSelectionResult
@@ -154,22 +156,95 @@ class ScoreAccessor:
             return scores.seo_growth_potential_score
         return solution.seo_scalability_score if solution.seo_scalability_score is not None else default
 
-    def get_confidence_score(self, solution: "SolutionIdea") -> float:
+    def get_seo_score_canonical(
+        self,
+        solution: "SolutionIdea",
+        default: float = 0.5
+    ) -> float:
         """
-        Get selection confidence score (average of market_fit and competitive_advantage).
+        Get canonical SEO score with unified resolution order.
 
-        This metric combines market validation with competitive positioning to assess
-        confidence in the solution selection.
+        Single source of truth for SEO score across all report sections.
+        Resolution order:
+        1. Stage 9.5 refined score (most accurate, data-driven)
+        2. Stage 8.5 selection criteria score
+        3. Stage 7 baseline score
+        4. Default value
 
         Args:
             solution: SolutionIdea object
+            default: Default value if score not found (default: 0.5)
+
+        Returns:
+            SEO score (0.0-1.0)
+        """
+        # 1. Stage 9.5 refined (most accurate, data-driven)
+        if solution.seo_scalability_score_refined is not None:
+            return solution.seo_scalability_score_refined
+
+        # 2. Stage 8.5 selection criteria
+        scores = self.get_scores(solution.solution_name)
+        if scores and scores.seo_growth_potential_score is not None:
+            return scores.seo_growth_potential_score
+
+        # 3. Stage 7 baseline
+        if solution.seo_scalability_score is not None:
+            return solution.seo_scalability_score
+
+        return default
+
+    def get_confidence_score(
+        self,
+        solution: "SolutionIdea",
+        pain_point_quality_tier: Optional[str] = None,
+        social_content_quality_tier: Optional[str] = None,
+        pain_point_confidence_score: Optional[float] = None,
+    ) -> float:
+        """
+        Get selection confidence score, optionally adjusted for data quality.
+
+        Base score = average of market_fit and competitive_advantage.
+        When quality parameters are provided, multiplicative penalties are
+        applied via ConfidenceAdjuster (downgrade-only, floor at 0.10).
+
+        Args:
+            solution: SolutionIdea object
+            pain_point_quality_tier: GOLD/SILVER/BRONZE/INSUFFICIENT (or None)
+            social_content_quality_tier: EXCELLENT/GOOD/MINIMAL/INSUFFICIENT (or None)
+            pain_point_confidence_score: Pipeline PP confidence 0.0-1.0 (or None)
 
         Returns:
             Confidence score (0.0-1.0)
         """
         market_fit = self.get_market_fit(solution)
         competitive_advantage = self.get_competitive_advantage(solution)
-        return (market_fit + competitive_advantage) / 2
+        base_score = (market_fit + competitive_advantage) / 2
+
+        # When no quality params supplied, return base score (backward compatible)
+        if (
+            pain_point_quality_tier is None
+            and social_content_quality_tier is None
+            and pain_point_confidence_score is None
+        ):
+            return base_score
+
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            base_score=base_score,
+            pain_point_quality_tier=pain_point_quality_tier,
+            social_content_quality_tier=social_content_quality_tier,
+            pain_point_confidence_score=pain_point_confidence_score,
+        )
+
+        if result.adjustment_notes:
+            logger.debug(
+                f"[ScoreAccessor] Confidence adjusted for '{solution.solution_name}': "
+                f"{result.base_score:.3f} → {result.adjusted_score:.3f} "
+                f"(multiplier={result.quality_multiplier:.3f}, "
+                f"notes={result.adjustment_notes})"
+            )
+
+        return result.adjusted_score
 
     def get_all_scores(self, solution: "SolutionIdea") -> dict[str, float]:
         """

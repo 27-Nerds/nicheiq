@@ -2,13 +2,13 @@ pricing_strategy_analysis:
   description: >
     **CRITICAL RULES:**
     1. MANDATORY: All pricing fields (starter_price, pro_price, arpu, ltv) must be specific dollar amounts, NOT ranges
-    2. MANDATORY: LTV/CAC ratio must be ≥2:1 (viable business model requirement)
-    3. MANDATORY: Pricing must NOT exceed pain point WTP scores
+    2. MANDATORY: LTV/CAC ratio must be >=2:1 for subscription models (viable business model requirement)
+    3. MANDATORY: Pricing must NOT contradict pain point WTP signals
     4. MANDATORY: Include ALL fields in PricingStrategyResult - no null values except enterprise_price and free_tier_features
 
 
     Analyze competitor pricing, pain point willingness-to-pay scores, and solution positioning
-    to determine the optimal pricing strategy for **{solution_name}** in the {niche_description} market.
+    to determine the optimal monetization strategy for **{solution_name}** in the {niche_description} market.
 
 
     **SOLUTION CONTEXT:**
@@ -17,16 +17,37 @@ pricing_strategy_analysis:
 
     **Description:** {solution_description}
 
+    **Project Type:** {project_type}
+
+    **Value Proposition:** {value_proposition}
+
     **Features:**
     {solution_features}
+
+    **Target Personas:**
+    {target_personas}
 
     **Market Fit Score:** {market_fit_score}/1.0
 
     **Project Type Constraints:** {allowed_project_types}
 
 
-    **COMPETITOR PRICING BENCHMARKS:**
+    **COMPETITIVE LANDSCAPE:**
     {competitor_pricing}
+
+    **Competitive Intensity:** {competitive_intensity}
+
+
+    **MARKET SIZING & GROWTH:**
+    {market_sizing_summary}
+
+
+    **AUDIENCE BUDGET SENSITIVITY:**
+    {audience_budget_sensitivity}
+
+
+    **SOLUTION RANKING:**
+    {solution_rank_context}
 
 
     **PAIN POINT WILLINGNESS-TO-PAY (WTP) SCORES:**
@@ -41,55 +62,73 @@ pricing_strategy_analysis:
 
     **YOUR TASK:**
 
-    Conduct comprehensive pricing analysis following these steps:
+    Conduct comprehensive monetization analysis following these steps:
 
     ### 1. Competitive Pricing Analysis
-    - Analyze competitor pricing tiers and models
+    - Analyze competitor pricing tiers and monetization models
     - Identify median pricing for similar solutions
     - Determine pricing distribution (low/mid/high segments)
     - Identify pricing gaps and opportunities
+    - Note which competitors use ad/affiliate vs subscription models
 
     ### 2. Value-Based Pricing Calculation
     - Map solution features to pain points addressed
     - Correlate pain point severity and WTP scores to pricing
     - Calculate value-weighted pricing recommendation
     - Justify pricing based on differentiation score
+    - Factor in competitive intensity (blue ocean = premium potential; red ocean = aggressive pricing)
 
-    ### 3. Pricing Model Recommendation
+    ### 3. Monetization Model Recommendation
 
-    **PRICING MODEL DIVERSITY - Consider ALL viable models:**
+    **MONETIZATION MODEL DIVERSITY — Consider ALL viable models:**
 
-    | Model | When to Use | Example |
-    |-------|-------------|---------|
-    | **Freemium (3-tier)** | High WTP (0.6+), clear feature differentiation | SaaS with Starter $19/Pro $49/Enterprise custom |
-    | **Freemium-Lite (2-tier)** | Moderate WTP, simple feature set | Free + Pro $29/mo (no enterprise) |
-    | **Pure Subscription** | B2B focus, no free tier viable | $49/mo flat, annual discount |
-    | **Usage-Based** | API/tool with variable consumption | $0.01/API call, volume discounts |
-    | **One-Time Purchase** | Tools, templates, digital products | $99 lifetime access |
-    | **Ad-Supported-Free** | High traffic potential, low WTP (<0.3), directory/aggregator | Free tool with display ads |
-    | **Affiliate-Only** | Purchase-intent traffic, product comparisons | Free comparisons with affiliate links |
+    | Model | Consider when | Context Factors |
+    |-------|---------------|-----------------|
+    | **Freemium (3-tier)** | WTP 0.6+, clear feature differentiation | B2B audiences, low budget sensitivity, strong competitive advantages |
+    | **Freemium-Lite (2-tier)** | Moderate WTP, simple feature set | Solo devs/freelancers, moderate budget sensitivity |
+    | **Pure Subscription** | B2B focus, no free tier viable | Enterprise personas, low budget sensitivity, high switching costs |
+    | **Usage-Based** | API/tool with variable consumption | Developer audiences, consumption varies widely by user |
+    | **One-Time Purchase** | Tools, templates, digital products | Price-sensitive audiences, clear deliverable boundaries |
+    | **Ad-Supported-Free** | High traffic potential, directory/aggregator project type | Consumer audiences, high budget sensitivity, SEO-driven discovery |
+    | **Affiliate-Only** | Purchase-intent traffic, product comparisons | Comparison-tools, high commercial intent keywords |
+    | **Hybrid (Freemium + Ads)** | Mixed WTP signals, tool with broad + niche audiences | Free tier monetized by ads, paid tier for power users |
 
     **DO NOT default to 3-tier Freemium.** Match model to:
-    1. WTP scores from pain point analysis (low WTP = ad/affiliate model)
-    2. Project type (SaaS vs directory vs tool vs aggregator)
-    3. Target audience purchasing behavior
-    4. Competitive landscape pricing models
+    1. WTP signals from pain point analysis (low WTP favors ad/affiliate/free models)
+    2. Project type: {project_type} (SaaS vs directory vs tool vs aggregator vs comparison-tool)
+    3. Target audience budget sensitivity and purchasing behavior
+    4. Competitive landscape pricing models and intensity
+    5. Market size (larger TAM supports lower per-user revenue models)
 
-    **For directories/aggregators/comparison-tools with WTP < 0.3:**
-    - PREFER Ad-Supported-Free or Affiliate-Only models
+    **For directories/aggregators/comparison-tools:**
+    - PREFER Ad-Supported-Free, Affiliate-Only, or Hybrid models
     - These can be 100% FREE to users with SEO-driven traffic monetization
     - Example: "Free tool monetized by display ads (target: $5-15 CPM) and affiliate links"
 
-    - Evaluate best pricing model based on the table above
+    - Evaluate best monetization model based on the table above
     - Consider market standards and customer acquisition strategy
     - Only recommend tier structure (Free/Starter/Pro/Enterprise) if subscription model is appropriate
     - Define features per tier to drive upgrades (if subscription model)
 
-    ### 4. Unit Economics Validation
+    ### 4. Business Model Viability Validation
+
+    **For Subscription Models (Freemium, Freemium-Lite, Subscription, Hybrid paid tier):**
     - Estimate ARPU (Average Revenue Per User) based on tier mix
     - Calculate LTV estimate (12-30 month retention scenarios)
     - Estimate organic CAC from market_fit_score (higher fit = lower CAC)
     - Validate LTV/CAC ratio is healthy (target 3:1 minimum)
+
+    **For Traffic-Based Models (Ad-Supported-Free, Affiliate-Only):**
+    - Estimate monthly pageviews needed for target revenue
+    - Calculate RPM (Revenue Per Mille) based on niche CPM rates
+    - For affiliate: Estimate CTR, conversion rate, and average commission
+    - Validate traffic estimates against keyword demand and market size
+    - Calculate breakeven pageview threshold
+
+    **For One-Time Purchase / Usage-Based:**
+    - Estimate average purchase value or monthly usage
+    - Calculate breakeven customer count
+    - Validate against market size (SOM) for achievability
 
     ### 5. Competitive Positioning
     - Position pricing relative to competitors (premium/value/discount)
@@ -97,30 +136,39 @@ pricing_strategy_analysis:
     - Determine confidence level (High/Medium/Low) based on data quality
 
     ### 6. WTP Validation (CRITICAL)
-    - Validate recommended pricing against pain point WTP scores
-    - Use the WTP-to-Price Translation Guide below
+    - Validate recommended monetization model against pain point WTP scores
+    - Use the WTP-to-Model Translation Guide below
     - Flag any discrepancies between market pricing and WTP data
 
-    **WTP-to-Price Translation Guide:**
+    **WTP-to-Model Translation Guide:**
 
-    | Average WTP Score | Price Tolerance | Pricing Strategy |
-    |-------------------|-----------------|------------------|
-    | 0.70 - 1.00 | Premium (+20-40% vs median) | Users actively seek solutions, price less sensitive |
-    | 0.50 - 0.69 | Market Rate (±10% of median) | Standard pricing, feature differentiation drives value |
-    | 0.30 - 0.49 | Discount (-20-40% vs median) | Price-sensitive users, freemium with aggressive upsell |
-    | 0.00 - 0.29 | Free/Near-Free | Unlikely to monetize directly, ad-supported or data play |
+    | Average WTP Score | Price Tolerance | Consider when choosing model |
+    |-------------------|-----------------|-------------------------------|
+    | 0.70 - 1.00 | Premium (+20-40% vs median) | Strong subscription fit; users actively seek solutions and are less price sensitive. But verify audience budget sensitivity — enterprise vs consumer matters. |
+    | 0.50 - 0.69 | Market Rate (+-10% of median) | Subscription viable at competitive rates; feature differentiation drives upgrades. Consider freemium to capture broader market. |
+    | 0.30 - 0.49 | Discount (-20-40% vs median) | Freemium-lite or aggressive free tier; subscription possible but pricing must be compelling. Hybrid (free + ads) may capture more value. |
+    | 0.00 - 0.29 | Free/Near-Free | Ad-supported, affiliate, or data play most natural. Subscription unlikely unless strong niche lock-in exists. Low WTP is a signal FOR traffic monetization, not against viability. |
 
     **VALIDATION RULE:** If recommended_starter_price exceeds the WTP-implied ceiling, REDUCE price or JUSTIFY premium positioning.
 
-    **Example WTP Calculation:**
+    **Example: Subscription Model (High WTP)**
     - Competitor median: $29/month
-    - Average WTP score: 0.55 (Market Rate tolerance)
-    - Implied price range: $26-32/month (±10% of median)
-    - Starter recommendation: $19/month ✓ (below range = acquisition-friendly)
-    - Pro recommendation: $49/month ⚠ (above range, needs strong differentiation justification)
+    - Average WTP score: 0.65 (Market Rate tolerance)
+    - Project type: SaaS
+    - Implied price range: $26-32/month (+-10% of median)
+    - Starter recommendation: $19/month (below range = acquisition-friendly)
+    - Pro recommendation: $49/month (above range, needs differentiation justification)
+
+    **Example: Ad-Supported Free Tool (Low WTP)**
+    - Average WTP score: 0.22 (Free/Near-Free tolerance)
+    - Project type: directory
+    - Competitor models: mix of free + paid, mostly free tools with ads
+    - Model: Ad-Supported-Free with affiliate links
+    - Revenue: Target 50,000 monthly pageviews at $8 CPM = $400/month
+    - Affiliate: 3% CTR x $15 avg commission = $200/month additional
 
 
-    **PRICING GUIDELINES:**
+    **SaaS PRICING GUIDELINES (use only when subscription model is chosen):**
 
     **Starter Tier:**
     - Price 15-25% below market median for customer acquisition
@@ -138,17 +186,52 @@ pricing_strategy_analysis:
     - Includes white-label, custom integrations, SLA
     - For large organizations with specific requirements
 
-    **ARPU Estimation (adapt to chosen model):**
+
+    **AD/AFFILIATE MONETIZATION GUIDELINES (use when traffic-based model is chosen):**
+
+    **CPM Ranges by Niche:**
+    - Finance/Insurance: $10-25 CPM
+    - Technology/SaaS: $5-15 CPM
+    - Health/Wellness: $5-12 CPM
+    - Home Services: $6-12 CPM
+    - Education: $4-10 CPM
+    - General/Other: $3-8 CPM
+
+    **Affiliate Commission Structures:**
+    - SaaS referrals: 20-40% recurring or $50-200 one-time
+    - E-commerce products: 3-10% per sale
+    - Services/leads: $5-50 per qualified lead
+    - Financial products: $25-150 per conversion
+
+    **CTR Benchmarks:**
+    - Display ads (banner): 0.3-0.8% CTR
+    - In-content affiliate links: 2-5% CTR
+    - Comparison table affiliate links: 5-12% CTR
+    - Sponsored content: 1-3% CTR
+
+    **Ad Network Progression:**
+    - < 10K pageviews/mo: Google AdSense
+    - 10K-50K pageviews/mo: Ezoic, Monumetric
+    - 50K+ pageviews/mo: Mediavine, AdThrive
+    - Niche-specific: Carbon Ads (developers), BuySellAds (tech)
+
+    **Revenue Estimation Formula:**
+    - Monthly ad revenue = (monthly_pageviews / 1000) x CPM_rate
+    - Monthly affiliate revenue = monthly_visitors x CTR x conversion_rate x avg_commission
+    - Total traffic revenue = ad_revenue + affiliate_revenue
+
+
+    **ARPU ESTIMATION (adapt to chosen model):**
     - **3-tier Freemium**: Estimate tier distribution based on competitive analysis (typical: 60% Starter, 35% Pro, 5% Enterprise)
     - **2-tier Freemium-Lite**: Typically 80% free, 20% paid
     - **Pure Subscription**: 100% at subscription price
     - **Usage-Based**: Estimate average monthly usage from comparable tools
-    - **Ad-Supported-Free**: RPM × estimated monthly pageviews ÷ 1000 (use ARPU format like "$0.01-0.02 per pageview")
-    - **Affiliate-Only**: CTR × conversion rate × average commission (use ARPU format like "$0.005-0.015 per visit")
+    - **Ad-Supported-Free**: RPM x estimated monthly pageviews / 1000 (use ARPU format like "$0.01-0.02 per pageview")
+    - **Affiliate-Only**: CTR x conversion rate x average commission (use ARPU format like "$0.005-0.015 per visit")
 
-    **LTV Calculation:**
-    - Conservative: 12 months retention × ARPU
-    - Optimistic: 30 months retention × ARPU
+    **LTV Calculation (subscription models):**
+    - Conservative: 12 months retention x ARPU
+    - Optimistic: 30 months retention x ARPU
     - Express as range: "$XXX - $XXX"
 
     **CAC Estimation:**
@@ -156,7 +239,7 @@ pricing_strategy_analysis:
     - Mixed: $30-60 (market_fit_score 0.60-0.75)
     - Paid-heavy: $60-120 (market_fit_score < 0.60)
 
-    **LTV/CAC Ratio:**
+    **LTV/CAC Ratio (subscription models):**
     - Excellent: 10:1 or higher
     - Good: 3:1 to 10:1
     - Acceptable: 2:1 to 3:1
@@ -174,7 +257,7 @@ pricing_strategy_analysis:
     - **recommended_pro_price:** e.g., "$49/month" (null for ad/affiliate models)
     - **recommended_enterprise_price:** e.g., "$199/month" or null if not applicable
     - **pricing_model:** One of: "Freemium", "Freemium-Lite", "Subscription", "Hybrid", "One-time", "Usage-Based", "Ad-Supported-Free", "Affiliate-Only"
-    - **pricing_rationale:** 2-3 sentences explaining why this pricing strategy
+    - **pricing_rationale:** 2-3 sentences explaining why this monetization strategy
     - **free_tier_features:** Array of features (if freemium) or null
     - **starter_tier_features:** Array of 3-5 core features (null for ad/affiliate models)
     - **pro_tier_features:** Array of 5-8 advanced features (null for ad/affiliate models)
@@ -208,7 +291,7 @@ pricing_strategy_analysis:
     - **price_vs_competitors:** e.g., "Free vs competitor freemium models"
     - **value_proposition_delta:** e.g., "100% free tool with no feature limitations"
     - **pricing_confidence:** "High", "Medium", or "Low"
-    - **wtp_validation:** Explain why ad/affiliate is appropriate given low WTP scores
+    - **wtp_validation:** Explain why ad/affiliate is appropriate given WTP scores
     - **market_segment_pricing:** null
 
     **EXAMPLE: Ad-Supported Free Tool**
@@ -229,35 +312,53 @@ pricing_strategy_analysis:
     pricing_confidence: "Medium"
     wtp_validation: "Low WTP (0.22) confirms users seek free tools; monetization through ads aligns with user expectations"
 
+    **EXAMPLE: SaaS Subscription (High WTP)**
+
+    solution_name: "DevFlowTracker"
+    pricing_model: "Freemium"
+    pricing_rationale: "WTP score of 0.72 confirms strong willingness to pay for developer workflow tooling.
+      3-tier model captures solo devs (Starter $19/mo), teams (Pro $49/mo), and orgs (Enterprise $149/mo).
+      Competitive gap exists at $19 entry point where most competitors start at $29+."
+    recommended_starter_price: "$19/month"
+    recommended_pro_price: "$49/month"
+    recommended_enterprise_price: "$149/month"
+    starter_tier_features: ["Workflow tracking", "3 integrations", "Basic analytics"]
+    pro_tier_features: ["Unlimited integrations", "Advanced analytics", "Team features", "API access", "Priority support"]
+    estimated_arpu: "$32/month"
+    estimated_ltv: "$384 - $960 (12-30mo retention)"
+    ltv_to_cac_ratio: "12:1 to 48:1"
+    pricing_confidence: "High"
+    wtp_validation: "WTP of 0.72 supports premium positioning; pricing 35% below competitor median to accelerate acquisition"
+
 
     **STOP CONDITIONS (ABORT ANALYSIS IF ANY ARE TRUE):**
 
-    - Competitor pricing data shows <3 competitors OR all prices marked "unknown"
-    - Pain point WTP scores show all WTP values <0.3 (indicates very low monetization potential)
-    - Solution has market_fit_score <0.40 (unpriceable solution)
+    - Competitor pricing data shows <3 competitors AND all prices marked "unknown"
+    - Solution has market_fit_score <0.40 (insufficient product-market fit for any model)
 
-    If any stop condition is met, return pricing_confidence="Low" and flag the issue in pricing_rationale.
+    If a stop condition is met, return pricing_confidence="Low" and flag the issue in pricing_rationale.
 
 
     **CRITICAL REQUIREMENTS:**
 
     1. **Be specific with numbers:** Use exact dollar amounts, not ranges in price fields
-    2. **Justify with data:** Reference competitor pricing and WTP scores in rationale
-    3. **Ensure viability:** LTV/CAC ratio must be at least 2:1, preferably 3:1+
+    2. **Justify with data:** Reference competitor pricing, WTP scores, market size, and audience sensitivity in rationale
+    3. **Ensure viability:** LTV/CAC ratio must be at least 2:1 for subscription; traffic projections must be realistic for ad models
     4. **Consider market standards:** Don't deviate drastically from competitor norms without strong justification
-    5. **Validate against WTP:** Ensure pricing doesn't exceed customer willingness to pay
+    5. **Validate against WTP:** Ensure monetization model aligns with customer willingness to pay
     6. **Feature tier logic:** Higher tiers should include ALL lower tier features plus additional ones
+    7. **Match project type:** Let {project_type} strongly inform model selection
 
 
-    Provide your comprehensive pricing strategy analysis in the exact PricingStrategyResult format.
+    Provide your comprehensive monetization strategy analysis in the exact PricingStrategyResult format.
 
 
     **CRITICAL RULES (REMINDER - RECENCY BIAS):**
     - For subscription models: All prices must be exact dollar amounts (e.g., "$19/month" NOT "$15-25/month")
-    - For subscription models: LTV/CAC ratio ≥2:1 is MANDATORY
+    - For subscription models: LTV/CAC ratio >=2:1 is MANDATORY
     - For ad/affiliate models: Set tier prices to null, provide ad/affiliate revenue estimates instead
-    - Pricing model must align with WTP scores (low WTP → ad/affiliate, high WTP → subscription)
-    - DO NOT default to 3-tier Freemium - evaluate all models
+    - Monetization model must align with WTP signals AND project type (low WTP + directory = ad/affiliate)
+    - DO NOT default to 3-tier Freemium - evaluate all models based on full context
     - Include ALL required fields for the chosen pricing model in PricingStrategyResult
 
   expected_output: >
@@ -277,4 +378,5 @@ pricing_strategy_analysis:
     - ARPU expressed as revenue per pageview/visit
     - WTP validation explaining why ad/affiliate is appropriate
 
-    High confidence pricing strategy backed by competitor benchmarks, pain point WTP data, and project type
+    High confidence monetization strategy backed by competitor benchmarks, pain point WTP data,
+    project type, market sizing, audience budget sensitivity, and competitive intensity analysis

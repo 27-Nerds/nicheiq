@@ -7,7 +7,12 @@ edge cases, and custom threshold configurations.
 
 import pytest
 
-from nicheiq.validators import ScoreThresholds, VerdictValidator
+from nicheiq.validators import (
+    ConfidenceAdjuster,
+    ConfidenceThresholds,
+    ScoreThresholds,
+    VerdictValidator,
+)
 
 
 class TestScoreThresholds:
@@ -36,6 +41,11 @@ class TestScoreThresholds:
 
         # Score defaults
         assert thresholds.score_accessor_default_fallback == 0.5
+
+        # Confidence thresholds (composed)
+        assert isinstance(thresholds.confidence, ConfidenceThresholds)
+        assert thresholds.confidence.pain_point_bronze == 0.85
+        assert thresholds.confidence.floor == 0.10
 
     def test_custom_values(self):
         """Test custom threshold configuration."""
@@ -258,3 +268,670 @@ class TestVerdictValidator:
         )
 
         assert verdict == expected_verdict
+
+
+# ==============================================================================
+# Trend Downgrade Tests
+# ==============================================================================
+
+class TestTrendDowngradeRules:
+    """Test each trend downgrade rule in isolation."""
+
+    def _base_kwargs(self, **overrides):
+        """Return default 'healthy' trend kwargs, with overrides."""
+        defaults = dict(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Growing",
+            momentum_score=0.8,
+            timing_recommendation="Enter Now",
+            longevity_verdict="Sustainable",
+            market_maturity="Growth",
+        )
+        defaults.update(overrides)
+        return defaults
+
+    def test_rule1_declining_missed_window_caps_conditional(self):
+        """Rule 1: Declining + Missed Window → cap Go at Conditional, risk >= Medium."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                trend_direction="Declining",
+                timing_recommendation="Missed Window",
+            )
+        )
+        assert v == "Conditional"
+        assert r == "Medium"
+        assert tc is not None
+        assert "Declining" in tc
+        assert "Missed Window" in tc
+
+    def test_rule1_conditional_stays_conditional(self):
+        """Rule 1: Conditional stays Conditional (not downgraded to No-Go)."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Conditional",
+                risk_level="Medium",
+                trend_direction="Declining",
+                timing_recommendation="Missed Window",
+            )
+        )
+        assert v == "Conditional"
+        assert r == "Medium"
+
+    def test_rule1_nogo_stays_nogo(self):
+        """Rule 1: No-Go is not changed."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="No-Go",
+                risk_level="High",
+                trend_direction="Declining",
+                timing_recommendation="Missed Window",
+            )
+        )
+        assert v == "No-Go"
+        assert r == "High"
+
+    def test_rule2_fad_caps_conditional(self):
+        """Rule 2: Fad longevity → cap Go at Conditional, risk >= Medium."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                longevity_verdict="Fad",
+            )
+        )
+        assert v == "Conditional"
+        assert r == "Medium"
+        assert tc is not None
+        assert "Fad" in tc
+
+    def test_rule2_fad_risk_already_high(self):
+        """Rule 2: Fad with High risk stays High."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="High",
+                longevity_verdict="Fad",
+            )
+        )
+        assert v == "Conditional"
+        assert r == "High"
+
+    def test_rule3_declining_downgrades_go_only(self):
+        """Rule 3: Declining trend downgrades Go→Conditional."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                trend_direction="Declining",
+                timing_recommendation="Enter Now",  # not Missed Window, so rule 1 doesn't fire
+                longevity_verdict="Sustainable",  # not Fad, so rule 2 doesn't fire
+            )
+        )
+        assert v == "Conditional"
+        assert tc is not None
+        assert "Declining" in tc
+
+    def test_rule3_conditional_not_downgraded(self):
+        """Rule 3: Conditional is NOT downgraded to No-Go."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Conditional",
+                risk_level="Medium",
+                trend_direction="Declining",
+                timing_recommendation="Enter Now",
+                longevity_verdict="Sustainable",
+            )
+        )
+        assert v == "Conditional"
+        assert tc is None  # no change made
+
+    def test_rule4_risky_downgrades_go_only(self):
+        """Rule 4: Risky longevity downgrades Go→Conditional."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                trend_direction="Stable",  # not Declining, so rule 1/3 don't fire
+                longevity_verdict="Risky",
+            )
+        )
+        assert v == "Conditional"
+        assert tc is not None
+        assert "Risky" in tc
+
+    def test_rule4_conditional_not_downgraded(self):
+        """Rule 4: Conditional not downgraded from Risky longevity."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Conditional",
+                risk_level="Medium",
+                trend_direction="Stable",
+                longevity_verdict="Risky",
+            )
+        )
+        assert v == "Conditional"
+        assert tc is None
+
+    def test_rule5_monitor_wait_raises_risk_low_to_medium(self):
+        """Rule 5: Monitor & Wait raises risk Low→Medium."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                timing_recommendation="Monitor & Wait",
+            )
+        )
+        assert v == "Go"  # verdict unchanged (no declining/fad/risky)
+        assert r == "Medium"
+        assert tc is not None
+        assert "Monitor & Wait" in tc
+
+    def test_rule5_monitor_wait_raises_risk_medium_to_high(self):
+        """Rule 5: Monitor & Wait raises risk Medium→High."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Conditional",
+                risk_level="Medium",
+                timing_recommendation="Monitor & Wait",
+            )
+        )
+        assert v == "Conditional"
+        assert r == "High"
+        assert tc is not None
+
+    def test_rule5_already_high_stays_high(self):
+        """Rule 5: Already High risk stays High."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="No-Go",
+                risk_level="High",
+                timing_recommendation="Monitor & Wait",
+            )
+        )
+        assert r == "High"
+        assert tc is None  # no actual change
+
+    def test_rule5_additive_with_rule1(self):
+        """Rule 5 is additive: Declining+Missed Window+Monitor&Wait shouldn't happen,
+        but if timing is Monitor & Wait combined with declining, both rules can apply."""
+        validator = VerdictValidator()
+        # Rule 3 fires (declining but not missed window), then Rule 5 fires (monitor & wait)
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                trend_direction="Declining",
+                timing_recommendation="Monitor & Wait",
+                longevity_verdict="Sustainable",
+            )
+        )
+        assert v == "Conditional"  # Rule 3
+        assert r == "Medium"  # Rule 5
+        assert tc is not None
+
+    def test_rule1_takes_priority_over_rule2(self):
+        """Rule 1 (Declining+Missed Window) takes priority over Rule 2 (Fad)."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                verdict="Go",
+                risk_level="Low",
+                trend_direction="Declining",
+                timing_recommendation="Missed Window",
+                longevity_verdict="Fad",
+            )
+        )
+        assert "Declining" in tc
+        assert "Missed Window" in tc
+
+
+class TestNoDowngradeScenarios:
+    """Test that healthy trends cause no verdict changes."""
+
+    def _base_kwargs(self, **overrides):
+        defaults = dict(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Growing",
+            momentum_score=0.8,
+            timing_recommendation="Enter Now",
+            longevity_verdict="Sustainable",
+            market_maturity="Growth",
+        )
+        defaults.update(overrides)
+        return defaults
+
+    def test_growing_enter_now_sustainable_no_change(self):
+        """Growing + Enter Now + Sustainable = no downgrade."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(**self._base_kwargs())
+        assert v == "Go"
+        assert r == "Low"
+        assert tc is None
+
+    def test_stable_enter_now_sustainable_no_change(self):
+        """Stable + Enter Now + Sustainable = no downgrade."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(trend_direction="Stable")
+        )
+        assert v == "Go"
+        assert r == "Low"
+        assert tc is None
+
+    def test_growing_enter_now_risky_still_downgrades(self):
+        """Growing + Enter Now + Risky → Rule 4 fires."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(longevity_verdict="Risky")
+        )
+        assert v == "Conditional"
+        assert tc is not None
+
+    @pytest.mark.parametrize(
+        "verdict,risk",
+        [("Go", "Low"), ("Conditional", "Medium"), ("No-Go", "High")],
+    )
+    def test_all_verdicts_unchanged_with_healthy_trends(self, verdict, risk):
+        """All verdict levels unchanged with fully healthy trends."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(verdict=verdict, risk_level=risk)
+        )
+        assert v == verdict
+        assert r == risk
+        assert tc is None
+
+
+class TestTrendDowngradeCustomThresholds:
+    """Test disabling individual rules via ScoreThresholds flags."""
+
+    def _base_kwargs(self, **overrides):
+        defaults = dict(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Declining",
+            momentum_score=0.2,
+            timing_recommendation="Missed Window",
+            longevity_verdict="Fad",
+            market_maturity="Mature",
+        )
+        defaults.update(overrides)
+        return defaults
+
+    def test_disable_rule1(self):
+        """Disabling rule 1 allows rule 2 (Fad) to fire instead."""
+        thresholds = ScoreThresholds(trend_missed_window_caps_conditional=False)
+        validator = VerdictValidator(thresholds)
+        v, r, pc, tc = validator.apply_trend_downgrade(**self._base_kwargs())
+        assert v == "Conditional"
+        assert "Fad" in tc
+
+    def test_disable_rule1_and_rule2(self):
+        """Disabling rules 1+2 allows rule 3 (Declining) to fire."""
+        thresholds = ScoreThresholds(
+            trend_missed_window_caps_conditional=False,
+            trend_fad_caps_conditional=False,
+        )
+        validator = VerdictValidator(thresholds)
+        v, r, pc, tc = validator.apply_trend_downgrade(**self._base_kwargs())
+        assert v == "Conditional"
+        assert "Declining" in tc
+
+    def test_disable_rules_1_2_3(self):
+        """Disabling rules 1-3, rule 4 doesn't fire because longevity is Fad not Risky."""
+        thresholds = ScoreThresholds(
+            trend_missed_window_caps_conditional=False,
+            trend_fad_caps_conditional=False,
+            trend_declining_downgrades_go=False,
+        )
+        validator = VerdictValidator(thresholds)
+        # Fad is not Risky, so rule 4 doesn't fire. Only rule 5 may fire.
+        v, r, pc, tc = validator.apply_trend_downgrade(**self._base_kwargs())
+        assert v == "Go"  # no rules 1-4 fired
+
+    def test_disable_rule5(self):
+        """Disabling rule 5 prevents risk raise from Monitor & Wait."""
+        thresholds = ScoreThresholds(trend_monitor_wait_raises_risk=False)
+        validator = VerdictValidator(thresholds)
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                trend_direction="Growing",
+                timing_recommendation="Monitor & Wait",
+                longevity_verdict="Sustainable",
+            )
+        )
+        assert v == "Go"
+        assert r == "Low"
+        assert tc is None
+
+    def test_all_rules_disabled_no_change(self):
+        """All rules disabled → no changes at all."""
+        thresholds = ScoreThresholds(
+            trend_missed_window_caps_conditional=False,
+            trend_fad_caps_conditional=False,
+            trend_declining_downgrades_go=False,
+            trend_risky_downgrades_go=False,
+            trend_monitor_wait_raises_risk=False,
+        )
+        validator = VerdictValidator(thresholds)
+        v, r, pc, tc = validator.apply_trend_downgrade(**self._base_kwargs())
+        assert v == "Go"
+        assert r == "Low"
+        assert tc is None
+
+
+class TestTrendDowngradePrimaryConcern:
+    """Verify primary_concern handling during trend downgrades."""
+
+    def test_existing_concern_preserved(self):
+        """Existing primary_concern is NOT overwritten by trend downgrade."""
+        validator = VerdictValidator()
+        existing_concern = "Low market fit score (0.58)"
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=existing_concern,
+            trend_direction="Declining",
+            momentum_score=0.2,
+            timing_recommendation="Missed Window",
+            longevity_verdict="Sustainable",
+            market_maturity="Mature",
+        )
+        assert pc == existing_concern
+        assert tc is not None
+
+    def test_concern_set_when_none(self):
+        """primary_concern is set from trend when originally None."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Declining",
+            momentum_score=0.2,
+            timing_recommendation="Missed Window",
+            longevity_verdict="Sustainable",
+            market_maturity="Mature",
+        )
+        assert pc is not None
+        assert "Declining" in pc
+        assert tc is not None
+
+    def test_no_concern_set_when_no_downgrade(self):
+        """No primary_concern set when trend is healthy and no downgrade."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Growing",
+            momentum_score=0.8,
+            timing_recommendation="Enter Now",
+            longevity_verdict="Sustainable",
+            market_maturity="Growth",
+        )
+        assert pc is None
+        assert tc is None
+
+
+# ==============================================================================
+# Confidence Adjuster Tests
+# ==============================================================================
+
+
+class TestConfidenceThresholds:
+    """Test ConfidenceThresholds model validation."""
+
+    def test_default_values(self):
+        """Assert all defaults match specification."""
+        t = ConfidenceThresholds()
+        assert t.pain_point_silver == 0.95
+        assert t.pain_point_bronze == 0.85
+        assert t.pain_point_insufficient == 0.70
+        assert t.social_minimal == 0.90
+        assert t.social_insufficient == 0.75
+        assert t.pp_confidence_low_threshold == 0.5
+        assert t.pp_confidence_low_multiplier == 0.90
+        assert t.pp_confidence_very_low_threshold == 0.3
+        assert t.pp_confidence_very_low_multiplier == 0.80
+        assert t.floor == 0.10
+
+    def test_validation_constraints(self):
+        """ge=0.0, le=1.0 enforced on all fields."""
+        with pytest.raises(ValueError):
+            ConfidenceThresholds(pain_point_bronze=-0.1)
+        with pytest.raises(ValueError):
+            ConfidenceThresholds(pain_point_bronze=1.1)
+        with pytest.raises(ValueError):
+            ConfidenceThresholds(floor=-0.01)
+        with pytest.raises(ValueError):
+            ConfidenceThresholds(social_minimal=1.5)
+
+
+class TestConfidenceAdjusterQuality:
+    """Test ConfidenceAdjuster with various quality signals."""
+
+    def test_no_data_returns_base_score(self):
+        """All None = base unchanged."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(0.80)
+        assert result.adjusted_score == pytest.approx(0.80)
+        assert result.quality_multiplier == pytest.approx(1.0)
+        assert result.adjustment_notes == []
+
+    def test_gold_excellent_no_penalty(self):
+        """GOLD/EXCELLENT tiers → 1.0 multipliers, no change."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80,
+            pain_point_quality_tier="GOLD",
+            social_content_quality_tier="EXCELLENT",
+        )
+        assert result.adjusted_score == pytest.approx(0.80)
+        assert result.quality_multiplier == pytest.approx(1.0)
+
+    def test_bronze_applies_penalty(self):
+        """BRONZE tier → 0.85x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80, pain_point_quality_tier="BRONZE"
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.85)
+        assert result.quality_multiplier == pytest.approx(0.85)
+
+    def test_insufficient_pain_points(self):
+        """INSUFFICIENT pain points → 0.70x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80, pain_point_quality_tier="INSUFFICIENT"
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.70)
+
+    def test_minimal_social(self):
+        """MINIMAL social → 0.90x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80, social_content_quality_tier="MINIMAL"
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.90)
+
+    def test_insufficient_social(self):
+        """INSUFFICIENT social → 0.75x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80, social_content_quality_tier="INSUFFICIENT"
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.75)
+
+    def test_bronze_and_minimal_compound(self):
+        """BRONZE + MINIMAL compound: 0.85 * 0.90 = 0.765x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            1.0,
+            pain_point_quality_tier="BRONZE",
+            social_content_quality_tier="MINIMAL",
+        )
+        assert result.adjusted_score == pytest.approx(1.0 * 0.85 * 0.90)
+        assert result.quality_multiplier == pytest.approx(0.85 * 0.90)
+
+    def test_low_pp_confidence(self):
+        """PP confidence 0.4 (< 0.5 threshold) → 0.90x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80, pain_point_confidence_score=0.4
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.90)
+
+    def test_very_low_pp_confidence(self):
+        """PP confidence 0.2 (< 0.3 threshold) → 0.80x."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80, pain_point_confidence_score=0.2
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.80)
+
+    def test_unknown_tier_no_crash(self):
+        """Unknown tier returns 1.0 multiplier (no crash)."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80,
+            pain_point_quality_tier="UNKNOWN_TIER",
+            social_content_quality_tier="WEIRD_VALUE",
+        )
+        assert result.adjusted_score == pytest.approx(0.80)
+        assert result.quality_multiplier == pytest.approx(1.0)
+
+    def test_base_score_zero(self):
+        """Base score 0.0 returns 0.0 with explanatory note."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.0,
+            pain_point_quality_tier="BRONZE",
+            social_content_quality_tier="MINIMAL",
+        )
+        assert result.adjusted_score == 0.0
+        assert len(result.adjustment_notes) == 1
+        assert "0.0" in result.adjustment_notes[0]
+
+    def test_base_score_one_with_penalties(self):
+        """1.0 * 0.70 * 0.75 = 0.525."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            1.0,
+            pain_point_quality_tier="INSUFFICIENT",
+            social_content_quality_tier="INSUFFICIENT",
+        )
+        assert result.adjusted_score == pytest.approx(1.0 * 0.70 * 0.75)
+
+    def test_gold_with_low_pp_confidence(self):
+        """Quality tier OK but PP confidence low → independent penalty."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80,
+            pain_point_quality_tier="GOLD",
+            social_content_quality_tier="GOOD",
+            pain_point_confidence_score=0.4,
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.90)
+
+    def test_insufficient_both_max_penalty(self):
+        """INSUFFICIENT PP + INSUFFICIENT social + very low PP conf = extreme case."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.80,
+            pain_point_quality_tier="INSUFFICIENT",
+            social_content_quality_tier="INSUFFICIENT",
+            pain_point_confidence_score=0.1,
+        )
+        expected = 0.80 * 0.70 * 0.75 * 0.80
+        assert result.adjusted_score == pytest.approx(expected)
+
+    def test_floor_prevents_near_zero(self):
+        """Very low base + all penalties → clamped to floor."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.15,
+            pain_point_quality_tier="INSUFFICIENT",
+            social_content_quality_tier="INSUFFICIENT",
+            pain_point_confidence_score=0.1,
+        )
+        # 0.15 * 0.70 * 0.75 * 0.80 = 0.063 → clamped to 0.10
+        assert result.adjusted_score == pytest.approx(0.10)
+
+    def test_bug_report_scenario(self):
+        """Original bug report scenario: base 0.805, BRONZE PP, PP conf 0.51."""
+        adjuster = ConfidenceAdjuster()
+        result = adjuster.adjust_confidence(
+            0.805,
+            pain_point_quality_tier="BRONZE",
+            social_content_quality_tier="GOOD",
+            pain_point_confidence_score=0.51,
+        )
+        # 0.805 * 0.85 (BRONZE) * 1.0 (GOOD) * 1.0 (PP conf 0.51 >= 0.5)
+        expected = 0.805 * 0.85
+        assert result.adjusted_score == pytest.approx(expected)
+
+
+class TestConfidenceAdjusterCustomThresholds:
+    """Test ConfidenceAdjuster with custom thresholds."""
+
+    def test_custom_bronze_multiplier(self):
+        """Override bronze multiplier works."""
+        thresholds = ConfidenceThresholds(pain_point_bronze=0.50)
+        adjuster = ConfidenceAdjuster(thresholds)
+        result = adjuster.adjust_confidence(
+            0.80, pain_point_quality_tier="BRONZE"
+        )
+        assert result.adjusted_score == pytest.approx(0.80 * 0.50)
+
+    def test_disable_all_penalties(self):
+        """All multipliers 1.0 = no change."""
+        thresholds = ConfidenceThresholds(
+            pain_point_silver=1.0,
+            pain_point_bronze=1.0,
+            pain_point_insufficient=1.0,
+            social_minimal=1.0,
+            social_insufficient=1.0,
+            pp_confidence_low_multiplier=1.0,
+            pp_confidence_very_low_multiplier=1.0,
+        )
+        adjuster = ConfidenceAdjuster(thresholds)
+        result = adjuster.adjust_confidence(
+            0.80,
+            pain_point_quality_tier="INSUFFICIENT",
+            social_content_quality_tier="INSUFFICIENT",
+            pain_point_confidence_score=0.1,
+        )
+        assert result.adjusted_score == pytest.approx(0.80)
+
+    def test_custom_floor(self):
+        """Custom floor respected."""
+        thresholds = ConfidenceThresholds(floor=0.25)
+        adjuster = ConfidenceAdjuster(thresholds)
+        result = adjuster.adjust_confidence(
+            0.15,
+            pain_point_quality_tier="INSUFFICIENT",
+            social_content_quality_tier="INSUFFICIENT",
+            pain_point_confidence_score=0.1,
+        )
+        # 0.15 * 0.70 * 0.75 * 0.80 = 0.063 → clamped to 0.25
+        assert result.adjusted_score == pytest.approx(0.25)

@@ -34,8 +34,11 @@ market_sizing_analysis:
     - demand_signal: "strong" (>5k/mo) | "moderate" (2k-5k/mo) | "weak" (<2k/mo)
     - top_keywords: list of keyword strings sorted by volume
 
-    **Total Monthly Search Volume:** {total_keyword_volume:,} searches
+    **Niche-Relevant Monthly Search Volume (semantically filtered):** {total_keyword_volume:,} searches
+    **Total Unfiltered Search Volume (includes broad/off-topic keywords):** {unfiltered_keyword_volume:,} searches
     **Validated Keywords:** {validated_keyword_count}
+
+    **IMPORTANT:** Use the niche-relevant volume for TAM calculations. The unfiltered volume is provided for reference only — it includes broad keywords that are not specific to this niche and would inflate market size estimates.
 
     **Pain Point Signals (Discussion Frequency = Problem Validation):**
     {pain_point_signals}
@@ -51,7 +54,7 @@ market_sizing_analysis:
     **PRE-COMPUTED MARKET SIGNALS (from Python -- treat as facts):**
     - Suggested Saturation Level: {suggested_saturation_level}
     - {strive_pre_check}
-    - {tam_seed}
+    - {tam_seed} (uses niche-relevant filtered volume)
     - High-Severity Pain Points (>=0.7): {high_severity_count}
     - High-WTP Pain Points (>=0.5): {high_wtp_count}
     - Average WTP Score: {avg_wtp}
@@ -66,7 +69,7 @@ market_sizing_analysis:
     Calculate market size estimates using the Triangle Validation Method:
 
     **A. Keyword-Based Sizing (Primary Method for Digital Markets):**
-    - Use total monthly search volume ({total_keyword_volume}) as demand signal
+    - Use niche-relevant monthly search volume ({total_keyword_volume}) as demand signal (semantically filtered to exclude broad/off-topic keywords)
     - Estimate market value: Monthly volume × avg customer value × 12 months
     - Provide TAM estimate with calculation shown
 
@@ -133,6 +136,10 @@ market_sizing_analysis:
     - **market_growth_rate:** Estimate annual growth (Optional - use null if no data)
       - Format: "15-20% CAGR" or "8-12% annually"
       - Base on: Keyword trend data, competitive analysis insights, industry context
+      - **IMPORTANT CAVEAT:** Historical trend data is NOT available at this stage (snapshot data only).
+        Use conservative estimates and wide ranges. Mark confidence level as LOW for growth rate
+        estimates based solely on current competitive and keyword signals. Stage 9.5 trend analysis
+        will provide data-driven trend validation later.
 
     - **growth_drivers:** List 3-5 factors driving market expansion
       - Examples: "Remote work adoption", "AI/ML technology maturity", "Privacy regulations (GDPR)"

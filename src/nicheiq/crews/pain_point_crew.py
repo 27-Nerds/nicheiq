@@ -333,7 +333,7 @@ class PainPointCrew:
             self.reddit_knowledge = StringKnowledgeSource(
                 content=self.formatted_reddit_content,
                 chunk_size=2000,      # Preserve discussion context
-                chunk_overlap=300     # More overlap for conversational threading
+                chunk_overlap=600     # Protect [source: ID] tags at chunk boundaries
             )
             self.knowledge_sources.append(self.reddit_knowledge)
             logger.info(f"Reddit content: {len(self.formatted_reddit_content)} chars, knowledge source created")
@@ -343,7 +343,7 @@ class PainPointCrew:
             self.twitter_knowledge = StringKnowledgeSource(
                 content=self.formatted_twitter_content,
                 chunk_size=1500,      # Smaller chunks for tweets
-                chunk_overlap=200     # Less overlap needed
+                chunk_overlap=400     # Protect [source: ID] tags at chunk boundaries
             )
             self.knowledge_sources.append(self.twitter_knowledge)
             logger.info(f"Twitter content: {len(self.formatted_twitter_content)} chars, knowledge source created")
@@ -655,7 +655,7 @@ class PainPointCrew:
                 max_tokens=16000,  # Prevent truncation of large extraction outputs
             )),
             knowledge_sources=self.knowledge_sources,  # RAG for supplementary quote retrieval
-            knowledge_config=KnowledgeConfig(results_limit=15),  # Up from default 5
+            knowledge_config=KnowledgeConfig(results_limit=20),  # More tagged content available
             verbose=True,
         )
 
@@ -795,34 +795,39 @@ class PainPointCrew:
         logger.info(f"[Stage 6] Extracting source IDs from {len(pain_points)} pain points...")
 
         for pp in pain_points:
-            sources = set()
+            quote_source_ids: list[str] = []  # Parallel with cleaned_quotes
             cleaned_quotes = []
 
             for quote in pp.representative_quotes:
-                # Extract [source: ID] pattern using module-level pattern constant
-                match = re.search(rf'\[source: ({SOURCE_TAG_PATTERN})\]', quote)
-                if match:
-                    sources.add(match.group(1))
+                # Extract all [source: ID] patterns using module-level pattern constant
+                all_matches = re.findall(rf'\[source: ({SOURCE_TAG_PATTERN})\]', quote)
+                if len(all_matches) > 1:
+                    logger.warning(
+                        f"Quote has {len(all_matches)} source tags, using first: "
+                        f"'{quote[:50]}...'"
+                    )
+                if all_matches:
+                    quote_source_ids.append(all_matches[0])
                     # Remove [source: ID] suffix from quote text
                     cleaned_quote = re.sub(rf'\s*\[source: {SOURCE_TAG_PATTERN}\]', '', quote).strip()
                     cleaned_quotes.append(cleaned_quote)
                 else:
-                    # Log missing source tag for debugging
+                    # Empty string = unknown source, preserves parallel alignment
+                    quote_source_ids.append("")
                     logger.debug(
                         f"Quote missing [source: ID] suffix in '{pp.title[:30]}...': "
                         f"'{quote[:50]}...'"
                     )
                     cleaned_quotes.append(quote)
 
-            # Update pain point with extracted sources and cleaned quotes
-            pp.source_post_ids = list(sources)
+            # Update pain point: parallel array (may have duplicates and empty strings)
+            pp.source_post_ids = quote_source_ids
             pp.representative_quotes = cleaned_quotes
 
-            # Bound mention_count using source evidence as a floor
-            # The LLM's count (from Task 1 theme data) is generally more accurate
-            # than len(sources), which only counts sources found in selected quotes
-            if sources:
-                source_count = len(sources)
+            # Bound mention_count using unique non-empty source IDs as a floor
+            unique_sources = {sid for sid in quote_source_ids if sid}
+            if unique_sources:
+                source_count = len(unique_sources)
                 if pp.mention_count < source_count:
                     pp.mention_count = source_count
                 elif pp.mention_count > source_count * 10:
@@ -833,9 +838,9 @@ class PainPointCrew:
                     pp.mention_count = source_count * 10
 
             # Log extraction results for this pain point
-            if sources:
+            if unique_sources:
                 logger.info(
-                    f"[Stage 6] '{pp.title[:50]}...': Extracted {len(sources)} source ID(s) "
+                    f"[Stage 6] '{pp.title[:50]}...': Extracted {len(unique_sources)} unique source ID(s) "
                     f"from {len(pp.representative_quotes)} quote(s)"
                 )
             else:
@@ -1086,7 +1091,7 @@ class PainPointCrew:
             # Calculate and log aggregate source tracking stats
             pain_points_with_sources = sum(
                 1 for pp in extraction_output.extracted_pain_points
-                if pp.source_post_ids and len(pp.source_post_ids) > 0
+                if any(pp.source_post_ids)
             )
             total_pain_points = len(extraction_output.extracted_pain_points)
             total_quotes = sum(len(pp.representative_quotes) for pp in extraction_output.extracted_pain_points)
