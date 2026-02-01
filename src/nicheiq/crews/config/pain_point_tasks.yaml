@@ -120,34 +120,35 @@ extract_pain_points:
   description: >
     **NICHE CONTEXT:** {niche_description}
 
-    Transform the categorized content into specific, actionable pain points relevant
-    to the niche being analyzed.
+    Transform the categorized content from Task 1 into specific, actionable pain points relevant
+    to the niche being analyzed. You MUST build on Task 1's theme_categories output — it contains
+    verified quotes with [source: ID] tags and accurate mention_count data from analyzing ALL content.
 
-    **WORKFLOW** (Apply Thorough Evidence Gathering Protocol):
+    **WORKFLOW** (Theme-to-Pain-Point Transformation Protocol):
 
-    1. Review categorization report → identify high/medium-frequency categories
-    2. For each category → extract ALL specific pain points with sufficient supporting evidence (minimum 3 verified quotes each)
-    3. **EXHAUSTIVE SEARCH** → For each potential pain point, run MULTIPLE knowledge source queries using different phrasings:
-       - Query 1: Main problem keywords (e.g., "slow loading", "performance issues")
-       - Query 2: Synonyms and variants (e.g., "laggy", "takes forever", "waiting")
-       - Query 3: Emotional language (e.g., "frustrated", "annoying", "hate")
-       - Query 4: Impact language (e.g., "wasting time", "lost customers", "can't work")
-    4. **COUNT ALL UNIQUE DISCUSSIONS** → From ALL queries, count every unique [source: ID]. This count becomes mention_count.
-    5. **SELECT BEST QUOTES CAREFULLY** → From those mentions, select 5-10 quotes that:
-       - Clearly articulate the pain (specific, detailed complaints)
-       - Include impact statements (time lost, money spent, frustration level)
-       - Have [source: ID] suffix intact (REQUIRED - never fabricate)
-       - Represent diverse voices (different users, different platforms if possible)
-    6. **VERIFY EACH QUOTE EXISTS** → Before including a quote, confirm you can find it in knowledge sources
-    7. Identify severity indicators → "frustrating", "critical", "showstopper"
-    8. Note current solutions/workarounds users mention
-    9. Track source post IDs → extract from [POST_ID: ...] or [THREAD_ID: ...] headers
-    10. **QUALITY GATE**: If <3 VERIFIED quotes with [source: ID] → EXCLUDE pain point entirely
+    1. **Parse Task 1 Output** → Read the ContentCategorizationReport from context. Extract:
+       - Each theme_category's category_name, definition, mention_count, and representative_quotes
+       - The [source: ID] tags within each quote (these are verified against original content)
+    2. **Transform Themes → Pain Points** → For each theme category:
+       - **Focused themes** (single clear problem): Map 1:1 to a pain point. Carry over quotes and mention_count directly.
+       - **Broad themes** (multiple distinct problems bundled): Split into 2-3 specific pain points. Assign quotes to the most relevant sub-pain-point. Distribute the parent theme's mention_count proportionally based on quote distribution.
+       - Example split: "Housing Challenges" → separate "Affordability Crisis", "Safety Concerns", "Housing Instability" pain points
+    3. **Collect Quotes** → For each pain point:
+       - **Primary source**: Task 1's representative_quotes for that theme (already verified with [source: ID] tags)
+       - **Supplementary source**: Any additional relevant quotes from knowledge source context (RAG chunks available at task start)
+       - Select 5-10 best quotes that clearly articulate the pain, include impact statements, and have [source: ID] suffix intact
+    4. **Set mention_count** → Use Task 1's theme mention_count as the base:
+       - For 1:1 mappings: carry over Task 1's mention_count directly
+       - For split themes: distribute proportionally (e.g., theme with 30 mentions split into 3 pain points → ~10 each, adjusted by quote evidence)
+       - If supplementary knowledge source quotes reveal additional unique [source: ID]s not in Task 1, you may increase the count
+    5. Identify severity indicators → "frustrating", "critical", "showstopper"
+    6. Note current solutions/workarounds users mention
+    7. **QUALITY GATE**: If <3 quotes with [source: ID] for a pain point → EXCLUDE it entirely
 
     **CRITICAL**: mention_count and quote count are DIFFERENT:
-    - mention_count = ALL unique posts discussing this problem (typically 10-50+)
+    - mention_count = Task 1's count of ALL unique posts discussing this theme (typically 5-50+)
     - representative_quotes = 5-10 SELECTED examples from those mentions
-    - If mention_count equals quote count, you searched insufficiently
+    - mention_count should always be >= quote count (Task 1 saw all content; its counts are authoritative)
 
     **CATEGORY COVERAGE REQUIREMENT** (Prevents Missing High-WTP Pain Points):
 
@@ -162,22 +163,12 @@ extract_pain_points:
     - BOTH are needed for high-opportunity pain points
     - Missing financial categories = artificially low WTP scores downstream
 
-    **SEARCH STRATEGY** (Knowledge Source Queries):
-
-    | Query Type | Purpose | Keywords |
-    |------------|---------|----------|
-    | Problem keywords | Find quote evidence | Specific problem terms from categories |
-    | Emotional language | Severity assessment | "frustrating", "critical", "annoying", "showstopper" |
-    | Financial pain | WTP signals (HIGH PRIORITY) | "cost", "expensive", "afford", "budget", "price", "pay", "$", "£", "€" |
-    | Impact mentions | Business impact | "time", "productivity", "revenue" |
-    | Workarounds | Current solutions | "using", "tried", "alternative to" |
-
     **Acceptance Criteria:**
 
     - Extract ALL distinct pain points supported by discussion evidence (do NOT target a specific number — let the data determine quantity)
     - Each pain point has clear problem articulation
-    - Supporting evidence includes direct user quotes from knowledge sources (as many as available, minimum 3)
-    - Mention frequency quantified for each
+    - Supporting evidence includes direct user quotes (as many as available, minimum 3) with [source: ID] suffixes
+    - Mention frequency from Task 1 theme data propagated to each pain point
     - Source platforms identified (Reddit/Twitter)
     - Source post IDs tracked for traceability
 
@@ -186,19 +177,18 @@ extract_pain_points:
     **STOP CONDITIONS:**
     ✗ <3 quotes found for a pain point → EXCLUDE that pain point
       ❌ Example: Creating pain point with only 1 quote to reach quota
-    ✗ Knowledge source query returns no results → pain point does NOT exist in data
-      ✅ Example: Return "Insufficient evidence in knowledge sources" if very few validated pain points found
+    ✗ No matching theme in Task 1 output → pain point does NOT exist in data
+      ✅ Example: Return "Insufficient evidence" if very few validated pain points found
 
     **DATA ACCURACY:**
-    ✗ Every quote MUST be direct copy from knowledge sources - NO paraphrasing
+    ✗ Every quote MUST be direct copy from Task 1 output or knowledge sources - NO paraphrasing
       ❌ Example: "Users experience difficulty" (paraphrased)
       ✅ Example: "I spent 3 hours trying to figure this out" (direct quote)
     ✗ DO NOT invent "example" quotes or use general niche knowledge
-      ❌ Example: Creating plausible-sounding quotes not from knowledge sources
-    ✗ Mention counts must be actual unique post occurrences - NOT quote count
+      ❌ Example: Creating plausible-sounding quotes not from Task 1 or knowledge sources
+    ✗ Mention counts must come from Task 1's theme data - NOT from counting your selected quotes
       ❌ Example: mention_count = 3 (just because you collected 3 quotes)
-      ❌ Example: "~15 mentions" (estimated)
-      ✅ Example: "12 mentions" (counted 12 distinct posts with [source: ID] discussing this pain point)
+      ✅ Example: mention_count = 15 (carried from Task 1 theme with 15 mentions)
 
     **OUTPUT REQUIREMENTS:**
     ✗ Pain point descriptions must use exact user language - NO corporate paraphrasing
@@ -226,24 +216,12 @@ extract_pain_points:
       ✅ Example: Return ALL well-evidenced pain points (even if only 5) rather than padding with fabricated quotes to reach a target
 
     **WHEN DATA IS SPARSE** (Critical Decision Point):
-    If you cannot find sufficient quotes for a pain point despite thorough searching:
+    If you cannot find sufficient quotes for a pain point despite Task 1 data:
     1. DO NOT fabricate quotes to fill the gap
     2. DO NOT include the pain point if <3 verified quotes exist
     3. Return fewer pain points rather than lower-quality pain points
     4. Document in extraction_summary: "Limited to X pain points due to sparse evidence for [category Y]"
     5. Include ALL well-evidenced pain points — never sacrifice evidence quality to inflate count, and never cap count artificially
-
-    **EXTRACTION CHAIN-OF-THOUGHT PROCEDURE:**
-    For EACH pain point you identify, follow this mandatory procedure:
-
-    Step 1: **Identify Pattern** - Note recurring problem from categorization
-    Step 2: **Multi-Query Search** - Run 3-4 different queries with synonyms and variants
-    Step 3: **Collect Candidates** - Gather ALL quotes with [source: ID] from all queries
-    Step 4: **Verify Each Quote** - Confirm each quote exists verbatim in knowledge sources
-    Step 5: **Count Verified** - If <3 verified quotes with [source: ID] → EXCLUDE this pain point
-    Step 6: **Select Best 5-10** - From verified quotes, pick most detailed and impactful ones
-    Step 7: **Preserve Exactly** - Include full quote WITH [source: ID] suffix intact
-    Step 8: **Final Check** - Verify all included quotes are verbatim copies with visible [source: ID] tags
 
     CRITICAL: DO NOT remove [source: ID] suffixes yourself - Python will extract them post-processing.
 
@@ -330,7 +308,7 @@ validate_pain_points:
 
     **WORKFLOW:**
     1. Review extracted pain points from Task 2 context
-    2. Query knowledge sources for severity/WTP indicators (use keywords: "critical", "pay", "cost", "budget", "time", "revenue")
+    2. Review quotes from Task 2 for severity/WTP indicators (knowledge sources may provide supplementary context)
     3. Apply scoring rubric with quote-based justification
     4. Calculate opportunity level (High: both scores ≥0.6, Medium: one score ≥0.6, Low: both <0.6)
 

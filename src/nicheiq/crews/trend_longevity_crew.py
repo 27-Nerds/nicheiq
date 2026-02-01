@@ -356,7 +356,7 @@ class TrendLongevityCrew:
                         age_label = f" [Moderate: {months_ago}mo ago]"
                     else:
                         years_ago = days_ago // 365
-                        if years_ago >= 2:
+                        if years_ago >= 1:
                             age_label = f" [Dated: {years_ago}yr ago]"
                         else:
                             age_label = f" [Dated: {days_ago}d ago]"

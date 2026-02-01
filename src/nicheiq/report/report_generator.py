@@ -2276,8 +2276,8 @@ It differentiates through {diff_text}.
         Generate Go-to-Market blueprint for immediate execution.
 
         Uses hybrid approach:
-        - 70% Python: ICP extraction, channel identification, playbook generation
-        - 30% LLM: Marketing message, message framework, content angles
+        - LLM: ICP generation (enriched with audience data), marketing narrative, budget
+        - Python: Channel identification, playbook orchestration
 
         Returns:
             GTMBlueprint with ICP, channels, messaging, content, and 30-day plan
@@ -2285,7 +2285,7 @@ It differentiates through {diff_text}.
         try:
             from ..models.marketing_blueprint import GTMBlueprint
 
-            # Step 1: Extract ICP from user segments (Python - 30%)
+            # Step 1: Generate ICP from audience + pain point data (LLM)
             icp = self._extract_ideal_customer_profile()
             if not icp:
                 logger.warning("Failed to extract ICP - cannot generate GTM blueprint")
@@ -2337,75 +2337,162 @@ It differentiates through {diff_text}.
 
     def _extract_ideal_customer_profile(self) -> "IdealCustomerProfile | None":
         """
-        Extract ICP from content categorization and pain points (Python-only).
+        Generate ICP using LLM with rich audience, pain point, and solution data.
+
+        Gathers data from content categorization (Stage 6), audience mapping
+        (Stage 6.5), pain points, and solution context, then uses
+        LLMService.invoke_structured() to produce a proper IdealCustomerProfile.
+
+        Falls back to a simplified Python-only ICP if the LLM call fails.
 
         Returns:
-            IdealCustomerProfile with persona details
+            IdealCustomerProfile with persona details, or None if insufficient data
         """
         try:
             from ..models.marketing_blueprint import IdealCustomerProfile
+            from ..utils.prompts import load_prompt
 
-            # Extract from content_categorization if available
+            # === Guard: need content categorization with user segments ===
             if not self.state.pain_point_analysis or not self.state.pain_point_analysis.content_categorization:
                 logger.warning("No content categorization available for ICP")
                 return None
 
             categorization = self.state.pain_point_analysis.content_categorization
 
-            # Use first user segment as primary persona
             if not categorization.user_segments or len(categorization.user_segments) == 0:
                 logger.warning("No user segments available")
                 return None
 
             primary_segment = categorization.user_segments[0]
 
-            # Extract top pain points
+            # === Gather pain points ===
             pain_points = []
             sorted_pps = self.accessor.get_sorted_pain_points()
             if sorted_pps:
                 pain_points = [pp.title for pp in sorted_pps[:5]]
 
-            # Extract goals from solution context
-            goals = []
+            # === Gather solution context ===
             selected_solution = self.accessor.get_selected_solution_details()
+            solution_name = selected_solution.solution_name if selected_solution else "the solution"
+            solution_description = selected_solution.description if selected_solution else ""
+            value_proposition = selected_solution.value_proposition if selected_solution else ""
+            project_type = (selected_solution.project_type or "SaaS Tool") if selected_solution else "SaaS Tool"
+            target_personas = ", ".join(selected_solution.target_personas) if selected_solution and selected_solution.target_personas else "Not specified"
+
+            # === Infer goals from core features ===
+            goals = []
             if selected_solution and selected_solution.core_features:
-                # Infer goals from core features
                 goals = [f"Achieve {feature.lower()}" for feature in selected_solution.core_features[:5]]
-
             if not goals:
-                goals = ["Customer goals not identified - conduct user research"]
+                goals = ["Goals not identified from solution features"]
 
-            # Build psychographics with specific data or explicit message
-            if pain_points:
-                psychographics = f"Motivated by solving {pain_points[0]}. Psychographic profile requires user research."
-            else:
-                psychographics = "Psychographic profile requires user research"
-
-            # Build demographics with proper text boundary handling
-            niche_desc = "the target market"
+            # === Niche description ===
+            niche_description = ""
             if self.state.niche_context and self.state.niche_context.niche_description:
-                # Truncate long descriptions and ensure clean text boundaries
-                desc = self.state.niche_context.niche_description.strip()
-                if len(desc) > 80:
-                    # Find last word boundary before 80 chars
-                    truncate_at = desc.rfind(' ', 0, 80)
-                    niche_desc = desc[:truncate_at] if truncate_at > 0 else desc[:80]
-                else:
-                    niche_desc = desc
+                niche_description = self.state.niche_context.niche_description
 
-            return IdealCustomerProfile(
-                persona_name=primary_segment.segment_name,
-                demographics=f"{primary_segment.segment_name} segment with {primary_segment.mention_frequency.lower()} activity discussing '{niche_desc}'",
-                psychographics=psychographics,
-                pain_points=pain_points if pain_points else ["No specific pain points identified"],
-                goals=goals,
-                buying_triggers=f"Experiencing {pain_points[0].lower() if pain_points else 'challenges'} that impact daily operations",
-                decision_criteria="Decision criteria not identified - requires customer interviews"
+            # === Build audience mapping context (Stage 6.5) ===
+            audience_mapping = self.state.audience_mapping
+            primary_segment_name = primary_segment.segment_name
+            primary_segment_details = ""
+            audience_segments_summary = "No detailed audience segments available."
+            vocabulary_list = "Not available"
+            messaging_frameworks = "Not available"
+
+            if audience_mapping:
+                # Primary target segment details
+                primary_segment_name = audience_mapping.primary_target_segment or primary_segment.segment_name
+                # Find the matching segment for full details
+                for seg in audience_mapping.audience_segments:
+                    if seg.segment_name == primary_segment_name:
+                        primary_segment_details = (
+                            f"Size Estimate: {seg.size_estimate}\n"
+                            f"Expertise Level: {seg.expertise_level}\n"
+                            f"Budget Sensitivity: {seg.budget_sensitivity}\n"
+                            f"Discovery Channels: {', '.join(seg.discovery_channels)}\n"
+                            f"Motivation Drivers: {', '.join(seg.motivation_drivers)}\n"
+                            f"Pain Point Alignment: {', '.join(seg.pain_point_alignment)}"
+                        )
+                        break
+
+                # All audience segments summary
+                seg_lines = []
+                for seg in audience_mapping.audience_segments:
+                    seg_lines.append(
+                        f"- **{seg.segment_name}** (Size: {seg.size_estimate}, "
+                        f"Expertise: {seg.expertise_level}, "
+                        f"Budget Sensitivity: {seg.budget_sensitivity})\n"
+                        f"  Channels: {', '.join(seg.discovery_channels)}\n"
+                        f"  Motivations: {', '.join(seg.motivation_drivers)}"
+                    )
+                if seg_lines:
+                    audience_segments_summary = "\n".join(seg_lines)
+
+                # Vocabulary and messaging
+                if audience_mapping.common_vocabulary:
+                    vocabulary_list = ", ".join(audience_mapping.common_vocabulary)
+                if audience_mapping.messaging_frameworks:
+                    messaging_frameworks = "; ".join(audience_mapping.messaging_frameworks)
+            else:
+                # Fallback: use content categorization primary segment info
+                primary_segment_details = (
+                    f"Primary Concerns: {', '.join(primary_segment.primary_concerns) if primary_segment.primary_concerns else 'Not specified'}\n"
+                    f"Mention Frequency: {primary_segment.mention_frequency}"
+                )
+
+            # === Format pain points and goals for prompt ===
+            if pain_points:
+                pain_points_list = "\n".join(f"- {pp}" for pp in pain_points)
+            else:
+                pain_points_list = "- No specific pain points identified"
+
+            goals_list = "\n".join(f"- {goal}" for goal in goals)
+
+            # === Load template and invoke LLM ===
+            template = load_prompt("report_icp_generation")
+            prompt = safe_format(
+                template,
+                niche_description=niche_description,
+                solution_name=solution_name,
+                solution_description=solution_description or "Not available",
+                value_proposition=value_proposition or "Not available",
+                project_type=project_type,
+                target_personas=target_personas,
+                primary_segment_name=primary_segment_name,
+                primary_segment_details=primary_segment_details or "No detailed segment data available",
+                audience_segments_summary=audience_segments_summary,
+                pain_points_list=pain_points_list,
+                goals_list=goals_list,
+                vocabulary_list=vocabulary_list,
+                messaging_frameworks=messaging_frameworks,
             )
 
+            result, _usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=IdealCustomerProfile,
+                temperature=0.4,
+            )
+            logger.info(f"[OK] LLM ICP generation successful: persona={result.persona_name}")
+            return result
+
         except Exception as e:
-            logger.warning(f"Failed to extract ICP: {e}")
-            return None
+            logger.warning(f"LLM ICP generation failed, using fallback: {e}")
+            # === Fallback: simplified Python ICP ===
+            try:
+                from ..models.marketing_blueprint import IdealCustomerProfile
+
+                return IdealCustomerProfile(
+                    persona_name=primary_segment.segment_name,
+                    pain_points=pain_points if pain_points else ["No specific pain points identified"],
+                    goals=goals,
+                    demographics="Insufficient data for demographic profiling — run full audience mapping",
+                    psychographics="Insufficient data for psychographic profiling — run full audience mapping",
+                    buying_triggers="Insufficient data for buying trigger analysis — run full audience mapping",
+                    decision_criteria="Insufficient data for decision criteria analysis — run full audience mapping",
+                )
+            except Exception as fallback_err:
+                logger.warning(f"ICP fallback also failed: {fallback_err}")
+                return None
 
     def _identify_reddit_channel(self) -> "MarketingChannel | None":
         """

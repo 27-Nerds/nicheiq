@@ -60,11 +60,11 @@ class StateAccessor:
         """Get Stage 8 competitive analysis result."""
         return self.state.competitive_analysis
 
-    def get_solution_selection(self) -> Optional["SolutionSelectionResult"]:
+    def get_solution_selection(self) -> Optional["SolutionSelection"]:
         """Get Stage 8.5 solution selection result."""
         return self.state.solution_selection
 
-    def get_solution_refinement(self) -> Optional["SolutionRefinementResult"]:
+    def get_solution_refinement(self) -> Optional["SolutionRefinement"]:
         """Get Stage 8.85 solution refinement result."""
         return self.state.solution_refinement
 
@@ -76,7 +76,7 @@ class StateAccessor:
         """Get Stage 9.75 data source research result (conditional)."""
         return self.state.data_source_research
 
-    def get_social_content(self) -> Optional["SocialContentResult"]:
+    def get_social_content(self) -> Optional["SocialContentCollection"]:
         """Get Stage 5 social media content result."""
         return self.state.social_content
 

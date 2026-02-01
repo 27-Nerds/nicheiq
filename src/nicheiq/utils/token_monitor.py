@@ -291,7 +291,7 @@ class ContentTokenMonitor:
         - discussion_richness: log2(1 + comments) * min(avg_comment_len / 200, 1.5)
         - engagement: log2(1 + upvotes)
         - content_depth: log2(1 + selftext_len) / log2(1 + 2000)
-        - recency: 1 / log2(1 + days_old)  (365-day post retains ~49%)
+        - recency: 1 / log2(1 + days_old)  (365-day post retains ~12%)
 
         Args:
             post: RedditPost object with score, comments, selftext, created_utc
@@ -303,7 +303,7 @@ class ContentTokenMonitor:
         from math import log2
 
         # Discussion richness (40%): comment count weighted by avg comment quality
-        comment_count = len(post.comments)
+        comment_count = len(post.comments) if post.comments else 0
         if comment_count > 0:
             total_comment_len = sum(len(c.body) for c in post.comments)
             avg_comment_len = total_comment_len / comment_count

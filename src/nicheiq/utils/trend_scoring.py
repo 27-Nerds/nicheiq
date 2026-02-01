@@ -234,7 +234,7 @@ def compute_trend_confidence(
 
     # Secondary signal 2: discussion recency
     disc_signal_map = {"Increasing": "Growing", "Stable": "Stable", "Decreasing": "Declining"}
-    disc_signal = disc_signal_map[discussion_frequency_trend]
+    disc_signal = disc_signal_map.get(discussion_frequency_trend, "Stable")
 
     # Count agreements with primary direction
     agreements = sum(1 for s in [kw_count_signal, disc_signal] if s == trend_direction)

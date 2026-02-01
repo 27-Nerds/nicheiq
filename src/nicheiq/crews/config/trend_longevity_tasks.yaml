@@ -51,8 +51,8 @@ trend_longevity_analysis:
     3. **longevity_rationale**: 2-3 sentences with SPECIFIC data citations.
        Reference the pre-computed signals AND raw data. Example: "Sustainable
        because momentum score of 0.72 indicates 72% of search volume is in
-       growing keywords, with {keyword_volume_trend} keyword volume, and
-       {discussion_recency} discussion activity. Competitive data shows N
+       growing keywords, with Increasing keyword volume, and
+       Recent discussion activity. Competitive data shows N
        active competitors validating market demand..."
 
     4. **new_entrants_trend** ("Increasing" / "Stable" / "Consolidating")

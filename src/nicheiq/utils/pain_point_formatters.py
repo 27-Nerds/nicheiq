@@ -115,7 +115,7 @@ def format_pain_points_for_agents(
             parts = [
                 f"**{i+1}. {pp.title}**",
                 f"- Problem: {pp.description}",
-                f"- Severity: {pp.severity_score:.2f} | WTP: {pp.willingness_to_pay:.2f}",
+                f"- Severity: {pp.severity_score * 10:.1f}/10 | WTP: {pp.willingness_to_pay * 10:.1f}/10",
                 f"- Mentions: {pp.mention_count}"
             ]
             if include_quotes and pp.representative_quotes:
@@ -126,7 +126,7 @@ def format_pain_points_for_agents(
     elif format_type == "compact":
         # Medium priority format: Inline metrics
         lines = [
-            f"**{pp.title}** (Severity: {pp.severity_score:.2f}, WTP: {pp.willingness_to_pay:.2f})"
+            f"**{pp.title}** (Severity: {pp.severity_score * 10:.1f}/10, WTP: {pp.willingness_to_pay * 10:.1f}/10)"
             for pp in filtered
         ]
         return "\n".join(lines) if lines else ""

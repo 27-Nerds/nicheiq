@@ -123,7 +123,7 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
     # Filter Twitter threads for competitor mentions
     filtered_twitter = []
     for thread in social_content.twitter_threads:
-        content_lower = thread.root_tweet.text.lower()
+        content_lower = thread.original_tweet.text.lower()
         if indicator_pattern.search(content_lower):
             filtered_twitter.append(thread)
         else:
@@ -166,7 +166,7 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
                     age_label = f"Moderate: {days_ago // 30}mo ago"
                 else:
                     years_ago = days_ago // 365
-                    age_label = f"Dated: {years_ago}yr ago" if years_ago >= 2 else f"Dated: {days_ago}d ago"
+                    age_label = f"Dated: {years_ago}yr ago" if years_ago >= 1 else f"Dated: {days_ago}d ago"
 
             formatted.append(
                 f"""[SUBREDDIT: r/{post.subreddit}]
@@ -189,10 +189,10 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
         formatted.append("\n\n[TWITTER COMPETITOR INTELLIGENCE]\n")
         for thread in filtered_twitter:
             formatted.append(
-                f"""[LIKES: {thread.root_tweet.likes}]
+                f"""[LIKES: {thread.original_tweet.likes}]
 
 ### Root Tweet:
-{thread.root_tweet.text}
+{thread.original_tweet.text}
 
 ---
 ## Replies ({len(thread.replies)} total):

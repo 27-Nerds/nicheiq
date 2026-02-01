@@ -128,7 +128,7 @@ class AudienceMappingCrew:
                     age_label = f"Moderate: {days_ago // 30}mo ago"
                 else:
                     years_ago = days_ago // 365
-                    age_label = f"Dated: {years_ago}yr ago" if years_ago >= 2 else f"Dated: {days_ago}d ago"
+                    age_label = f"Dated: {years_ago}yr ago" if years_ago >= 1 else f"Dated: {days_ago}d ago"
 
             formatted.append(f"""[PLATFORM: REDDIT]
 [POST_ID: {post.post_id}]
@@ -359,7 +359,7 @@ class AudienceMappingCrew:
         ])
 
         # Compute discussion quality summary
-        comment_counts = [len(p.comments) for p in self.reddit_posts if p.comments]
+        comment_counts = [len(p.comments) if p.comments else 0 for p in self.reddit_posts]
         avg_comments = sum(comment_counts) / max(len(comment_counts), 1) if comment_counts else 0
         rich_count = sum(1 for c in comment_counts if c >= 20)
         discussion_quality_summary = (

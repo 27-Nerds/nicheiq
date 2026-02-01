@@ -1000,11 +1000,11 @@ class TrendNarrativeOutput(BaseModel):
         ..., description="2-3 sentences explaining longevity verdict with specific trend data"
     )
 
-    new_entrants_trend: str = Field(
-        ..., description="'Increasing', 'Stable', or 'Consolidating'"
+    new_entrants_trend: Literal["Increasing", "Stable", "Consolidating"] = Field(
+        ..., description="New competitor entry trend"
     )
-    competitive_activity_level: str = Field(
-        ..., description="'High', 'Moderate', or 'Low'"
+    competitive_activity_level: Literal["High", "Moderate", "Low"] = Field(
+        ..., description="Level of competitive activity in the market"
     )
 
     volume_growth_rate: Optional[str] = Field(
@@ -1056,8 +1056,8 @@ class TrendLongevityResult(BaseModel):
     community_growth_indicators: list[str] = Field(..., description="3-5 signals of community growth or decline (new subreddits, forum activity, etc.)")
 
     # Competitive Momentum
-    new_entrants_trend: str = Field(..., description="'Increasing' (many new competitors), 'Stable', 'Consolidating' (exits/acquisitions)")
-    competitive_activity_level: str = Field(..., description="'High' (active launches), 'Moderate', 'Low' (stagnant market)")
+    new_entrants_trend: Literal["Increasing", "Stable", "Consolidating"] = Field(..., description="'Increasing' (many new competitors), 'Stable', 'Consolidating' (exits/acquisitions)")
+    competitive_activity_level: Literal["High", "Moderate", "Low"] = Field(..., description="'High' (active launches), 'Moderate', 'Low' (stagnant market)")
 
     # Seasonality & Patterns
     seasonal_pattern: Optional[str] = Field(default=None, description="Seasonal behavior: 'Strong Seasonal', 'Mild Seasonal', 'Year-Round', 'Unknown'")

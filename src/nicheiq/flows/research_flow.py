@@ -1822,6 +1822,14 @@ Return a valid JSON object with this structure:
                         f"Original response: {original_rationale[:200]}..."
                     )
 
+                    # Update recommended_focus for fallback solution
+                    self.state.solution_selection.recommended_focus = (
+                        self._build_recommended_focus(
+                            solution=fallback_solution,
+                            keyword_validation=None,
+                        )
+                    )
+
                     # Track fallback for visibility
                     if not hasattr(self.state, 'fallback_stages'):
                         self.state.fallback_stages = []
@@ -2627,14 +2635,75 @@ Return a valid JSON object with this structure:
                 )
                 self.state.solution_selection.selected_solution_name = new_winner
 
-                # Update rationale
-                self.state.solution_selection.selection_rationale += (
-                    f"\n\n**Keyword Validation Update:** "
-                    f"Final selection updated to {new_winner} based on stronger keyword demand "
-                    f"(demand score: {ranked_solutions[0].keyword_demand_score or 0.0:.2f} vs "
-                    f"{next((s.keyword_demand_score for s in all_scores if s.solution_name == original_winner), None) or 0.0:.2f} "
-                    f"for {original_winner})."
+                # Shared lookups
+                new_winner_score = ranked_solutions[0]
+                original_winner_score = next(
+                    (s for s in all_scores if s.solution_name == original_winner), None
                 )
+                new_winner_validation = next(
+                    (v for v in validation_results if v.solution_name == new_winner), None
+                )
+                new_winner_solution = find_solution_by_name(
+                    new_winner, self.state.idea_generation.solution_ideas
+                )
+
+                # Build replacement rationale (full rewrite, not append)
+                new_kd = new_winner_score.keyword_demand_score or 0.0
+                new_adj = new_winner_score.adjusted_composite_score or 0.0
+                rationale_parts = [
+                    f"**{new_winner}** emerged as the top solution after keyword validation "
+                    f"with an adjusted composite score of {new_adj:.2f} "
+                    f"(keyword demand score: {new_kd:.2f})."
+                ]
+
+                # Keyword evidence paragraph
+                if new_winner_validation:
+                    kw_names = [
+                        k.get("keyword", "")
+                        for k in (new_winner_validation.top_keywords or [])[:3]
+                        if k.get("keyword")
+                    ]
+                    evidence = (
+                        f"Keyword research shows {new_winner_validation.demand_signal} demand "
+                        f"with {new_winner_validation.total_volume:,} monthly searches "
+                        f"across {new_winner_validation.validated_count} validated keywords."
+                    )
+                    if kw_names:
+                        evidence += f" Top keywords: {', '.join(kw_names)}."
+                    rationale_parts.append(evidence)
+
+                # Context paragraph about original winner
+                orig_kd = (
+                    original_winner_score.keyword_demand_score
+                    if original_winner_score else None
+                ) or 0.0
+                orig_adj = (
+                    original_winner_score.adjusted_composite_score
+                    if original_winner_score else None
+                ) or 0.0
+                rationale_parts.append(
+                    f"The previous selection, {original_winner}, scored an adjusted composite "
+                    f"of {orig_adj:.2f} (keyword demand: {orig_kd:.2f}) and was overtaken "
+                    f"due to weaker keyword demand evidence."
+                )
+
+                self.state.solution_selection.selection_rationale = (
+                    "\n\n".join(rationale_parts)
+                )
+
+                # Update recommended_focus
+                if new_winner_solution:
+                    self.state.solution_selection.recommended_focus = (
+                        self._build_recommended_focus(
+                            solution=new_winner_solution,
+                            keyword_validation=new_winner_validation,
+                        )
+                    )
+                else:
+                    logger.warning(
+                        f"[Stage 8.5] Could not find solution '{new_winner}' in idea_generation - "
+                        f"recommended_focus not updated"
+                    )
 
                 # Update runner_up_solutions to reflect new ranking after pivot
                 new_runner_ups = []
@@ -2674,6 +2743,71 @@ Return a valid JSON object with this structure:
             logger.debug("[Stage 8.5] Updated solution_selection checkpoint after keyword re-ranking")
 
         logger.info(f"[Stage 8.5] Keyword validation complete - {len(validation_results)} solutions validated")
+
+    def _build_recommended_focus(
+        self,
+        solution: "BaseSolutionIdea",
+        keyword_validation: "CrewKeywordValidationResult | None" = None,
+    ) -> str:
+        """Build a recommended_focus string from solution data (no LLM call).
+
+        Constructs 1-4 sentences depending on available data:
+        - Sentence 1 (always): Core focus from solution name, project_type, value_proposition
+        - Sentence 2 (if features): MVP priorities from core_features[:3]
+        - Sentence 3 (if keyword_validation): Demand signal, volume, top keywords or geographic opportunities
+        - Sentence 4 (if pain points): Primary pain point anchor for messaging
+        """
+        sentences = []
+
+        # Sentence 1: Core focus (always present)
+        project_type = solution.project_type or "SaaS tool"
+        sentences.append(
+            f"Focus on building {solution.solution_name} as a {project_type} "
+            f"that delivers: {solution.value_proposition}."
+        )
+
+        # Sentence 2: MVP feature priorities
+        features = [f for f in (solution.core_features or []) if f and f.strip()]
+        if features:
+            if len(features) == 1:
+                sentences.append(f"Prioritize the core feature: {features[0]}.")
+            else:
+                top_features = features[:3]
+                sentences.append(
+                    f"Prioritize MVP features: {', '.join(top_features)}."
+                )
+
+        # Sentence 3: Keyword demand evidence
+        if keyword_validation is not None:
+            top_kw = keyword_validation.top_keywords or []
+            geo_kw = keyword_validation.top_geographic_keywords or []
+            kw_names = [k.get("keyword", "") for k in top_kw[:3] if k.get("keyword")]
+
+            if kw_names or geo_kw:
+                parts = []
+                if kw_names:
+                    parts.append(f"top keywords: {', '.join(kw_names)}")
+                if geo_kw:
+                    parts.append(f"geographic opportunities: {', '.join(geo_kw[:2])}")
+                sentences.append(
+                    f"Keyword validation shows {keyword_validation.demand_signal} demand "
+                    f"({keyword_validation.total_volume:,} monthly searches) with "
+                    f"{'; '.join(parts)}."
+                )
+            else:
+                sentences.append(
+                    f"Keyword validation shows {keyword_validation.demand_signal} demand "
+                    f"with {keyword_validation.total_volume:,} monthly searches."
+                )
+
+        # Sentence 4: Pain point anchor
+        pain_points = [p for p in (solution.pain_points_addressed or []) if p and p.strip()]
+        if pain_points:
+            sentences.append(
+                f"Anchor messaging around the primary pain point: {pain_points[0]}."
+            )
+
+        return " ".join(sentences)
 
     def _analyze_traffic_monetization(self, solution_name: str) -> dict:
         """

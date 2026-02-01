@@ -645,6 +645,8 @@ class PainPointCrew:
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
 
+        from crewai.knowledge.knowledge_config import KnowledgeConfig
+
         return Agent(
             config=self.agents_config["pain_point_analyst"],
             llm=ChatOpenAI(**build_llm_kwargs(
@@ -652,7 +654,8 @@ class PainPointCrew:
                 temperature=0.3,  # Low-moderate for consistent pattern extraction
                 max_tokens=16000,  # Prevent truncation of large extraction outputs
             )),
-            knowledge_sources=self.knowledge_sources,  # RAG for quote retrieval
+            knowledge_sources=self.knowledge_sources,  # RAG for supplementary quote retrieval
+            knowledge_config=KnowledgeConfig(results_limit=15),  # Up from default 5
             verbose=True,
         )
 
@@ -815,11 +818,19 @@ class PainPointCrew:
             pp.source_post_ids = list(sources)
             pp.representative_quotes = cleaned_quotes
 
-            # Recalculate mention_count from actual unique sources
-            # LLM often confuses mention_count with quote count (always ~3)
-            # Actual mention count = number of unique source posts
+            # Bound mention_count using source evidence as a floor
+            # The LLM's count (from Task 1 theme data) is generally more accurate
+            # than len(sources), which only counts sources found in selected quotes
             if sources:
-                pp.mention_count = len(sources)
+                source_count = len(sources)
+                if pp.mention_count < source_count:
+                    pp.mention_count = source_count
+                elif pp.mention_count > source_count * 10:
+                    logger.warning(
+                        f"Pain point '{pp.title[:40]}': mention_count {pp.mention_count} "
+                        f"vs {source_count} sources, capping at {source_count * 10}"
+                    )
+                    pp.mention_count = source_count * 10
 
             # Log extraction results for this pain point
             if sources:

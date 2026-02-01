@@ -1,0 +1,112 @@
+# Ideal Customer Profile (ICP) Generation Prompt
+# Used by: ReportGenerator._extract_ideal_customer_profile()
+# Variables: niche_description, solution_name, solution_description,
+#            value_proposition, project_type, target_personas,
+#            primary_segment_name, primary_segment_details,
+#            audience_segments_summary, pain_points_list,
+#            goals_list, vocabulary_list, messaging_frameworks
+
+template: |
+  Generate a detailed Ideal Customer Profile (ICP) for a SaaS product launch.
+
+  **═══ CRITICAL RULES ═══**
+  - Ground EVERY field in the data below — do NOT invent demographics, psychographics, or triggers
+  - Use specific segment names, pain point titles, and vocabulary from the research
+  - Demographics must include age range, occupation/role, and context — NOT the niche description
+  - Psychographics must describe values, motivations, and behaviors — NOT repeat pain points
+  - Buying triggers must describe real-world events that push someone to seek a solution
+  - Decision criteria must describe what the persona evaluates when comparing options
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **NICHE & SOLUTION CONTEXT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Niche:** {niche_description}
+  **Solution:** {solution_name}
+  **Description:** {solution_description}
+  **Value Proposition:** {value_proposition}
+  **Project Type:** {project_type}
+  **Target Personas:** {target_personas}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **PRIMARY TARGET SEGMENT**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Segment Name:** {primary_segment_name}
+  {primary_segment_details}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **ALL AUDIENCE SEGMENTS (for context)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {audience_segments_summary}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **TOP PAIN POINTS (by severity)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {pain_points_list}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **INFERRED GOALS (from solution features)**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  {goals_list}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **AUDIENCE LANGUAGE & MESSAGING**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  **Common Vocabulary:** {vocabulary_list}
+  **Messaging Frameworks:** {messaging_frameworks}
+
+  **═════════════════════════════════════════════════════════════════════════**
+  **OUTPUT FIELD INSTRUCTIONS**
+  **═════════════════════════════════════════════════════════════════════════**
+
+  Return a JSON object with these exact fields:
+
+  - **persona_name**: A memorable persona name based on the primary segment.
+    Use format "[Role] [First Name]" (e.g., "Startup Founder Sarah", "Agency Owner Alex").
+    Base the role on the primary segment name above.
+
+  - **demographics**: 1-2 sentences covering age range, occupation/role, location tendency,
+    and professional context. Example: "25-40 year old solo SaaS founders and indie hackers,
+    predominantly based in North America and Europe, working remotely on bootstrapped products."
+    DO NOT echo the niche description here.
+
+  - **psychographics**: 2-3 sentences describing values, motivations, and behavioral patterns.
+    Reference specific motivation drivers and discovery channels from the audience data.
+    Example: "Values efficiency and automation over manual processes. Motivated by achieving
+    product-market fit quickly with limited resources. Actively seeks peer advice on Reddit
+    and Twitter before purchasing tools."
+
+  - **pain_points**: List of 3-5 pain point titles from the TOP PAIN POINTS section above.
+    Use the exact titles — do not rephrase.
+
+  - **goals**: List of 3-5 goals. Use the inferred goals above, refining wording to be
+    outcome-oriented (e.g., "Reduce customer churn by identifying at-risk users early").
+
+  - **buying_triggers**: 1-2 sentences describing real-world events or situations that
+    push this persona to actively search for a solution. Reference specific pain points.
+    Example: "Triggered when monthly churn exceeds 5% or when a key customer cancels citing
+    poor onboarding. Often begins searching after reading a competitor success story on Twitter."
+
+  - **decision_criteria**: 1-2 sentences describing what this persona evaluates when
+    comparing solutions. Reference budget sensitivity and expertise level from audience data.
+    Example: "Prioritizes ease of setup (must work within a day), transparent pricing under
+    $50/month, and integration with existing tools. Values community proof — checks Reddit
+    threads and Product Hunt reviews before committing."
+
+  **═══ VERIFICATION ═══**
+  Before returning, verify:
+  - persona_name is based on the primary segment, not generic
+  - demographics contains age range and occupation — NOT the niche description text
+  - psychographics describes motivations and behaviors — NOT just "motivated by solving X"
+  - pain_points are exact titles from the research data
+  - buying_triggers describe specific real-world events, not generic "experiencing challenges"
+  - decision_criteria reference concrete evaluation factors, not "requires customer interviews"
+
+  <brief_explanation>
+  First, identify the primary segment's role, expertise level, and top pain points to anchor the persona.
+  </brief_explanation>
