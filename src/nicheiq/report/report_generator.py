@@ -1998,14 +1998,27 @@ It differentiates through {diff_text}.
             if top_pp.representative_quotes and len(top_pp.representative_quotes) > 0:
                 representative_quote = top_pp.representative_quotes[0]
 
-            # Determine source platform from state
-            if self.state.social_content:
-                if self.state.social_content.reddit_posts and len(self.state.social_content.reddit_posts) > 0:
-                    source_platform = "Reddit"
-                    if self.state.social_content.reddit_posts[0].subreddit:
-                        source_platform = f"Reddit r/{self.state.social_content.reddit_posts[0].subreddit}"
-                elif self.state.social_content.twitter_threads and len(self.state.social_content.twitter_threads) > 0:
-                    source_platform = "Twitter"
+            # Determine source platform from the pain point's own data
+            if top_pp.source_platforms:
+                source_platform = top_pp.source_platforms[0]
+                # Try to add subreddit detail from source_post_ids
+                if source_platform == "Reddit" and top_pp.source_post_ids and self.state.social_content:
+                    for post in self.state.social_content.reddit_posts:
+                        if post.post_id in top_pp.source_post_ids and post.subreddit:
+                            source_platform = f"Reddit r/{post.subreddit}"
+                            break
+            elif top_pp.source_post_ids and self.state.social_content:
+                # Fallback: match source_post_ids against known posts/threads
+                reddit_ids = {p.post_id for p in self.state.social_content.reddit_posts}
+                twitter_ids = {t.thread_id for t in self.state.social_content.twitter_threads}
+                for sid in top_pp.source_post_ids:
+                    if sid in reddit_ids:
+                        post = next(p for p in self.state.social_content.reddit_posts if p.post_id == sid)
+                        source_platform = f"Reddit r/{post.subreddit}" if post.subreddit else "Reddit"
+                        break
+                    elif sid in twitter_ids:
+                        source_platform = "Twitter"
+                        break
 
             return CorePainPoint(
                 title=top_pp.title,
