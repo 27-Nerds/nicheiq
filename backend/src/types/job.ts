@@ -1,12 +1,25 @@
 import { z } from 'zod';
 
+// Valid project types — must match Python pipeline (src/nicheiq/main.py valid_types)
+export const VALID_PROJECT_TYPES = [
+  'saas',
+  'directory',
+  'aggregator',
+  'comparison-tool',
+  'marketplace',
+] as const;
+
 // API request schemas
 // Note: email and userId come from authenticated session, not request body
 export const CreateJobSchema = z.object({
   niche: z.string()
     .min(10, 'Niche description must be at least 10 characters')
-    .max(500, 'Niche description must be at most 500 characters'),
-  allowedProjectTypes: z.array(z.string()).optional(),
+    .max(500, 'Niche description must be at most 500 characters')
+    .regex(
+      /^[\p{L}\p{N}\p{Zs}\p{Pd}\p{Po}\p{Ps}\p{Pe}]+$/u,
+      'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.'
+    ),
+  allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;

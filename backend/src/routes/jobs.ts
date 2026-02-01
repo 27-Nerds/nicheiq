@@ -10,6 +10,7 @@ import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import { requireInternalAuth, requireInternalService, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
+import { validateJobId } from '../middleware/validation.js';
 import { formatJobResponse } from '../utils/jobFormatter.js';
 import { resolveAssetPath } from '../utils/assetPath.js';
 
@@ -84,16 +85,9 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
  * GET /api/jobs/:jobId
  * Get job status and progress (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.get('/:jobId', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
-
-    // Validate UUID format
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (!uuidRegex.test(jobId)) {
-      res.status(400).json({ error: 'Invalid job ID format' });
-      return;
-    }
 
     const job = await getJob(jobId);
 
@@ -102,9 +96,9 @@ jobsRouter.get('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest,
       return;
     }
 
-    // Verify ownership
+    // Verify ownership — return 404 to avoid revealing job existence
     if (!verifyOwnership(req, job.userId)) {
-      res.status(403).json({ error: 'Not authorized to view this job' });
+      res.status(404).json({ error: 'Job not found' });
       return;
     }
 
@@ -125,7 +119,7 @@ jobsRouter.get('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest,
  * GET /api/jobs/:jobId/reportjson
  * Download the research report JSON (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId/reportjson', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.get('/:jobId/reportjson', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
@@ -135,9 +129,9 @@ jobsRouter.get('/:jobId/reportjson', requireInternalAuth, async (req: Authentica
       return;
     }
 
-    // Verify ownership
+    // Verify ownership — return 404 to avoid revealing job existence
     if (!verifyOwnership(req, job.userId)) {
-      res.status(403).json({ error: 'Not authorized to access this report' });
+      res.status(404).json({ error: 'Job not found' });
       return;
     }
 
@@ -171,7 +165,7 @@ jobsRouter.get('/:jobId/reportjson', requireInternalAuth, async (req: Authentica
  * GET /api/jobs/:jobId/landingpage
  * View or download the landing page HTML (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId/landingpage', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.get('/:jobId/landingpage', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
@@ -181,9 +175,9 @@ jobsRouter.get('/:jobId/landingpage', requireInternalAuth, async (req: Authentic
       return;
     }
 
-    // Verify ownership
+    // Verify ownership — return 404 to avoid revealing job existence
     if (!verifyOwnership(req, job.userId)) {
-      res.status(403).json({ error: 'Not authorized to access this landing page' });
+      res.status(404).json({ error: 'Job not found' });
       return;
     }
 
@@ -223,7 +217,7 @@ jobsRouter.get('/:jobId/landingpage', requireInternalAuth, async (req: Authentic
  * DELETE /api/jobs/:jobId
  * Cancel a pending or running job (requires authentication and ownership)
  */
-jobsRouter.delete('/:jobId', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.delete('/:jobId', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
@@ -233,9 +227,9 @@ jobsRouter.delete('/:jobId', requireInternalAuth, async (req: AuthenticatedReque
       return;
     }
 
-    // Verify ownership
+    // Verify ownership — return 404 to avoid revealing job existence
     if (!verifyOwnership(req, job.userId)) {
-      res.status(403).json({ error: 'Not authorized to cancel this job' });
+      res.status(404).json({ error: 'Job not found' });
       return;
     }
 
@@ -263,7 +257,7 @@ jobsRouter.delete('/:jobId', requireInternalAuth, async (req: AuthenticatedReque
  * Cancel a queued or running job with credit refund (requires authentication and ownership)
  * This endpoint is preferred for user-initiated cancellations as it handles credit refunds
  */
-jobsRouter.post('/:jobId/cancel', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
@@ -335,7 +329,7 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, async (req: Authenticated
  * Resume a failed job from checkpoint (requires authentication and ownership)
  * No credit charge - user already paid for the original job
  */
-jobsRouter.post('/:jobId/resume', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
     const userId = req.user!.id;
@@ -445,7 +439,7 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, async (req: Authenticated
  * This endpoint is ONLY for the initial QUEUED -> RUNNING transition.
  * Stage updates are handled by POST /api/workers/progress.
  */
-jobsRouter.patch('/:jobId/status', requireInternalService, async (req: Request, res: Response) => {
+jobsRouter.patch('/:jobId/status', requireInternalService, validateJobId, async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const { status } = req.body;
@@ -491,7 +485,7 @@ jobsRouter.patch('/:jobId/status', requireInternalService, async (req: Request, 
  * GET /api/jobs/:jobId/queue-position
  * Get queue position for a job (requires authentication and ownership)
  */
-jobsRouter.get('/:jobId/queue-position', requireInternalAuth, async (req: AuthenticatedRequest, res: Response) => {
+jobsRouter.get('/:jobId/queue-position', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { jobId } = req.params;
 
@@ -501,9 +495,9 @@ jobsRouter.get('/:jobId/queue-position', requireInternalAuth, async (req: Authen
       return;
     }
 
-    // Verify ownership
+    // Verify ownership — return 404 to avoid revealing job existence
     if (!verifyOwnership(req, job.userId)) {
-      res.status(403).json({ error: 'Not authorized to view this job' });
+      res.status(404).json({ error: 'Job not found' });
       return;
     }
 
