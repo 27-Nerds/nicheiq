@@ -413,16 +413,17 @@ class ReportGenerator:
                     break
 
         # Generate market_validation based on actual metrics
-        # Use SEO strategy report as primary source (more accurate than legacy keyword_validation)
-        total_volume = self.accessor.get_total_keyword_search_volume()
-        if total_volume == 0:
-            logger.warning("⚠️ SEO total keyword volume is 0 - check seo_strategy_report population")
+        # Use niche-relevant volume (Stage 8.5 filtered) to prevent inflation from broad Stage 9 keywords
+        niche_vol = self.accessor.get_niche_relevant_search_volume()
+        total_volume_for_validation = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
+        if total_volume_for_validation == 0:
+            logger.warning("⚠️ Keyword volume is 0 for market validation - check keyword pipeline")
         pain_point_count = len(self.state.pain_point_analysis.pain_points) if self.state.pain_point_analysis else 0
 
-        if (total_volume > settings.market_validation_strong_volume and
+        if (total_volume_for_validation > settings.market_validation_strong_volume and
             pain_point_count >= settings.market_validation_strong_pain_points):
             validation_level = "STRONG"
-        elif (total_volume > settings.market_validation_moderate_volume and
+        elif (total_volume_for_validation > settings.market_validation_moderate_volume and
               pain_point_count >= settings.market_validation_moderate_pain_points):
             validation_level = "MODERATE"
         else:
@@ -430,7 +431,7 @@ class ReportGenerator:
 
         market_validation = (
             f"{validation_level} market validation. "
-            f"Total search volume: {total_volume:,} monthly searches. "
+            f"Niche-relevant search volume: {total_volume_for_validation:,} monthly searches. "
             f"Validated pain points: {pain_point_count}. "
             f"Competitive landscape shows existing market demand."
         )
@@ -1072,6 +1073,17 @@ class ReportGenerator:
                     quality_caveats.append("No premium (Tier 0) keywords found - market may be highly competitive")
                 if not self.state.seo_strategy_report.tier_1_keywords:
                     quality_caveats.append("No quick-win (Tier 1) keywords found - SEO opportunities may be limited")
+
+            # Add volume filter ratio caveat when niche-relevant volume is significantly less than total
+            volume_filter_ratio = self.accessor.get_volume_filter_ratio()
+            if volume_filter_ratio is not None and volume_filter_ratio < 0.5:
+                niche = self.accessor.get_niche_relevant_search_volume()
+                total = self.accessor.get_total_keyword_search_volume()
+                quality_caveats.append(
+                    f"Keyword volume filter ratio is {volume_filter_ratio:.0%} — "
+                    f"niche-relevant volume ({niche:,}) is significantly less than "
+                    f"total SEO volume ({total:,}). Market validation uses the filtered volume."
+                )
 
             if self.state.fallback_stages:
                 fallback_names = [f"Stage {s}" for s in self.state.fallback_stages]
@@ -2047,7 +2059,9 @@ It differentiates through {diff_text}.
             tier2_keyword_count = tier_counts["tier_2"]
             tier3_keyword_count = tier_counts.get("tier_3", 0)
             tier4_keyword_count = tier_counts.get("tier_4", 0)
-            total_keyword_search_volume = self.accessor.get_total_keyword_search_volume()
+            # Use niche-relevant volume for KeyMetrics (prevents TAM inflation from broad Stage 9 keywords)
+            niche_vol = self.accessor.get_niche_relevant_search_volume()
+            total_keyword_search_volume = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
 
             # Pain point metrics
             high_severity_pain_points = 0
@@ -2888,9 +2902,7 @@ It differentiates through {diff_text}.
         tier0_keyword_count = tier_counts["tier_0"]
         tier1_keyword_count = tier_counts["tier_1"]
 
-        competitor_count = 0
-        if self.state.competitive_analysis:
-            competitor_count = len(self.state.competitive_analysis.solution_landscapes)
+        competitor_count = self.accessor.get_competitor_count()
 
         # Pre-compute metric calibration
         metric_calibration = compute_metric_calibration(total_keyword_count, tier1_keyword_count)
@@ -3070,14 +3082,14 @@ It differentiates through {diff_text}.
                 self.score_accessor.get_seo_score_canonical(selected_solution)
             ) / 4
 
-            # Market size from keyword volume
+            # Market size from keyword volume (use niche-relevant to prevent inflation)
             market_size_category = "Small"
-            if self.state.seo_strategy_report:
-                total_volume = sum(kw.search_volume for kw in self.state.seo_strategy_report.tier_1_keywords)
-                if total_volume > 10000:
-                    market_size_category = "Large"
-                elif total_volume > 1000:
-                    market_size_category = "Medium"
+            niche_vol = self.accessor.get_niche_relevant_search_volume()
+            sizing_volume = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
+            if sizing_volume > 10000:
+                market_size_category = "Large"
+            elif sizing_volume > 1000:
+                market_size_category = "Medium"
 
             # Competitive intensity
             competitor_count = self.accessor.get_competitor_count()

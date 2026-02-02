@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING, Optional
 
 from loguru import logger
 
+from ...models.competitor import find_landscape_for_solution
+
 if TYPE_CHECKING:
     from ...models.competitor import CompetitiveAnalysisResult
     from ...models.data_source import DataSourceResearchResult
@@ -525,6 +527,43 @@ class StateAccessor:
 
         return 0
 
+    def get_niche_relevant_search_volume(self) -> int:
+        """
+        Get niche-relevant search volume from Stage 8.5 keyword validation.
+
+        Returns the filtered volume (niche_relevant_volume) for the selected solution,
+        which excludes broad/off-topic keywords from the Stage 9 SEO expansion.
+        Falls back to total_volume if niche_relevant_volume is None (legacy data).
+
+        Returns:
+            Niche-relevant monthly search volume, or 0 if unavailable
+        """
+        if not self.state.solution_selection or not self.state.keyword_validation_results:
+            return 0
+        selected_name = self.state.solution_selection.selected_solution_name
+        for v in self.state.keyword_validation_results:
+            if v.solution_name.lower().strip() == selected_name.lower().strip():
+                if v.niche_relevant_volume is not None:
+                    return v.niche_relevant_volume
+                return v.total_volume or 0
+        return 0
+
+    def get_volume_filter_ratio(self) -> float | None:
+        """
+        Get the ratio of niche-relevant volume to Stage 9 total volume.
+
+        Returns None if either volume is unavailable. Can be >1.0 since
+        they measure different keyword sets.
+
+        Returns:
+            Ratio (niche / total) or None if unavailable
+        """
+        niche_vol = self.get_niche_relevant_search_volume()
+        total_vol = self.get_total_keyword_search_volume()
+        if total_vol == 0 or niche_vol == 0:
+            return None
+        return niche_vol / total_vol
+
     # ==================================================================================
     # Competitive Analysis Access Methods
     # ==================================================================================
@@ -534,7 +573,8 @@ class StateAccessor:
         Get competitive landscape for the selected solution.
 
         Finds the CompetitiveLandscape matching the selected solution name
-        from Stage 8 competitive analysis.
+        from Stage 8 competitive analysis. Case-insensitive, with fallback
+        to first landscape.
 
         Returns:
             CompetitiveLandscape object for selected solution, or None if not found
@@ -542,10 +582,9 @@ class StateAccessor:
         if not self.state.competitive_analysis or not self.state.solution_selection:
             return None
 
-        return next(
-            (landscape for landscape in self.state.competitive_analysis.solution_landscapes
-             if landscape.solution_name == self.state.solution_selection.selected_solution_name),
-            None
+        return find_landscape_for_solution(
+            self.state.competitive_analysis,
+            self.state.solution_selection.selected_solution_name,
         )
 
     def get_competitor_count(self) -> int:
@@ -633,12 +672,17 @@ class StateAccessor:
             sol_name = safe_get_attr(result, 'solution_name')
             validated = safe_get_attr(result, 'validated_count')
             total_vol = safe_get_attr(result, 'total_volume')
+            niche_vol = safe_get_attr(result, 'niche_relevant_volume')
             demand_score = safe_get_attr(result, 'keyword_demand_score')
             demand_signal = safe_get_attr(result, 'demand_signal')
 
+            vol_text = f"{total_vol:,} total monthly volume"
+            if niche_vol is not None:
+                vol_text = f"{niche_vol:,} niche-relevant volume ({total_vol:,} total)"
+
             overview_parts.append(
                 f"**{sol_name}**: {validated}/20 keywords validated, "
-                f"{total_vol:,} total monthly volume, "
+                f"{vol_text}, "
                 f"demand score: {demand_score:.2f} ({demand_signal})\n"
             )
 
@@ -669,14 +713,15 @@ class StateAccessor:
             return None
 
         comparison_rows = [
-            "| Solution | Total Keywords | Tier 0 Premium | Tier 1 Quick Wins | Total Volume | Avg Competition | SEO Difficulty |",
-            "|----------|---------------|----------------|-------------------|--------------|-----------------|----------------|"
+            "| Solution | Total Keywords | Tier 0 Premium | Tier 1 Quick Wins | Niche-Relevant Vol | Total Volume | Avg Competition | SEO Difficulty |",
+            "|----------|---------------|----------------|-------------------|--------------------|--------------|-----------------|-----------  ----|"
         ]
 
         for result in self.state.keyword_validation_results:
             sol_name = safe_get_attr(result, 'solution_name')
             validated = safe_get_attr(result, 'validated_count')
             total_vol = safe_get_attr(result, 'total_volume')
+            niche_vol = safe_get_attr(result, 'niche_relevant_volume')
             avg_comp = safe_get_attr(result, 'avg_competition')
 
             # Tier 0 and Tier 1 count estimation from top keywords
@@ -692,8 +737,10 @@ class StateAccessor:
             else:
                 seo_difficulty = "High"
 
+            niche_vol_str = f"{niche_vol:,}" if niche_vol is not None else "N/A"
+
             comparison_rows.append(
-                f"| {sol_name} | {validated} | {tier0_count} | {tier1_count} | {total_vol:,} | {avg_comp:.1f}% | {seo_difficulty} |"
+                f"| {sol_name} | {validated} | {tier0_count} | {tier1_count} | {niche_vol_str} | {total_vol:,} | {avg_comp:.1f}% | {seo_difficulty} |"
             )
 
         return "\n".join(comparison_rows)

@@ -36,11 +36,11 @@ MIN_KNOWN_KEYWORDS = 5
 # Inspired by financial momentum quintile scoring (S&P, MSCI)
 MOMENTUM_BANDS: list[tuple[float, float, float]] = [
     # (rvp_floor, score_floor, score_ceiling)
-    (70, 0.80, 0.95),   # Strong growth
-    (55, 0.65, 0.80),   # Moderate growth
-    (40, 0.50, 0.65),   # Neutral
-    (25, 0.35, 0.50),   # Leaning negative
-    (0,  0.15, 0.35),   # Declining
+    (55, 0.80, 0.95),   # Strong growth
+    (40, 0.60, 0.80),   # Moderate growth
+    (25, 0.40, 0.60),   # Neutral/Stable
+    (15, 0.25, 0.40),   # Leaning negative
+    (0,  0.10, 0.25),   # Declining
 ]
 SCORE_FLOOR = 0.10   # Winsorization floor (analogous to MSCI z-score cap)
 SCORE_CEILING = 0.95  # Winsorization ceiling
@@ -50,8 +50,8 @@ GROWING_THRESHOLD = 0.60   # Pydantic requires: Growing → score >= 0.6
 DECLINING_THRESHOLD = 0.40  # Pydantic requires: Declining → score <= 0.4
 
 # keyword_volume_trend thresholds (rvp-based)
-KW_TREND_INCREASING_THRESHOLD = 55  # Majority of volume in rising keywords
-KW_TREND_DECREASING_THRESHOLD = 30  # Most volume in stable/declining keywords
+KW_TREND_INCREASING_THRESHOLD = 45  # Majority of volume in rising keywords
+KW_TREND_DECREASING_THRESHOLD = 25  # Most volume in stable/declining keywords
 
 # seasonal_pattern thresholds (% of keywords with CV > 0.3)
 SEASONAL_STRONG_THRESHOLD = 0.50
@@ -91,7 +91,7 @@ def compute_momentum_score(rvp: float, known: int) -> float:
         if rvp >= band_floor:
             # Compute band width (distance to next higher band's floor)
             if i == 0:
-                band_width = 30  # Top band: 70-100
+                band_width = 45  # Top band: 55-100
             else:
                 band_width = MOMENTUM_BANDS[i - 1][0] - band_floor
 

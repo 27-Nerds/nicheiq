@@ -2,7 +2,7 @@
 Tests for keyword trend classification consistency.
 
 Ensures _format_keyword_monthly_trends (crew) and _calculate_trend_metrics (flow)
-produce consistent results regardless of input sort order, and that asymmetric
+produce consistent results regardless of input sort order, and that symmetric
 thresholds and low-volume noise floors work correctly.
 
 Regression tests for: declining-trend bias caused by unsorted monthly data
@@ -140,10 +140,10 @@ class TestCrossFunctionConsistency:
         ("strong_rise", [80, 85, 90, 100, 120, 140, 160, 180, 200, 220, 240, 260]),
         ("strong_decline", [260, 240, 220, 200, 180, 160, 140, 120, 100, 90, 85, 80]),
         ("flat", [500, 505, 498, 502, 500, 497, 503, 500, 498, 502, 500, 505]),
-        ("moderate_rise_25pct", [100, 100, 100, 100, 100, 100, 100, 100, 100, 125, 125, 125]),
-        ("moderate_decline_30pct", [200, 200, 200, 200, 200, 200, 200, 200, 200, 140, 140, 140]),
-        ("borderline_rise_21pct", [100, 100, 100, 100, 100, 100, 100, 100, 100, 121, 121, 121]),
-        ("borderline_decline_26pct", [200, 200, 200, 200, 200, 200, 200, 200, 200, 148, 148, 148]),
+        ("moderate_rise_15pct", [100, 100, 100, 100, 100, 100, 100, 100, 100, 115, 115, 115]),
+        ("moderate_decline_15pct", [200, 200, 200, 200, 200, 200, 200, 200, 200, 170, 170, 170]),
+        ("borderline_rise_11pct", [100, 100, 100, 100, 100, 100, 100, 100, 100, 111, 111, 111]),
+        ("borderline_decline_11pct", [200, 200, 200, 200, 200, 200, 200, 200, 200, 178, 178, 178]),
     ])
     def test_both_functions_agree_on_direction(self, flow, crew, desc, volumes):
         """The trend arrow in the formatted text must match the metric direction."""
@@ -172,46 +172,45 @@ class TestCrossFunctionConsistency:
 # C. Asymmetric threshold behavior
 # ===================================================================
 
-class TestAsymmetricThresholds:
-    """Rising threshold (>20%) is lower than declining threshold (>25%).
-    This means the 'stable' band is wider on the declining side."""
+class TestClassificationThresholds:
+    """Symmetric ±10% thresholds for rising/declining classification.
+    Normal keyword noise is ±5-15%, so ±10% prevents false classifications."""
 
-    def test_19pct_rise_is_stable(self, flow):
-        """A 19% rise should be 'stable' (below the 20% rising threshold)."""
-        # old avg = 100, recent avg = 119 → +19%
-        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 119, 119, 119]
+    def test_9pct_rise_is_stable(self, flow):
+        """A 9% rise should be 'stable' (below the 10% rising threshold)."""
+        # old avg = 100, recent avg = 109 → +9%
+        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 109, 109, 109]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "stable"
 
-    def test_21pct_rise_is_rising(self, flow):
-        """A 21% rise should be 'rising' (above the 20% threshold)."""
-        # old avg = 100, recent avg = 121 → +21%
-        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 121, 121, 121]
+    def test_11pct_rise_is_rising(self, flow):
+        """An 11% rise should be 'rising' (above the 10% threshold)."""
+        # old avg = 100, recent avg = 111 → +11%
+        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 111, 111, 111]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "rising"
 
-    def test_24pct_decline_is_stable(self, flow):
-        """A 24% decline should still be 'stable' (inside the -25% threshold)."""
-        # old avg = 200, recent avg = 152 → -24%
-        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 152, 152, 152]
+    def test_9pct_decline_is_stable(self, flow):
+        """A 9% decline should be 'stable' (inside the -10% threshold)."""
+        # old avg = 200, recent avg = 182 → -9%
+        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 182, 182, 182]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "stable"
 
-    def test_26pct_decline_is_declining(self, flow):
-        """A 26% decline should be 'declining' (beyond the -25% threshold)."""
-        # old avg = 200, recent avg = 148 → -26%
-        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 148, 148, 148]
+    def test_11pct_decline_is_declining(self, flow):
+        """An 11% decline should be 'declining' (beyond the -10% threshold)."""
+        # old avg = 200, recent avg = 178 → -11%
+        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 178, 178, 178]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "declining"
 
-    def test_asymmetry_prevents_false_declining(self, flow):
-        """A moderate drop (-20%) that would have been 'declining' under the old
-        symmetric ±15% threshold is now 'stable'."""
-        # old avg = 100, recent avg = 80 → -20%
-        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 80, 80, 80]
+    def test_symmetry_prevents_false_declining(self, flow):
+        """A -9% change should be 'stable' under symmetric ±10% thresholds."""
+        # old avg = 100, recent avg = 91 → -9%
+        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 91, 91, 91]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "stable", (
-            "A -20% change should be stable under asymmetric thresholds"
+            "A -9% change should be stable under symmetric ±10% thresholds"
         )
 
 
@@ -464,20 +463,20 @@ class TestKeywordVolumeTrend:
     """keyword_volume_trend uses rising_volume_pct (volume-weighted)."""
 
     def test_kw_trend_increasing(self):
-        """rvp >= 55 -> Increasing."""
-        enriched = _make_enriched(rising_volume_pct=60)
+        """rvp >= 45 -> Increasing."""
+        enriched = _make_enriched(rising_volume_pct=50)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Increasing"
 
     def test_kw_trend_decreasing(self):
-        """rvp <= 30 -> Decreasing."""
-        enriched = _make_enriched(rising_volume_pct=25)
+        """rvp <= 25 -> Decreasing."""
+        enriched = _make_enriched(rising_volume_pct=20)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Decreasing"
 
     def test_kw_trend_stable_mid(self):
-        """30 < rvp < 55 -> Stable."""
-        enriched = _make_enriched(rising_volume_pct=42)
+        """25 < rvp < 45 -> Stable."""
+        enriched = _make_enriched(rising_volume_pct=35)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Stable"
 
@@ -490,34 +489,34 @@ class TestMomentumScore:
     """momentum_score computed entirely from rising_volume_pct."""
 
     def test_momentum_high_rvp(self):
-        """rvp=75 -> score in 0.80-0.90 range."""
+        """rvp=75 -> score in 0.80-0.95 range."""
         enriched = _make_enriched(rising_volume_pct=75)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert 0.80 <= result["momentum_score"] <= 0.90
+        assert 0.80 <= result["momentum_score"] <= 0.95
 
     def test_momentum_moderate_rvp(self):
-        """rvp=60 -> score in 0.65-0.80 range."""
+        """rvp=60 -> score in 0.80-0.95 range (strong growth band)."""
         enriched = _make_enriched(rising_volume_pct=60)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert 0.65 <= result["momentum_score"] <= 0.80
+        assert 0.80 <= result["momentum_score"] <= 0.95
 
     def test_momentum_neutral_rvp(self):
-        """rvp=45 -> score in 0.50-0.65 range."""
+        """rvp=45 -> score in 0.60-0.80 range (moderate growth band)."""
         enriched = _make_enriched(rising_volume_pct=45)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert 0.50 <= result["momentum_score"] <= 0.65
+        assert 0.60 <= result["momentum_score"] <= 0.80
 
     def test_momentum_low_rvp(self):
-        """rvp=30 -> score in 0.35-0.50 range."""
+        """rvp=30 -> score in 0.40-0.60 range (neutral/stable band)."""
         enriched = _make_enriched(rising_volume_pct=30)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert 0.35 <= result["momentum_score"] <= 0.50
+        assert 0.40 <= result["momentum_score"] <= 0.60
 
     def test_momentum_declining_rvp(self):
-        """rvp=10 -> score in 0.15-0.35 range."""
+        """rvp=10 -> score in 0.10-0.25 range (declining band)."""
         enriched = _make_enriched(rising_volume_pct=10)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert 0.15 <= result["momentum_score"] <= 0.35
+        assert 0.10 <= result["momentum_score"] <= 0.25
 
     def test_momentum_default_no_data(self):
         """No enriched data -> 0.50."""
@@ -545,7 +544,7 @@ class TestMomentumScore:
         assert result_low["momentum_score"] <= 0.40
 
         # Mid rvp -> mid score -> Stable
-        enriched_mid = _make_enriched(rising_volume_pct=45)
+        enriched_mid = _make_enriched(rising_volume_pct=33)
         result_mid = compute_deterministic_signals(None, None, None, enriched_mid)
         assert result_mid["trend_direction"] == "Stable"
         assert 0.40 < result_mid["momentum_score"] < 0.60
@@ -655,8 +654,8 @@ class TestTrendConfidence:
         """Neither secondary signal agrees with direction -> Low."""
         social = _make_social_content(reddit_days_ago=[400, 500, 600])  # Dated -> Declining
         # keyword counts: declining > rising -> Declining
-        # But rvp=45 -> Stable direction (neither agrees with Stable)
-        enriched = _make_enriched(rising=2, stable=3, declining=15, rising_volume_pct=45)
+        # But rvp=33 -> Stable direction (neither agrees with Stable)
+        enriched = _make_enriched(rising=2, stable=3, declining=15, rising_volume_pct=33)
         result = compute_deterministic_signals(None, social, None, enriched)
         assert result["trend_direction"] == "Stable"
         assert result["trend_confidence"] == "Low"
@@ -763,8 +762,8 @@ class TestMomentumScoreMathProperties:
 
     def test_continuity_at_band_boundaries(self):
         """Score should not jump more than 0.05 at band boundaries.
-        Boundary points: rvp=25, 40, 55, 70."""
-        boundaries = [25, 40, 55, 70]
+        Boundary points: rvp=15, 25, 40, 55."""
+        boundaries = [15, 25, 40, 55]
         for boundary in boundaries:
             enriched_below = _make_enriched(rising_volume_pct=boundary - 1)
             enriched_at = _make_enriched(rising_volume_pct=boundary)
@@ -799,12 +798,12 @@ class TestMomentumScoreMathProperties:
             )
 
     def test_neutral_point(self):
-        """rvp=50 (equal volume in rising vs other) should produce ~0.55-0.65.
+        """rvp=33 should produce ~0.50, the midpoint of the scoring range.
         This is the 'fair value' — neither bullish nor bearish signal."""
-        enriched = _make_enriched(rising_volume_pct=50)
+        enriched = _make_enriched(rising_volume_pct=33)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert 0.55 <= result["momentum_score"] <= 0.65, (
-            f"Neutral point (rvp=50) should be ~0.60, got {result['momentum_score']}"
+        assert 0.45 <= result["momentum_score"] <= 0.55, (
+            f"Neutral point (rvp=33) should be ~0.50, got {result['momentum_score']}"
         )
 
 
@@ -816,57 +815,57 @@ class TestBoundaryConditions:
     """Test exact boundary values for all threshold-based classifications."""
 
     # ── keyword_volume_trend boundaries ──
-    def test_kw_trend_boundary_at_55(self):
-        """rvp=55 is the boundary for Increasing."""
-        enriched = _make_enriched(rising_volume_pct=55)
+    def test_kw_trend_boundary_at_45(self):
+        """rvp=45 is the boundary for Increasing."""
+        enriched = _make_enriched(rising_volume_pct=45)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Increasing"
 
-    def test_kw_trend_boundary_at_54(self):
-        """rvp=54 should be Stable (just below Increasing threshold)."""
-        enriched = _make_enriched(rising_volume_pct=54)
+    def test_kw_trend_boundary_at_44(self):
+        """rvp=44 should be Stable (just below Increasing threshold)."""
+        enriched = _make_enriched(rising_volume_pct=44)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Stable"
 
-    def test_kw_trend_boundary_at_30(self):
-        """rvp=30 is the boundary for Decreasing."""
-        enriched = _make_enriched(rising_volume_pct=30)
+    def test_kw_trend_boundary_at_25(self):
+        """rvp=25 is the boundary for Decreasing."""
+        enriched = _make_enriched(rising_volume_pct=25)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Decreasing"
 
-    def test_kw_trend_boundary_at_31(self):
-        """rvp=31 should be Stable (just above Decreasing threshold)."""
-        enriched = _make_enriched(rising_volume_pct=31)
+    def test_kw_trend_boundary_at_26(self):
+        """rvp=26 should be Stable (just above Decreasing threshold)."""
+        enriched = _make_enriched(rising_volume_pct=26)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["keyword_volume_trend"] == "Stable"
 
     # ── trend_direction boundaries (derived from score) ──
     def test_direction_growing_boundary(self):
-        """rvp=55 maps to score ~0.65 -> Growing."""
-        enriched = _make_enriched(rising_volume_pct=55)
+        """rvp=40 maps to score 0.60 -> Growing."""
+        enriched = _make_enriched(rising_volume_pct=40)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["trend_direction"] == "Growing"
         assert result["momentum_score"] >= 0.60
 
     def test_direction_stable_upper(self):
-        """rvp=49 maps to score=0.59 -> Stable (just below Growing threshold of 0.60)."""
-        enriched = _make_enriched(rising_volume_pct=49)
+        """rvp=39 maps to score ~0.59 -> Stable (just below Growing threshold of 0.60)."""
+        enriched = _make_enriched(rising_volume_pct=39)
         result = compute_deterministic_signals(None, None, None, enriched)
-        assert result["trend_direction"] == "Stable"  # score=0.59, just below 0.60
+        assert result["trend_direction"] == "Stable"
 
     def test_direction_declining_boundary(self):
-        """rvp=25 maps to score ~0.35 -> Declining."""
+        """rvp=25 maps to score 0.40 -> Declining."""
         enriched = _make_enriched(rising_volume_pct=25)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["trend_direction"] == "Declining"
         assert result["momentum_score"] <= 0.40
 
     def test_direction_stable_lower(self):
-        """rvp=26 maps to score ~0.36 -> should still be Declining or Stable."""
+        """rvp=26 maps to score ~0.41 -> Stable (just above Declining threshold)."""
         enriched = _make_enriched(rising_volume_pct=26)
         result = compute_deterministic_signals(None, None, None, enriched)
-        # At rvp=26, score = 0.35 + (26-25)/15 * 0.15 = 0.36 -> Declining
-        assert result["momentum_score"] <= 0.40
+        # At rvp=26, score = 0.40 + (26-25)/15 * 0.20 = 0.41 -> Stable
+        assert result["momentum_score"] > 0.40
 
     # ── seasonal boundaries ──
     def test_seasonal_boundary_at_50(self):
@@ -968,7 +967,7 @@ class TestRealWorldScenarios:
         result = compute_deterministic_signals(None, social, None, enriched)
 
         assert result["trend_direction"] == "Growing"
-        assert result["momentum_score"] >= 0.75
+        assert result["momentum_score"] >= 0.80
         assert result["keyword_volume_trend"] == "Increasing"
         assert result["discussion_recency"] == "Recent"
         assert result["trend_confidence"] == "High"  # Both secondaries agree
@@ -992,7 +991,7 @@ class TestRealWorldScenarios:
         result = compute_deterministic_signals(None, social, None, enriched)
 
         assert result["trend_direction"] == "Declining"
-        assert result["momentum_score"] <= 0.30
+        assert result["momentum_score"] <= 0.20
         assert result["keyword_volume_trend"] == "Decreasing"
         assert result["discussion_recency"] == "Dated"
         assert result["trend_confidence"] == "High"  # Both secondaries agree (Declining)
@@ -1006,7 +1005,7 @@ class TestRealWorldScenarios:
         )
         enriched = _make_enriched(
             rising=20, stable=55, declining=15, unknown=10,
-            rising_volume_pct=42,
+            rising_volume_pct=30,
             total_keywords_analyzed=100,
             seasonal_count=8,
             evergreen_count=65,
@@ -1015,7 +1014,7 @@ class TestRealWorldScenarios:
         result = compute_deterministic_signals(None, social, None, enriched)
 
         assert result["trend_direction"] == "Stable"
-        assert 0.45 <= result["momentum_score"] <= 0.55
+        assert 0.43 <= result["momentum_score"] <= 0.53
         assert result["keyword_volume_trend"] == "Stable"
         assert result["seasonal_pattern"] == "Year-Round"
         assert result["suggested_longevity_verdict"] == "Sustainable"  # High evergreen
@@ -1028,7 +1027,7 @@ class TestRealWorldScenarios:
         )
         enriched = _make_enriched(
             rising=15, stable=30, declining=10, unknown=5,
-            rising_volume_pct=48,
+            rising_volume_pct=35,
             total_keywords_analyzed=60,
             seasonal_count=35,  # 58% seasonal
             evergreen_count=20,
@@ -1075,7 +1074,7 @@ class TestRealWorldScenarios:
 
         # Volume says Growing, but discussions are dated
         assert result["trend_direction"] == "Growing"
-        assert result["momentum_score"] >= 0.65
+        assert result["momentum_score"] >= 0.80
         # Confidence should reflect the disagreement
         assert result["trend_confidence"] in ("Low", "Medium")
         assert result["discussion_recency"] == "Dated"
@@ -1092,6 +1091,26 @@ class TestRealWorldScenarios:
         assert result["discussion_frequency_trend"] == "Decreasing"
         assert result["seasonal_pattern"] == "Unknown"
         assert result["suggested_longevity_verdict"] == "Undetermined"
+
+    def test_rvp_30_produces_stable(self):
+        """rvp=30 should produce 'Stable' (was 'Declining' before recalibration — the core bug)."""
+        enriched = _make_enriched(rising_volume_pct=30)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_direction"] == "Stable"
+
+    def test_rvp_35_produces_stable(self):
+        """rvp=35 should produce 'Stable'."""
+        enriched = _make_enriched(rising_volume_pct=35)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_direction"] == "Stable"
+
+    def test_normal_market_scenario(self):
+        """Realistic RVP ~30% should produce 'Stable' with score ~0.47.
+        This is the typical profile for a healthy, non-trending niche."""
+        enriched = _make_enriched(rising_volume_pct=30)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["trend_direction"] == "Stable"
+        assert 0.43 <= result["momentum_score"] <= 0.53
 
 
 # ===================================================================
@@ -1150,7 +1169,7 @@ class TestBreadthVsVolumeDivergence:
         social = _make_social_content(reddit_days_ago=[400, 500, 600])  # Dated -> Declining
         enriched = _make_enriched(
             rising=5, stable=15, declining=80,  # Breadth: strongly declining
-            rising_volume_pct=45,  # Volume: stable range
+            rising_volume_pct=33,  # Volume: stable range
         )
         result = compute_deterministic_signals(None, social, None, enriched)
         assert result["trend_direction"] == "Stable"
@@ -1220,7 +1239,7 @@ class TestMergeIntegration:
         from nicheiq.models.research_state import TrendLongevityResult, TrendNarrativeOutput
 
         # Test all three directions via rvp
-        for rvp, expected_dir in [(75, "Growing"), (45, "Stable"), (10, "Declining")]:
+        for rvp, expected_dir in [(75, "Growing"), (33, "Stable"), (10, "Declining")]:
             enriched = _make_enriched(rising_volume_pct=rvp)
             deterministic = compute_deterministic_signals(None, None, None, enriched)
             assert deterministic["trend_direction"] == expected_dir

@@ -108,6 +108,8 @@ services:
       # Stripe
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      # Output directory (for checkpoint/log downloads)
+      OUTPUT_DIR: /app/output
       # Job settings
       JOB_TTL_SECONDS: ${JOB_TTL_SECONDS:-604800}
       # Niche suggestion settings

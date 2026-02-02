@@ -15,7 +15,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
-from ..models.competitor import CompetitiveAnalysisResult
+from ..models.competitor import CompetitiveAnalysisResult, find_landscape_for_solution
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import MarketSizingResult
@@ -257,8 +257,8 @@ class MarketSizingCrew:
         # Extract pain point signals
         pain_signals = self._format_pain_signals(pain_point_analysis)
 
-        # Extract competitive signals
-        competitive_signals = self._format_competitive_signals(competitive_analysis)
+        # Extract competitive signals (scoped to selected solution)
+        competitive_signals = self._format_competitive_signals(competitive_analysis, selected_solution.solution_name)
 
         # Extract solution context
         solution_context = self._format_solution_context(selected_solution)
@@ -282,7 +282,8 @@ class MarketSizingCrew:
             )
 
         pp_mentions = pain_point_analysis.total_mentions if pain_point_analysis else 0
-        competitor_count = sum(len(l.competitors or []) for l in competitive_analysis.solution_landscapes) if competitive_analysis and competitive_analysis.solution_landscapes else 0
+        selected_landscape = find_landscape_for_solution(competitive_analysis, selected_solution.solution_name)
+        competitor_count = len(selected_landscape.competitors or []) if selected_landscape else 0
 
         strive_pre_check = compute_strive_pre_check(kv_volume, pp_mentions, competitor_count)
         suggested_saturation_level = compute_saturation_level(competitor_count)
@@ -373,33 +374,34 @@ class MarketSizingCrew:
 
         return "\n".join(signals)
 
-    def _format_competitive_signals(self, competitive_analysis: CompetitiveAnalysisResult | None) -> str:
-        """Format competitive landscape for market saturation assessment."""
+    def _format_competitive_signals(
+        self,
+        competitive_analysis: CompetitiveAnalysisResult | None,
+        selected_solution_name: str | None = None,
+    ) -> str:
+        """Format competitive landscape for market saturation assessment.
+
+        Scoped to the selected solution's landscape rather than aggregating
+        across all landscapes.
+        """
         if not competitive_analysis or not competitive_analysis.solution_landscapes:
+            return "No competitive analysis data available."
+
+        landscape = find_landscape_for_solution(competitive_analysis, selected_solution_name)
+        if not landscape:
             return "No competitive analysis data available."
 
         signals = []
 
-        # Count total competitors across all solution landscapes
-        total_competitors = sum(
-            len(landscape.competitors or [])
-            for landscape in competitive_analysis.solution_landscapes
-        )
-        signals.append(f"**Total Competitors Identified:** {total_competitors}")
+        competitor_count = len(landscape.competitors or [])
+        signals.append(f"**Competitors Identified:** {competitor_count}")
 
-        # Count market gaps across all landscapes
-        total_gaps = sum(
-            len(landscape.market_gaps)
-            for landscape in competitive_analysis.solution_landscapes
-        )
-        if total_gaps > 0:
-            signals.append(f"\n**Market Gaps:** {total_gaps} opportunities identified")
+        if landscape.market_gaps:
+            signals.append(f"\n**Market Gaps:** {len(landscape.market_gaps)} opportunities identified")
 
-        # Sample competitors from first landscape
-        first_landscape = competitive_analysis.solution_landscapes[0]
-        if first_landscape.competitors:
+        if landscape.competitors:
             signals.append("\n**Sample Competitors:**")
-            for comp in first_landscape.competitors[:5]:
+            for comp in landscape.competitors[:5]:
                 signals.append(f"- {comp.name}")
 
         return "\n".join(signals)

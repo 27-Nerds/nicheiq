@@ -356,13 +356,13 @@ class ResearchFlow(Flow[ResearchState]):
         else:
             trend_pct = 0
 
-        # Trend direction thresholds (asymmetric to reduce declining bias)
+        # Trend direction thresholds (symmetric ±10% thresholds; ±5-15% is normal keyword noise)
         # Low-volume noise floor: if both averages < 50, classify as stable
         if recent_avg < 50 and older_avg < 50:
             trend_direction = "stable"
-        elif trend_pct > 20:
+        elif trend_pct > 10:
             trend_direction = "rising"
-        elif trend_pct < -25:
+        elif trend_pct < -10:
             trend_direction = "declining"
         else:
             trend_direction = "stable"
@@ -1897,6 +1897,7 @@ Return a valid JSON object with this structure:
         topic_clusters: list,
         selected_solution = None,
         niche_context = None,
+        initial_keywords: list | None = None,
     ) -> list:
         """
         Phase 9.5c: Iteratively enrich keywords with DataForSEO using VALIDATED seeds.
@@ -1913,6 +1914,7 @@ Return a valid JSON object with this structure:
             topic_clusters: List of ConceptualTopicCluster objects from Phase 9.5a
             selected_solution: Selected SolutionIdea for relevance validation (optional)
             niche_context: NicheContext for relevance validation (optional)
+            initial_keywords: Pre-loaded keywords from anchor enrichment (optional)
 
         Returns:
             List of enriched keywords with search volumes and competition data
@@ -1941,8 +1943,8 @@ Return a valid JSON object with this structure:
         solution_description = selected_solution.value_proposition if selected_solution else "Unknown Description"
         project_type = selected_solution.project_type if selected_solution else "saas"
 
-        # Initialize with pre-validated keywords
-        all_enriched = validated_seeds.copy()
+        # Initialize with pre-validated keywords (+ anchor-enriched if provided)
+        all_enriched = (initial_keywords or []) + validated_seeds.copy()
         seeds_used = set()
         # Track enriched keyword strings for deduplication across rounds
         enriched_keyword_strings = {kw['keyword'].lower() for kw in all_enriched}
@@ -1953,7 +1955,11 @@ Return a valid JSON object with this structure:
         # the same keywords in subsequent rounds (~30-35% LLM call reduction)
         enrichment_validation_cache: dict[str, tuple] = {}
 
-        logger.info(f"Starting with {len(all_enriched)} pre-validated keywords from bulk validation")
+        initial_count = len(initial_keywords) if initial_keywords else 0
+        logger.info(
+            f"Starting with {len(all_enriched)} pre-validated keywords "
+            f"({initial_count} from anchor enrichment + {len(validated_seeds)} from bulk validation)"
+        )
 
         for round_num in range(1, max_rounds + 1):
             # Select next batch of validated seeds
@@ -2046,6 +2052,116 @@ Return a valid JSON object with this structure:
         logger.info(
             f"[Validation Cache] Final size: {len(enrichment_validation_cache)} entries "
             f"(LLM calls saved by caching across rounds)"
+        )
+        return all_enriched
+
+    def _enrich_anchor_keywords(
+        self,
+        anchor_keywords: list[dict],
+        selected_solution=None,
+        niche_context=None,
+    ) -> list[dict]:
+        """
+        Enrich anchor keywords from Stage 8.5 via DataForSEO expansion.
+
+        Simpler than _iterative_keyword_enrichment - no cluster tracking needed.
+        Uses anchor keyword strings as expansion seeds, then high-volume discoveries.
+
+        Args:
+            anchor_keywords: Keyword dicts with 'keyword', 'search_volume' keys
+            selected_solution: SolutionIdea for relevance validation context
+            niche_context: NicheContext for relevance validation context
+
+        Returns:
+            List of enriched keyword dicts with search metrics
+        """
+        all_enriched = anchor_keywords.copy()
+        enriched_keyword_strings = {kw['keyword'].lower() for kw in all_enriched}
+        seeds_used: set[str] = set()
+        validator = KeywordRelevanceValidator()
+        validation_cache: dict[str, tuple] = {}
+
+        niche_description = niche_context.niche_description if niche_context else self.niche_description
+        solution_name = selected_solution.solution_name if selected_solution else "Unknown"
+        solution_description = selected_solution.value_proposition if selected_solution else ""
+        project_type = selected_solution.project_type if selected_solution else "saas"
+
+        anchor_seed_strings = [kw['keyword'] for kw in anchor_keywords]
+        batch_size = settings.keyword_enrichment_batch_size
+
+        logger.info(
+            f"[Anchor Enrichment] Starting with {len(anchor_keywords)} anchor keywords, "
+            f"target: {settings.keyword_enrichment_target_count} quality keywords"
+        )
+
+        for round_num in range(1, settings.keyword_enrichment_max_rounds + 1):
+            # Seed selection: anchor keywords first, then high-volume discoveries
+            remaining_anchors = [s for s in anchor_seed_strings if s not in seeds_used]
+            high_volume = sorted(
+                [k for k in all_enriched if k['keyword'] not in seeds_used and k.get('search_volume', 0) > 1000],
+                key=lambda k: k.get('search_volume', 0), reverse=True
+            )
+
+            # Prioritize remaining anchor seeds, fill rest with high-volume discoveries
+            next_seeds = remaining_anchors[:batch_size]
+            if len(next_seeds) < batch_size:
+                next_seeds += [k['keyword'] for k in high_volume[:batch_size - len(next_seeds)]
+                              if k['keyword'] not in next_seeds]
+
+            if not next_seeds:
+                logger.info(f"[Anchor Enrichment] No more seeds after {round_num - 1} rounds")
+                break
+
+            # DataForSEO expansion
+            logger.info(f"[Anchor Enrichment] Round {round_num}: Expanding {len(next_seeds)} seeds...")
+            suggestions = self.dataforseo_tool.expand_keywords(
+                seed_keywords=next_seeds,
+                location_code=settings.target_location
+            )
+
+            # LLM relevance validation
+            results = validator.validate_batch_parallel(
+                keywords=suggestions,
+                niche_description=niche_description,
+                solution_name=solution_name,
+                solution_description=solution_description,
+                project_type=project_type,
+                batch_size=settings.keyword_validation_batch_size,
+                threshold=settings.keyword_relevance_threshold,
+                validation_cache=validation_cache,
+            )
+
+            # Filter relevant + deduplicate
+            new_keywords = [
+                kw_dict for kw_dict, is_relevant, _ in results
+                if is_relevant and kw_dict['keyword'].lower() not in enriched_keyword_strings
+            ]
+
+            all_enriched.extend(new_keywords)
+            enriched_keyword_strings.update(kw['keyword'].lower() for kw in new_keywords)
+            seeds_used.update(next_seeds)
+
+            # Check target (count-based only, no cluster coverage)
+            quality_count = sum(
+                1 for k in all_enriched
+                if k.get('search_volume', 0) >= settings.keyword_enrichment_min_volume
+            )
+            logger.info(
+                f"[Anchor Enrichment] Round {round_num}: {quality_count} quality keywords "
+                f"({len(all_enriched)} total, +{len(new_keywords)} new)"
+            )
+
+            if quality_count >= settings.keyword_enrichment_target_count:
+                logger.info(f"[Anchor Enrichment] Target reached after {round_num} rounds")
+                break
+
+        quality_final = sum(
+            1 for k in all_enriched
+            if k.get('search_volume', 0) >= settings.keyword_enrichment_min_volume
+        )
+        logger.info(
+            f"[Anchor Enrichment] Complete: {len(all_enriched)} total, "
+            f"{quality_final} quality (target: {settings.keyword_enrichment_target_count})"
         )
         return all_enriched
 
@@ -2494,6 +2610,7 @@ Return a valid JSON object with this structure:
             best_validation_result["best_relevance_score"] = best_relevance_score
             best_validation_result["accumulated_keywords_count"] = len(accumulated_good_keywords)
             best_validation_result["niche_relevant_volume"] = niche_relevant_volume
+            best_validation_result["validated_keywords"] = accumulated_good_keywords
 
             # Log filter ratio when both volumes are available
             if niche_relevant_volume is not None:
@@ -3472,27 +3589,112 @@ Return a valid JSON object with this structure:
 
         logger.info(f"Generating SEO strategy for selected solution: {selected_solution_name}")
 
-        # Initialize SEOStrategyCrew with SELECTED solution and audience vocabulary
-        seo_crew = SEOStrategyCrew(
-            niche=self.niche_description,
-            selected_solution=selected_solution,
-            selection_rationale=self.state.solution_selection.selection_rationale,
-            competitive_analysis=self.state.competitive_analysis,
-            pain_points=self.state.pain_point_analysis,
-            niche_context=self.state.niche_context,
-            allowed_project_types=self.state.allowed_project_types,
-            audience_mapping=self.state.audience_mapping,
-        )
+        # ── Collect anchor keywords from Stage 8.5 ──
+        anchor_keywords = []
 
-        # Check for existing sub-phase checkpoints (enables partial resume)
-        completed_stages = self.checkpoint_mgr.get_completed_stages()
-        has_9_5a = "stage_9_5a_seed_expansion" in completed_stages
-        has_9_5b = "stage_9_5b_bulk_validation" in completed_stages
-        has_9_5c = "stage_9_5c_enrichment" in completed_stages
+        if self.state.keyword_validation_results:
+            selected_kv = next(
+                (v for v in self.state.keyword_validation_results
+                 if v.solution_name == selected_solution_name), None
+            )
+            if selected_kv:
+                # Full validated keywords (have 'keyword', 'search_volume', 'competition_index')
+                if selected_kv.validated_keywords:
+                    anchor_keywords.extend(selected_kv.validated_keywords)
+                # Fallback to top_keywords (uses 'volume'/'competition' keys -> normalize)
+                elif selected_kv.top_keywords:
+                    anchor_keywords.extend([
+                        {
+                            'keyword': kw.get('keyword', ''),
+                            'search_volume': kw.get('volume', kw.get('search_volume', 0)),
+                            'competition_index': kw.get('competition', kw.get('competition_index', 0)),
+                        }
+                        for kw in selected_kv.top_keywords
+                        if kw.get('keyword')
+                    ])
 
-        # Phase 9.5a: Conceptual keyword expansion (SEO crew)
-        logger.info(f"Phase 9.5a: Conceptual keyword expansion for {selected_solution_name}...")
-        try:
+        # Also add organic_discovery_queries (concrete only, validated via DataForSEO)
+        if selected_solution.organic_discovery_queries:
+            existing = {kw.get('keyword', '').lower() for kw in anchor_keywords}
+            concrete_queries = [
+                q for q in selected_solution.organic_discovery_queries
+                if q.lower() not in existing and '[' not in q and ']' not in q
+            ]
+            if concrete_queries:
+                try:
+                    odq_validated = self.dataforseo_tool.get_search_volume(
+                        keywords=concrete_queries, location_code=settings.target_location
+                    )
+                    valid_odq = [kw for kw in odq_validated if kw.get('search_volume', 0) > 0]
+                    anchor_keywords.extend(valid_odq)
+                except Exception as e:
+                    logger.warning(f"[Stage 9] Failed to validate organic_discovery_queries: {e}")
+
+        anchor_keyword_strings = [kw.get('keyword', '') for kw in anchor_keywords if kw.get('keyword')]
+
+        if anchor_keywords:
+            logger.info(f"[Stage 9] Collected {len(anchor_keywords)} anchor keywords from Stage 8.5")
+        else:
+            logger.info("[Stage 9] No anchor keywords available from Stage 8.5 - will use LLM path")
+
+        # ── Phase 9-anchor: Enrich anchor keywords (priority path) ──
+        anchor_enriched = []
+        anchor_sufficient = False
+
+        if anchor_keywords:
+            anchor_enriched = self._enrich_anchor_keywords(
+                anchor_keywords=anchor_keywords,
+                selected_solution=selected_solution,
+                niche_context=self.state.niche_context,
+            )
+
+            # Check if anchor enrichment is sufficient
+            quality_count = sum(
+                1 for k in anchor_enriched
+                if k.get('search_volume', 0) >= settings.keyword_enrichment_min_volume
+            )
+            anchor_sufficient = quality_count >= settings.keyword_enrichment_target_count
+            logger.info(
+                f"[Stage 9] Anchor enrichment: {quality_count} quality keywords "
+                f"(target: {settings.keyword_enrichment_target_count}) -> "
+                f"{'SUFFICIENT - skipping LLM phases' if anchor_sufficient else 'INSUFFICIENT - running LLM fallback'}"
+            )
+
+        # ── Decide: skip LLM or run as fallback ──
+        if anchor_sufficient:
+            # Anchor keywords are enough - skip 9.5a/b/c entirely
+            enriched_keywords = anchor_enriched
+            expanded_keywords = None  # Strategy creation handles None gracefully
+
+            # Store to state for downstream Stage 9.5 trend analysis
+            self.state.stage_9_5c_enriched_keywords = enriched_keywords
+            self.checkpoint_mgr.save_stage("stage_9_5c_enrichment", enriched_keywords)
+
+            logger.info(f"[Stage 9] Using {len(enriched_keywords)} anchor-enriched keywords (LLM phases skipped)")
+
+        else:
+            # ── LLM fallback: Initialize SEOStrategyCrew + run 9.5a/b/c ──
+            seo_crew = SEOStrategyCrew(
+                niche=self.niche_description,
+                selected_solution=selected_solution,
+                selection_rationale=self.state.solution_selection.selection_rationale,
+                competitive_analysis=self.state.competitive_analysis,
+                pain_points=self.state.pain_point_analysis,
+                niche_context=self.state.niche_context,
+                allowed_project_types=self.state.allowed_project_types,
+                audience_mapping=self.state.audience_mapping,
+                covered_keywords=anchor_keyword_strings or None,
+            )
+
+            # Check for existing sub-phase checkpoints (enables partial resume)
+            completed_stages = self.checkpoint_mgr.get_completed_stages()
+            has_9_5a = "stage_9_5a_seed_expansion" in completed_stages
+            has_9_5b = "stage_9_5b_bulk_validation" in completed_stages
+            has_9_5c = "stage_9_5c_enrichment" in completed_stages
+
+            # Phase 9.5a: Conceptual keyword expansion (SEO crew)
+            logger.info(f"Phase 9.5a: Conceptual keyword expansion for {selected_solution_name}...")
+
             # Resume from checkpoint if available (with validation)
             if has_9_5a and self.state.stage_9_5a_expanded_keywords:
                 from ..models.seo_strategy import ExpandedKeywordList
@@ -3501,23 +3703,23 @@ Return a valid JSON object with this structure:
                     # Validate restored data has required content
                     if not expanded_keywords.keywords or len(expanded_keywords.keywords) < 5:
                         raise ValueError(f"Restored 9.5a checkpoint has insufficient keywords ({len(expanded_keywords.keywords) if expanded_keywords.keywords else 0})")
-                    logger.info(f"✓ Resuming from Phase 9.5a checkpoint ({len(expanded_keywords.keywords)} keywords)")
+                    logger.info(f"Resuming from Phase 9.5a checkpoint ({len(expanded_keywords.keywords)} keywords)")
                 except Exception as e:
-                    logger.warning(f"⚠️ Phase 9.5a checkpoint invalid: {e}. Re-running expansion...")
+                    logger.warning(f"Phase 9.5a checkpoint invalid: {e}. Re-running expansion...")
                     expanded_keywords = seo_crew.expand_keywords_phase_1()
             else:
                 expanded_keywords = seo_crew.expand_keywords_phase_1()
             logger.info(
-                f"✓ Conceptual expansion complete: {len(expanded_keywords.keywords)} keywords, "
+                f"Conceptual expansion complete: {len(expanded_keywords.keywords)} keywords, "
                 f"{len(expanded_keywords.topic_clusters)} clusters"
             )
 
             # Checkpoint 9.5a: Save expanded keywords
             self.state.stage_9_5a_expanded_keywords = expanded_keywords.model_dump(mode='json')
             self.checkpoint_mgr.save_stage("stage_9_5a_seed_expansion", self.state.stage_9_5a_expanded_keywords)
-            logger.info("✓ Phase 9.5a checkpoint saved: seed_expansion")
+            logger.info("Phase 9.5a checkpoint saved: seed_expansion")
 
-            # Phase 9.5b: Bulk validation with DataForSEO (NEW)
+            # Phase 9.5b: Bulk validation with DataForSEO
             logger.info("Phase 9.5b: Bulk validation of conceptual keywords with DataForSEO...")
 
             # Resume from checkpoint if available (with validation)
@@ -3527,10 +3729,10 @@ Return a valid JSON object with this structure:
                 min_volume = self.state.stage_9_5b_validation_results.get("threshold_used", 500)
                 # Validate restored data
                 if quality_validated and len(quality_validated) >= 1:
-                    logger.info(f"✓ Resuming from Phase 9.5b checkpoint ({len(quality_validated)} validated keywords)")
+                    logger.info(f"Resuming from Phase 9.5b checkpoint ({len(quality_validated)} validated keywords)")
                     resume_9_5b = True
                 else:
-                    logger.warning("⚠️ Phase 9.5b checkpoint has no validated keywords. Re-running validation...")
+                    logger.warning("Phase 9.5b checkpoint has no validated keywords. Re-running validation...")
 
             if not resume_9_5b:
                 # Extract keyword strings from conceptual keywords
@@ -3553,14 +3755,14 @@ Return a valid JSON object with this structure:
                 ]
 
                 logger.info(
-                    f"✓ Validation complete: {len(quality_validated)}/{len(conceptual_keyword_strings)} "
+                    f"Validation complete: {len(quality_validated)}/{len(conceptual_keyword_strings)} "
                     f"keywords have volume >= {min_volume}"
                 )
 
                 # Fallback: If too few validated keywords, lower threshold and retry filter
                 if len(quality_validated) < 20:
                     logger.warning(
-                        f"⚠️ Only {len(quality_validated)} keywords meet volume threshold. "
+                        f"Only {len(quality_validated)} keywords meet volume threshold. "
                         f"Lowering to {min_volume // 5} to find more seeds..."
                     )
                     quality_validated = [
@@ -3577,12 +3779,12 @@ Return a valid JSON object with this structure:
                     "threshold_used": min_volume
                 }
                 self.checkpoint_mgr.save_stage("stage_9_5b_bulk_validation", self.state.stage_9_5b_validation_results)
-                logger.info("✓ Phase 9.5b checkpoint saved: bulk_validation")
+                logger.info("Phase 9.5b checkpoint saved: bulk_validation")
 
             # Absolute minimum check
             if len(quality_validated) < 5:
                 logger.error(
-                    f"❌ Bulk validation failed: Only {len(quality_validated)} keywords have search volume. "
+                    f"Bulk validation failed: Only {len(quality_validated)} keywords have search volume. "
                     f"Niche may be too specific or DataForSEO has insufficient data."
                 )
                 logger.warning("Skipping SEO strategy generation - insufficient keyword data")
@@ -3605,10 +3807,10 @@ Return a valid JSON object with this structure:
                 enriched_keywords = self.state.stage_9_5c_enriched_keywords
                 # Validate restored data has sufficient keywords
                 if enriched_keywords and len(enriched_keywords) >= 5:
-                    logger.info(f"✓ Resuming from Phase 9.5c checkpoint ({len(enriched_keywords)} enriched keywords)")
+                    logger.info(f"Resuming from Phase 9.5c checkpoint ({len(enriched_keywords)} enriched keywords)")
                     resume_9_5c = True
                 else:
-                    logger.warning(f"⚠️ Phase 9.5c checkpoint has insufficient keywords ({len(enriched_keywords) if enriched_keywords else 0}). Re-running enrichment...")
+                    logger.warning(f"Phase 9.5c checkpoint has insufficient keywords ({len(enriched_keywords) if enriched_keywords else 0}). Re-running enrichment...")
 
             if not resume_9_5c:
                 enriched_keywords = self._iterative_keyword_enrichment(
@@ -3617,13 +3819,14 @@ Return a valid JSON object with this structure:
                     topic_clusters=expanded_keywords.topic_clusters,
                     selected_solution=selected_solution,
                     niche_context=self.state.niche_context,
+                    initial_keywords=anchor_enriched if anchor_enriched else None,
                 )
                 # Checkpoint 9.5c: Save enriched keywords
                 self.state.stage_9_5c_enriched_keywords = enriched_keywords
                 self.checkpoint_mgr.save_stage("stage_9_5c_enrichment", enriched_keywords)
-                logger.info("✓ Phase 9.5c checkpoint saved: enrichment")
+                logger.info("Phase 9.5c checkpoint saved: enrichment")
 
-            logger.info(f"✓ Enrichment complete: {len(enriched_keywords)} keywords with search data")
+            logger.info(f"Enrichment complete: {len(enriched_keywords)} keywords with search data")
 
             # Quality Gate: Validate keyword enrichment coverage
             total_expanded = len(expanded_keywords.keywords) if hasattr(expanded_keywords, 'keywords') else len(quality_validated)
@@ -3640,7 +3843,7 @@ Return a valid JSON object with this structure:
 
             if enrichment_coverage < settings.keyword_enrichment_min_coverage:
                 logger.warning(
-                    f"⚠️  LOW ENRICHMENT COVERAGE: {enrichment_coverage:.1%} < threshold {settings.keyword_enrichment_min_coverage:.1%}"
+                    f"LOW ENRICHMENT COVERAGE: {enrichment_coverage:.1%} < threshold {settings.keyword_enrichment_min_coverage:.1%}"
                 )
                 logger.warning(
                     "Possible causes: (1) Niche/solution mismatch, (2) Too aggressive filtering, (3) Limited search demand"
@@ -3650,22 +3853,32 @@ Return a valid JSON object with this structure:
                 )
             elif enrichment_coverage >= settings.keyword_enrichment_target_coverage:
                 logger.info(
-                    f"✅ EXCELLENT COVERAGE: {enrichment_coverage:.1%} ≥ target {settings.keyword_enrichment_target_coverage:.1%}"
+                    f"EXCELLENT COVERAGE: {enrichment_coverage:.1%} >= target {settings.keyword_enrichment_target_coverage:.1%}"
                 )
                 logger.info("Strong keyword-solution alignment - high confidence in SEO strategy")
             else:
                 logger.info(
-                    f"✓ Acceptable coverage: {enrichment_coverage:.1%} (between min {settings.keyword_enrichment_min_coverage:.1%} and target {settings.keyword_enrichment_target_coverage:.1%})"
+                    f"Acceptable coverage: {enrichment_coverage:.1%} (between min {settings.keyword_enrichment_min_coverage:.1%} and target {settings.keyword_enrichment_target_coverage:.1%})"
                 )
 
             logger.info("=" * 60)
 
-            # Generate comprehensive SEO strategy using 4-task multitask flow
-            # Task 1: Keyword Analysis & Tiering
-            # Task 2: Content & Technical Strategy
-            # Task 3: Implementation Planning
-            # Task 4: Final Synthesis
-            logger.info(f"Creating final SEO strategy (4-task flow) for {selected_solution_name}...")
+        # ── Strategy creation (shared by both paths) ──
+        # When anchor_sufficient=True, seo_crew wasn't initialized above - initialize now for strategy creation
+        if anchor_sufficient:
+            seo_crew = SEOStrategyCrew(
+                niche=self.niche_description,
+                selected_solution=selected_solution,
+                selection_rationale=self.state.solution_selection.selection_rationale,
+                competitive_analysis=self.state.competitive_analysis,
+                pain_points=self.state.pain_point_analysis,
+                niche_context=self.state.niche_context,
+                allowed_project_types=self.state.allowed_project_types,
+                audience_mapping=self.state.audience_mapping,
+            )
+
+        try:
+            logger.info(f"Creating final SEO strategy (multitask flow) for {selected_solution_name}...")
             seo_strategy = seo_crew.create_strategy_multitask(
                 enriched_keywords=enriched_keywords,
                 expanded_keywords=expanded_keywords
@@ -3851,7 +4064,8 @@ Return a valid JSON object with this structure:
             competitive_analysis=self.state.competitive_analysis,
             niche_description=self.niche_description,
             enriched_keywords_trends=trend_summary,  # Aggregated 12-month trend summary
-            top_enriched_keywords=top_enriched_keywords  # Per-keyword monthly trend data
+            top_enriched_keywords=top_enriched_keywords,  # Per-keyword monthly trend data
+            selected_solution_name=selected_name,
         )
 
         # Record crew cost

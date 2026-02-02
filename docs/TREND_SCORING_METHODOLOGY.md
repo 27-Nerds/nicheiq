@@ -58,8 +58,9 @@ rvp = (volume in rising keywords) / (total keyword volume) * 100
 ```
 
 A keyword is classified "rising" when its recent 3-month search volume
-average exceeds its older 3-month average by >20%, with a noise floor
-of 50 searches/month.
+average exceeds its older 3-month average by >10% (symmetric ±10%
+thresholds; ±5-15% is normal keyword noise), with a noise floor of
+50 searches/month.
 
 ## Momentum Score
 
@@ -69,11 +70,11 @@ Piecewise linear mapping from rvp (0-100) to score (0.10-0.95):
 
 | rvp Range | Score Range | Description |
 |-----------|------------|-------------|
-| 70-100% | 0.80-0.95 | Strong growth |
-| 55-70% | 0.65-0.80 | Moderate growth |
-| 40-55% | 0.50-0.65 | Neutral |
-| 25-40% | 0.35-0.50 | Leaning negative |
-| 0-25% | 0.15-0.35 | Declining |
+| 55-100% | 0.80-0.95 | Strong growth |
+| 40-55% | 0.60-0.80 | Moderate growth |
+| 25-40% | 0.40-0.60 | Neutral/Stable |
+| 15-25% | 0.25-0.40 | Leaning negative |
+| 0-15% | 0.10-0.25 | Declining |
 
 Within each band, linear interpolation:
 
@@ -146,11 +147,13 @@ market (Stable). Competitive data IS still passed to the LLM for its narrative j
 
 | rvp | Classification |
 |-----|---------------|
-| >= 55% | Increasing |
-| <= 30% | Decreasing |
-| 31-54% | Stable |
+| >= 45% | Increasing |
+| <= 25% | Decreasing |
+| 26-44% | Stable |
 
-The wide "Stable" band (25 points) reduces false positives from normal market fluctuation.
+The "Stable" band (20 points) reduces false positives from normal market fluctuation.
+The decreasing threshold (25%) aligns with the momentum band boundary so that
+`trend_direction` and `keyword_volume_trend` transition together.
 
 ## Seasonal Pattern
 
@@ -227,26 +230,26 @@ Representative rvp values and their computed outputs (with >= 5 known keywords):
 
 | rvp | momentum_score | trend_direction | keyword_volume_trend |
 |-----|---------------|-----------------|---------------------|
-| 0 | 0.15 | Declining | Decreasing |
-| 5 | 0.19 | Declining | Decreasing |
-| 10 | 0.23 | Declining | Decreasing |
-| 15 | 0.27 | Declining | Decreasing |
-| 20 | 0.31 | Declining | Decreasing |
-| 25 | 0.35 | Declining | Decreasing |
-| 30 | 0.38 | Declining | Decreasing |
-| 35 | 0.43 | Stable | Stable |
-| 40 | 0.50 | Stable | Stable |
-| 45 | 0.55 | Stable | Stable |
-| 50 | 0.60 | Growing | Stable |
-| 55 | 0.65 | Growing | Increasing |
-| 60 | 0.70 | Growing | Increasing |
-| 65 | 0.75 | Growing | Increasing |
-| 70 | 0.80 | Growing | Increasing |
-| 75 | 0.82 | Growing | Increasing |
-| 80 | 0.85 | Growing | Increasing |
-| 85 | 0.87 | Growing | Increasing |
-| 90 | 0.90 | Growing | Increasing |
-| 95 | 0.92 | Growing | Increasing |
+| 0 | 0.10 | Declining | Decreasing |
+| 5 | 0.15 | Declining | Decreasing |
+| 10 | 0.20 | Declining | Decreasing |
+| 15 | 0.25 | Declining | Decreasing |
+| 20 | 0.33 | Declining | Decreasing |
+| 25 | 0.40 | Declining | Decreasing |
+| 30 | 0.47 | Stable | Stable |
+| 35 | 0.53 | Stable | Stable |
+| 40 | 0.60 | Growing | Stable |
+| 45 | 0.67 | Growing | Increasing |
+| 50 | 0.73 | Growing | Increasing |
+| 55 | 0.80 | Growing | Increasing |
+| 60 | 0.82 | Growing | Increasing |
+| 65 | 0.83 | Growing | Increasing |
+| 70 | 0.85 | Growing | Increasing |
+| 75 | 0.87 | Growing | Increasing |
+| 80 | 0.88 | Growing | Increasing |
+| 85 | 0.90 | Growing | Increasing |
+| 90 | 0.92 | Growing | Increasing |
+| 95 | 0.93 | Growing | Increasing |
 | 100 | 0.95 | Growing | Increasing |
 
 *Note: Actual scores may vary by +/- 0.01 due to rounding. This table is for reference.*

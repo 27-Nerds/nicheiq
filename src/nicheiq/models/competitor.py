@@ -82,3 +82,32 @@ class CompetitiveAnalysisResult(BaseModel):
     strategic_recommendations: str = Field(
         ..., min_length=50, description="Executive summary with strategic insights (minimum 50 chars)"
     )
+
+
+def find_landscape_for_solution(
+    competitive_analysis: CompetitiveAnalysisResult | None,
+    solution_name: str | None,
+) -> CompetitiveLandscape | None:
+    """Find the competitive landscape for a specific solution by name.
+
+    Case-insensitive, stripped matching. Falls back to first landscape
+    if no exact match found. Returns None only if no landscapes exist.
+
+    Args:
+        competitive_analysis: Full competitive analysis result (may be None).
+        solution_name: Name of the solution to look up (may be None).
+
+    Returns:
+        Matching CompetitiveLandscape, first landscape as fallback, or None.
+    """
+    if not competitive_analysis or not competitive_analysis.solution_landscapes:
+        return None
+
+    if solution_name:
+        needle = solution_name.strip().lower()
+        for landscape in competitive_analysis.solution_landscapes:
+            if landscape.solution_name.strip().lower() == needle:
+                return landscape
+
+    # Fallback: return first landscape
+    return competitive_analysis.solution_landscapes[0]

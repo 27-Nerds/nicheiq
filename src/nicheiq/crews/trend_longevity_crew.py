@@ -16,7 +16,7 @@ from langchain_openai import ChatOpenAI
 from loguru import logger
 
 from ..config.settings import settings
-from ..models.competitor import CompetitiveAnalysisResult
+from ..models.competitor import CompetitiveAnalysisResult, find_landscape_for_solution
 from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import TrendLongevityResult, TrendNarrativeOutput
@@ -106,7 +106,8 @@ class TrendLongevityCrew:
         competitive_analysis: CompetitiveAnalysisResult,
         niche_description: str,
         enriched_keywords_trends: dict | None = None,
-        top_enriched_keywords: list[dict] | None = None
+        top_enriched_keywords: list[dict] | None = None,
+        selected_solution_name: str | None = None,
     ) -> TrendLongevityResult | None:
         """
         Execute trend longevity crew to analyze market momentum and timing.
@@ -147,7 +148,7 @@ class TrendLongevityCrew:
         if top_enriched_keywords:
             keyword_signals += self._format_keyword_monthly_trends(top_enriched_keywords)
         discussion_signals = self._format_discussion_trends(social_content, pain_point_analysis)
-        competitive_signals = self._format_competitive_momentum(competitive_analysis)
+        competitive_signals = self._format_competitive_momentum(competitive_analysis, selected_solution_name)
 
         # 3. Build inputs: pre-computed values + raw data + counts
         inputs = {
@@ -173,8 +174,9 @@ class TrendLongevityCrew:
                 if social_content else 0
             ),
             "competitor_count": (
-                sum(len(ls.competitors or []) for ls in competitive_analysis.solution_landscapes)
-                if competitive_analysis and competitive_analysis.solution_landscapes else 0
+                len(selected_landscape.competitors or [])
+                if (selected_landscape := find_landscape_for_solution(competitive_analysis, selected_solution_name))
+                else 0
             ),
         }
 
@@ -383,34 +385,35 @@ class TrendLongevityCrew:
 
         return "\n".join(signals)
 
-    def _format_competitive_momentum(self, competitive_analysis: CompetitiveAnalysisResult | None) -> str:
-        """Format competitive momentum signals for analysis."""
+    def _format_competitive_momentum(
+        self,
+        competitive_analysis: CompetitiveAnalysisResult | None,
+        selected_solution_name: str | None = None,
+    ) -> str:
+        """Format competitive momentum signals for analysis.
+
+        Scoped to the selected solution's landscape rather than aggregating
+        across all landscapes.
+        """
         if not competitive_analysis or not competitive_analysis.solution_landscapes:
+            return "No competitive analysis data available."
+
+        landscape = find_landscape_for_solution(competitive_analysis, selected_solution_name)
+        if not landscape:
             return "No competitive analysis data available."
 
         signals = []
 
-        # Count total competitors across all solution landscapes
-        total_competitors = sum(
-            len(landscape.competitors or [])
-            for landscape in competitive_analysis.solution_landscapes
-        )
-        signals.append(f"**Total Competitors:** {total_competitors}")
+        competitor_count = len(landscape.competitors or [])
+        signals.append(f"**Total Competitors:** {competitor_count}")
 
-        # Count market gaps across all landscapes
-        total_gaps = sum(
-            len(landscape.market_gaps)
-            for landscape in competitive_analysis.solution_landscapes
-        )
-        if total_gaps > 0:
-            signals.append(f"\n**Market Gaps Identified:** {total_gaps}")
+        if landscape.market_gaps:
+            signals.append(f"\n**Market Gaps Identified:** {len(landscape.market_gaps)}")
             signals.append("(Indicates room for new entrants)")
 
-        # Sample competitors from first landscape
-        first_landscape = competitive_analysis.solution_landscapes[0]
-        if first_landscape.competitors:
+        if landscape.competitors:
             signals.append("\n**Sample Competitors (for maturity assessment):**")
-            for comp in first_landscape.competitors[:5]:
+            for comp in landscape.competitors[:5]:
                 signals.append(f"- {comp.name}")
 
         return "\n".join(signals)
@@ -446,7 +449,7 @@ class TrendLongevityCrew:
                     if len(sorted_monthly) >= 3 else sorted_monthly[-1].get('search_volume', 0)
                 )
 
-                # Use asymmetric thresholds aligned with _calculate_trend_metrics
+                # Use symmetric thresholds aligned with _calculate_trend_metrics
                 if older_3_avg > 0:
                     trend_pct = ((recent_3_avg - older_3_avg) / older_3_avg) * 100
                 else:
@@ -455,9 +458,9 @@ class TrendLongevityCrew:
                 # Low-volume noise floor
                 if recent_3_avg < 50 and older_3_avg < 50:
                     trend_arrow = "→ Stable"
-                elif trend_pct > 20:
+                elif trend_pct > 10:
                     trend_arrow = "↑ Rising"
-                elif trend_pct < -25:
+                elif trend_pct < -10:
                     trend_arrow = "↓ Declining"
                 else:
                     trend_arrow = "→ Stable"

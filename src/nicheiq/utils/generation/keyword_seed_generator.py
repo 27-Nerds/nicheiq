@@ -55,7 +55,8 @@ class KeywordSeedGenerator:
         competitive_analysis: "CompetitiveAnalysisResult | None" = None,
         audience_vocabulary: list[str] | None = None,
         num_broad_seeds: int = 30,
-        num_targeted_seeds: int = 15
+        num_targeted_seeds: int = 15,
+        covered_keywords: list[str] | None = None,
     ) -> "ExpandedKeywordList | None":
         """
         Generate context-aware seed keywords with semantic validation.
@@ -68,6 +69,7 @@ class KeywordSeedGenerator:
             audience_vocabulary: Optional list of terms from audience mapping (common_vocabulary)
             num_broad_seeds: Target count for broad seeds (1-2 words)
             num_targeted_seeds: Target count for targeted keywords (3-5 words)
+            covered_keywords: Optional list of keyword strings already covered by anchor enrichment
 
         Returns:
             ExpandedKeywordList with keywords, topic_clusters, and expansion_rationale
@@ -106,6 +108,12 @@ class KeywordSeedGenerator:
             if audience_vocabulary:
                 logger.info(f"Including {len(audience_vocabulary[:15])} audience vocabulary terms in keyword generation")
 
+            # Format covered keywords (from Stage 8.5 anchor enrichment)
+            covered_keywords_formatted = "Not available"
+            if covered_keywords:
+                covered_keywords_formatted = "\n".join([f"- {kw}" for kw in covered_keywords[:30]])
+                logger.info(f"Including {min(len(covered_keywords), 30)} covered keywords for diversity guidance")
+
             # Build the chain-of-thought prompt
             prompt = get_prompt(
                 "keyword_seed",
@@ -120,6 +128,7 @@ class KeywordSeedGenerator:
                 pain_points_addressed=pain_points_addressed,
                 competitors=competitors,
                 audience_vocabulary=audience_vocab_formatted,
+                covered_keywords=covered_keywords_formatted,
                 num_broad_seeds=num_broad_seeds,
                 num_targeted_seeds=num_targeted_seeds,
                 total_seeds=num_broad_seeds + num_targeted_seeds

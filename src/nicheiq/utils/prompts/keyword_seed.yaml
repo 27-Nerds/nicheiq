@@ -2,7 +2,8 @@
 # Used by: KeywordSeedGenerator.generate_seeds()
 # Variables: niche_description, market_segments, industry_boundaries, solution_name,
 #            solution_type, value_proposition, core_features, target_personas,
-#            pain_points_addressed, competitors, audience_vocabulary, num_broad_seeds, num_targeted_seeds, total_seeds
+#            pain_points_addressed, competitors, audience_vocabulary, covered_keywords,
+#            num_broad_seeds, num_targeted_seeds, total_seeds
 
 template: |
   You are an SEO keyword strategist generating seed keywords for expansion.
@@ -26,6 +27,9 @@ template: |
   **Target Personas:** {target_personas}
   **Pain Points Addressed:** {pain_points_addressed}
   **Known Competitors:** {competitors}
+
+  **Already Covered Keywords (from prior research - generate COMPLEMENTARY seeds):**
+  {covered_keywords}
 
   ═══════════════════════════════════════════════════════════════════════════
 
@@ -252,6 +256,12 @@ template: |
   - Problem + solution type (e.g., "energy efficient appliance reviews")
   - Geographic + category (if applicable: "international relocation services directory")
   - Competitor alternative (e.g., "alternative to [major competitor]")
+
+  **If "Already Covered Keywords" are listed above:**
+  These keywords are already being used as expansion seeds. Focus your seeds on
+  DIFFERENT themes and angles NOT already represented. Avoid generating seeds that
+  are semantically similar to the covered keywords. This ensures the final keyword
+  set has broad topic diversity.
 
   **CRITICAL REQUIREMENTS:**
 

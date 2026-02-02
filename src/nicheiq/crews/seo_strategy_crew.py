@@ -562,6 +562,7 @@ class SEOStrategyCrew:
         niche_context: "NicheContext | None" = None,
         allowed_project_types: list[str] | None = None,
         audience_mapping: "AudienceMappingResult | None" = None,
+        covered_keywords: list[str] | None = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -580,6 +581,7 @@ class SEOStrategyCrew:
             niche_context: Optional niche context with market_segments and industry_boundaries
             allowed_project_types: Optional project type constraints from user
             audience_mapping: Optional audience intelligence from Stage 6.5 (common_vocabulary for keywords)
+            covered_keywords: Optional list of keyword strings already covered by anchor enrichment
         """
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
@@ -591,6 +593,7 @@ class SEOStrategyCrew:
         self.niche_context = niche_context
         self.allowed_project_types = allowed_project_types
         self.audience_mapping = audience_mapping
+        self.covered_keywords = covered_keywords
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -1396,6 +1399,7 @@ class SEOStrategyCrew:
                 audience_vocabulary=audience_vocab,
                 num_broad_seeds=30,
                 num_targeted_seeds=15,
+                covered_keywords=self.covered_keywords,
             )
 
             if not result:

@@ -537,3 +537,130 @@ class TestKeywordDeduplication:
             logger.remove(handler_id)
 
         assert any("duplicate keywords across tiers" in m for m in messages)
+
+
+# ==================================================================================
+# Niche-Relevant Volume
+# ==================================================================================
+
+
+def _make_kv_result(solution_name, total_volume, niche_relevant_volume=None):
+    """Create a mock CrewKeywordValidationResult-like object."""
+    kv = MagicMock()
+    kv.solution_name = solution_name
+    kv.total_volume = total_volume
+    kv.niche_relevant_volume = niche_relevant_volume
+    return kv
+
+
+def _make_state_with_kv(
+    selected_name="Test Solution",
+    kv_results=None,
+    include_selection=True,
+    seo_state=None,
+):
+    """Create a mock state with keyword_validation_results and solution_selection."""
+    if seo_state is not None:
+        state = seo_state
+    else:
+        state = MagicMock()
+        state.seo_strategy_report = None
+    state.keyword_validation_results = kv_results
+    if include_selection:
+        state.solution_selection = MagicMock()
+        state.solution_selection.selected_solution_name = selected_name
+    else:
+        state.solution_selection = None
+    return state
+
+
+class TestNicheRelevantVolume:
+    """Tests for get_niche_relevant_search_volume() and get_volume_filter_ratio()."""
+
+    def test_uses_filtered_when_available(self):
+        """Returns niche_relevant_volume when set."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=12000)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 12000
+
+    def test_falls_back_to_total_when_none(self):
+        """Falls back to total_volume when niche_relevant_volume is None."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=None)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 50000
+
+    def test_zero_is_valid_not_falsy(self):
+        """niche_relevant_volume=0 should return 0, NOT fall back to total_volume."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=0)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 0
+
+    def test_returns_zero_when_no_selection(self):
+        """Returns 0 when no solution_selection exists."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=12000)],
+            include_selection=False,
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 0
+
+    def test_returns_zero_when_not_found(self):
+        """Returns 0 when selected solution is not in results."""
+        state = _make_state_with_kv(
+            selected_name="Missing Solution",
+            kv_results=[_make_kv_result("Other Solution", total_volume=50000, niche_relevant_volume=12000)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 0
+
+    def test_case_insensitive_matching(self):
+        """Name matching should be case-insensitive."""
+        state = _make_state_with_kv(
+            selected_name="  My Solution  ",
+            kv_results=[_make_kv_result("my solution", total_volume=50000, niche_relevant_volume=8000)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 8000
+
+    def test_returns_zero_when_no_kv_results(self):
+        """Returns 0 when keyword_validation_results is None."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=None,
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 0
+
+    def test_volume_filter_ratio(self):
+        """Ratio = niche / total Stage 9 volume."""
+        seo_state = _make_seo_state(
+            tier_0=[_make_tiered_kw("kw1", search_volume=5000)],
+            tier_1=[_make_tiered_kw("kw2", search_volume=5000)],
+        )
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=5000)],
+            seo_state=seo_state,
+        )
+        accessor = StateAccessor(state)
+        ratio = accessor.get_volume_filter_ratio()
+        assert ratio == pytest.approx(0.5)  # 5000 niche / 10000 Stage 9
+
+    def test_volume_filter_ratio_none_when_unavailable(self):
+        """Returns None when niche volume is 0."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=None,
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_volume_filter_ratio() is None

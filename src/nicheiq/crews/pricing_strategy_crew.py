@@ -14,6 +14,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
+from ..models.competitor import find_landscape_for_solution
 from ..models.research_state import PricingStrategyResult
 from ..utils.crew_helpers import (
     compute_wtp_summary,
@@ -107,16 +108,10 @@ class PricingStrategyCrew:
         if not competitive_analysis or not competitive_analysis.solution_landscapes:
             return "No competitor pricing data available."
 
-        # Find the landscape for the selected solution
-        landscape = None
-        for l in competitive_analysis.solution_landscapes:
-            if selected_solution_name and l.solution_name == selected_solution_name:
-                landscape = l
-                break
-
-        # Fallback to first landscape if not found
+        # Find the landscape for the selected solution (case-insensitive, with fallback)
+        landscape = find_landscape_for_solution(competitive_analysis, selected_solution_name)
         if not landscape:
-            landscape = competitive_analysis.solution_landscapes[0]
+            return "No competitor pricing data available."
 
         if not landscape.competitors:
             # Use pricing_insights from landscape if available

@@ -417,3 +417,11 @@ class CrewKeywordValidationResult(BaseModel):
             "None = not computed (legacy data). Preferred over total_volume for TAM."
         )
     )
+    validated_keywords: Optional[list[dict]] = Field(
+        default=None,
+        description=(
+            "Full list of semantically-validated keywords from Stage 8.5 "
+            "(dicts with 'keyword', 'search_volume', 'competition_index'). "
+            "Used as anchor seeds for Stage 9 deep SEO. None for legacy data."
+        )
+    )

@@ -8,7 +8,7 @@ market analytics).
 Design:
 - validate() is read-only: detects issues, returns structured warnings
 - reconcile() applies safe automatic fixes + returns remaining warnings
-- Never mutates trend data or LLM-generated narrative
+- Reconciliation mutates report fields only; never mutates trend_longevity data
 """
 
 import re
@@ -94,6 +94,9 @@ class ReportConsistencyValidator:
         # Reconcile exact-match fields
         fixes.extend(self._reconcile_exact_matches(report))
 
+        # Reconcile market timing vs trend direction contradictions
+        fixes.extend(self._reconcile_market_timing_vs_trend(report, state))
+
         # Re-validate to find remaining (non-reconcilable) warnings
         remaining = self.validate(report, state)
 
@@ -126,18 +129,53 @@ class ReportConsistencyValidator:
                     actual_value=str(report.seo_analytics.total_keywords),
                 ))
 
-            # Search volume
+            # Search volume: KeyMetrics uses niche-relevant volume, SEOAnalytics uses full Stage 9 volume.
+            # They intentionally differ. Use ratio-aware checks instead of exact match.
             if km.total_keyword_search_volume != report.seo_analytics.total_search_volume:
-                warnings.append(ConsistencyWarning(
-                    field_path="seo_analytics.total_search_volume",
-                    severity="WARNING",
-                    message=(
-                        f"Search volume mismatch: dashboard shows {km.total_keyword_search_volume}, "
-                        f"seo_analytics shows {report.seo_analytics.total_search_volume}"
-                    ),
-                    expected_value=str(km.total_keyword_search_volume),
-                    actual_value=str(report.seo_analytics.total_search_volume),
-                ))
+                seo_vol = report.seo_analytics.total_search_volume
+                km_vol = km.total_keyword_search_volume
+                if seo_vol > 0 and km_vol > seo_vol:
+                    # Filtered > total = data corruption
+                    ratio = km_vol / seo_vol
+                    warnings.append(ConsistencyWarning(
+                        field_path="seo_analytics.total_search_volume",
+                        severity="ERROR",
+                        message=(
+                            f"Search volume anomaly: dashboard niche-relevant volume ({km_vol:,}) "
+                            f"exceeds seo_analytics total volume ({seo_vol:,}) — ratio {ratio:.2f}. "
+                            f"Filtered volume should not exceed total."
+                        ),
+                        expected_value=str(km_vol),
+                        actual_value=str(seo_vol),
+                    ))
+                elif seo_vol > 0 and km_vol > 0 and (km_vol / seo_vol) < 0.05:
+                    # Suspiciously low filter ratio
+                    ratio = km_vol / seo_vol
+                    warnings.append(ConsistencyWarning(
+                        field_path="seo_analytics.total_search_volume",
+                        severity="WARNING",
+                        message=(
+                            f"Suspiciously low volume filter ratio ({ratio:.1%}): "
+                            f"dashboard niche-relevant volume ({km_vol:,}) vs "
+                            f"seo_analytics total volume ({seo_vol:,}). "
+                            f"Keyword filtering may be overly aggressive."
+                        ),
+                        expected_value=str(km_vol),
+                        actual_value=str(seo_vol),
+                    ))
+                else:
+                    # Expected: KeyMetrics = filtered, SEOAnalytics = total
+                    warnings.append(ConsistencyWarning(
+                        field_path="seo_analytics.total_search_volume",
+                        severity="INFO",
+                        message=(
+                            f"Search volume difference (expected): dashboard shows niche-relevant "
+                            f"volume {km_vol:,}, seo_analytics shows total Stage 9 volume {seo_vol:,}. "
+                            f"KeyMetrics uses filtered volume; SEOAnalytics uses full keyword set."
+                        ),
+                        expected_value=str(km_vol),
+                        actual_value=str(seo_vol),
+                    ))
 
         # Competitor count: dashboard vs competitive_analytics
         if report.competitive_analytics and km:
@@ -435,12 +473,9 @@ class ReportConsistencyValidator:
                     f"seo_analytics.total_keywords: {old} → {km.total_keyword_count}"
                 )
 
-            if km.total_keyword_search_volume != report.seo_analytics.total_search_volume:
-                old = report.seo_analytics.total_search_volume
-                report.seo_analytics.total_search_volume = km.total_keyword_search_volume
-                fixes.append(
-                    f"seo_analytics.total_search_volume: {old} → {km.total_keyword_search_volume}"
-                )
+            # Search volume: intentionally NOT reconciled.
+            # KeyMetrics uses niche-relevant (filtered) volume.
+            # SEOAnalytics uses full Stage 9 volume for content strategy.
 
         # Competitor count
         if report.competitive_analytics and km:
@@ -467,6 +502,53 @@ class ReportConsistencyValidator:
                 report.market_analytics.selection_confidence = dashboard.confidence_score
                 fixes.append(
                     f"market_analytics.selection_confidence: {old:.3f} → {dashboard.confidence_score:.3f}"
+                )
+
+        return fixes
+
+    # ------------------------------------------------------------------
+    # Reconciliation: market_timing vs trend_direction
+    # ------------------------------------------------------------------
+
+    def _reconcile_market_timing_vs_trend(self, report, state=None) -> list[str]:
+        """Reconcile market_timing_assessment when it contradicts trend_direction.
+
+        If Stage 8.6 assessed "Growth" but Stage 9.5 shows "Declining",
+        downgrade market_timing_assessment to "Mature" and nullify
+        market_growth_rate (which was based on the now-contradicted snapshot).
+        """
+        fixes: list[str] = []
+
+        if report.market_sizing is None:
+            return fixes
+        if state is None:
+            return fixes
+
+        trend_longevity = getattr(state, 'trend_longevity', None)
+        if trend_longevity is None:
+            return fixes
+
+        timing = getattr(report.market_sizing, 'market_timing_assessment', None)
+        trend_dir = getattr(trend_longevity, 'trend_direction', None)
+
+        if not timing or not trend_dir:
+            return fixes
+
+        # Rule 1: Growth + Declining → downgrade to Mature
+        if timing == "Growth" and trend_dir == "Declining":
+            report.market_sizing.market_timing_assessment = "Mature"
+            fixes.append(
+                "market_sizing.market_timing_assessment: 'Growth' → 'Mature' "
+                "(contradicted by Stage 9.5 trend_direction='Declining')"
+            )
+
+            # Rule 2: Nullify growth rate since it was based on contradicted snapshot
+            growth_rate = getattr(report.market_sizing, 'market_growth_rate', None)
+            if growth_rate is not None:
+                report.market_sizing.market_growth_rate = None
+                fixes.append(
+                    "market_sizing.market_growth_rate: nullified "
+                    "(based on contradicted 'Growth' assessment)"
                 )
 
         return fixes

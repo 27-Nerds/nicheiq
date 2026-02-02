@@ -97,6 +97,8 @@ def _make_state(
     trend_direction=None,
     longevity_verdict=None,
     timing_recommendation=None,
+    market_growth_rate=None,
+    volume_growth_rate=None,
     include_market_sizing=True,
     include_trend=True,
 ):
@@ -106,6 +108,7 @@ def _make_state(
     if include_market_sizing and market_timing is not None:
         ms = MagicMock()
         ms.market_timing_assessment = market_timing
+        ms.market_growth_rate = market_growth_rate
         state.market_sizing = ms
     else:
         state.market_sizing = None
@@ -115,6 +118,7 @@ def _make_state(
         tl.trend_direction = trend_direction
         tl.longevity_verdict = longevity_verdict
         tl.timing_recommendation = timing_recommendation
+        tl.volume_growth_rate = volume_growth_rate
         state.trend_longevity = tl
     else:
         state.trend_longevity = None
@@ -153,15 +157,17 @@ class TestValidateExactMatches:
         kw_warnings = [w for w in warnings if "keyword count" in w.message.lower()]
         assert len(kw_warnings) == 0
 
-    def test_search_volume_mismatch_detected(self):
+    def test_search_volume_difference_is_info(self):
+        """Expected difference (niche-filtered < total) should be INFO, not WARNING."""
         report = _make_report(
-            dashboard_search_volume=125000,
+            dashboard_search_volume=50000,
             seo_total_search_volume=130000,
         )
         validator = ReportConsistencyValidator()
         warnings = validator.validate(report)
         vol_warnings = [w for w in warnings if "search volume" in w.message.lower()]
         assert len(vol_warnings) == 1
+        assert vol_warnings[0].severity == "INFO"
 
     def test_competitor_count_mismatch_detected(self):
         report = _make_report(
@@ -239,6 +245,7 @@ class TestReconcileExactMatches:
         )
         validator = ReportConsistencyValidator()
         fixes, _ = validator.reconcile(report)
+        # keyword count + competitor count (volume no longer reconciled)
         assert len(fixes) == 2
 
     def test_reconcile_no_changes_when_consistent(self):
@@ -677,3 +684,208 @@ class TestCorePainPointCoverage:
         warnings = validator.validate(report)
         coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
         assert len(coverage_warnings) == 0
+
+
+# ======================================================================
+# Reconcile Market Timing vs Trend Direction
+# ======================================================================
+
+
+def _make_report_with_market_sizing(market_timing="Growth", market_growth_rate="15%"):
+    """Create a mock report with market_sizing for reconciliation tests."""
+    report = _make_report()
+    ms = MagicMock()
+    ms.market_timing_assessment = market_timing
+    ms.market_growth_rate = market_growth_rate
+    report.market_sizing = ms
+    return report
+
+
+class TestReconcileMarketTimingVsTrend:
+    """Test reconciliation of market_timing_assessment vs trend_direction contradictions."""
+
+    def test_growth_declining_downgrades_to_mature(self):
+        """Growth + Declining → downgrade to Mature."""
+        report = _make_report_with_market_sizing(market_timing="Growth")
+        state = _make_state(market_timing="Growth", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Mature"
+        assert any("Growth" in f and "Mature" in f for f in fixes)
+
+    def test_growth_declining_nullifies_growth_rate(self):
+        """Growth + Declining → market_growth_rate set to None."""
+        report = _make_report_with_market_sizing(market_timing="Growth", market_growth_rate="15%")
+        state = _make_state(market_timing="Growth", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_growth_rate is None
+        assert any("market_growth_rate" in f and "nullified" in f for f in fixes)
+
+    def test_growth_growing_no_change(self):
+        """Growth + Growing → no reconciliation needed."""
+        report = _make_report_with_market_sizing(market_timing="Growth")
+        state = _make_state(market_timing="Growth", trend_direction="Growing")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Growth"
+        timing_fixes = [f for f in fixes if "market_timing" in f]
+        assert len(timing_fixes) == 0
+
+    def test_early_declining_no_change(self):
+        """Early + Declining → no reconciliation (only Growth triggers downgrade)."""
+        report = _make_report_with_market_sizing(market_timing="Early")
+        state = _make_state(market_timing="Early", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Early"
+        timing_fixes = [f for f in fixes if "market_timing" in f]
+        assert len(timing_fixes) == 0
+
+    def test_mature_declining_no_change(self):
+        """Mature + Declining → no reconciliation (already Mature)."""
+        report = _make_report_with_market_sizing(market_timing="Mature")
+        state = _make_state(market_timing="Mature", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Mature"
+        timing_fixes = [f for f in fixes if "market_timing" in f]
+        assert len(timing_fixes) == 0
+
+    def test_missing_trend_data_no_change(self):
+        """No trend_longevity → no reconciliation."""
+        report = _make_report_with_market_sizing(market_timing="Growth")
+        state = _make_state(market_timing="Growth", include_trend=False)
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Growth"
+        timing_fixes = [f for f in fixes if "market_timing" in f]
+        assert len(timing_fixes) == 0
+
+    def test_missing_market_sizing_no_change(self):
+        """No market_sizing on report → no reconciliation."""
+        report = _make_report()
+        report.market_sizing = None
+        state = _make_state(market_timing="Growth", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        timing_fixes = [f for f in fixes if "market_timing" in f]
+        assert len(timing_fixes) == 0
+
+    def test_growth_declining_growth_rate_already_none(self):
+        """Growth + Declining with growth_rate already None → only timing fix, no growth_rate fix."""
+        report = _make_report_with_market_sizing(market_timing="Growth", market_growth_rate=None)
+        state = _make_state(market_timing="Growth", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Mature"
+        growth_rate_fixes = [f for f in fixes if "market_growth_rate" in f]
+        assert len(growth_rate_fixes) == 0
+
+    def test_reconcile_integrates_market_timing_fixes(self):
+        """reconcile() returns market timing fixes alongside exact-match fixes."""
+        report = _make_report_with_market_sizing(market_timing="Growth")
+        # Also add a keyword count mismatch
+        report.seo_analytics.total_keywords = 999
+        state = _make_state(market_timing="Growth", trend_direction="Declining")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert any("total_keywords" in f for f in fixes)
+        assert any("market_timing" in f for f in fixes)
+
+    def test_cascading_revalidation(self):
+        """After reconciling Growth→Mature, the 'Growth + Declining' warning should be gone,
+        but 'Mature + Declining' maturity concern warning should remain.
+
+        In production, report.market_sizing and state.market_sizing are the same
+        Pydantic object (revalidate_instances='never'), so mutation is visible
+        to re-validation. We simulate this by sharing the mock object.
+        """
+        report = _make_report_with_market_sizing(market_timing="Growth")
+        state = _make_state(market_timing="Growth", trend_direction="Declining")
+        # Share the same market_sizing object so mutation propagates
+        state.market_sizing = report.market_sizing
+        validator = ReportConsistencyValidator()
+        fixes, remaining = validator.reconcile(report, state)
+
+        # The "market timing contradiction" warning for Growth+Declining should be gone
+        growth_declining_warnings = [
+            w for w in remaining
+            if "market timing contradiction" in w.message.lower()
+        ]
+        assert len(growth_declining_warnings) == 0
+
+        # But "maturity concern" for Mature+Declining should now appear
+        maturity_warnings = [
+            w for w in remaining
+            if "maturity concern" in w.message.lower()
+        ]
+        assert len(maturity_warnings) == 1
+
+    def test_growth_stable_no_change(self):
+        """Growth + Stable → no reconciliation needed."""
+        report = _make_report_with_market_sizing(market_timing="Growth")
+        state = _make_state(market_timing="Growth", trend_direction="Stable")
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report, state)
+        assert report.market_sizing.market_timing_assessment == "Growth"
+        timing_fixes = [f for f in fixes if "market_timing" in f]
+        assert len(timing_fixes) == 0
+
+
+# ======================================================================
+# Volume Ratio-Aware Checks (Bug #13 fix)
+# ======================================================================
+
+
+class TestVolumeRatioAwareChecks:
+    """Test ratio-aware volume validation between KeyMetrics and SEOAnalytics."""
+
+    def test_volume_mismatch_is_info_not_warning(self):
+        """Expected difference (filtered < total) should be INFO."""
+        report = _make_report(
+            dashboard_search_volume=15000,
+            seo_total_search_volume=125000,
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.total_search_volume"]
+        assert len(vol_warnings) == 1
+        assert vol_warnings[0].severity == "INFO"
+
+    def test_volume_filtered_gt_total_is_error(self):
+        """Filtered > total = data corruption → ERROR."""
+        report = _make_report(
+            dashboard_search_volume=200000,
+            seo_total_search_volume=125000,
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.total_search_volume"]
+        assert len(vol_warnings) == 1
+        assert vol_warnings[0].severity == "ERROR"
+
+    def test_volume_suspiciously_low_ratio_is_warning(self):
+        """Ratio < 5% → WARNING (overly aggressive filtering)."""
+        report = _make_report(
+            dashboard_search_volume=500,
+            seo_total_search_volume=125000,
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.total_search_volume"]
+        assert len(vol_warnings) == 1
+        assert vol_warnings[0].severity == "WARNING"
+
+    def test_volume_no_longer_reconciled(self):
+        """reconcile() should NOT overwrite seo_analytics.total_search_volume."""
+        report = _make_report(
+            dashboard_search_volume=15000,
+            seo_total_search_volume=125000,
+        )
+        validator = ReportConsistencyValidator()
+        fixes, _ = validator.reconcile(report)
+        # Volume should NOT have been reconciled
+        assert report.seo_analytics.total_search_volume == 125000
+        vol_fixes = [f for f in fixes if "total_search_volume" in f]
+        assert len(vol_fixes) == 0
