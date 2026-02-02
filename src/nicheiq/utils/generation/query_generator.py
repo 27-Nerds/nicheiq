@@ -67,15 +67,26 @@ class QueryGenerator:
         word_count = len(query.split())
         score = 0
 
-        # A. Pain Expressions (universal frustration indicators)
-        pain_markers = [
-            'frustrated', 'stuck', 'struggling', 'overwhelmed', 'confused',
-            'hate', 'annoying', 'exhausted', 'tired of', 'can\'t',
+        # A. Pain Expressions — split into domain-anchored vs universal emotional
+        # Domain-anchored pain: implies a specific process/task failure
+        anchored_pain_markers = [
+            'frustrated', 'stuck', 'struggling', 'confused',
+            'hate', 'annoying', 'tired of', 'can\'t',
             'difficult', 'hard', 'impossible', 'nightmare', 'painful',
-            'stress', 'anxiety', 'burnout', 'giving up', 'quit'
+            'giving up', 'quit', 'takes forever', 'too expensive'
         ]
-        if any(marker in query_lower for marker in pain_markers):
+        # Universal emotional: these match ANY life situation without a domain anchor
+        universal_emotional_markers = [
+            'burnout', 'stress', 'anxiety', 'exhausted', 'overwhelmed',
+            'mental health', 'depressed', 'lonely'
+        ]
+        if any(marker in query_lower for marker in anchored_pain_markers):
             score += 1
+        elif any(marker in query_lower for marker in universal_emotional_markers):
+            # Universal emotional terms only count if query has enough words
+            # for a domain anchor (>=4 words gives room for niche context)
+            if word_count >= 4:
+                score += 1
 
         # B. Role Identifiers (universal across niches)
         role_markers = [

@@ -69,7 +69,7 @@ template: |
 
   Transform generic → niche-specific:
   - ❌ "frustrated with scheduling" → ✅ "freelancer scheduling clients struggle"
-  - ❌ "burnout help" → ✅ "solo entrepreneur burnout clients"
+  - ❌ "invoicing problems" → ✅ "freelancer invoicing late payments"
   - ❌ "overwhelmed by tasks" → ✅ "solopreneur juggling everything alone"
 
   ---
@@ -138,20 +138,25 @@ template: |
 
   ---
 
-  ## WARNING: GENERIC QUERIES FAIL
+  ## DOMAIN ANCHOR RULE (Required for Every Query)
 
-  Generic emotional queries find irrelevant content:
+  Every query MUST contain a **domain anchor** — a term that ties the query to this specific niche.
+  A domain anchor is a role, activity, tool category, or process unique to the niche.
 
-  ❌ AVOID these patterns:
-  - "burnt out" → matches ANY profession/life situation
-  - "struggling with motivation" → universal, not niche-specific
-  - "overwhelmed by tasks" → could be office worker, student, parent
-  - "anyone else exhausted" → health/life complaint
+  **Mechanical test**: Cover the emotional/pain word. Do the remaining words identify the niche?
+  - "freelancer invoicing late payments" → cover "late" → "freelancer invoicing payments" → YES, niche identified ✓
+  - "burnout stress" → cover "burnout" → "stress" → NO, could be anyone ✗
+  - "solopreneur client revision cycles" → cover nothing needed → clearly niche-specific ✓
 
-  ✅ ADD niche context to emotions:
-  - "burnt out" → "solopreneur burnt out client work"
-  - "motivation struggle" → "freelancer motivation working alone"
-  - "overwhelmed tasks" → "entrepreneur overwhelmed wearing all hats"
+  **Domain anchors by query type:**
+  - Role anchor: "freelancer", "solopreneur", "beginner guitarist", "home gardener"
+  - Activity anchor: "invoicing", "client onboarding", "meal prep", "chord transitions"
+  - Process anchor: "revision cycles", "tax filing", "inventory tracking"
+
+  **Transformation examples:**
+  - "burnout stress" (no anchor) → "solopreneur burnt out client work" (role + activity anchor)
+  - "motivation struggle" (no anchor) → "freelancer motivation working alone" (role + context anchor)
+  - "overwhelmed tasks" (no anchor) → "entrepreneur overwhelmed wearing all hats" (role anchor)
 
   ---
 

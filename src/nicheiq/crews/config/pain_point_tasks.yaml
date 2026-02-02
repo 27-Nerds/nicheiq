@@ -48,11 +48,36 @@ categorize_content:
     5. **Quote Collection**: Gather 5-10 representative quotes per theme (minimum 2), preserving [source: ID] suffixes exactly as written
     6. **Quality Verification**: Verify each quote exists verbatim in content above before including - NEVER fabricate quotes to reach quota
 
-    **Pattern Keywords:**
-    - Problems: "frustration", "difficult", "can't", "impossible", "broken", "struggle"
-    - Impact: "time", "money", "expensive", "hours", "cost", "afford"
-    - Emotional: "hate", "annoying", "painful", "frustrated", "stressed"
-    - Workarounds: "using", "tried", "workaround", "alternative"
+    **Pattern Recognition Guide (Cause-Centered):**
+    Look for these FUNCTIONAL problem indicators in discussions:
+    - Process failures: "takes forever", "too many steps", "keeps breaking", "doesn't work"
+    - Cost problems: "too expensive", "can't afford", "not worth the price", "hidden fees"
+    - Workarounds: "I just use", "my hack is", "workaround", "had to build my own"
+    - Time sinks: "hours wasted", "manual process", "repetitive", "tedious"
+    - Impact statements: "lost a client", "missed deadline", "cost me money", "gave up"
+
+    IMPORTANT: Emotional language ("frustrated", "stressed", "hate") signals that a pain point
+    exists, but categorize themes by the FUNCTIONAL CAUSE, not the emotional symptom.
+    Example: "I'm so stressed about freelance taxes" → categorize under "Tax Compliance Complexity",
+    NOT under "Stress and Anxiety".
+
+    **Niche Specificity Gate:**
+    Before finalizing each theme, apply this mechanical test:
+    → "Would this exact theme title appear in the top-5 themes for 3+ unrelated niches
+       (e.g., gardeners, musicians, accountants)?"
+    - If YES → the theme is too generic. Either:
+      (a) REFRAME with a niche-specific mechanism (e.g., "Burnout" → "Revision Cycle Burnout
+          from Unlimited Client Feedback Rounds"), OR
+      (b) DEMOTE to a sub-theme under a niche-specific parent category
+    - If NO → the theme is niche-specific, keep it as-is
+    Examples of themes that FAIL this test (too generic):
+      ✗ "Burnout and Mental Health Struggles"
+      ✗ "Imposter Syndrome"
+      ✗ "Work-Life Balance Challenges"
+    Examples of acceptable niche-specific reframes:
+      ✓ "Scope Creep Exhaustion from Undefined Project Boundaries" (freelance design)
+      ✓ "Isolation from Solo Practice Without Peer Feedback" (independent consultants)
+      ✓ "Revenue Anxiety from Feast-or-Famine Client Pipeline" (freelancers)
 
 
     **Acceptance Criteria:**
@@ -297,14 +322,35 @@ validate_pain_points:
 
     **SCORING RUBRIC** (Apply your Evidence-Based Scoring Framework):
 
+    **SEVERITY — Measures FUNCTIONAL IMPACT, Not Emotional Volume:**
+    Emotional intensity alone does NOT determine severity. Severity measures whether the
+    problem BLOCKS the user's goal or workflow — not how loudly they complain.
+    - A user saying "I HATE this minor UI quirk" → severity 0.2-0.4 (annoying but doesn't block work)
+    - A user calmly stating "we lost 3 clients due to invoicing delays" → severity 0.8+ (blocks business goals)
+
     | Score Range | Severity Indicators | Willingness-to-Pay Indicators |
     |-------------|---------------------|-------------------------------|
-    | **0.8-1.0** (High) | Critical business impact, workflow blocker, strong emotional language ("nightmare", "critical", "can't work without") | Explicit payment mentions, budget availability, current spend on inadequate solutions |
-    | **0.5-0.7** (Medium) | Significant inconvenience, wastes time/money, clear frustration | Frustration with existing paid tools, value/ROI mentions |
-    | **0.4-0.55** (Med) | Notable pain affecting productivity | INFERRED: severity ≥0.7 AND workflow-blocking = WTP 0.45-0.55 |
-    | **0.25-0.4** (Low-Med) | Notable annoyance, mentioned but not critical | INFERRED: productivity/time loss mentioned = WTP 0.3-0.4 |
-    | **0.15-0.25** (Low) | Minor inconvenience with some frustration | INFERRED: strong emotional language = WTP 0.15-0.25 |
+    | **0.8-1.0** (High) | Critical business/workflow blocker, causes measurable losses (revenue, clients, time), user cannot achieve core goal | Explicit payment mentions, budget availability, current spend on inadequate solutions |
+    | **0.5-0.7** (Medium) | Significant productivity drain, wastes measurable time/money, forces workarounds | Frustration with existing paid tools, value/ROI mentions |
+    | **0.4-0.55** (Med) | Notable pain affecting productivity but not blocking goals | INFERRED: severity ≥0.7 AND workflow-blocking = WTP 0.45-0.55 |
+    | **0.25-0.4** (Low-Med) | Notable annoyance, mentioned but user can still accomplish goals | INFERRED: productivity/time loss mentioned = WTP 0.3-0.4 |
+    | **0.15-0.25** (Low) | Minor inconvenience, emotional complaints without functional impact | INFERRED: strong emotional language = WTP 0.15-0.25 |
     | **0.0-0.1** (None) | Minor inconvenience, weak signals | No financial OR productivity impact signals |
+
+    **TOOL-ADDRESSABILITY TEST** (Apply BEFORE scoring WTP):
+    For each pain point, ask: "Could a software product reduce this pain by >=50%?"
+    - YES (tool directly solves the problem) → score WTP normally using the rubric above
+    - PARTIALLY (tool helps but root cause is human/structural) → cap WTP at 0.4 maximum
+    - NO (lifestyle, mindset, or emotional problem with no tool solution) → cap WTP at 0.15 maximum
+    Examples:
+    - "Overwhelmed by manual invoicing" → YES, tool solves this → WTP scored normally
+    - "Lonely working from home" → NO, no tool fixes loneliness → WTP capped at 0.15
+    - "Burnout from too many clients" → PARTIALLY, scheduling tool helps but doesn't fix root cause → WTP capped at 0.4
+
+    **NICHE-SPECIFICITY ADJUSTMENT FOR OPPORTUNITY LEVEL:**
+    Pain points that are universal across ALL niches (would appear for gardeners, musicians,
+    AND accountants identically) should be capped at MEDIUM opportunity level regardless of
+    severity/WTP scores. Only pain points with niche-specific mechanisms qualify for HIGH.
 
     **WORKFLOW:**
     1. Review extracted pain points from Task 2 context
