@@ -20,7 +20,7 @@ export const CreateJobSchema = z.object({
       'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.'
     ),
   allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),
-  generateLandingPage: z.boolean().optional().default(true),
+  generateLandingPage: z.boolean().optional().default(false),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;

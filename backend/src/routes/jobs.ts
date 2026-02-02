@@ -39,7 +39,7 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     );
 
     // Enqueue job for Python worker (email retrieved from DB when needed for notifications)
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, input.generateLandingPage ?? true);
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, input.generateLandingPage ?? false);
 
     // Update status to QUEUED and set queuedAt timestamp
     await prisma.job.update({

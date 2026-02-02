@@ -35,7 +35,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     errorCode: (job as any).errorCode || null,
     errorDetails: (job as any).errorDetails || null,
     // Landing page lifecycle
-    generateLandingPage: (job as any).generateLandingPage ?? true,
+    generateLandingPage: (job as any).generateLandingPage ?? false,
     landingPageStatus: (job as any).landingPageStatus || null,
   };
 

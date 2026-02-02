@@ -377,7 +377,7 @@ describe('Security Audit: Jobs API', () => {
         expect.any(String),
         1,
         undefined,
-        true // generateLandingPage defaults to true
+        false // generateLandingPage defaults to false
       );
     });
 

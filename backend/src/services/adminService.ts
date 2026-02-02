@@ -365,7 +365,8 @@ export async function findCheckpointForJob(jobId: string): Promise<string | null
   if (!job) return null;
 
   const slug = nicheToSlug(job.niche);
-  const checkpointBaseDir = path.resolve(resolveAssetPath('output/checkpoints'));
+  const outputBase = process.env.OUTPUT_DIR || resolveAssetPath('output');
+  const checkpointBaseDir = path.resolve(outputBase, 'checkpoints');
 
   if (!existsSync(checkpointBaseDir)) return null;
 
@@ -419,7 +420,8 @@ export async function getLogsForJob(jobId: string): Promise<string | null> {
   });
   if (!job) return null;
 
-  const logsDir = path.resolve(resolveAssetPath('output/logs'));
+  const outputBase = process.env.OUTPUT_DIR || resolveAssetPath('output');
+  const logsDir = path.resolve(outputBase, 'logs');
   if (!existsSync(logsDir)) return 'No logs directory found.';
 
   const startDate = job.startedAt || job.createdAt;

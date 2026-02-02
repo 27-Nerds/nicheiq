@@ -119,7 +119,7 @@ export async function createJobWithCreditDeduction(
     });
 
     // 4. Create the job AFTER credits are deducted
-    const wantLanding = generateLandingPage !== false;
+    const wantLanding = generateLandingPage === true;
     const stages = wantLanding
       ? PIPELINE_STAGES
       : PIPELINE_STAGES.filter(s => s.number !== 11);

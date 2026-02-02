@@ -21,7 +21,7 @@
 
   let niche = $state('');
   let selectedProjectTypes = $state<string[]>(PROJECT_TYPES.map(t => t.value));
-  let generateLandingPage = $state(true);
+  let generateLandingPage = $state(false);
   let loading = $state(false);
   let error = $state('');
   let isInsufficientCredits = $state(false);
@@ -75,7 +75,7 @@
       open = false;
       niche = '';
       selectedProjectTypes = PROJECT_TYPES.map(t => t.value);
-      generateLandingPage = true;
+      generateLandingPage = false;
       // Refresh to update credit balance in header
       await invalidateAll();
       goto(`/jobs/${data.id}`);
@@ -314,17 +314,17 @@
 
           <!-- Section 3: Landing Page Option -->
           <div class="pt-3 border-t border-border/50">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                bind:checked={generateLandingPage}
-                disabled={loading}
-                class="w-4 h-4 rounded border-border text-accent focus:ring-accent"
-              />
+            <label class="flex items-center justify-between p-3 rounded-lg bg-bg-elevated/50 border border-border/50 cursor-pointer hover:bg-bg-elevated transition-colors">
               <div>
                 <span class="text-sm font-medium text-text-primary">Generate landing page</span>
                 <p class="text-xs text-text-muted">Creates a ready-to-use landing page for your top solution. You can generate it later too.</p>
               </div>
+              <input
+                type="checkbox"
+                bind:checked={generateLandingPage}
+                disabled={loading}
+                class="toggle"
+              />
             </label>
           </div>
         {/if}
@@ -369,3 +369,45 @@
     </div>
   </div>
 {/if}
+
+<style>
+  .toggle {
+    appearance: none;
+    width: 44px;
+    height: 24px;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .toggle::after {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    background: var(--color-text-muted);
+    border-radius: 50%;
+    top: 2px;
+    left: 2px;
+    transition: all 0.2s ease;
+  }
+
+  .toggle:checked {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+  }
+
+  .toggle:checked::after {
+    background: white;
+    left: 22px;
+  }
+
+  .toggle:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+</style>

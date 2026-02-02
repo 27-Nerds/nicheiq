@@ -103,7 +103,7 @@ describe('createJobWithCreditDeduction — conditional stage 11', () => {
     expect(jobCreateCall.data.totalStages).toBe(15);
   });
 
-  it('generateLandingPage=undefined → defaults to true (16 stages)', async () => {
+  it('generateLandingPage=undefined → defaults to false (15 stages)', async () => {
     const { createJobWithCreditDeduction } = await import('../creditService.js');
 
     await createJobWithCreditDeduction(USER_ID, 'test niche', 1, undefined, undefined);
@@ -112,9 +112,9 @@ describe('createJobWithCreditDeduction — conditional stage 11', () => {
     const progressEntries = jobCreateCall.data.progress.create;
 
     const stageNumbers = progressEntries.map((p: any) => p.stageNumber);
-    expect(stageNumbers).toContain(11);
-    expect(progressEntries).toHaveLength(16);
-    expect(jobCreateCall.data.totalStages).toBe(16);
+    expect(stageNumbers).not.toContain(11);
+    expect(progressEntries).toHaveLength(15);
+    expect(jobCreateCall.data.totalStages).toBe(15);
   });
 
   it('job.create progress array contains stageNumber: 11 only when landing page enabled', async () => {

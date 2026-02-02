@@ -163,7 +163,7 @@ model Job {
 
   niche                String      @db.Text
   allowedProjectTypes  Json?       // Optional list of project types
-  generateLandingPage  Boolean     @default(true)
+  generateLandingPage  Boolean     @default(false)
 
   // Status tracking
   status               JobStatus   @default(PENDING)

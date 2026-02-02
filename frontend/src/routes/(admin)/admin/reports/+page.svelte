@@ -141,16 +141,14 @@
               {@const isFailed = job.status === 'FAILED'}
               {@const isExpanded = expandedJobId === job.id}
               <tr
-                class="border-b border-border/50 {isFailed ? 'cursor-pointer hover:bg-bg-elevated/50' : ''}"
-                onclick={() => isFailed && toggleExpand(job.id)}
+                class="border-b border-border/50 cursor-pointer hover:bg-bg-elevated/50"
+                onclick={() => toggleExpand(job.id)}
               >
                 <td class="py-2 pl-2 w-8">
-                  {#if isFailed}
-                    {#if isExpanded}
-                      <ChevronDown size={16} class="text-text-muted" />
-                    {:else}
-                      <ChevronRight size={16} class="text-text-muted" />
-                    {/if}
+                  {#if isExpanded}
+                    <ChevronDown size={16} class="text-text-muted" />
+                  {:else}
+                    <ChevronRight size={16} class="text-text-muted" />
                   {/if}
                 </td>
                 <td class="py-2 pr-4 text-text-primary max-w-48 truncate">{job.niche}</td>
@@ -162,58 +160,60 @@
                 <td class="py-2 text-text-muted">{formatDate(job.createdAt)}</td>
               </tr>
 
-              {#if isFailed && isExpanded}
+              {#if isExpanded}
                 {@const details = parseErrorDetails(job.errorDetails)}
                 <tr class="border-b border-border/50 bg-bg-elevated/30">
                   <td colspan="6" class="px-4 py-4">
                     <div class="space-y-3 text-sm">
-                      <!-- Error Code & Stage -->
-                      <div class="flex flex-wrap gap-x-8 gap-y-2">
-                        {#if job.errorCode}
-                          <div>
-                            <span class="text-text-muted">Error Code:</span>
-                            <Badge variant={errorCodeVariant(job.errorCode)} size="sm" class="ml-2">{job.errorCode}</Badge>
-                          </div>
-                        {/if}
-                        {#if job.errorStage}
-                          <div>
-                            <span class="text-text-muted">Failed Stage:</span>
-                            <span class="text-text-primary ml-2">{job.errorStage}</span>
-                          </div>
-                        {/if}
-                        {#if job.workerId}
-                          <div>
-                            <span class="text-text-muted">Worker:</span>
-                            <span class="text-text-secondary ml-2 font-mono text-xs">{job.workerId}</span>
-                          </div>
-                        {/if}
-                      </div>
-
-                      <!-- User-facing message -->
-                      {#if details?.userMessage}
-                        <div>
-                          <span class="text-text-muted">Summary:</span>
-                          <span class="text-text-primary ml-2">{details.userMessage}</span>
-                        </div>
-                      {/if}
-
-                      <!-- Stop reason -->
-                      {#if job.stopReason}
-                        <div class="flex items-center gap-2">
-                          <span class="text-text-muted">Stop Reason:</span>
-                          <Badge variant={errorCodeVariant(job.stopReason)} size="sm">{job.stopReason}</Badge>
-                          {#if job.stopReasonDetails}
-                            <span class="text-text-secondary">{job.stopReasonDetails}</span>
+                      {#if isFailed}
+                        <!-- Error Code & Stage -->
+                        <div class="flex flex-wrap gap-x-8 gap-y-2">
+                          {#if job.errorCode}
+                            <div>
+                              <span class="text-text-muted">Error Code:</span>
+                              <Badge variant={errorCodeVariant(job.errorCode)} size="sm" class="ml-2">{job.errorCode}</Badge>
+                            </div>
+                          {/if}
+                          {#if job.errorStage}
+                            <div>
+                              <span class="text-text-muted">Failed Stage:</span>
+                              <span class="text-text-primary ml-2">{job.errorStage}</span>
+                            </div>
+                          {/if}
+                          {#if job.workerId}
+                            <div>
+                              <span class="text-text-muted">Worker:</span>
+                              <span class="text-text-secondary ml-2 font-mono text-xs">{job.workerId}</span>
+                            </div>
                           {/if}
                         </div>
-                      {/if}
 
-                      <!-- Raw error message -->
-                      {#if job.errorMessage}
-                        <div>
-                          <span class="text-text-muted block mb-1">Raw Error:</span>
-                          <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-text-secondary bg-bg-surface border border-border rounded-lg p-3 font-mono">{job.errorMessage}</pre>
-                        </div>
+                        <!-- User-facing message -->
+                        {#if details?.userMessage}
+                          <div>
+                            <span class="text-text-muted">Summary:</span>
+                            <span class="text-text-primary ml-2">{details.userMessage}</span>
+                          </div>
+                        {/if}
+
+                        <!-- Stop reason -->
+                        {#if job.stopReason}
+                          <div class="flex items-center gap-2">
+                            <span class="text-text-muted">Stop Reason:</span>
+                            <Badge variant={errorCodeVariant(job.stopReason)} size="sm">{job.stopReason}</Badge>
+                            {#if job.stopReasonDetails}
+                              <span class="text-text-secondary">{job.stopReasonDetails}</span>
+                            {/if}
+                          </div>
+                        {/if}
+
+                        <!-- Raw error message -->
+                        {#if job.errorMessage}
+                          <div>
+                            <span class="text-text-muted block mb-1">Raw Error:</span>
+                            <pre class="max-h-48 overflow-auto whitespace-pre-wrap text-xs text-text-secondary bg-bg-surface border border-border rounded-lg p-3 font-mono">{job.errorMessage}</pre>
+                          </div>
+                        {/if}
                       {/if}
 
                       <!-- Download buttons -->

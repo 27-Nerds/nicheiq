@@ -30,7 +30,7 @@ export async function enqueueJob(
   userId?: string,
   allowedProjectTypes?: string[],
   resume: boolean = false,
-  generateLandingPage: boolean = true
+  generateLandingPage: boolean = false
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
