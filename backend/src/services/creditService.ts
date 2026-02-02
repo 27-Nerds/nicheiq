@@ -8,7 +8,7 @@ import {
   CreditTransaction,
   Job,
 } from '@prisma/client';
-import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
+import { PIPELINE_STAGES } from '../types/job.js';
 
 // ============================================
 // Custom Error Classes
@@ -83,7 +83,8 @@ export async function createJobWithCreditDeduction(
   userId: string,
   niche: string,
   creditCost: number = 1,
-  allowedProjectTypes?: string[]
+  allowedProjectTypes?: string[],
+  generateLandingPage?: boolean
 ): Promise<{ job: Job; transaction: CreditTransaction }> {
   return prisma.$transaction(async (tx) => {
     // 1. Get or create credits record and lock the row
@@ -118,15 +119,21 @@ export async function createJobWithCreditDeduction(
     });
 
     // 4. Create the job AFTER credits are deducted
+    const wantLanding = generateLandingPage !== false;
+    const stages = wantLanding
+      ? PIPELINE_STAGES
+      : PIPELINE_STAGES.filter(s => s.number !== 11);
+
     const job = await tx.job.create({
       data: {
         niche,
         userId,
         allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
+        generateLandingPage: wantLanding,
         status: JobStatus.PENDING,
-        totalStages: TOTAL_STAGES,
+        totalStages: stages.length,
         progress: {
-          create: PIPELINE_STAGES.map((stage) => ({
+          create: stages.map((stage) => ({
             stageNumber: stage.number,
             stageName: stage.name,
             status: StageStatus.PENDING,

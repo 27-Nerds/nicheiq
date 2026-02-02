@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from nicheiq.models.executive_summary import CorePainPoint
 from nicheiq.validators.report_consistency import (
     ConsistencyWarning,
     ReportConsistencyValidator,
@@ -505,7 +506,19 @@ def _make_report_with_pain_coverage(
     report = _make_report()
 
     if include_dashboard:
-        report.executive_dashboard.core_pain_point = core_pain_point
+        if core_pain_point is not None:
+            if isinstance(core_pain_point, str):
+                report.executive_dashboard.core_pain_point = CorePainPoint(
+                    title=core_pain_point,
+                    severity_score=0.8,
+                    willingness_to_pay_score=0.7,
+                    representative_quote="Test quote",
+                    source_platform="Test platform",
+                )
+            else:
+                report.executive_dashboard.core_pain_point = core_pain_point
+        else:
+            report.executive_dashboard.core_pain_point = None
     else:
         report.executive_dashboard = None
 
@@ -608,3 +621,59 @@ class TestCorePainPointCoverage:
         coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
         assert len(coverage_warnings) == 1
         assert coverage_warnings[0].severity == "WARNING"
+
+    def test_numbered_prefix_stripped_for_match(self):
+        """'1. High Setup Costs' should match 'High Setup Costs' with no WARNING."""
+        report = _make_report_with_pain_coverage(
+            core_pain_point="High Setup Costs",
+            pain_points_addressed=["1. High Setup Costs", "2. Poor Documentation"],
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
+        assert len(coverage_warnings) == 0
+
+    def test_numbered_prefix_parenthesis(self):
+        """'3) High Setup Costs' should match 'High Setup Costs' with no WARNING."""
+        report = _make_report_with_pain_coverage(
+            core_pain_point="High Setup Costs",
+            pain_points_addressed=["3) High Setup Costs", "4) Poor Documentation"],
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
+        assert len(coverage_warnings) == 0
+
+    def test_numbered_prefix_case_insensitive(self):
+        """'1. high setup costs' vs 'High Setup Costs' should match at INFO level at most."""
+        report = _make_report_with_pain_coverage(
+            core_pain_point="High Setup Costs",
+            pain_points_addressed=["1. high setup costs", "2. Poor Documentation"],
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
+        # Should be at most INFO (case-insensitive match), never WARNING
+        for w in coverage_warnings:
+            assert w.severity != "WARNING"
+
+    def test_pydantic_model_title_extracted(self):
+        """A real CorePainPoint Pydantic object should match by its .title field."""
+        core = CorePainPoint(
+            title="Burnout and Mental Health Struggles",
+            severity_score=0.9,
+            willingness_to_pay_score=0.6,
+            representative_quote="I'm so burned out",
+            source_platform="Reddit r/burnout",
+        )
+        report = _make_report_with_pain_coverage(
+            core_pain_point=core,
+            pain_points_addressed=[
+                "Burnout and Mental Health Struggles",
+                "Lack of Work-Life Balance",
+            ],
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        coverage_warnings = [w for w in warnings if "core pain point" in w.message.lower()]
+        assert len(coverage_warnings) == 0

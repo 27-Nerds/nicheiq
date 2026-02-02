@@ -31,8 +31,11 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
     return;
   }
 
-  // If job is already completed or failed, send final state and close
-  if (job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED || job.status === JobStatus.CANCELLED) {
+  // If job is already in a terminal state and no landing page is generating, send final state and close
+  const terminalStatuses: string[] = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED];
+  const isTerminal = terminalStatuses.includes(job.status);
+  const landingInProgress = (job as any).landingPageStatus === 'QUEUED' || (job as any).landingPageStatus === 'RUNNING';
+  if (isTerminal && !landingInProgress) {
     res.json({
       id: job.id,
       status: job.status,
@@ -114,10 +117,11 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
         });
         res.write(`data: ${JSON.stringify(data)}\n\n`);
 
-        // Close connection if job is done
-        if (updatedJob.status === JobStatus.COMPLETED ||
-            updatedJob.status === JobStatus.FAILED ||
-            updatedJob.status === JobStatus.CANCELLED) {
+        // Close connection if job is done (and no landing page is generating)
+        const jobTerminalStatuses: string[] = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED];
+        const jobTerminal = jobTerminalStatuses.includes(updatedJob.status);
+        const updatedLandingInProgress = (updatedJob as any).landingPageStatus === 'QUEUED' || (updatedJob as any).landingPageStatus === 'RUNNING';
+        if (jobTerminal && !updatedLandingInProgress) {
           clearInterval(heartbeat);
           if (queuePollInterval) {
             clearInterval(queuePollInterval);

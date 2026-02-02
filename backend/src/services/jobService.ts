@@ -137,13 +137,20 @@ export async function updateStageProgress(
   }
 
   // Update job's current stage and progress percent
-  const completedStages = await prisma.jobProgress.count({
-    where: {
-      jobId,
-      status: StageStatus.COMPLETED,
-    },
-  });
+  const [completedStages, jobRecord] = await Promise.all([
+    prisma.jobProgress.count({
+      where: {
+        jobId,
+        status: StageStatus.COMPLETED,
+      },
+    }),
+    prisma.job.findUnique({
+      where: { id: jobId },
+      select: { totalStages: true },
+    }),
+  ]);
 
+  const dynamicTotal = jobRecord?.totalStages ?? TOTAL_STAGES;
   const stageName = PIPELINE_STAGES.find(s => s.number === stageNumber)?.name;
 
   await prisma.job.update({
@@ -152,7 +159,7 @@ export async function updateStageProgress(
       currentStage: stageNumber,
       currentStageName: stageName,
       stagesCompleted: completedStages,
-      progressPercent: (completedStages / TOTAL_STAGES) * 100,
+      progressPercent: (completedStages / dynamicTotal) * 100,
       status: status === StageStatus.RUNNING ? JobStatus.RUNNING : undefined,
     },
   });

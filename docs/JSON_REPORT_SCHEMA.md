@@ -131,7 +131,7 @@ The executive dashboard provides a quick go/no-go decision framework.
   "tier3_keyword_count": 0,
   "tier4_keyword_count": 107,
   "total_keyword_count": 172,
-  "high_priority_pain_points": 7,
+  "high_severity_pain_points": 7,
   "primary_competitor_count": 5,
   "avg_pain_point_severity": 0.76,
   "avg_willingness_to_pay": 0.72,
@@ -152,7 +152,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 | `tier3_keyword_count` | `number` | Tier 3 (Geographic) keywords |
 | `tier4_keyword_count` | `number` | Tier 4 (Category) keywords |
 | `total_keyword_count` | `number` | Total enriched keywords |
-| `high_priority_pain_points` | `number` | Pain points with severity >= 0.7 |
+| `high_severity_pain_points` | `number` | Pain points with severity >= 0.7 |
 | `primary_competitor_count` | `number` | Direct competitors identified |
 | `avg_pain_point_severity` | `number` (0-1) | Average severity |
 | `avg_willingness_to_pay` | `number` (0-1) | Average WTP |
@@ -320,7 +320,8 @@ Actionable GTM strategy for immediate execution.
 ```json
 {
   "total_pain_points": 10,
-  "high_priority_count": 7,
+  "high_severity_count": 7,
+  "high_opportunity_count": 6,
   "quadrant_distribution": {
     "high_severity_high_wtp": 6,
     "high_severity_low_wtp": 1,
@@ -336,7 +337,8 @@ Actionable GTM strategy for immediate execution.
 | Field | Type | Description |
 |-------|------|-------------|
 | `total_pain_points` | `number` | Total identified |
-| `high_priority_count` | `number` | Severity >= 0.7 |
+| `high_severity_count` | `number` | Severity >= 0.7 |
+| `high_opportunity_count` | `number` | Both severity >= 0.6 and WTP >= 0.6 |
 | `quadrant_distribution` | `object` | Priority matrix distribution |
 | `avg_severity` | `number` (0-1) | Average severity |
 | `avg_willingness_to_pay` | `number` (0-1) | Average WTP |

@@ -363,6 +363,25 @@ class ReportGenerator:
                 keyword_enrichment=self.state.solution_refinement,
                 seo_enrichment=getattr(self.state, 'seo_enrichment', None)
             )
+            # Align selection_criteria_scores SEO entry with canonical score.
+            # selection_criteria_scores is built at Stage 8.5 with raw seo_growth_potential,
+            # but Stage 9.5 may refine it. Update to match canonical resolution.
+            # NOTE: This mutates the shared list from state_accessors — the mutation
+            # propagates to all consumers that read via accessor (e.g. _compute_key_metrics).
+            if selection_criteria_scores:
+                canonical_seo = self.score_accessor.get_seo_score_canonical(
+                    selected_solution_details
+                )
+                for score_entry in selection_criteria_scores:
+                    if (
+                        score_entry.criterion == "seo_growth_potential"
+                        and abs(score_entry.score - canonical_seo) > 1e-6
+                    ):
+                        logger.info(
+                            f"[Report] Aligning selection_criteria SEO score: "
+                            f"{score_entry.score:.4f} -> {canonical_seo:.4f} (canonical)"
+                        )
+                        score_entry.score = canonical_seo
             # Sync scores with selection criteria (Stage 8.5) - NO FALLBACKS
             # This ensures selected_solution_details shows the same final scores
             # as selection_criteria_scores and executive_dashboard.key_metrics

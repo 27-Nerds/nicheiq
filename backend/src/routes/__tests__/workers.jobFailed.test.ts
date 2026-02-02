@@ -19,12 +19,16 @@ const mockFailJob = vi.fn();
 const mockUpdateStageProgress = vi.fn();
 const mockCompleteJob = vi.fn();
 const mockGetJob = vi.fn();
+const mockGetJobAsset = vi.fn();
+const mockAddJobAsset = vi.fn();
 
 vi.mock('../../services/jobService.js', () => ({
   failJob: (...args: any[]) => mockFailJob(...args),
   updateStageProgress: (...args: any[]) => mockUpdateStageProgress(...args),
   completeJob: (...args: any[]) => mockCompleteJob(...args),
   getJob: (...args: any[]) => mockGetJob(...args),
+  getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
+  addJobAsset: (...args: any[]) => mockAddJobAsset(...args),
 }));
 
 const mockBroadcastProgress = vi.fn();
@@ -71,6 +75,7 @@ beforeEach(async () => {
 
   mockFailJob.mockResolvedValue({ id: 'job-1', status: 'FAILED' });
   mockUpdateMany.mockResolvedValue({ count: 1 });
+  mockGetJobAsset.mockResolvedValue(null); // No report asset by default (normal failure path)
 
   app = express();
   app.use(express.json());

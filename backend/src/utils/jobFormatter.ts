@@ -34,6 +34,9 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     // User-friendly error information
     errorCode: (job as any).errorCode || null,
     errorDetails: (job as any).errorDetails || null,
+    // Landing page lifecycle
+    generateLandingPage: (job as any).generateLandingPage ?? true,
+    landingPageStatus: (job as any).landingPageStatus || null,
   };
 
   // Optional fields based on endpoint needs

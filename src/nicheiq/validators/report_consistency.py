@@ -11,10 +11,16 @@ Design:
 - Never mutates trend data or LLM-generated narrative
 """
 
+import re
 from typing import Literal, Optional
 
 from loguru import logger
 from pydantic import BaseModel, Field
+
+
+def _strip_numbering_prefix(text: str) -> str:
+    """Strip leading numbering like '1. ', '3) ' from LLM-generated list items."""
+    return re.sub(r'^\d+[\.\)]\s*', '', text)
 
 
 class ConsistencyWarning(BaseModel):
@@ -330,7 +336,7 @@ class ReportConsistencyValidator:
         if addressed is None:
             return warnings
 
-        core_title = str(core_pain_point)
+        core_title = getattr(core_pain_point, 'title', None) or str(core_pain_point)
 
         if len(addressed) == 0:
             warnings.append(ConsistencyWarning(
@@ -346,41 +352,45 @@ class ReportConsistencyValidator:
             return warnings
 
         # 3-level match hierarchy
-        addressed_titles = [str(t) for t in addressed]
+        addressed_titles = [str(t).strip() for t in addressed]
+        stripped_titles = [_strip_numbering_prefix(t) for t in addressed_titles]
+        core_title = core_title.strip()
 
-        # Level 1: exact match
-        if core_title in addressed_titles:
+        # Level 1: exact match (raw or stripped)
+        if core_title in addressed_titles or core_title in stripped_titles:
             return warnings
 
-        # Level 2: case-insensitive
+        # Level 2: case-insensitive (raw or stripped)
         core_lower = core_title.lower()
-        for title in addressed_titles:
-            if core_lower == title.lower():
+        for raw_title, stripped_title in zip(addressed_titles, stripped_titles):
+            if core_lower == raw_title.lower() or core_lower == stripped_title.lower():
                 warnings.append(ConsistencyWarning(
                     field_path="selected_solution_details.pain_points_addressed",
                     severity="INFO",
                     message=(
                         f"Core pain point '{core_title}' found via case-insensitive match "
-                        f"as '{title}' in pain_points_addressed."
+                        f"as '{raw_title}' in pain_points_addressed."
                     ),
                     expected_value=core_title,
-                    actual_value=title,
+                    actual_value=raw_title,
                 ))
                 return warnings
 
-        # Level 3: containment
-        for title in addressed_titles:
-            title_lower = title.lower()
-            if core_lower in title_lower or title_lower in core_lower:
+        # Level 3: containment (raw or stripped)
+        for raw_title, stripped_title in zip(addressed_titles, stripped_titles):
+            raw_lower = raw_title.lower()
+            stripped_lower = stripped_title.lower()
+            if (core_lower in raw_lower or raw_lower in core_lower
+                    or core_lower in stripped_lower or stripped_lower in core_lower):
                 warnings.append(ConsistencyWarning(
                     field_path="selected_solution_details.pain_points_addressed",
                     severity="INFO",
                     message=(
                         f"Core pain point '{core_title}' found via substring match "
-                        f"as '{title}' in pain_points_addressed."
+                        f"as '{raw_title}' in pain_points_addressed."
                     ),
                     expected_value=core_title,
-                    actual_value=title,
+                    actual_value=raw_title,
                 ))
                 return warnings
 

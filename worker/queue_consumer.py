@@ -94,13 +94,10 @@ def process_job(job_data: dict) -> None:
     global current_job_id
 
     job_id = job_data.get("job_id")
-    niche = job_data.get("niche")
-    user_id = job_data.get("user_id")
-    allowed_project_types = job_data.get("allowed_project_types")
-    resume = job_data.get("resume", False)
+    task_type = job_data.get("task_type", "research")
 
     current_job_id = job_id
-    logger.info(f"Processing job {job_id} for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume})")
+    logger.info(f"Processing job {job_id} (task_type={task_type})")
 
     try:
         # Notify backend that we're starting this job
@@ -108,15 +105,33 @@ def process_job(job_data: dict) -> None:
         set_current_job(job_id)
         notify_job_started(job_id)
 
-        from .tasks import run_research_job
+        if task_type == "landing_page":
+            from .tasks import run_landing_page_only
 
-        result = run_research_job(
-            job_id=job_id,
-            niche=niche,
-            user_id=user_id,
-            allowed_project_types=allowed_project_types,
-            resume=resume,
-        )
+            result = run_landing_page_only(
+                job_id=job_id,
+                report_path=job_data["report_path"],
+                page_mode=job_data.get("page_mode", "coming_soon"),
+            )
+        else:
+            niche = job_data.get("niche")
+            user_id = job_data.get("user_id")
+            allowed_project_types = job_data.get("allowed_project_types")
+            resume = job_data.get("resume", False)
+            generate_landing_page = job_data.get("generate_landing_page", True)
+
+            logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume})")
+
+            from .tasks import run_research_job
+
+            result = run_research_job(
+                job_id=job_id,
+                niche=niche,
+                user_id=user_id,
+                allowed_project_types=allowed_project_types,
+                resume=resume,
+                generate_landing_page=generate_landing_page,
+            )
 
         logger.info(f"Job {job_id} completed: {result}")
 

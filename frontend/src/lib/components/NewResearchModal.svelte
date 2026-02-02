@@ -21,6 +21,7 @@
 
   let niche = $state('');
   let selectedProjectTypes = $state<string[]>(PROJECT_TYPES.map(t => t.value));
+  let generateLandingPage = $state(true);
   let loading = $state(false);
   let error = $state('');
   let isInsufficientCredits = $state(false);
@@ -53,6 +54,7 @@
         body: JSON.stringify({
           niche: niche.trim(),
           ...(selectedProjectTypes.length > 0 && { allowedProjectTypes: selectedProjectTypes }),
+          generateLandingPage,
         }),
       });
 
@@ -73,6 +75,7 @@
       open = false;
       niche = '';
       selectedProjectTypes = PROJECT_TYPES.map(t => t.value);
+      generateLandingPage = true;
       // Refresh to update credit balance in header
       await invalidateAll();
       goto(`/jobs/${data.id}`);
@@ -307,6 +310,22 @@
                 </button>
               {/each}
             </div>
+          </div>
+
+          <!-- Section 3: Landing Page Option -->
+          <div class="pt-3 border-t border-border/50">
+            <label class="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                bind:checked={generateLandingPage}
+                disabled={loading}
+                class="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+              />
+              <div>
+                <span class="text-sm font-medium text-text-primary">Generate landing page</span>
+                <p class="text-xs text-text-muted">Creates a ready-to-use landing page for your top solution. You can generate it later too.</p>
+              </div>
+            </label>
           </div>
         {/if}
 

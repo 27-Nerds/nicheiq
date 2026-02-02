@@ -83,6 +83,9 @@ export interface Job {
   errorDetails?: ErrorDetails | null;
   // Project type filter selected at creation
   allowedProjectTypes?: string[] | null;
+  // Landing page lifecycle
+  generateLandingPage?: boolean;
+  landingPageStatus?: string | null;
 }
 
 export class ApiError extends Error {
@@ -155,6 +158,14 @@ export function isTerminalStatus(status: string | undefined): boolean {
 }
 
 /**
+ * Check if SSE should stay open (accounts for landing page generation on completed jobs)
+ */
+export function shouldKeepSSEOpen(job: { status: string; landingPageStatus?: string | null }): boolean {
+  if (!isTerminalStatus(job.status)) return true;
+  return job.landingPageStatus === 'QUEUED' || job.landingPageStatus === 'RUNNING';
+}
+
+/**
  * SSE connection options
  */
 export interface SSEOptions {
@@ -190,12 +201,13 @@ export function subscribeToProgress(
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   let isCleanedUp = false;
   let lastKnownStatus: string | undefined;
+  let lastKnownLandingStatus: string | null | undefined;
 
   function connect() {
     if (isCleanedUp) return;
 
-    // Don't connect if we know the job is in a terminal state
-    if (isTerminalStatus(lastKnownStatus)) return;
+    // Don't connect if we know the job is in a terminal state with no landing in progress
+    if (isTerminalStatus(lastKnownStatus) && lastKnownLandingStatus !== 'QUEUED' && lastKnownLandingStatus !== 'RUNNING') return;
 
     eventSource?.close();
     eventSource = new EventSource(`${SSE_BASE}/jobs/${jobId}/events`);
@@ -204,11 +216,12 @@ export function subscribeToProgress(
       try {
         const data = JSON.parse(event.data) as Job;
         lastKnownStatus = data.status;
+        lastKnownLandingStatus = data.landingPageStatus;
         reconnectAttempts = 0; // Reset on successful message
         onUpdate(data);
 
-        // Close connection if job reached terminal state
-        if (isTerminalStatus(data.status)) {
+        // Close connection if job reached terminal state and no landing in progress
+        if (!shouldKeepSSEOpen(data)) {
           eventSource?.close();
           eventSource = null;
         }
@@ -221,8 +234,8 @@ export function subscribeToProgress(
       eventSource?.close();
       eventSource = null;
 
-      // Don't reconnect if cleaned up or terminal
-      if (isCleanedUp || isTerminalStatus(lastKnownStatus)) {
+      // Don't reconnect if cleaned up or terminal with no landing in progress
+      if (isCleanedUp || (isTerminalStatus(lastKnownStatus) && lastKnownLandingStatus !== 'QUEUED' && lastKnownLandingStatus !== 'RUNNING')) {
         return;
       }
 

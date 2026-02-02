@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { page } from '$app/stores';
-  import { subscribeToProgress, isTerminalStatus } from '$lib/api';
+  import { subscribeToProgress, isTerminalStatus, shouldKeepSSEOpen } from '$lib/api';
   import Badge from '$lib/components/ui/Badge.svelte';
   import {
     Loader2,
@@ -15,7 +15,8 @@
     Minus,
     ArrowRight,
     Activity,
-    RotateCw
+    RotateCw,
+    Globe
   } from 'lucide-svelte';
   import { showNewResearchModal } from '$lib/stores/newResearchModal';
 
@@ -79,6 +80,9 @@
     // User-friendly error information
     errorCode?: string | null;
     errorDetails?: ErrorDetails | null;
+    // Landing page lifecycle
+    generateLandingPage?: boolean;
+    landingPageStatus?: string | null;
   }
 
   let job = $state<Job | null>(null);
@@ -90,6 +94,8 @@
   let isResuming = $state(false);
   let resumeError = $state('');
   let showTechnicalDetails = $state(false);
+  let generatingLanding = $state(false);
+  let landingError = $state('');
 
   const jobId = $derived($page.params.jobId);
 
@@ -97,9 +103,9 @@
     // Clean up existing subscription
     unsubscribeSSE?.();
 
-    // Don't connect if no jobId or job is in terminal state
+    // Don't connect if no jobId or job is fully terminal (no landing in progress)
     if (!jobId) return;
-    if (job && isTerminalStatus(job.status)) return;
+    if (job && !shouldKeepSSEOpen(job)) return;
 
     unsubscribeSSE = subscribeToProgress(
       jobId,
@@ -146,6 +152,37 @@
     }
   }
 
+  async function generateLanding() {
+    if (!job || generatingLanding) return;
+
+    generatingLanding = true;
+    landingError = '';
+
+    try {
+      const res = await fetch(`/api/jobs/${jobId}/generate-landing`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Failed to generate landing page');
+      }
+
+      // Refetch job to get updated state (landingPageStatus, new stage 11)
+      const updatedRes = await fetch(`/api/jobs/${jobId}`);
+      if (updatedRes.ok) {
+        job = await updatedRes.json();
+      }
+
+      // Reconnect SSE for real-time landing page progress
+      connectSSE();
+    } catch (e) {
+      landingError = e instanceof Error ? e.message : 'Failed to generate landing page';
+    } finally {
+      generatingLanding = false;
+    }
+  }
+
   async function cancelJob() {
     if (!job || cancelling) return;
 
@@ -189,8 +226,8 @@
       loading = false;
     }
 
-    // SSE for real-time updates if job is still in progress
-    if (job && !isTerminalStatus(job.status)) {
+    // SSE for real-time updates if job is still in progress or landing page is generating
+    if (job && shouldKeepSSEOpen(job)) {
       connectSSE();
     }
   });
@@ -572,50 +609,98 @@
         </ul>
       </div>
 
-      <!-- Download Links -->
-      {#if job.status === 'COMPLETED' && job.assets.length > 0}
+      <!-- Results Section -->
+      {@const reportAsset = job.assets.find(a => a.type === 'REPORT_JSON')}
+      {@const landingAsset = job.assets.find(a => a.type === 'LANDING_PAGE')}
+
+      {#if reportAsset || landingAsset}
         <div class="card p-6 animate-fade-slide-in" style="animation-delay: 300ms;">
           <h2 class="text-lg font-medium text-text-primary mb-4">Your Results</h2>
           <div class="flex flex-wrap gap-4">
-            {#each job.assets as asset}
-              {#if asset.type === 'REPORT_JSON'}
-                <div class="flex flex-col items-start">
-                  <a
-                    href="/jobs/{job.id}/report"
-                    class="btn-primary"
-                  >
-                    <FileText class="w-5 h-5" />
-                    View Report
-                  </a>
-                  <a
-                    href={asset.url}
-                    class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
-                    download
-                  >
-                    Download JSON
-                  </a>
+            {#if reportAsset}
+              <div class="flex flex-col items-start">
+                <a
+                  href="/jobs/{job.id}/report"
+                  class="btn-primary"
+                >
+                  <FileText class="w-5 h-5" />
+                  View Report
+                </a>
+                <a
+                  href={reportAsset.url}
+                  class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                  download
+                >
+                  Download JSON
+                </a>
+              </div>
+            {/if}
+
+            {#if landingAsset}
+              <div class="flex flex-col items-start">
+                <a
+                  href={landingAsset.url}
+                  target="_blank"
+                  class="btn-secondary"
+                >
+                  <ExternalLink class="w-5 h-5" />
+                  View Landing Page
+                </a>
+                <a
+                  href="{landingAsset.url}?download=true"
+                  class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
+                  download
+                >
+                  Download HTML
+                </a>
+              </div>
+            {:else if job.landingPageStatus === 'RUNNING' || job.landingPageStatus === 'QUEUED'}
+              <div class="flex items-center gap-2 text-sm text-info">
+                <Loader2 class="w-4 h-4 animate-spin" />
+                <span>Landing page is being generated...</span>
+              </div>
+            {:else if job.landingPageStatus === 'FAILED'}
+              <div class="flex flex-col items-start gap-2">
+                <div class="flex items-center gap-2 text-sm text-error">
+                  <XCircle class="w-4 h-4" />
+                  <span>Landing page generation failed</span>
                 </div>
-              {:else if asset.type === 'LANDING_PAGE'}
-                <div class="flex flex-col items-start">
-                  <a
-                    href={asset.url}
-                    target="_blank"
-                    class="btn-secondary"
-                  >
-                    <ExternalLink class="w-5 h-5" />
-                    View Landing Page
-                  </a>
-                  <a
-                    href="{asset.url}?download=true"
-                    class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
-                    download
-                  >
-                    Download HTML
-                  </a>
-                </div>
-              {/if}
-            {/each}
+                <button
+                  onclick={generateLanding}
+                  disabled={generatingLanding}
+                  class="btn-secondary btn-sm"
+                >
+                  {#if generatingLanding}
+                    <Loader2 class="w-4 h-4 animate-spin" />
+                    Retrying...
+                  {:else}
+                    <RotateCw class="w-4 h-4" />
+                    Retry Landing Page
+                  {/if}
+                </button>
+              </div>
+            {:else if job.status === 'COMPLETED' && reportAsset && !job.progress.some(s => s.stageNumber === 11)}
+              <div class="flex flex-col items-start gap-1">
+                <button
+                  onclick={generateLanding}
+                  disabled={generatingLanding}
+                  class="btn-secondary"
+                >
+                  {#if generatingLanding}
+                    <Loader2 class="w-4 h-4 animate-spin" />
+                    Generating...
+                  {:else}
+                    <Globe class="w-5 h-5" />
+                    Generate Landing Page
+                  {/if}
+                </button>
+                <span class="text-xs text-text-muted">Free - included with your research</span>
+              </div>
+            {/if}
           </div>
+          {#if landingError}
+            <p class="mt-3 text-sm text-error">{landingError}</p>
+          {/if}
         </div>
       {/if}
 

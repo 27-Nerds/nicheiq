@@ -6,13 +6,15 @@ Covers:
 - _build_selection_criteria_from_solution_idea (Stage 7 fallback path)
 - Regression tests for Stage 8.5 pivot and Stage 7 fallback
 - Downstream consumer compatibility
+- SEO score canonical alignment (Stage 9.5 refinement)
 """
 
 import pytest
 from unittest.mock import MagicMock, patch
 
-from nicheiq.models.solution_idea import BaseSolutionIdea
+from nicheiq.models.solution_idea import BaseSolutionIdea, SolutionIdea
 from nicheiq.models.solution_selection import SelectionCriteriaScore, SolutionScores
+from nicheiq.report.utils.score_accessor import ScoreAccessor
 
 
 # ---------------------------------------------------------------------------
@@ -367,3 +369,105 @@ class TestDownstreamConsumerCompatibility:
         assert score_map.get("market_fit") == 0.82
         assert score_map.get("technical_feasibility") == 0.78
         assert score_map.get("seo_growth_potential") == 0.65
+
+
+# ---------------------------------------------------------------------------
+# TestSEOScoreCanonicalAlignment
+# ---------------------------------------------------------------------------
+
+def _make_solution_idea(seo_raw=0.86, seo_refined=None):
+    """Helper to build a SolutionIdea with given SEO scores."""
+    return SolutionIdea(
+        solution_name="TestTool",
+        description="A test tool.",
+        value_proposition="Test value",
+        pain_points_addressed=["Pain"],
+        core_features=["Feature"],
+        target_personas=["Users"],
+        seo_scalability_score=seo_raw,
+        seo_scalability_score_refined=seo_refined,
+    )
+
+
+def _make_selection_criteria(seo_score=0.86):
+    """Helper to build a typical selection_criteria_scores list with SEO entry."""
+    return [
+        SelectionCriteriaScore(criterion="market_fit", score=0.85, justification=""),
+        SelectionCriteriaScore(criterion="competitive_advantage", score=0.68, justification=""),
+        SelectionCriteriaScore(criterion="technical_feasibility", score=0.72, justification=""),
+        SelectionCriteriaScore(criterion="seo_growth_potential", score=seo_score, justification=""),
+    ]
+
+
+def _run_alignment(selection_criteria_scores, solution, solution_selection=None):
+    """Run the SEO alignment logic matching report_generator._assemble_base_report."""
+    score_accessor = ScoreAccessor(solution_selection)
+    if selection_criteria_scores:
+        canonical_seo = score_accessor.get_seo_score_canonical(solution)
+        for score_entry in selection_criteria_scores:
+            if (
+                score_entry.criterion == "seo_growth_potential"
+                and abs(score_entry.score - canonical_seo) > 1e-6
+            ):
+                score_entry.score = canonical_seo
+
+
+class TestSEOScoreCanonicalAlignment:
+    """Tests for SEO score alignment between selection_criteria_scores and canonical score."""
+
+    def test_seo_score_updated_when_refined_available(self):
+        """When Stage 9.5 refined score exists, selection_criteria SEO entry is updated."""
+        scores = _make_selection_criteria(seo_score=0.86)
+        solution = _make_solution_idea(seo_raw=0.86, seo_refined=0.84)
+
+        _run_alignment(scores, solution)
+
+        seo_entry = next(s for s in scores if s.criterion == "seo_growth_potential")
+        assert seo_entry.score == 0.84
+
+    def test_seo_score_unchanged_when_no_refinement(self):
+        """When no Stage 9.5 refined score, raw Stage 8.5 value is preserved."""
+        scores = _make_selection_criteria(seo_score=0.86)
+        solution = _make_solution_idea(seo_raw=0.86, seo_refined=None)
+
+        _run_alignment(scores, solution)
+
+        seo_entry = next(s for s in scores if s.criterion == "seo_growth_potential")
+        assert seo_entry.score == 0.86
+
+    def test_seo_score_unchanged_when_already_matches(self):
+        """When scores already match, no mutation occurs."""
+        scores = _make_selection_criteria(seo_score=0.84)
+        solution = _make_solution_idea(seo_raw=0.86, seo_refined=0.84)
+
+        original_score = scores[3].score
+        _run_alignment(scores, solution)
+
+        seo_entry = next(s for s in scores if s.criterion == "seo_growth_potential")
+        assert seo_entry.score == original_score
+
+    def test_no_seo_criterion_in_list(self):
+        """When selection_criteria has no seo_growth_potential entry, alignment is a no-op."""
+        scores = [
+            SelectionCriteriaScore(criterion="market_fit", score=0.85, justification=""),
+            SelectionCriteriaScore(criterion="competitive_advantage", score=0.68, justification=""),
+            SelectionCriteriaScore(criterion="technical_feasibility", score=0.72, justification=""),
+        ]
+        solution = _make_solution_idea(seo_raw=0.86, seo_refined=0.84)
+
+        _run_alignment(scores, solution)
+
+        # All scores remain unchanged
+        assert scores[0].score == 0.85
+        assert scores[1].score == 0.68
+        assert scores[2].score == 0.72
+
+    def test_empty_selection_criteria_scores(self):
+        """When selection_criteria_scores is empty or None, no crash occurs."""
+        solution = _make_solution_idea(seo_raw=0.86, seo_refined=0.84)
+
+        # Empty list
+        _run_alignment([], solution)
+
+        # None
+        _run_alignment(None, solution)

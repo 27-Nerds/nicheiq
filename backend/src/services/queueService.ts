@@ -29,7 +29,8 @@ export async function enqueueJob(
   niche: string,
   userId?: string,
   allowedProjectTypes?: string[],
-  resume: boolean = false
+  resume: boolean = false,
+  generateLandingPage: boolean = true
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -37,12 +38,33 @@ export async function enqueueJob(
     user_id: userId,
     allowed_project_types: allowedProjectTypes,
     resume,
+    generate_landing_page: generateLandingPage,
     created_at: new Date().toISOString(),
   });
 
   // Push to the left (LPUSH), workers pop from the right (BRPOP)
   await redis.lpush(QUEUE_NAME, jobData);
   console.log(`Enqueued job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
+ * Enqueue a landing-page-only generation task
+ */
+export async function enqueueLandingPageJob(
+  jobId: string,
+  reportPath: string,
+  pageMode: string = 'coming_soon'
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    report_path: reportPath,
+    page_mode: pageMode,
+    task_type: 'landing_page',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued landing page job ${jobId} to ${QUEUE_NAME}`);
 }
 
 /**

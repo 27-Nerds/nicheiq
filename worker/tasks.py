@@ -17,6 +17,7 @@ from rq import get_current_job
 from .progress import (
     create_progress_callback,
     publish_job_completed,
+    publish_report_ready,
     notify_job_quality_gate_stop,
 )
 from .status import mark_job_running
@@ -28,6 +29,7 @@ def run_research_job(
     user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None,
     resume: bool = False,
+    generate_landing_page: bool = True,
 ) -> dict:
     """
     Main RQ task - runs the complete research pipeline + landing page generation.
@@ -97,31 +99,52 @@ def run_research_job(
         with open(job_report_path, "w") as dst:
             json.dump(report_data, dst, indent=2)
 
-        # Generate landing page
-        logger.info(f"[Worker] Generating landing page for job {job_id}")
-        progress_callback(11, "Landing Page Generation", "running")
+        # Notify backend that the report is ready (triggers email notification)
+        publish_report_ready(job_id, str(job_report_path))
 
-        # Load report for landing page generation
-        report = FinalReport(**report_data)
+        landing_path = None
 
-        # Generate landing page
-        crew = LandingPageCrew()
-        result = crew.generate(report, page_mode="coming_soon")
+        if generate_landing_page:
+            # Generate landing page (isolated - errors don't crash the job)
+            try:
+                logger.info(f"[Worker] Generating landing page for job {job_id}")
+                progress_callback(11, "Landing Page Generation", "running")
 
-        # Handle None result (guardrail failure)
-        if result is None:
-            logger.warning(f"[Worker] Landing page generation returned None for job {job_id}")
-            progress_callback(11, "Landing Page Generation", "completed")
-            landing_path = None
+                # Load report for landing page generation
+                report = FinalReport(**report_data)
+
+                # Generate landing page
+                crew = LandingPageCrew()
+                result = crew.generate(report, page_mode="coming_soon")
+
+                # Handle None result (guardrail failure)
+                if result is None:
+                    logger.warning(f"[Worker] Landing page generation returned None for job {job_id}")
+                    progress_callback(11, "Landing Page Generation", "completed")
+                else:
+                    # Save landing page
+                    job_landing_path = output_dir / "landing_page.html"
+                    job_landing_path.write_text(result.html_output)
+                    landing_path = str(job_landing_path)
+                    progress_callback(11, "Landing Page Generation", "completed")
+                    logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
+
+            except Exception as landing_err:
+                # Import here to avoid circular imports
+                from .heartbeat import JobCancelledException
+                # Re-raise cancellation - it's not a landing page error
+                if isinstance(landing_err, JobCancelledException):
+                    raise
+                logger.error(f"[Worker] Landing page generation failed for job {job_id}: {landing_err}")
+                # Mark stage 11 as failed but don't crash the job
+                try:
+                    progress_callback(11, "Landing Page Generation", "failed")
+                except Exception:
+                    pass
         else:
-            # Save landing page
-            job_landing_path = output_dir / "landing_page.html"
-            job_landing_path.write_text(result.html_output)
-            landing_path = str(job_landing_path)
-            progress_callback(11, "Landing Page Generation", "completed")
-            logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
+            logger.info(f"[Worker] Skipping landing page generation for job {job_id} (not requested)")
 
-        # Publish completion
+        # Publish completion (always - landing page failure doesn't prevent this)
         publish_job_completed(job_id, str(job_report_path), landing_path)
 
         return {
@@ -171,7 +194,8 @@ def run_landing_page_only(
     """
     Generate only the landing page from an existing report.
 
-    Useful for regenerating landing pages with different settings.
+    Used when a user clicks "Generate Landing Page" on a completed job.
+    The main job stays COMPLETED - this only affects landingPageStatus.
 
     Args:
         job_id: UUID of the job
@@ -200,12 +224,27 @@ def run_landing_page_only(
         crew = LandingPageCrew()
         result = crew.generate(report, page_mode=page_mode)
 
+        # Handle None result (guardrail failure)
+        if result is None:
+            logger.warning(f"[Worker] Landing page generation returned None for job {job_id}")
+            progress_callback(11, "Landing Page Generation", "completed")
+            # Complete without landing_path - backend will just mark landingPageStatus=COMPLETED
+            publish_job_completed(job_id, report_path, None)
+            return {
+                "status": "completed",
+                "job_id": job_id,
+                "landing_path": None,
+            }
+
         # Save to job directory
         output_dir = Path(report_path).parent
         landing_path = output_dir / "landing_page.html"
         landing_path.write_text(result.html_output)
 
         progress_callback(11, "Landing Page Generation", "completed")
+
+        # Publish completion with landing_path
+        publish_job_completed(job_id, report_path, str(landing_path))
 
         return {
             "status": "completed",

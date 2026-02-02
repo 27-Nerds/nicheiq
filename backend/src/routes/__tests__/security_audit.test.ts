@@ -376,7 +376,8 @@ describe('Security Audit: Jobs API', () => {
         'user-123', // from auth, not from body
         expect.any(String),
         1,
-        undefined
+        undefined,
+        true // generateLandingPage defaults to true
       );
     });
 
@@ -997,19 +998,20 @@ describe('Security Audit: Jobs API', () => {
       expect(mockJobUpdate).not.toHaveBeenCalled();
     });
 
-    it('GET /:jobId/reportjson rejects non-COMPLETED jobs', async () => {
+    it('GET /:jobId/reportjson rejects non-COMPLETED jobs without report asset', async () => {
       mockGetJob.mockResolvedValue({
         id: targetJobId,
         userId: targetUserId,
         status: JobStatus.RUNNING,
       });
+      mockGetJobAsset.mockResolvedValue(null); // No report asset
 
       const res = await request(app)
         .get(`/api/jobs/${targetJobId}/reportjson`)
         .set(validUserHeaders);
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toMatch(/not completed/i);
+      expect(res.body.error).toMatch(/not ready/i);
     });
   });
 });

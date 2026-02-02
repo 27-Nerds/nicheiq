@@ -170,6 +170,35 @@ def create_progress_callback(
     return callback
 
 
+def publish_report_ready(job_id: str, report_path: str) -> None:
+    """
+    Notify backend that the research report is ready (before landing page).
+    This triggers "report ready" notification so users can view reports immediately.
+
+    Args:
+        job_id: The job UUID
+        report_path: Path to the generated report JSON
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "report_path": report_path,
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/report-ready",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=10,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Report ready notification sent for job {job_id}")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to publish report-ready: {e}")
+
+
 def publish_job_completed(
     job_id: str,
     report_path: str,

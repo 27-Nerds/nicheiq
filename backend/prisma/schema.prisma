@@ -163,6 +163,7 @@ model Job {
 
   niche                String      @db.Text
   allowedProjectTypes  Json?       // Optional list of project types
+  generateLandingPage  Boolean     @default(true)
 
   // Status tracking
   status               JobStatus   @default(PENDING)
@@ -181,6 +182,9 @@ model Job {
   // Quality gate stop tracking (intentional stops vs errors)
   stopReason           String?     @db.VarChar(50)  // e.g., 'INSUFFICIENT_DATA'
   stopReasonDetails    Json?                        // Quality metrics, recommendation
+
+  // Landing page lifecycle (independent of main job status)
+  landingPageStatus    String?     @db.VarChar(20)   // null, QUEUED, RUNNING, COMPLETED, FAILED
 
   // Worker crash recovery tracking
   workerId             String?     @db.VarChar(100)  // Which worker is processing this job

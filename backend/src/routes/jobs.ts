@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
-import { enqueueJob, getQueueStats, getQueueLength } from '../services/queueService.js';
+import { enqueueJob, enqueueLandingPageJob, getQueueStats, getQueueLength } from '../services/queueService.js';
 import { createJobWithCreditDeduction, InsufficientCreditsError, refundCreditsForJob } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema } from '../types/job.js';
@@ -34,11 +34,12 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       userId,
       input.niche,
       1, // Credit cost per job
-      input.allowedProjectTypes
+      input.allowedProjectTypes,
+      input.generateLandingPage
     );
 
     // Enqueue job for Python worker (email retrieved from DB when needed for notifications)
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes);
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, input.generateLandingPage ?? true);
 
     // Update status to QUEUED and set queuedAt timestamp
     await prisma.job.update({
@@ -135,9 +136,13 @@ jobsRouter.get('/:jobId/reportjson', requireInternalAuth, validateJobId, async (
       return;
     }
 
+    // Allow COMPLETED or RUNNING (if report asset exists for early access during landing page generation)
     if (job.status !== JobStatus.COMPLETED) {
-      res.status(400).json({ error: 'Job not completed yet' });
-      return;
+      const reportAsset = await getJobAsset(jobId, AssetType.REPORT_JSON);
+      if (!reportAsset) {
+        res.status(400).json({ error: 'Report not ready yet' });
+        return;
+      }
     }
 
     const asset = await getJobAsset(jobId, AssetType.REPORT_JSON);
@@ -414,7 +419,8 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
       job.niche,
       userId,
       job.allowedProjectTypes as string[] | undefined,
-      true // resume = true
+      true, // resume = true
+      job.generateLandingPage
     );
 
     const creditCharged = refundTransaction ? 1 : 0;
@@ -429,6 +435,87 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
   } catch (error) {
     console.error('Failed to resume job:', error);
     res.status(500).json({ error: 'Failed to resume job' });
+  }
+});
+
+/**
+ * POST /api/jobs/:jobId/generate-landing
+ * Generate a landing page for a completed job that skipped landing page generation.
+ * No additional credit cost - user already paid for the research.
+ */
+jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimiter, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+
+    // Atomic transaction to prevent race conditions on double-click
+    await prisma.$transaction(async (tx) => {
+      const job = await tx.job.findFirst({
+        where: { id: jobId, userId },
+        include: { progress: true, assets: true },
+      });
+
+      if (!job) {
+        throw new Error('Job not found');
+      }
+
+      if (job.status !== JobStatus.COMPLETED) {
+        throw new Error('Job must be completed before generating a landing page');
+      }
+
+      // Guard: already has landing page or landing generation in progress
+      const hasLanding = job.assets.some(a => a.assetType === AssetType.LANDING_PAGE);
+      const landingInProgress = job.landingPageStatus === 'QUEUED' || job.landingPageStatus === 'RUNNING';
+      if (hasLanding || landingInProgress) {
+        throw new Error('Landing page already exists or is being generated');
+      }
+
+      // Check report asset exists
+      const hasReport = job.assets.some(a => a.assetType === AssetType.REPORT_JSON);
+      if (!hasReport) {
+        throw new Error('Report not found');
+      }
+
+      // Create stage 11 progress entry
+      await tx.jobProgress.create({
+        data: { jobId, stageNumber: 11, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
+      });
+
+      // Update job
+      await tx.job.update({
+        where: { id: jobId },
+        data: {
+          generateLandingPage: true,
+          landingPageStatus: 'QUEUED',
+          totalStages: { increment: 1 },
+        },
+      });
+    });
+
+    // Get report asset path for the queue
+    const reportAsset = await getJobAsset(jobId, AssetType.REPORT_JSON);
+    if (!reportAsset) {
+      res.status(500).json({ error: 'Report asset not found after transaction' });
+      return;
+    }
+
+    // Enqueue landing page generation
+    await enqueueLandingPageJob(jobId, reportAsset.filePath);
+
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Job not found') {
+        res.status(404).json({ error: error.message });
+        return;
+      }
+      if (error.message.includes('already exists') || error.message.includes('must be completed') || error.message === 'Report not found') {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+    }
+    console.error('Failed to generate landing page:', error);
+    res.status(500).json({ error: 'Failed to generate landing page' });
   }
 });
 
