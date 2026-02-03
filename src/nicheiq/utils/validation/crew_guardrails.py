@@ -34,6 +34,7 @@ from ...models.seo_strategy import (
     StrategicLightResult,
 )
 from ...models.solution_idea import (
+    CompetitiveEnhancements,
     FilteredConceptList,
     IdeaGenerationResult,
     RawConceptList,
@@ -340,6 +341,44 @@ def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
 
     except Exception as e:
         return (False, f"Competitive analysis validation error: {str(e)}")
+
+
+def validate_competitive_enhancements(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for competitive_refinement_task to handle JSON errors.
+
+    This task's overall_competitive_insights field (2-3 paragraphs) often contains
+    unescaped literal newlines that break JSON parsing. The guardrail:
+    1. Uses _parse_pydantic_from_task_output which calls _fix_common_json_errors
+    2. Provides specific error message about newline escaping
+    3. Validates structure completeness
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, CompetitiveEnhancements, "Competitive refinement"
+    )
+    if error:
+        return (
+            False,
+            f"{error} The overall_competitive_insights field likely contains "
+            "unescaped newlines. Use \\n for paragraph breaks, not literal newlines."
+        )
+
+    if not result.solution_enhancements:
+        return (False, "Need at least 1 solution_enhancement.")
+
+    for enh in result.solution_enhancements:
+        if not enh.solution_name or not enh.solution_name.strip():
+            return (False, "Each enhancement needs a solution_name.")
+        if not enh.new_core_features:
+            return (False, f"Enhancement '{enh.solution_name}' needs new_core_features.")
+        if not enh.new_differentiation_factors:
+            return (False, f"Enhancement '{enh.solution_name}' needs new_differentiation_factors.")
+
+    if len(result.overall_competitive_insights or '') < 100:
+        return (False, "overall_competitive_insights too short (min 100 chars).")
+
+    logger.info(f"[OK] Competitive enhancements: {len(result.solution_enhancements)} solutions")
+    return (True, task_output.raw)
 
 
 # ========================================
@@ -845,6 +884,62 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
 # ========================================
 
 
+def _fix_unescaped_newlines_in_strings(text: str) -> str:
+    """
+    Fix unescaped literal newlines inside JSON string values.
+
+    Uses state machine to track string context, respecting escape sequences.
+    Structural newlines (outside strings) are preserved.
+
+    Args:
+        text: Raw JSON text potentially containing unescaped newlines in strings
+
+    Returns:
+        JSON text with literal newlines inside strings escaped as \\n
+    """
+    result = []
+    in_string = False
+    i = 0
+
+    while i < len(text):
+        char = text[i]
+
+        # Handle escape sequences (skip next char to avoid toggling on escaped quotes)
+        if in_string and char == '\\' and i + 1 < len(text):
+            result.append(char)
+            result.append(text[i + 1])
+            i += 2
+            continue
+
+        # Toggle string state on unescaped quotes
+        if char == '"':
+            in_string = not in_string
+            result.append(char)
+            i += 1
+            continue
+
+        # Replace literal newlines inside strings
+        if in_string and char == '\n':
+            result.append('\\n')
+            i += 1
+            continue
+
+        # Handle Windows line endings (\r\n) inside strings
+        if in_string and char == '\r':
+            if i + 1 < len(text) and text[i + 1] == '\n':
+                result.append('\\n')
+                i += 2
+            else:
+                result.append('\\r')
+                i += 1
+            continue
+
+        result.append(char)
+        i += 1
+
+    return ''.join(result)
+
+
 def _fix_common_json_errors(raw_json: str) -> str:
     """
     Attempt to fix common JSON errors from LLM output.
@@ -852,6 +947,7 @@ def _fix_common_json_errors(raw_json: str) -> str:
     Fixes:
     - Trailing commas before } or ]
     - JavaScript-style comments
+    - Unescaped literal newlines inside JSON strings
 
     Args:
         raw_json: Raw JSON string that may contain errors
@@ -865,6 +961,9 @@ def _fix_common_json_errors(raw_json: str) -> str:
 
     # Fix trailing commas before } or ]
     cleaned = _TRAILING_COMMA_RE.sub(r'\1', cleaned)
+
+    # Fix unescaped literal newlines inside JSON strings
+    cleaned = _fix_unescaped_newlines_in_strings(cleaned)
 
     return cleaned
 

@@ -7,6 +7,7 @@ from .crew_guardrails import (
     validate_audience_mapping,
     validate_category_tier_output,
     validate_competitive_analysis,
+    validate_competitive_enhancements,
     validate_content_categorization,
     validate_content_strategy_output,
     validate_data_source_evaluation,
@@ -36,6 +37,7 @@ __all__ = [
     # Crew guardrails (core)
     "validate_diversity",
     "validate_competitive_analysis",
+    "validate_competitive_enhancements",
     "detect_similarity",
     "create_diversity_guardrail",
     # Crew guardrails (new high-priority tasks)

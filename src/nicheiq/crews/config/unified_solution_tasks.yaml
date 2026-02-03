@@ -635,6 +635,7 @@ competitive_refinement:
        - Highlight market opportunities and positioning strategies
        - CRITICAL: Do NOT state which solution is "strongest" or "best" - that decision is made in Task 4
        - Present competitive analysis neutrally, discussing each solution's unique positioning
+       - JSON FORMAT: Use \\n for paragraph breaks, not literal newlines (e.g., "Para 1.\\n\\nPara 2.")
 
     **WORKFLOW:**
 
@@ -663,6 +664,11 @@ competitive_refinement:
     - [ ] overall_competitive_insights synthesizes themes across ALL solutions
 
     ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+
+    **JSON OUTPUT FORMAT:**
+    ✓ All string values must use \\n for newlines, NOT literal line breaks
+    ✓ Example: "First paragraph.\\n\\nSecond paragraph." (CORRECT)
+    ✗ Literal newlines in JSON strings → Invalid JSON parse error
 
     **FIELD REQUIREMENTS:**
     ✗ Copying all features from Task 1 → Python merges automatically (only add NEW)

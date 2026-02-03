@@ -48,6 +48,7 @@ from ..utils.crew_helpers import (
 from ..utils.validation import (
     create_diversity_guardrail,
     validate_competitive_analysis,
+    validate_competitive_enhancements,
     validate_filtered_concepts,
     validate_raw_concepts,
 )
@@ -387,12 +388,17 @@ class UnifiedSolutionCrew:
         Task 5: Generate competitive enhancements for solutions.
         Depends on: solution_refinement_task + competitive_analysis_task (via context)
         Output: CompetitiveEnhancements (enhancements only)
+
+        Guardrail fixes JSON errors (especially unescaped newlines in overall_competitive_insights)
+        and validates structure completeness.
         """
         return Task(
             config=self.tasks_config["competitive_refinement"],
             agent=self.solution_refiner(),
             context=[self.solution_refinement_task(), self.competitive_analysis_task()],
             output_pydantic=CompetitiveEnhancements,
+            guardrail=validate_competitive_enhancements,
+            guardrail_max_retries=2,
         )
 
     @task
