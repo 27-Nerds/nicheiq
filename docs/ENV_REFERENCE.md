@@ -20,8 +20,10 @@ SERPER_API_KEY=...
 # Reddit - Content collection
 REDDIT_CLIENT_ID=...
 REDDIT_CLIENT_SECRET=...
+REDDIT_USER_AGENT=NicheIQ/0.1.0
 # Get at: https://www.reddit.com/prefs/apps
 # Free: Unlimited
+# User agent: Identifies your app to Reddit API (default: NicheIQ/0.1.0)
 
 # DataForSEO - Keyword research
 DATAFORSEO_LOGIN=your.email@example.com
@@ -362,6 +364,16 @@ PAIN_POINT_VALIDATION_LLM=gpt-4.1-mini
 PAIN_SOLUTION_MAPPING_LLM=gpt-4o-mini
 # Used for: Mapping pain points to solution features
 # Why mini: Structured mapping task
+
+# Quote Enrichment (Stage 6 Task 4)
+QUOTE_ENRICHMENT_LLM=gpt-4.1-mini
+# Used for: Finding verbatim quotes for pain points via vector search
+# Why mini: Literal extraction task, doesn't need reasoning
+
+# Quote enrichment target per pain point
+QUOTE_ENRICHMENT_TARGET_PER_PAIN_POINT=8
+# Number of quotes to find per pain point during enrichment
+# Higher = more evidence but longer processing time
 
 # Landing Page Generation (Stage 10+)
 LANDING_PAGE_LLM=gpt-5.2

@@ -1144,6 +1144,7 @@ develop_content_technical_strategy:
     - If a tier has no keywords (field is null), note "None identified" and focus on other tiers
     - DO NOT fabricate keywords - use ONLY what Task 1e provided
     - **JSON FORMAT**: All numeric values MUST be digits (e.g., 60) NOT words (e.g., "sixty"). Invalid: `"count": sixty` Valid: `"count": 60`
+    - **JSON KEY FORMAT**: ALL keys MUST be double-quoted. Invalid: `{ cluster_name: "value" }` Valid: `{ "cluster_name": "value" }`
 
     **CONTENT STRATEGY** (4-6 numbered sections, markdown):
 
@@ -1166,20 +1167,25 @@ develop_content_technical_strategy:
     NOTE: Do NOT include total_monthly_volume or estimated_traffic_potential - Python calculates these from CSV data.
 
     **FORMAT EXAMPLE Topic Cluster (DO NOT COPY - uses fictional keywords, no volume):**
-    ```
-    cluster_name: "Beginner Underwater Weaving Supplies"
-    primary_keyword: "beginner underwater basket weaving kits"  ← From top_tier_1_keywords
-    supporting_keywords: ["waterproof reed suppliers", "submersible weaving frames", "aquatic craft starter set"]
-    content_recommendation: "Create a comprehensive guide comparing beginner-friendly options..."
-    priority: 1
+    ```json
+    {
+      "cluster_name": "Beginner Underwater Weaving Supplies",
+      "primary_keyword": "beginner underwater basket weaving kits",
+      "supporting_keywords": ["waterproof reed suppliers", "submersible weaving frames", "aquatic craft starter set"],
+      "content_recommendation": "Create a comprehensive guide comparing beginner-friendly options...",
+      "priority": 1
+    }
     ```
 
     **Example Topic Cluster (WRONG - includes volume or uses placeholders):**
+    ```json
+    {
+      "cluster_name": "Tier 1 Quick Wins",
+      "primary_keyword": "<TIER_1_KEYWORD_1>",
+      "total_monthly_volume": 5000
+    }
     ```
-    cluster_name: "Tier 1 Quick Wins"
-    primary_keyword: "<TIER_1_KEYWORD_1>"  ← NEVER use placeholders
-    total_monthly_volume: 5000  ← NEVER include - Python calculates this
-    ```
+    ↑ WRONG: Uses placeholders and includes volume field
 
     **TECHNICAL SEO IMPLEMENTATION GUIDE** (markdown, comprehensive):
 

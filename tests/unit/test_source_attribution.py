@@ -1,36 +1,22 @@
-"""Tests for source attribution: parallel array extraction, fuzzy matching, evidence appendix."""
+"""Tests for source attribution: fuzzy matching, evidence appendix.
 
-import logging
+NOTE: The _extract_and_clean_sources tests were removed because that method
+is now dead code - Task 4 (quote enrichment) handles source attribution via
+vector search with post_id in metadata, not [source: ID] tags in text.
+"""
+
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from nicheiq.crews.pain_point_crew import PainPointCrew, SOURCE_TAG_PATTERN
-from nicheiq.models.pain_point import UnvalidatedPainPoint, PainPoint
+from nicheiq.models.pain_point import PainPoint
 from nicheiq.report.report_generator import ReportGenerator
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-def _make_unvalidated_pp(
-    title: str = "Test Pain",
-    quotes: list[str] | None = None,
-    mention_count: int = 10,
-) -> UnvalidatedPainPoint:
-    """Create an UnvalidatedPainPoint with given quotes."""
-    return UnvalidatedPainPoint(
-        title=title,
-        description="Test description for pain point",
-        mention_count=mention_count,
-        representative_quotes=quotes or [],
-        source_platforms=["Reddit"],
-        categories=["General"],
-        source_post_ids=[],
-    )
-
 
 def _make_pain_point(
     title: str = "Test Pain",
@@ -50,86 +36,6 @@ def _make_pain_point(
         categories=["General"],
         source_post_ids=source_ids or ["post1", "post2"],
     )
-
-
-# ---------------------------------------------------------------------------
-# Tests: _extract_and_clean_sources parallel alignment
-# ---------------------------------------------------------------------------
-
-class TestExtractParallelAlignment:
-    """Test that _extract_and_clean_sources produces parallel arrays."""
-
-    def _run_extract(self, pain_points: list[UnvalidatedPainPoint]) -> list[UnvalidatedPainPoint]:
-        """Run _extract_and_clean_sources without initializing the full crew."""
-        crew = PainPointCrew.__new__(PainPointCrew)
-        return crew._extract_and_clean_sources(pain_points)
-
-    def test_extract_parallel_alignment(self):
-        """3 quotes: 2 with tags, 1 without -> parallel IDs with empty string."""
-        pp = _make_unvalidated_pp(quotes=[
-            "First quote text [source: abc123]",
-            "Second quote without tag",
-            "Third quote text [source: def456]",
-        ])
-        result = self._run_extract([pp])[0]
-
-        assert len(result.source_post_ids) == 3
-        assert len(result.representative_quotes) == 3
-        assert result.source_post_ids[0] == "abc123"
-        assert result.source_post_ids[1] == ""
-        assert result.source_post_ids[2] == "def456"
-        # Tags should be stripped from quotes
-        assert "[source:" not in result.representative_quotes[0]
-        assert "[source:" not in result.representative_quotes[2]
-
-    def test_extract_duplicate_sources(self):
-        """3 quotes from same source -> all 3 IDs identical, mention_count uses unique count."""
-        pp = _make_unvalidated_pp(
-            quotes=[
-                "Quote A [source: same_post]",
-                "Quote B [source: same_post]",
-                "Quote C [source: same_post]",
-            ],
-            mention_count=1,
-        )
-        result = self._run_extract([pp])[0]
-
-        assert result.source_post_ids == ["same_post", "same_post", "same_post"]
-        # mention_count should be >= unique source count (1)
-        assert result.mention_count >= 1
-
-    def test_extract_no_tags(self):
-        """All quotes lack tags -> source_post_ids = ["", "", ""]."""
-        pp = _make_unvalidated_pp(quotes=[
-            "No tag here",
-            "Also no tag",
-            "Still nothing",
-        ])
-        result = self._run_extract([pp])[0]
-
-        assert result.source_post_ids == ["", "", ""]
-
-    def test_extract_multi_tag_warning(self):
-        """Quote with 2 [source:] tags -> uses first, logs warning."""
-        from loguru import logger
-
-        warnings: list[str] = []
-        handler_id = logger.add(
-            lambda msg: warnings.append(msg),
-            level="WARNING",
-            format="{message}",
-        )
-
-        pp = _make_unvalidated_pp(quotes=[
-            "Multi-source quote [source: first_id] extra text [source: second_id]",
-        ])
-        try:
-            result = self._run_extract([pp])[0]
-        finally:
-            logger.remove(handler_id)
-
-        assert result.source_post_ids[0] == "first_id"
-        assert any("2 source tags" in w for w in warnings)
 
 
 # ---------------------------------------------------------------------------

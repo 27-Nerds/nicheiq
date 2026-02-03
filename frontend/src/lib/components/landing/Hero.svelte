@@ -22,13 +22,25 @@
   const terminalLines = [
     { text: "> Scanning social media for pain points...", highlight: false },
     { text: "> Found 89 relevant discussions", highlight: false },
-    { text: "> Extracting 18 pain points with severity scores...", highlight: false },
-    { text: "> Validating 100+ keywords with search data...", highlight: false },
+    {
+      text: "> Extracting 18 pain points with severity scores...",
+      highlight: false,
+    },
+    {
+      text: "> Validating 100+ keywords with search data...",
+      highlight: false,
+    },
     { text: "> Calculating market size (TAM/SAM/SOM)...", highlight: false },
-    { text: "> Verification: Solo-launchable with minimal budget", highlight: true },
+    {
+      text: "> Verification: Solo-launchable with minimal budget",
+      highlight: true,
+    },
     { text: "> Projected revenue: $5K-15K MRR", highlight: true },
     { text: "> VERDICT: GO - Confidence: 87%", highlight: true },
-    { text: "> Ready: Blueprint + Landing Page. Risk: Medium.", highlight: true },
+    {
+      text: "> Ready: Blueprint + Landing Page. Risk: Medium.",
+      highlight: true,
+    },
   ];
   let visibleLineCount = $state(0);
   let terminalComplete = $state(false);
@@ -65,6 +77,12 @@
       .getElementById("sample-report")
       ?.scrollIntoView({ behavior: "smooth" });
   }
+
+  function scrollToHowItWorks() {
+    document
+      .getElementById("how-it-works")
+      ?.scrollIntoView({ behavior: "smooth" });
+  }
 </script>
 
 <section class="relative min-h-screen flex items-center overflow-hidden">
@@ -96,8 +114,12 @@
         <h1
           class="animate-fade-in delay-100 font-display text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
         >
-          Discover Your Next SaaS Opportunity in <span class="text-gradient-animated">45 Minutes.</span>
-          <br class="hidden sm:block" /><span class="sm:hidden"> </span>Real Problems. Real Data. <span class="text-gradient-animated">No More Guessing.</span>
+          From Niche to Profitable Business in <span
+            class="text-gradient-animated">45 Minutes.</span
+          >
+          <br class="hidden sm:block" /><span class="sm:hidden"> </span>Real
+          Problems. Real Data.
+          <span class="text-gradient-animated">Real Revenue.</span>
         </h1>
 
         <!-- Accent line -->
@@ -105,18 +127,17 @@
           class="animate-fade-in delay-200 w-16 sm:w-24 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full mx-auto mb-6 sm:mb-8"
         ></div>
 
-        <!-- Subheadline - Mobile optimized -->
-        <p
-          class="animate-fade-in delay-200 text-lg sm:text-xl lg:text-2xl text-text-secondary leading-relaxed mb-4 sm:mb-6 max-w-2xl mx-auto"
-        >
-          Real conversations from real people.
-          <span class="text-text-primary font-medium">Every insight you get—verified.</span>
-        </p>
-
         <p
           class="animate-fade-in delay-300 text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-xl mx-auto"
         >
-          We scan hundreds of Reddit & Twitter discussions to surface problems worth solving—that people will actually pay for. You get a research-backed opportunity report with market sizing, competitive analysis, and a clear go/no-go verdict.
+          NicheIQ is where solo founders pick any niche and receive clear
+          answers: WHAT TO BUILD and HOW to make it profitable. Now 45 minutes
+          feels like 3 months of research.
+        </p>
+        <p
+          class="animate-fade-in delay-200 text-lg sm:text-xl lg:text-xl text-text-secondary leading-relaxed mb-4 sm:mb-6 max-w-xl mx-auto"
+        >
+          Get your Profitable Business Report and ready-to-launch Landing Page.
         </p>
 
         <!-- Terminal Animation - Mobile optimized with responsive height -->
@@ -124,14 +145,27 @@
           class="animate-fade-in delay-400 bg-bg-elevated border border-border-emphasis rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm max-w-2xl mx-auto mb-8 sm:mb-10 text-left shadow-lg"
         >
           <!-- Terminal Header -->
-          <div class="flex items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4 pb-2 border-b border-border">
-            <div class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#FF5F57]"></div>
-            <div class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#FEBC2E]"></div>
-            <div class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#28C840]"></div>
-            <span class="ml-auto text-[10px] sm:text-xs text-text-muted font-medium tracking-wide">nicheiq-terminal</span>
+          <div
+            class="flex items-center gap-1.5 sm:gap-2 mb-3 sm:mb-4 pb-2 border-b border-border"
+          >
+            <div
+              class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#FF5F57]"
+            ></div>
+            <div
+              class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#FEBC2E]"
+            ></div>
+            <div
+              class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#28C840]"
+            ></div>
+            <span
+              class="ml-auto text-[10px] sm:text-xs text-text-muted font-medium tracking-wide"
+              >nicheiq-terminal</span
+            >
           </div>
           <!-- Terminal Content - responsive height -->
-          <div class="space-y-1 sm:space-y-1.5 h-[180px] sm:h-[220px] overflow-y-auto">
+          <div
+            class="space-y-1 sm:space-y-1.5 h-[180px] sm:h-[220px] overflow-y-auto"
+          >
             {#each terminalLines.slice(0, visibleLineCount) as line, i}
               <div
                 class={line.highlight
@@ -150,7 +184,9 @@
         </div>
 
         <!-- CTA Buttons - Mobile optimized with full width on small screens -->
-        <div class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-10 sm:mb-12">
+        <div
+          class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-10 sm:mb-12"
+        >
           {#if session?.user}
             <a
               href="/dashboard"
@@ -164,9 +200,15 @@
               href="/register"
               class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
             >
-              Find My First Opportunity
+              Get Started
               <ArrowRight class="w-5 h-5" />
             </a>
+            <button
+              onclick={scrollToHowItWorks}
+              class="btn-secondary w-full sm:w-auto px-8 py-4 text-base"
+            >
+              See How It Works
+            </button>
           {/if}
         </div>
 
@@ -174,23 +216,47 @@
         <div
           class="animate-fade-in delay-500 flex flex-wrap justify-center gap-3 sm:gap-4"
         >
-          <div class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent hover:shadow-md transition-shadow">
-            <span class="block text-2xl sm:text-3xl font-display font-bold text-accent tracking-tight">
-              {Math.round($minuteCount)}<span class="text-lg sm:text-xl font-semibold ml-0.5">min</span>
+          <div
+            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent hover:shadow-md transition-shadow"
+          >
+            <span
+              class="block text-2xl sm:text-3xl font-display font-bold text-accent tracking-tight"
+            >
+              {Math.round($minuteCount)}<span
+                class="text-lg sm:text-xl font-semibold ml-0.5">min</span
+              >
             </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block">To your verdict</span>
+            <span class="small-caps text-[10px] sm:text-xs mt-1 block"
+              >To your verdict</span
+            >
           </div>
-          <div class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-success hover:shadow-md transition-shadow">
-            <span class="block text-2xl sm:text-3xl font-display font-bold text-success tracking-tight">
-              {Math.round($painPointCount)}<span class="text-lg sm:text-xl font-semibold">+</span>
+          <div
+            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-success hover:shadow-md transition-shadow"
+          >
+            <span
+              class="block text-2xl sm:text-3xl font-display font-bold text-success tracking-tight"
+            >
+              {Math.round($painPointCount)}<span
+                class="text-lg sm:text-xl font-semibold">+</span
+              >
             </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block">Pain points found</span>
+            <span class="small-caps text-[10px] sm:text-xs mt-1 block"
+              >Pain points found</span
+            >
           </div>
-          <div class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-secondary hover:shadow-md transition-shadow">
-            <span class="block text-2xl sm:text-3xl font-display font-bold text-secondary tracking-tight">
-              {Math.round($verifyCount)}<span class="text-lg sm:text-xl font-semibold">%</span>
+          <div
+            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-secondary hover:shadow-md transition-shadow"
+          >
+            <span
+              class="block text-2xl sm:text-3xl font-display font-bold text-secondary tracking-tight"
+            >
+              {Math.round($verifyCount)}<span
+                class="text-lg sm:text-xl font-semibold">%</span
+              >
             </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block">Claims verifiable</span>
+            <span class="small-caps text-[10px] sm:text-xs mt-1 block"
+              >Claims verifiable</span
+            >
           </div>
         </div>
 

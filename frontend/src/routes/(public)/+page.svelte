@@ -16,6 +16,8 @@
     Footer
   } from '$lib/components/landing';
 
+  let { data } = $props();
+
   const session = $derived($page.data.session);
 </script>
 
@@ -26,7 +28,7 @@
 
 <main class="overflow-hidden">
   <Hero {session} />
-  <SocialProof />
+  <SocialProof reportsDelivered={data.reportsDelivered} />
   <HowItWorks />
   <AboutMaker />
   <SampleReport />

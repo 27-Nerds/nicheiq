@@ -5,6 +5,7 @@ NicheIQ Tools - Custom CrewAI tools for data collection and research.
 from .cached_serper_dev_tool import CachedSerperDevTool
 from .competitor_query_tool import CompetitorQueryTool
 from .dataforseo_tool import DataForSEOExpandTool, DataForSEOSearchVolumeTool
+from .quote_search_tool import QuoteSearchTool
 from .reddit_tool import RedditCollectorTool
 from .twitter_tool import TwitterCollectorTool
 
@@ -13,6 +14,7 @@ __all__ = [
     "CompetitorQueryTool",
     "DataForSEOExpandTool",
     "DataForSEOSearchVolumeTool",
+    "QuoteSearchTool",
     "RedditCollectorTool",
     "TwitterCollectorTool",
 ]

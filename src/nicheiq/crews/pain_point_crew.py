@@ -15,9 +15,13 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.pain_point import (
     ContentCategorizationReport,
+    EnrichedPainPointQuotes,
+    ExtractedQuote,
     PainPoint,
     PainPointAnalysisResult,
     PainPointExtraction,
+    QuoteEnrichmentResult,
+    SinglePainPointQuotesResult,
     UnvalidatedPainPoint,
     ValidationResult,
 )
@@ -25,8 +29,8 @@ from ..models.social_content import RedditComment, RedditPost, TwitterThread, Tw
 from ..utils.parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 from ..utils.token_monitor import ContentTokenMonitor
 from ..utils.validation.crew_guardrails import (
-    _fix_common_json_errors,
     validate_content_categorization,
+    validate_quote_enrichment,
 )
 
 # Source tracking pattern for [source: ID] suffixes
@@ -99,10 +103,8 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
                 return (False, "Pain point extraction returned empty output (no pydantic or raw)")
 
             try:
-                # Clean LLM response to remove XML-like tags
+                # Clean LLM response (remove XML tags, markdown fencing, etc.)
                 cleaned_raw = clean_llm_response(task_output.raw)
-                # Try to fix common JSON errors
-                cleaned_raw = _fix_common_json_errors(cleaned_raw)
                 raw_json = json.loads(cleaned_raw)
                 result = PainPointExtraction.model_validate(raw_json)
                 logger.debug("Pain point extraction guardrail: Parsed from .raw")
@@ -144,33 +146,33 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
             return (
                 False,
                 f"Need at least 3 extracted_pain_points, got {len(result.extracted_pain_points)}. "
-                "If data is sparse, still identify at least 3 distinct pain patterns with supporting quotes."
+                "If data is sparse, still identify at least 3 distinct pain patterns with anchor_keywords."
             )
 
-        # Validate each pain point has required fields
+        # Validate each pain point has required fields (anchor_keywords instead of quotes)
         failing_pain_points = []
         for i, pp in enumerate(result.extracted_pain_points):
             if not pp.title or len(pp.title) < 5:
                 return (False, f"Pain point {i+1} missing or too short title")
             if not pp.description or len(pp.description) < 20:
                 return (False, f"Pain point '{pp.title}' has missing or too short description")
-            if len(pp.representative_quotes) < 3:
+            if not pp.anchor_keywords or len(pp.anchor_keywords) < 2:
                 failing_pain_points.append(
-                    f"  - '{pp.title}': {len(pp.representative_quotes)} quotes (need 3+)"
+                    f"  - '{pp.title}': {len(pp.anchor_keywords) if pp.anchor_keywords else 0} anchor_keywords (need 2+)"
                 )
 
         if failing_pain_points:
             return (
                 False,
-                f"Pain points with insufficient quotes:\n"
+                f"Pain points with insufficient anchor_keywords:\n"
                 + "\n".join(failing_pain_points)
-                + "\n\nFix options: (1) Search knowledge sources for more quotes with [source: ID] tags, "
-                "OR (2) EXCLUDE pain points with <3 quotes - they lack sufficient evidence, "
-                "OR (3) MERGE weak pain points into related broader categories."
+                + "\n\nFix: Add 2-6 short anchor phrases (2-6 words each) that users say "
+                "when discussing this pain point. These will be used for Task 4 vector search."
             )
 
         logger.info(f"✓ Pain point extraction guardrail passed: {len(result.extracted_pain_points)} pain points")
-        return (True, result.model_dump_json())
+        # Return task_output.raw for CrewAI to re-parse (guardrails cannot modify output)
+        return (True, task_output.raw)
 
     except Exception as e:
         return (False, f"Pain point extraction validation error: {str(e)}")
@@ -198,8 +200,8 @@ def validate_pain_point_scoring(task_output) -> tuple[bool, Any]:
                 return (False, "Pain point validation returned empty output (no pydantic or raw)")
 
             try:
+                # Clean LLM response (remove XML tags, markdown fencing, etc.)
                 cleaned_raw = clean_llm_response(task_output.raw)
-                cleaned_raw = _fix_common_json_errors(cleaned_raw)
                 raw_json = json.loads(cleaned_raw)
                 result = ValidationResult.model_validate(raw_json)
                 logger.debug("Pain point scoring guardrail: Parsed from .raw")
@@ -278,6 +280,11 @@ class PainPointCrew:
         # Don't call super().__init__() when using @CrewBase decorator
         # The decorator handles parent class initialization
 
+        # Store RAW unfiltered posts for Task 4 enrichment (comprehensive vector search)
+        # Task 4 needs ALL posts to find quotes, not just the token-budgeted subset
+        self._raw_reddit_posts = list(reddit_posts or [])
+        self._raw_twitter_threads = list(twitter_threads or [])
+
         # Apply quality filter BEFORE formatting for knowledge sources
         original_reddit_count = len(reddit_posts or [])
         original_twitter_count = len(twitter_threads or [])
@@ -347,6 +354,12 @@ class PainPointCrew:
             )
             self.knowledge_sources.append(self.twitter_knowledge)
             logger.info(f"Twitter content: {len(self.formatted_twitter_content)} chars, knowledge source created")
+
+        # Create enrichment Knowledge for Task 4 using RAW UNFILTERED posts with post_id metadata
+        # This ensures Task 4 can search ALL content, not just the token-budgeted subset
+        self._enrichment_knowledge = None
+        if self._raw_reddit_posts or self._raw_twitter_threads:
+            self._setup_enrichment_knowledge(niche_description)
 
         logger.info(
             f"PainPointCrew initialized with {len(self.reddit_posts)} Reddit posts "
@@ -435,6 +448,66 @@ class PainPointCrew:
             quality_threads.append(thread)
 
         return quality_threads
+
+    def _setup_enrichment_knowledge(self, niche_description: str) -> None:
+        """
+        Create Knowledge instance for Task 4 quote enrichment using RAW unfiltered posts.
+
+        Uses custom knowledge sources that store post_id in metadata for reliable
+        source attribution (instead of relying on [source: ID] tags in text).
+
+        Args:
+            niche_description: Niche description for collection naming
+        """
+        import re
+        import time
+
+        from crewai.knowledge.knowledge import Knowledge
+
+        from ..utils.knowledge import RedditKnowledgeSource, TwitterKnowledgeSource
+
+        # Sanitize collection name (alphanumeric, dash, underscore only)
+        def sanitize_name(s: str) -> str:
+            return re.sub(r'[^a-zA-Z0-9_-]', '_', s)[:50]
+
+        enrichment_sources = []
+
+        # Create Reddit knowledge source with post_id metadata
+        if self._raw_reddit_posts:
+            reddit_source = RedditKnowledgeSource(
+                posts=self._raw_reddit_posts,
+                chunk_size=2000,
+                chunk_overlap=600,
+            )
+            enrichment_sources.append(reddit_source)
+
+        # Create Twitter knowledge source with thread_id metadata
+        if self._raw_twitter_threads:
+            twitter_source = TwitterKnowledgeSource(
+                threads=self._raw_twitter_threads,
+                chunk_size=1500,
+                chunk_overlap=400,
+            )
+            enrichment_sources.append(twitter_source)
+
+        if enrichment_sources:
+            collection_name = f"enrich_{sanitize_name(niche_description)}_{int(time.time())}"
+            self._enrichment_knowledge = Knowledge(
+                collection_name=collection_name,
+                sources=enrichment_sources,
+                embedder={
+                    "provider": "openai",
+                    "config": {"model_name": "text-embedding-3-small"}
+                }
+            )
+            # CRITICAL: Must call add_sources() to inject storage and index documents.
+            # When using Knowledge() directly (not via Crew.knowledge_sources), this is NOT automatic.
+            # See: crewai/knowledge/knowledge.py:add_sources() vs crewai/crew.py:create_crew_knowledge()
+            self._enrichment_knowledge.add_sources()
+            logger.info(
+                f"Task 4 enrichment Knowledge created and indexed: {len(self._raw_reddit_posts)} Reddit posts, "
+                f"{len(self._raw_twitter_threads)} Twitter threads (with post_id metadata)"
+            )
 
     def _format_comments_with_replies(self, comments: list[RedditComment], post_id: str = "unknown", depth: int = 0, max_depth: int = 3) -> str:
         """
@@ -683,6 +756,39 @@ class PainPointCrew:
             verbose=True,
         )
 
+    @agent
+    def quote_enrichment_researcher(self) -> Agent:
+        """
+        Agent responsible for finding verbatim quotes via vector search (Task 4).
+
+        Uses QuoteSearchTool to search the enrichment knowledge base
+        (all raw posts with post_id metadata) and extract quotes with source attribution.
+
+        Uses low temperature (0.1) for consistent, literal quote extraction.
+        """
+        from langchain_openai import ChatOpenAI
+
+        from ..tools.quote_search_tool import QuoteSearchTool
+        from ..utils.llm_service import build_llm_kwargs
+
+        # Create search tool with enrichment knowledge (if available)
+        tools = []
+        if self._enrichment_knowledge:
+            tools.append(QuoteSearchTool(knowledge=self._enrichment_knowledge))
+        else:
+            logger.warning("quote_enrichment_researcher: No enrichment knowledge available")
+
+        return Agent(
+            config=self.agents_config["quote_enrichment_researcher"],
+            llm=ChatOpenAI(**build_llm_kwargs(
+                model=settings.quote_enrichment_llm,
+                temperature=0.1,  # Low temperature for literal extraction
+                max_tokens=16000,  # Large output for many quotes
+            )),
+            tools=tools,
+            verbose=True,
+        )
+
     @task
     def categorize_content_task(self) -> Task:
         """
@@ -737,17 +843,208 @@ class PainPointCrew:
             guardrail_max_retries=2,  # Retry up to 2 times on JSON/validation failure
         )
 
+    @task
+    def enrich_pain_point_quotes_task(self) -> Task:
+        """
+        Task 4: Find verbatim quotes for each pain point via vector search.
+
+        Depends on: extract_pain_points_task (uses anchor_keywords)
+        Output: QuoteEnrichmentResult with quotes per pain point from vector search.
+
+        The agent uses QuoteSearchTool to search the enrichment knowledge base
+        (all raw posts with post_id metadata) and extracts quotes with source attribution.
+
+        NOTE: This task is kept for backward compatibility but is NOT used in the
+        main analyze() flow. Instead, _run_parallel_quote_enrichment() is called
+        directly after Tasks 1-3 complete.
+        """
+        return Task(
+            config=self.tasks_config["enrich_pain_point_quotes"],
+            agent=self.quote_enrichment_researcher(),
+            context=[self.extract_pain_points_task()],  # Only Task 2 needed, not Task 3
+            output_pydantic=QuoteEnrichmentResult,
+            guardrail=validate_quote_enrichment,
+            guardrail_max_retries=2,
+        )
+
+    def _parse_search_results(self, results: str) -> list[tuple[str, str]]:
+        """
+        Parse QuoteSearchTool results into (quote, post_id) tuples.
+
+        Args:
+            results: Raw string output from QuoteSearchTool._run()
+
+        Returns:
+            List of (quote_text, post_id) tuples extracted from results
+        """
+        parsed = []
+
+        # Pattern: --- Result N (score: X.XX, post_id: abc123, source: reddit) ---
+        pattern = r'--- Result \d+ \(score: [\d.]+, post_id: ([^,]+), source: \w+\) ---\n(.*?)(?=--- Result|\Z)'
+
+        for match in re.finditer(pattern, results, re.DOTALL):
+            post_id = match.group(1).strip()
+            content = match.group(2).strip()
+
+            # Extract sentences as potential quotes (15+ words)
+            sentences = re.split(r'(?<=[.!?])\s+', content)
+            for sentence in sentences:
+                sentence = sentence.strip()
+                if len(sentence.split()) >= 15:
+                    parsed.append((sentence, post_id))
+
+        return parsed
+
+    def _enrich_single_pain_point(
+        self,
+        pain_point: UnvalidatedPainPoint,
+        search_tool: "QuoteSearchTool",
+    ) -> SinglePainPointQuotesResult:
+        """
+        Search for quotes supporting a single pain point.
+
+        Designed to run in parallel via ThreadPoolExecutor.
+        Each pain point is processed independently, so the LLM can't skip any.
+
+        Args:
+            pain_point: The pain point to find quotes for
+            search_tool: QuoteSearchTool instance for vector search
+
+        Returns:
+            SinglePainPointQuotesResult with quotes found for this pain point
+        """
+        all_quotes: list[ExtractedQuote] = []
+        seen_quote_texts: set[str] = set()
+
+        # Limit to 4 keywords to avoid excessive API calls
+        keywords_to_search = pain_point.anchor_keywords[:4]
+
+        for keyword in keywords_to_search:
+            try:
+                results = search_tool._run(keyword)
+                parsed_quotes = self._parse_search_results(results)
+
+                for quote_text, post_id in parsed_quotes:
+                    normalized = quote_text.lower().strip()
+                    # Deduplicate and filter short quotes
+                    if normalized not in seen_quote_texts and len(quote_text.split()) >= 15:
+                        seen_quote_texts.add(normalized)
+                        all_quotes.append(ExtractedQuote(
+                            quote_text=quote_text,
+                            post_id=post_id,
+                        ))
+            except Exception as e:
+                logger.warning(f"Search failed for keyword '{keyword}': {e}")
+
+        return SinglePainPointQuotesResult(
+            pain_point_title=pain_point.title,
+            anchor_keywords_searched=keywords_to_search,
+            quotes=all_quotes[:12],  # Cap at 12 quotes per pain point
+            search_summary=f"Searched {len(keywords_to_search)} keywords, found {len(all_quotes)} quotes"
+        )
+
+    def _run_parallel_quote_enrichment(
+        self,
+        extracted_pain_points: list[UnvalidatedPainPoint],
+    ) -> QuoteEnrichmentResult:
+        """
+        Run quote enrichment in parallel for all pain points.
+
+        Uses ThreadPoolExecutor - each pain point is processed independently.
+        This guarantees 100% coverage (every pain point gets searched) because
+        the LLM can't skip any when they're processed in separate threads.
+
+        Args:
+            extracted_pain_points: Pain points from Task 2 with anchor_keywords
+
+        Returns:
+            QuoteEnrichmentResult aggregating all parallel search results
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        from ..tools.quote_search_tool import QuoteSearchTool
+
+        if not self._enrichment_knowledge:
+            logger.warning("No enrichment knowledge available, skipping parallel enrichment")
+            return QuoteEnrichmentResult(
+                niche=self.niche_description,
+                enriched_pain_points=[],
+                total_quotes_found=0,
+                enrichment_summary="No content available for quote search"
+            )
+
+        # Handle empty pain points list
+        if not extracted_pain_points:
+            logger.info("No pain points to enrich, returning empty result")
+            return QuoteEnrichmentResult(
+                niche=self.niche_description,
+                enriched_pain_points=[],
+                total_quotes_found=0,
+                enrichment_summary="No pain points to enrich"
+            )
+
+        # Create search tool (thread-safe for read-only queries)
+        search_tool = QuoteSearchTool(knowledge=self._enrichment_knowledge)
+
+        enriched_results: list[EnrichedPainPointQuotes] = []
+        max_workers = min(4, len(extracted_pain_points))
+
+        logger.info(
+            f"Starting parallel quote enrichment for {len(extracted_pain_points)} pain points "
+            f"(max_workers={max_workers})"
+        )
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # Submit all enrichment tasks
+            future_to_pp = {
+                executor.submit(self._enrich_single_pain_point, pp, search_tool): pp
+                for pp in extracted_pain_points
+            }
+
+            # Collect results as they complete
+            for future in as_completed(future_to_pp):
+                pp = future_to_pp[future]
+                try:
+                    result = future.result()
+                    enriched_results.append(EnrichedPainPointQuotes(
+                        pain_point_title=result.pain_point_title,
+                        quotes=result.quotes,
+                    ))
+                    logger.info(f"[OK] Enriched '{pp.title[:40]}': {len(result.quotes)} quotes")
+                except Exception as e:
+                    logger.error(f"Failed to enrich '{pp.title}': {e}")
+                    # Add empty result to maintain 1:1 mapping
+                    enriched_results.append(EnrichedPainPointQuotes(
+                        pain_point_title=pp.title,
+                        quotes=[],
+                    ))
+
+        total_quotes = sum(len(e.quotes) for e in enriched_results)
+
+        return QuoteEnrichmentResult(
+            niche=self.niche_description,
+            enriched_pain_points=enriched_results,
+            total_quotes_found=total_quotes,
+            enrichment_summary=f"Parallel enrichment: {total_quotes} quotes for {len(enriched_results)} pain points"
+        )
+
     @crew
     def crew(self) -> Crew:
         """
-        Assemble the PainPointCrew with all agents, tasks, and knowledge sources.
+        Assemble the PainPointCrew with all agents and tasks.
+
+        NOTE: This method includes all 4 tasks for backward compatibility,
+        but the main analyze() flow uses a 2-phase approach:
+        - Phase 1: Tasks 1-3 via CrewAI (explicit Crew construction)
+        - Phase 2: Parallel quote enrichment via Python ThreadPoolExecutor
 
         Architecture:
         - Task 1 (content_researcher): NO RAG - uses direct injection only
         - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): HAVE RAG via agent-level knowledge_sources
+        - Task 4 (quote_enrichment_researcher): Uses QuoteSearchTool (not used in analyze())
 
         Returns:
-            Configured Crew instance (knowledge is agent-level, not crew-level)
+            Configured Crew instance with all 4 tasks
         """
         embedder_config = {
             "provider": "openai",
@@ -756,12 +1053,13 @@ class PainPointCrew:
             }
         }
 
-        # Note: Knowledge sources are attached at agent level (pain_point_analyst, pain_point_validator)
-        # Task 1's agent (content_researcher) has NO knowledge_sources - uses direct injection only
+        # Note: Knowledge sources are attached at agent level
+        has_enrichment = self._enrichment_knowledge is not None
         logger.info(
             f"PainPointCrew using agent-level knowledge: "
             f"content_researcher=NO RAG, pain_point_analyst=RAG ({len(self.knowledge_sources)} sources), "
-            f"pain_point_validator=RAG ({len(self.knowledge_sources)} sources)"
+            f"pain_point_validator=RAG ({len(self.knowledge_sources)} sources), "
+            f"quote_enrichment=parallel Python (enrichment_knowledge={has_enrichment})"
         )
 
         return Crew(
@@ -1006,9 +1304,13 @@ class PainPointCrew:
                 from datetime import datetime
                 collection_timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
-            # Hybrid approach:
-            # - Task 1 (content_researcher): full content via direct injection (NO RAG)
-            # - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): agent-level RAG for quote retrieval
+            # Two-phase execution:
+            # - Phase 1: Tasks 1-3 via CrewAI (categorize, extract, validate)
+            # - Phase 2: Python-driven parallel quote enrichment (replaces Task 4)
+            #
+            # Phase 2 uses ThreadPoolExecutor to search quotes for each pain point
+            # independently, guaranteeing 100% coverage (LLM can't skip any).
+
             # Compute discussion quality stats for Task 3
             comment_counts = [
                 len(p.comments) if p.comments else 0
@@ -1020,8 +1322,39 @@ class PainPointCrew:
             )
             rich_discussion_count = sum(1 for c in comment_counts if c >= 20)
 
+            # Phase 1: Create crew with Tasks 1-3 only (exclude Task 4)
+            embedder_config = {
+                "provider": "openai",
+                "config": {
+                    "model_name": "text-embedding-3-small"
+                }
+            }
+
+            phase1_crew = Crew(
+                agents=[
+                    self.content_researcher(),
+                    self.pain_point_analyst(),
+                    self.pain_point_validator(),
+                ],
+                tasks=[
+                    self.categorize_content_task(),
+                    self.extract_pain_points_task(),
+                    self.validate_pain_points_task(),
+                    # Task 4 removed - enrichment done via parallel Python
+                ],
+                verbose=True,
+                process_type="sequential",
+                embedder=embedder_config,
+            )
+            self._last_crew = phase1_crew  # Store for usage_metrics access
+
+            logger.info(
+                f"Phase 1: Running Tasks 1-3 (categorize, extract, validate) - "
+                f"Task 4 (quote enrichment) will run as parallel Python"
+            )
+
             try:
-                crew_output = crew_instance.kickoff(inputs={
+                crew_output = phase1_crew.kickoff(inputs={
                     "niche_description": self.niche_description,
                     "market_segments": market_segments_formatted,
                     "industry_boundaries": self.industry_boundaries or "Not specified",
@@ -1056,11 +1389,11 @@ class PainPointCrew:
                 # Re-raise other exceptions
                 raise
 
-            # Python merge: Extract all task outputs and merge Task 2 + Task 3
+            # Parse Phase 1 outputs (Tasks 1-3)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
             if len(task_outputs) < 3:
-                logger.error(f"Expected 3 task outputs, got {len(task_outputs)}")
-                raise ValueError("Incomplete task execution in pain point crew")
+                logger.error(f"Expected 3 task outputs from Phase 1, got {len(task_outputs)}")
+                raise ValueError("Incomplete task execution in pain point crew Phase 1")
 
             # Helper to parse pydantic from raw when guardrails set pydantic=None
             def _parse_output(task_output, model_class, task_name: str):
@@ -1070,8 +1403,8 @@ class PainPointCrew:
                 if not hasattr(task_output, 'raw') or not task_output.raw:
                     raise ValueError(f"{task_name}: No pydantic or raw output available")
                 try:
+                    # Clean LLM response (remove XML tags, markdown fencing, etc.)
                     cleaned_raw = clean_llm_response(task_output.raw)
-                    cleaned_raw = _fix_common_json_errors(cleaned_raw)
                     raw_json = json.loads(cleaned_raw)
                     result = model_class.model_validate(raw_json)
                     logger.debug(f"{task_name}: Parsed {model_class.__name__} from .raw")
@@ -1083,87 +1416,121 @@ class PainPointCrew:
             extraction_output = _parse_output(task_outputs[1], PainPointExtraction, "Task 2")
             validation_output = _parse_output(task_outputs[2], ValidationResult, "Task 3")
 
-            # Extract source IDs from [source: ID] suffixes and clean quotes
-            extraction_output.extracted_pain_points = self._extract_and_clean_sources(
+            logger.info(f"Phase 1 complete: Task 2 extracted {len(extraction_output.extracted_pain_points)} pain points")
+
+            # Phase 2: Parallel quote enrichment (Python-driven, not LLM)
+            logger.info("Phase 2: Starting parallel quote enrichment...")
+            enrichment_output = self._run_parallel_quote_enrichment(
                 extraction_output.extracted_pain_points
             )
 
-            # Calculate and log aggregate source tracking stats
-            pain_points_with_sources = sum(
-                1 for pp in extraction_output.extracted_pain_points
-                if any(pp.source_post_ids)
-            )
+            # Log quote enrichment stats
             total_pain_points = len(extraction_output.extracted_pain_points)
-            total_quotes = sum(len(pp.representative_quotes) for pp in extraction_output.extracted_pain_points)
-            coverage_pct = (pain_points_with_sources / total_pain_points * 100) if total_pain_points > 0 else 0
-
+            total_enriched_quotes = enrichment_output.total_quotes_found
             logger.info(
-                f"Source tracking: Extracted source IDs from {pain_points_with_sources}/{total_pain_points} "
-                f"pain points ({coverage_pct:.1f}% coverage, {total_quotes} total quotes)"
+                f"Phase 2 complete: {total_enriched_quotes} quotes found "
+                f"for {len(enrichment_output.enriched_pain_points)} pain points"
             )
-
-            # Warn if source coverage is low (< 80%)
-            if coverage_pct < 80:
-                logger.warning(
-                    f"Low source attribution coverage: Only {pain_points_with_sources}/{total_pain_points} "
-                    f"pain points ({coverage_pct:.1f}%) have source IDs. Expected >80% coverage."
-                )
 
             logger.info(
                 f"Python merge: Combining {len(extraction_output.extracted_pain_points)} extracted pain points "
-                f"with {len(validation_output.pain_point_scores)} validation scores"
+                f"with {len(validation_output.pain_point_scores)} validation scores "
+                f"and {len(enrichment_output.enriched_pain_points)} quote enrichments"
             )
 
-            # Merge Task 2 (extraction) + Task 3 (validation) → final PainPointAnalysisResult
+            # Merge Task 2 (extraction with anchor_keywords) + Task 3 (validation scores) + Task 4 (quotes) → final PainPoint
             final_pain_points = []
             unmatched_scores = []
+            unmatched_quotes = []
 
             for unvalidated in extraction_output.extracted_pain_points:
                 # Find matching score by title (using fuzzy matching)
-                matching_score, match_ratio = fuzzy_find_matching_score(
+                matching_score, score_match_ratio = fuzzy_find_matching_score(
                     unvalidated.title,
                     validation_output.pain_point_scores
                 )
 
-                if matching_score:
-                    # Log fuzzy match details if not exact
-                    if match_ratio < 1.0:
-                        logger.debug(
-                            f"Fuzzy matched '{unvalidated.title}' → '{matching_score.pain_point_title}' "
-                            f"(similarity: {match_ratio:.2%})"
-                        )
-
-                    # Merge unvalidated pain point + validation scores
-                    # Safety check: Warn if spreading would overwrite fields with explicit kwargs
-                    # This catches future schema changes where UnvalidatedPainPoint adds score fields
-                    unvalidated_fields = set(unvalidated.model_dump().keys())
-                    explicit_fields = {'severity_score', 'willingness_to_pay', 'opportunity_level'}
-                    overlapping = unvalidated_fields & explicit_fields
-                    if overlapping:
-                        logger.warning(
-                            f"Field overlap detected in PainPoint merge: {overlapping}. "
-                            f"Validation scores will overwrite values from UnvalidatedPainPoint."
-                        )
-
-                    final_pain_points.append(PainPoint(
-                        **unvalidated.model_dump(),  # All original fields
-                        severity_score=matching_score.severity_score,
-                        willingness_to_pay=matching_score.willingness_to_pay,
-                        opportunity_level=matching_score.opportunity_level,
-                    ))
-                else:
+                if not matching_score:
                     logger.warning(
                         f"No validation score found for pain point: '{unvalidated.title}' "
-                        f"(best match similarity: {match_ratio:.2%}, threshold: {FUZZY_MATCH_THRESHOLD:.0%}) - skipping"
+                        f"(best match similarity: {score_match_ratio:.2%}, threshold: {FUZZY_MATCH_THRESHOLD:.0%}) - skipping"
                     )
                     unmatched_scores.append(unvalidated.title)
+                    continue
+
+                # Log fuzzy match details if not exact
+                if score_match_ratio < 1.0:
+                    logger.debug(
+                        f"Fuzzy matched score: '{unvalidated.title}' → '{matching_score.pain_point_title}' "
+                        f"(similarity: {score_match_ratio:.2%})"
+                    )
+
+                # Find matching quotes from Task 4 (using fuzzy matching)
+                quotes = []
+                source_ids = []
+                matching_enrichment = None
+                best_quote_ratio = 0.0
+
+                for enriched in enrichment_output.enriched_pain_points:
+                    ratio = SequenceMatcher(
+                        None,
+                        unvalidated.title.lower().strip(),
+                        enriched.pain_point_title.lower().strip()
+                    ).ratio()
+                    if ratio > best_quote_ratio:
+                        best_quote_ratio = ratio
+                        if ratio >= FUZZY_MATCH_THRESHOLD:
+                            matching_enrichment = enriched
+
+                if matching_enrichment:
+                    # Extract quotes and source IDs from Task 4 output
+                    for eq in matching_enrichment.quotes:
+                        quotes.append(eq.quote_text)
+                        source_ids.append(eq.post_id)
+                    if best_quote_ratio < 1.0:
+                        logger.debug(
+                            f"Fuzzy matched quotes: '{unvalidated.title}' → '{matching_enrichment.pain_point_title}' "
+                            f"(similarity: {best_quote_ratio:.2%})"
+                        )
+                else:
+                    logger.warning(
+                        f"No Task 4 quotes found for pain point: '{unvalidated.title}' "
+                        f"(best match similarity: {best_quote_ratio:.2%})"
+                    )
+                    unmatched_quotes.append(unvalidated.title)
+
+                # Build final PainPoint with quotes from Task 4 and scores from Task 3
+                # Note: UnvalidatedPainPoint has anchor_keywords, not representative_quotes/source_post_ids
+                final_pain_points.append(PainPoint(
+                    title=unvalidated.title,
+                    description=unvalidated.description,
+                    mention_count=unvalidated.mention_count,
+                    representative_quotes=quotes,  # From Task 4
+                    source_post_ids=source_ids,     # From Task 4
+                    source_platforms=unvalidated.source_platforms,
+                    categories=unvalidated.categories,
+                    severity_score=matching_score.severity_score,
+                    willingness_to_pay=matching_score.willingness_to_pay,
+                    opportunity_level=matching_score.opportunity_level,
+                ))
 
             # Validate merge completeness
             if len(final_pain_points) != len(extraction_output.extracted_pain_points):
                 logger.warning(
                     f"Merge incomplete: {len(final_pain_points)}/{len(extraction_output.extracted_pain_points)} "
-                    f"pain points matched with scores. Unmatched: {unmatched_scores}"
+                    f"pain points merged. Unmatched scores: {unmatched_scores}"
                 )
+            if unmatched_quotes:
+                logger.warning(f"Pain points without Task 4 quotes: {unmatched_quotes}")
+
+            # Log quote coverage stats
+            pain_points_with_quotes = sum(1 for pp in final_pain_points if pp.representative_quotes)
+            total_final_quotes = sum(len(pp.representative_quotes) for pp in final_pain_points)
+            quote_coverage_pct = (pain_points_with_quotes / len(final_pain_points) * 100) if final_pain_points else 0
+            logger.info(
+                f"Quote coverage: {pain_points_with_quotes}/{len(final_pain_points)} pain points have quotes "
+                f"({quote_coverage_pct:.1f}% coverage, {total_final_quotes} total quotes)"
+            )
 
             # Create final result
             result = PainPointAnalysisResult(

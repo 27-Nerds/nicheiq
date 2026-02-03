@@ -103,7 +103,13 @@ def process_job(job_data: dict) -> None:
         # Notify backend that we're starting this job
         from .heartbeat import notify_job_started, set_current_job
         set_current_job(job_id)
-        notify_job_started(job_id)
+
+        # Check if job was cancelled while in queue
+        should_proceed = notify_job_started(job_id)
+        if not should_proceed:
+            logger.info(f"Job {job_id} was cancelled - skipping processing")
+            set_current_job(None)
+            return
 
         if task_type == "landing_page":
             from .tasks import run_landing_page_only

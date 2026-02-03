@@ -13,6 +13,7 @@ import { suggestRouter } from './routes/suggest.js';
 import { adminRouter } from './routes/admin.js';
 import { sharesRouter, publicShareRouter } from './routes/shares.js';
 import { webhooksRouter } from './routes/webhooks.js';
+import { statsRouter } from './routes/stats.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 
@@ -52,6 +53,7 @@ app.use('/api/billing', billingRouter);
 app.use('/api/workers', workersRouter);
 app.use('/api/suggest', suggestRouter);
 app.use('/api/admin', adminRouter);
+app.use('/api/stats', statsRouter);
 app.use('/api', healthRouter);
 
 // Error handling middleware

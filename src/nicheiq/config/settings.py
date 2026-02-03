@@ -105,6 +105,14 @@ class Settings(BaseSettings):
         default="gpt-4o-mini",
         description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4o-mini recommended for cost efficiency)"
     )
+    quote_enrichment_llm: str = Field(
+        default="gpt-4.1-mini",
+        description="Model for quote enrichment agent (Task 4) in Stage 6 - uses vector search to find quotes"
+    )
+    quote_enrichment_target_per_pain_point: int = Field(
+        default=8,
+        description="Target number of quotes per pain point in Task 4 enrichment"
+    )
     landing_page_llm: str = Field(
         default="gpt-5.2",
         description="Model to use for landing page generation (gpt-5.2 recommended for high-quality creative output)"

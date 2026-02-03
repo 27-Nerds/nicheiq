@@ -16,15 +16,10 @@ from typing import Any
 
 from loguru import logger
 
-# Pre-compiled regex patterns for JSON error fixing (performance optimization)
-_SINGLE_LINE_COMMENT_RE = re.compile(r'//[^\n]*')
-_MULTI_LINE_COMMENT_RE = re.compile(r'/\*.*?\*/', re.DOTALL)
-_TRAILING_COMMA_RE = re.compile(r',(\s*[}\]])')
-
 from ...models.competitor import CompetitiveAnalysisResult
 from ...models.data_source import SourceEvaluationReport
 from ...models.landing_page import AnimatedHTMLResult, HTMLPageResult, QAReviewResult
-from ...models.pain_point import ContentCategorizationReport
+from ...models.pain_point import ContentCategorizationReport, QuoteEnrichmentResult
 from ...models.research_state import AudienceMappingResult
 from ...models.seo_strategy import (
     CategoryLightResult,
@@ -695,6 +690,13 @@ def _validate_json_ld(code: str) -> tuple[bool, str]:
 # removed - Task 5 deleted, technical SEO is now in Task 2's technical_seo_recommendations
 
 
+def _has_unquoted_keys(raw: str) -> bool:
+    """Detect unquoted JSON keys like { key: value } instead of { "key": value }."""
+    # Pattern: opening brace or comma, whitespace, then word without quotes before colon
+    # Matches: { cluster_name: or , primary_keyword:
+    return bool(re.search(r'[{,]\s*[a-zA-Z_][a-zA-Z0-9_]*\s*:', raw))
+
+
 # ========================================
 # TASK 2: CONTENT STRATEGY GUARDRAIL (HIGH)
 # ========================================
@@ -731,6 +733,15 @@ def validate_content_strategy_output(task_output) -> tuple[bool, Any]:
                         False,
                         "REPETITION LOOP DETECTED in content strategy. "
                         "Generate UNIQUE topic clusters with DIFFERENT keywords."
+                    )
+                # Detect unquoted JSON keys (common LLM error)
+                if "key must be a string" in str(e.msg) or _has_unquoted_keys(raw_sample):
+                    return (
+                        False,
+                        "JSON SYNTAX ERROR: All object keys must be double-quoted strings. "
+                        'WRONG: { cluster_name: "value" }  '
+                        'CORRECT: { "cluster_name": "value" }  '
+                        "Re-output with ALL keys in double quotes."
                     )
                 return (
                     False,
@@ -879,95 +890,6 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
 # validate_final_synthesis_output removed - Task 4 deleted (generic boilerplate)
 
 
-# ========================================
-# HELPER: FIX COMMON JSON ERRORS
-# ========================================
-
-
-def _fix_unescaped_newlines_in_strings(text: str) -> str:
-    """
-    Fix unescaped literal newlines inside JSON string values.
-
-    Uses state machine to track string context, respecting escape sequences.
-    Structural newlines (outside strings) are preserved.
-
-    Args:
-        text: Raw JSON text potentially containing unescaped newlines in strings
-
-    Returns:
-        JSON text with literal newlines inside strings escaped as \\n
-    """
-    result = []
-    in_string = False
-    i = 0
-
-    while i < len(text):
-        char = text[i]
-
-        # Handle escape sequences (skip next char to avoid toggling on escaped quotes)
-        if in_string and char == '\\' and i + 1 < len(text):
-            result.append(char)
-            result.append(text[i + 1])
-            i += 2
-            continue
-
-        # Toggle string state on unescaped quotes
-        if char == '"':
-            in_string = not in_string
-            result.append(char)
-            i += 1
-            continue
-
-        # Replace literal newlines inside strings
-        if in_string and char == '\n':
-            result.append('\\n')
-            i += 1
-            continue
-
-        # Handle Windows line endings (\r\n) inside strings
-        if in_string and char == '\r':
-            if i + 1 < len(text) and text[i + 1] == '\n':
-                result.append('\\n')
-                i += 2
-            else:
-                result.append('\\r')
-                i += 1
-            continue
-
-        result.append(char)
-        i += 1
-
-    return ''.join(result)
-
-
-def _fix_common_json_errors(raw_json: str) -> str:
-    """
-    Attempt to fix common JSON errors from LLM output.
-
-    Fixes:
-    - Trailing commas before } or ]
-    - JavaScript-style comments
-    - Unescaped literal newlines inside JSON strings
-
-    Args:
-        raw_json: Raw JSON string that may contain errors
-
-    Returns:
-        Cleaned JSON string
-    """
-    # Remove JavaScript-style comments using pre-compiled patterns
-    cleaned = _SINGLE_LINE_COMMENT_RE.sub('', raw_json)
-    cleaned = _MULTI_LINE_COMMENT_RE.sub('', cleaned)
-
-    # Fix trailing commas before } or ]
-    cleaned = _TRAILING_COMMA_RE.sub(r'\1', cleaned)
-
-    # Fix unescaped literal newlines inside JSON strings
-    cleaned = _fix_unescaped_newlines_in_strings(cleaned)
-
-    return cleaned
-
-
 def _parse_pydantic_from_task_output(task_output, model_class, task_name: str) -> tuple[Any | None, str | None]:
     """
     Unified helper to parse Pydantic model from task output.
@@ -998,9 +920,8 @@ def _parse_pydantic_from_task_output(task_output, model_class, task_name: str) -
             return (None, f"{task_name} returned empty output (no pydantic or raw)")
 
         try:
-            # Clean and fix common JSON errors
+            # Clean LLM response (remove XML tags, markdown fencing, etc.)
             cleaned_raw = clean_llm_response(task_output.raw)
-            cleaned_raw = _fix_common_json_errors(cleaned_raw)
             raw_json = json.loads(cleaned_raw)
             result = model_class.model_validate(raw_json)
             logger.debug(f"{task_name} guardrail: Parsed {model_class.__name__} from .raw")
@@ -1033,7 +954,7 @@ def validate_content_categorization(task_output) -> tuple[bool, Any]:
     Validates:
     - JSON is parseable (via unified helper)
     - Has at least 4 theme_categories
-    - Each theme has at least 3 representative_quotes
+    - Each theme has at least 3 anchor_keywords (for Task 4 vector search)
     - Has at least 3 user_segments
 
     Returns:
@@ -1054,15 +975,15 @@ def validate_content_categorization(task_output) -> tuple[bool, Any]:
             "Identify more thematic categories from the discussion content."
         )
 
-    # Validate each theme has at least 2 representative_quotes
-    # Note: Prompt targets 5-10 quotes, but guardrail minimum is 2 to avoid hallucination pressure
+    # Validate each theme has at least 3 anchor_keywords (for Task 4 vector search)
     for theme in result.theme_categories:
-        if not theme.representative_quotes or len(theme.representative_quotes) < 2:
+        if not theme.anchor_keywords or len(theme.anchor_keywords) < 3:
             return (
                 False,
-                f"Theme '{theme.category_name}' needs at least 2 representative_quotes, "
-                f"got {len(theme.representative_quotes or [])}. "
-                "Include quotes from discussions WITH [source: ID] tags to support this theme."
+                f"Theme '{theme.category_name}' needs at least 3 anchor_keywords, "
+                f"got {len(theme.anchor_keywords or [])}. "
+                "Add short phrases (2-6 words) that users say when discussing this theme. "
+                "These will be used by Task 4 for vector search."
             )
 
     # Validate minimum user_segments (at least 3)
@@ -1538,5 +1459,86 @@ def validate_qa_review_result(task_output) -> tuple[bool, Any]:
         f"✓ QA review guardrail passed: "
         f"{len(result.html_content)} chars, score: {result.quality_score}/100, "
         f"issues fixed: {result.issues_fixed_count}"
+    )
+    return (True, task_output.raw)
+
+
+# ========================================
+# PAIN POINT CREW: QUOTE ENRICHMENT GUARDRAIL (TASK 4)
+# ========================================
+
+
+def validate_quote_enrichment(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for enrich_pain_point_quotes_task (Task 4) to validate QuoteEnrichmentResult.
+
+    Validates:
+    - JSON is parseable (via unified helper)
+    - Has enriched_pain_points list
+    - Each quote has post_id (from search result header)
+    - Quotes are substantive (>= 15 chars)
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    # Parse using unified helper
+    result, error = _parse_pydantic_from_task_output(
+        task_output, QuoteEnrichmentResult, "Quote enrichment"
+    )
+    if error:
+        return (False, error)
+
+    # Validate enriched_pain_points list is not empty
+    if not result.enriched_pain_points:
+        return (
+            False,
+            "enriched_pain_points list is empty. "
+            "Use search_discussions tool to find quotes for each pain point from Task 2."
+        )
+
+    # Validate quotes have post_id and are substantive
+    invalid_quotes = []
+    short_quotes = []
+
+    for entry in result.enriched_pain_points:
+        for quote in entry.quotes:
+            if not quote.post_id or quote.post_id == "unknown":
+                invalid_quotes.append(
+                    f"'{entry.pain_point_title}': quote missing post_id"
+                )
+            if len(quote.quote_text) < 15:
+                short_quotes.append(
+                    f"'{entry.pain_point_title}': quote too short ({len(quote.quote_text)} chars)"
+                )
+
+    if invalid_quotes:
+        return (
+            False,
+            f"Quotes missing post_id:\n  - " + "\n  - ".join(invalid_quotes[:5]) +
+            "\n\nGet post_id from the search result header: '(post_id: xyz123)'. "
+            "DO NOT fabricate post_ids - extract them from search results."
+        )
+
+    if short_quotes and len(short_quotes) > len(result.enriched_pain_points):
+        # Only fail if many quotes are too short (allow some short quotes)
+        return (
+            False,
+            f"Too many short quotes (< 15 chars):\n  - " + "\n  - ".join(short_quotes[:5]) +
+            "\n\nSkip very short quotes like 'me too' or 'same'. "
+            "Extract substantive quotes (15+ words) that express the pain point."
+        )
+
+    # Log statistics
+    total_quotes = sum(len(e.quotes) for e in result.enriched_pain_points)
+    low_quote_pps = [e.pain_point_title for e in result.enriched_pain_points if len(e.quotes) < 3]
+
+    if low_quote_pps:
+        logger.warning(
+            f"Pain points with low quote count (<3): {low_quote_pps[:5]}"
+        )
+
+    logger.info(
+        f"✓ Quote enrichment guardrail passed: "
+        f"{total_quotes} quotes for {len(result.enriched_pain_points)} pain points"
     )
     return (True, task_output.raw)

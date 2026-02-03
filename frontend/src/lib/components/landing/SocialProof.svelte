@@ -2,6 +2,8 @@
 	import { onMount } from 'svelte';
 	import { Star, Quote } from 'lucide-svelte';
 
+	let { reportsDelivered = null }: { reportsDelivered?: number | null } = $props();
+
 	let isVisible = $state(false);
 
 	onMount(() => {
@@ -44,12 +46,12 @@
 		}
 	];
 
-	const stats = [
-		{ value: '47', label: 'Reports delivered' },
+	const stats = $derived([
+		{ value: reportsDelivered?.toString() || '47', label: 'Reports delivered' },
 		{ value: '800+', label: 'Pain points discovered' },
 		{ value: '89%', label: 'Satisfaction rate' },
 		{ value: '45 min', label: 'Average delivery' }
-	];
+	]);
 </script>
 
 <section id="social-proof" class="py-12 sm:py-16 bg-bg-elevated border-y border-border">

@@ -198,7 +198,7 @@ def notify_job_started(job_id: str) -> bool:
         job_id: The job ID
 
     Returns:
-        True if successful, False otherwise
+        True if should proceed with processing, False if job was cancelled
     """
     global _current_job_id
     _current_job_id = job_id
@@ -214,11 +214,18 @@ def notify_job_started(job_id: str) -> bool:
             timeout=HEARTBEAT_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+
+        # Check if job was cancelled while in queue
+        data = response.json()
+        if data.get("shouldCancel", False):
+            logger.warning(f"[Heartbeat] Job {job_id} was cancelled - aborting")
+            return False
+
         logger.info(f"[Heartbeat] Notified backend: job {job_id} started")
         return True
     except requests.exceptions.RequestException as e:
         logger.warning(f"[Heartbeat] Failed to notify job started: {e}")
-        return False
+        return True  # Proceed anyway if backend unreachable
 
 
 def notify_job_completed(job_id: str) -> bool:

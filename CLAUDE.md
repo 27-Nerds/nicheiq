@@ -306,6 +306,31 @@ description: >
 
 ---
 
+## CrewAI Guardrail Limitations
+
+**Guardrails cannot modify LLM output.** The guardrail flow is:
+
+1. LLM produces `task_output.raw`
+2. Guardrail validates and returns `(True, task_output.raw)` or `(False, error)`
+3. CrewAI re-parses the **original** `task_output.raw`
+
+This means:
+- Any "fix" applied during validation is discarded
+- Don't write JSON repair functions in guardrails - they won't help
+- If JSON is invalid, return `(False, error_message)` so CrewAI retries with a fresh LLM call
+- Always return `task_output.raw` on success, never `result.model_dump_json()`
+
+**Valid guardrail patterns:**
+- Validate structure (field counts, required fields)
+- Check business rules (diversity, thresholds)
+- Detect truncation or repetition loops
+
+**Invalid patterns (don't do this):**
+- Fixing trailing commas, comments, or newlines
+- Returning re-serialized JSON (`model_dump_json()`)
+
+---
+
 ## Modifying Report Structure
 
 When changing the report schema (adding/removing/modifying fields), you must update **all layers** in sequence:

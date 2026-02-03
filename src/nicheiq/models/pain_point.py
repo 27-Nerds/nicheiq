@@ -18,24 +18,19 @@ class UnvalidatedPainPoint(BaseModel):
     description: str = Field(..., description="Detailed description of the problem")
     mention_count: int = Field(
         ...,
-        description="Total UNIQUE discussions mentioning this problem - count ALL sources found, not just selected quotes"
+        description="Total UNIQUE discussions mentioning this problem"
     )
-    representative_quotes: list[str] = Field(
-        ..., description="Real user quotes representing this pain point"
+    anchor_keywords: list[str] = Field(
+        ...,
+        min_length=2,
+        max_length=12,
+        description="2-10 short anchor phrases (2-6 words each) capturing user language for this pain point. Task 4 uses the first 4 for vector search."
     )
     source_platforms: Optional[list[str]] = Field(
         default=None, description="Platforms where this pain was found (Reddit, Twitter)"
     )
     categories: Optional[list[str]] = Field(
         default=None, description="Categories this pain point belongs to"
-    )
-    source_post_ids: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Parallel array with representative_quotes: source_post_ids[i] is the "
-            "post/thread ID where representative_quotes[i] was found. "
-            "Empty string means source unknown. May contain duplicates."
-        )
     )
 
 class ThemeCategory(BaseModel):
@@ -48,13 +43,16 @@ class ThemeCategory(BaseModel):
     frequency: str = Field(..., description="High/Medium/Low based on mention count")
     mention_count: int = Field(
         ...,
-        description="Number of distinct discussions - count ALL unique [source: ID] tags"
+        description="Number of distinct discussions mentioning this theme"
     )
     primary_user_segments: list[str] = Field(
         ..., description="User types in this category"
     )
-    representative_quotes: list[str] = Field(
-        ..., description="2+ quotes from discussions"
+    anchor_keywords: list[str] = Field(
+        ...,
+        min_length=3,
+        max_length=10,
+        description="3-8 short anchor phrases (2-6 words each) that capture how users express this theme. Used by Task 4 for vector search."
     )
 
 class UserSegment(BaseModel):
@@ -89,11 +87,11 @@ class ContentCategorizationReport(BaseModel):
 
     @field_validator('theme_categories')
     @classmethod
-    def validate_themes_have_quotes(cls, v: list[ThemeCategory]) -> list[ThemeCategory]:
-        """Ensure each theme has representative quotes."""
+    def validate_themes_have_anchor_keywords(cls, v: list[ThemeCategory]) -> list[ThemeCategory]:
+        """Ensure each theme has anchor keywords for vector search."""
         for theme in v:
-            if not theme.representative_quotes:
-                raise ValueError(f"Theme '{theme.category_name}' missing representative_quotes")
+            if not theme.anchor_keywords or len(theme.anchor_keywords) < 3:
+                raise ValueError(f"Theme '{theme.category_name}' needs at least 3 anchor_keywords")
         return v
 
 class PainPointExtraction(BaseModel):
@@ -146,6 +144,65 @@ class ValidationResult(BaseModel):
     validation_summary: str = Field(
         ..., description="Summary of validation methodology and overall assessment"
     )
+
+
+# ========================================
+# TASK 4: QUOTE ENRICHMENT OUTPUT MODELS
+# ========================================
+
+class ExtractedQuote(BaseModel):
+    """A single quote with its source attribution from vector search."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    quote_text: str = Field(..., description="Verbatim quote text from search results")
+    post_id: str = Field(..., description="Post ID from search result metadata")
+
+
+class EnrichedPainPointQuotes(BaseModel):
+    """Quotes found via vector search for one pain point."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    pain_point_title: str = Field(..., description="Exact title from Task 2 for matching")
+    quotes: list[ExtractedQuote] = Field(
+        default_factory=list,
+        description="Quotes with post_id attribution from vector search metadata"
+    )
+
+
+class QuoteEnrichmentResult(BaseModel):
+    """Task 4 output: quotes per pain point from vector search."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    niche: str = Field(..., description="The niche being analyzed")
+    enriched_pain_points: list[EnrichedPainPointQuotes] = Field(
+        ..., description="Quotes for each pain point from Task 2"
+    )
+    total_quotes_found: int = Field(..., description="Total quotes across all pain points")
+    enrichment_summary: str = Field(..., description="2-3 sentences on search results and coverage")
+
+
+class SinglePainPointQuotesResult(BaseModel):
+    """Result of quote search for a single pain point (parallel enrichment)."""
+
+    model_config = ConfigDict(extra='ignore')
+
+    pain_point_title: str = Field(..., description="Title of the pain point searched")
+    anchor_keywords_searched: list[str] = Field(
+        default_factory=list,
+        description="Keywords used for search"
+    )
+    quotes: list[ExtractedQuote] = Field(
+        default_factory=list,
+        description="Quotes found (6-12 target)"
+    )
+    search_summary: str = Field(
+        default="",
+        description="Brief summary of search results"
+    )
+
 
 class PainPoint(BaseModel):
     """Represents a user pain point discovered from social discussions."""

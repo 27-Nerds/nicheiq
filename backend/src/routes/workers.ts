@@ -193,7 +193,8 @@ const JobStartedSchema = z.object({
 
 /**
  * POST /api/workers/job-started
- * Worker reports it has started processing a job
+ * Worker reports it has started processing a job.
+ * Returns shouldCancel: true if job was cancelled while in queue.
  */
 workersRouter.post('/job-started', async (req: Request, res: Response) => {
   try {
@@ -202,9 +203,13 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
-    // Update job with worker ID and initial heartbeat
-    const job = await prisma.job.update({
-      where: { id: data.job_id },
+    // Atomic conditional update - only if job is in startable state
+    // This prevents overwriting CANCELLED status when a job was cancelled while in queue
+    const result = await prisma.job.updateMany({
+      where: {
+        id: data.job_id,
+        status: { in: [JobStatus.QUEUED, JobStatus.PENDING] },
+      },
       data: {
         workerId: data.worker_id,
         lastHeartbeat: new Date(),
@@ -212,26 +217,47 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
         startedAt: new Date(),
         errorMessage: null, // Clear any retry messages from previous attempts
       },
-      include: {
-        user: {
-          select: { id: true, email: true },
-        },
-      },
     });
+
+    // If no rows updated, check why
+    if (result.count === 0) {
+      const job = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        select: { status: true },
+      });
+
+      if (job?.status === JobStatus.CANCELLED) {
+        console.log(`[Workers] Job ${data.job_id} was cancelled - signaling worker to skip`);
+        return res.json({ status: 'ok', shouldCancel: true });
+      }
+      // Job might already be RUNNING (duplicate call) or not found - proceed normally
+      console.log(`[Workers] Job ${data.job_id} not updated (status: ${job?.status ?? 'not found'})`);
+    }
 
     // Update worker heartbeat
     await registerWorkerHeartbeat(data.worker_id, data.job_id);
 
-    // Send job start notification
-    if (job.user?.email) {
-      notifyJobStart(job.userId, job.user.email, data.job_id, job.niche).catch(err => {
-        console.error('Failed to send job start notification:', err);
+    // Send job start notification (only if we actually started the job)
+    if (result.count > 0) {
+      const job = await prisma.job.findUnique({
+        where: { id: data.job_id },
+        include: {
+          user: {
+            select: { id: true, email: true },
+          },
+        },
       });
+
+      if (job?.user?.email) {
+        notifyJobStart(job.userId, job.user.email, data.job_id, job.niche).catch(err => {
+          console.error('Failed to send job start notification:', err);
+        });
+      }
+
+      console.log(`[Workers] Job ${data.job_id} started by worker ${data.worker_id}`);
     }
 
-    console.log(`[Workers] Job ${data.job_id} started by worker ${data.worker_id}`);
-
-    res.json({ status: 'ok' });
+    res.json({ status: 'ok', shouldCancel: false });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });

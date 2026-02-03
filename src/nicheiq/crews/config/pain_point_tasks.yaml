@@ -9,9 +9,9 @@ categorize_content:
       {market_segments}
     - Industry Boundaries: {industry_boundaries}
 
-    You are provided with ALL social media discussions below. Review this complete content to create
-    a systematic categorization of themes, problems, and user segments RELEVANT TO THE NICHE CONTEXT ABOVE.
-    Use market segments to guide categorization - discussions should align with identified segments.
+    Analyze ALL provided social discussions to identify 5-10 recurring themes.
+    For each theme, extract ANCHOR KEYWORDS - short phrases (2-6 words) that
+    capture how users naturally express this problem.
 
     **Content Summary:**
     - Reddit posts: {reddit_posts_count} posts with {total_reddit_comments} comments
@@ -19,8 +19,7 @@ categorize_content:
     - Total content pieces: {total_content}
 
     **NOTE:** Posts are ordered by discussion richness (comment depth,
-    engagement quality). Posts appearing earlier have richer discussions
-    and more reliable pain point signals.
+    engagement quality). Posts appearing earlier have richer discussions.
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -37,223 +36,124 @@ categorize_content:
     ═══════════════════════════════════════════════════════════════════════════
 
 
-    # Reasoning Strategy
-    Follow this step-by-step analysis approach:
+    # WORKFLOW
 
-    1. **Content Scan**: Skim all content. Posts with more comments and higher scores
-       contain richer pain point signals — weight findings from these more heavily
-    2. **Theme Extraction**: Identify 5-10 recurring theme categories from patterns (let data guide you, not assumptions)
-    3. **Segment Mapping**: For each category, identify user segments from explicit self-descriptions in discussions
-    4. **Frequency Assignment**: Assign High/Medium/Low based on actual mention counts (count occurrences)
-    5. **Quote Collection**: Gather 5-10 representative quotes per theme (minimum 2), preserving [source: ID] suffixes exactly as written
-    6. **Quality Verification**: Verify each quote exists verbatim in content above before including - NEVER fabricate quotes to reach quota
+    1. **Content Scan**: Skim all content for recurring problem patterns
+    2. **Theme Extraction**: Identify 5-10 distinct theme categories
+    3. **Anchor Keyword Extraction**: For each theme, extract 3-8 anchor keywords/phrases
+       that users ACTUALLY SAY (exact phrases from content, 2-6 words each)
+    4. **Segment Mapping**: Identify user segments from explicit self-descriptions
+    5. **Frequency Assignment**: Assign High/Medium/Low based on actual mention counts
+
+    **ANCHOR KEYWORDS** - What they are:
+    Anchor keywords are SHORT PHRASES (2-6 words) that users use when discussing a theme.
+    They are NOT full quotes — they are searchable phrases for Task 4 vector search.
+
+    Examples:
+    - Theme "Setup Complexity" → ["took 3 hours", "no documentation", "gave up configuring"]
+    - Theme "Pricing Confusion" → ["hidden fees", "didn't expect", "way more expensive"]
+    - Theme "Manual Process Pain" → ["hours wasted", "repetitive tasks", "wish automated"]
+
+    **CRITICAL: anchor_keywords must be EXACT PHRASES from content, NOT paraphrased summaries.**
+    Copy user language verbatim: "took 3 hours" not "time-consuming setup process"
 
     **Pattern Recognition Guide (Cause-Centered):**
-    Look for these FUNCTIONAL problem indicators in discussions:
-    - Process failures: "takes forever", "too many steps", "keeps breaking", "doesn't work"
-    - Cost problems: "too expensive", "can't afford", "not worth the price", "hidden fees"
-    - Workarounds: "I just use", "my hack is", "workaround", "had to build my own"
-    - Time sinks: "hours wasted", "manual process", "repetitive", "tedious"
-    - Impact statements: "lost a client", "missed deadline", "cost me money", "gave up"
-
-    IMPORTANT: Emotional language ("frustrated", "stressed", "hate") signals that a pain point
-    exists, but categorize themes by the FUNCTIONAL CAUSE, not the emotional symptom.
-    Example: "I'm so stressed about freelance taxes" → categorize under "Tax Compliance Complexity",
-    NOT under "Stress and Anxiety".
+    Look for these FUNCTIONAL problem indicators:
+    - Process failures: "takes forever", "too many steps", "keeps breaking"
+    - Cost problems: "too expensive", "can't afford", "hidden fees"
+    - Workarounds: "I just use", "my hack is", "had to build my own"
+    - Time sinks: "hours wasted", "manual process", "tedious"
+    - Impact statements: "lost a client", "missed deadline", "cost me money"
 
     **Niche Specificity Gate:**
-    Before finalizing each theme, apply this mechanical test:
-    → "Would this exact theme title appear in the top-5 themes for 3+ unrelated niches
-       (e.g., gardeners, musicians, accountants)?"
-    - If YES → the theme is too generic. Either:
-      (a) REFRAME with a niche-specific mechanism (e.g., "Burnout" → "Revision Cycle Burnout
-          from Unlimited Client Feedback Rounds"), OR
-      (b) DEMOTE to a sub-theme under a niche-specific parent category
-    - If NO → the theme is niche-specific, keep it as-is
-    Examples of themes that FAIL this test (too generic):
-      ✗ "Burnout and Mental Health Struggles"
-      ✗ "Imposter Syndrome"
-      ✗ "Work-Life Balance Challenges"
-    Examples of acceptable niche-specific reframes:
-      ✓ "Scope Creep Exhaustion from Undefined Project Boundaries" (freelance design)
-      ✓ "Isolation from Solo Practice Without Peer Feedback" (independent consultants)
-      ✓ "Revenue Anxiety from Feast-or-Famine Client Pipeline" (freelancers)
+    Before finalizing each theme, ask: "Would this exact theme appear for 3+ unrelated niches?"
+    - If YES → REFRAME with niche-specific mechanism
+      ✗ "Burnout" → ✓ "Revision Cycle Burnout from Unlimited Client Feedback"
+    - If NO → Keep as-is
 
-
-    **Acceptance Criteria:**
-
-    - Minimum 5 distinct theme categories identified
-    - Each category has clear definition and 5-10 representative quotes (minimum 2) from the content above - all verified to exist verbatim
-    - User segments are specific enough to inform product targeting
-    - Frequency indicators (high/medium/low) assigned to each theme based on mention count
-
-    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
+    ═══ CRITICAL RULES ═══
 
     **STOP CONDITIONS:**
-    ✗ <5 substantive discussions found → STOP immediately
-      ❌ Example: Inventing discussion themes when content is sparse
-
-    If STOP condition is met, return ContentCategorizationReport with:
-      - executive_summary: "Insufficient discussion data (fewer than 5 substantive discussions found)"
-      - theme_categories: [] (empty list)
-      - user_segments: [] (empty list)
+    ✗ <5 substantive discussions found → Return empty ContentCategorizationReport
 
     **DATA ACCURACY:**
-    ✗ Every quote MUST be directly copied from content - NO paraphrasing
-      ❌ Example: "Users experience difficulty" (paraphrased)
-      ✅ Example: "I spent 3 hours trying to figure this out" (direct quote)
+    ✗ anchor_keywords must be EXACT phrases from content (2-6 words each)
+    ✗ 3-8 anchor_keywords per theme, NOT paraphrased summaries
     ✗ User segments must match self-descriptions from discussions
-      ❌ Example: "consumers", "users", "small businesses" (generic)
-      ✅ Example: "Budget-conscious first-time buyers seeking affordable luxury dupes" (from discussions)
-    ✗ DO NOT use training data or niche assumptions - ONLY analyze provided content
-      ❌ Example: Creating categories based on assumptions about the niche vs actual patterns
-
-    # Final Reasoning Instruction
-    First, think step by step about the major discussion themes you observed across the Reddit and Twitter content.
-    Then, identify the user segments that appear most frequently in each theme based on self-descriptions.
-    Finally, structure your categorization following the expected output format exactly, ensuring all quotes include [source: ID] suffixes.
+    ✗ DO NOT use training data or niche assumptions
 
   expected_output: >
-    A ContentCategorizationReport object with the following structure:
+    A ContentCategorizationReport object with:
 
-    **executive_summary**: 2-3 sentence overview of the discussion landscape, primary themes discovered,
-    and key user segments identified. This should be a cohesive narrative, not bullet points.
+    **executive_summary**: 2-3 sentence overview of themes and segments identified.
 
-    **theme_categories**: List of ThemeCategory objects (aim for 5-10 categories based on distinct patterns in discussions).
-    Each ThemeCategory object must contain:
-       - **category_name**: Clear, descriptive category name (e.g., "Skepticism and Value Perception of Luxury vs Affordable Skincare")
-       - **definition**: What this category represents based on actual discussion patterns (2-3 sentences)
-       - **frequency**: Either "High", "Medium", or "Low" based on mention count
-       - **mention_count**: Number of distinct discussions mentioning this theme (integer)
-       - **primary_user_segments**: List of specific user types discussing this theme (e.g., ["Budget-conscious consumers", "Luxury skincare aspirants"])
-       - **representative_quotes**: 5-10 direct user quotes that exemplify this theme (minimum 2 - if fewer exist, exclude the category rather than fabricating). CRITICAL: Copy quotes EXACTLY as they appear in content, INCLUDING the [source: POST_ID] suffix at the end of each quote (e.g., "I spent 3 hours on setup [source: abc123]"). DO NOT strip the [source: ...] tags - they are required for Task 2 traceability. VERIFY each quote exists verbatim before including.
+    **theme_categories**: List of 5-10 ThemeCategory objects:
+       - **category_name**: Clear, descriptive name (niche-specific)
+       - **definition**: What this category represents (2-3 sentences)
+       - **frequency**: "High", "Medium", or "Low"
+       - **mention_count**: Number of distinct discussions (integer)
+       - **primary_user_segments**: User types discussing this theme
+       - **anchor_keywords**: 3-8 short phrases (2-6 words each) that users say when
+         discussing this theme. EXACT phrases from content for Task 4 vector search.
+         Example: ["took 3 hours", "no documentation", "gave up configuring"]
 
-    **user_segments**: List of UserSegment objects (aim for 4-8 segments based on distinct user types in discussions).
-    Each UserSegment object must contain:
-       - **segment_name**: User segment name from self-descriptions in discussions (e.g., "Sensitive Skin Sufferers", "Skincare Minimalists")
-       - **primary_concerns**: List of main pain points/topics for this segment (3-6 concerns)
-       - **mention_frequency**: Either "High", "Medium", or "Low"
+    **user_segments**: List of 4-8 UserSegment objects:
+       - **segment_name**: From self-descriptions in discussions
+       - **primary_concerns**: 3-6 main pain points/topics
+       - **mention_frequency**: "High", "Medium", or "Low"
 
-    **overall_quality**: One of "High", "Medium", or "Low" with 1-sentence justification
+    **overall_quality**: "High", "Medium", or "Low"
 
-    CRITICAL: Return a valid ContentCategorizationReport Pydantic object with ALL fields populated.
-    DO NOT return markdown text or a description of what the report should contain.
-    Every quote in representative_quotes MUST be directly copied from knowledge sources WITH its [source: ID] suffix - NO paraphrasing, NO stripping source tags.
-    Every user segment name MUST match self-descriptions from discussions - NO generic assumptions.
+    CRITICAL: anchor_keywords are SHORT PHRASES (2-6 words), not full quotes.
+    They must be EXACT user language copied from discussions.
 
 extract_pain_points:
   description: >
     **NICHE CONTEXT:** {niche_description}
 
-    Transform the categorized content from Task 1 into specific, actionable pain points relevant
-    to the niche being analyzed. You MUST build on Task 1's theme_categories output — it contains
-    verified quotes with [source: ID] tags and accurate mention_count data from analyzing ALL content.
+    Transform Task 1's theme categories into specific pain points.
+    For each pain point, extract ANCHOR KEYWORDS for later quote search (Task 4).
 
-    **WORKFLOW** (Theme-to-Pain-Point Transformation Protocol):
+    **WORKFLOW** (Theme-to-Pain-Point Transformation):
 
-    1. **Parse Task 1 Output** → Read the ContentCategorizationReport from context. Extract:
-       - Each theme_category's category_name, definition, mention_count, and representative_quotes
-       - The [source: ID] tags within each quote (these are verified against original content)
+    1. **Parse Task 1 Output** → Read ContentCategorizationReport from context:
+       - Each theme_category's category_name, definition, mention_count, anchor_keywords
     2. **Transform Themes → Pain Points** → For each theme category:
-       - **Focused themes** (single clear problem): Map 1:1 to a pain point. Carry over quotes and mention_count directly.
-       - **Broad themes** (multiple distinct problems bundled): Split into 2-3 specific pain points. Assign quotes to the most relevant sub-pain-point. Distribute the parent theme's mention_count proportionally based on quote distribution.
-       - Example split: "Housing Challenges" → separate "Affordability Crisis", "Safety Concerns", "Housing Instability" pain points
-    3. **Collect Quotes** → For each pain point:
-       - **Primary source (ALWAYS USE FIRST)**: Task 1's representative_quotes for that theme — these have verified [source: ID] tags
-       - **Supplementary source (ONLY if needed)**: Additional quotes from knowledge source context, but ONLY if the quote has a complete [source: ID] suffix. If a knowledge source quote does NOT end with [source: POST_ID], DO NOT use it — find another quote that does.
-       - Select 5-10 best quotes that clearly articulate the pain and have [source: ID] suffix intact
-    4. **Set mention_count** → Use Task 1's theme mention_count as the base:
-       - For 1:1 mappings: carry over Task 1's mention_count directly
-       - For split themes: distribute proportionally (e.g., theme with 30 mentions split into 3 pain points → ~10 each, adjusted by quote evidence)
-       - If supplementary knowledge source quotes reveal additional unique [source: ID]s not in Task 1, you may increase the count
-    5. Identify severity indicators → "frustrating", "critical", "showstopper"
-    6. Note current solutions/workarounds users mention
-    7. **QUALITY GATE**: If <3 quotes with [source: ID] for a pain point → EXCLUDE it entirely
+       - **Focused themes**: Map 1:1 to a pain point
+       - **Broad themes**: Split into 2-3 specific pain points
+       - Example: "Housing Challenges" → "Affordability Crisis", "Safety Concerns", "Housing Instability"
+    3. **Extract Anchor Keywords** → For each pain point:
+       - Select 2-6 anchor_keywords from Task 1's theme keywords
+       - These are SHORT PHRASES (2-6 words) for Task 4 vector search
+       - Must be EXACT user phrases, not paraphrased
+    4. **Set mention_count** → From Task 1's theme mention_count:
+       - For 1:1 mappings: carry over directly
+       - For split themes: distribute proportionally
+    5. **Identify categories and platforms** from Task 1 data
 
-    **CRITICAL**: mention_count and quote count are DIFFERENT:
-    - mention_count = Task 1's count of ALL unique posts discussing this theme (typically 5-50+)
-    - representative_quotes = 5-10 SELECTED examples from those mentions
-    - mention_count should always be >= quote count (Task 1 saw all content; its counts are authoritative)
+    **CRITICAL CONSTRAINTS:**
+    - anchor_keywords: 2-10 short phrases (2-6 words each) - exact user language
+    - DO NOT include full quotes - Task 4 will find them via vector search
+    - mention_count from Task 1 theme data (don't fabricate)
 
-    **CATEGORY COVERAGE REQUIREMENT** (Prevents Missing High-WTP Pain Points):
+    **CATEGORY COVERAGE REQUIREMENT:**
+    ✓ Extract at least ONE pain point from EVERY high-frequency category (≥10 mentions)
+    ✓ Financial pain points often have HIGHEST WTP potential - prioritize them
 
-    ✓ MUST extract at least ONE pain point from EVERY high-frequency category (≥10 mentions) in Task 1
-    ✓ If Task 1 found "Financial/Cost" or "Money/Budget" category → this MUST become a pain point
-    ✓ DO NOT skip categories just because they seem "obvious" or "non-emotional"
-    ✓ Financial pain points often have the HIGHEST WTP potential - prioritize them
-
-    **Why This Matters:**
-    - Emotional pain (fear, frustration) drives severity scores
-    - Financial pain (cost complaints) drives WTP scores
-    - BOTH are needed for high-opportunity pain points
-    - Missing financial categories = artificially low WTP scores downstream
-
-    **Acceptance Criteria:**
-
-    - Extract ALL distinct pain points supported by discussion evidence (do NOT target a specific number — let the data determine quantity)
-    - Each pain point has clear problem articulation
-    - Supporting evidence includes direct user quotes (as many as available, minimum 3) with [source: ID] suffixes
-    - Mention frequency from Task 1 theme data propagated to each pain point
-    - Source platforms identified (Reddit/Twitter)
-    - Source post IDs tracked for traceability
-
-    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
-
-    **STOP CONDITIONS:**
-    ✗ <3 quotes found for a pain point → EXCLUDE that pain point
-      ❌ Example: Creating pain point with only 1 quote to reach quota
-    ✗ No matching theme in Task 1 output → pain point does NOT exist in data
-      ✅ Example: Return "Insufficient evidence" if very few validated pain points found
+    ═══ CRITICAL RULES ═══
 
     **DATA ACCURACY:**
-    ✗ Every quote MUST be direct copy from Task 1 output or knowledge sources - NO paraphrasing
-      ❌ Example: "Users experience difficulty" (paraphrased)
-      ✅ Example: "I spent 3 hours trying to figure this out" (direct quote)
-    ✗ DO NOT invent "example" quotes or use general niche knowledge
-      ❌ Example: Creating plausible-sounding quotes not from Task 1 or knowledge sources
-    ✗ Mention counts must come from Task 1's theme data - NOT from counting your selected quotes
-      ❌ Example: mention_count = 3 (just because you collected 3 quotes)
-      ✅ Example: mention_count = 15 (carried from Task 1 theme with 15 mentions)
+    ✗ anchor_keywords must be EXACT phrases from Task 1 - NO paraphrasing
+    ✗ Pain point descriptions must use exact user language
+    ✗ mention_count from Task 1's theme data - NOT fabricated
 
     **OUTPUT REQUIREMENTS:**
-    ✗ Pain point descriptions must use exact user language - NO corporate paraphrasing
-      ❌ Example: "Users require enhanced onboarding experiences" (corporate-speak)
-      ✅ Example: "Setup took me 3 hours and support never responded" (user language)
-    ✗ Source post IDs must be extracted from [source: ID] suffixes in quotes - NO placeholders
-      ❌ Example: ["post001", "post002"] (fabricated placeholder IDs)
-      ✅ Example: ["1a2b3c", "4d5e6f"] (extracted from [source: ...] suffixes in quote text)
-    ✗ DO NOT merge unrelated problems to inflate pain point count
-      ✅ Example: If only 7 validated pain points exist with ≥3 quotes → return all 7
-
-    **ANTI-HALLUCINATION GUARDRAILS:**
-    ✗ NEVER fabricate post IDs - if you cannot find [source: ID], use empty list []
-      ❌ Example: Creating sequential IDs like ["post_001", "post_002", "post_003"]
-      ❌ Example: Generating realistic-looking IDs like ["abc123xyz"] that don't exist
-      ✅ Example: Only use IDs you literally see in [source: ID] suffixes
-    ✗ NEVER paraphrase or summarize quotes - copy character-by-character
-      ❌ Example: "Many users struggle with setup" (paraphrased from multiple quotes)
-      ✅ Example: "I spent 3 hours on setup and still couldn't get it working" (exact copy)
-    ✗ If a quote does NOT have [source: ID] suffix → DO NOT include it
-      ❌ Example: Including quotes without source attribution
-      ✅ Example: Skip quotes lacking [source: ID] and find other quotes with proper attribution
-    ✗ NEVER invent quotes to reach a quota - quality over quantity
-      ❌ Example: Creating plausible-sounding quotes when knowledge sources are sparse
-      ✅ Example: Return ALL well-evidenced pain points (even if only 5) rather than padding with fabricated quotes to reach a target
-
-    **WHEN DATA IS SPARSE** (Critical Decision Point):
-    If you cannot find sufficient quotes for a pain point despite Task 1 data:
-    1. DO NOT fabricate quotes to fill the gap
-    2. DO NOT include the pain point if <3 verified quotes exist
-    3. Return fewer pain points rather than lower-quality pain points
-    4. Document in extraction_summary: "Limited to X pain points due to sparse evidence for [category Y]"
-    5. Include ALL well-evidenced pain points — never sacrifice evidence quality to inflate count, and never cap count artificially
-
-    CRITICAL: DO NOT remove [source: ID] suffixes yourself - Python will extract them post-processing.
-
-    CRITICAL: DO NOT include any text, explanation, or bullets before or after your JSON output. Return ONLY a raw JSON object.
+    - Return ONLY raw JSON (no markdown, no text before/after)
+    - Each pain point has 2-10 anchor_keywords (short phrases)
+    - Minimum 3 pain points if sufficient data exists
 
   expected_output: >
-    Return a single JSON object (no markdown, no explanation text before or after) with this exact structure:
+    Return a single JSON object with this exact structure:
 
     {
       "niche": "the niche being analyzed",
@@ -262,26 +162,20 @@ extract_pain_points:
           "title": "Short descriptive name",
           "description": "2-3 sentence problem articulation in user language",
           "mention_count": 18,
-          "representative_quotes": [
-            "Quote text here [source: abc123]",
-            "Another quote [source: def456]"
-          ],
+          "anchor_keywords": ["took 3 hours", "no documentation", "gave up"],
           "source_platforms": ["Reddit"],
-          "categories": ["Category Name"],
-          "source_post_ids": []
+          "categories": ["Category Name"]
         }
       ],
-      "extraction_summary": "3-4 sentences overview of pain point landscape and key patterns"
+      "extraction_summary": "3-4 sentences overview of pain point landscape"
     }
 
     Rules:
-    - Return ONLY raw JSON starting with { and ending with } — no markdown, no **bold**, no explanation text
-    - Minimum 3 verified quotes per pain point (all with [source: ID] suffix)
-    - source_post_ids ALWAYS [] (Python extracts automatically)
-    - mention_count must be LARGER than quote count (count ALL unique [source: ID] discussions, not just selected quotes)
-    - Extract ALL qualifying pain points — do not cap at a fixed number
-    - Quality over quantity — exclude pain points with insufficient evidence rather than fabricating quotes
-    - Every quote MUST end with [source: POST_ID] — copy exactly from content; if quote has no [source: ID] suffix, exclude it
+    - Return ONLY raw JSON starting with { and ending with }
+    - 2-10 anchor_keywords per pain point (short phrases, 2-6 words each)
+    - anchor_keywords must be EXACT user phrases for Task 4 vector search
+    - mention_count from Task 1 theme data
+    - DO NOT include representative_quotes - Task 4 handles quote extraction
 
 validate_pain_points:
   description: >
@@ -433,3 +327,93 @@ validate_pain_points:
     - Overall market signal strength
 
     NOTE: Python will merge these scores with Task 2 pain points. Focus on generating accurate, evidence-based scores.
+
+enrich_pain_point_quotes:
+  description: >
+    ═══ TASK 4: QUOTE ENRICHMENT VIA VECTOR SEARCH ═══
+
+    **NICHE CONTEXT:** {niche_description}
+
+    For each pain point from Task 2, use the search_discussions tool to find
+    verbatim user quotes that support it. This task POPULATES representative_quotes
+    which Tasks 1-2 intentionally did not include.
+
+    **WORKFLOW (Per Pain Point):**
+
+    1. Read pain point from Task 2 context: title, description, anchor_keywords
+    2. For each anchor_keyword, call search_discussions tool
+    3. From results, extract VERBATIM quotes that:
+       - Express this specific pain point (relevant to title/description)
+       - Are 15+ words (skip "me too" / "same" / short replies)
+       - Come from unique discussions (deduplicate by post_id)
+    4. Record the post_id from each result header for attribution
+    5. Target 6-12 unique quotes per pain point
+
+    **SEARCH STRATEGY:**
+
+    For each pain point:
+    - Use anchor_keywords as primary search queries
+    - Try 2-3 searches per pain point minimum
+    - Also try: pain point title as query, related synonyms
+
+    Example for pain point "Manual Invoicing Burden":
+      anchor_keywords: ["hours on invoices", "manual billing", "invoice nightmare"]
+      → search_discussions("hours on invoices")
+      → search_discussions("manual billing")
+      → search_discussions("invoice nightmare")
+
+    **QUOTE EXTRACTION FROM RESULTS:**
+
+    Each search result has this format:
+    --- Result N (score: 0.XX, post_id: abc123, source: reddit) ---
+    [content text here]
+
+    From each result:
+    1. Read the post_id from the header (e.g., "post_id: abc123")
+    2. Find a verbatim quote in the content that expresses the pain point
+    3. Copy the quote EXACTLY - no paraphrasing
+    4. Create ExtractedQuote: {{"quote_text": "exact quote", "post_id": "abc123"}}
+
+    **CRITICAL RULES:**
+
+    ✓ Target 6-12 quotes per pain point (OK to have fewer if not found)
+    ✓ Every quote MUST have a post_id from the search result header
+    ✓ Copy quote text VERBATIM from results - NO paraphrasing
+    ✓ Deduplicate: skip if same quote already collected
+    ✓ Skip quotes < 15 words (not substantive)
+    ✓ pain_point_title must EXACTLY match Task 2 title (for Python merge)
+
+    ✗ NEVER fabricate quotes - only extract what search returns
+    ✗ NEVER guess post_ids - get from result header
+    ✗ NEVER paraphrase or summarize quotes
+
+    **OUTPUT FORMAT:**
+
+    For each pain point, create EnrichedPainPointQuotes:
+    {{
+      "pain_point_title": "Exact Title from Task 2",
+      "quotes": [
+        {{"quote_text": "verbatim quote from search result", "post_id": "abc123"}},
+        {{"quote_text": "another verbatim quote", "post_id": "def456"}}
+      ]
+    }}
+
+  expected_output: >
+    QuoteEnrichmentResult with:
+
+    **niche**: The niche being analyzed (string)
+
+    **enriched_pain_points**: List of EnrichedPainPointQuotes, one per Task 2 pain point:
+    - **pain_point_title**: EXACT title from Task 2 (for Python matching)
+    - **quotes**: List of ExtractedQuote objects:
+      - **quote_text**: Verbatim quote from search results (15+ words)
+      - **post_id**: From search result header "(post_id: xyz123)"
+
+    **total_quotes_found**: Integer count of all quotes across all pain points
+
+    **enrichment_summary**: 2-3 sentences describing search coverage and results
+
+    CRITICAL:
+    - pain_point_title must EXACTLY match Task 2 for Python merge
+    - Every quote must have post_id from search result header
+    - Quotes must be VERBATIM from search results
