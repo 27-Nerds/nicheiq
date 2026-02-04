@@ -4,6 +4,7 @@ Combines Flow-based orchestration with specialized Crews for complex analysis.
 """
 
 import json
+import math
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -574,23 +575,41 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info(f"High-opportunity pain points: {high_opportunity} ({high_opportunity/total_count*100:.0f}%)")
         logger.info(f"Overall confidence score: {confidence_score:.2f}")
 
+        # Source coverage gates: skip when single-platform (already penalized via weights)
+        gold_source_ok = single_platform_mode or source_coverage >= 0.90
+        silver_source_ok = single_platform_mode or source_coverage >= 0.70
+        bronze_source_ok = single_platform_mode or source_coverage >= 0.50
+
+        # Percentage-based severity thresholds (scale with pain point count)
+        gold_severity_min = max(2, math.ceil(total_count * 0.6))
+        gold_opportunity_min = max(1, math.ceil(total_count * 0.4))
+        silver_severity_min = max(1, math.ceil(total_count * 0.4))
+        silver_combined_min = max(2, math.ceil(total_count * 0.6))
+
+        logger.info(
+            f"Tier thresholds (based on {total_count} pain points): "
+            f"GOLD needs severity>={gold_severity_min}, opportunity>={gold_opportunity_min} | "
+            f"SILVER needs severity>={silver_severity_min} or combined>={silver_combined_min}"
+        )
+
         # GOLD tier: Exceptional quality for high-confidence pipeline
         gold_cross_platform_ok = single_platform_mode or cross_platform_count >= 3
         if (
-            high_severity >= 5 and
+            high_severity >= gold_severity_min and
             quote_density >= 8 and
             gold_cross_platform_ok and
-            source_coverage >= 0.90 and
-            high_opportunity >= 3
+            gold_source_ok and
+            high_opportunity >= gold_opportunity_min
         ):
             tier = "GOLD"
             logger.info(f"✅ Quality Tier: {tier} (Exceptional - High confidence for pipeline)")
 
         # SILVER tier: Good quality for reliable pipeline
         elif (
-            (high_severity >= 3 or (high_severity + medium_severity) >= 5) and
+            (high_severity >= silver_severity_min or
+             (high_severity + medium_severity) >= silver_combined_min) and
             quote_density >= 5 and
-            source_coverage >= 0.70
+            silver_source_ok
         ):
             tier = "SILVER"
             logger.info(f"✅ Quality Tier: {tier} (Good - Reliable for pipeline)")
@@ -599,7 +618,7 @@ class ResearchFlow(Flow[ResearchState]):
         elif (
             total_count >= 2 and
             quote_density >= 3 and
-            source_coverage >= 0.50
+            bronze_source_ok
         ):
             tier = "BRONZE"
             logger.warning(f"⚠️  Quality Tier: {tier} (Minimum Viable - Proceed with caution)")

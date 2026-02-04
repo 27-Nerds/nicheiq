@@ -156,6 +156,7 @@ export interface ExecutiveDashboard {
 	core_pain_point: CorePainPoint;
 	key_metrics: KeyMetrics;
 	confidence_score: number;
+	research_depth_label?: string;
 	// niche_description removed - use root report.niche instead
 }
 

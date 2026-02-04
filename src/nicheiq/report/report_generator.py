@@ -2004,10 +2004,20 @@ It differentiates through {diff_text}.
                 narrative_rationale=narrative.verdict_rationale if narrative else None
             )
 
-            # Compute confidence score using ScoreAccessor (adjusted for data quality)
-            confidence_score = self.score_accessor.get_confidence_score(
-                selected_solution, **self._get_confidence_quality_kwargs()
-            )
+            # Compute confidence score as 4-score average (matches verdict formula)
+            confidence_score = (
+                self.score_accessor.get_market_fit(selected_solution) +
+                self.score_accessor.get_competitive_advantage(selected_solution) +
+                self.score_accessor.get_technical_feasibility(selected_solution) +
+                self.score_accessor.get_seo_score_canonical(selected_solution)
+            ) / 4
+
+            # Compute research depth label from pain point quality tier
+            pp_tier = getattr(self.state, 'pain_point_quality_tier', None) or "BRONZE"
+            research_depth_label = {
+                "GOLD": "Premium Research",
+                "SILVER": "Standard Research",
+            }.get(pp_tier, "Basic Research")
 
             executive_dashboard = ExecutiveDashboard(
                 recommended_solution_snapshot=solution_snapshot,
@@ -2015,10 +2025,11 @@ It differentiates through {diff_text}.
                 core_pain_point=core_pain_point,
                 key_metrics=key_metrics,
                 confidence_score=confidence_score,
+                research_depth_label=research_depth_label,
                 # niche_description removed - use root report.niche
             )
 
-            logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, confidence {confidence_score:.2f}")
+            logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, opportunity score {confidence_score:.2f}")
             return executive_dashboard
 
         except Exception as e:
@@ -3130,10 +3141,8 @@ It differentiates through {diff_text}.
             else:
                 recommendation = "No-Go"
 
-            # Calculate selection confidence using ScoreAccessor (adjusted for data quality)
-            selection_confidence = self.score_accessor.get_confidence_score(
-                selected_solution, **self._get_confidence_quality_kwargs()
-            )
+            # Selection confidence = same 4-score average as overall_score (matches hero %)
+            selection_confidence = overall_score
 
             return MarketAnalytics(
                 overall_opportunity_score=overall_score,

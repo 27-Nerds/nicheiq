@@ -184,7 +184,12 @@ class ExecutiveDashboard(BaseModel):
     confidence_score: float = Field(
         ge=0.0,
         le=1.0,
-        description="Overall confidence in this opportunity (0-1 scale), adjusted for data quality signals"
+        description="Average of market fit, competitive advantage, technical feasibility, and SEO scores (0-1)"
+    )
+
+    research_depth_label: str = Field(
+        default="Standard Research",
+        description="Human-readable research depth: 'Premium Research', 'Standard Research', or 'Basic Research'"
     )
     # niche_description removed - use root report.niche instead
 

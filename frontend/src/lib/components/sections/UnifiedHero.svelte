@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		CheckCircle,
-		XCircle,
 		AlertTriangle,
 		Target,
 		TrendingUp,
@@ -173,12 +172,34 @@
 			nogo: 'Unfavorable conditions detected. Consider pivoting or choosing an alternative.'
 		},
 		confidence:
-			'How certain the AI is about this verdict, based on data quality and signal strength.',
+			'Average of market fit, competitive advantage, feasibility, and SEO scores. Directly determines the Go/Conditional/No-Go verdict.',
 		opportunity:
 			'Overall market opportunity score combining demand signals, growth potential, and monetization viability.',
 		trend: 'Market momentum direction based on search trends, social mentions, and competitive activity.',
 		saturation: 'How crowded the market is. Low = blue ocean, High = intense competition.',
-		risk: 'Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats.'
+		risk: 'Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats.',
+		opportunityScore:
+			'Averages market demand, competition, build feasibility, and search visibility. 75%+ = highly viable, 60-74% = promising with caveats, below 60% = rethink this niche.',
+		riskBadge:
+			'Strategic risk of pursuing this niche. Low = strong scores and favorable trends. Medium = mixed signals or trend concerns. High = weak scores or declining market — validate before building.',
+		researchDepth:
+			'Based on pain point quality — severity scores, willingness-to-pay signals, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence.',
+		pipelineScanned:
+			'Reddit discussion URLs found via search. These are the raw results before relevance filtering.',
+		pipelineRelevant:
+			'Posts kept after filtering out off-topic and low-quality content.',
+		pipelineAnalyzed:
+			'Posts that underwent deep AI analysis for pain points, sentiment, and market signals.',
+		pipelineProblems:
+			'Unique pain points extracted. The entire report is built on these — more problems = richer analysis.',
+		painSeverity:
+			"How much this problem blocks users' workflows or business goals. 80%+ means a critical blocker causing measurable losses. Based on functional impact, not emotional volume.",
+		footerSearches:
+			'Monthly Google searches for niche keywords — shows how many people are actively looking for solutions. 10K+ indicates solid demand.',
+		footerKeywords:
+			'Unique keywords analyzed for SEO. More keywords = more pages you can rank for. Check quality in the SEO section.',
+		footerCompetitors:
+			'Direct competitors in this niche. Fewer = easier entry. Check their profiles in the competitive section.'
 	};
 
 	const getVerdictTooltip = (v: string | null): string => {
@@ -195,28 +216,44 @@
 			<!-- Left Column: Verdict Box + Risk Badge -->
 			<div class="hero-left">
 				<div class="verdict-giant {getVerdictClass(verdict?.verdict ?? 'No-Go')}">
+					<span class="verdict-score-label">
+					OPPORTUNITY SCORE <Tooltip content={tooltips.opportunityScore} position="bottom" />
+				</span>
 					<span class="verdict-percentage">{formatScorePercent(confidenceScore)}</span>
 					<div class="verdict-label-row">
 						{#if verdict?.verdict === 'Go'}
 							<CheckCircle class="verdict-icon-large" />
 						{:else if verdict?.verdict === 'Conditional'}
-							<AlertTriangle class="verdict-icon-large" />
+							<Shield class="verdict-icon-large" />
 						{:else}
-							<XCircle class="verdict-icon-large" />
+							<AlertCircle class="verdict-icon-large" />
 						{/if}
 						<span class="verdict-label-text">{verdict?.verdict?.toUpperCase() ?? 'ANALYZING'}</span>
 					</div>
 					<div class="verdict-risk-badge">
-						<Badge
-							variant={verdict?.risk_level?.toLowerCase() === 'low'
-								? 'success'
-								: verdict?.risk_level?.toLowerCase() === 'high'
-									? 'error'
-									: 'warning'}
-							size="sm"
-						>
-							{verdict?.risk_level ?? 'Unknown'} Risk
-						</Badge>
+						<Tooltip content={tooltips.riskBadge} position="bottom">
+							{#snippet children()}
+								<Badge
+									variant={verdict?.risk_level?.toLowerCase() === 'low'
+										? 'success'
+										: verdict?.risk_level?.toLowerCase() === 'medium'
+											? 'info'
+											: 'muted'}
+									size="sm"
+								>
+									{verdict?.risk_level ?? 'Unknown'} Risk
+								</Badge>
+							{/snippet}
+						</Tooltip>
+						{#if dashboard?.research_depth_label}
+							<Tooltip content={tooltips.researchDepth} position="bottom">
+								{#snippet children()}
+									<Badge variant="muted" size="sm">
+										{dashboard.research_depth_label}
+									</Badge>
+								{/snippet}
+							</Tooltip>
+						{/if}
 					</div>
 				</div>
 			</div>
@@ -301,22 +338,30 @@
 		<div class="research-pipeline">
 			<div class="pipeline-stage">
 				<span class="pipeline-num">{funnelStats.scanned}</span>
-				<span class="pipeline-label">SCANNED</span>
+				<span class="pipeline-label">
+					SCANNED <Tooltip content={tooltips.pipelineScanned} position="top" />
+				</span>
 			</div>
 			<div class="pipeline-arrow"></div>
 			<div class="pipeline-stage">
 				<span class="pipeline-num">{funnelStats.relevant}</span>
-				<span class="pipeline-label">RELEVANT</span>
+				<span class="pipeline-label">
+					RELEVANT <Tooltip content={tooltips.pipelineRelevant} position="top" />
+				</span>
 			</div>
 			<div class="pipeline-arrow"></div>
 			<div class="pipeline-stage">
 				<span class="pipeline-num">{funnelStats.analyzed}</span>
-				<span class="pipeline-label">ANALYZED</span>
+				<span class="pipeline-label">
+					ANALYZED <Tooltip content={tooltips.pipelineAnalyzed} position="top" />
+				</span>
 			</div>
 			<div class="pipeline-arrow"></div>
 			<div class="pipeline-stage highlight">
 				<span class="pipeline-num">{funnelStats.problems}</span>
-				<span class="pipeline-label">PROBLEMS</span>
+				<span class="pipeline-label">
+					PROBLEMS <Tooltip content={tooltips.pipelineProblems} position="top" />
+				</span>
 			</div>
 		</div>
 	</div>
@@ -337,7 +382,9 @@
 					<div class="pain-stats">
 						<div class="pain-stat">
 							<span class="pain-stat-value">{formatScorePercent(corePain.severity_score)}</span>
-							<span class="pain-stat-label">Severity</span>
+							<span class="pain-stat-label">
+							Severity <Tooltip content={tooltips.painSeverity} position="top" />
+						</span>
 						</div>
 						<div class="pain-stat-divider"></div>
 						<div class="pain-stat">
@@ -511,19 +558,25 @@
 				<div class="footer-stat">
 					<Search class="footer-stat-icon" />
 					<span class="footer-stat-value">{formatNumber(metrics?.total_keyword_search_volume ?? 0)}</span>
-					<span class="footer-stat-label">mo. searches</span>
+					<span class="footer-stat-label">
+						mo. searches <Tooltip content={tooltips.footerSearches} position="top" />
+					</span>
 				</div>
 				<div class="footer-divider"></div>
 				<div class="footer-stat">
 					<Target class="footer-stat-icon" />
 					<span class="footer-stat-value">{metrics?.total_keyword_count ?? 0}</span>
-					<span class="footer-stat-label">keywords</span>
+					<span class="footer-stat-label">
+						keywords <Tooltip content={tooltips.footerKeywords} position="top" />
+					</span>
 				</div>
 				<div class="footer-divider"></div>
 				<div class="footer-stat">
 					<Users class="footer-stat-icon" />
 					<span class="footer-stat-value">{metrics?.primary_competitor_count ?? 0}</span>
-					<span class="footer-stat-label">competitors</span>
+					<span class="footer-stat-label">
+						competitors <Tooltip content={tooltips.footerCompetitors} position="top" />
+					</span>
 				</div>
 			</div>
 		</div>
@@ -536,20 +589,20 @@
 						{#if verdict.verdict === 'Go'}
 							<CheckCircle class="rationale-icon" />
 						{:else if verdict.verdict === 'Conditional'}
-							<AlertTriangle class="rationale-icon" />
+							<Shield class="rationale-icon" />
 						{:else}
-							<XCircle class="rationale-icon" />
+							<AlertCircle class="rationale-icon" />
 						{/if}
 						<span class="rationale-verdict-text">{verdict.verdict.toUpperCase()}</span>
 					</div>
 					<div class="rationale-info">
-						<span class="rationale-confidence">{formatScorePercent(confidenceScore)} confidence</span>
+						<span class="rationale-confidence">{formatScorePercent(confidenceScore)} opportunity score</span>
 						<Badge
 							variant={verdict.risk_level.toLowerCase() === 'low'
 								? 'success'
-								: verdict.risk_level.toLowerCase() === 'high'
-									? 'error'
-									: 'warning'}
+								: verdict.risk_level.toLowerCase() === 'medium'
+									? 'info'
+									: 'muted'}
 							size="sm"
 						>
 							{verdict.risk_level} Risk
@@ -856,13 +909,24 @@
 	}
 
 	.verdict-giant.verdict-conditional {
-		border-color: var(--color-border-warning);
-		box-shadow: 0 0 20px rgba(245, 158, 11, 0.2);
+		border-color: rgba(99, 102, 241, 0.4);
+		box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
 	}
 
 	.verdict-giant.verdict-nogo {
 		border-color: var(--color-border-error);
 		box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
+	}
+
+	.verdict-score-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.12em;
+		color: rgba(255, 255, 255, 0.6);
+		margin-bottom: var(--space-1);
+		display: block;
 	}
 
 	.verdict-percentage {
@@ -907,11 +971,11 @@
 	}
 
 	.verdict-giant.verdict-conditional .verdict-percentage {
-		color: var(--color-warning);
-		text-shadow: 0 4px 20px rgba(245, 158, 11, 0.4);
+		color: var(--color-info);
+		text-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
 	}
 	.verdict-giant.verdict-conditional :global(.verdict-icon-large) {
-		color: var(--color-warning);
+		color: var(--color-info);
 	}
 
 	.verdict-giant.verdict-nogo .verdict-percentage {
@@ -926,6 +990,11 @@
 		margin-top: var(--space-3);
 		padding-top: var(--space-3);
 		border-top: 1px solid rgba(255, 255, 255, 0.1);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: var(--space-2);
+		flex-wrap: wrap;
 	}
 
 	/* Right Column - Niche Info */
@@ -1104,10 +1173,25 @@
 		color: rgba(255, 255, 255, 0.7);
 		text-transform: uppercase;
 		letter-spacing: var(--tracking-wide);
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 
 	.pipeline-stage.highlight .pipeline-num {
 		color: var(--color-accent);
+	}
+
+	/* HelpCircle icons on dark background (hero zone) */
+	.hero-zone :global(.tooltip-trigger) {
+		color: rgba(255, 255, 255, 0.5);
+		border-color: rgba(255, 255, 255, 0.25);
+	}
+
+	.hero-zone :global(.tooltip-trigger:hover) {
+		color: rgba(255, 255, 255, 0.9);
+		border-color: rgba(255, 255, 255, 0.5);
+		background: rgba(255, 255, 255, 0.1);
 	}
 
 	/* =========================
@@ -1530,6 +1614,9 @@
 	.footer-stat-label {
 		font-size: 0.75rem;
 		color: var(--color-text-muted);
+		display: flex;
+		align-items: center;
+		gap: var(--space-1);
 	}
 
 	.footer-divider {
@@ -1562,11 +1649,11 @@
 	.verdict-rationale-zone.verdict-conditional {
 		background: linear-gradient(
 			90deg,
-			var(--color-warning-subtle) 0%,
+			var(--color-secondary-subtle) 0%,
 			transparent 50%,
-			var(--color-warning-subtle) 100%
+			var(--color-secondary-subtle) 100%
 		);
-		border: 1px solid var(--color-border-warning);
+		border: 1px solid rgba(99, 102, 241, 0.2);
 	}
 
 	.verdict-rationale-zone.verdict-nogo {
@@ -1605,7 +1692,7 @@
 	}
 
 	.verdict-conditional .rationale-verdict-badge {
-		background: var(--color-warning);
+		background: var(--color-info);
 		color: white;
 	}
 

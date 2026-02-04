@@ -746,17 +746,21 @@ class DataForSEOBaseClient:
                     logger.warning(f"No difficulty results returned for batch {batch_idx}")
                     continue
 
-                # Process results - result is a list of keyword objects
+                # Process results - result contains objects with nested "items" arrays
                 processed_count = 0
-                for item in result_data:
-                    keyword = item.get("keyword")
-                    difficulty = item.get("keyword_difficulty")
+                for result_obj in result_data:
+                    items = result_obj.get("items") if isinstance(result_obj, dict) else None
+                    if not items:
+                        continue
+                    for item in items:
+                        keyword = item.get("keyword")
+                        difficulty = item.get("keyword_difficulty")
 
-                    if keyword and difficulty is not None:
-                        # Store with lowercase key for consistent lookup
-                        kw_lower = keyword.lower().strip()
-                        new_results[kw_lower] = float(difficulty)
-                        processed_count += 1
+                        if keyword and difficulty is not None:
+                            # Store with lowercase key for consistent lookup
+                            kw_lower = keyword.lower().strip()
+                            new_results[kw_lower] = float(difficulty)
+                            processed_count += 1
 
                 logger.debug(f"Batch {batch_idx}: Processed {processed_count} keyword difficulty scores")
 

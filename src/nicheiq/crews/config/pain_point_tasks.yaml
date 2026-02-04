@@ -9,7 +9,7 @@ categorize_content:
       {market_segments}
     - Industry Boundaries: {industry_boundaries}
 
-    Analyze ALL provided social discussions to identify 5-10 recurring themes.
+    Analyze ALL provided social discussions to identify ALL recurring themes present in the discussions. Be comprehensive — extract every distinct theme supported by the data, no matter how many.
     For each theme, extract ANCHOR KEYWORDS - short phrases (2-6 words) that
     capture how users naturally express this problem.
 
@@ -39,7 +39,7 @@ categorize_content:
     # WORKFLOW
 
     1. **Content Scan**: Skim all content for recurring problem patterns
-    2. **Theme Extraction**: Identify 5-10 distinct theme categories
+    2. **Theme Extraction**: Identify ALL distinct theme categories from the data
     3. **Anchor Keyword Extraction**: For each theme, extract 3-8 anchor keywords/phrases
        that users ACTUALLY SAY (exact phrases from content, 2-6 words each)
     4. **Segment Mapping**: Identify user segments from explicit self-descriptions
@@ -112,7 +112,7 @@ categorize_content:
 
     **executive_summary**: 2-3 sentence overview of themes and segments identified.
 
-    **theme_categories**: List of 5-10 ThemeCategory objects:
+    **theme_categories**: Comprehensive list of ThemeCategory objects (include every theme supported by evidence — do not artificially limit):
        - **category_name**: Clear, descriptive name (niche-specific)
        - **definition**: What this category represents (2-3 sentences)
        - **frequency**: "High", "Medium", or "Low"
@@ -122,7 +122,7 @@ categorize_content:
          discussing this theme. EXACT phrases from content for Task 4 vector search.
          Example: ["took 3 hours", "no documentation", "gave up configuring"]
 
-    **user_segments**: List of 4-8 UserSegment objects:
+    **user_segments**: List of all identified UserSegment objects:
        - **segment_name**: From self-descriptions in discussions
        - **primary_concerns**: 3-6 main pain points/topics
        - **mention_frequency**: "High", "Medium", or "Low"
