@@ -172,6 +172,7 @@ export interface GoNoGoVerdict {
 	risk_level: 'Low' | 'Medium' | 'High';
 	primary_concern: string | null;
 	trend_context?: string | null;
+	market_viability_context?: string | null;
 }
 
 export interface CorePainPoint {

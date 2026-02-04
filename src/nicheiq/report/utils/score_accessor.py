@@ -260,5 +260,5 @@ class ScoreAccessor:
             "market_fit": self.get_market_fit(solution),
             "competitive_advantage": self.get_competitive_advantage(solution),
             "technical_feasibility": self.get_technical_feasibility(solution),
-            "seo_growth": self.get_seo_growth(solution),
+            "seo_growth": self.get_seo_score_canonical(solution),
         }

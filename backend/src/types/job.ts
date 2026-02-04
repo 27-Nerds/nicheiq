@@ -16,7 +16,7 @@ export const CreateJobSchema = z.object({
     .min(10, 'Niche description must be at least 10 characters')
     .max(500, 'Niche description must be at most 500 characters')
     .regex(
-      /^[\p{L}\p{N}\p{Zs}\p{Pd}\p{Po}\p{Ps}\p{Pe}]+$/u,
+      /^[\p{L}\p{N}\p{Zs}\p{Pd}\p{Po}\p{Ps}\p{Pe}\r\n\t]+$/u,
       'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.'
     ),
   allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),

@@ -2465,12 +2465,34 @@ It differentiates through {diff_text}.
             if trend_context:
                 logger.info(f"[Verdict Trend Adjustment] {trend_context}")
 
+        # Phase 3: Apply market viability risk floor (downgrade-only)
+        market_viability_context = None
+        market_sizing = self.state.market_sizing
+        if market_sizing is not None:
+            viability_verdict = getattr(market_sizing, 'market_viability_verdict', None) or ""
+            entry_strategy = getattr(market_sizing, 'recommended_entry_strategy', None) or ""
+            if viability_verdict:
+                from ..validators.score_validators import VerdictValidator as _VV
+                viability_validator = _VV()
+                verdict, risk_level, primary_concern, market_viability_context = (
+                    viability_validator.apply_market_viability_downgrade(
+                        verdict=verdict,
+                        risk_level=risk_level,
+                        primary_concern=primary_concern,
+                        market_viability_verdict=viability_verdict,
+                        recommended_entry_strategy=entry_strategy,
+                    )
+                )
+                if market_viability_context:
+                    logger.info(f"[Verdict Viability Adjustment] {market_viability_context}")
+
         return GoNoGoVerdict(
             verdict=verdict,
             rationale=rationale,
             risk_level=risk_level,
             primary_concern=primary_concern,
             trend_context=trend_context,
+            market_viability_context=market_viability_context,
         )
 
     # ==================================================================================

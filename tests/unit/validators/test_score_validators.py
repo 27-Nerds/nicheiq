@@ -698,6 +698,255 @@ class TestTrendDowngradePrimaryConcern:
 # ==============================================================================
 
 
+# ==============================================================================
+# Market Viability Downgrade Tests (Phase 3)
+# ==============================================================================
+
+
+class TestMarketViabilityDowngrade:
+    """Test apply_market_viability_downgrade in isolation."""
+
+    def test_weak_viability_floors_risk_medium(self):
+        """Weak viability floors Low risk to Medium."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert v == "Go"
+        assert r == "Medium"
+        assert mvc is not None
+        assert "Low\u2192Medium" in mvc
+
+    def test_weak_viability_already_medium_no_change(self):
+        """Weak viability with Medium risk stays Medium."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Medium",
+            primary_concern=None,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert v == "Go"
+        assert r == "Medium"
+        assert mvc is not None
+        assert "no-op" in mvc
+
+    def test_weak_viability_already_high_no_change(self):
+        """Weak viability with High risk stays High."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="No-Go",
+            risk_level="High",
+            primary_concern="Low scores",
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert r == "High"
+        assert mvc is not None
+        assert "no-op" in mvc
+
+    def test_weak_reconsider_same_as_weak_alone(self):
+        """Weak + Reconsider produces same risk floor as Weak alone (no double-count)."""
+        validator = VerdictValidator()
+        v1, r1, _, mvc1 = validator.apply_market_viability_downgrade(
+            verdict="Go", risk_level="Low", primary_concern=None,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        v2, r2, _, mvc2 = validator.apply_market_viability_downgrade(
+            verdict="Go", risk_level="Low", primary_concern=None,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Enter",
+        )
+        assert r1 == r2 == "Medium"
+        # Both should have context but with different entry strategy text
+        assert "Reconsider" in mvc1
+        assert "Enter" in mvc2
+
+    def test_verdict_never_changes(self):
+        """Verdict is never modified by market viability downgrade."""
+        validator = VerdictValidator()
+        for original_verdict in ["Go", "Conditional", "No-Go"]:
+            v, r, pc, mvc = validator.apply_market_viability_downgrade(
+                verdict=original_verdict,
+                risk_level="Low",
+                primary_concern=None,
+                market_viability_verdict="Weak",
+                recommended_entry_strategy="Reconsider",
+            )
+            assert v == original_verdict
+
+    def test_case_insensitive_matching(self):
+        """Case variants of 'Weak' are treated the same."""
+        validator = VerdictValidator()
+        for variant in ["weak", "WEAK", "Weak", " weak ", "  WEAK  "]:
+            v, r, pc, mvc = validator.apply_market_viability_downgrade(
+                verdict="Go", risk_level="Low", primary_concern=None,
+                market_viability_verdict=variant,
+                recommended_entry_strategy="Reconsider",
+            )
+            assert r == "Medium", f"Failed for variant '{variant}'"
+            assert mvc is not None
+
+    def test_moderate_go_informational_context(self):
+        """Moderate viability + Go verdict sets informational context, no risk change."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            market_viability_verdict="Moderate",
+            recommended_entry_strategy="Enter",
+        )
+        assert v == "Go"
+        assert r == "Low"
+        assert mvc is not None
+        assert "Moderate" in mvc
+
+    def test_moderate_conditional_no_context(self):
+        """Moderate viability + Conditional verdict produces no context."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Conditional",
+            risk_level="Medium",
+            primary_concern=None,
+            market_viability_verdict="Moderate",
+            recommended_entry_strategy="Enter",
+        )
+        assert mvc is None
+
+    def test_strong_no_change(self):
+        """Strong viability produces no context and no risk change."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            market_viability_verdict="Strong",
+            recommended_entry_strategy="Enter Now",
+        )
+        assert v == "Go"
+        assert r == "Low"
+        assert mvc is None
+
+    def test_missing_data_no_change(self):
+        """Empty/None viability strings produce no change."""
+        validator = VerdictValidator()
+        for viability in ["", None, "  "]:
+            v, r, pc, mvc = validator.apply_market_viability_downgrade(
+                verdict="Go", risk_level="Low", primary_concern=None,
+                market_viability_verdict=viability or "",
+                recommended_entry_strategy="",
+            )
+            assert r == "Low"
+            assert mvc is None
+
+    def test_primary_concern_set_when_none(self):
+        """primary_concern is set from viability when originally None."""
+        validator = VerdictValidator()
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert pc is not None
+        assert "Weak" in pc
+        assert "Reconsider" in pc
+
+    def test_primary_concern_preserved(self):
+        """Existing primary_concern is NOT overwritten."""
+        validator = VerdictValidator()
+        existing = "Low market fit score (0.58)"
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=existing,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert pc == existing
+
+    def test_flag_disabled_no_change(self):
+        """viability_weak_floors_risk_medium=False disables the floor."""
+        thresholds = ScoreThresholds(viability_weak_floors_risk_medium=False)
+        validator = VerdictValidator(thresholds)
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert r == "Low"
+        assert mvc is None
+
+
+class TestMarketViabilityInteractionWithTrend:
+    """Test Phase 3 viability downgrade after Phase 2 trend downgrade."""
+
+    def test_trend_raises_then_viability_floor_no_op(self):
+        """Phase 2 raises Low→Medium, Phase 3 floor is no-op."""
+        validator = VerdictValidator()
+        # Phase 2: trend raises risk
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Declining",
+            momentum_score=0.2,
+            timing_recommendation="Missed Window",
+            longevity_verdict="Sustainable",
+            market_maturity="Mature",
+        )
+        assert r == "Medium"
+
+        # Phase 3: viability floor is no-op (already Medium)
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict=v, risk_level=r, primary_concern=pc,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert v == "Conditional"
+        assert r == "Medium"
+        assert mvc is not None
+        assert "no-op" in mvc
+
+    def test_trend_caps_conditional_viability_floors_medium(self):
+        """Phase 2 caps verdict at Conditional, Phase 3 floors risk to Medium."""
+        validator = VerdictValidator()
+        # Phase 2: trend caps verdict but leaves risk at Low (Rule 3)
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            verdict="Go",
+            risk_level="Low",
+            primary_concern=None,
+            trend_direction="Declining",
+            momentum_score=0.3,
+            timing_recommendation="Enter Now",
+            longevity_verdict="Sustainable",
+            market_maturity="Mature",
+        )
+        assert v == "Conditional"
+        assert r == "Low"  # Rule 3 doesn't raise risk
+
+        # Phase 3: viability floors risk
+        v, r, pc, mvc = validator.apply_market_viability_downgrade(
+            verdict=v, risk_level=r, primary_concern=pc,
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+        )
+        assert v == "Conditional"
+        assert r == "Medium"
+        assert mvc is not None
+        assert "Low\u2192Medium" in mvc
+
+
 class TestConfidenceThresholds:
     """Test ConfidenceThresholds model validation."""
 

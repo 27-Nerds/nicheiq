@@ -889,3 +889,95 @@ class TestVolumeRatioAwareChecks:
         assert report.seo_analytics.total_search_volume == 125000
         vol_fixes = [f for f in fixes if "total_search_volume" in f]
         assert len(vol_fixes) == 0
+
+
+# ======================================================================
+# Verdict vs Market Viability (Bug #21 fix)
+# ======================================================================
+
+
+def _make_state_with_viability(
+    market_viability_verdict=None,
+    recommended_entry_strategy=None,
+    **kwargs,
+):
+    """Create a mock state with market_sizing viability fields."""
+    state = _make_state(**kwargs)
+    if market_viability_verdict is not None:
+        if state.market_sizing is None:
+            ms = MagicMock()
+            state.market_sizing = ms
+        state.market_sizing.market_viability_verdict = market_viability_verdict
+        state.market_sizing.recommended_entry_strategy = recommended_entry_strategy
+    else:
+        if state.market_sizing is not None:
+            state.market_sizing.market_viability_verdict = None
+            state.market_sizing.recommended_entry_strategy = None
+    return state
+
+
+class TestViabilityVsVerdictConsistencyCheck:
+    """Test _check_verdict_vs_viability consistency checks."""
+
+    def test_go_weak_emits_warning(self):
+        """Go verdict + Weak viability → WARNING."""
+        report = _make_report(dashboard_verdict="Go")
+        state = _make_state_with_viability(
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Enter",
+            market_timing="Growth",
+            trend_direction="Growing",
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report, state)
+        viability_warnings = [
+            w for w in warnings
+            if "viability" in w.message.lower() and w.severity == "WARNING"
+        ]
+        assert len(viability_warnings) >= 1
+
+    def test_go_reconsider_emits_warning(self):
+        """Go verdict + Reconsider entry → WARNING."""
+        report = _make_report(dashboard_verdict="Go")
+        state = _make_state_with_viability(
+            market_viability_verdict="Moderate",
+            recommended_entry_strategy="Reconsider",
+            market_timing="Growth",
+            trend_direction="Growing",
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report, state)
+        entry_warnings = [
+            w for w in warnings
+            if "entry strategy" in w.message.lower() and w.severity == "WARNING"
+        ]
+        assert len(entry_warnings) >= 1
+
+    def test_conditional_weak_no_warning(self):
+        """Conditional verdict + Weak viability → no viability WARNING (already Conditional)."""
+        report = _make_report(dashboard_verdict="Conditional")
+        state = _make_state_with_viability(
+            market_viability_verdict="Weak",
+            recommended_entry_strategy="Reconsider",
+            market_timing="Growth",
+            trend_direction="Growing",
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report, state)
+        viability_warnings = [
+            w for w in warnings
+            if "viability" in w.message.lower() and w.severity == "WARNING"
+        ]
+        assert len(viability_warnings) == 0
+
+    def test_missing_market_sizing_no_warning(self):
+        """None market_sizing → no viability check."""
+        report = _make_report(dashboard_verdict="Go")
+        state = _make_state(include_market_sizing=False, include_trend=False)
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report, state)
+        viability_warnings = [
+            w for w in warnings
+            if "viability" in w.message.lower()
+        ]
+        assert len(viability_warnings) == 0

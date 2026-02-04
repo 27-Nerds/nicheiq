@@ -162,6 +162,7 @@ class TestScoreAccessorFallbacks:
         solution.market_fit_score = 0.80
         solution.technical_feasibility_score = 0.75
         solution.seo_scalability_score = 0.70
+        solution.seo_scalability_score_refined = None
 
         accessor = ScoreAccessor(solution_selection)
         scores = accessor.get_all_scores(solution)

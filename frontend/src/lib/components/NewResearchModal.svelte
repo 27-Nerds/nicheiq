@@ -5,7 +5,32 @@
 
   const MAX_NICHE_LENGTH = 500;
 
+  const PLACEHOLDER_EXAMPLES = [
+    'Therapists who want to launch an online practice',
+    'Freelance developers overwhelmed by admin work',
+    'Solo entrepreneurs who want to start a digital agency',
+    'Remote workers struggling with productivity and focus',
+    'Parents looking for reliable after-school activities',
+    'Small gym owners competing with big fitness chains',
+    'Independent recruiters trying to scale without a team',
+    'First-time managers learning to lead a team',
+    'Real estate agents who want to automate lead gen',
+    'Pet sitters looking to grow beyond word-of-mouth',
+  ];
+
+  function randomPlaceholder() {
+    return PLACEHOLDER_EXAMPLES[Math.floor(Math.random() * PLACEHOLDER_EXAMPLES.length)];
+  }
+
   let { open = $bindable(false) } = $props();
+
+  let placeholder = $state(randomPlaceholder());
+
+  $effect(() => {
+    if (open) {
+      placeholder = randomPlaceholder();
+    }
+  });
 
   // Get credit balance from page data
   const creditBalance = $derived($page.data.creditBalance as number ?? 0);
@@ -69,7 +94,8 @@
           await invalidateAll();
           return;
         }
-        throw new Error(data.error || 'Failed to start research');
+        const detail = data.details?.[0]?.message;
+        throw new Error(detail || data.error || 'Failed to start research');
       }
 
       open = false;
@@ -227,12 +253,12 @@
               rows={4}
               maxlength={MAX_NICHE_LENGTH}
               class="input resize-none w-full"
-              placeholder="e.g., Solo web entrepreneurs, car repair shop managers, people moving abroad..."
+              placeholder="e.g., {placeholder}"
               disabled={loading}
             ></textarea>
             <div class="flex items-center justify-between mt-1.5">
               <p class="text-xs text-text-muted">
-                Enter a niche, audience, or business type. We'll find pain points and generate business ideas.
+                Describe one niche or audience in a sentence or two. Don't worry about perfect phrasing — we'll refine it if needed.
               </p>
               <span class="text-xs {niche.length > MAX_NICHE_LENGTH * 0.9 ? 'text-warning' : 'text-text-muted'}">
                 {niche.length}/{MAX_NICHE_LENGTH}
@@ -342,6 +368,9 @@
         {/if}
 
         {#if hasCredits}
+          <p class="text-xs text-text-muted text-center">
+            Research takes ~45 min. We'll dig deep and email you when it's ready.
+          </p>
           <button
             type="submit"
             disabled={loading || !niche.trim()}

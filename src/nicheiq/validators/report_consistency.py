@@ -71,6 +71,7 @@ class ReportConsistencyValidator:
         warnings.extend(self._check_market_timing_vs_trend(report, state))
         warnings.extend(self._check_trend_internal_coherence(report, state))
         warnings.extend(self._check_verdict_vs_recommendation(report))
+        warnings.extend(self._check_verdict_vs_viability(report, state))
         warnings.extend(self._check_core_pain_point_coverage(report))
 
         return warnings
@@ -346,6 +347,72 @@ class ReportConsistencyValidator:
                 ),
                 expected_value=verdict,
                 actual_value=recommendation,
+            ))
+
+        return warnings
+
+    # ------------------------------------------------------------------
+    # Check: Go verdict vs Weak market viability
+    # ------------------------------------------------------------------
+
+    def _check_verdict_vs_viability(self, report, state=None) -> list[ConsistencyWarning]:
+        warnings: list[ConsistencyWarning] = []
+
+        if not state:
+            return warnings
+
+        market_sizing = getattr(state, 'market_sizing', None)
+        if not market_sizing:
+            return warnings
+
+        viability = getattr(market_sizing, 'market_viability_verdict', None)
+        entry_strategy = getattr(market_sizing, 'recommended_entry_strategy', None)
+
+        if not viability:
+            return warnings
+
+        dashboard = getattr(report, 'executive_dashboard', None)
+        if not dashboard:
+            return warnings
+
+        verdict_obj = getattr(dashboard, 'go_no_go_verdict', None)
+        if not verdict_obj:
+            return warnings
+
+        verdict = getattr(verdict_obj, 'verdict', None)
+        if not verdict:
+            return warnings
+
+        # Normalize for comparison
+        viability_norm = viability.strip().title()
+        entry_norm = (entry_strategy or "").strip().title()
+
+        # Only flag contradictions when verdict is Go
+        if verdict != "Go":
+            return warnings
+
+        if viability_norm == "Weak":
+            warnings.append(ConsistencyWarning(
+                field_path="market_sizing.market_viability_verdict",
+                severity="WARNING",
+                message=(
+                    f"Market viability contradiction: viability assessed as '{viability}' "
+                    f"but verdict is '{verdict}'"
+                ),
+                expected_value="Moderate or Strong",
+                actual_value=viability,
+            ))
+
+        if entry_norm == "Reconsider":
+            warnings.append(ConsistencyWarning(
+                field_path="market_sizing.recommended_entry_strategy",
+                severity="WARNING",
+                message=(
+                    f"Entry strategy contradiction: recommended entry strategy is "
+                    f"'{entry_strategy}' but verdict is '{verdict}'"
+                ),
+                expected_value="Enter or Proceed",
+                actual_value=entry_strategy,
             ))
 
         return warnings

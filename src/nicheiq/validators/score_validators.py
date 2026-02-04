@@ -189,6 +189,12 @@ class ScoreThresholds(BaseModel):
         description="Rule 5 (additive): Monitor & Wait timing raises risk one level",
     )
 
+    # Phase 3: Market Viability Downgrade Flag
+    viability_weak_floors_risk_medium: bool = Field(
+        default=True,
+        description="Phase 3: Weak market viability sets risk floor at Medium",
+    )
+
 
 class VerdictValidator:
     """
@@ -439,6 +445,72 @@ class VerdictValidator:
             primary_concern = f"Trend concern: {trend_direction} market, {longevity_verdict} longevity, timing={timing_recommendation}"
 
         return verdict, risk_level, primary_concern, trend_context
+
+    def apply_market_viability_downgrade(
+        self,
+        verdict: Literal["Go", "No-Go", "Conditional"],
+        risk_level: Literal["Low", "Medium", "High"],
+        primary_concern: Optional[str],
+        market_viability_verdict: str,
+        recommended_entry_strategy: str,
+    ) -> tuple[
+        Literal["Go", "No-Go", "Conditional"],
+        Literal["Low", "Medium", "High"],
+        Optional[str],
+        Optional[str],
+    ]:
+        """
+        Apply market viability risk floor (Phase 3).
+
+        When market_viability_verdict is "Weak", sets a risk floor at Medium
+        (Low→Medium, else no-op). Never changes the verdict itself.
+
+        Args:
+            verdict: Current verdict (after Phase 1+2)
+            risk_level: Current risk level (after Phase 1+2)
+            primary_concern: Current primary concern (may be None)
+            market_viability_verdict: "Strong", "Moderate", or "Weak" from Stage 8.6
+            recommended_entry_strategy: Entry strategy from Stage 8.6 (e.g. "Reconsider")
+
+        Returns:
+            Tuple of (verdict, risk_level, primary_concern, market_viability_context)
+            where market_viability_context documents the adjustment or None if unchanged.
+        """
+        market_viability_context = None
+
+        # Normalize inputs for case-insensitive matching
+        viability = (market_viability_verdict or "").strip().title()
+        entry_strategy = (recommended_entry_strategy or "").strip()
+
+        if not viability:
+            return verdict, risk_level, primary_concern, market_viability_context
+
+        if self.thresholds.viability_weak_floors_risk_medium and viability == "Weak":
+            original_risk = risk_level
+            if risk_level == "Low":
+                risk_level = "Medium"
+
+            # Build context message
+            context_parts = [
+                f"Risk floor applied Low\u2192Medium" if original_risk == "Low"
+                else f"Risk floor no-op (already {original_risk})"
+            ]
+            context_parts.append(f"Weak market viability")
+            if entry_strategy:
+                context_parts.append(f"entry strategy: {entry_strategy}")
+            market_viability_context = ": ".join(context_parts[:2])
+            if entry_strategy:
+                market_viability_context += f" (entry strategy: {entry_strategy})"
+
+            # Set primary_concern from viability if currently None
+            if primary_concern is None:
+                primary_concern = f"Weak market viability (entry strategy: {entry_strategy})" if entry_strategy else "Weak market viability"
+
+        elif viability == "Moderate" and verdict == "Go":
+            # Informational context only — no risk change
+            market_viability_context = f"Moderate market viability noted (verdict: {verdict}, entry strategy: {entry_strategy or 'N/A'})"
+
+        return verdict, risk_level, primary_concern, market_viability_context
 
     def is_high_priority_pain_point(self, severity_score: float) -> bool:
         """

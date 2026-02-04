@@ -50,6 +50,10 @@ class GoNoGoVerdict(BaseModel):
         default=None,
         description="Trend-based adjustment explanation, if any. None = no adjustment applied."
     )
+    market_viability_context: Optional[str] = Field(
+        default=None,
+        description="Market viability adjustment explanation, if any. None = no adjustment applied."
+    )
 
 class CorePainPoint(BaseModel):
     """The single most important pain point driving this opportunity."""
