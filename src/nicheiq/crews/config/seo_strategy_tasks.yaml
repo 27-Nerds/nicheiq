@@ -1337,22 +1337,42 @@ create_implementation_plan:
 
     **DO NOT fabricate metrics** - base all projections on Task 1-2 data.
 
+    **KEYWORD DIFFICULTY METRICS (Data-Driven Timeline Estimates):**
+
+    These metrics are calculated from actual SEO difficulty scores (0-100 scale, lower=easier to rank):
+    - Tier 0 avg difficulty: {avg_difficulty_tier0} (premium keywords)
+    - Tier 1 avg difficulty: {avg_difficulty_tier1} → expected ranking time: {tier1_ranking_time}
+    - Tier 2 avg difficulty: {avg_difficulty_tier2} → expected ranking time: {tier2_ranking_time}
+    - Weighted difficulty score: {difficulty_score}
+    - Timeline multiplier: {timeline_multiplier}
+
+    **TIMELINE ADJUSTMENT GUIDANCE:**
+    - timeline_multiplier < 0.75: Accelerated timeline (low difficulty niche - compress phases)
+    - timeline_multiplier 0.75-1.25: Standard timeline (use default phase durations)
+    - timeline_multiplier > 1.25: Extended timeline (high difficulty niche - expand phases)
+
+    Use the tier-specific ranking times ({tier1_ranking_time}, {tier2_ranking_time}) to set realistic
+    expectations for each phase. Do NOT use generic "3-6 months" estimates - use the data-driven times.
+
     **PHASED ROADMAP** (use bullet points, NOT tables - tables break JSON):
 
-    Phase 1 (Mo 1-3) - Foundation + Quick Wins:
+    Phase 1 - Foundation + Quick Wins:
+    - Duration: Adjust based on timeline_multiplier (standard: Mo 1-3)
     - Focus: Technical SEO basics, Tier 1 content
     - Deliverables: 3-5 Tier 1 pages, tech audit fixes
-    - Targets: First rankings, 500-2K visits/mo
+    - Targets: First rankings within {tier1_ranking_time}
 
-    Phase 2 (Mo 4-6) - Strategic Expansion:
+    Phase 2 - Strategic Expansion:
+    - Duration: Adjust based on timeline_multiplier (standard: Mo 4-6)
     - Focus: Tier 2 content, topic clusters, internal linking
     - Deliverables: 3-5 Tier 2 pages, cluster architecture
-    - Targets: Pos 1-10 for 5-10 KWs, 2-5K visits/mo
+    - Targets: Rankings within {tier2_ranking_time}
 
-    Phase 3 (Mo 7-12) - Scaling:
+    Phase 3 - Scaling:
+    - Duration: Remaining months to reach 12-month total
     - Focus: Tiers 3-4, programmatic templates
     - Deliverables: Geographic/category pages at scale
-    - Targets: 20+ ranking KWs, 5-10K visits/mo
+    - Targets: 20+ ranking KWs, scaled traffic
 
     **BUDGET ALLOCATION (Niche-Specific):**
 

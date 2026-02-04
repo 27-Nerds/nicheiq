@@ -139,10 +139,16 @@ def _hydrate_tiered_keyword(
         opp_score = search_volume / max(competition_index, 1) if competition_index else None
         logger.debug(f"Calculated opportunity_score for '{light.keyword}': {opp_score}")
 
+    # Extract keyword_difficulty (SEO difficulty, NOT Google Ads competition)
+    keyword_difficulty = stats.get('keyword_difficulty')  # May be None if not in top 1000
+
     tier_rationale = (
         f"Volume: {search_volume}, Comp: {competition_index}, Opp: {opp_score:.1f}"
         if opp_score else f"Volume: {search_volume}, Comp: {competition_index}"
     )
+    # Add difficulty to rationale if available
+    if keyword_difficulty is not None:
+        tier_rationale += f", Diff: {keyword_difficulty:.0f}"
 
     return TieredKeyword(
         keyword=light.keyword,
@@ -153,6 +159,7 @@ def _hydrate_tiered_keyword(
         intent=light.intent,
         tier=tier,
         tier_rationale=tier_rationale,
+        keyword_difficulty=keyword_difficulty,
     )
 
 
@@ -1541,6 +1548,256 @@ class SEOStrategyCrew:
             "is_evergreen": is_evergreen
         }
 
+    def _calculate_difficulty_metrics_from_partitions(self, partitions: dict) -> dict:
+        """
+        Calculate aggregate difficulty metrics from partitioned keyword data.
+
+        Called BEFORE crew kickoff with raw enriched_keywords partitions.
+        Metrics are passed as inputs to Task 3 for data-driven timeline estimates.
+
+        Timeline derivation from difficulty:
+        - <25: "1-3 months" (easy)
+        - 25-40: "3-6 months"
+        - 40-60: "6-9 months"
+        - 60-75: "9-15 months"
+        - >75: "12-18+ months" (hard)
+
+        Args:
+            partitions: Dict from _partition_keywords_for_parallel() containing
+                        tier_0_remaining, tier_1_remaining, strategic_remaining lists
+
+        Returns:
+            Dict with difficulty metrics for injection into Task 3
+        """
+        def calc_avg_difficulty_from_dicts(keywords: list[dict]) -> float | None:
+            """Calculate average keyword_difficulty from list of keyword dicts."""
+            if not keywords:
+                return None
+            difficulties = [
+                kw.get('keyword_difficulty')
+                for kw in keywords
+                if kw.get('keyword_difficulty') is not None
+            ]
+            if not difficulties:
+                return None
+            return sum(difficulties) / len(difficulties)
+
+        def difficulty_to_ranking_time(difficulty: float | None) -> str:
+            """Convert difficulty score to human-readable ranking time."""
+            if difficulty is None:
+                return "Unknown (no difficulty data)"
+            if difficulty < 25:
+                return "1-3 months"
+            elif difficulty < 40:
+                return "3-6 months"
+            elif difficulty < 60:
+                return "6-9 months"
+            elif difficulty < 75:
+                return "9-15 months"
+            else:
+                return "12-18+ months"
+
+        def difficulty_to_multiplier(difficulty: float | None) -> float:
+            """Convert difficulty to timeline multiplier (0.5-2.0)."""
+            if difficulty is None:
+                return 1.0  # Default to standard timeline
+            # Linear interpolation: difficulty 0 -> 0.5, difficulty 50 -> 1.0, difficulty 100 -> 2.0
+            return 0.5 + (difficulty / 100) * 1.5
+
+        # Get keyword lists from partitions (includes both LLM and remaining keywords)
+        # Note: partitions has tier_X_remaining lists, but we need ALL keywords per tier
+        # The full tier list is tier_X_llm + tier_X_remaining (but we only store remaining)
+        # For simplicity, we recalculate from the all keywords passed to partition
+        # Actually, looking at _partition_keywords_for_parallel, tier_X_remaining is available
+
+        # Calculate per-tier averages using remaining keywords (since LLM keywords are a subset)
+        # This gives us difficulty for ALL keywords in each tier, not just LLM-selected ones
+        tier_0_kws = partitions.get('tier_0_remaining', [])
+        tier_1_kws = partitions.get('tier_1_remaining', [])
+        tier_2_kws = partitions.get('strategic_remaining', [])
+
+        # Also need to include the LLM keywords - build from CSV if available
+        # Actually, the CSV already contains all keywords - let's extract difficulty from there
+        # For now, use a simpler approach: calculate from full enriched_keywords passed separately
+
+        avg_t0 = calc_avg_difficulty_from_dicts(tier_0_kws)
+        avg_t1 = calc_avg_difficulty_from_dicts(tier_1_kws)
+        avg_t2 = calc_avg_difficulty_from_dicts(tier_2_kws)
+
+        # If remaining lists are empty but there were keywords sent to LLM, log warning
+        if not tier_1_kws and partitions.get('tier_1_count', 0) > 0:
+            logger.debug(
+                f"Tier 1 difficulty calculated from remaining only - "
+                f"{partitions.get('tier_1_count', 0)} keywords were sent to LLM"
+            )
+
+        # Calculate weighted difficulty score
+        # Weights: T0=0.4, T1=0.4, T2=0.2 (premium/quick-win tiers matter most)
+        weighted_scores = []
+        weights = []
+        if avg_t0 is not None:
+            weighted_scores.append(avg_t0 * 0.4)
+            weights.append(0.4)
+        if avg_t1 is not None:
+            weighted_scores.append(avg_t1 * 0.4)
+            weights.append(0.4)
+        if avg_t2 is not None:
+            weighted_scores.append(avg_t2 * 0.2)
+            weights.append(0.2)
+
+        if weighted_scores and sum(weights) > 0:
+            difficulty_score = sum(weighted_scores) / sum(weights)
+        else:
+            difficulty_score = None
+
+        # Calculate timeline multiplier
+        timeline_multiplier = difficulty_to_multiplier(difficulty_score)
+
+        # Generate human-readable ranking times
+        tier1_ranking_time = difficulty_to_ranking_time(avg_t1)
+        tier2_ranking_time = difficulty_to_ranking_time(avg_t2)
+
+        metrics = {
+            "avg_difficulty_tier0": round(avg_t0, 1) if avg_t0 is not None else None,
+            "avg_difficulty_tier1": round(avg_t1, 1) if avg_t1 is not None else None,
+            "avg_difficulty_tier2": round(avg_t2, 1) if avg_t2 is not None else None,
+            "difficulty_score": round(difficulty_score, 1) if difficulty_score is not None else None,
+            "timeline_multiplier": round(timeline_multiplier, 2),
+            "tier1_ranking_time": tier1_ranking_time,
+            "tier2_ranking_time": tier2_ranking_time,
+        }
+
+        logger.info(
+            f"Difficulty metrics calculated: T0={metrics['avg_difficulty_tier0']}, "
+            f"T1={metrics['avg_difficulty_tier1']}, T2={metrics['avg_difficulty_tier2']}, "
+            f"Score={metrics['difficulty_score']}, Multiplier={metrics['timeline_multiplier']}"
+        )
+
+        return metrics
+
+    def _calculate_difficulty_metrics_from_enriched(self, enriched_keywords: list[dict]) -> dict:
+        """
+        Calculate aggregate difficulty metrics from enriched_keywords list.
+
+        Alternative to _calculate_difficulty_metrics_from_partitions that uses
+        the full enriched_keywords list directly, calculating tier membership
+        from opportunity_score.
+
+        Args:
+            enriched_keywords: List of keyword dicts with search_volume,
+                             competition_index, and keyword_difficulty fields
+
+        Returns:
+            Dict with difficulty metrics for injection into Task 3
+        """
+        def calc_avg_difficulty(keywords: list[dict]) -> float | None:
+            """Calculate average keyword_difficulty from list of keyword dicts."""
+            if not keywords:
+                return None
+            difficulties = [
+                kw.get('keyword_difficulty')
+                for kw in keywords
+                if kw.get('keyword_difficulty') is not None
+            ]
+            if not difficulties:
+                return None
+            return sum(difficulties) / len(difficulties)
+
+        def difficulty_to_ranking_time(difficulty: float | None) -> str:
+            """Convert difficulty score to human-readable ranking time."""
+            if difficulty is None:
+                return "Unknown (no difficulty data)"
+            if difficulty < 25:
+                return "1-3 months"
+            elif difficulty < 40:
+                return "3-6 months"
+            elif difficulty < 60:
+                return "6-9 months"
+            elif difficulty < 75:
+                return "9-15 months"
+            else:
+                return "12-18+ months"
+
+        def difficulty_to_multiplier(difficulty: float | None) -> float:
+            """Convert difficulty to timeline multiplier (0.5-2.0)."""
+            if difficulty is None:
+                return 1.0  # Default to standard timeline
+            return 0.5 + (difficulty / 100) * 1.5
+
+        # Partition keywords by opportunity score (same logic as _partition_keywords_for_parallel)
+        tier_0_kws = []  # opp_score > 200
+        tier_1_kws = []  # opp_score 100-200
+        tier_2_kws = []  # opp_score 50-100
+
+        for kw in enriched_keywords:
+            sv = kw.get("search_volume", 0) or 0
+            ci = kw.get("competition_index", 1) or 1
+            opp_score = sv / max(ci, 1)
+
+            if opp_score > 200:
+                tier_0_kws.append(kw)
+            elif opp_score > 100:
+                tier_1_kws.append(kw)
+            elif opp_score >= 50:
+                tier_2_kws.append(kw)
+
+        # Calculate per-tier averages
+        avg_t0 = calc_avg_difficulty(tier_0_kws)
+        avg_t1 = calc_avg_difficulty(tier_1_kws)
+        avg_t2 = calc_avg_difficulty(tier_2_kws)
+
+        # Log keyword counts with difficulty data
+        t0_with_diff = sum(1 for k in tier_0_kws if k.get('keyword_difficulty') is not None)
+        t1_with_diff = sum(1 for k in tier_1_kws if k.get('keyword_difficulty') is not None)
+        t2_with_diff = sum(1 for k in tier_2_kws if k.get('keyword_difficulty') is not None)
+        logger.debug(
+            f"Keywords with difficulty data: T0={t0_with_diff}/{len(tier_0_kws)}, "
+            f"T1={t1_with_diff}/{len(tier_1_kws)}, T2={t2_with_diff}/{len(tier_2_kws)}"
+        )
+
+        # Calculate weighted difficulty score
+        weighted_scores = []
+        weights = []
+        if avg_t0 is not None:
+            weighted_scores.append(avg_t0 * 0.4)
+            weights.append(0.4)
+        if avg_t1 is not None:
+            weighted_scores.append(avg_t1 * 0.4)
+            weights.append(0.4)
+        if avg_t2 is not None:
+            weighted_scores.append(avg_t2 * 0.2)
+            weights.append(0.2)
+
+        if weighted_scores and sum(weights) > 0:
+            difficulty_score = sum(weighted_scores) / sum(weights)
+        else:
+            difficulty_score = None
+
+        # Calculate timeline multiplier
+        timeline_multiplier = difficulty_to_multiplier(difficulty_score)
+
+        # Generate human-readable ranking times
+        tier1_ranking_time = difficulty_to_ranking_time(avg_t1)
+        tier2_ranking_time = difficulty_to_ranking_time(avg_t2)
+
+        metrics = {
+            "avg_difficulty_tier0": round(avg_t0, 1) if avg_t0 is not None else None,
+            "avg_difficulty_tier1": round(avg_t1, 1) if avg_t1 is not None else None,
+            "avg_difficulty_tier2": round(avg_t2, 1) if avg_t2 is not None else None,
+            "difficulty_score": round(difficulty_score, 1) if difficulty_score is not None else None,
+            "timeline_multiplier": round(timeline_multiplier, 2),
+            "tier1_ranking_time": tier1_ranking_time,
+            "tier2_ranking_time": tier2_ranking_time,
+        }
+
+        logger.info(
+            f"Difficulty metrics from enriched: T0={metrics['avg_difficulty_tier0']}, "
+            f"T1={metrics['avg_difficulty_tier1']}, T2={metrics['avg_difficulty_tier2']}, "
+            f"Score={metrics['difficulty_score']}, Multiplier={metrics['timeline_multiplier']}"
+        )
+
+        return metrics
+
     def _format_keywords_as_csv(self, enriched_keywords: list) -> str:
         """
         Format keywords as CSV for direct context injection.
@@ -1554,12 +1811,15 @@ class SEOStrategyCrew:
         - seasonality_index: 0.0 to 1.0
         - is_evergreen: True/False
 
+        Also includes keyword_difficulty (SEO difficulty score 0-100) for
+        accurate timeline estimates.
+
         Returns:
-            CSV string with header and keyword data (11 columns)
+            CSV string with header and keyword data (12 columns)
         """
-        # CSV header with trend columns
+        # CSV header with trend columns and keyword_difficulty
         lines = [
-            "keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier,trend_direction,trend_score,seasonality,is_evergreen"
+            "keyword,search_volume,competition_index,competition_level,cpc,opportunity_score,tier,keyword_difficulty,trend_direction,trend_score,seasonality,is_evergreen"
         ]
 
         for k in enriched_keywords:
@@ -1567,6 +1827,7 @@ class SEOStrategyCrew:
             search_volume = k.get("search_volume", 0)
             competition_index = k.get("competition_index", 0)
             cpc = float(k.get("cpc") or 0)
+            keyword_difficulty = k.get("keyword_difficulty")
 
             # Calculate opportunity score
             opp_score = search_volume / max(competition_index, 1)
@@ -1597,11 +1858,14 @@ class SEOStrategyCrew:
             monthly_searches = k.get("monthly_searches", [])
             trend_metrics = self._calculate_trend_metrics(monthly_searches)
 
+            # Format keyword_difficulty (empty string if None)
+            kd_str = f"{keyword_difficulty:.1f}" if keyword_difficulty is not None else ""
+
             # Add CSV row (escape commas in keyword text if present)
             keyword_escaped = keyword_text.replace(",", " ")
             lines.append(
                 f"{keyword_escaped},{search_volume},{competition_index},"
-                f"{comp_label},{cpc:.2f},{opp_score:.1f},{tier},"
+                f"{comp_label},{cpc:.2f},{opp_score:.1f},{tier},{kd_str},"
                 f"{trend_metrics['trend_direction']},{trend_metrics['trend_score']},"
                 f"{trend_metrics['seasonality_index']},{trend_metrics['is_evergreen']}"
             )
@@ -1687,6 +1951,13 @@ class SEOStrategyCrew:
         - Sends top N keywords (by opportunity_score) to LLM for analysis
         - Returns remaining keywords for Python hydration
 
+        DIFFICULTY GATING (Phase 6):
+        Keywords with high SEO difficulty are demoted from premium tiers to ensure
+        "quick win" labels actually represent achievable ranking opportunities.
+        - Tier 0: opp_score > 200 AND difficulty < tier_0_max_difficulty (default 50)
+        - Tier 1: opp_score 100-200 AND difficulty < tier_1_max_difficulty (default 60)
+        - Tier 2: Includes demoted T0/T1 keywords with high difficulty
+
         Partitions:
         - tier_0: opp_score > 200 (Tier 0 Premium) - no limit
         - tier_1: opp_score 100-200 (Tier 1 Quick Wins) - top 25
@@ -1706,27 +1977,59 @@ class SEOStrategyCrew:
         geographic_keywords = []      # location mentions, opp < 50 → Task 1c (T3)
         category_keywords = []        # remaining → Task 1d (T4)
 
+        # Track demotions for logging
+        demoted_from_t0 = 0
+        demoted_from_t1 = 0
+
+        # Get difficulty thresholds from settings
+        t0_max_diff = settings.tier_0_max_difficulty
+        t1_max_diff = settings.tier_1_max_difficulty
+
         for kw in enriched_keywords:
             keyword_text = kw.get("keyword", "").lower()
             sv = kw.get("search_volume", 0) or 0
             ci = kw.get("competition_index", 1) or 1
             opp_score = sv / max(ci, 1)
+            difficulty = kw.get("keyword_difficulty")  # May be None
 
-            # Partition 1: Tier 0 (opp > 200)
+            # Partition with difficulty gating
+            # Tier 0: High opportunity AND achievable difficulty
             if opp_score > 200:
-                tier_0_keywords.append(kw)
-            # Partition 2: Tier 1 (opp 100-200)
+                if difficulty is None or difficulty < t0_max_diff:
+                    tier_0_keywords.append(kw)
+                else:
+                    # Demote to Tier 2 (high opp but hard to rank)
+                    strategic_keywords.append(kw)
+                    demoted_from_t0 += 1
+            # Tier 1: Good opportunity AND reasonable difficulty
             elif opp_score > 100:
-                tier_1_keywords.append(kw)
-            # Partition 3: Strategic (opp 50-100 = Tier 2)
+                if difficulty is None or difficulty < t1_max_diff:
+                    tier_1_keywords.append(kw)
+                else:
+                    # Demote to Tier 2 (medium opp but hard to rank)
+                    strategic_keywords.append(kw)
+                    demoted_from_t1 += 1
+            # Tier 2: Strategic (opp 50-100, no difficulty gate)
             elif opp_score >= 50:
                 strategic_keywords.append(kw)
-            # Partition 4: Geographic (has location mention, opp < 50)
+            # Tier 3: Geographic (has location mention, opp < 50)
             elif self._has_location_mention(keyword_text):
                 geographic_keywords.append(kw)
-            # Partition 5: Category (everything else)
+            # Tier 4: Category (everything else)
             else:
                 category_keywords.append(kw)
+
+        # Log tier demotions for visibility
+        if demoted_from_t0 > 0:
+            logger.info(
+                f"[Tier Gating] Demoted {demoted_from_t0} keywords from T0→T2 "
+                f"(difficulty >= {t0_max_diff})"
+            )
+        if demoted_from_t1 > 0:
+            logger.info(
+                f"[Tier Gating] Demoted {demoted_from_t1} keywords from T1→T2 "
+                f"(difficulty >= {t1_max_diff})"
+            )
 
         # Apply LLM limits to each tier
         tier_0_llm, tier_0_remaining = self._limit_keywords_for_llm(
@@ -1745,7 +2048,11 @@ class SEOStrategyCrew:
             category_keywords, self.TIER_4_LLM_LIMIT
         )
 
-        # Log partitioning with limit details
+        # Log partitioning with limit details and demotion info
+        demotion_note = ""
+        if demoted_from_t0 or demoted_from_t1:
+            demotion_note = f"\n  [Difficulty Gating] {demoted_from_t0} demoted T0→T2, {demoted_from_t1} demoted T1→T2"
+
         logger.info(
             f"Keyword partitioning (with LLM limits):\n"
             f"  Tier 0: {len(tier_0_llm)} sent to LLM / {len(tier_0_keywords)} total (limit={self.TIER_0_LLM_LIMIT or 'None'})\n"
@@ -1753,6 +2060,7 @@ class SEOStrategyCrew:
             f"  Tier 2: {len(tier_2_llm)} sent to LLM / {len(strategic_keywords)} total (limit={self.TIER_2_LLM_LIMIT})\n"
             f"  Tier 3: {len(tier_3_llm)} sent to LLM / {len(geographic_keywords)} total (limit={self.TIER_3_LLM_LIMIT})\n"
             f"  Tier 4: {len(tier_4_llm)} sent to LLM / {len(category_keywords)} total (limit={self.TIER_4_LLM_LIMIT})"
+            f"{demotion_note}"
         )
 
         return {
@@ -1789,6 +2097,10 @@ class SEOStrategyCrew:
             "category_count": len(tier_4_llm),
             "category_total": len(category_keywords),
             "category_remaining": tier_4_remaining,
+
+            # Difficulty gating metadata
+            "demoted_from_t0": demoted_from_t0,
+            "demoted_from_t1": demoted_from_t1,
         }
 
     def _calculate_category_limits(self, keyword_count: int) -> tuple[int, int]:
@@ -2523,6 +2835,9 @@ class SEOStrategyCrew:
                 f"(based on {partitions['category_count']} category keywords)"
             )
 
+            # Calculate difficulty metrics for data-driven timeline estimates in Task 3
+            difficulty_metrics = self._calculate_difficulty_metrics_from_enriched(enriched_keywords)
+
             logger.info("Executing 9-Task SEO Strategy Flow (parallel keyword analysis)...")
             logger.info(
                 f"Tasks 1a-i/ii, 1b, 1c, 1d will run in PARALLEL: "
@@ -2573,6 +2888,14 @@ class SEOStrategyCrew:
                     # Other context
                     "topic_clusters_summary": topic_clusters_summary,
                     "allowed_project_types": ', '.join(self.allowed_project_types) if self.allowed_project_types else "All types allowed",
+                    # Difficulty metrics for Task 3 data-driven timeline estimates
+                    "avg_difficulty_tier0": difficulty_metrics["avg_difficulty_tier0"],
+                    "avg_difficulty_tier1": difficulty_metrics["avg_difficulty_tier1"],
+                    "avg_difficulty_tier2": difficulty_metrics["avg_difficulty_tier2"],
+                    "difficulty_score": difficulty_metrics["difficulty_score"],
+                    "timeline_multiplier": difficulty_metrics["timeline_multiplier"],
+                    "tier1_ranking_time": difficulty_metrics["tier1_ranking_time"],
+                    "tier2_ranking_time": difficulty_metrics["tier2_ranking_time"],
                 }
             )
 

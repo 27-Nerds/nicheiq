@@ -400,6 +400,27 @@ class Settings(BaseSettings):
         description="Minimum tiering coverage (tiered_keywords/enriched_keywords). Warn if below this threshold"
     )
 
+    # Tier difficulty gates (keywords above these thresholds get demoted to lower tiers)
+    # These gates ensure "quick win" tiers only contain actually achievable keywords
+    tier_0_max_difficulty: int = Field(
+        default=50,
+        ge=0,
+        le=100,
+        description="Max keyword_difficulty for Tier 0 Premium keywords. Keywords with higher difficulty demoted to Tier 2."
+    )
+    tier_1_max_difficulty: int = Field(
+        default=60,
+        ge=0,
+        le=100,
+        description="Max keyword_difficulty for Tier 1 Quick Win keywords. Keywords with higher difficulty demoted to Tier 2."
+    )
+    tier_2_max_difficulty: int = Field(
+        default=75,
+        ge=0,
+        le=100,
+        description="Max keyword_difficulty for Tier 2 Strategic keywords. Very hard keywords still included but flagged."
+    )
+
     @field_validator('reddit_comment_limit', 'target_location', mode='before')
     @classmethod
     def parse_empty_string_as_none(cls, v):

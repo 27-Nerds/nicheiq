@@ -421,7 +421,25 @@ class CrewKeywordValidationResult(BaseModel):
         default=None,
         description=(
             "Full list of semantically-validated keywords from Stage 8.5 "
-            "(dicts with 'keyword', 'search_volume', 'competition_index'). "
+            "(dicts with 'keyword', 'search_volume', 'competition_index', 'keyword_difficulty'). "
             "Used as anchor seeds for Stage 9 deep SEO. None for legacy data."
+        )
+    )
+
+    # Difficulty-adjusted scoring fields (populated after batched difficulty enrichment in Stage 8.5)
+    avg_keyword_difficulty: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Average SEO difficulty of validated keywords (0-100). None if difficulty not fetched."
+    )
+    rankability_factor: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Rankability score derived from avg_keyword_difficulty. "
+            "1.0 = very easy (difficulty 0), 0.0 = very hard (difficulty 100). "
+            "Used in keyword_demand_score calculation: 55% volume + 25% opportunity + 20% rankability."
         )
     )

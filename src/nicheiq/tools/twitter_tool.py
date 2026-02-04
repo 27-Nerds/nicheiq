@@ -3,9 +3,11 @@ Twitter content collection tool using twitter-api-client.
 Supports authenticated and guest sessions for scraping public data.
 """
 
+import asyncio
 import json
 import os
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -367,10 +369,10 @@ class TwitterCollectorTool(BaseTool):
 
                     return tweets_list
 
-                # With nest_asyncio applied in main.py, can use asyncio.run directly
-                # even if there's a running event loop (from CrewAI Flow)
-                import asyncio
-                tweet_details = asyncio.run(_collect_tweets())
+                # Run in a separate thread to avoid conflict with any
+                # already-running event loop (e.g., CrewAI Flow)
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    tweet_details = executor.submit(asyncio.run, _collect_tweets()).result()
 
                 # Diagnostic logging to trace data flow
                 logger.info(f"[DIAG] API returned {len(tweet_details) if tweet_details else 0} raw response objects for {tweet_id}")

@@ -166,6 +166,19 @@ class TieredKeyword(BaseModel):
         )
     )
 
+    # SEO Difficulty (from DataForSEO Labs bulk_keyword_difficulty API)
+    # This is the REAL SEO difficulty (backlink strength of top 10), NOT Google Ads competition
+    keyword_difficulty: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description=(
+            "SEO difficulty score (0-100, lower=easier to rank). "
+            "Based on backlink strength of top 10 results. "
+            "Timeline: <25=1-3mo, 25-40=3-6mo, 40-60=6-9mo, 60-75=9-15mo, >75=12-18+mo"
+        )
+    )
+
     @field_validator('keyword')
     @classmethod
     def validate_keyword_constraints(cls, v: str) -> str:
@@ -1015,6 +1028,53 @@ class KeywordSummaryResult(BaseModel):
     sample_category_themes: Optional[list[str]] = Field(
         default=None,
         description="Key category theme names from Tier 4 groups (from Task 1d context)"
+    )
+
+    # ========================================
+    # DIFFICULTY METRICS (Python-calculated from keyword_difficulty field)
+    # ========================================
+    # These aggregate metrics enable data-driven timeline estimates in Task 3
+
+    avg_difficulty_tier0: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Average keyword_difficulty for Tier 0 keywords"
+    )
+    avg_difficulty_tier1: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Average keyword_difficulty for Tier 1 keywords"
+    )
+    avg_difficulty_tier2: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Average keyword_difficulty for Tier 2 keywords"
+    )
+    difficulty_score: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=100.0,
+        description="Weighted average difficulty across all tiers (Tier weights: T0=0.4, T1=0.4, T2=0.2)"
+    )
+    timeline_multiplier: Optional[float] = Field(
+        default=None,
+        ge=0.5,
+        le=2.0,
+        description=(
+            "Timeline adjustment based on difficulty_score. "
+            "<0.75=accelerated (low difficulty), 0.75-1.25=standard, >1.25=extended (high difficulty)"
+        )
+    )
+    tier1_ranking_time: Optional[str] = Field(
+        default=None,
+        description="Estimated time to rank for Tier 1 keywords (e.g., '3-6 months')"
+    )
+    tier2_ranking_time: Optional[str] = Field(
+        default=None,
+        description="Estimated time to rank for Tier 2 keywords (e.g., '6-9 months')"
     )
 
 

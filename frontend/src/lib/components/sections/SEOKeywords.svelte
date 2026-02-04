@@ -29,6 +29,8 @@
   import {
     getDifficultyColor,
     getKeywordTierVariant,
+    getSeoDifficultyColor,
+    getSeoDifficultyLabel,
   } from "$lib/utils/variantHelpers";
   import Badge from "$lib/components/ui/Badge.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
@@ -468,13 +470,14 @@
                 <tr>
                   <th class="th-keyword">Keyword</th>
                   <th class="th-volume">Volume</th>
+                  <th class="th-difficulty">Difficulty</th>
                   <th class="th-competition">Competition</th>
                   <th class="th-tier">Tier</th>
                 </tr>
               </thead>
               <tbody>
                 {#each getFilteredKeywords().slice(0, displayLimit) as kw}
-                  {@const difficulty = parseCompetition(kw.competition)}
+                  {@const competition = parseCompetition(kw.competition)}
                   <tr>
                     <td class="td-keyword">
                       <Hash class="keyword-icon" />
@@ -486,18 +489,36 @@
                       >
                       <span class="volume-unit">/mo</span>
                     </td>
+                    <td class="td-difficulty">
+                      {#if kw.keyword_difficulty != null}
+                        <span
+                          class="difficulty-badge"
+                          style="background: {getSeoDifficultyColor(kw.keyword_difficulty)}20; color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
+                        >
+                          {Math.round(kw.keyword_difficulty)}
+                        </span>
+                        <span
+                          class="difficulty-label"
+                          style="color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
+                        >
+                          {getSeoDifficultyLabel(kw.keyword_difficulty)}
+                        </span>
+                      {:else}
+                        <span class="difficulty-na">—</span>
+                      {/if}
+                    </td>
                     <td class="td-competition">
                       <div class="competition-bar">
                         <div
                           class="competition-fill"
-                          style="width: {difficulty *
-                            100}%; background: {getDifficultyColor(difficulty)}"
+                          style="width: {competition *
+                            100}%; background: {getDifficultyColor(competition)}"
                         ></div>
                       </div>
                       <span
                         class="competition-value"
-                        style="color: {getDifficultyColor(difficulty)}"
-                        >{formatScorePercent(difficulty)}</span
+                        style="color: {getDifficultyColor(competition)}"
+                        >{formatScorePercent(competition)}</span
                       >
                     </td>
                     <td class="td-tier">
@@ -514,7 +535,7 @@
           <!-- Insights cards view -->
           <div class="insights-grid">
             {#each getFilteredKeywords().slice(0, displayLimit) as kw}
-              {@const difficulty = parseCompetition(kw.competition)}
+              {@const competition = parseCompetition(kw.competition)}
               <div class="insight-card">
                 <div class="insight-header">
                   <span class="insight-keyword">{kw.keyword}</span>
@@ -529,11 +550,24 @@
                     >
                     <span class="metric-label">Volume/mo</span>
                   </div>
+                  {#if kw.keyword_difficulty != null}
+                    <div class="metric">
+                      <span
+                        class="metric-value"
+                        style="color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
+                        >{Math.round(kw.keyword_difficulty)}</span
+                      >
+                      <span class="metric-label">
+                        Difficulty
+                        <span class="difficulty-hint">({getSeoDifficultyLabel(kw.keyword_difficulty)})</span>
+                      </span>
+                    </div>
+                  {/if}
                   <div class="metric">
                     <span
                       class="metric-value"
-                      style="color: {getDifficultyColor(difficulty)}"
-                      >{formatScorePercent(difficulty)}</span
+                      style="color: {getDifficultyColor(competition)}"
+                      >{formatScorePercent(competition)}</span
                     >
                     <span class="metric-label">Competition</span>
                   </div>
@@ -827,6 +861,7 @@
   }
 
   .th-volume,
+  .th-difficulty,
   .th-competition,
   .th-tier {
     text-align: right;
@@ -871,6 +906,43 @@
   .volume-unit {
     color: var(--color-text-muted);
     font-size: 0.6875rem;
+  }
+
+  .td-difficulty {
+    text-align: right;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.375rem;
+  }
+
+  .difficulty-badge {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    min-width: 1.5rem;
+    text-align: center;
+  }
+
+  .difficulty-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .difficulty-na {
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+  }
+
+  .difficulty-hint {
+    font-weight: 400;
+    color: inherit;
+    opacity: 0.8;
   }
 
   .td-competition {

@@ -65,10 +65,35 @@ categorize_content:
     - Time sinks: "hours wasted", "manual process", "tedious"
     - Impact statements: "lost a client", "missed deadline", "cost me money"
 
-    **Niche Specificity Gate:**
-    Before finalizing each theme, ask: "Would this exact theme appear for 3+ unrelated niches?"
-    - If YES → REFRAME with niche-specific mechanism
-      ✗ "Burnout" → ✓ "Revision Cycle Burnout from Unlimited Client Feedback"
+    **UNIVERSAL THEME BLOCKLIST — REJECT, DO NOT REFRAME:**
+    The following theme names and anchor keywords are BANNED because they appear
+    in EVERY niche research project. Do NOT include them, even with reframing:
+
+    BANNED THEME NAMES (reject if category_name contains these):
+    - "Burnout" (any variation: burnout, burn-out, burnt out)
+    - "Mental Health" / "Mental Health Struggles"
+    - "Stress Management" / "Stress and Anxiety"
+    - "Work-Life Balance"
+    - "Loneliness" / "Social Isolation"
+    - "Imposter Syndrome"
+    - "Overwhelm" / "Feeling Overwhelmed"
+
+    BANNED ANCHOR KEYWORDS (exclude from anchor_keywords list):
+    - stressed, overwhelmed, burnt out, burnout, anxious
+    - depressed, lonely, isolated, exhausted, mental health
+    - imposter, self-doubt, anxiety, depression
+
+    **WHAT TO DO INSTEAD:**
+    If you identify a universal emotional pattern in the data:
+    1. Look for the NICHE-SPECIFIC TRIGGER causing that emotion
+    2. Name the theme after the trigger, not the emotion
+       ✗ "Burnout" → ✓ "Unlimited Client Revision Cycles" (the trigger)
+       ✗ "Loneliness" → ✓ "No Feedback Loop During Solo Development"
+    3. If you cannot identify a niche-specific trigger, EXCLUDE the theme entirely
+
+    **Niche Specificity Test (apply to ALL themes):**
+    Before finalizing each theme, ask: "Would this exact theme appear for gardeners, musicians, AND accountants?"
+    - If YES → EXCLUDE the theme (do not reframe, do not include)
     - If NO → Keep as-is
 
     ═══ CRITICAL RULES ═══
@@ -113,6 +138,14 @@ extract_pain_points:
 
     Transform Task 1's theme categories into specific pain points.
     For each pain point, extract ANCHOR KEYWORDS for later quote search (Task 4).
+
+    **CRITICAL FILTER STEP (Before Transformation):**
+    Review Task 1 themes and SKIP any theme that:
+    - Contains "burnout", "mental health", "stress", "loneliness" in category_name
+    - Has >50% of anchor_keywords being emotional terms (stressed, overwhelmed, etc.)
+    - Would appear identically for gardeners, musicians, AND accountants
+
+    Do NOT transform these themes into pain points. Proceed only with niche-specific themes.
 
     **WORKFLOW** (Theme-to-Pain-Point Transformation):
 
@@ -240,6 +273,22 @@ validate_pain_points:
     - "Overwhelmed by manual invoicing" → YES, tool solves this → WTP scored normally
     - "Lonely working from home" → NO, no tool fixes loneliness → WTP capped at 0.15
     - "Burnout from too many clients" → PARTIALLY, scheduling tool helps but doesn't fix root cause → WTP capped at 0.4
+
+    **UNIVERSAL THEME SCORING CAPS (MANDATORY):**
+    Pain points with names containing: "burnout", "mental health", "stress", "loneliness",
+    "work-life balance", "imposter syndrome", "overwhelm", "anxiety", "depression"
+
+    OR anchor_keywords dominated by emotional terms: "stressed", "overwhelmed", "burnt out",
+    "anxious", "depressed", "lonely", "isolated", "exhausted"
+
+    MUST have ALL THREE scores capped:
+    - severity_score: CAPPED AT 0.4 (not higher, regardless of emotional intensity)
+    - willingness_to_pay: CAPPED AT 0.15 (no tool solves emotional states)
+    - opportunity_level: CAPPED AT LOW (not MEDIUM, not HIGH)
+
+    RATIONALE: Emotional intensity ≠ severity. A user venting "I'm SO burnt out" shows
+    emotional volume, NOT functional severity. Severity measures workflow blockage,
+    not complaint loudness.
 
     **NICHE-SPECIFICITY ADJUSTMENT FOR OPPORTUNITY LEVEL:**
     Pain points that are universal across ALL niches (would appear for gardeners, musicians,

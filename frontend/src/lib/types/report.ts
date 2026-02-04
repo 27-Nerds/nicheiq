@@ -383,6 +383,7 @@ export interface Keyword {
 	search_volume: number;
 	competition: string;
 	opportunity_score: number;  // Required, matches Python int
+	keyword_difficulty?: number;  // SEO difficulty score 0-100 (lower=easier to rank)
 	strategy?: string;
 	intent?: string;
 	tier?: number;
@@ -418,6 +419,7 @@ export interface CategoryKeyword {
 	keyword_name: string;
 	search_volume: number;
 	competition: string;
+	keyword_difficulty?: number;  // SEO difficulty score 0-100 (lower=easier to rank)
 	cpc?: number;
 }
 

@@ -76,6 +76,37 @@ export function getDifficultyColor(difficulty: number): string {
 }
 
 /**
+ * Get a CSS color for SEO keyword difficulty (0-100 scale)
+ * Lower is easier to rank
+ */
+export function getSeoDifficultyColor(difficulty: number | null | undefined): string {
+	if (difficulty === null || difficulty === undefined) return 'var(--color-text-muted)';
+	if (difficulty <= 30) return 'var(--color-success)';
+	if (difficulty <= 60) return 'var(--color-warning)';
+	return 'var(--color-error)';
+}
+
+/**
+ * Get a badge variant for SEO keyword difficulty (0-100 scale)
+ */
+export function getSeoDifficultyVariant(difficulty: number | null | undefined): BadgeVariant {
+	if (difficulty === null || difficulty === undefined) return 'muted';
+	if (difficulty <= 30) return 'success';
+	if (difficulty <= 60) return 'warning';
+	return 'error';
+}
+
+/**
+ * Get a label for SEO keyword difficulty (0-100 scale)
+ */
+export function getSeoDifficultyLabel(difficulty: number | null | undefined): string {
+	if (difficulty === null || difficulty === undefined) return 'N/A';
+	if (difficulty <= 30) return 'Easy';
+	if (difficulty <= 60) return 'Medium';
+	return 'Hard';
+}
+
+/**
  * Get a CSS color for score values (0-1 scale)
  */
 export function getScoreColor(score: number | null | undefined): string {

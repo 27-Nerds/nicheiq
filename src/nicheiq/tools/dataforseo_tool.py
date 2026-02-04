@@ -6,6 +6,7 @@ Provides CrewAI tools for DataForSEO Keywords Data API endpoints.
 import base64
 import json
 import re
+import threading
 from typing import Any
 
 import requests
@@ -18,6 +19,7 @@ from ..config.settings import settings
 # DataForSEO API limits per request
 MAX_KEYWORDS_SEARCH_VOLUME = 1000  # Search volume endpoint
 MAX_KEYWORDS_RELATED = 20  # Related keywords endpoint (Google)
+MAX_KEYWORDS_DIFFICULTY = 1000  # Bulk keyword difficulty endpoint
 
 class DataForSEOBaseClient:
     """
@@ -33,6 +35,8 @@ class DataForSEOBaseClient:
     # Session-level caches (lazy-initialized)
     _expand_cache: dict[str, list[dict]] | None = None
     _volume_cache: dict[str, dict] | None = None
+    _difficulty_cache: dict[str, float] | None = None
+    _cache_lock: "threading.RLock | None" = None  # Thread safety for parallel Stage 8.5 validation
     _cache_hits: int = 0
     _cache_misses: int = 0
 
@@ -42,6 +46,10 @@ class DataForSEOBaseClient:
             self._expand_cache = {}
         if self._volume_cache is None:
             self._volume_cache = {}
+        if self._difficulty_cache is None:
+            self._difficulty_cache = {}
+        if self._cache_lock is None:
+            self._cache_lock = threading.RLock()
 
     def get_cache_stats(self) -> dict[str, Any]:
         """Return cache statistics for logging."""
@@ -54,6 +62,7 @@ class DataForSEOBaseClient:
             "hit_rate": f"{hit_rate:.1f}%",
             "expand_cache_size": len(self._expand_cache),
             "volume_cache_size": len(self._volume_cache),
+            "difficulty_cache_size": len(self._difficulty_cache),
         }
 
     def _get_api_config(self):
@@ -606,6 +615,176 @@ class DataForSEOBaseClient:
         logger.info(f"[Volume Cache] Stats: {self.get_cache_stats()}")
 
         return combined_results
+
+    def get_keyword_difficulty(
+        self,
+        keywords: list[str],
+        location_code: int = None,
+        language_code: str = None
+    ) -> dict[str, float]:
+        """
+        Fetch SEO difficulty scores via DataForSEO Labs Bulk Keyword Difficulty API.
+
+        This returns the actual SEO difficulty (based on backlink strength of top 10 results),
+        NOT the Google Ads competition index (which measures advertiser density).
+
+        CACHING: Results are cached per location to avoid redundant API calls.
+        Stage 8.5 difficulty data will be reused in Phase 9.5d for overlapping keywords.
+
+        Use this for:
+        - Accurate timeline estimates (higher difficulty = longer to rank)
+        - Identifying quick-win keywords (low difficulty + high volume)
+        - Prioritizing content based on ranking feasibility
+
+        Args:
+            keywords: List of keywords to get difficulty for (max 1000 per request)
+            location_code: DataForSEO location code (optional, default: 2840 for US)
+            language_code: Language code (optional, default: 'en')
+
+        Returns:
+            Dict mapping keyword -> difficulty score (0-100, lower = easier to rank)
+            Keywords not found in API response will not be in the returned dict.
+        """
+        # Use provided values or fall back to settings/defaults
+        if location_code is None:
+            location_code = settings.target_location or 2840  # Default to US
+        if language_code is None:
+            language_code = settings.target_language or "en"
+
+        if not keywords:
+            logger.warning("No keywords provided for difficulty lookup")
+            return {}
+
+        # Initialize caches (thread-safe)
+        self._ensure_caches_initialized()
+
+        # Sanitize keywords
+        sanitized_keywords = []
+        for kw in keywords:
+            original = str(kw)
+            sanitized = self._sanitize_keyword(original)
+            if sanitized:
+                sanitized_keywords.append(sanitized)
+
+        if not sanitized_keywords:
+            logger.warning("No valid keywords after sanitization for difficulty lookup")
+            return {}
+
+        # Deduplicate
+        unique_keywords = list(dict.fromkeys(sanitized_keywords))
+
+        # Check cache for already-fetched keywords (thread-safe)
+        # Cache key includes location to prevent cross-location pollution
+        cached_results: dict[str, float] = {}
+        uncached_keywords: list[str] = []
+
+        with self._cache_lock:
+            for kw in unique_keywords:
+                cache_key = f"{location_code}:{kw.lower().strip()}"
+                if cache_key in self._difficulty_cache:
+                    cached_results[kw.lower().strip()] = self._difficulty_cache[cache_key]
+                    self._cache_hits += 1
+                else:
+                    uncached_keywords.append(kw)
+                    self._cache_misses += 1
+
+        if cached_results:
+            logger.info(
+                f"[Difficulty Cache] {len(cached_results)} keywords from cache, "
+                f"{len(uncached_keywords)} need API lookup"
+            )
+
+        # If all keywords are cached, return immediately
+        if not uncached_keywords:
+            logger.info(
+                f"[Difficulty Cache] All {len(cached_results)} keywords served from cache "
+                f"(0 API calls)"
+            )
+            return cached_results
+
+        logger.info(
+            f"Getting keyword difficulty for {len(uncached_keywords)} keywords "
+            f"(location_code={location_code}, language_code={language_code})"
+        )
+
+        # DataForSEO Labs endpoint for bulk keyword difficulty
+        endpoint = "/dataforseo_labs/google/bulk_keyword_difficulty/live"
+
+        # Split into batches if needed (API limit: 1000 per request)
+        keyword_batches = self._chunk_list(uncached_keywords, MAX_KEYWORDS_DIFFICULTY)
+        new_results: dict[str, float] = {}
+
+        for batch_idx, batch in enumerate(keyword_batches, 1):
+            logger.info(f"Processing difficulty batch {batch_idx}/{len(keyword_batches)} with {len(batch)} keywords")
+
+            # Format payload for DataForSEO Labs API
+            task_payload = {
+                "keywords": batch,
+                "location_code": location_code,
+                "language_code": language_code,
+            }
+            post_data = [task_payload]
+
+            try:
+                response = self._make_request(endpoint, post_data)
+
+                # Extract results from response
+                task_data = None
+                result_data = None
+
+                if response.get("tasks"):
+                    task_data = response["tasks"][0]
+                    if task_data.get("status_code") != 20000:
+                        error_msg = task_data.get("status_message", "Unknown task error")
+                        logger.error(f"DataForSEO difficulty task error: {error_msg}")
+                        continue
+                    result_data = task_data.get("result")
+                elif response.get("result"):
+                    result_data = response.get("result")
+
+                if not result_data:
+                    logger.warning(f"No difficulty results returned for batch {batch_idx}")
+                    continue
+
+                # Process results - result is a list of keyword objects
+                processed_count = 0
+                for item in result_data:
+                    keyword = item.get("keyword")
+                    difficulty = item.get("keyword_difficulty")
+
+                    if keyword and difficulty is not None:
+                        # Store with lowercase key for consistent lookup
+                        kw_lower = keyword.lower().strip()
+                        new_results[kw_lower] = float(difficulty)
+                        processed_count += 1
+
+                logger.debug(f"Batch {batch_idx}: Processed {processed_count} keyword difficulty scores")
+
+            except Exception as e:
+                logger.error(f"Keyword difficulty retrieval failed for batch {batch_idx}: {e}")
+                continue
+
+        # Cache newly fetched results (thread-safe)
+        if new_results:
+            with self._cache_lock:
+                for kw_lower, diff in new_results.items():
+                    cache_key = f"{location_code}:{kw_lower}"
+                    self._difficulty_cache[cache_key] = diff
+
+            logger.info(f"[Difficulty Cache] Cached {len(new_results)} new keyword difficulty scores")
+
+        # Merge cached and new results
+        combined_results = {**cached_results, **new_results}
+
+        logger.info(
+            f"Retrieved difficulty scores for {len(new_results)} keywords from API, "
+            f"{len(cached_results)} from cache"
+        )
+        logger.info(f"API cost: {len(keyword_batches)} request(s) to bulk_keyword_difficulty endpoint")
+        logger.info(f"[Difficulty Cache] Stats: {self.get_cache_stats()}")
+
+        return combined_results
+
 
 # CrewAI Tool Wrappers
 # These wrap the base client methods so agents can use them as tools

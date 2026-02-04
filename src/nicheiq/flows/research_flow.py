@@ -2305,6 +2305,98 @@ Return a valid JSON object with this structure:
         coverage = len(clusters_with_keywords) / len(topic_clusters)
         return coverage
 
+    def _enrich_with_difficulty(self, enriched_keywords: list[dict]) -> list[dict]:
+        """
+        Add keyword_difficulty scores to top 1000 keywords by volume.
+
+        Calls DataForSEO Labs bulk_keyword_difficulty API for SEO difficulty scores.
+        These scores reflect actual ranking difficulty (backlink strength of top 10),
+        NOT Google Ads competition (advertiser density).
+
+        Timeline derivation from difficulty:
+        - difficulty < 25: "1-3 months" (easy)
+        - difficulty 25-40: "3-6 months"
+        - difficulty 40-60: "6-9 months"
+        - difficulty 60-75: "9-15 months"
+        - difficulty > 75: "12-18+ months" (hard)
+
+        Args:
+            enriched_keywords: List of keyword dicts from DataForSEO enrichment
+
+        Returns:
+            Same list with 'keyword_difficulty' field added (None for keywords
+            outside top 1000 or not found in API response)
+        """
+        if not enriched_keywords:
+            logger.warning("[Difficulty] No enriched keywords to process")
+            return enriched_keywords
+
+        # Sort by volume descending
+        sorted_kws = sorted(
+            enriched_keywords,
+            key=lambda k: k.get('search_volume', 0) or 0,
+            reverse=True
+        )
+
+        # Get top 1000 keyword strings for API call
+        top_1000_strings = [k['keyword'] for k in sorted_kws[:1000] if k.get('keyword')]
+
+        if not top_1000_strings:
+            logger.warning("[Difficulty] No valid keyword strings found in top 1000")
+            return enriched_keywords
+
+        logger.info(f"[Difficulty] Fetching SEO difficulty for top {len(top_1000_strings)} keywords by volume")
+
+        # Single API call for difficulty scores
+        try:
+            difficulty_map = self.dataforseo_tool.get_keyword_difficulty(
+                keywords=top_1000_strings,
+                location_code=settings.target_location,
+                language_code=settings.target_language
+            )
+
+            if not difficulty_map:
+                logger.warning("[Difficulty] No difficulty scores returned from API")
+                # Still set keyword_difficulty to None for all keywords
+                for kw in enriched_keywords:
+                    kw['keyword_difficulty'] = None
+                return enriched_keywords
+
+            # Merge difficulty back into enriched_keywords
+            enriched_count = 0
+            for kw in enriched_keywords:
+                kw_key = kw.get('keyword', '').lower().strip()
+                difficulty = difficulty_map.get(kw_key)
+                kw['keyword_difficulty'] = difficulty
+                if difficulty is not None:
+                    enriched_count += 1
+
+            logger.info(
+                f"[Difficulty] Enriched {enriched_count}/{len(enriched_keywords)} keywords "
+                f"with SEO difficulty scores"
+            )
+
+            # Log difficulty distribution for insights
+            difficulties = [d for d in difficulty_map.values() if d is not None]
+            if difficulties:
+                avg_diff = sum(difficulties) / len(difficulties)
+                easy_count = sum(1 for d in difficulties if d < 30)
+                medium_count = sum(1 for d in difficulties if 30 <= d < 60)
+                hard_count = sum(1 for d in difficulties if d >= 60)
+                logger.info(
+                    f"[Difficulty] Distribution: Easy(<30)={easy_count}, "
+                    f"Medium(30-60)={medium_count}, Hard(>60)={hard_count}, "
+                    f"Avg={avg_diff:.1f}"
+                )
+
+        except Exception as e:
+            logger.error(f"[Difficulty] API call failed: {e}. Proceeding without difficulty data.")
+            # Set keyword_difficulty to None for all keywords on error
+            for kw in enriched_keywords:
+                kw['keyword_difficulty'] = None
+
+        return enriched_keywords
+
     def _validate_solution_pricing(self, solution_name: str) -> dict:
         """
         Helper method to validate pricing for a single solution (thread-safe).
@@ -2524,11 +2616,13 @@ Return a valid JSON object with this structure:
             }
 
         # Initialize seed generator for this solution (new instance for thread safety)
+        # Pass shared dataforseo_tool for cache continuity across Stage 8.5 and Phase 9.5d
         seed_generator = SeedGenerator(
             state=self.state,
             niche_context=self.state.niche_context if hasattr(self.state, 'niche_context') else None,
             pain_point_analysis=self.state.pain_point_analysis if hasattr(self.state, 'pain_point_analysis') else None,
-            audience_vocabulary=audience_vocab
+            audience_vocabulary=audience_vocab,
+            dataforseo_client=self.dataforseo_tool,
         )
 
         # Adaptive keyword generation with pivot strategies
@@ -2552,13 +2646,15 @@ Return a valid JSON object with this structure:
                 logger.warning(f"[Parallel] {solution_name} - Attempt {attempt}: No seeds generated")
                 continue
 
-            # Validate seeds with DataForSEO
-            validation_result = seed_generator.validate_seeds_with_dataforseo(seeds, solution_name)
-
             # Quick expansion for relevance testing
             expanded_keywords = seed_generator.expand_seeds_quick(
                 seeds,
                 target_size=getattr(settings, 'keyword_quick_expansion_size', 50)
+            )
+
+            # Derive validation metrics from expanded keywords (no extra API call)
+            validation_result = seed_generator.calculate_validation_from_expansion(
+                expanded_keywords, solution_name, original_seed_count=len(seeds)
             )
 
             # Check relevance
@@ -2752,6 +2848,151 @@ Return a valid JSON object with this structure:
                         logger.error(f"[Stage 8.5] Keyword validation error for {solution_name}: {e}")
 
         # Store validation results in state
+        self.state.keyword_validation_results = validation_results
+
+        # ═══════════════════════════════════════════════════════════════════════
+        # BATCHED DIFFICULTY ENRICHMENT (Phase 3 & 4)
+        # Fetch keyword difficulty for ALL validated keywords in a single API call
+        # and recalculate keyword_demand_score with difficulty-adjusted formula
+        # ═══════════════════════════════════════════════════════════════════════
+
+        def _has_difficulty_data(results: list) -> bool:
+            """Check if any validated keyword already has difficulty data (from resume)."""
+            for validation in results:
+                if validation.validated_keywords:
+                    for kw in validation.validated_keywords:
+                        if kw.get('keyword_difficulty') is not None:
+                            return True
+            return False
+
+        def _calculate_difficulty_adjusted_score(
+            validation: "CrewKeywordValidationResult"
+        ) -> tuple[float, float | None, float | None]:
+            """
+            Recalculate keyword_demand_score including difficulty factor.
+
+            Returns:
+                (adjusted_score, avg_difficulty, rankability_factor)
+            """
+            validated_keywords = validation.validated_keywords or []
+            if not validated_keywords:
+                # No keywords - return original score
+                return validation.keyword_demand_score, None, None
+
+            # Extract difficulty values (may be None for some keywords)
+            difficulties = [
+                kw.get('keyword_difficulty')
+                for kw in validated_keywords
+                if kw.get('keyword_difficulty') is not None
+            ]
+
+            # Calculate average difficulty and rankability factor
+            if difficulties:
+                avg_difficulty = sum(difficulties) / len(difficulties)
+                # Rankability factor: 1.0 for easy (0), 0.0 for hard (100)
+                rankability_factor = 1 - (avg_difficulty / 100)
+            else:
+                avg_difficulty = None
+                rankability_factor = None
+
+            # Get original components from validation result
+            # volume_score = validated_count / total seeds (approximated by len of top_keywords)
+            top_kw_count = len(validation.top_keywords) if validation.top_keywords else 20
+            volume_score = validation.validated_count / max(top_kw_count, 1)
+            volume_score = min(volume_score, 1.0)  # Cap at 1.0
+
+            # avg_opportunity from competition index (1 - avg_competition/100)
+            avg_opportunity = 1 - (validation.avg_competition / 100) if validation.avg_competition else 0.5
+
+            # New formula with difficulty: 55% volume + 25% opportunity + 20% rankability
+            if rankability_factor is not None:
+                adjusted_score = (
+                    (0.55 * volume_score) +
+                    (0.25 * avg_opportunity) +
+                    (0.20 * rankability_factor)
+                )
+            else:
+                # Fall back to original formula when no difficulty data
+                adjusted_score = (0.60 * volume_score) + (0.40 * avg_opportunity)
+
+            return adjusted_score, avg_difficulty, rankability_factor
+
+        # Check if difficulty data already present (resume case)
+        if _has_difficulty_data(validation_results):
+            logger.info("[Stage 8.5] Difficulty data already present from checkpoint - skipping API call")
+        elif validation_results:
+            # Collect all unique validated keywords across all solutions
+            all_validated_keywords: list[dict] = []
+            for validation in validation_results:
+                if validation.validated_keywords:
+                    all_validated_keywords.extend(validation.validated_keywords)
+
+            # Dedupe and get unique keyword strings
+            unique_keywords = list({
+                kw.get('keyword', '').lower().strip()
+                for kw in all_validated_keywords
+                if kw.get('keyword')
+            })
+
+            if unique_keywords:
+                logger.info(
+                    f"[Stage 8.5] Fetching difficulty for {len(unique_keywords)} unique keywords (batched)"
+                )
+                try:
+                    difficulty_map = self.dataforseo_tool.get_keyword_difficulty(
+                        keywords=unique_keywords[:1000],  # Cap at 1000 for cost control
+                        location_code=settings.target_location
+                    )
+
+                    # Backfill difficulty into all validation results
+                    enriched_count = 0
+                    for validation in validation_results:
+                        if validation.validated_keywords:
+                            for kw in validation.validated_keywords:
+                                kw_lower = kw.get('keyword', '').lower().strip()
+                                if kw_lower in difficulty_map:
+                                    kw['keyword_difficulty'] = difficulty_map[kw_lower]
+                                    enriched_count += 1
+
+                    logger.info(
+                        f"[Stage 8.5] Enriched {enriched_count} keyword entries with difficulty scores "
+                        f"({len(difficulty_map)} unique difficulties fetched)"
+                    )
+
+                    # Recalculate keyword_demand_score with difficulty for each validation
+                    for validation in validation_results:
+                        old_score = validation.keyword_demand_score
+                        new_score, avg_diff, rank_factor = _calculate_difficulty_adjusted_score(validation)
+
+                        # Update validation object (CrewKeywordValidationResult)
+                        # Need to mutate the object since it's a Pydantic model
+                        object.__setattr__(validation, 'keyword_demand_score', new_score)
+                        object.__setattr__(validation, 'avg_keyword_difficulty', avg_diff)
+                        object.__setattr__(validation, 'rankability_factor', rank_factor)
+
+                        if avg_diff is not None:
+                            logger.info(
+                                f"[Stage 8.5] {validation.solution_name}: "
+                                f"difficulty={avg_diff:.1f}, rankability={rank_factor:.2f}, "
+                                f"demand_score={old_score:.3f}→{new_score:.3f}"
+                            )
+
+                    # Save checkpoint after difficulty enrichment
+                    self.checkpoint_mgr.save_stage(
+                        "stage_8_5_keyword_validation",
+                        [v.model_dump() for v in validation_results]
+                    )
+                    logger.info("[Stage 8.5] Checkpoint saved: difficulty enrichment complete")
+
+                except Exception as e:
+                    logger.warning(
+                        f"[Stage 8.5] Difficulty fetch failed: {e}. "
+                        "Proceeding without difficulty-adjusted scoring."
+                    )
+            else:
+                logger.info("[Stage 8.5] No keywords to fetch difficulty for - skipping")
+
+        # Update state with enriched validation results
         self.state.keyword_validation_results = validation_results
 
         # Track validated solution names
@@ -3862,6 +4103,16 @@ Return a valid JSON object with this structure:
                 )
 
             logger.info("=" * 60)
+
+        # ── Phase 9.5d: Keyword Difficulty Enrichment ──
+        # Add SEO difficulty scores (0-100) to top 1000 keywords for accurate timeline estimates
+        logger.info("Phase 9.5d: Enriching keywords with SEO difficulty scores...")
+        enriched_keywords = self._enrich_with_difficulty(enriched_keywords)
+
+        # Update state with difficulty-enriched keywords
+        self.state.stage_9_5c_enriched_keywords = enriched_keywords
+        self.checkpoint_mgr.save_stage("stage_9_5d_difficulty", enriched_keywords)
+        logger.info("Phase 9.5d checkpoint saved: difficulty enrichment")
 
         # ── Strategy creation (shared by both paths) ──
         # When anchor_sufficient=True, seo_crew wasn't initialized above - initialize now for strategy creation

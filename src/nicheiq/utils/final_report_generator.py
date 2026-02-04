@@ -200,14 +200,15 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
         sections.extend([
             "### TIER 1: Immediate Implementation (High Volume + Low Competition)",
             "",
-            "| Keyword | Monthly Volume | Competition | Opportunity Score | Strategy |",
-            "|---------|---------------|-------------|-------------------|----------|",
+            "| Keyword | Monthly Volume | Difficulty | Competition | Opportunity Score | Strategy |",
+            "|---------|---------------|------------|-------------|-------------------|----------|",
         ])
 
         for kw in seo.tier_1_keywords:
             opp_score = f"{kw.opportunity_score:,}" if kw.opportunity_score else "N/A"
+            difficulty = f"{kw.keyword_difficulty:.0f}" if kw.keyword_difficulty is not None else "N/A"
             sections.append(
-                f"| **{kw.keyword}** | {kw.search_volume:,} | {kw.competition} | {opp_score} | {kw.strategy} |"
+                f"| **{kw.keyword}** | {kw.search_volume:,} | {difficulty} | {kw.competition} | {opp_score} | {kw.strategy} |"
             )
 
         sections.append("")
@@ -226,14 +227,15 @@ def _generate_seo_strategy_section(seo: SEOStrategyReport) -> str:
             "",
             "### TIER 2: High Value Keywords",
             "",
-            "| Keyword | Monthly Volume | Competition | Intent |",
-            "|---------|---------------|-------------|--------|",
+            "| Keyword | Monthly Volume | Difficulty | Competition | Intent |",
+            "|---------|---------------|------------|-------------|--------|",
         ])
 
         for kw in seo.tier_2_keywords:
             intent = kw.intent if kw.intent else "N/A"
+            difficulty = f"{kw.keyword_difficulty:.0f}" if kw.keyword_difficulty is not None else "N/A"
             sections.append(
-                f"| **{kw.keyword}** | {kw.search_volume:,} | {kw.competition} | {intent} |"
+                f"| **{kw.keyword}** | {kw.search_volume:,} | {difficulty} | {kw.competition} | {intent} |"
             )
 
         sections.append("")

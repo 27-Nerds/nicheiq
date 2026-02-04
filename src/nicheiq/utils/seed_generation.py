@@ -42,7 +42,8 @@ class SeedGenerator:
         state: "ResearchState",
         niche_context: "NicheContext | None" = None,
         pain_point_analysis: "PainPointAnalysisResult | None" = None,
-        audience_vocabulary: list[str] | None = None
+        audience_vocabulary: list[str] | None = None,
+        dataforseo_client: DataForSEOBaseClient | None = None,
     ):
         """
         Initialize SeedGenerator with research state context.
@@ -52,11 +53,15 @@ class SeedGenerator:
             niche_context: Optional NicheContext (extracted from state if not provided)
             pain_point_analysis: Optional PainPointAnalysisResult (extracted from state if not provided)
             audience_vocabulary: Optional list of audience terms from Stage 6.5
+            dataforseo_client: Optional shared DataForSEO client for cache continuity.
+                              If provided, all API calls share this client's caches.
+                              If None, creates new client instances (no cache sharing).
         """
         self.state = state
         self.niche_context = niche_context or getattr(state, 'niche_context', None)
         self.pain_point_analysis = pain_point_analysis or getattr(state, 'pain_point_analysis', None)
         self.audience_vocabulary = audience_vocabulary
+        self._shared_client = dataforseo_client
 
     def generate_hybrid_seeds(
         self,
@@ -513,7 +518,8 @@ class SeedGenerator:
             return []
 
         try:
-            dataforseo_tool = DataForSEOBaseClient()
+            # Use shared client for cache continuity, or create new if not provided
+            dataforseo_tool = self._shared_client or DataForSEOBaseClient()
 
             step = max(1, len(seeds) // 5)
             diverse_seeds = [seeds[i] for i in range(0, min(len(seeds), 20), step)][:5]
@@ -548,6 +554,158 @@ class SeedGenerator:
             logger.warning(f"[Quick Expansion] Failed: {e}")
             return []
 
+    def calculate_validation_from_expansion(
+        self,
+        expanded_keywords: list[dict],
+        solution_name: str,
+        original_seed_count: int,
+    ) -> dict:
+        """
+        Calculate validation metrics from already-expanded keywords (no API call).
+
+        Reuses data from expand_seeds_quick() to produce the same dict structure
+        as validate_seeds_with_dataforseo(), eliminating a redundant DataForSEO call.
+
+        Args:
+            expanded_keywords: Keywords returned by expand_seeds_quick()
+            solution_name: Name of the solution (for logging)
+            original_seed_count: Number of seed keywords fed into expansion
+                                 (used as denominator for volume_score)
+
+        Returns:
+            dict with validation results matching validate_seeds_with_dataforseo() output
+        """
+        empty_result = {
+            "solution_name": solution_name,
+            "validated_count": 0,
+            "total_volume": 0,
+            "avg_competition": 0.0,
+            "keyword_demand_score": 0.0,
+            "top_keywords": [],
+            "top_geographic_keywords": [],
+            "demand_signal": "weak",
+            "validation_signals": {
+                "has_search_demand": False,
+                "keyword_diversity": False,
+                "high_volume_presence": False,
+                "average_volume_per_keyword": 0.0,
+            },
+        }
+
+        if not expanded_keywords:
+            logger.warning(
+                f"[Validation from Expansion] {solution_name}: no expanded keywords"
+            )
+            return empty_result
+
+        try:
+            min_volume = getattr(settings, "keyword_min_search_volume", 50)
+            valid_keywords = [
+                kw
+                for kw in expanded_keywords
+                if kw.get("search_volume", 0) >= min_volume
+            ]
+
+            valid_keywords = filter_single_word_keywords(valid_keywords, solution_name)
+
+            total_volume = sum(kw.get("search_volume", 0) for kw in valid_keywords)
+            keyword_count = len(valid_keywords)
+            avg_competition = (
+                sum(kw.get("competition_index", 0) for kw in valid_keywords)
+                / max(keyword_count, 1)
+            )
+
+            top_keywords = sorted(
+                valid_keywords,
+                key=lambda x: x.get("search_volume", 0),
+                reverse=True,
+            )[:5]
+
+            geo_terms = [
+                "spain", "portugal", "france", "germany",
+                "uk", "usa", "canada", "australia",
+            ]
+            geo_keywords = []
+            for kw in valid_keywords:
+                keyword_lower = kw.get("keyword", "").lower()
+                if any(geo in keyword_lower for geo in geo_terms):
+                    geo_keywords.append(kw)
+
+            top_geo_keywords = sorted(
+                geo_keywords,
+                key=lambda x: x.get("search_volume", 0),
+                reverse=True,
+            )[:3]
+
+            # Use original_seed_count as denominator and cap at 1.0 to satisfy
+            # CrewKeywordValidationResult's le=1.0 constraint on keyword_demand_score
+            denominator = max(original_seed_count, 1)
+            volume_score = min(keyword_count / denominator, 1.0)
+
+            opportunity_scores = []
+            for kw in valid_keywords:
+                volume = kw.get("search_volume", 0)
+                competition = kw.get("competition_index", 0)
+
+                volume_factor = min(volume / 1000, 1.0)
+                competition_factor = 1 - (competition / 100)
+                saturation_check = 1.0 if competition <= 60 else 0.7
+
+                opp_score = volume_factor * competition_factor * saturation_check
+                opportunity_scores.append(opp_score)
+
+            avg_opportunity = sum(opportunity_scores) / max(len(opportunity_scores), 1)
+            keyword_demand_score = (0.60 * volume_score) + (0.40 * avg_opportunity)
+
+            if total_volume > 5000:
+                demand_signal = "strong"
+            elif total_volume > 2000:
+                demand_signal = "moderate"
+            else:
+                demand_signal = "weak"
+
+            validation_signals = {
+                "has_search_demand": total_volume > 1000,
+                "keyword_diversity": keyword_count >= 5,
+                "high_volume_presence": any(
+                    kw.get("search_volume", 0) > 500 for kw in valid_keywords
+                ),
+                "average_volume_per_keyword": total_volume / max(keyword_count, 1),
+            }
+
+            logger.info(
+                f"[Validation from Expansion] {solution_name}: "
+                f"{total_volume:,} total volume, {keyword_count} valid keywords, "
+                f"demand score: {keyword_demand_score:.2f}"
+            )
+
+            return {
+                "solution_name": solution_name,
+                "validated_count": keyword_count,
+                "total_volume": total_volume,
+                "avg_competition": avg_competition,
+                "keyword_demand_score": keyword_demand_score,
+                "top_keywords": [
+                    {
+                        "keyword": kw.get("keyword", ""),
+                        "volume": kw.get("search_volume", 0),
+                        "competition": kw.get("competition_index", 0),
+                    }
+                    for kw in top_keywords
+                ],
+                "top_geographic_keywords": [
+                    kw.get("keyword", "") for kw in top_geo_keywords
+                ],
+                "demand_signal": demand_signal,
+                "validation_signals": validation_signals,
+            }
+
+        except Exception as e:
+            logger.error(
+                f"[Validation from Expansion] Error for {solution_name}: {e}"
+            )
+            return empty_result
+
     def validate_seeds_with_dataforseo(self, seeds: list[str], solution_name: str) -> dict:
         """
         Validate seed keywords using DataForSEO keyword data.
@@ -560,7 +718,8 @@ class SeedGenerator:
             dict with validation results including validated_count, total_volume, etc.
         """
         try:
-            dataforseo_tool = DataForSEOBaseClient()
+            # Use shared client for cache continuity, or create new if not provided
+            dataforseo_tool = self._shared_client or DataForSEOBaseClient()
 
             keyword_data = dataforseo_tool.get_search_volume(
                 keywords=seeds,
