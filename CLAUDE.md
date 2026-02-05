@@ -1,10 +1,21 @@
 # CLAUDE.md
 
+## Workflow Rules
+
+Always read the relevant source file BEFORE attempting any edits. Never edit a file based on assumptions about its current content.
+
+When writing user-facing text (tooltips, labels, descriptions) that references backend logic or calculations, always trace the actual backend code to verify accuracy before writing the text. Do not infer or assume how scores/metrics are calculated.
+
+After implementing changes in Svelte files, check for Svelte 5 compatibility warnings (especially around state initialization from props, `$derived`, and runes). Resolve any warnings before considering the task complete.
+
+Use an agent to trace how all score/metric values are calculated in the backend, then return a summary mapping each metric name to its calculation logic and source file before I start adding tooltips.
+
 ## Project Overview
 
 NicheIQ is an AI-powered market research platform that transforms social media discussions into validated SaaS opportunities.
 
 **Architecture:**
+
 ```
 Frontend (SvelteKit) → Backend (Express) → Redis Queue → Worker → Python Pipeline
 ```
@@ -14,11 +25,13 @@ Frontend (SvelteKit) → Backend (Express) → Redis Queue → Worker → Python
 ## Important: Python Environment
 
 **Always activate the virtual environment before running any Python code:**
+
 ```bash
 source .venv/bin/activate
 ```
 
 **This project uses `uv` as the Python package manager** (faster alternative to pip):
+
 ```bash
 # Create virtual environment
 uv venv
@@ -37,6 +50,7 @@ uv pip install <package>
 **Tech Stack:** SvelteKit 5, TypeScript, Tailwind CSS, Auth.js
 
 **Run Development:**
+
 ```bash
 cd frontend
 npm install
@@ -44,6 +58,7 @@ npm run dev          # http://localhost:3000
 ```
 
 **Run Tests:**
+
 ```bash
 npm test             # Run once
 npm run test:watch   # Watch mode
@@ -51,6 +66,7 @@ npm run test:coverage
 ```
 
 **Build:**
+
 ```bash
 npm run build        # Production build
 npm run preview      # Preview production build
@@ -58,6 +74,7 @@ npm run check        # Type check
 ```
 
 **Folder Structure:**
+
 ```
 frontend/
 ├── src/
@@ -84,6 +101,7 @@ frontend/
 **Tech Stack:** Express.js, TypeScript, Prisma, Redis, PostgreSQL
 
 **Run Development:**
+
 ```bash
 cd backend
 npm install
@@ -91,6 +109,7 @@ npm run dev          # http://localhost:3001 (hot reload)
 ```
 
 **Run Tests:**
+
 ```bash
 npm test             # Run once
 npm run test:watch   # Watch mode
@@ -98,6 +117,7 @@ npm run test:coverage
 ```
 
 **Build & Production:**
+
 ```bash
 npm run build        # Compile TypeScript
 npm start            # Run compiled code
@@ -105,6 +125,7 @@ npm run typecheck    # Type check only
 ```
 
 **Database Commands:**
+
 ```bash
 npm run db:generate  # Generate Prisma client
 npm run db:migrate   # Run migrations
@@ -113,6 +134,7 @@ npm run db:studio    # Open Prisma Studio
 ```
 
 **Folder Structure:**
+
 ```
 backend/
 ├── src/
@@ -143,6 +165,7 @@ backend/
 **Tech Stack:** Python 3.12, RQ (Redis Queue)
 
 **Run Worker:**
+
 ```bash
 # Activate venv first!
 source .venv/bin/activate
@@ -158,6 +181,7 @@ python -m worker.run_worker --burst
 ```
 
 **Folder Structure:**
+
 ```
 worker/
 ├── run_worker.py        # RQ worker entry point
@@ -175,6 +199,7 @@ worker/
 **Tech Stack:** Python 3.12, CrewAI, Pydantic, OpenAI
 
 **Setup:**
+
 ```bash
 # Create virtual environment with uv
 uv venv
@@ -185,6 +210,7 @@ uv pip install -e ".[dev]"
 ```
 
 **Run Standalone:**
+
 ```bash
 # Always activate venv first!
 source .venv/bin/activate
@@ -197,6 +223,7 @@ python -m nicheiq.main --niche "Your niche" --resume
 ```
 
 **Run Tests:**
+
 ```bash
 source .venv/bin/activate
 pytest                   # All tests
@@ -206,6 +233,7 @@ pytest -v --cov          # With coverage
 ```
 
 **Folder Structure:**
+
 ```
 src/nicheiq/
 ├── main.py              # CLI entry point
@@ -235,16 +263,19 @@ src/nicheiq/
 ## Docker Development
 
 **Start Infrastructure (PostgreSQL + Redis):**
+
 ```bash
 cd docker
 docker compose up -d postgres redis
 ```
 
 **Database Connection:**
+
 - PostgreSQL: `localhost:5435` (user: nicheiq, pass: nicheiq)
 - Redis: `localhost:6380`
 
 **Full Stack (Production Profile):**
+
 ```bash
 docker compose --profile production up -d
 ```
@@ -256,6 +287,7 @@ docker compose --profile production up -d
 See `docs/ENV_REFERENCE.md` for complete reference.
 
 **Essential:**
+
 ```bash
 # API Keys
 OPENAI_API_KEY=         # GPT-4o for agents
@@ -279,6 +311,7 @@ INTERNAL_SERVICE_SECRET= # Worker-to-backend auth
 When writing task descriptions in `src/nicheiq/crews/config/*.yaml` files, **avoid using `{variable}` syntax** for literal examples or documentation. CrewAI interprets `{variable}` as template variables that get replaced at runtime.
 
 **Problem:**
+
 ```yaml
 # BAD - CrewAI will try to replace {city} with a variable
 description: >
@@ -286,6 +319,7 @@ description: >
 ```
 
 **Solutions:**
+
 ```yaml
 # GOOD - Use colon syntax for URL patterns
 description: >
@@ -301,6 +335,7 @@ description: >
 ```
 
 **Valid template variables** (passed via inputs dict):
+
 - `{niche}`, `{selected_solution_name}`, `{value_proposition}`
 - `{enriched_keywords_csv}`, `{top_pain_points}`, etc.
 
@@ -315,17 +350,20 @@ description: >
 3. CrewAI re-parses the **original** `task_output.raw`
 
 This means:
+
 - Any "fix" applied during validation is discarded
 - Don't write JSON repair functions in guardrails - they won't help
 - If JSON is invalid, return `(False, error_message)` so CrewAI retries with a fresh LLM call
 - Always return `task_output.raw` on success, never `result.model_dump_json()`
 
 **Valid guardrail patterns:**
+
 - Validate structure (field counts, required fields)
 - Check business rules (diversity, thresholds)
 - Detect truncation or repetition loops
 
 **Invalid patterns (don't do this):**
+
 - Fixing trailing commas, comments, or newlines
 - Returning re-serialized JSON (`model_dump_json()`)
 
@@ -362,6 +400,7 @@ When changing the report schema (adding/removing/modifying fields), you must upd
    - Update `ARCHITECTURE.md` if pipeline stages changed
 
 **Verification:**
+
 ```bash
 # Python types
 source .venv/bin/activate && python -c "from nicheiq.models.research_state import FinalReport; print('OK')"

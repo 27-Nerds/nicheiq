@@ -1,6 +1,6 @@
 <script lang="ts">
   import { page } from '$app/stores';
-  import { LayoutDashboard, BarChart3, Gift, Users, Package, Shield, ArrowLeft, Menu, X } from 'lucide-svelte';
+  import { LayoutDashboard, BarChart3, Gift, Users, Package, Settings, Shield, ArrowLeft, Menu, X } from 'lucide-svelte';
 
   let { children } = $props();
 
@@ -12,6 +12,7 @@
     { href: '/admin/promo-codes', label: 'Promo Codes', icon: Gift },
     { href: '/admin/users', label: 'Users', icon: Users },
     { href: '/admin/packages', label: 'Packages', icon: Package },
+    { href: '/admin/settings', label: 'Settings', icon: Settings },
   ];
 
   function isActive(href: string): boolean {

@@ -94,7 +94,7 @@
 			id: 3,
 			name: 'Pain Point Analysis',
 			icon: MessageSquare,
-			metric: '18 pain points extracted',
+			metric: '5+ pain points extracted',
 			description: 'Extracts and scores pain points from real discussions with severity and willingness-to-pay metrics.',
 			details: 'Specialized AI agents categorize discussions, extract pain points with evidence, and score them. Every insight traceable to specific posts.'
 		},
@@ -148,10 +148,10 @@
 		},
 		{
 			id: 10,
-			name: 'Final Report',
+			name: 'Final Report & Landing Page',
 			icon: FileText,
 			metric: 'Go/No-Go verdict',
-			description: 'Complete report with risk assessment, executive dashboard, and 30-day GTM playbook.',
+			description: 'A complete business blueprint with a clear GO / NO-GO decision, risk assessment, and a ready-to-launch landing page to test real demand, collect signups, or pre-orders immediately.',
 			details: 'Hybrid Python + LLM generation: 80% programmatic data (0% hallucination), 20% strategic synthesis. Clear go/no-go recommendation with confidence score.'
 		}
 	];
@@ -169,6 +169,9 @@
 				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"></div>
 				<p class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl">
 					Pick your niche. Get your verdict in 45 minutes. Start building.
+				</p>
+				<p class="animate-fade-in delay-300 text-sm sm:text-base text-text-muted mt-4 sm:mt-5 max-w-2xl">
+					The system scans thousands of Reddit & Twitter discussions to find validated pain points that people will actually pay for — and turns them into solutions for your next business.
 				</p>
 			</div>
 

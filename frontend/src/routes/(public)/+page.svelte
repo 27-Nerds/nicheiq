@@ -2,7 +2,6 @@
   import { page } from '$app/stores';
   import {
     Hero,
-    SocialProof,
     HowItWorks,
     AboutMaker,
     SampleReport,
@@ -27,11 +26,10 @@
 </svelte:head>
 
 <main class="overflow-hidden">
-  <Hero {session} />
-  <SocialProof reportsDelivered={data.reportsDelivered} />
+  <Hero {session} hasSampleReport={data.hasSampleReport} />
   <HowItWorks />
   <AboutMaker />
-  <SampleReport />
+  <SampleReport hasSampleReport={data.hasSampleReport} />
   <WhoItsFor />
   <BusinessIntelligence />
   <ComparisonTable />
@@ -39,5 +37,5 @@
   <Pricing {session} />
   <FAQ />
   <FinalCTA {session} />
-  <Footer />
+  <Footer hasSampleReport={data.hasSampleReport} />
 </main>

@@ -59,12 +59,13 @@
 
 	const features = [
 		{ icon: Target, text: '16-stage research pipeline' },
-		{ icon: FileText, text: '18+ validated pain points with sources' },
+		{ icon: FileText, text: '5+ validated pain points with sources' },
 		{ icon: TrendingUp, text: '100+ keywords with live search volumes' },
 		{ icon: Users, text: 'Competitive landscape analysis' },
 		{ icon: BarChart3, text: 'Complete SEO strategy' },
 		{ icon: Clock, text: 'GTM blueprint with 30-day playbook' },
-		{ icon: Shield, text: 'Zero hallucination guarantee' }
+		{ icon: Shield, text: 'Zero hallucination guarantee' },
+		{ icon: Check, text: 'Ready-to-launch landing page (optional)' }
 	];
 </script>
 
@@ -125,7 +126,7 @@
 									href="/register"
 									class="w-full text-sm sm:text-base py-3 text-center {tier.popular ? 'btn-primary' : 'btn-secondary'}"
 								>
-									Find My First Opportunity
+									Get {tier.reports} {tier.reports === 1 ? 'Report' : 'Reports'}
 									<ArrowRight class="w-4 h-4" />
 								</a>
 							{/if}
@@ -156,7 +157,7 @@
 					<div>
 						<h4 class="font-semibold text-success text-sm">Zero-Risk Guarantee</h4>
 						<p class="text-xs text-text-muted">
-							If your report has fewer than 5 validated pain points with sources, full refund within 7 days.
+							If a report can't be completed due to insufficient data or any other reason, your research credit is automatically returned — no risk, no loss.
 						</p>
 					</div>
 				</div>

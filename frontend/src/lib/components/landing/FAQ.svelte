@@ -35,7 +35,7 @@
 		{
 			question: 'How long does research take?',
 			answer:
-				'Typically around 45 minutes. The system autonomously searches social media, extracts pain points, calculates market sizing, validates pricing, and compiles your report. You submit your niche and wait while the 16-stage pipeline runs.'
+				"Typically around 45 minutes. Once you submit your niche, the system autonomously runs a 16-stage research pipeline: searching social media, extracting validated pain points, calculating market size, validating pricing, and compiling your report. If there's a queue, you'll be notified when your research starts and when it's complete."
 		},
 		{
 			question: 'How do you calculate market size and pricing?',
@@ -45,17 +45,17 @@
 		{
 			question: 'Can I get a refund?',
 			answer:
-				"Yes. If your report doesn't deliver at least 5 validated pain points with verifiable sources, you get a full refund. Email support@nicheiq.com within 7 days with your report ID."
+				"Yes. If your report doesn't deliver, you get a full refund — the research credit will be returned to your account. If you have any other questions, please email hello@nicheiq.com within 7 days. If a research is interrupted due to a technical issue, you'll see a Resume option and the process will continue from where it stopped. One completed report uses one research credit and includes a full niche research and a ready-to-launch landing page (optional)."
 		},
 		{
 			question: 'What if my niche is too specialized?',
 			answer:
-				"NicheIQ works best when there's active social discussion about your niche. Consumer SaaS, developer tools, and creator tools typically have great coverage. For highly specialized B2B niches, you might get fewer data points. The guarantee still applies: less than 5 validated pain points means a full refund."
+				"NicheIQ works best when there's active public discussion around a niche. Consumer SaaS, developer tools, and creator-focused products usually have strong coverage across social platforms. For highly specialized or very narrow B2B niches, there may not be enough public data to run a meaningful research. If that happens, the system will notify you and your research credit will be returned to your account, so you can submit another niche request. You'll never lose a credit for a research that can't be completed."
 		},
 		{
-			question: 'What if the research says my idea is bad?',
+			question: "What if I don't like the proposed solution or get a NO-GO verdict?",
 			answer:
-				"A 'no' is valuable data. If research shows weak pain points or saturated competition, you just saved months of building the wrong thing. Think of it as $19 insurance against building something nobody wants. Most founders who get 'negative' results tell us it was their best $19 spent - they pivoted to a better opportunity."
+				"NicheIQ builds solutions around validated problems, based on real market research and demand signals. Each report includes one primary solution and two alternative directions, so you have options even if the main idea doesn't feel right. If the research results in a NO-GO verdict or isn't a fit for you, the report is still considered successfully delivered and refunds are not provided for idea outcomes. Many founders run multiple researches to explore different angles until they find an idea that truly clicks."
 		},
 		{
 			question: 'Can I run multiple researches?',

@@ -17,21 +17,31 @@ const mockUpdateUserRole = vi.fn();
 const mockListAllPackages = vi.fn();
 const mockCreatePackage = vi.fn();
 const mockUpdatePackage = vi.fn();
+const mockGetAppSetting = vi.fn();
+const mockSetAppSetting = vi.fn();
+const mockDeleteAppSetting = vi.fn();
 
-vi.mock('../../services/adminService.js', () => ({
-  getDashboardStats: (...args: any[]) => mockGetDashboardStats(...args),
-  getReportStats: (...args: any[]) => mockGetReportStats(...args),
-  listPromoCodes: (...args: any[]) => mockListPromoCodes(...args),
-  createPromoCode: (...args: any[]) => mockCreatePromoCode(...args),
-  updatePromoCode: (...args: any[]) => mockUpdatePromoCode(...args),
-  getPromoCodeRedemptions: (...args: any[]) => mockGetPromoCodeRedemptions(...args),
-  listUsers: (...args: any[]) => mockListUsers(...args),
-  getUserDetail: (...args: any[]) => mockGetUserDetail(...args),
-  updateUserRole: (...args: any[]) => mockUpdateUserRole(...args),
-  listAllPackages: (...args: any[]) => mockListAllPackages(...args),
-  createPackage: (...args: any[]) => mockCreatePackage(...args),
-  updatePackage: (...args: any[]) => mockUpdatePackage(...args),
-}));
+vi.mock('../../services/adminService.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual, // real isValidSettingsKey, validateSettingValue (pure functions, no DB)
+    getDashboardStats: (...args: any[]) => mockGetDashboardStats(...args),
+    getReportStats: (...args: any[]) => mockGetReportStats(...args),
+    listPromoCodes: (...args: any[]) => mockListPromoCodes(...args),
+    createPromoCode: (...args: any[]) => mockCreatePromoCode(...args),
+    updatePromoCode: (...args: any[]) => mockUpdatePromoCode(...args),
+    getPromoCodeRedemptions: (...args: any[]) => mockGetPromoCodeRedemptions(...args),
+    listUsers: (...args: any[]) => mockListUsers(...args),
+    getUserDetail: (...args: any[]) => mockGetUserDetail(...args),
+    updateUserRole: (...args: any[]) => mockUpdateUserRole(...args),
+    listAllPackages: (...args: any[]) => mockListAllPackages(...args),
+    createPackage: (...args: any[]) => mockCreatePackage(...args),
+    updatePackage: (...args: any[]) => mockUpdatePackage(...args),
+    getAppSetting: (...args: any[]) => mockGetAppSetting(...args),
+    setAppSetting: (...args: any[]) => mockSetAppSetting(...args),
+    deleteAppSetting: (...args: any[]) => mockDeleteAppSetting(...args),
+  };
+});
 
 // Mock auth middleware
 vi.mock('../../middleware/auth.js', () => ({
@@ -374,5 +384,129 @@ describe('Packages', () => {
       .set(adminHeaders)
       .send({ isActive: false })
       .expect(404);
+  });
+});
+
+// ============================================
+// App Settings
+// ============================================
+describe('App Settings', () => {
+  it('GET /api/admin/settings/:key returns value for valid key', async () => {
+    mockGetAppSetting.mockResolvedValue('/shared/abc123');
+
+    const response = await request(app)
+      .get('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .expect(200);
+
+    expect(response.body).toEqual({ key: 'sample_report_url', value: '/shared/abc123' });
+  });
+
+  it('GET /api/admin/settings/:key returns null for key with no value', async () => {
+    mockGetAppSetting.mockResolvedValue(null);
+
+    const response = await request(app)
+      .get('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .expect(200);
+
+    expect(response.body).toEqual({ key: 'sample_report_url', value: null });
+  });
+
+  it('GET /api/admin/settings/:key returns 400 for invalid key', async () => {
+    await request(app)
+      .get('/api/admin/settings/invalid_key')
+      .set(adminHeaders)
+      .expect(400);
+  });
+
+  it('GET /api/admin/settings/:key returns 401 without admin auth', async () => {
+    await request(app)
+      .get('/api/admin/settings/sample_report_url')
+      .expect(401);
+  });
+
+  it('GET /api/admin/settings/:key returns 403 without admin role', async () => {
+    await request(app)
+      .get('/api/admin/settings/sample_report_url')
+      .set(userHeaders)
+      .expect(403);
+  });
+
+  it('PUT /api/admin/settings/:key saves value for valid key', async () => {
+    mockSetAppSetting.mockResolvedValue(undefined);
+
+    const response = await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .send({ value: '/shared/abc123' })
+      .expect(200);
+
+    expect(response.body).toEqual({ key: 'sample_report_url', value: '/shared/abc123' });
+    expect(mockSetAppSetting).toHaveBeenCalledWith('sample_report_url', '/shared/abc123', 'admin-123');
+  });
+
+  it('PUT /api/admin/settings/:key returns 400 for invalid key', async () => {
+    await request(app)
+      .put('/api/admin/settings/invalid_key')
+      .set(adminHeaders)
+      .send({ value: 'test' })
+      .expect(400);
+  });
+
+  it('PUT /api/admin/settings/:key returns 400 for invalid share URL format', async () => {
+    await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .send({ value: 'https://example.com/shared/abc' })
+      .expect(400);
+  });
+
+  it('PUT /api/admin/settings/:key returns 400 for empty value', async () => {
+    await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .send({ value: '/shared/' })
+      .expect(400);
+  });
+
+  it('PUT /api/admin/settings/:key returns 400 for missing value field', async () => {
+    await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .send({})
+      .expect(400);
+  });
+
+  it('PUT /api/admin/settings/:key returns 401 without admin auth', async () => {
+    await request(app)
+      .put('/api/admin/settings/sample_report_url')
+      .send({ value: '/shared/abc123' })
+      .expect(401);
+  });
+
+  it('DELETE /api/admin/settings/:key deletes setting', async () => {
+    mockDeleteAppSetting.mockResolvedValue(undefined);
+
+    const response = await request(app)
+      .delete('/api/admin/settings/sample_report_url')
+      .set(adminHeaders)
+      .expect(200);
+
+    expect(response.body).toEqual({ key: 'sample_report_url', value: null });
+    expect(mockDeleteAppSetting).toHaveBeenCalledWith('sample_report_url');
+  });
+
+  it('DELETE /api/admin/settings/:key returns 400 for invalid key', async () => {
+    await request(app)
+      .delete('/api/admin/settings/invalid_key')
+      .set(adminHeaders)
+      .expect(400);
+  });
+
+  it('DELETE /api/admin/settings/:key returns 401 without admin auth', async () => {
+    await request(app)
+      .delete('/api/admin/settings/sample_report_url')
+      .expect(401);
   });
 });

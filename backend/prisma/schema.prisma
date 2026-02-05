@@ -402,3 +402,14 @@ model ReportShare {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 }
+
+// ============================================
+// App Settings (key-value store)
+// ============================================
+
+model AppSettings {
+  key       String   @id @db.VarChar(100)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+}

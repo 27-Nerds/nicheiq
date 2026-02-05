@@ -122,7 +122,7 @@
 			<div class="animate-fade-in delay-500 text-center mt-12">
 				<div class="divider max-w-xs mx-auto"></div>
 				<p class="text-text-muted italic text-lg mt-8">
-					"Know your numbers. Build with confidence."
+					"Every metric is mathematically derived from real-world data, not generated or guessed by AI."
 				</p>
 			</div>
 		{/if}

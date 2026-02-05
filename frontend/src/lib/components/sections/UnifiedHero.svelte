@@ -78,6 +78,10 @@
 
 	let descriptionExpanded = $state(false);
 
+	const scrollToDiagnostics = () => {
+		document.getElementById('score-diagnostics')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+	};
+
 	// Score improvement percentage for SEO transparency
 	const scoreImprovement = $derived.by(() => {
 		if (!seoCalculationTransparency) return null;
@@ -255,6 +259,9 @@
 							</Tooltip>
 						{/if}
 					</div>
+					<button class="verdict-breakdown-link" onclick={scrollToDiagnostics}>
+						See score breakdown ↓
+					</button>
 				</div>
 			</div>
 
@@ -451,7 +458,7 @@
 		</div>
 
 		<!-- Score Diagnostics Panel -->
-		<div class="metrics-panel">
+		<div id="score-diagnostics" class="metrics-panel">
 			<div class="metrics-panel-header">
 				<span class="metrics-panel-title">SCORE DIAGNOSTICS</span>
 			</div>
@@ -609,6 +616,24 @@
 						</Badge>
 					</div>
 				</div>
+				{#if verdict.trend_context}
+					<div class="rationale-adjustment">
+						<TrendingDown class="adjustment-icon" />
+						<div class="adjustment-content">
+							<span class="adjustment-label">MARKET CONTEXT</span>
+							<span class="adjustment-text">{verdict.trend_context}</span>
+						</div>
+					</div>
+				{/if}
+				{#if verdict.market_viability_context}
+					<div class="rationale-adjustment">
+						<AlertTriangle class="adjustment-icon" />
+						<div class="adjustment-content">
+							<span class="adjustment-label">MARKET VIABILITY</span>
+							<span class="adjustment-text">{verdict.market_viability_context}</span>
+						</div>
+					</div>
+				{/if}
 				<p class="rationale-text">{verdict.rationale}</p>
 				{#if verdict.primary_concern}
 					<div class="rationale-concern">
@@ -1745,6 +1770,66 @@
 		color: var(--color-warning);
 		flex-shrink: 0;
 		margin-top: 0.125rem;
+	}
+
+	/* Score breakdown link in verdict box */
+	.verdict-breakdown-link {
+		margin-top: var(--space-3);
+		background: none;
+		border: none;
+		padding: 0;
+		font-family: var(--font-mono);
+		font-size: 0.75rem;
+		color: rgba(255, 255, 255, 0.5);
+		text-decoration: underline;
+		text-underline-offset: 2px;
+		cursor: pointer;
+		transition: color 0.15s ease;
+	}
+
+	.verdict-breakdown-link:hover {
+		color: rgba(255, 255, 255, 1);
+	}
+
+	/* Rationale adjustment blocks (trend/viability context) */
+	.rationale-adjustment {
+		display: flex;
+		align-items: flex-start;
+		gap: var(--space-2);
+		padding: var(--space-2) var(--space-3);
+		background: var(--color-warning-subtle);
+		border-left: 3px solid var(--color-warning);
+		border-radius: var(--radius-sm);
+		margin-bottom: var(--space-2);
+	}
+
+	:global(.adjustment-icon) {
+		width: var(--text-sm);
+		height: var(--text-sm);
+		color: var(--color-warning);
+		flex-shrink: 0;
+		margin-top: 0.125rem;
+	}
+
+	.adjustment-content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.125rem;
+	}
+
+	.adjustment-label {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: var(--color-warning);
+	}
+
+	.adjustment-text {
+		font-size: var(--text-sm);
+		color: var(--color-text-muted);
+		line-height: var(--leading-relaxed);
 	}
 
 	/* Insights List */

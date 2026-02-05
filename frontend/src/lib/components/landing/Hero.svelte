@@ -7,9 +7,10 @@
 
   interface Props {
     session?: { user?: { name?: string | null; email?: string | null } } | null;
+    hasSampleReport?: boolean;
   }
 
-  let { session = null }: Props = $props();
+  let { session = null, hasSampleReport = false }: Props = $props();
 
   let isVisible = $state(false);
 
@@ -23,7 +24,7 @@
     { text: "> Scanning social media for pain points...", highlight: false },
     { text: "> Found 89 relevant discussions", highlight: false },
     {
-      text: "> Extracting 18 pain points with severity scores...",
+      text: "> Extracting 5 pain points with severity scores...",
       highlight: false,
     },
     {
@@ -67,16 +68,10 @@
   $effect(() => {
     if (isVisible) {
       minuteCount.set(45);
-      painPointCount.set(18);
+      painPointCount.set(5);
       verifyCount.set(100);
     }
   });
-
-  function scrollToSample() {
-    document
-      .getElementById("sample-report")
-      ?.scrollIntoView({ behavior: "smooth" });
-  }
 
   function scrollToHowItWorks() {
     document
@@ -112,14 +107,11 @@
 
         <!-- Main Headline - Mobile optimized: text-3xl (30px) on mobile, scaling up -->
         <h1
-          class="animate-fade-in delay-100 font-display text-3xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
+          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
         >
-          From Niche to Profitable Business in <span
-            class="text-gradient-animated">45 Minutes.</span
+          Discover your next SaaS opportunity in <span
+            class="text-gradient-animated">45 minutes</span
           >
-          <br class="hidden sm:block" /><span class="sm:hidden"> </span>Real
-          Problems. Real Data.
-          <span class="text-gradient-animated">Real Revenue.</span>
         </h1>
 
         <!-- Accent line -->
@@ -128,17 +120,44 @@
         ></div>
 
         <p
-          class="animate-fade-in delay-300 text-base sm:text-lg text-text-muted leading-relaxed mb-6 sm:mb-8 max-w-xl mx-auto"
+          class="animate-fade-in delay-300 text-lg sm:text-xl text-text-secondary leading-relaxed mb-3 sm:mb-4 max-w-xl mx-auto"
         >
-          NicheIQ is where solo founders pick any niche and receive clear
-          answers: WHAT TO BUILD and HOW to make it profitable. Now 45 minutes
-          feels like 3 months of research.
+          NicheIQ helps solo founders get clear answers on <strong class="text-text-primary">what to build</strong> and <strong class="text-text-primary">how to profit</strong>.
         </p>
         <p
-          class="animate-fade-in delay-200 text-lg sm:text-xl lg:text-xl text-text-secondary leading-relaxed mb-4 sm:mb-6 max-w-xl mx-auto"
+          class="animate-fade-in delay-200 text-base sm:text-lg text-text-muted italic leading-relaxed mb-4 sm:mb-6 max-w-xl mx-auto"
         >
-          Get your Profitable Business Report and ready-to-launch Landing Page.
+          Now 45 minutes feels like 3 weeks of research.
         </p>
+
+        <!-- CTA Buttons - Mobile optimized with full width on small screens -->
+        <div
+          class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8 sm:mb-10"
+        >
+          {#if session?.user}
+            <a
+              href="/dashboard"
+              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
+            >
+              Go to Dashboard
+              <ArrowRight class="w-5 h-5" />
+            </a>
+          {:else}
+            <a
+              href="/register"
+              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
+            >
+              Get Started
+              <ArrowRight class="w-5 h-5" />
+            </a>
+            <button
+              onclick={scrollToHowItWorks}
+              class="btn-secondary w-full sm:w-auto px-8 py-4 text-base"
+            >
+              See How It Works
+            </button>
+          {/if}
+        </div>
 
         <!-- Terminal Animation - Mobile optimized with responsive height -->
         <div
@@ -181,35 +200,6 @@
               <span class="inline-block w-2 h-4 bg-accent animate-pulse"></span>
             {/if}
           </div>
-        </div>
-
-        <!-- CTA Buttons - Mobile optimized with full width on small screens -->
-        <div
-          class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-10 sm:mb-12"
-        >
-          {#if session?.user}
-            <a
-              href="/dashboard"
-              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
-            >
-              Go to Dashboard
-              <ArrowRight class="w-5 h-5" />
-            </a>
-          {:else}
-            <a
-              href="/register"
-              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
-            >
-              Get Started
-              <ArrowRight class="w-5 h-5" />
-            </a>
-            <button
-              onclick={scrollToHowItWorks}
-              class="btn-secondary w-full sm:w-auto px-8 py-4 text-base"
-            >
-              See How It Works
-            </button>
-          {/if}
         </div>
 
         <!-- Stats Row with Animated Numbers - Mobile optimized with tighter gap -->
@@ -261,12 +251,14 @@
         </div>
 
         <!-- View Sample Report Link -->
-        <button
-          onclick={scrollToSample}
-          class="animate-fade-in delay-600 mt-6 sm:mt-8 text-text-muted hover:text-accent transition-colors text-sm underline underline-offset-4"
-        >
-          View Sample Report
-        </button>
+        {#if hasSampleReport}
+          <a
+            href="/sample-report"
+            class="animate-fade-in delay-600 mt-6 sm:mt-8 text-text-muted hover:text-accent transition-colors text-sm underline underline-offset-4"
+          >
+            View Sample Report
+          </a>
+        {/if}
       </div>
     {/if}
   </div>

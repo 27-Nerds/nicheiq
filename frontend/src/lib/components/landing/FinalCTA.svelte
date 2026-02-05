@@ -71,7 +71,7 @@
 						href="/register"
 						class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
 					>
-						Find My First Opportunity
+						Get Started
 						<ArrowRight class="w-5 h-5" />
 					</a>
 				{/if}

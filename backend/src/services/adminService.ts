@@ -341,6 +341,66 @@ export async function updatePackage(id: string, data: {
   });
 }
 
+// ============================================
+// App Settings
+// ============================================
+
+const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
+  sample_report_url: (value) => {
+    if (!/^\/shared\/[A-Za-z0-9_-]{1,100}$/.test(value)) {
+      return 'Value must be a valid share URL (e.g. /shared/abc123)';
+    }
+    return null;
+  },
+};
+
+/**
+ * Check if a key is in the settings whitelist
+ */
+export function isValidSettingsKey(key: string): boolean {
+  return key in SETTINGS_VALIDATORS;
+}
+
+/**
+ * Validate a setting value for a given key. Returns error message or null if valid.
+ */
+export function validateSettingValue(key: string, value: string): string | null {
+  const validator = SETTINGS_VALIDATORS[key];
+  if (!validator) return 'Invalid settings key';
+  return validator(value);
+}
+
+/**
+ * Get a single app setting by key
+ */
+export async function getAppSetting(key: string): Promise<string | null> {
+  if (!isValidSettingsKey(key)) throw new Error('Invalid settings key');
+  const setting = await prisma.appSettings.findUnique({ where: { key } });
+  return setting?.value ?? null;
+}
+
+/**
+ * Set (upsert) an app setting
+ */
+export async function setAppSetting(key: string, value: string, updatedBy?: string): Promise<void> {
+  if (!isValidSettingsKey(key)) throw new Error('Invalid settings key');
+  const error = validateSettingValue(key, value);
+  if (error) throw new Error(error);
+  await prisma.appSettings.upsert({
+    where: { key },
+    update: { value, updatedBy },
+    create: { key, value, updatedBy },
+  });
+}
+
+/**
+ * Delete an app setting
+ */
+export async function deleteAppSetting(key: string): Promise<void> {
+  if (!isValidSettingsKey(key)) throw new Error('Invalid settings key');
+  await prisma.appSettings.deleteMany({ where: { key } });
+}
+
 /**
  * Convert niche string to slug matching Python's checkpoint_manager.py logic
  */

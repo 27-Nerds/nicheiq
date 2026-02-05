@@ -1,18 +1,28 @@
 <script lang="ts">
+	interface Props {
+		hasSampleReport?: boolean;
+	}
+
+	let { hasSampleReport = false }: Props = $props();
+
 	const currentYear = new Date().getFullYear();
 
-	const links = {
-		product: [
-			{ name: 'Features', href: '#how-it-works' },
-			{ name: 'Pricing', href: '#pricing' },
-			{ name: 'FAQ', href: '#faq' },
-			{ name: 'Sample Report', href: '#sample-report' }
-		],
-		company: [
-			{ name: 'About the Maker', href: '#about-maker' },
-			{ name: 'Contact', href: 'mailto:hello@nicheiq.com' }
-		]
-	};
+	const baseProductLinks = [
+		{ name: 'Features', href: '#how-it-works' },
+		{ name: 'Pricing', href: '#pricing' },
+		{ name: 'FAQ', href: '#faq' },
+	];
+
+	let productLinks = $derived(
+		hasSampleReport
+			? [...baseProductLinks, { name: 'View Sample Report', href: '/sample-report' }]
+			: baseProductLinks
+	);
+
+	const companyLinks = [
+		{ name: 'About the Maker', href: '#about-maker' },
+		{ name: 'Contact', href: 'mailto:hello@nicheiq.com' }
+	];
 </script>
 
 <footer class="bg-bg-base border-t border-border">
@@ -32,7 +42,7 @@
 			<div>
 				<h4 class="font-display font-semibold text-text-primary mb-3 sm:mb-4 text-sm sm:text-base">Product</h4>
 				<ul class="space-y-2 sm:space-y-3">
-					{#each links.product as link}
+					{#each productLinks as link}
 						<li>
 							<a
 								href={link.href}
@@ -49,7 +59,7 @@
 			<div>
 				<h4 class="font-display font-semibold text-text-primary mb-3 sm:mb-4 text-sm sm:text-base">Connect</h4>
 				<ul class="space-y-2 sm:space-y-3">
-					{#each links.company as link}
+					{#each companyLinks as link}
 						<li>
 							<a
 								href={link.href}

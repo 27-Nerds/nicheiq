@@ -240,6 +240,71 @@ adminRouter.patch('/packages/:id', async (req: AuthenticatedRequest, res: Respon
 });
 
 // ============================================
+// App Settings
+// ============================================
+
+const UpdateSettingSchema = z.object({
+  value: z.string().max(2000),
+});
+
+adminRouter.get('/settings/:key', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { key } = req.params;
+    if (!adminService.isValidSettingsKey(key)) {
+      res.status(400).json({ error: 'Invalid settings key' });
+      return;
+    }
+    const value = await adminService.getAppSetting(key);
+    res.json({ key, value });
+  } catch (error) {
+    console.error('Failed to get setting:', error);
+    res.status(500).json({ error: 'Failed to get setting' });
+  }
+});
+
+adminRouter.put('/settings/:key', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { key } = req.params;
+    if (!adminService.isValidSettingsKey(key)) {
+      res.status(400).json({ error: 'Invalid settings key' });
+      return;
+    }
+    const input = UpdateSettingSchema.parse(req.body);
+
+    const validationError = adminService.validateSettingValue(key, input.value);
+    if (validationError) {
+      res.status(400).json({ error: validationError });
+      return;
+    }
+
+    await adminService.setAppSetting(key, input.value, req.user!.id);
+    res.json({ key, value: input.value });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Failed to update setting:', error);
+    res.status(500).json({ error: 'Failed to update setting' });
+  }
+});
+
+adminRouter.delete('/settings/:key', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { key } = req.params;
+    if (!adminService.isValidSettingsKey(key)) {
+      res.status(400).json({ error: 'Invalid settings key' });
+      return;
+    }
+    await adminService.deleteAppSetting(key);
+    res.json({ key, value: null });
+  } catch (error) {
+    console.error('Failed to delete setting:', error);
+    res.status(500).json({ error: 'Failed to delete setting' });
+  }
+});
+
+// ============================================
 // Job Debug Downloads
 // ============================================
 
