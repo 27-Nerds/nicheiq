@@ -480,8 +480,10 @@
                   {@const competition = parseCompetition(kw.competition)}
                   <tr>
                     <td class="td-keyword">
-                      <Hash class="keyword-icon" />
-                      <span>{kw.keyword}</span>
+                      <div class="td-keyword-inner">
+                        <Hash class="keyword-icon" />
+                        <span>{kw.keyword}</span>
+                      </div>
                     </td>
                     <td class="td-volume">
                       <span class="volume-value"
@@ -490,36 +492,40 @@
                       <span class="volume-unit">/mo</span>
                     </td>
                     <td class="td-difficulty">
-                      {#if kw.keyword_difficulty != null}
-                        <span
-                          class="difficulty-badge"
-                          style="background: {getSeoDifficultyColor(kw.keyword_difficulty)}20; color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
-                        >
-                          {Math.round(kw.keyword_difficulty)}
-                        </span>
-                        <span
-                          class="difficulty-label"
-                          style="color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
-                        >
-                          {getSeoDifficultyLabel(kw.keyword_difficulty)}
-                        </span>
-                      {:else}
-                        <span class="difficulty-na">—</span>
-                      {/if}
+                      <div class="td-difficulty-inner">
+                        {#if kw.keyword_difficulty != null}
+                          <span
+                            class="difficulty-badge"
+                            style="background: {getSeoDifficultyColor(kw.keyword_difficulty)}20; color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
+                          >
+                            {Math.round(kw.keyword_difficulty)}
+                          </span>
+                          <span
+                            class="difficulty-label"
+                            style="color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
+                          >
+                            {getSeoDifficultyLabel(kw.keyword_difficulty)}
+                          </span>
+                        {:else}
+                          <span class="difficulty-na">—</span>
+                        {/if}
+                      </div>
                     </td>
                     <td class="td-competition">
-                      <div class="competition-bar">
-                        <div
-                          class="competition-fill"
-                          style="width: {competition *
-                            100}%; background: {getDifficultyColor(competition)}"
-                        ></div>
+                      <div class="td-competition-inner">
+                        <div class="competition-bar">
+                          <div
+                            class="competition-fill"
+                            style="width: {competition *
+                              100}%; background: {getDifficultyColor(competition)}"
+                          ></div>
+                        </div>
+                        <span
+                          class="competition-value"
+                          style="color: {getDifficultyColor(competition)}"
+                          >{formatScorePercent(competition)}</span
+                        >
                       </div>
-                      <span
-                        class="competition-value"
-                        style="color: {getDifficultyColor(competition)}"
-                        >{formatScorePercent(competition)}</span
-                      >
                     </td>
                     <td class="td-tier">
                       <Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
@@ -881,11 +887,14 @@
   }
 
   .td-keyword {
+    font-family: var(--font-mono);
+    color: var(--color-text-primary);
+  }
+
+  .td-keyword-inner {
     display: flex;
     align-items: center;
     gap: 0.5rem;
-    font-family: var(--font-mono);
-    color: var(--color-text-primary);
   }
 
   :global(.keyword-icon) {
@@ -910,7 +919,10 @@
 
   .td-difficulty {
     text-align: right;
-    display: flex;
+  }
+
+  .td-difficulty-inner {
+    display: inline-flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.375rem;
@@ -947,7 +959,10 @@
 
   .td-competition {
     text-align: right;
-    display: flex;
+  }
+
+  .td-competition-inner {
+    display: inline-flex;
     align-items: center;
     justify-content: flex-end;
     gap: 0.5rem;
