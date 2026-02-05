@@ -314,6 +314,8 @@ class PainPointCrew:
                 self.reddit_posts,
                 settings.max_reddit_content_tokens,
                 score_fn=ContentTokenMonitor.pain_point_priority_score,
+                freshness_reserve_ratio=settings.token_budget_freshness_reserve,
+                freshness_days=settings.token_budget_freshness_days,
             )
 
         self.niche_description = niche_description

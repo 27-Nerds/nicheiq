@@ -691,6 +691,48 @@ class ReportGenerator:
                 enriched.pricing_strategy = matching_pricing.format_summary()
                 logger.info(f"[Report] Applied pricing enrichment: {enriched.pricing_strategy}")
 
+        # Enrich organic_discovery_queries with relevant validated SEO keywords (Stage 9)
+        seo_report = getattr(self.state, 'seo_strategy_report', None)
+        existing = enriched.organic_discovery_queries or []
+        if seo_report and existing:
+            # Collect tier_0 + tier_1 keywords, sorted by opportunity_score desc
+            seo_keywords: list[tuple[str, float]] = []
+            for kw in (seo_report.tier_0_keywords or []):
+                seo_keywords.append((kw.keyword, kw.opportunity_score or 0.0))
+            for kw in (seo_report.tier_1_keywords or []):
+                seo_keywords.append((kw.keyword, kw.opportunity_score or 0.0))
+            seo_keywords.sort(key=lambda x: x[1], reverse=True)
+
+            # Build relevance terms from original LLM-generated queries
+            relevance_terms: set[str] = set()
+            for query in existing:
+                for word in query.lower().split():
+                    if len(word) > 3:
+                        relevance_terms.add(word)
+
+            existing_lower = {q.lower() for q in existing}
+            max_seo_append = 5
+            max_total = 10
+            appended = []
+            for keyword_text, _opp_score in seo_keywords:
+                if len(appended) >= max_seo_append or len(existing) + len(appended) >= max_total:
+                    break
+                if keyword_text.lower() in existing_lower:
+                    continue
+                # Relevance check: SEO keyword must share a word with original queries
+                keyword_words = {w for w in keyword_text.lower().split() if len(w) > 3}
+                if keyword_words & relevance_terms:
+                    appended.append(keyword_text)
+                    existing_lower.add(keyword_text.lower())
+
+            if appended:
+                enriched.organic_discovery_queries = existing + appended
+                logger.info(
+                    f"[Report] Enriched organic_discovery_queries: "
+                    f"{len(existing)} original + {len(appended)} SEO keywords "
+                    f"= {len(enriched.organic_discovery_queries)} total"
+                )
+
         return enriched
 
     def _sync_solution_with_selection_scores(
@@ -3190,6 +3232,7 @@ It differentiates through {diff_text}.
 
             seen: set[str] = set()
             high_volume = 0
+            core_volume = 0
             competition_values = []
 
             for kw in (tier0_keywords + tier1_keywords + tier2_keywords):
@@ -3197,6 +3240,8 @@ It differentiates through {diff_text}.
                 if key in seen:
                     continue
                 seen.add(key)
+
+                core_volume += kw.search_volume or 0
 
                 if (kw.search_volume or 0) > 1000:
                     high_volume += 1
@@ -3221,6 +3266,7 @@ It differentiates through {diff_text}.
                 tier4_count=tier4_count,
                 total_keywords=total,
                 total_search_volume=total_volume,
+                core_search_volume=core_volume,
                 keyword_diversity_score=diversity,
                 high_volume_keywords=high_volume,
                 avg_competition=avg_competition

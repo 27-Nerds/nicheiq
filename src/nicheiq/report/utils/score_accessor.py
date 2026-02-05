@@ -179,8 +179,9 @@ class ScoreAccessor:
             SEO score (0.0-1.0)
         """
         # 1. Stage 9.5 refined (most accurate, data-driven)
-        if solution.seo_scalability_score_refined is not None:
-            return solution.seo_scalability_score_refined
+        seo_refined = getattr(solution, 'seo_scalability_score_refined', None)
+        if seo_refined is not None:
+            return seo_refined
 
         # 2. Stage 8.5 selection criteria
         scores = self.get_scores(solution.solution_name)

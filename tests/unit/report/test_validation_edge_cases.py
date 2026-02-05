@@ -25,7 +25,7 @@ class TestNoneHandling:
             tech_feasibility=0.5,
         )
 
-        # With all 0.5 scores, should be No-Go (below conditional threshold of 0.55)
+        # With all 0.5 scores, should be No-Go (below conditional avg threshold of 0.55)
         assert verdict == "No-Go"
 
     def test_verdict_boundary_with_default_scores(self):
@@ -34,9 +34,9 @@ class TestNoneHandling:
 
         # Test Conditional boundary
         verdict, _ = validator.validate_go_verdict(
-            avg_score=0.60,
-            market_fit=0.55,
-            tech_feasibility=0.55,
+            avg_score=0.55,
+            market_fit=0.50,
+            tech_feasibility=0.50,
         )
 
         assert verdict == "Conditional"
@@ -142,27 +142,27 @@ class TestScoreRangeValidation:
         """Test scores exactly at threshold boundaries."""
         validator = VerdictValidator()
 
-        # Go boundary (0.75 avg, 0.70 individual)
+        # Go boundary (0.75 avg, 0.60 individual)
         verdict, _ = validator.validate_go_verdict(
             avg_score=0.75,
-            market_fit=0.70,
-            tech_feasibility=0.70,
+            market_fit=0.60,
+            tech_feasibility=0.60,
         )
         assert verdict == "Go"
 
-        # Conditional boundary (0.60 avg, 0.55 individual)
+        # Conditional boundary (0.55 avg, 0.50 individual)
         verdict, _ = validator.validate_go_verdict(
-            avg_score=0.60,
-            market_fit=0.55,
-            tech_feasibility=0.55,
+            avg_score=0.55,
+            market_fit=0.50,
+            tech_feasibility=0.50,
         )
         assert verdict == "Conditional"
 
         # Just below conditional boundary
         verdict, _ = validator.validate_go_verdict(
-            avg_score=0.59,
-            market_fit=0.54,
-            tech_feasibility=0.54,
+            avg_score=0.54,
+            market_fit=0.49,
+            tech_feasibility=0.49,
         )
         assert verdict == "No-Go"
 

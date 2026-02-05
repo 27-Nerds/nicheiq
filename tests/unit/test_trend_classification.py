@@ -345,8 +345,17 @@ def _make_enriched(
     }
 
 
-def _make_social_content(reddit_days_ago=None, twitter_days_ago=None):
-    """Build a minimal SocialContentCollection with posts at given ages."""
+def _make_social_content(reddit_days_ago=None, twitter_days_ago=None,
+                         reddit_scores=None, twitter_likes=None, twitter_retweets=None):
+    """Build a minimal SocialContentCollection with posts at given ages.
+
+    Args:
+        reddit_days_ago: List of days-ago values for Reddit posts.
+        twitter_days_ago: List of days-ago values for Twitter tweets.
+        reddit_scores: Optional list of scores for Reddit posts (default: 10 each).
+        twitter_likes: Optional list of likes for Twitter tweets (default: 10 each).
+        twitter_retweets: Optional list of retweets for Twitter tweets (default: 5 each).
+    """
     from nicheiq.models.social_content import (
         SocialContentCollection, RedditPost, TwitterThread, TwitterTweet,
     )
@@ -354,13 +363,14 @@ def _make_social_content(reddit_days_ago=None, twitter_days_ago=None):
     reddit_posts = []
     if reddit_days_ago:
         for i, days in enumerate(reddit_days_ago):
+            score = reddit_scores[i] if reddit_scores else 10
             reddit_posts.append(RedditPost(
                 post_id=f"r{i}",
                 title=f"Post {i}",
                 selftext="text",
                 author="user",
                 subreddit="test",
-                score=10,
+                score=score,
                 num_comments=5,
                 created_utc=now - timedelta(days=days),
                 url=f"https://reddit.com/r/test/{i}",
@@ -369,12 +379,14 @@ def _make_social_content(reddit_days_ago=None, twitter_days_ago=None):
     twitter_threads = []
     if twitter_days_ago:
         for i, days in enumerate(twitter_days_ago):
+            likes = twitter_likes[i] if twitter_likes else 10
+            retweets = twitter_retweets[i] if twitter_retweets else 5
             tweet = TwitterTweet(
                 tweet_id=f"t{i}",
                 author_username="tweeter",
                 text="tweet",
-                likes=10,
-                retweets=5,
+                likes=likes,
+                retweets=retweets,
                 replies_count=2,
                 created_at=now - timedelta(days=days),
                 url=f"https://twitter.com/{i}",

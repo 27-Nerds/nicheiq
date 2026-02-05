@@ -160,6 +160,7 @@
 		font-size: 0.8125rem;
 		line-height: 1.5;
 		color: var(--color-text-secondary);
+		white-space: pre-line;
 	}
 
 	:global(.tooltip-portal-arrow) {

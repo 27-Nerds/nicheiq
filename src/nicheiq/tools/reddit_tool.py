@@ -2,7 +2,10 @@
 Reddit content collection tool using PRAW.
 """
 
+import re
+from collections import Counter
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import praw
 import prawcore
@@ -13,6 +16,13 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..config.settings import settings
 from ..models.social_content import RedditComment, RedditPost
+
+if TYPE_CHECKING:
+    from ..models.research_state import SearchResultItem
+
+
+# Compiled outside the Pydantic model to avoid BaseTool treating it as a private attr
+_SUBREDDIT_RE = re.compile(r"reddit\.com/r/([^/]+)")
 
 
 class RedditCollectorTool(BaseTool):
@@ -202,6 +212,111 @@ class RedditCollectorTool(BaseTool):
 
         logger.info(f"Collected {len(posts)} quality Reddit posts from {len(urls)} URLs")
         return posts
+
+    @staticmethod
+    def extract_subreddits_from_urls(urls: list[str], max_subreddits: int = 5) -> list[str]:
+        """Extract unique subreddit names from Reddit URLs.
+
+        Parses ``/r/{name}/`` from each URL, deduplicates, and returns
+        the top ``max_subreddits`` by frequency.
+
+        Args:
+            urls: List of Reddit URLs (e.g. from Serper results).
+            max_subreddits: Maximum number of subreddits to return.
+
+        Returns:
+            List of subreddit names (e.g. ``["SaaS", "startups"]``).
+        """
+        counts: Counter[str] = Counter()
+        for url in urls:
+            match = _SUBREDDIT_RE.search(url)
+            if match:
+                counts[match.group(1)] += 1
+        return [name for name, _ in counts.most_common(max_subreddits)]
+
+    def search_subreddits(
+        self,
+        queries: list[str],
+        subreddits: list[str] | None = None,
+        time_filter: str = "month",
+        sort: str = "relevance",
+        max_results_per_query: int = 10,
+        already_collected_urls: set[str] | None = None,
+    ) -> list["SearchResultItem"]:
+        """Search subreddits natively using PRAW for very recent posts.
+
+        Targets Google's freshness gap — posts from the last month that
+        may not yet be indexed by search engines.
+
+        Args:
+            queries: Search query strings.
+            subreddits: Subreddit names to search (without ``/r/`` prefix).
+            time_filter: PRAW time filter (``"hour"``, ``"day"``, ``"week"``,
+                ``"month"``, ``"year"``, ``"all"``).
+            sort: Sort order (``"relevance"``, ``"hot"``, ``"top"``, ``"new"``).
+            max_results_per_query: Max submissions per subreddit×query.
+            already_collected_urls: URLs to skip (for dedup with Serper results).
+
+        Returns:
+            List of SearchResultItem (url, title, snippet) — NOT RedditPost.
+            Collection happens later in ``collect_posts()``.
+        """
+        from ..models.research_state import SearchResultItem
+
+        if not queries or not subreddits:
+            return []
+
+        already = already_collected_urls or set()
+        seen_urls: set[str] = set(already)
+        results: list[SearchResultItem] = []
+        consecutive_failures = 0
+
+        reddit = self._get_reddit_client()
+
+        for sub_name in subreddits:
+            if consecutive_failures >= 3:
+                logger.warning(
+                    f"PRAW search circuit breaker: {consecutive_failures} "
+                    "consecutive failures, skipping remaining queries"
+                )
+                break
+
+            sub = reddit.subreddit(sub_name)
+
+            for query in queries:
+                if consecutive_failures >= 3:
+                    break
+
+                try:
+                    submissions = sub.search(
+                        query,
+                        time_filter=time_filter,
+                        sort=sort,
+                        limit=max_results_per_query,
+                    )
+
+                    for submission in submissions:
+                        url = f"https://www.reddit.com{submission.permalink}"
+                        if url in seen_urls:
+                            continue
+                        seen_urls.add(url)
+                        results.append(SearchResultItem(
+                            url=url,
+                            title=submission.title,
+                            snippet="",
+                        ))
+
+                    consecutive_failures = 0  # Reset on success
+
+                except (praw.exceptions.PRAWException,
+                        prawcore.exceptions.PrawcoreException) as e:
+                    consecutive_failures += 1
+                    logger.warning(
+                        f"PRAW search failed for '{query}' in r/{sub_name}: {e} "
+                        f"(failure {consecutive_failures}/3)"
+                    )
+
+        return results
 
     def _run(self, urls: str) -> str:
         """

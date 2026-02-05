@@ -340,6 +340,48 @@ class Settings(BaseSettings):
         description="Maximum API cost budget per run in USD (soft limit, logs warning when exceeded)"
     )
 
+    # Reddit Freshness Search Configuration
+    reddit_freshness_search_enabled: bool = Field(
+        default=True,
+        description="Enable date-filtered Serper search pass for fresh Reddit posts"
+    )
+    reddit_freshness_tbs: str = Field(
+        default="qdr:y",
+        description="Google tbs (time-based search) param for freshness pass (qdr:d, qdr:m, qdr:y)"
+    )
+    reddit_freshness_query_fraction: float = Field(
+        default=0.3,
+        description="Fraction of queries to use for freshness Serper pass (0.0-1.0)"
+    )
+
+    # PRAW Native Search Configuration
+    reddit_native_search_enabled: bool = Field(
+        default=True,
+        description="Enable PRAW native subreddit search for very recent posts"
+    )
+    reddit_native_search_time_filter: str = Field(
+        default="month",
+        description="PRAW time_filter for native search (hour, day, week, month, year, all)"
+    )
+    reddit_native_search_query_fraction: float = Field(
+        default=0.25,
+        description="Fraction of queries to use for PRAW native search (0.0-1.0)"
+    )
+    reddit_native_search_max_results: int = Field(
+        default=10,
+        description="Max results per query+subreddit combination in PRAW native search"
+    )
+
+    # Token Budget Freshness Reserve
+    token_budget_freshness_reserve: float = Field(
+        default=0.25,
+        description="Fraction of token budget reserved for fresh posts (0 = disabled)"
+    )
+    token_budget_freshness_days: int = Field(
+        default=180,
+        description="Posts younger than this (days) are considered 'fresh' for token budget reserve"
+    )
+
     # Solution Validation Configuration
     top_solutions_for_validation: int = Field(
         default=3,
@@ -512,19 +554,19 @@ class Settings(BaseSettings):
         description="Minimum average score (all 4 scores) for Go verdict"
     )
     verdict_go_min_individual_score: float = Field(
-        default=0.7,
+        default=0.60,
         ge=0.0,
         le=1.0,
         description="Minimum individual score (market_fit, tech_feasibility) for Go verdict"
     )
     verdict_conditional_avg_score: float = Field(
-        default=0.60,
+        default=0.55,
         ge=0.0,
         le=1.0,
         description="Minimum average score for Conditional verdict"
     )
     verdict_conditional_min_individual_score: float = Field(
-        default=0.55,
+        default=0.50,
         ge=0.0,
         le=1.0,
         description="Minimum individual score for Conditional verdict"

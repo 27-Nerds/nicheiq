@@ -182,10 +182,6 @@
 		trend: 'Market momentum direction based on search trends, social mentions, and competitive activity.',
 		saturation: 'How crowded the market is. Low = blue ocean, High = intense competition.',
 		risk: 'Overall risk assessment factoring technical complexity, market uncertainty, and competitive threats.',
-		opportunityScore:
-			'Averages market demand, competition, build feasibility, and search visibility. 75%+ = highly viable, 60-74% = promising with caveats, below 60% = rethink this niche.',
-		riskBadge:
-			'Strategic risk of pursuing this niche. Low = strong scores and favorable trends. Medium = mixed signals or trend concerns. High = weak scores or declining market — validate before building.',
 		researchDepth:
 			'Based on pain point quality — severity scores, willingness-to-pay signals, quote evidence density, and cross-platform validation. Premium = strong evidence across multiple signals. Standard = solid data with some gaps. Basic = minimum viable evidence.',
 		pipelineScanned:
@@ -211,6 +207,84 @@
 		if (v === 'Conditional') return tooltips.verdict.conditional;
 		return tooltips.verdict.nogo;
 	};
+
+	// Context-aware score tooltips
+	const GO_THRESHOLD = 0.60;
+
+	const marketFitTooltip = $derived.by(() => {
+		const score = metrics?.market_fit_score;
+		if (score == null) return 'Market demand alignment — no data available';
+		const pct = Math.round(score * 100);
+		const passes = score >= GO_THRESHOLD;
+		return `Market Fit: ${pct}%\nMeasures alignment with validated market demand and pain points.\n${passes ? `Meets Go threshold (\u2265${GO_THRESHOLD * 100}%)` : `Below Go threshold (\u2265${GO_THRESHOLD * 100}%) \u2014 limits verdict to Conditional`}`;
+	});
+
+	const techFeasibilityTooltip = $derived.by(() => {
+		const score = metrics?.technical_feasibility_score;
+		if (score == null) return 'Technical feasibility — no data available';
+		const pct = Math.round(score * 100);
+		const passes = score >= GO_THRESHOLD;
+		return `Feasibility: ${pct}%\nTechnical complexity and resource requirements for implementation.\n${passes ? `Meets Go threshold (\u2265${GO_THRESHOLD * 100}%)` : `Below Go threshold (\u2265${GO_THRESHOLD * 100}%) \u2014 limits verdict to Conditional`}`;
+	});
+
+	const seoTooltip = $derived.by(() => {
+		const score = metrics?.seo_potential_score;
+		if (score == null) return 'SEO potential — no data available';
+		const pct = Math.round(score * 100);
+		return `SEO Score: ${pct}%\nOrganic search growth potential based on keyword landscape.`;
+	});
+
+	const soloDevTooltip = $derived.by(() => {
+		const score = report.selected_solution_details?.solo_dev_feasibility;
+		if (score == null) return 'Solo dev feasibility — no data available';
+		const pct = Math.round(score * 100);
+		return `Solo Dev: ${pct}%\nSuitability for a single developer to build and launch.`;
+	});
+
+	const compEdgeTooltip = $derived.by(() => {
+		const score = metrics?.competitive_advantage_score;
+		if (score == null) return 'Competitive edge — no data available';
+		const pct = Math.round(score * 100);
+		return `Comp. Edge: ${pct}%\nCompetitive positioning and differentiation strength.`;
+	});
+
+	// Context-aware hero tooltips
+	const opportunityScoreTooltip = $derived.by(() => {
+		const mf = metrics?.market_fit_score;
+		const ca = metrics?.competitive_advantage_score;
+		const tf = metrics?.technical_feasibility_score;
+		const seo = metrics?.seo_potential_score;
+		const avg = confidenceScore;
+		const v = verdict?.verdict;
+
+		let parts = [`Opportunity Score: ${Math.round(avg * 100)}%`];
+		parts.push(`Average of: Market Fit (${mf != null ? Math.round(mf * 100) + '%' : 'N/A'}), Comp. Edge (${ca != null ? Math.round(ca * 100) + '%' : 'N/A'}), Feasibility (${tf != null ? Math.round(tf * 100) + '%' : 'N/A'}), SEO (${seo != null ? Math.round(seo * 100) + '%' : 'N/A'})`);
+		parts.push('');
+		if (v === 'Go') {
+			parts.push('Verdict: Go \u2014 all thresholds met.');
+		} else if (v === 'Conditional') {
+			const gates: string[] = [];
+			if (avg < 0.75) gates.push(`avg ${Math.round(avg * 100)}% < 75%`);
+			if (mf != null && mf < 0.6) gates.push(`Market Fit ${Math.round(mf * 100)}% < 60%`);
+			if (tf != null && tf < 0.6) gates.push(`Feasibility ${Math.round(tf * 100)}% < 60%`);
+			parts.push(`Verdict: Conditional \u2014 ${gates.length > 0 ? gates.join(', ') : 'trend/timing factors applied'}.`);
+		} else {
+			parts.push('Verdict: No-Go \u2014 scores below Conditional thresholds.');
+		}
+		return parts.join('\n');
+	});
+
+	const riskBadgeTooltip = $derived.by(() => {
+		const risk = verdict?.risk_level ?? 'Unknown';
+		const tc = verdict?.trend_context;
+		let parts = [`Risk Level: ${risk}`];
+		if (risk === 'Low') parts.push('Strong scores and favorable market trends.');
+		else if (risk === 'Medium') parts.push('Mixed signals \u2014 some score or trend concerns.');
+		else parts.push('Significant concerns \u2014 validate thoroughly before building.');
+		if (tc) parts.push(`\nTrend adjustment: ${tc}`);
+		if (verdict?.primary_concern) parts.push(`Primary concern: ${verdict.primary_concern}`);
+		return parts.join('\n');
+	});
 </script>
 
 <section id="unified-hero" class="unified-hero">
@@ -221,7 +295,7 @@
 			<div class="hero-left">
 				<div class="verdict-giant {getVerdictClass(verdict?.verdict ?? 'No-Go')}">
 					<span class="verdict-score-label">
-					OPPORTUNITY SCORE <Tooltip content={tooltips.opportunityScore} position="bottom" />
+					OPPORTUNITY SCORE <Tooltip content={opportunityScoreTooltip} position="bottom" />
 				</span>
 					<span class="verdict-percentage">{formatScorePercent(confidenceScore)}</span>
 					<div class="verdict-label-row">
@@ -235,7 +309,7 @@
 						<span class="verdict-label-text">{verdict?.verdict?.toUpperCase() ?? 'ANALYZING'}</span>
 					</div>
 					<div class="verdict-risk-badge">
-						<Tooltip content={tooltips.riskBadge} position="bottom">
+						<Tooltip content={riskBadgeTooltip} position="bottom">
 							{#snippet children()}
 								<Badge
 									variant={verdict?.risk_level?.toLowerCase() === 'low'
@@ -475,12 +549,17 @@
 						showTooltip={true}
 						glow={true}
 						label="Market Fit"
-						description="How well the solution addresses validated market demand and pain points"
+						description={marketFitTooltip}
 					/>
 					<span class="metric-label">Market Fit</span>
 					<span class="metric-verdict {getScoreColor(metrics?.market_fit_score)}-text">
 						{getScoreLabel(metrics?.market_fit_score)}
 					</span>
+					{#if metrics?.market_fit_score != null}
+						<span class="threshold-badge {metrics.market_fit_score >= 0.6 ? 'passes' : 'below'}">
+							{metrics.market_fit_score >= 0.6 ? 'Passes Go' : 'Below Go threshold'}
+						</span>
+					{/if}
 				</div>
 
 				<!-- Feasibility -->
@@ -494,12 +573,17 @@
 						showTooltip={true}
 						glow={true}
 						label="Feasibility"
-						description="Technical complexity and resource requirements for implementation"
+						description={techFeasibilityTooltip}
 					/>
 					<span class="metric-label">Feasibility</span>
 					<span class="metric-verdict {getScoreColor(metrics?.technical_feasibility_score)}-text">
 						{getScoreLabel(metrics?.technical_feasibility_score)}
 					</span>
+					{#if metrics?.technical_feasibility_score != null}
+						<span class="threshold-badge {metrics.technical_feasibility_score >= 0.6 ? 'passes' : 'below'}">
+							{metrics.technical_feasibility_score >= 0.6 ? 'Passes Go' : 'Below Go threshold'}
+						</span>
+					{/if}
 				</div>
 
 				<!-- SEO Score -->
@@ -513,7 +597,7 @@
 						showTooltip={true}
 						glow={true}
 						label="SEO Score"
-						description="Organic search growth potential based on keyword landscape"
+						description={seoTooltip}
 					/>
 					<span class="metric-label">SEO</span>
 					<span class="metric-verdict {getScoreColor(metrics?.seo_potential_score)}-text">
@@ -532,7 +616,7 @@
 						showTooltip={true}
 						glow={true}
 						label="Solo Dev"
-						description="Suitability for a single developer to build and launch"
+						description={soloDevTooltip}
 					/>
 					<span class="metric-label">Solo Dev</span>
 					<span class="metric-verdict {getScoreColor(report.selected_solution_details?.solo_dev_feasibility)}-text">
@@ -551,7 +635,7 @@
 						showTooltip={true}
 						glow={true}
 						label="Comp. Edge"
-						description="Competitive positioning and differentiation strength"
+						description={compEdgeTooltip}
 					/>
 					<span class="metric-label">Comp. Edge</span>
 					<span class="metric-verdict {getScoreColor(metrics?.competitive_advantage_score)}-text">
@@ -1603,6 +1687,26 @@
 	}
 	.metric-verdict.muted-text {
 		color: var(--color-text-muted);
+	}
+
+	.threshold-badge {
+		font-family: var(--font-mono);
+		font-size: 0.5rem;
+		font-weight: var(--font-semibold);
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
+		margin-top: 0.125rem;
+		text-align: center;
+	}
+
+	.threshold-badge.passes {
+		color: var(--color-success);
+		opacity: 0.7;
+	}
+
+	.threshold-badge.below {
+		color: var(--color-error);
+		opacity: 0.85;
 	}
 
 	/* Integrated Footer Stats */

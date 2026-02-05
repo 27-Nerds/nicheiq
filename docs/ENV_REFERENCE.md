@@ -567,6 +567,73 @@ MIN_COMMENT_SCORE=2
 # Recommended: 1-5
 ```
 
+### Reddit Freshness Search
+
+These settings control supplemental search passes that bring in recent Reddit posts that Google's default ranking tends to bury.
+
+```bash
+# Enable date-filtered Serper search pass (default: true)
+REDDIT_FRESHNESS_SEARCH_ENABLED=true
+# Runs a second Serper search pass on a subset of queries with a Google tbs
+# (time-based search) filter so recently-published posts appear in results.
+# Cost: ~8 extra Serper calls per run (~$0.008)
+
+# Google tbs (time-based search) parameter for freshness pass
+REDDIT_FRESHNESS_TBS=qdr:y
+# Options:
+#   - qdr:d: Last 24 hours
+#   - qdr:w: Last week
+#   - qdr:m: Last month
+#   - qdr:y: Last year (recommended, broadest useful window)
+
+# Fraction of queries to use for the freshness Serper pass (0.0-1.0)
+REDDIT_FRESHNESS_QUERY_FRACTION=0.3
+# Default: 0.3 (30% of search queries get a freshness pass)
+# Higher = more fresh results but more Serper API calls
+```
+
+### PRAW Native Reddit Search
+
+Uses Reddit's own search API (via PRAW) to find very recent posts that Google hasn't indexed yet. Targets the "freshness gap" — posts from the last month.
+
+```bash
+# Enable PRAW native subreddit search (default: true)
+REDDIT_NATIVE_SEARCH_ENABLED=true
+# Searches the top subreddits found in Serper results using PRAW's
+# subreddit.search() with a time_filter, finding posts too new for Google.
+# No extra API cost — uses existing Reddit API credentials.
+
+# PRAW time_filter for native search
+REDDIT_NATIVE_SEARCH_TIME_FILTER=month
+# Options: hour, day, week, month, year, all
+# Default: month (targets Google's freshness gap)
+
+# Fraction of queries to use for PRAW native search (0.0-1.0)
+REDDIT_NATIVE_SEARCH_QUERY_FRACTION=0.25
+# Default: 0.25 (25% of search queries)
+# Lower than freshness Serper because PRAW search is slower
+
+# Max results per query+subreddit combination
+REDDIT_NATIVE_SEARCH_MAX_RESULTS=10
+# Default: 10
+# Searches top 5 subreddits × selected queries
+```
+
+**How freshness search works:**
+
+Stage 5 now runs three search passes in sequence:
+
+1. **Standard Serper** — existing `site:reddit.com` queries (unchanged)
+2. **Freshness Serper** — 30% of queries re-run with `tbs=qdr:y` date filter
+3. **PRAW Native** — 25% of queries searched directly on Reddit's top subreddits
+
+All results are deduplicated before validation. If freshness searches fail, the pipeline continues with standard results only (graceful degradation). Both freshness passes have circuit breakers: 2 consecutive Serper errors or 3 consecutive PRAW errors disable the remaining queries for that pass.
+
+**When to adjust:**
+- **Disable freshness search** (`REDDIT_FRESHNESS_SEARCH_ENABLED=false`): When researching historical niches where old posts are desirable
+- **Tighten time filter** (`REDDIT_FRESHNESS_TBS=qdr:m`): When you only want very recent discussions
+- **Disable PRAW search** (`REDDIT_NATIVE_SEARCH_ENABLED=false`): If Reddit API rate limits are a concern or credentials are limited
+
 ### Twitter Quality Filters
 
 ```bash
@@ -895,6 +962,34 @@ TOKEN_SOFT_CAP=400000
 COST_LOGGING_ENABLED=true
 # Shows per-stage cost estimates during execution
 ```
+
+### Token Budget Freshness Reserve
+
+When processing Reddit posts for pain point analysis (Stage 6), a token budget limits how many posts fit in the LLM context. By default, posts are ranked purely by quality score, which can crowd out recent posts in favor of older, high-engagement ones. The freshness reserve guarantees a portion of the budget for recent content.
+
+```bash
+# Fraction of token budget reserved for fresh posts (default: 0.25)
+TOKEN_BUDGET_FRESHNESS_RESERVE=0.25
+# Default: 0.25 (25% of budget reserved for posts < freshness_days old)
+# Set to 0 to disable (original quality-only behavior)
+# The reserved portion is filled with fresh posts sorted by quality score.
+# If insufficient fresh posts exist, the unused budget flows back to the
+# quality pool — no tokens are wasted.
+
+# Age threshold for "fresh" posts in days (default: 180)
+TOKEN_BUDGET_FRESHNESS_DAYS=180
+# Posts younger than this are eligible for the freshness reserve.
+# Uses the same RECENT_DAYS constant as discussion recency scoring.
+# Options:
+#   - 90: Only very recent posts get reserved budget
+#   - 180: Posts from last 6 months (recommended, matches recency scoring)
+#   - 365: Posts from last year
+```
+
+**When to adjust:**
+- **Increase reserve** (`TOKEN_BUDGET_FRESHNESS_RESERVE=0.4`): Niches where recency matters a lot (trending topics, news-driven markets)
+- **Disable reserve** (`TOKEN_BUDGET_FRESHNESS_RESERVE=0`): Historical research or niches where old discussions are most valuable
+- **Tighten freshness** (`TOKEN_BUDGET_FRESHNESS_DAYS=90`): Only reserve budget for very recent posts
 
 ### Cost Budget
 

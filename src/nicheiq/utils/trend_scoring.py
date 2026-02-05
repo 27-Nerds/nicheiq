@@ -148,50 +148,85 @@ def compute_keyword_volume_trend(rvp: float, has_data: bool) -> str:
 
 def compute_discussion_signals(
     social_content: SocialContentCollection | None,
+    *,
+    _now: datetime | None = None,
 ) -> tuple[str, str]:
     """Compute discussion recency and frequency trend from post timestamps.
 
-    Note: This measures RECENCY of posts, not true frequency. Used as a
-    secondary confidence signal, not a primary direction indicator.
+    Uses engagement-weighted exponential decay instead of naive majority-vote.
+    Each post contributes ``recency_value * engagement_weight`` where:
+    - recency_value = exp(-days * ln2 / RECENT_DAYS)  (half-life = RECENT_DAYS)
+    - engagement_weight = sqrt(min(max(engagement, 1), 1000))
+
+    A temporal spread bonus of +0.1 is added when the collection spans from
+    very recent (<90 days) to very old (>365 days), indicating sustained interest.
 
     Args:
         social_content: Social media discussions from Stage 5
+        _now: Override current time for deterministic testing
 
     Returns:
         Tuple of (discussion_recency, discussion_frequency_trend)
         recency: "Recent", "Moderate", or "Dated"
         frequency: "Increasing", "Stable", or "Decreasing"
     """
-    now = datetime.now(timezone.utc)
-    buckets: dict[str, int] = {"recent": 0, "moderate": 0, "dated": 0}
+    from math import exp, log, sqrt
 
-    posts: list = []
+    now = _now or datetime.now(timezone.utc)
+    ln2 = log(2)
+    half_life = RECENT_DAYS  # 180 days — shared constant
+
+    # 1. Collect posts with their engagement values
+    items: list[tuple[float, float]] = []  # (days_old, engagement)
     if social_content:
-        posts.extend(social_content.reddit_posts or [])
+        for post in (social_content.reddit_posts or []):
+            created = getattr(post, 'created_utc', None)
+            if not created:
+                continue
+            days = max((now - created).days, 0)
+            engagement = float(getattr(post, 'score', 1))
+            items.append((days, engagement))
+
         for thread in (social_content.twitter_threads or []):
-            if hasattr(thread, 'original_tweet') and thread.original_tweet:
-                posts.append(thread.original_tweet)
+            tweet = getattr(thread, 'original_tweet', None)
+            if not tweet:
+                continue
+            created = getattr(tweet, 'created_at', None)
+            if not created:
+                continue
+            days = max((now - created).days, 0)
+            engagement = float(getattr(tweet, 'likes', 0)) + float(getattr(tweet, 'retweets', 0))
+            items.append((days, engagement))
 
-    for post in posts:
-        created = getattr(post, 'created_utc', None) or getattr(post, 'created_at', None)
-        if not created:
-            continue
-        days = (now - created).days
-        if days < RECENT_DAYS:
-            buckets["recent"] += 1
-        elif days < MODERATE_DAYS:
-            buckets["moderate"] += 1
-        else:
-            buckets["dated"] += 1
-
-    total_posts = sum(buckets.values())
-    if total_posts == 0:
+    if not items:
         return "Dated", "Decreasing"
 
-    majority = max(buckets, key=buckets.get)  # type: ignore[arg-type]
-    recency_map = {"recent": "Recent", "moderate": "Moderate", "dated": "Dated"}
-    freq_map = {"recent": "Increasing", "moderate": "Stable", "dated": "Decreasing"}
-    return recency_map[majority], freq_map[majority]
+    # 2. Compute engagement-weighted recency score
+    weighted_sum = 0.0
+    weight_sum = 0.0
+    min_days = float('inf')
+    max_days = 0.0
+
+    for days, engagement in items:
+        recency_value = exp(-days * ln2 / half_life)
+        engagement_weight = sqrt(min(max(engagement, 1), 1000))
+        weighted_sum += recency_value * engagement_weight
+        weight_sum += engagement_weight
+        min_days = min(min_days, days)
+        max_days = max(max_days, days)
+
+    weighted_recency_score = weighted_sum / weight_sum if weight_sum > 0 else 0.0
+
+    # 3. Temporal spread bonus: +0.1 if newest <90d AND oldest >365d
+    if min_days < 90 and max_days > 365:
+        weighted_recency_score = min(weighted_recency_score + 0.1, 1.0)
+
+    # 4. Map score to labels
+    if weighted_recency_score >= 0.5:
+        return "Recent", "Increasing"
+    elif weighted_recency_score >= 0.25:
+        return "Moderate", "Stable"
+    return "Dated", "Decreasing"
 
 
 def compute_trend_confidence(

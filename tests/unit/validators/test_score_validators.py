@@ -30,9 +30,9 @@ class TestScoreThresholds:
 
         # Verdict thresholds
         assert thresholds.verdict_go_avg_score == 0.75
-        assert thresholds.verdict_go_min_individual_score == 0.7
-        assert thresholds.verdict_conditional_avg_score == 0.60
-        assert thresholds.verdict_conditional_min_individual_score == 0.55
+        assert thresholds.verdict_go_min_individual_score == 0.60
+        assert thresholds.verdict_conditional_avg_score == 0.55
+        assert thresholds.verdict_conditional_min_individual_score == 0.50
 
         # Pain point & competitive
         assert thresholds.pain_point_high_priority_threshold == 0.7
@@ -99,8 +99,8 @@ class TestVerdictValidator:
         # Exactly at threshold (should pass)
         verdict, _ = validator.validate_go_verdict(
             avg_score=0.75,  # Exactly at threshold
-            market_fit=0.7,  # Exactly at threshold
-            tech_feasibility=0.7,
+            market_fit=0.60,  # Exactly at threshold
+            tech_feasibility=0.60,
         )
 
         assert verdict == "Go"
@@ -110,13 +110,13 @@ class TestVerdictValidator:
         validator = VerdictValidator()
 
         verdict, rationale = validator.validate_go_verdict(
-            avg_score=0.65,  # Between conditional and go
-            market_fit=0.60,
-            tech_feasibility=0.58,
+            avg_score=0.58,  # Between conditional and go
+            market_fit=0.52,
+            tech_feasibility=0.50,
         )
 
         assert verdict == "Conditional"
-        assert "0.65" in rationale
+        assert "0.58" in rationale
 
     def test_nogo_verdict(self):
         """Test No-Go verdict when all thresholds missed."""
@@ -240,15 +240,15 @@ class TestVerdictValidator:
         [
             # Strong Go cases
             (0.90, 0.85, 0.88, "Go"),
-            (0.75, 0.70, 0.70, "Go"),  # Boundary
+            (0.75, 0.60, 0.60, "Go"),  # Boundary
             # Conditional cases
-            (0.65, 0.60, 0.58, "Conditional"),
-            (0.60, 0.55, 0.55, "Conditional"),  # Boundary
+            (0.58, 0.52, 0.50, "Conditional"),
+            (0.55, 0.50, 0.50, "Conditional"),  # Boundary
             # No-Go cases
             (0.50, 0.45, 0.48, "No-Go"),
             (0.30, 0.25, 0.28, "No-Go"),
             # Edge case: high avg but low individual
-            (0.80, 0.50, 0.90, "No-Go"),  # market_fit too low even for Conditional (< 0.55)
+            (0.80, 0.45, 0.90, "No-Go"),  # market_fit too low even for Conditional (< 0.50)
         ],
     )
     def test_verdict_parametrized(
@@ -425,8 +425,8 @@ class TestTrendDowngradeRules:
         assert v == "Conditional"
         assert tc is None
 
-    def test_rule5_monitor_wait_raises_risk_low_to_medium(self):
-        """Rule 5: Monitor & Wait raises risk Low→Medium."""
+    def test_rule5_monitor_wait_disabled_by_default_low(self):
+        """Rule 5 disabled by default: Monitor & Wait does NOT raise risk Low→Medium."""
         validator = VerdictValidator()
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
@@ -436,12 +436,11 @@ class TestTrendDowngradeRules:
             )
         )
         assert v == "Go"  # verdict unchanged (no declining/fad/risky)
-        assert r == "Medium"
-        assert tc is not None
-        assert "Monitor & Wait" in tc
+        assert r == "Low"
+        assert tc is None
 
-    def test_rule5_monitor_wait_raises_risk_medium_to_high(self):
-        """Rule 5: Monitor & Wait raises risk Medium→High."""
+    def test_rule5_monitor_wait_disabled_by_default_medium(self):
+        """Rule 5 disabled by default: Monitor & Wait does NOT raise risk Medium→High."""
         validator = VerdictValidator()
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
@@ -451,8 +450,8 @@ class TestTrendDowngradeRules:
             )
         )
         assert v == "Conditional"
-        assert r == "High"
-        assert tc is not None
+        assert r == "Medium"
+        assert tc is None
 
     def test_rule5_already_high_stays_high(self):
         """Rule 5: Already High risk stays High."""
@@ -467,11 +466,10 @@ class TestTrendDowngradeRules:
         assert r == "High"
         assert tc is None  # no actual change
 
-    def test_rule5_additive_with_rule1(self):
-        """Rule 5 is additive: Declining+Missed Window+Monitor&Wait shouldn't happen,
-        but if timing is Monitor & Wait combined with declining, both rules can apply."""
+    def test_rule5_additive_with_rule3_disabled_by_default(self):
+        """Rule 5 disabled by default: Declining + Monitor & Wait only fires Rule 3, not Rule 5."""
         validator = VerdictValidator()
-        # Rule 3 fires (declining but not missed window), then Rule 5 fires (monitor & wait)
+        # Rule 3 fires (declining but not missed window), Rule 5 disabled so risk stays Low
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
                 verdict="Go",
@@ -482,7 +480,7 @@ class TestTrendDowngradeRules:
             )
         )
         assert v == "Conditional"  # Rule 3
-        assert r == "Medium"  # Rule 5
+        assert r == "Low"  # Rule 5 disabled
         assert tc is not None
 
     def test_rule1_takes_priority_over_rule2(self):
@@ -608,9 +606,9 @@ class TestTrendDowngradeCustomThresholds:
         v, r, pc, tc = validator.apply_trend_downgrade(**self._base_kwargs())
         assert v == "Go"  # no rules 1-4 fired
 
-    def test_disable_rule5(self):
-        """Disabling rule 5 prevents risk raise from Monitor & Wait."""
-        thresholds = ScoreThresholds(trend_monitor_wait_raises_risk=False)
+    def test_enable_rule5(self):
+        """Enabling rule 5 allows risk raise from Monitor & Wait."""
+        thresholds = ScoreThresholds(trend_monitor_wait_raises_risk=True)
         validator = VerdictValidator(thresholds)
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
@@ -620,8 +618,9 @@ class TestTrendDowngradeCustomThresholds:
             )
         )
         assert v == "Go"
-        assert r == "Low"
-        assert tc is None
+        assert r == "Medium"
+        assert tc is not None
+        assert "Monitor & Wait" in tc
 
     def test_all_rules_disabled_no_change(self):
         """All rules disabled → no changes at all."""

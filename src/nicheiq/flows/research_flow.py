@@ -1133,6 +1133,63 @@ Return a valid JSON object with this structure:
                 except Exception as e:
                     logger.error(f"Reddit search failed for '{search_query.query}': {e}")
 
+            standard_count = len(reddit_results)
+            logger.info(f"[OK] Found {standard_count} Reddit results from standard search")
+
+            # ── Freshness Serper pass (Phase 1): date-filtered search ──
+            freshness_serper_count = 0
+            if settings.reddit_freshness_search_enabled:
+                import math
+                freshness_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_freshness_query_fraction))]
+                freshness_errors = 0
+                for search_query in freshness_queries:
+                    if freshness_errors >= 2:
+                        logger.warning("Freshness search circuit breaker: 2 consecutive errors, disabling for remaining queries")
+                        break
+                    try:
+                        results = SearchHelper.serper_search_with_date_filter(
+                            f"site:reddit.com {search_query.query}",
+                            tbs=settings.reddit_freshness_tbs,
+                        )
+                        search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
+                        reddit_results.extend(search_items)
+                        freshness_serper_count += len(search_items)
+                        freshness_errors = 0
+                    except Exception as e:
+                        freshness_errors += 1
+                        logger.error(f"Freshness search failed for '{search_query.query}': {e}")
+
+                logger.info(f"[OK] Found {freshness_serper_count} Reddit results from freshness search (tbs={settings.reddit_freshness_tbs})")
+
+            # ── PRAW native search pass (Phase 3) ──
+            praw_count = 0
+            if settings.reddit_native_search_enabled:
+                try:
+                    from ..tools.reddit_tool import RedditCollectorTool
+                    import math
+
+                    # Extract top subreddits from existing results
+                    existing_urls = [r.url for r in reddit_results]
+                    target_subs = RedditCollectorTool.extract_subreddits_from_urls(existing_urls)
+
+                    if target_subs:
+                        native_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_native_search_query_fraction))]
+                        reddit_tool = RedditCollectorTool()
+                        praw_results = reddit_tool.search_subreddits(
+                            queries=[q.query for q in native_queries],
+                            subreddits=target_subs,
+                            time_filter=settings.reddit_native_search_time_filter,
+                            max_results_per_query=settings.reddit_native_search_max_results,
+                            already_collected_urls=set(existing_urls),
+                        )
+                        reddit_results.extend(praw_results)
+                        praw_count = len(praw_results)
+                        logger.info(f"[OK] Found {praw_count} Reddit results from PRAW native search")
+                    else:
+                        logger.info("[OK] No subreddits identified for PRAW native search")
+                except Exception as e:
+                    logger.error(f"PRAW native search failed: {e}")
+
             # Deduplicate results by URL
             seen_urls = set()
             for result in reddit_results:
@@ -1140,7 +1197,11 @@ Return a valid JSON object with this structure:
                     seen_urls.add(result.url)
                     unique_reddit_results.append(result)
 
-            logger.info(f"[OK] Found {len(unique_reddit_results)} unique Reddit results from {len(reddit_queries)} queries")
+            new_from_freshness = len(unique_reddit_results) - standard_count
+            logger.info(
+                f"[OK] After dedup: {len(unique_reddit_results)} unique results "
+                f"({new_from_freshness} new from freshness passes)"
+            )
 
             # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
             logger.info("Validating Reddit thread relevance...")
@@ -1264,6 +1325,24 @@ Return a valid JSON object with this structure:
                 f"Stage 5 - Collected Reddit content: {len(reddit_posts)} posts, "
                 f"~{reddit_char_count:,} characters"
             )
+
+            # Log post freshness distribution
+            if reddit_posts:
+                from datetime import datetime as _dt, timezone as _tz
+                _now = _dt.now(_tz.utc)
+                fresh_count = sum(1 for p in reddit_posts if (_now - p.created_utc).days < 180)
+                mid_count = sum(1 for p in reddit_posts if 180 <= (_now - p.created_utc).days < 365)
+                old_count = sum(1 for p in reddit_posts if (_now - p.created_utc).days >= 365)
+                total = len(reddit_posts)
+                days_list = sorted([(_now - p.created_utc).days for p in reddit_posts])
+                median_days = days_list[len(days_list) // 2]
+                logger.info(
+                    f"[OK] Post freshness distribution: "
+                    f"{fresh_count * 100 // total}% <180d, "
+                    f"{mid_count * 100 // total}% 180-365d, "
+                    f"{old_count * 100 // total}% >365d "
+                    f"(median: {median_days}d)"
+                )
 
             # Estimate Twitter content size (rough approximation)
             if twitter_threads:

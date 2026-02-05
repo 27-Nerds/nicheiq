@@ -101,7 +101,11 @@ class SEOAnalytics(BaseModel):
         description="Total keyword count across all tiers"
     )
     total_search_volume: int = Field(
-        description="Total monthly search volume"
+        description="Total monthly search volume across all tiers"
+    )
+    core_search_volume: Optional[int] = Field(
+        default=None,
+        description="Monthly search volume for Tier 0-2 keywords only (niche-targeted, excludes broad Tier 3-4 expansion)"
     )
     avg_competition: Optional[float] = Field(
         default=None,

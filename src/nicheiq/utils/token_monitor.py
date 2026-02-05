@@ -334,15 +334,27 @@ class ContentTokenMonitor:
         posts: list["RedditPost"],
         max_tokens: int,
         score_fn=None,
+        freshness_reserve_ratio: float = 0,
+        freshness_days: int | None = None,
     ) -> list["RedditPost"]:
         """
         Sort posts by scoring function and keep what fits in token budget.
+
+        When ``freshness_reserve_ratio > 0``, a portion of the token budget
+        is reserved for fresh posts (< ``freshness_days`` old).  This
+        guarantees recent content survives even when lower-scoring than
+        older posts.  If insufficient fresh posts exist, the unused budget
+        flows back to the quality pool.
 
         Args:
             posts: List of RedditPost objects to filter
             max_tokens: Maximum total tokens to include
             score_fn: Callable that takes a RedditPost and returns a float score.
                        Defaults to engagement_recency_score.
+            freshness_reserve_ratio: Fraction of budget reserved for fresh posts
+                (0 = disabled / backward-compatible behavior).
+            freshness_days: Posts younger than this are "fresh".  Defaults to
+                ``RECENT_DAYS`` (180) from trend_scoring.
 
         Returns:
             Filtered list of posts sorted by score
@@ -353,12 +365,83 @@ class ContentTokenMonitor:
         if score_fn is None:
             score_fn = self.engagement_recency_score
 
-        # Sort by score (highest first)
-        sorted_posts = sorted(
-            posts,
+        # ── Original behavior when freshness reserve is disabled ──
+        if freshness_reserve_ratio <= 0:
+            return self._fill_budget(posts, max_tokens, score_fn)
+
+        # ── Freshness-aware budget allocation ──
+        if freshness_days is None:
+            from ..utils.trend_scoring import RECENT_DAYS
+            freshness_days = RECENT_DAYS
+
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+
+        # Split into fresh and old pools
+        fresh_pool = []
+        old_pool = []
+        for post in posts:
+            days_old = max((now - post.created_utc).days, 0)
+            if days_old < freshness_days:
+                fresh_pool.append(post)
+            else:
+                old_pool.append(post)
+
+        # Sort both pools by score
+        fresh_sorted = sorted(fresh_pool, key=score_fn, reverse=True)
+        old_sorted = sorted(old_pool, key=score_fn, reverse=True)
+
+        # Phase 1: Fill fresh budget
+        fresh_budget = int(max_tokens * freshness_reserve_ratio)
+        selected = []
+        selected_ids = set()
+        fresh_tokens_used = 0
+
+        for post in fresh_sorted:
+            post_tokens = self.count_post_tokens(post)
+            if fresh_tokens_used + post_tokens <= fresh_budget:
+                selected.append(post)
+                selected_ids.add(id(post))
+                fresh_tokens_used += post_tokens
+
+        # Phase 2: Fill remaining budget from ALL remaining posts (quality pool)
+        remaining_budget = max_tokens - fresh_tokens_used
+        # Combine old posts with any fresh posts that didn't fit in the reserve
+        quality_pool = sorted(
+            [p for p in posts if id(p) not in selected_ids],
             key=score_fn,
-            reverse=True
+            reverse=True,
         )
+        quality_tokens = 0
+
+        for post in quality_pool:
+            post_tokens = self.count_post_tokens(post)
+            if quality_tokens + post_tokens <= remaining_budget:
+                selected.append(post)
+                selected_ids.add(id(post))
+                quality_tokens += post_tokens
+            else:
+                logger.debug(
+                    f"Dropping post {post.post_id} (score: {post.score}, "
+                    f"~{post_tokens:,} tokens) - would exceed budget"
+                )
+
+        total_tokens = fresh_tokens_used + quality_tokens
+        logger.info(
+            f"Token budget filter: kept {len(selected)}/{len(posts)} posts "
+            f"(~{total_tokens:,} tokens, budget: {max_tokens:,}, "
+            f"fresh: {len(fresh_pool)}, reserved: {sum(1 for p in selected if id(p) in {id(fp) for fp in fresh_sorted})})"
+        )
+        return selected
+
+    def _fill_budget(
+        self,
+        posts: list["RedditPost"],
+        max_tokens: int,
+        score_fn,
+    ) -> list["RedditPost"]:
+        """Fill token budget with posts sorted by score (original algorithm)."""
+        sorted_posts = sorted(posts, key=score_fn, reverse=True)
 
         selected_posts = []
         total_tokens = 0

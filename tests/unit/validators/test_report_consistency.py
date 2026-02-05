@@ -25,6 +25,7 @@ def _make_report(
     dashboard_verdict="Go",
     seo_total_keywords=166,
     seo_total_search_volume=125000,
+    seo_core_search_volume=None,
     competitive_competitor_count=8,
     pp_high_severity_count=5,
     analytics_selection_confidence=0.805,
@@ -59,6 +60,7 @@ def _make_report(
         seo = MagicMock()
         seo.total_keywords = seo_total_keywords
         seo.total_search_volume = seo_total_search_volume
+        seo.core_search_volume = seo_core_search_volume
         report.seo_analytics = seo
     else:
         report.seo_analytics = None
@@ -849,7 +851,7 @@ class TestVolumeRatioAwareChecks:
         )
         validator = ReportConsistencyValidator()
         warnings = validator.validate(report)
-        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.total_search_volume"]
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
         assert len(vol_warnings) == 1
         assert vol_warnings[0].severity == "INFO"
 
@@ -861,7 +863,7 @@ class TestVolumeRatioAwareChecks:
         )
         validator = ReportConsistencyValidator()
         warnings = validator.validate(report)
-        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.total_search_volume"]
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
         assert len(vol_warnings) == 1
         assert vol_warnings[0].severity == "ERROR"
 
@@ -873,7 +875,7 @@ class TestVolumeRatioAwareChecks:
         )
         validator = ReportConsistencyValidator()
         warnings = validator.validate(report)
-        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.total_search_volume"]
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
         assert len(vol_warnings) == 1
         assert vol_warnings[0].severity == "WARNING"
 

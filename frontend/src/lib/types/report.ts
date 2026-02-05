@@ -281,6 +281,7 @@ export interface SEOAnalytics {
 	tier4_count: number;
 	total_keywords: number;
 	total_search_volume: number;
+	core_search_volume?: number;
 	avg_competition: number;
 	keyword_diversity_score: number;
 	high_volume_keywords: number;

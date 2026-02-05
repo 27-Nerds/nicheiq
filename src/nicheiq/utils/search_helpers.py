@@ -5,7 +5,10 @@ Provides static methods for building platform-specific search queries
 and extracting results from SerperDevTool responses.
 """
 
+import os
 from typing import TYPE_CHECKING
+
+import requests
 
 if TYPE_CHECKING:
     from ..models.research_state import SearchResultItem
@@ -105,6 +108,43 @@ class SearchHelper:
                 unique_results.append(result)
 
         return unique_results
+
+    @staticmethod
+    def serper_search_with_date_filter(
+        query: str, tbs: str = "qdr:y", n_results: int = 10
+    ) -> dict:
+        """Direct Serper API call with tbs date filter.
+
+        CrewAI's SerperDevTool does not expose the ``tbs`` parameter, so
+        this method calls the Serper REST API directly.  The response
+        format (``{"organic": [...]}```) is the same structure that
+        :meth:`extract_results_from_serper` already parses.
+
+        Args:
+            query: Search query string (e.g. ``"site:reddit.com AI tools"``).
+            tbs: Google time-based search param (``qdr:d``, ``qdr:m``, ``qdr:y``).
+            n_results: Number of results to request.
+
+        Returns:
+            Raw JSON response dict from Serper.
+
+        Raises:
+            requests.exceptions.HTTPError: On 4xx/5xx responses.
+            requests.exceptions.Timeout: On connection timeout.
+        """
+        payload = {"q": query, "num": n_results, "tbs": tbs}
+        headers = {
+            "X-API-KEY": os.environ["SERPER_API_KEY"],
+            "content-type": "application/json",
+        }
+        resp = requests.post(
+            "https://google.serper.dev/search",
+            headers=headers,
+            json=payload,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     @staticmethod
     def extract_urls_from_serper(search_results: dict, domain: str) -> list[str]:

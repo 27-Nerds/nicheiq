@@ -130,53 +130,54 @@ class ReportConsistencyValidator:
                     actual_value=str(report.seo_analytics.total_keywords),
                 ))
 
-            # Search volume: KeyMetrics uses niche-relevant volume, SEOAnalytics uses full Stage 9 volume.
-            # They intentionally differ. Use ratio-aware checks instead of exact match.
-            if km.total_keyword_search_volume != report.seo_analytics.total_search_volume:
-                seo_vol = report.seo_analytics.total_search_volume
-                km_vol = km.total_keyword_search_volume
-                if seo_vol > 0 and km_vol > seo_vol:
-                    # Filtered > total = data corruption
-                    ratio = km_vol / seo_vol
-                    warnings.append(ConsistencyWarning(
-                        field_path="seo_analytics.total_search_volume",
-                        severity="ERROR",
-                        message=(
-                            f"Search volume anomaly: dashboard niche-relevant volume ({km_vol:,}) "
-                            f"exceeds seo_analytics total volume ({seo_vol:,}) — ratio {ratio:.2f}. "
-                            f"Filtered volume should not exceed total."
-                        ),
-                        expected_value=str(km_vol),
-                        actual_value=str(seo_vol),
-                    ))
-                elif seo_vol > 0 and km_vol > 0 and (km_vol / seo_vol) < 0.05:
-                    # Suspiciously low filter ratio
-                    ratio = km_vol / seo_vol
-                    warnings.append(ConsistencyWarning(
-                        field_path="seo_analytics.total_search_volume",
-                        severity="WARNING",
-                        message=(
-                            f"Suspiciously low volume filter ratio ({ratio:.1%}): "
-                            f"dashboard niche-relevant volume ({km_vol:,}) vs "
-                            f"seo_analytics total volume ({seo_vol:,}). "
-                            f"Keyword filtering may be overly aggressive."
-                        ),
-                        expected_value=str(km_vol),
-                        actual_value=str(seo_vol),
-                    ))
-                else:
-                    # Expected: KeyMetrics = filtered, SEOAnalytics = total
-                    warnings.append(ConsistencyWarning(
-                        field_path="seo_analytics.total_search_volume",
-                        severity="INFO",
-                        message=(
-                            f"Search volume difference (expected): dashboard shows niche-relevant "
-                            f"volume {km_vol:,}, seo_analytics shows total Stage 9 volume {seo_vol:,}. "
-                            f"KeyMetrics uses filtered volume; SEOAnalytics uses full keyword set."
-                        ),
-                        expected_value=str(km_vol),
-                        actual_value=str(seo_vol),
-                    ))
+            # Search volume: KeyMetrics uses niche-relevant volume (Stage 8.5 filtered),
+            # SEOAnalytics.core_search_volume uses Tier 0-2 volume (niche-targeted keywords).
+            # Compare against core volume (Tier 0-2) instead of total (Tier 0-4) to avoid
+            # false positives from broad Tier 3-4 expansion keywords inflating the denominator.
+            core_vol = getattr(report.seo_analytics, 'core_search_volume', None) or report.seo_analytics.total_search_volume
+            km_vol = km.total_keyword_search_volume
+            if core_vol > 0 and km_vol > core_vol:
+                # Filtered > core = data corruption or stale Stage 8.5 data
+                ratio = km_vol / core_vol
+                warnings.append(ConsistencyWarning(
+                    field_path="seo_analytics.core_search_volume",
+                    severity="ERROR",
+                    message=(
+                        f"Search volume anomaly: dashboard niche-relevant volume ({km_vol:,}) "
+                        f"exceeds Tier 0-2 core volume ({core_vol:,}) — ratio {ratio:.2f}. "
+                        f"Filtered volume should not exceed core volume."
+                    ),
+                    expected_value=str(km_vol),
+                    actual_value=str(core_vol),
+                ))
+            elif core_vol > 0 and km_vol > 0 and (km_vol / core_vol) < 0.05:
+                # Suspiciously low filter ratio even against core keywords
+                ratio = km_vol / core_vol
+                warnings.append(ConsistencyWarning(
+                    field_path="seo_analytics.core_search_volume",
+                    severity="WARNING",
+                    message=(
+                        f"Suspiciously low volume filter ratio ({ratio:.1%}): "
+                        f"dashboard niche-relevant volume ({km_vol:,}) vs "
+                        f"Tier 0-2 core volume ({core_vol:,}). "
+                        f"Keyword filtering may be overly aggressive."
+                    ),
+                    expected_value=str(km_vol),
+                    actual_value=str(core_vol),
+                ))
+            elif km_vol != core_vol:
+                # Expected: KeyMetrics = Stage 8.5 filtered, core = Stage 9 Tier 0-2
+                warnings.append(ConsistencyWarning(
+                    field_path="seo_analytics.core_search_volume",
+                    severity="INFO",
+                    message=(
+                        f"Search volume difference (expected): dashboard shows niche-relevant "
+                        f"volume {km_vol:,}, Tier 0-2 core volume is {core_vol:,}. "
+                        f"KeyMetrics uses Stage 8.5 filtered volume; core uses Stage 9 Tier 0-2."
+                    ),
+                    expected_value=str(km_vol),
+                    actual_value=str(core_vol),
+                ))
 
         # Competitor count: dashboard vs competitive_analytics
         if report.competitive_analytics and km:

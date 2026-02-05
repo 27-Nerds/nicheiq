@@ -337,7 +337,7 @@ VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.75
 
 # More lenient (easier Go verdict for exploratory research)
 VERDICT_GO_AVG_SCORE=0.65
-VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.60
+VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.55
 ```
 
 **See Also**:

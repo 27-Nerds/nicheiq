@@ -117,19 +117,19 @@ class ScoreThresholds(BaseModel):
         description="Minimum average score (all 4 dimensions) for Go verdict",
     )
     verdict_go_min_individual_score: float = Field(
-        default=0.7,
+        default=0.60,
         ge=0.0,
         le=1.0,
         description="Minimum individual score (market_fit, tech_feasibility) for Go verdict",
     )
     verdict_conditional_avg_score: float = Field(
-        default=0.60,
+        default=0.55,
         ge=0.0,
         le=1.0,
         description="Minimum average score for Conditional verdict",
     )
     verdict_conditional_min_individual_score: float = Field(
-        default=0.55,
+        default=0.50,
         ge=0.0,
         le=1.0,
         description="Minimum individual score for Conditional verdict",
@@ -185,7 +185,7 @@ class ScoreThresholds(BaseModel):
         description="Rule 4: Risky longevity downgrades Go to Conditional (not Conditional to No-Go)",
     )
     trend_monitor_wait_raises_risk: bool = Field(
-        default=True,
+        default=False,
         description="Rule 5 (additive): Monitor & Wait timing raises risk one level",
     )
 
