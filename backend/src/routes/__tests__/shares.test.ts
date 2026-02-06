@@ -441,10 +441,12 @@ describe('GET /api/shared/:shareToken', () => {
     expect(response.body).toEqual({
       niche: 'Test Niche',
       executive_summary: 'Test summary',
+      research_metadata: { secret: 'data' },
+      seo_calculation_transparency: { internal: 'info' },
     });
   });
 
-  it('strips research_metadata, seo_calculation_transparency, data_quality_summary, stage_timing_summary', async () => {
+  it('strips data_quality_summary and stage_timing_summary but keeps research_metadata and seo_calculation_transparency', async () => {
     mockFindUniqueShare.mockResolvedValue({
       ...activeShare,
       job: completedJob,
@@ -456,8 +458,8 @@ describe('GET /api/shared/:shareToken', () => {
       .get(`/api/shared/${TEST_SHARE_TOKEN}`)
       .expect(200);
 
-    expect(response.body).not.toHaveProperty('research_metadata');
-    expect(response.body).not.toHaveProperty('seo_calculation_transparency');
+    expect(response.body).toHaveProperty('research_metadata');
+    expect(response.body).toHaveProperty('seo_calculation_transparency');
     expect(response.body).not.toHaveProperty('data_quality_summary');
     expect(response.body).not.toHaveProperty('stage_timing_summary');
   });

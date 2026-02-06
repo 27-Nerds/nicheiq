@@ -22,8 +22,6 @@ const ShareTokenParamSchema = z.object({
 
 // Fields to strip from public report responses
 const STRIPPED_FIELDS = [
-  'research_metadata',
-  'seo_calculation_transparency',
   'data_quality_summary',
   'stage_timing_summary',
 ];
