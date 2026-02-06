@@ -3,7 +3,6 @@
   import { signOut } from "@auth/sveltekit/client";
   import {
     LogOut,
-    LayoutDashboard,
     Plus,
     Coins,
     CreditCard,
@@ -51,14 +50,6 @@
         </a>
 
         <nav class="flex items-center gap-1">
-          <a
-            href="/dashboard"
-            class="flex items-center gap-2 text-text-secondary hover:text-text-primary px-3 py-2 text-sm font-medium transition-colors rounded-lg hover:bg-bg-elevated"
-          >
-            <LayoutDashboard class="w-4 h-4" />
-            <span class="hidden sm:inline">Dashboard</span>
-          </a>
-
           <button
             onclick={() => ($showNewResearchModal = true)}
             class="btn-primary flex items-center gap-2 ml-1"
