@@ -21,6 +21,11 @@
     updateNotificationPreferences,
     type NotificationPreferences,
   } from "$lib/api";
+  import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
+  import InlineFeedback from "$lib/components/ui/InlineFeedback.svelte";
+  import PageHeader from "$lib/components/ui/PageHeader.svelte";
+  import FeatureCard from "$lib/components/ui/FeatureCard.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   interface UserProfile {
     id: string;
@@ -167,74 +172,47 @@
 </svelte:head>
 
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <!-- Header -->
-  <div class="mb-8">
-    <h1 class="text-2xl font-bold text-text-primary flex items-center gap-3">
-      <div class="p-2 rounded-xl bg-accent/10 border border-accent/20">
-        <Settings class="w-6 h-6 text-accent" />
-      </div>
-      Account Settings
-    </h1>
-    <p class="text-text-muted mt-1">
-      Manage your account, security, and preferences
-    </p>
-  </div>
+  <PageHeader icon={Settings} title="Account Settings" subtitle="Manage your account, security, and preferences" />
 
   <!-- Profile Card -->
-  <div
-    class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 mb-8 border-l-4 border-l-accent"
-  >
-    <div
-      class="flex flex-col sm:flex-row sm:items-center justify-between gap-6"
-    >
-      <div class="flex items-center gap-4">
-        {#if session?.user?.image}
-          <img
-            src={session.user.image}
-            alt={session.user.name || "User"}
-            class="w-16 h-16 rounded-full object-cover ring-4 ring-bg-elevated"
-          />
-        {:else}
-          <div
-            class="w-16 h-16 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white text-xl font-semibold ring-4 ring-bg-elevated"
-          >
-            {getInitials(session?.user?.name)}
-          </div>
-        {/if}
-        <div>
-          <p class="text-xl font-display font-bold text-text-primary">
-            {session?.user?.name || "User"}
-          </p>
-          <p class="text-sm text-text-muted flex items-center gap-1.5 mt-0.5">
-            <Mail class="w-3.5 h-3.5" />
-            {session?.user?.email}
-          </p>
-          {#if userProfile?.createdAt}
-            <p class="text-xs text-text-muted flex items-center gap-1.5 mt-1">
-              <Calendar class="w-3 h-3" />
-              Member since {formatDate(userProfile.createdAt)}
-            </p>
-          {/if}
+  <FeatureCard icon={User} class="mb-8">
+    <div class="flex items-center gap-4">
+      {#if session?.user?.image}
+        <img
+          src={session.user.image}
+          alt={session.user.name || "User"}
+          class="w-16 h-16 rounded-full object-cover ring-4 ring-bg-elevated"
+        />
+      {:else}
+        <div
+          class="w-16 h-16 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white text-xl font-semibold ring-4 ring-bg-elevated"
+        >
+          {getInitials(session?.user?.name)}
         </div>
-      </div>
-      <div class="p-4 rounded-2xl bg-accent/10 border border-accent/20">
-        <User class="w-12 h-12 text-accent" />
+      {/if}
+      <div>
+        <p class="text-xl font-display font-bold text-text-primary">
+          {session?.user?.name || "User"}
+        </p>
+        <p class="text-sm text-text-muted flex items-center gap-1.5 mt-0.5">
+          <Mail class="w-3.5 h-3.5" />
+          {session?.user?.email}
+        </p>
+        {#if userProfile?.createdAt}
+          <p class="text-xs text-text-muted flex items-center gap-1.5 mt-1">
+            <Calendar class="w-3 h-3" />
+            Member since {formatDate(userProfile.createdAt)}
+          </p>
+        {/if}
       </div>
     </div>
-  </div>
+  </FeatureCard>
 
   <!-- Two Column Grid -->
   <div class="grid gap-8 md:grid-cols-2">
     <!-- Password Section -->
     <div class="card">
-      <div class="flex items-center gap-3 mb-2">
-        <div class="w-1 h-6 rounded-full bg-secondary"></div>
-        <h2
-          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-        >
-          {hasPassword ? "Change Password" : "Password"}
-        </h2>
-      </div>
+      <CategoryBar title={hasPassword ? "Change Password" : "Password"} color="secondary" />
       <p class="text-sm text-text-muted mb-4">
         {hasPassword
           ? "Update your account password"
@@ -327,35 +305,21 @@
           </div>
 
           {#if passwordError}
-            <div class="flex items-center gap-2 text-sm text-error">
-              <AlertCircle class="w-4 h-4 shrink-0" />
-              {passwordError}
-            </div>
+            <InlineFeedback message={passwordError} variant="error" />
           {/if}
 
           {#if passwordSuccess}
-            <div class="flex items-center gap-2 text-sm text-success">
-              <CheckCircle class="w-4 h-4 shrink-0" />
-              {passwordSuccess}
-            </div>
+            <InlineFeedback message={passwordSuccess} variant="success" />
           {/if}
 
-          <button
+          <SubmitButton
             onclick={handleChangePassword}
-            disabled={!currentPassword ||
-              !newPassword ||
-              !confirmPassword ||
-              isChangingPassword}
-            class="btn-primary w-full"
-          >
-            {#if isChangingPassword}
-              <Loader2 class="w-4 h-4 animate-spin" />
-              Changing...
-            {:else}
-              <Lock class="w-4 h-4" />
-              Change Password
-            {/if}
-          </button>
+            disabled={!currentPassword || !newPassword || !confirmPassword}
+            loading={isChangingPassword}
+            loadingText="Changing..."
+            icon={Lock}
+            label="Change Password"
+          />
         </div>
       {:else}
         <!-- OAuth user - no password set -->
@@ -390,14 +354,7 @@
 
     <!-- Notification Preferences -->
     <div class="card">
-      <div class="flex items-center gap-3 mb-2">
-        <div class="w-1 h-6 rounded-full bg-accent"></div>
-        <h2
-          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-        >
-          Email Notifications
-        </h2>
-      </div>
+      <CategoryBar title="Email Notifications" color="accent" />
       <p class="text-sm text-text-muted mb-4">
         Choose which emails you receive
       </p>
@@ -473,42 +430,26 @@
         </div>
 
         {#if prefsError}
-          <div class="flex items-center gap-2 text-sm text-error">
-            <AlertCircle class="w-4 h-4 shrink-0" />
-            {prefsError}
-          </div>
+          <InlineFeedback message={prefsError} variant="error" />
         {/if}
 
         {#if prefsSuccess}
-          <div class="flex items-center gap-2 text-sm text-success">
-            <CheckCircle class="w-4 h-4 shrink-0" />
-            {prefsSuccess}
-          </div>
+          <InlineFeedback message={prefsSuccess} variant="success" />
         {/if}
 
-        <button
+        <SubmitButton
           onclick={handleSavePreferences}
-          disabled={!prefsChanged || isSavingPrefs}
-          class="btn-primary w-full"
-        >
-          {#if isSavingPrefs}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Saving...
-          {:else}
-            <Bell class="w-4 h-4" />
-            Save Preferences
-          {/if}
-        </button>
+          disabled={!prefsChanged}
+          loading={isSavingPrefs}
+          loadingText="Saving..."
+          icon={Bell}
+          label="Save Preferences"
+        />
       </div>
     </div>
   </div>
 
-  <!-- Gradient Divider -->
-  <div class="my-8">
-    <div
-      class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
-    ></div>
-  </div>
+  <div class="my-8"><div class="gradient-divider"></div></div>
 </div>
 
 <style>

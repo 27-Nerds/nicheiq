@@ -1,5 +1,7 @@
 <script lang="ts">
   import Badge from "$lib/components/ui/Badge.svelte";
+  import Button from "$lib/components/ui/Button.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import { Plus } from "lucide-svelte";
   import { invalidateAll } from "$app/navigation";
 
@@ -79,13 +81,7 @@
 <div class="max-w-6xl">
   <div class="flex items-center justify-between mb-6">
     <h2 class="text-2xl font-bold text-text-primary">Token Packages</h2>
-    <button
-      class="btn-primary flex items-center gap-2"
-      onclick={() => (showCreateForm = !showCreateForm)}
-    >
-      <Plus class="w-4 h-4" />
-      Create Package
-    </button>
+    <Button onclick={() => (showCreateForm = !showCreateForm)} icon={Plus} label="Create Package" class="btn-primary flex items-center gap-2" />
   </div>
 
   <!-- Create Form -->
@@ -196,16 +192,8 @@
           />
         </div>
         <div class="sm:col-span-2 flex gap-3">
-          <button type="submit" class="btn-primary" disabled={creating}>
-            {creating ? "Creating..." : "Create Package"}
-          </button>
-          <button
-            type="button"
-            class="btn-secondary"
-            onclick={() => (showCreateForm = false)}
-          >
-            Cancel
-          </button>
+          <SubmitButton loading={creating} loadingText="Creating..." label="Create Package" class="btn-primary" />
+          <Button onclick={() => (showCreateForm = false)} label="Cancel" class="btn-secondary" />
         </div>
       </form>
     </div>

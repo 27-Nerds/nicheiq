@@ -1,26 +1,8 @@
 import type { PageServerLoad } from './$types';
 import { env } from '$env/dynamic/private';
+import type { Job } from '$lib/types/job';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
-
-interface Job {
-  id: string;
-  niche: string;
-  status: string;
-  currentStage: number;
-  currentStageName: string | null;
-  stagesCompleted: number;
-  totalStages: number;
-  progressPercent: number;
-  errorMessage: string | null;
-  createdAt: string;
-  startedAt: string | null;
-  completedAt: string | null;
-  hasReport: boolean;
-  hasLandingPage: boolean;
-  creditRefunded?: boolean;
-  allowedProjectTypes?: string[] | null;
-}
 
 export const load: PageServerLoad = async ({ parent }) => {
   const { session } = await parent();

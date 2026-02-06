@@ -10,6 +10,8 @@
     Sparkles,
     Wand2,
   } from "lucide-svelte";
+  import Button from "$lib/components/ui/Button.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   const MAX_NICHE_LENGTH = 500;
 
@@ -437,28 +439,9 @@
             Research takes ~45 min. We'll dig deep and email you when it's
             ready.
           </p>
-          <button
-            type="submit"
-            disabled={loading || !niche.trim()}
-            class="btn-primary w-full justify-center"
-          >
-            {#if loading}
-              <Loader2 class="w-4 h-4 animate-spin" />
-              Starting...
-            {:else}
-              Start Research
-              <ArrowRight class="w-4 h-4" />
-            {/if}
-          </button>
+          <SubmitButton loading={loading} loadingText="Starting..." icon={ArrowRight} iconPosition="end" label="Start Research" disabled={!niche.trim()} class="btn-primary w-full justify-center" />
         {:else}
-          <a
-            href="/billing"
-            onclick={() => (open = false)}
-            class="btn-primary w-full justify-center"
-          >
-            <Coins class="w-4 h-4" />
-            Get Credits to Start
-          </a>
+          <Button href="/billing" onclick={() => (open = false)} icon={Coins} label="Get Credits to Start" class="btn-primary w-full justify-center" />
         {/if}
       </form>
     </div>

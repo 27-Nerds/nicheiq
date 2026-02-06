@@ -18,43 +18,10 @@
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
   import JobCard from "$lib/components/ui/JobCard.svelte";
-
-  interface StopReasonDetails {
-    qualityTier?: string;
-    confidenceScore?: number;
-    metrics?: {
-      painPointCount?: number;
-      quoteDensity?: number;
-      sourceCoverage?: number;
-    };
-    recommendation?: string;
-  }
-
-  interface Job {
-    id: string;
-    niche: string;
-    status: string;
-    currentStage: number;
-    currentStageName: string | null;
-    stagesCompleted: number;
-    totalStages: number;
-    progressPercent: number;
-    errorMessage: string | null;
-    createdAt: string;
-    startedAt: string | null;
-    completedAt: string | null;
-    hasReport: boolean;
-    hasLandingPage: boolean;
-    creditRefunded?: boolean;
-    // Queue position info (for QUEUED jobs)
-    queuePosition?: number | null;
-    aheadCount?: number;
-    totalQueued?: number;
-    // Quality gate stop metadata
-    stopReason?: string | null;
-    stopReasonDetails?: StopReasonDetails | null;
-    allowedProjectTypes?: string[] | null;
-  }
+  import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
+  import StatCard from "$lib/components/ui/StatCard.svelte";
+  import Button from "$lib/components/ui/Button.svelte";
+  import type { Job } from "$lib/types/job";
 
   let { data } = $props();
 
@@ -374,13 +341,7 @@
         <p class="text-text-muted">Manage your market research reports</p>
       </div>
       {#if jobs.length > 0 && inProgressCount === 0}
-        <button
-          onclick={() => ($showNewResearchModal = true)}
-          class="btn-primary hidden sm:inline-flex"
-        >
-          <Plus class="w-4 h-4" />
-          New Research
-        </button>
+        <Button onclick={() => ($showNewResearchModal = true)} icon={Plus} label="New Research" class="btn-primary hidden sm:inline-flex" />
       {/if}
     </div>
   </div>
@@ -415,69 +376,9 @@
 
   <!-- Stats Overview -->
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-    <div
-      class="card hover:shadow-md hover:border-accent/30 transition-all duration-200 cursor-default border-l-4 border-l-accent"
-    >
-      <div class="flex items-center gap-4">
-        <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
-          <FolderOpen class="w-5 h-5 text-accent" />
-        </div>
-        <div>
-          <p
-            class="text-4xl font-display font-bold text-text-primary tracking-tight"
-          >
-            {jobs.length}
-          </p>
-          <p
-            class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1"
-          >
-            Total Research
-          </p>
-        </div>
-      </div>
-    </div>
-    <div
-      class="card hover:shadow-md hover:border-success/30 transition-all duration-200 cursor-default border-l-4 border-l-success"
-    >
-      <div class="flex items-center gap-4">
-        <div class="p-2.5 rounded-xl bg-success/10 border border-success/20">
-          <ShieldCheck class="w-5 h-5 text-success" />
-        </div>
-        <div>
-          <p
-            class="text-4xl font-display font-bold text-text-primary tracking-tight"
-          >
-            {completedCount}
-          </p>
-          <p
-            class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1"
-          >
-            Completed
-          </p>
-        </div>
-      </div>
-    </div>
-    <div
-      class="card hover:shadow-md hover:border-warning/30 transition-all duration-200 cursor-default border-l-4 border-l-warning"
-    >
-      <div class="flex items-center gap-4">
-        <div class="p-2.5 rounded-xl bg-warning/10 border border-warning/20">
-          <RefreshCw class="w-5 h-5 text-warning" />
-        </div>
-        <div>
-          <p
-            class="text-4xl font-display font-bold text-text-primary tracking-tight"
-          >
-            {inProgressCount}
-          </p>
-          <p
-            class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1"
-          >
-            In Progress
-          </p>
-        </div>
-      </div>
-    </div>
+    <StatCard icon={FolderOpen} value={jobs.length} label="Total Research" color="accent" />
+    <StatCard icon={ShieldCheck} value={completedCount} label="Completed" color="success" />
+    <StatCard icon={RefreshCw} value={inProgressCount} label="In Progress" color="warning" />
   </div>
 
   <!-- Search bar (only show when there are jobs) -->
@@ -548,13 +449,7 @@
           NicheIQ analyzes Reddit discussions, identifies pain points, and
           generates a comprehensive market research report in minutes.
         </p>
-        <button
-          onclick={() => ($showNewResearchModal = true)}
-          class="btn-primary inline-flex text-base px-6 py-3"
-        >
-          <Plus class="w-5 h-5" />
-          Start Your First Research
-        </button>
+        <Button onclick={() => ($showNewResearchModal = true)} icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
         <p class="text-xs text-text-muted mt-4">
           Average research takes ~45 minutes to complete
         </p>
@@ -569,31 +464,14 @@
           No results found
         </h3>
         <p class="text-text-muted mb-4">No research matches "{searchQuery}"</p>
-        <button
-          onclick={() => (searchQuery = "")}
-          class="btn-secondary inline-flex"
-        >
-          Clear search
-        </button>
+        <Button onclick={() => (searchQuery = "")} label="Clear search" class="btn-secondary inline-flex" />
       </div>
     {:else}
       <div class="space-y-6">
         <!-- Active Jobs Section -->
         {#if filteredActiveJobs.length > 0}
           <div class="space-y-4">
-            <div class="flex items-center gap-3">
-              <div class="w-1 h-6 rounded-full bg-warning"></div>
-              <h2
-                class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-              >
-                In Progress
-              </h2>
-              <span
-                class="text-xs font-mono text-warning bg-warning/10 px-2 py-0.5 rounded-full"
-              >
-                {filteredActiveJobs.length}
-              </span>
-            </div>
+            <CategoryBar title="In Progress" color="warning" count={filteredActiveJobs.length} margin="mb-0" />
             <div class="grid gap-3">
               {#each filteredActiveJobs as job, i}
                 <JobCard
@@ -610,26 +488,10 @@
         <!-- Completed Jobs Section -->
         {#if filteredCompletedJobs.length > 0}
           {#if filteredActiveJobs.length > 0}
-            <div class="my-6">
-              <div
-                class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
-              ></div>
-            </div>
+            <div class="my-6"><div class="gradient-divider"></div></div>
           {/if}
           <div class="space-y-4">
-            <div class="flex items-center gap-3">
-              <div class="w-1 h-6 rounded-full bg-success"></div>
-              <h2
-                class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-              >
-                Completed
-              </h2>
-              <span
-                class="text-xs font-mono text-success bg-success/10 px-2 py-0.5 rounded-full"
-              >
-                {filteredCompletedJobs.length}
-              </span>
-            </div>
+            <CategoryBar title="Completed" color="success" count={filteredCompletedJobs.length} margin="mb-0" />
             <div class="grid gap-3">
               {#each filteredVisibleCompleted as job, i}
                 <JobCard
@@ -663,30 +525,13 @@
         <!-- Failed Jobs Section -->
         {#if filteredFailedJobs.length > 0}
           {#if filteredActiveJobs.length > 0 || filteredCompletedJobs.length > 0}
-            <div class="my-6">
-              <div
-                class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
-              ></div>
-            </div>
+            <div class="my-6"><div class="gradient-divider"></div></div>
           {/if}
           <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-3">
-                <div class="w-1 h-6 rounded-full bg-error"></div>
-                <h2
-                  class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-                >
-                  Failed
-                </h2>
-                <span
-                  class="text-xs font-mono text-error bg-error/10 px-2 py-0.5 rounded-full"
-                >
-                  {filteredFailedJobs.length}
-                </span>
-              </div>
+            <CategoryBar title="Failed" color="error" count={filteredFailedJobs.length} margin="mb-0">
               <button
                 onclick={() => (showFailedJobs = !showFailedJobs)}
-                class="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                class="ml-auto p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
                 aria-label={showFailedJobs
                   ? "Collapse failed jobs"
                   : "Expand failed jobs"}
@@ -697,7 +542,7 @@
                   <ChevronDown class="w-4 h-4" />
                 {/if}
               </button>
-            </div>
+            </CategoryBar>
             {#if showFailedJobs}
               <div class="grid gap-3">
                 {#each filteredFailedJobs as job, i}

@@ -22,16 +22,13 @@
       : baseProductLinks,
   );
 
+  import { openCookiePreferences } from "$lib/utils/cookies";
+
   const companyLinks = [
     { name: "About the Maker", href: "#about-maker" },
     { name: "Contact", href: "mailto:hello@nicheiq.com" },
     { name: "Privacy", href: "/privacy" },
   ];
-
-  async function openCookiePreferences() {
-    const CookieConsent = await import("vanilla-cookieconsent");
-    CookieConsent.showPreferences();
-  }
 </script>
 
 <footer class="bg-bg-base border-t border-border">

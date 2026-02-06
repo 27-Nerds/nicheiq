@@ -15,8 +15,13 @@
     CreditCard,
     ShoppingCart,
     Zap,
-    X,
   } from "lucide-svelte";
+  import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
+  import InlineFeedback from "$lib/components/ui/InlineFeedback.svelte";
+  import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
+  import PageHeader from "$lib/components/ui/PageHeader.svelte";
+  import FeatureCard from "$lib/components/ui/FeatureCard.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   interface Transaction {
     id: string;
@@ -206,19 +211,7 @@
 </svelte:head>
 
 <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <!-- Header -->
-  <div class="mb-8 flex items-center justify-between">
-    <div>
-      <h1 class="text-2xl font-bold text-text-primary flex items-center gap-3">
-        <div class="p-2 rounded-xl bg-accent/10 border border-accent/20">
-          <CreditCard class="w-6 h-6 text-accent" />
-        </div>
-        Research Credits
-      </h1>
-      <p class="text-text-muted mt-1">
-        Manage your credits and view transaction history
-      </p>
-    </div>
+  {#snippet refreshButton()}
     <button
       onclick={refreshData}
       disabled={isRefreshing}
@@ -228,137 +221,86 @@
     >
       <RefreshCw class="w-4 h-4 {isRefreshing ? 'animate-spin' : ''}" />
     </button>
-  </div>
+  {/snippet}
+  <PageHeader
+    icon={CreditCard}
+    title="Research Credits"
+    subtitle="Manage your credits and view transaction history"
+    actions={refreshButton}
+  />
 
   <!-- Balance Card -->
-  <div
-    class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 mb-8 border-l-4 border-l-accent"
-  >
-    <div
-      class="flex flex-col sm:flex-row sm:items-center justify-between gap-6"
-    >
-      <div>
-        <p
-          class="text-xs font-mono uppercase tracking-wider text-text-muted mb-2"
+  <FeatureCard icon={Coins} class="mb-8">
+    <div>
+      <p
+        class="text-xs font-mono uppercase tracking-wider text-text-muted mb-2"
+      >
+        Available Credits
+      </p>
+      <div class="flex items-baseline gap-2">
+        <span class="text-5xl font-display font-bold text-text-primary"
+          >{billing.balance}</span
         >
-          Available Credits
-        </p>
-        <div class="flex items-baseline gap-2">
-          <span class="text-5xl font-display font-bold text-text-primary"
-            >{billing.balance}</span
-          >
-          <span class="text-lg text-text-muted">credits</span>
-        </div>
-        <div class="flex items-center gap-4 mt-3 text-sm">
-          <span class="text-text-muted">
-            <span class="font-display font-bold text-success"
-              >{billing.totalPurchased}</span
-            >
-            <span class="text-xs uppercase tracking-wide">earned</span>
-          </span>
-          <span class="text-text-muted">
-            <span class="font-display font-bold text-warning"
-              >{billing.totalUsed}</span
-            >
-            <span class="text-xs uppercase tracking-wide">used</span>
-          </span>
-        </div>
+        <span class="text-lg text-text-muted">credits</span>
       </div>
-      <div class="p-4 rounded-2xl bg-accent/10 border border-accent/20">
-        <Coins class="w-12 h-12 text-accent" />
+      <div class="flex items-center gap-4 mt-3 text-sm">
+        <span class="text-text-muted">
+          <span class="font-display font-bold text-success"
+            >{billing.totalPurchased}</span
+          >
+          <span class="text-xs uppercase tracking-wide">earned</span>
+        </span>
+        <span class="text-text-muted">
+          <span class="font-display font-bold text-warning"
+            >{billing.totalUsed}</span
+          >
+          <span class="text-xs uppercase tracking-wide">used</span>
+        </span>
       </div>
     </div>
-  </div>
+  </FeatureCard>
 
   <!-- Success Banner -->
   {#if success}
-    <div class="mb-8 p-4 rounded-lg bg-success/10 border border-success/30">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <CheckCircle class="w-5 h-5 text-success shrink-0" />
-          <div>
-            <p class="text-sm font-medium text-text-primary">
-              Payment successful!
-            </p>
-            <p class="text-sm text-text-muted">
-              Your credits have been added to your account.
-            </p>
-          </div>
-        </div>
-        <button
-          onclick={dismissBanner}
-          class="text-text-muted hover:text-text-primary p-1"
-          aria-label="Dismiss"
-        >
-          <X class="w-4 h-4" />
-        </button>
-      </div>
-    </div>
+    <AlertBanner
+      variant="success"
+      title="Payment successful!"
+      message="Your credits have been added to your account."
+      dismissible
+      onDismiss={dismissBanner}
+      class="mb-8"
+    />
   {/if}
 
   <!-- Canceled Banner -->
   {#if canceled}
-    <div class="mb-8 p-4 rounded-lg bg-warning/10 border border-warning/30">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <AlertCircle class="w-5 h-5 text-warning shrink-0" />
-          <div>
-            <p class="text-sm font-medium text-text-primary">
-              Payment canceled
-            </p>
-            <p class="text-sm text-text-muted">
-              No charges were made. You can try again when ready.
-            </p>
-          </div>
-        </div>
-        <button
-          onclick={dismissBanner}
-          class="text-text-muted hover:text-text-primary p-1"
-          aria-label="Dismiss"
-        >
-          <X class="w-4 h-4" />
-        </button>
-      </div>
-    </div>
+    <AlertBanner
+      variant="warning"
+      title="Payment canceled"
+      message="No charges were made. You can try again when ready."
+      dismissible
+      onDismiss={dismissBanner}
+      class="mb-8"
+    />
   {/if}
 
   <!-- Info Banner (if no credits) -->
   {#if billing.balance === 0 && !success}
-    <div class="mb-8 p-4 rounded-lg bg-warning/5 border border-warning/20">
-      <div class="flex items-start gap-3">
-        <AlertCircle class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-        <div>
-          <p class="text-sm font-medium text-text-primary">
-            You need research credits to start new research
-          </p>
-          <p class="text-sm text-text-muted mt-1">
-            Purchase a credit package below or redeem a promo code to get
-            started.
-          </p>
-        </div>
-      </div>
-    </div>
+    <AlertBanner
+      variant="info"
+      title="You need research credits to start new research"
+      message="Purchase a credit package below or redeem a promo code to get started."
+      class="mb-8"
+    />
   {/if}
 
   <!-- Buy Credits Section -->
   {#if packages.length > 0}
     <div class="mb-8">
-      <div class="flex items-center gap-3 mb-4">
-        <div class="w-1 h-6 rounded-full bg-accent"></div>
-        <h2
-          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-        >
-          Buy Credits
-        </h2>
-      </div>
+      <CategoryBar title="Buy Credits" color="accent" margin="mb-4" />
 
       {#if checkoutError}
-        <div
-          class="mb-4 p-3 rounded-lg bg-error/10 border border-error/30 flex items-center gap-2 text-sm text-error"
-        >
-          <AlertCircle class="w-4 h-4 shrink-0" />
-          {checkoutError}
-        </div>
+        <InlineFeedback message={checkoutError} variant="error" class="mb-4" />
       {/if}
 
       <div class="grid gap-4 sm:grid-cols-3">
@@ -403,19 +345,7 @@
                 <span>credits</span>
               </div>
 
-              <button
-                onclick={() => startCheckout(pkg.id)}
-                disabled={checkoutLoading !== null}
-                class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full"
-              >
-                {#if checkoutLoading === pkg.id}
-                  <Loader2 class="w-4 h-4 animate-spin" />
-                  Processing...
-                {:else}
-                  <ShoppingCart class="w-4 h-4" />
-                  Buy Now
-                {/if}
-              </button>
+              <SubmitButton onclick={() => startCheckout(pkg.id)} disabled={checkoutLoading !== null} loading={checkoutLoading === pkg.id} loadingText="Processing..." icon={ShoppingCart} label="Buy Now" class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full" />
             </div>
           </div>
         {/each}
@@ -426,14 +356,7 @@
   <div class="grid gap-8 md:grid-cols-2">
     <!-- Promo Code Section -->
     <div class="card">
-      <div class="flex items-center gap-3 mb-2">
-        <div class="w-1 h-6 rounded-full bg-secondary"></div>
-        <h2
-          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-        >
-          Redeem Promo Code
-        </h2>
-      </div>
+      <CategoryBar title="Redeem Promo Code" color="secondary" />
       <p class="text-sm text-text-muted mb-4">
         Enter your code to receive credits
       </p>
@@ -452,45 +375,27 @@
         </div>
 
         {#if promoError}
-          <div class="flex items-center gap-2 text-sm text-error">
-            <AlertCircle class="w-4 h-4" />
-            {promoError}
-          </div>
+          <InlineFeedback message={promoError} variant="error" />
         {/if}
 
         {#if promoSuccess}
-          <div class="flex items-center gap-2 text-sm text-success">
-            <CheckCircle class="w-4 h-4" />
-            {promoSuccess}
-          </div>
+          <InlineFeedback message={promoSuccess} variant="success" />
         {/if}
 
-        <button
+        <SubmitButton
           onclick={redeemPromoCode}
-          disabled={!promoCode.trim() || isRedeeming}
-          class="btn-primary w-full"
-        >
-          {#if isRedeeming}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Redeeming...
-          {:else}
-            <Gift class="w-4 h-4" />
-            Redeem Code
-          {/if}
-        </button>
+          disabled={!promoCode.trim()}
+          loading={isRedeeming}
+          loadingText="Redeeming..."
+          icon={Gift}
+          label="Redeem Code"
+        />
       </div>
     </div>
 
     <!-- Recent Transactions -->
     <div class="card">
-      <div class="flex items-center gap-3 mb-2">
-        <div class="w-1 h-6 rounded-full bg-accent"></div>
-        <h2
-          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
-        >
-          Recent Activity
-        </h2>
-      </div>
+      <CategoryBar title="Recent Activity" color="accent" />
       <p class="text-sm text-text-muted mb-4">Your latest transactions</p>
 
       {#if billing.recentTransactions.length === 0}
@@ -545,12 +450,7 @@
     </div>
   </div>
 
-  <!-- Gradient Divider -->
-  <div class="my-8">
-    <div
-      class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
-    ></div>
-  </div>
+  <div class="my-8"><div class="gradient-divider"></div></div>
 
   <!-- How It Works -->
   <div class="card bg-bg-elevated/50">

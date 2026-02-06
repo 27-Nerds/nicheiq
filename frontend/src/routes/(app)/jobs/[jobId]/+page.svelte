@@ -23,77 +23,9 @@
     Globe,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
-
-  interface StageProgress {
-    stageNumber: number;
-    stageName: string;
-    status: "PENDING" | "RUNNING" | "COMPLETED" | "SKIPPED" | "FAILED";
-    durationSeconds: number | null;
-  }
-
-  interface Asset {
-    type: string;
-    url: string;
-  }
-
-  interface StopReasonDetails {
-    qualityTier?: string;
-    confidenceScore?: number;
-    metrics?: {
-      painPointCount?: number;
-      quoteDensity?: number;
-      sourceCoverage?: number;
-    };
-    recommendation?: string;
-  }
-
-  type ErrorSeverity = "info" | "warning" | "error";
-
-  interface ErrorDetails {
-    code: string;
-    severity: ErrorSeverity;
-    userMessage: string;
-    actionableGuidance: string;
-    retryDelayMinutes?: number;
-    rawMessage?: string;
-  }
-
-  interface Job {
-    id: string;
-    email: string;
-    niche: string;
-    status:
-      | "PENDING"
-      | "QUEUED"
-      | "RUNNING"
-      | "COMPLETED"
-      | "FAILED"
-      | "CANCELLED";
-    currentStage: number;
-    currentStageName: string | null;
-    stagesCompleted: number;
-    totalStages: number;
-    progressPercent: number;
-    errorMessage: string | null;
-    createdAt: string;
-    startedAt: string | null;
-    completedAt: string | null;
-    progress: StageProgress[];
-    assets: Asset[];
-    // Queue position info (for QUEUED jobs)
-    queuePosition?: number | null;
-    aheadCount?: number;
-    totalQueued?: number;
-    // Quality gate stop metadata
-    stopReason?: string | null;
-    stopReasonDetails?: StopReasonDetails | null;
-    // User-friendly error information
-    errorCode?: string | null;
-    errorDetails?: ErrorDetails | null;
-    // Landing page lifecycle
-    generateLandingPage?: boolean;
-    landingPageStatus?: string | null;
-  }
+  import type { Job, StageProgress } from "$lib/types/job";
+  import Button from "$lib/components/ui/Button.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   let job = $state<Job | null>(null);
   let loading = $state(true);
@@ -146,7 +78,7 @@
 
       // Update local state to show it's queued again
       // Reset any FAILED or RUNNING stages to PENDING for proper visual feedback
-      const updatedProgress = job.progress.map((stage) =>
+      const updatedProgress = (job.progress ?? []).map((stage) =>
         stage.status === "FAILED" || stage.status === "RUNNING"
           ? { ...stage, status: "PENDING" as const }
           : stage,
@@ -319,7 +251,7 @@
   }
 
   const displayStages = $derived(
-    job ? processStagesForDisplay(job.progress, job.status) : [],
+    job ? processStagesForDisplay(job.progress ?? [], job.status) : [],
   );
 
   // Adjusted stage counts (subtract hidden stages)
@@ -328,7 +260,7 @@
     const hiddenStageNumbers = Object.values(PARALLEL_STAGE_GROUPS).flatMap(
       (g) => g.hide,
     );
-    const hiddenCompleted = job.progress.filter(
+    const hiddenCompleted = (job.progress ?? []).filter(
       (s) =>
         hiddenStageNumbers.includes(s.stageNumber) && s.status === "COMPLETED",
     ).length;
@@ -364,10 +296,7 @@
         </div>
         <h2 class="mt-4 text-xl font-semibold text-text-primary">Error</h2>
         <p class="mt-2 text-text-secondary">{error}</p>
-        <button
-          onclick={() => ($showNewResearchModal = true)}
-          class="mt-6 btn-primary inline-block">Start New Research</button
-        >
+        <Button onclick={() => ($showNewResearchModal = true)} label="Start New Research" class="mt-6 btn-primary inline-block" />
       </div>
     {:else if job}
       <!-- Header -->
@@ -393,19 +322,7 @@
           </div>
           <div class="flex items-center gap-3">
             {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status)}
-              <button
-                onclick={cancelJob}
-                disabled={cancelling}
-                class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {#if cancelling}
-                  <Loader2 class="w-4 h-4 animate-spin" />
-                  Cancelling...
-                {:else}
-                  <X class="w-4 h-4" />
-                  Cancel
-                {/if}
-              </button>
+              <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
             {/if}
             <Badge variant={getStatusVariant(job.status)}>
               {#if job.status === "RUNNING"}
@@ -689,14 +606,7 @@
                 credit).
               </p>
             </div>
-            <button
-              onclick={resumeJob}
-              disabled={isResuming}
-              class="btn-primary flex items-center gap-2"
-            >
-              <RotateCw class="w-4 h-4 {isResuming ? 'animate-spin' : ''}" />
-              {isResuming ? "Resuming..." : "Resume"}
-            </button>
+            <SubmitButton onclick={resumeJob} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" class="btn-primary flex items-center gap-2" />
           </div>
           {#if resumeError}
             <p class="mt-3 text-sm text-error">{resumeError}</p>
@@ -775,8 +685,8 @@
       </div>
 
       <!-- Results Section -->
-      {@const reportAsset = job.assets.find((a) => a.type === "REPORT_JSON")}
-      {@const landingAsset = job.assets.find((a) => a.type === "LANDING_PAGE")}
+      {@const reportAsset = (job.assets ?? []).find((a) => a.type === "REPORT_JSON")}
+      {@const landingAsset = (job.assets ?? []).find((a) => a.type === "LANDING_PAGE")}
 
       {#if reportAsset || landingAsset}
         <div
@@ -789,10 +699,7 @@
           <div class="flex flex-wrap gap-4">
             {#if reportAsset}
               <div class="flex flex-col items-start">
-                <a href="/jobs/{job.id}/report" class="btn-primary">
-                  <FileText class="w-5 h-5" />
-                  View Report
-                </a>
+                <Button href="/jobs/{job.id}/report" icon={FileText} label="View Report" class="btn-primary" />
                 <a
                   href={reportAsset.url}
                   class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
@@ -805,14 +712,7 @@
 
             {#if landingAsset}
               <div class="flex flex-col items-start">
-                <a
-                  href={landingAsset.url}
-                  target="_blank"
-                  class="btn-secondary"
-                >
-                  <ExternalLink class="w-5 h-5" />
-                  View Landing Page
-                </a>
+                <Button href={landingAsset.url} icon={ExternalLink} label="View Landing Page" target="_blank" class="btn-secondary" />
                 <a
                   href="{landingAsset.url}?download=true"
                   class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
@@ -832,35 +732,11 @@
                   <XCircle class="w-4 h-4" />
                   <span>Landing page generation failed</span>
                 </div>
-                <button
-                  onclick={generateLanding}
-                  disabled={generatingLanding}
-                  class="btn-secondary btn-sm"
-                >
-                  {#if generatingLanding}
-                    <Loader2 class="w-4 h-4 animate-spin" />
-                    Retrying...
-                  {:else}
-                    <RotateCw class="w-4 h-4" />
-                    Retry Landing Page
-                  {/if}
-                </button>
+                <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Retrying..." icon={RotateCw} label="Retry Landing Page" class="btn-secondary btn-sm" />
               </div>
-            {:else if job.status === "COMPLETED" && reportAsset && !job.progress.some((s) => s.stageNumber === 11)}
+            {:else if job.status === "COMPLETED" && reportAsset && !(job.progress ?? []).some((s) => s.stageNumber === 11)}
               <div class="flex flex-col items-start gap-1">
-                <button
-                  onclick={generateLanding}
-                  disabled={generatingLanding}
-                  class="btn-secondary"
-                >
-                  {#if generatingLanding}
-                    <Loader2 class="w-4 h-4 animate-spin" />
-                    Generating...
-                  {:else}
-                    <Globe class="w-5 h-5" />
-                    Generate Landing Page
-                  {/if}
-                </button>
+                <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate Landing Page" class="btn-secondary" />
                 <span class="text-xs text-text-muted"
                   >Free - included with your research</span
                 >

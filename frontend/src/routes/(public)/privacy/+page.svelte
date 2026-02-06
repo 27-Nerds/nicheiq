@@ -1,8 +1,5 @@
 <script lang="ts">
-  async function openCookiePreferences() {
-    const CookieConsent = await import("vanilla-cookieconsent");
-    CookieConsent.showPreferences();
-  }
+  import { openCookiePreferences } from "$lib/utils/cookies";
 </script>
 
 <svelte:head>

@@ -1066,3 +1066,9 @@
 	animation: checkPop var(--duration-slower) var(--ease-spring) forwards;
 }
 
+/* Gradient divider — replaces inline gradient-to-r pattern */
+.gradient-divider {
+	height: 1px;
+	background: linear-gradient(to right, transparent, var(--color-border-emphasis-50, rgba(255,255,255,0.1)), transparent);
+}
+

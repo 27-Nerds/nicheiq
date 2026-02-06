@@ -11,6 +11,7 @@
   } from "lucide-svelte";
   import NewResearchModal from "$lib/components/NewResearchModal.svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
+  import { openCookiePreferences } from "$lib/utils/cookies";
 
   let { children } = $props();
 
@@ -21,11 +22,6 @@
 
   function handleSignOut() {
     signOut({ callbackUrl: "/" });
-  }
-
-  async function openCookiePreferences() {
-    const CookieConsent = await import("vanilla-cookieconsent");
-    CookieConsent.showPreferences();
   }
 
   function getInitials(name: string | null | undefined): string {

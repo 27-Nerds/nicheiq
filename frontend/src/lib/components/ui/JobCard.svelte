@@ -10,41 +10,9 @@
     Download,
   } from "lucide-svelte";
   import type { Snippet } from "svelte";
-
-  interface StopReasonDetails {
-    qualityTier?: string;
-    confidenceScore?: number;
-    metrics?: {
-      painPointCount?: number;
-      quoteDensity?: number;
-      sourceCoverage?: number;
-    };
-    recommendation?: string;
-  }
-
-  interface Job {
-    id: string;
-    niche: string;
-    status: string;
-    currentStage: number;
-    currentStageName: string | null;
-    stagesCompleted: number;
-    totalStages: number;
-    progressPercent: number;
-    errorMessage: string | null;
-    createdAt: string;
-    startedAt: string | null;
-    completedAt: string | null;
-    hasReport: boolean;
-    hasLandingPage: boolean;
-    creditRefunded?: boolean;
-    queuePosition?: number | null;
-    aheadCount?: number;
-    totalQueued?: number;
-    stopReason?: string | null;
-    stopReasonDetails?: StopReasonDetails | null;
-    allowedProjectTypes?: string[] | null;
-  }
+  import type { Job } from "$lib/types/job";
+  import Button from "$lib/components/ui/Button.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   interface Props {
     job: Job;
@@ -503,19 +471,9 @@
 
       <!-- Footer -->
       <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        <a href="/jobs/{job.id}/report" class="btn-primary text-sm py-2 px-4">
-          View Report
-        </a>
+        <Button href="/jobs/{job.id}/report" label="View Report" class="btn-primary text-sm py-2 px-4" />
         {#if job.hasLandingPage}
-          <a
-            href="/api/jobs/{job.id}/landingpage"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="btn-secondary text-sm py-2 px-4"
-          >
-            Landing Page
-            <ExternalLink class="w-3.5 h-3.5" />
-          </a>
+          <Button href="/api/jobs/{job.id}/landingpage" icon={ExternalLink} iconPosition="end" label="Landing Page" target="_blank" rel="noopener noreferrer" class="btn-secondary text-sm py-2 px-4" />
         {/if}
         <!-- Overflow menu for downloads -->
         <div class="relative" data-menu-container>
@@ -604,15 +562,7 @@
         </div>
         <!-- Actions -->
         <div class="flex items-center gap-2">
-          <button
-            onclick={handleResume}
-            disabled={isResuming}
-            class="btn-primary flex items-center gap-2"
-            title="Resume from last checkpoint (no credit charge)"
-          >
-            <RotateCw class="w-4 h-4 {isResuming ? 'animate-spin' : ''}" />
-            {isResuming ? "Resuming..." : "Resume"}
-          </button>
+          <SubmitButton onclick={handleResume} disabled={isResuming} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" title="Resume from last checkpoint (no credit charge)" class="btn-primary flex items-center gap-2" />
         </div>
       </div>
     {/if}

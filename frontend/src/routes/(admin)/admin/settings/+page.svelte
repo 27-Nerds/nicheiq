@@ -1,6 +1,7 @@
 <script lang="ts">
   import { Check, AlertCircle } from "lucide-svelte";
   import { invalidateAll } from "$app/navigation";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   let { data } = $props();
 
@@ -139,17 +140,8 @@
       </p>
 
       <div class="flex gap-2 mt-4">
-        <button type="submit" class="btn-primary" disabled={saving || clearing}>
-          {saving ? "Saving..." : "Save"}
-        </button>
-        <button
-          type="button"
-          class="btn-secondary"
-          disabled={!serverUrl || saving || clearing}
-          onclick={handleClear}
-        >
-          {clearing ? "Clearing..." : "Clear"}
-        </button>
+        <SubmitButton loading={saving} loadingText="Saving..." label="Save" disabled={clearing} class="btn-primary" />
+        <SubmitButton onclick={handleClear} loading={clearing} loadingText="Clearing..." label="Clear" disabled={!serverUrl || saving} type="button" class="btn-secondary" />
       </div>
     </form>
   </div>
