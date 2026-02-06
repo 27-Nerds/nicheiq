@@ -1,3 +1,4 @@
+<!-- @deprecated Use Section.svelte with headerSize="lg" instead -->
 <script lang="ts">
   import type { ComponentType } from "svelte";
 

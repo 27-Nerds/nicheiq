@@ -35,7 +35,7 @@
   import PainPointMatrix from "$lib/components/charts/PainPointMatrix.svelte";
   import FilterGroup from "$lib/components/ui/FilterGroup.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import QuoteBlock from "$lib/components/ui/QuoteBlock.svelte";
   import MetaItem from "$lib/components/ui/MetaItem.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
@@ -116,13 +116,18 @@
   );
 </script>
 
-<section id="pain-analysis" class="report-section">
-  <SectionHeader
-    icon={Target}
-    title="Pain Point Analysis"
-    subtitle="User frustrations and monetization signals"
-  />
-
+<Section
+  id="pain-analysis"
+  class="report-section"
+  icon={Target}
+  title="Pain Point Analysis"
+  subtitle="User frustrations and monetization signals"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Tab Navigation -->
   <div class="tab-navigation mb-6" role="tablist">
     <button
@@ -595,7 +600,7 @@
       </div>
     </div>
   {/if}
-</section>
+</Section>
 
 <style>
   /* Tab Navigation */

@@ -14,7 +14,7 @@
   import type { AudienceMapping } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
@@ -42,13 +42,18 @@
   const totalCommunities = $derived(data.community_hubs?.length ?? 0);
 </script>
 
-<section id="audience" class="report-section">
-  <SectionHeader
-    icon={Users}
-    title="Audience Intelligence"
-    subtitle="Target segments and engagement strategy"
-  />
-
+<Section
+  id="audience"
+  class="report-section"
+  icon={Users}
+  title="Audience Intelligence"
+  subtitle="Target segments and engagement strategy"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip: Primary Target + Stats -->
   <HeroStrip>
     {#snippet primary()}
@@ -229,7 +234,7 @@
       </div>
     </ExpandableSection>
   {/if}
-</section>
+</Section>
 
 <style>
   /* =========================

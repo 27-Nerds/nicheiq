@@ -11,7 +11,7 @@
   import type { ContentCategorization } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import QuoteBlock from "$lib/components/ui/QuoteBlock.svelte";
 
@@ -56,13 +56,18 @@
   );
 </script>
 
-<section id="content-insights" class="report-section">
-  <SectionHeader
-    icon={MessageSquare}
-    title="Content & Competitive Insights"
-    subtitle="Discussion analysis and market intelligence"
-  />
-
+<Section
+  id="content-insights"
+  class="report-section"
+  icon={MessageSquare}
+  title="Content & Competitive Insights"
+  subtitle="Discussion analysis and market intelligence"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Overall Competitive Insights - Hero Card -->
   {#if overallCompetitiveInsights}
     <div class="insight-card insight-card--accent insight-hero">
@@ -258,7 +263,7 @@
       </ExpandableSection>
     {/if}
   {/if}
-</section>
+</Section>
 
 <style>
   /* =========================

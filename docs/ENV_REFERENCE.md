@@ -53,6 +53,27 @@ TWITTER_EMAIL=your_email@example.com
 - Reddit provides enough data
 - Security concerns (credentials stored locally)
 
+### Analytics (Frontend)
+
+```bash
+# Google Analytics GA4 Measurement ID
+PUBLIC_GA_MEASUREMENT_ID=G-XXXXXXXXXX
+# Get at: https://analytics.google.com → Admin → Data Streams → your stream → Measurement ID
+# Leave empty to disable analytics entirely
+# Note: This is a build-time variable — must be set before `npm run build`
+# In Docker: passed as a build ARG in Dockerfile.frontend
+```
+
+**When to use:**
+- Production deployments where you want pageview analytics
+- Set in deployment environment or `.env` before building
+
+**When to skip:**
+- Development (analytics auto-disabled via `dev` flag)
+- Staging (leave empty to disable)
+
+**GDPR:** Analytics only loads after user accepts cookies via the consent banner.
+
 ### Stripe Payments
 
 Configure Stripe for token package purchases.

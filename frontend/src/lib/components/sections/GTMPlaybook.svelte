@@ -25,7 +25,7 @@
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
@@ -125,13 +125,18 @@
   });
 </script>
 
-<section id="gtm-playbook" class="report-section">
-  <SectionHeader
-    icon={Rocket}
-    title="Go-to-Market Playbook"
-    subtitle="Launch strategy and customer acquisition"
-  />
-
+<Section
+  id="gtm-playbook"
+  class="report-section"
+  icon={Rocket}
+  title="Go-to-Market Playbook"
+  subtitle="Launch strategy and customer acquisition"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
@@ -619,7 +624,7 @@
       </ExpandableSection>
     {/if}
   </div>
-</section>
+</Section>
 
 <style>
   /* GTM Hero Primary (custom for actions display) */

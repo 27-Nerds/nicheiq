@@ -16,7 +16,7 @@
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import ProgressBar from "$lib/components/ui/ProgressBar.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
 
   interface Props {
@@ -35,13 +35,18 @@
   }
 </script>
 
-<section id="alternatives" class="report-section">
-  <SectionHeader
-    icon={Lightbulb}
-    title="Alternative Solutions"
-    subtitle="{data.length} options analyzed as pivot considerations"
-  />
-
+<Section
+  id="alternatives"
+  class="report-section"
+  icon={Lightbulb}
+  title="Alternative Solutions"
+  subtitle="{data.length} options analyzed as pivot considerations"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <p class="text-text-secondary mb-8">
     These alternative solutions were evaluated during the ideation process. Each
     offers a different approach with unique trade-offs.
@@ -353,4 +358,4 @@
       </AnimateOnScroll>
     {/each}
   </div>
-</section>
+</Section>

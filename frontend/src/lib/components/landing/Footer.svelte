@@ -25,7 +25,13 @@
   const companyLinks = [
     { name: "About the Maker", href: "#about-maker" },
     { name: "Contact", href: "mailto:hello@nicheiq.com" },
+    { name: "Privacy", href: "/privacy" },
   ];
+
+  async function openCookiePreferences() {
+    const CookieConsent = await import("vanilla-cookieconsent");
+    CookieConsent.showPreferences();
+  }
 </script>
 
 <footer class="bg-bg-base border-t border-border">
@@ -86,6 +92,13 @@
               </a>
             </li>
           {/each}
+          <li>
+            <button
+              type="button"
+              class="text-xs sm:text-sm text-text-muted hover:text-accent transition-colors"
+              onclick={openCookiePreferences}>Cookie Preferences</button
+            >
+          </li>
         </ul>
       </div>
     </div>

@@ -69,6 +69,7 @@
   }: Props = $props();
 
   const TOTAL_STAGES = 16;
+  const HIDDEN_STAGES = [6.5];
 
   // Derived state
   const isRunning = $derived(job.status.toUpperCase() === "RUNNING");
@@ -133,8 +134,6 @@
     "Pain Point Analysis": "Pain Point & Audience Analysis",
     "Audience Mapping": "Pain Point & Audience Analysis",
   };
-
-  const HIDDEN_STAGES = [6.5];
 
   function getDisplayStageName(stageName: string | null): string {
     if (!stageName) return "Starting";
@@ -399,10 +398,7 @@
 {/snippet}
 
 {#snippet relativeDate(dateStr: string)}
-  <span
-    class="text-xs text-text-muted shrink-0"
-    title={formatDate(dateStr)}
-  >
+  <span class="text-xs text-text-muted shrink-0" title={formatDate(dateStr)}>
     {formatRelativeDate(dateStr)}
   </span>
 {/snippet}
@@ -592,13 +588,17 @@
       {/if}
 
       <!-- Footer -->
-      <div class="flex items-center justify-between gap-2 mt-3 pointer-events-auto">
+      <div
+        class="flex items-center justify-between gap-2 mt-3 pointer-events-auto"
+      >
         <!-- Credit refund indicator -->
         <div>
           {#if job.creditRefunded || isQualityGate}
             <div class="flex items-center gap-1.5">
               <CheckCircle class="w-3.5 h-3.5 text-success" />
-              <span class="text-xs text-success font-medium">Credit refunded</span>
+              <span class="text-xs text-success font-medium"
+                >Credit refunded</span
+              >
             </div>
           {/if}
         </div>

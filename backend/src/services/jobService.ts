@@ -160,7 +160,6 @@ export async function updateStageProgress(
       currentStageName: stageName,
       stagesCompleted: completedStages,
       progressPercent: (completedStages / dynamicTotal) * 100,
-      status: status === StageStatus.RUNNING ? JobStatus.RUNNING : undefined,
     },
   });
 

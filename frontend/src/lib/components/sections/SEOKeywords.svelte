@@ -31,7 +31,7 @@
   } from "$lib/utils/variantHelpers";
   import Badge from "$lib/components/ui/Badge.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
@@ -179,13 +179,18 @@
   }
 </script>
 
-<section id="seo" class="report-section">
-  <SectionHeader
-    icon={TrendingUp}
-    title="SEO Strategy & Keywords"
-    subtitle="Keyword opportunities and content roadmap"
-  />
-
+<Section
+  id="seo"
+  class="report-section"
+  icon={TrendingUp}
+  title="SEO Strategy & Keywords"
+  subtitle="Keyword opportunities and content roadmap"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
@@ -735,7 +740,7 @@
   {/if}
   <!-- competitive_advantages removed - redundant with competitive_positioning -->
   <!-- conclusion_bottom_line + next_steps_checklist removed - generic boilerplate -->
-</section>
+</Section>
 
 <style>
   /* Limited Keywords Warning */

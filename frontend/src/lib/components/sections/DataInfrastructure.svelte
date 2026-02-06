@@ -26,7 +26,7 @@
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
@@ -176,13 +176,18 @@
   };
 </script>
 
-<section id="data-infrastructure" class="report-section">
-  <SectionHeader
-    icon={Database}
-    title="Data Infrastructure Roadmap"
-    subtitle="Data sources, integrations, and implementation phases"
-  />
-
+<Section
+  id="data-infrastructure"
+  class="report-section"
+  icon={Database}
+  title="Data Infrastructure Roadmap"
+  subtitle="Data sources, integrations, and implementation phases"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip with Key Metrics -->
   <HeroStrip>
     {#snippet primary()}
@@ -667,7 +672,7 @@
       </div>
     </div>
   {/if}
-</section>
+</Section>
 
 <style>
   /* Hero Primary */

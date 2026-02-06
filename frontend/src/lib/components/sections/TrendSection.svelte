@@ -14,14 +14,12 @@
   import type { TrendLongevity } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
   import StatPill from "$lib/components/ui/StatPill.svelte";
-  import InsightCard from "$lib/components/ui/InsightCard.svelte";
   import IconListItem from "$lib/components/ui/IconListItem.svelte";
-  import SectionLabel from "$lib/components/ui/SectionLabel.svelte";
 
   interface Props {
     data: TrendLongevity;
@@ -78,13 +76,18 @@
   );
 </script>
 
-<section id="trends" class="report-section">
-  <SectionHeader
-    icon={Activity}
-    title="Market Trends & Longevity"
-    subtitle="Trend analysis and market timing"
-  />
-
+<Section
+  id="trends"
+  class="report-section"
+  icon={Activity}
+  title="Market Trends & Longevity"
+  subtitle="Trend analysis and market timing"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
@@ -151,26 +154,20 @@
         >
       </div>
     {/if}
-  </HeroStrip>
 
-  <!-- Timing Recommendation (Always Visible) -->
-  {#if data.timing_recommendation}
-    <InsightCard
-      variant="accent"
-      border="left"
-      padding="md"
-      class="timing-card"
-    >
-      {#snippet header()}
-        <SectionLabel
-          text="Timing Recommendation"
-          variant="accent"
-          icon={Clock}
-        />
-      {/snippet}
-      <p class="timing-text">{data.timing_recommendation}</p>
-    </InsightCard>
-  {/if}
+    <!-- Timing Recommendation -->
+    {#if data.timing_recommendation}
+      <div class="timing-metric">
+        <div class="timing-indicator">
+          <Clock class="timing-icon" />
+        </div>
+        <div class="timing-content">
+          <span class="timing-label">Timing</span>
+          <span class="timing-value">{data.timing_recommendation}</span>
+        </div>
+      </div>
+    {/if}
+  </HeroStrip>
 
   <!-- Stats Strip -->
   <div class="stats-strip">
@@ -281,7 +278,7 @@
       {/if}
     </div>
   {/if}
-</section>
+</Section>
 
 <style>
   /* Trend Metric (custom for direction display in hero rail) */
@@ -361,12 +358,50 @@
     color: var(--color-text-muted);
   }
 
-  /* Timing Card - using InsightCard, just need text styling */
-  .timing-text {
+  /* Timing Metric (in hero strip) */
+  .timing-metric {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .timing-indicator {
+    width: 2.25rem;
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+    border: 2px solid var(--color-accent);
+    border-radius: 50%;
+  }
+
+  .timing-indicator :global(.timing-icon) {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-accent);
+  }
+
+  .timing-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .timing-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+
+  .timing-value {
+    font-family: var(--font-display);
     font-size: 0.9375rem;
-    color: var(--color-text-primary);
-    line-height: 1.6;
-    margin: 0;
+    font-weight: 700;
+    color: var(--color-accent);
   }
 
   /* Stats Strip */
@@ -374,6 +409,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+    margin-top: 1.5rem;
     margin-bottom: 1rem;
   }
 

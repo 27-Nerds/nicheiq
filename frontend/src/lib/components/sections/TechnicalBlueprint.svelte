@@ -35,7 +35,7 @@
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
 
   interface Props {
@@ -108,13 +108,18 @@
   );
 </script>
 
-<section id="technical" class="report-section">
-  <SectionHeader
-    icon={Code}
-    title="Technical Blueprint"
-    subtitle="Implementation approach and architecture"
-  />
-
+<Section
+  id="technical"
+  class="report-section"
+  icon={Code}
+  title="Technical Blueprint"
+  subtitle="Implementation approach and architecture"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Tech Stack Overview -->
   {#if solution.technical_approach}
     <AnimateOnScroll animation="fade-up">
@@ -519,7 +524,7 @@
       </div>
     </AnimateOnScroll>
   {/if}
-</section>
+</Section>
 
 <style>
   .dev-time-value {

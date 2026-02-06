@@ -35,7 +35,7 @@
   } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
@@ -66,14 +66,6 @@
 
   // Parse metrics from rationale text
   const parsedRationale = $derived(parseRationaleMetrics(selectionRationale));
-
-  // Get verdict styling
-  const getVerdictBadge = (v: string) => {
-    if (v === "Go") return { variant: "success" as const, text: "GO" };
-    if (v === "No-Go") return { variant: "error" as const, text: "NO-GO" };
-    return { variant: "warning" as const, text: v.toUpperCase() };
-  };
-  const vBadge = $derived(getVerdictBadge(verdict.verdict));
 
   // Extract just the duration part from dev time (e.g., "6-8 weeks" from "6-8 weeks for MVP...")
   const extractDevTimeDuration = (
@@ -198,13 +190,18 @@
   };
 </script>
 
-<section id="solution" class="report-section">
-  <SectionHeader
-    icon={Rocket}
-    title="Recommended Solution"
-    subtitle="AI-validated product opportunity"
-  />
-
+<Section
+  id="solution"
+  class="report-section"
+  icon={Rocket}
+  title="Recommended Solution"
+  subtitle="AI-validated product opportunity"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Solution Hero Card -->
   <div class="solution-hero-card">
     <div class="hero-top">
@@ -212,7 +209,6 @@
         {#if snapshot.project_type}
           <Badge variant="default">{snapshot.project_type}</Badge>
         {/if}
-        <Badge variant={vBadge.variant}>{vBadge.text}</Badge>
       </div>
       <div class="hero-sparkle">
         <Sparkles class="sparkle-icon" />
@@ -580,7 +576,7 @@
       </div>
     </ExpandableSection>
   {/if}
-</section>
+</Section>
 
 <style>
   /* =========================

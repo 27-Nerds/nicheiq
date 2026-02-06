@@ -10,6 +10,9 @@ RUN apk add --no-cache openssl
 ARG PUBLIC_API_URL=https://nicheiq.dev
 ENV PUBLIC_API_URL=$PUBLIC_API_URL
 
+ARG PUBLIC_GA_MEASUREMENT_ID=
+ENV PUBLIC_GA_MEASUREMENT_ID=$PUBLIC_GA_MEASUREMENT_ID
+
 # Copy package files
 COPY package*.json ./
 

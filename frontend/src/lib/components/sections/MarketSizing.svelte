@@ -13,7 +13,7 @@
   import type { MarketSizing } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import InsightCard from "$lib/components/ui/InsightCard.svelte";
@@ -73,13 +73,18 @@
   );
 </script>
 
-<section id="market-sizing" class="report-section">
-  <SectionHeader
-    icon={DollarSign}
-    title="Market Sizing"
-    subtitle="TAM/SAM/SOM analysis and growth opportunity"
-  />
-
+<Section
+  id="market-sizing"
+  class="report-section"
+  icon={DollarSign}
+  title="Market Sizing"
+  subtitle="TAM/SAM/SOM analysis and growth opportunity"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip: Viability Verdict + Key Signals -->
   <HeroStrip>
     {#snippet primary()}
@@ -316,7 +321,7 @@
       </ExpandableSection>
     </div>
   {/if}
-</section>
+</Section>
 
 <style>
   /* =========================

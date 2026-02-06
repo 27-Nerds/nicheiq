@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "vanilla-cookieconsent/dist/cookieconsent.css";
 @source "./lib/**/*.svelte";
 @source "./routes/**/*.svelte";
 
@@ -198,12 +199,12 @@
 }
 
 .report-section {
-	margin-bottom: var(--space-16);
 	padding-bottom: var(--space-16);
 	border-bottom: 1px solid var(--color-border);
 }
 
 .report-section:last-child {
+	padding-bottom: 0;
 	border-bottom: none;
 }
 
@@ -988,4 +989,22 @@
 .differentiator-callout strong {
 	color: var(--color-text-primary);
 	font-weight: 600;
+}
+
+/* ========================================
+   Cookie Consent Theme Overrides
+   ======================================== */
+
+:root {
+	--cc-bg: #FFFFFF;
+	--cc-text: #52525B;
+	--cc-btn-primary-bg: #E55A28;
+	--cc-btn-primary-hover-bg: #CC4E22;
+	--cc-btn-primary-text: #FFFFFF;
+	--cc-btn-secondary-bg: #F5F5F5;
+	--cc-btn-secondary-text: #18181B;
+	--cc-btn-secondary-hover-bg: #EBEBEB;
+	--cc-toggle-bg-on: #E55A28;
+	--cc-font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+	--cc-border-radius: 0.75rem;
 }

@@ -54,6 +54,46 @@
 	color: var(--color-text-muted);
 }
 
+/* Mono label - extracted from 50+ inline instances across report sections */
+.mono-label {
+	font-family: var(--font-mono);
+	font-size: 0.625rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+	line-height: 1.2;
+	color: var(--color-text-muted);
+}
+
+.mono-label-sm {
+	font-family: var(--font-mono);
+	font-size: 0.5625rem;
+	font-weight: 500;
+	text-transform: uppercase;
+	letter-spacing: 0.08em;
+	line-height: 1.2;
+	color: var(--color-text-muted);
+}
+
+/* Rendered markdown content blocks */
+.rendered-content {
+	font-size: 0.9375rem;
+	color: var(--color-text-secondary);
+	line-height: 1.7;
+}
+.rendered-content p { margin: 0 0 0.75rem; }
+.rendered-content p:last-child { margin-bottom: 0; }
+.rendered-content ul { margin: 0 0 0.75rem; padding-left: 1.25rem; }
+.rendered-content li { margin-bottom: 0.375rem; }
+
+.rendered-content-sm {
+	font-size: 0.8125rem;
+	color: var(--color-text-secondary);
+	line-height: 1.65;
+}
+.rendered-content-sm p { margin-bottom: 0.5rem; }
+.rendered-content-sm p:last-child { margin-bottom: 0; }
+
 /* ========================================
    Interactive States
    ======================================== */

@@ -122,7 +122,10 @@
         <p
           class="animate-fade-in delay-300 text-lg sm:text-xl text-text-secondary leading-relaxed mb-3 sm:mb-4 max-w-xl mx-auto"
         >
-          NicheIQ helps solo founders get clear answers on <strong class="text-text-primary">what to build</strong> and <strong class="text-text-primary">how to profit</strong>.
+          NicheIQ helps solo founders get clear answers on <strong
+            class="text-text-primary">what to build</strong
+          >
+          and <strong class="text-text-primary">how to profit</strong>.
         </p>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-muted italic leading-relaxed mb-4 sm:mb-6 max-w-xl mx-auto"

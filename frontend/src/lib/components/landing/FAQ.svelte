@@ -1,106 +1,114 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import { Accordion } from './ui';
+  import { onMount } from "svelte";
+  import { Accordion } from "./ui";
 
-	let isVisible = $state(false);
+  let isVisible = $state(false);
 
-	onMount(() => {
-		const observer = new IntersectionObserver(
-			([entry]) => {
-				if (entry.isIntersecting) {
-					isVisible = true;
-				}
-			},
-			{ threshold: 0.1 }
-		);
+  onMount(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          isVisible = true;
+        }
+      },
+      { threshold: 0.1 },
+    );
 
-		const section = document.getElementById('faq');
-		if (section) observer.observe(section);
+    const section = document.getElementById("faq");
+    if (section) observer.observe(section);
 
-		return () => observer.disconnect();
-	});
+    return () => observer.disconnect();
+  });
 
-	// Optimized FAQs: Trust first, consolidated competitor question, common objections
-	const faqs = [
-		{
-			question: "Can I trust the numbers? Or is this AI hallucinating?",
-			answer:
-				"No hallucinations. 80% of your report is real data from APIs—keyword volumes, source discussions, engagement metrics. Every pain point links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination."
-		},
-		{
-			question: "Can't I just use ChatGPT, Perplexity, or Grok?",
-			answer:
-				"Better prompts improve output, but they can't solve architectural limitations. No AI chat tool has direct access to social platforms, real-time keyword APIs, or live community discussions. ChatGPT uses training data (months old). Perplexity crawls indexed pages (misses real-time posts). Grok excels at X/Twitter but can't access Reddit. NicheIQ connects directly to APIs for current data with source attribution on every claim."
-		},
-		{
-			question: 'How long does research take?',
-			answer:
-				"Typically around 45 minutes. Once you submit your niche, the system autonomously runs a 16-stage research pipeline: searching social media, extracting validated pain points, calculating market size, validating pricing, and compiling your report. If there's a queue, you'll be notified when your research starts and when it's complete."
-		},
-		{
-			question: 'How do you calculate market size and pricing?',
-			answer:
-				"Market sizing (TAM/SAM/SOM) uses real keyword search volumes from DataForSEO API - actual search demand, not AI estimates. Pricing recommendations combine competitor analysis (what similar tools charge) with willingness-to-pay signals from customer discussions. The report shows methodology so you can analyze the numbers."
-		},
-		{
-			question: 'Can I get a refund?',
-			answer:
-				"Yes. If your report doesn't deliver, you get a full refund — the research credit will be returned to your account. If you have any other questions, please email hello@nicheiq.com within 7 days. If a research is interrupted due to a technical issue, you'll see a Resume option and the process will continue from where it stopped. One completed report uses one research credit and includes a full niche research and a ready-to-launch landing page (optional)."
-		},
-		{
-			question: 'What if my niche is too specialized?',
-			answer:
-				"NicheIQ works best when there's active public discussion around a niche. Consumer SaaS, developer tools, and creator-focused products usually have strong coverage across social platforms. For highly specialized or very narrow B2B niches, there may not be enough public data to run a meaningful research. If that happens, the system will notify you and your research credit will be returned to your account, so you can submit another niche request. You'll never lose a credit for a research that can't be completed."
-		},
-		{
-			question: "What if I don't like the proposed solution or get a NO-GO verdict?",
-			answer:
-				"NicheIQ builds solutions around validated problems, based on real market research and demand signals. Each report includes one primary solution and two alternative directions, so you have options even if the main idea doesn't feel right. If the research results in a NO-GO verdict or isn't a fit for you, the report is still considered successfully delivered and refunds are not provided for idea outcomes. Many founders run multiple researches to explore different angles until they find an idea that truly clicks."
-		},
-		{
-			question: 'Can I run multiple researches?',
-			answer:
-				"Yes - pay per research report. Explore as many niches as you want. This is NicheIQ's strength: fast research means you can explore 5 niches in an afternoon instead of committing months to one. Most founders use it to narrow down from several niches to their best opportunity."
-		},
-		{
-			question: 'Do you store my research data?',
-			answer:
-				"We store your reports for your account access only. Your research is 100% private - no shared database, no data sharing between customers, no marketing use of your niche ideas. NicheIQ is a tool, not a marketplace. Your research stays your competitive advantage."
-		}
-	];
+  // Optimized FAQs: Trust first, consolidated competitor question, common objections
+  const faqs = [
+    {
+      question: "Can I trust the numbers? Or is this AI hallucinating?",
+      answer:
+        "No hallucinations. 80% of your report is real data from APIs—keyword volumes, source discussions, engagement metrics. Every pain point links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination.",
+    },
+    {
+      question: "Can't I just use ChatGPT, Perplexity, or Grok?",
+      answer:
+        "Better prompts improve output, but they can't solve architectural limitations. No AI chat tool has direct access to social platforms, real-time keyword APIs, or live community discussions. ChatGPT uses training data (months old). Perplexity crawls indexed pages (misses real-time posts). Grok excels at X/Twitter but can't access Reddit. NicheIQ connects directly to APIs for current data with source attribution on every claim.",
+    },
+    {
+      question: "How long does research take?",
+      answer:
+        "Typically around 45 minutes. Once you submit your niche, the system autonomously runs a 16-stage research pipeline: searching social media, extracting validated pain points, calculating market size, validating pricing, and compiling your report. If there's a queue, you'll be notified when your research starts and when it's complete.",
+    },
+    {
+      question: "How do you calculate market size and pricing?",
+      answer:
+        "Market sizing (TAM/SAM/SOM) uses real keyword search volumes from DataForSEO API - actual search demand, not AI estimates. Pricing recommendations combine competitor analysis (what similar tools charge) with willingness-to-pay signals from customer discussions. The report shows methodology so you can analyze the numbers.",
+    },
+    {
+      question: "Can I get a refund?",
+      answer:
+        "Yes. If your report doesn't deliver, you get a full refund — the research credit will be returned to your account. If you have any other questions, please email hello@nicheiq.com within 7 days. If a research is interrupted due to a technical issue, you'll see a Resume option and the process will continue from where it stopped. One completed report uses one research credit and includes a full niche research and a ready-to-launch landing page (optional).",
+    },
+    {
+      question: "What if my niche is too specialized?",
+      answer:
+        "NicheIQ works best when there's active public discussion around a niche. Consumer SaaS, developer tools, and creator-focused products usually have strong coverage across social platforms. For highly specialized or very narrow B2B niches, there may not be enough public data to run a meaningful research. If that happens, the system will notify you and your research credit will be returned to your account, so you can submit another niche request. You'll never lose a credit for a research that can't be completed.",
+    },
+    {
+      question:
+        "What if I don't like the proposed solution or get a NO-GO verdict?",
+      answer:
+        "NicheIQ builds solutions around validated problems, based on real market research and demand signals. Each report includes one primary solution and two alternative directions, so you have options even if the main idea doesn't feel right. If the research results in a NO-GO verdict or isn't a fit for you, the report is still considered successfully delivered and refunds are not provided for idea outcomes. Many founders run multiple researches to explore different angles until they find an idea that truly clicks.",
+    },
+    {
+      question: "Can I run multiple researches?",
+      answer:
+        "Yes - pay per research report. Explore as many niches as you want. This is NicheIQ's strength: fast research means you can explore 5 niches in an afternoon instead of committing months to one. Most founders use it to narrow down from several niches to their best opportunity.",
+    },
+    {
+      question: "Do you store my research data?",
+      answer:
+        "We store your reports for your account access only. Your research is 100% private - no shared database, no data sharing between customers, no marketing use of your niche ideas. NicheIQ is a tool, not a marketplace. Your research stays your competitive advantage.",
+    },
+  ];
 </script>
 
 <section id="faq" class="section-alt">
-	<div class="max-w-3xl mx-auto px-6 lg:px-12">
-		{#if isVisible}
-			<!-- Section Header -->
-			<div class="text-center mb-16">
-				<span class="section-label animate-fade-in">FAQ</span>
-				<h2 class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6">
-					Common <span class="text-gradient italic">Questions</span>
-				</h2>
-				<div class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full mx-auto animate-fade-in delay-200"></div>
-			</div>
+  <div class="max-w-3xl mx-auto px-6 lg:px-12">
+    {#if isVisible}
+      <!-- Section Header -->
+      <div class="text-center mb-16">
+        <span class="section-label animate-fade-in">FAQ</span>
+        <h2
+          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
+        >
+          Common <span class="text-gradient italic">Questions</span>
+        </h2>
+        <div
+          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full mx-auto animate-fade-in delay-200"
+        ></div>
+      </div>
 
-			<!-- FAQ Items - Dark Accordion Style -->
-			<div class="animate-fade-in delay-300 border-t border-border">
-				{#each faqs as faq}
-					<Accordion title={faq.question}>
-						<p>{faq.answer}</p>
-					</Accordion>
-				{/each}
-			</div>
+      <!-- FAQ Items - Dark Accordion Style -->
+      <div class="animate-fade-in delay-300 border-t border-border">
+        {#each faqs as faq}
+          <Accordion title={faq.question}>
+            <p>{faq.answer}</p>
+          </Accordion>
+        {/each}
+      </div>
 
-			<!-- Contact CTA -->
-			<div class="animate-fade-in delay-400 mt-12 text-center">
-				<div class="divider max-w-xs mx-auto mb-8"></div>
-				<p class="text-text-muted">
-					Still have questions?
-					<a href="mailto:hello@nicheiq.com" class="text-accent hover:text-accent-hover hover:underline font-medium transition-colors">
-						Contact us
-					</a>
-				</p>
-			</div>
-		{/if}
-	</div>
+      <!-- Contact CTA -->
+      <div class="animate-fade-in delay-400 mt-12 text-center">
+        <div class="divider max-w-xs mx-auto mb-8"></div>
+        <p class="text-text-muted">
+          Still have questions?
+          <a
+            href="mailto:hello@nicheiq.com"
+            class="text-accent hover:text-accent-hover hover:underline font-medium transition-colors"
+          >
+            Contact us
+          </a>
+        </p>
+      </div>
+    {/if}
+  </div>
 </section>

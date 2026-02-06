@@ -6,7 +6,7 @@
   type SectionVariant = "default" | "success" | "warning" | "accent";
   type BorderStyle = "all" | "left" | "top" | "none";
   type HeaderSize = "sm" | "md" | "lg";
-  type SpacingSize = "none" | "sm" | "md" | "lg";
+  type SpacingSize = "none" | "sm" | "md" | "lg" | "container";
 
   interface Props {
     // Header config
@@ -81,7 +81,7 @@
   };
 </script>
 
-<div
+<section
   class="section-container section-{variant} border-{border} padding-{padding} mb-{marginBottom} header-{headerSize} {className}"
   class:elevated
   class:expandable={isExpandable}
@@ -152,7 +152,7 @@
       {@render children()}
     </div>
   {/if}
-</div>
+</section>
 
 <style>
   /* ============================================
@@ -237,25 +237,54 @@
   /* ============================================
 	   Padding Styles
 	   ============================================ */
-  .padding-none .section-content {
+  .padding-none > .section-content {
     padding: 0;
   }
 
-  .padding-sm .section-content {
+  .padding-sm > .section-content {
     padding: 0.75rem;
   }
 
-  .padding-md .section-content {
+  .padding-md > .section-content {
     padding: 1rem 1.25rem 1.25rem;
   }
 
-  .padding-lg .section-content {
+  .padding-lg > .section-content {
     padding: 1.5rem;
   }
 
+  .padding-container {
+    padding: 1.5rem;
+  }
+
+  .padding-container > .section-content {
+    padding: 0;
+  }
+
+  .padding-container > .header-lg {
+    padding: 0;
+    margin-bottom: 1.5rem;
+  }
+
+  .padding-container > .header-inline {
+    padding: 0;
+    margin-bottom: 0.75rem;
+  }
+
+  .padding-container > .hero-strip-container {
+    padding: 0;
+    margin-bottom: 0.75rem;
+  }
+
+  @media (max-width: 768px) {
+    .padding-container {
+      padding: 1rem;
+    }
+  }
+
   /* Expandable sections have padding around content only */
-  .section-container.expandable .section-content {
-    padding-top: 0;
+  .section-container.expandable > .section-content {
+    padding-top: 0.5rem;
   }
 
   /* ============================================
@@ -293,6 +322,7 @@
     padding: 1rem 1.25rem;
     background: transparent;
     border: none;
+    border-radius: 0.5rem;
     cursor: pointer;
     transition: background 0.15s ease;
   }
@@ -400,7 +430,7 @@
     padding: 1rem 1.25rem 0;
   }
 
-  .section-container.expandable .hero-strip-container {
+  .section-container.expandable > .hero-strip-container {
     padding-top: 0;
   }
 </style>

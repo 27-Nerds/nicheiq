@@ -3,6 +3,12 @@
 import type { Session } from '@auth/core/types';
 
 declare global {
+  // GA4 gtag types
+  interface Window {
+    dataLayer: unknown[];
+    gtag: (...args: unknown[]) => void;
+  }
+
   namespace App {
     // interface Error {}
     interface Locals {

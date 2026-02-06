@@ -24,6 +24,11 @@
     signOut({ callbackUrl: "/" });
   }
 
+  async function openCookiePreferences() {
+    const CookieConsent = await import("vanilla-cookieconsent");
+    CookieConsent.showPreferences();
+  }
+
   function getInitials(name: string | null | undefined): string {
     if (!name) return "?";
     const parts = name.trim().split(" ");
@@ -178,6 +183,12 @@
           <a
             href="mailto:support@nicheiq.com"
             class="hover:text-accent transition-colors">Support</a
+          >
+          <span class="text-border-emphasis">·</span>
+          <button
+            type="button"
+            class="hover:text-accent transition-colors"
+            onclick={openCookiePreferences}>Cookies</button
           >
           <span class="text-border-emphasis">·</span>
           <span>© {new Date().getFullYear()}</span>

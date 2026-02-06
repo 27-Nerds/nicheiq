@@ -22,7 +22,7 @@
   } from "$lib/types/report";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import QuoteBlock from "$lib/components/ui/QuoteBlock.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
@@ -152,13 +152,18 @@
   };
 </script>
 
-<section id="evidence-appendix" class="report-section">
-  <SectionHeader
-    icon={FileText}
-    title="Evidence Appendix"
-    subtitle="Supporting research data and sources"
-  />
-
+<Section
+  id="evidence-appendix"
+  class="report-section"
+  icon={FileText}
+  title="Evidence Appendix"
+  subtitle="Supporting research data and sources"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
@@ -441,7 +446,7 @@
       </div>
     {/if}
   </div>
-</section>
+</Section>
 
 <style>
   /* Subreddits Card */

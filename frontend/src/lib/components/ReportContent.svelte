@@ -254,60 +254,7 @@
 	   GLOBAL SECTION STYLES
 	   ========================= */
   :global(.report-section) {
-    padding: 1.5rem;
     background: var(--color-bg-base);
-  }
-
-  @media (max-width: 768px) {
-    :global(.report-section) {
-      padding: 1rem;
-    }
-  }
-
-  /* =========================
-	   GLOBAL HEADER STYLES
-	   ========================= */
-  :global(.section-header) {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.25rem;
-  }
-
-  :global(.header-icon-wrap) {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2.25rem;
-    height: 2.25rem;
-    background: rgba(229, 90, 40, 0.1);
-    border-radius: 0.5rem;
-  }
-
-  :global(.header-icon) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: #e55a28;
-  }
-
-  :global(.header-text) {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  :global(.section-title) {
-    font-family: var(--font-display);
-    font-size: 1.375rem;
-    font-weight: 800;
-    color: #18181b;
-    margin: 0;
-  }
-
-  :global(.section-subtitle) {
-    font-size: 0.8125rem;
-    color: #a1a1aa;
-    margin: 0;
   }
 
   /* =========================
@@ -345,8 +292,6 @@
     position: relative;
     padding: 2rem 0;
     margin-bottom: 1rem;
-    border-radius: 1rem;
-    background: var(--phase-tint, transparent);
   }
 
   .phase-label {
@@ -368,28 +313,24 @@
 
   /* Phase-specific colors */
   .phase-decision {
-    --phase-tint: rgba(229, 90, 40, 0.02);
     --phase-accent: var(--color-accent);
     --phase-text: var(--color-accent);
     --phase-label-bg: rgba(229, 90, 40, 0.08);
   }
 
   .phase-validate {
-    --phase-tint: rgba(34, 197, 94, 0.02);
     --phase-accent: var(--color-success);
     --phase-text: var(--color-success-dark);
     --phase-label-bg: rgba(34, 197, 94, 0.08);
   }
 
   .phase-execute {
-    --phase-tint: rgba(99, 102, 241, 0.02);
     --phase-accent: var(--color-secondary);
     --phase-text: var(--color-secondary);
     --phase-label-bg: rgba(99, 102, 241, 0.08);
   }
 
   .phase-reference {
-    --phase-tint: rgba(100, 116, 139, 0.02);
     --phase-accent: var(--color-text-muted);
     --phase-text: var(--color-text-muted);
     --phase-label-bg: rgba(100, 116, 139, 0.08);

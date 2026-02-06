@@ -26,7 +26,7 @@
     getCompetitorTypeVariant,
   } from "$lib/utils/variantHelpers";
   import Badge from "$lib/components/ui/Badge.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
@@ -117,13 +117,18 @@
   });
 </script>
 
-<section id="competitors" class="report-section">
-  <SectionHeader
-    icon={Users}
-    title="Competitive Analysis"
-    subtitle="Market landscape and positioning"
-  />
-
+<Section
+  id="competitors"
+  class="report-section"
+  icon={Users}
+  title="Competitive Analysis"
+  subtitle="Market landscape and positioning"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
@@ -453,7 +458,7 @@
       </div>
     </ExpandableSection>
   {/if}
-</section>
+</Section>
 
 <style>
   /* Key Competitors Strip */

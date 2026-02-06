@@ -1,46 +1,46 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+  import type { Snippet } from "svelte";
 
-	interface Props {
-		type?: 'text' | 'email' | 'password' | 'number';
-		placeholder?: string;
-		value?: string;
-		disabled?: boolean;
-		error?: string;
-		icon?: Snippet;
-		class?: string;
-		oninput?: (e: Event) => void;
-		onkeydown?: (e: KeyboardEvent) => void;
-	}
+  interface Props {
+    type?: "text" | "email" | "password" | "number";
+    placeholder?: string;
+    value?: string;
+    disabled?: boolean;
+    error?: string;
+    icon?: Snippet;
+    class?: string;
+    oninput?: (e: Event) => void;
+    onkeydown?: (e: KeyboardEvent) => void;
+  }
 
-	let {
-		type = 'text',
-		placeholder = '',
-		value = $bindable(''),
-		disabled = false,
-		error = '',
-		icon,
-		class: className = '',
-		oninput,
-		onkeydown
-	}: Props = $props();
+  let {
+    type = "text",
+    placeholder = "",
+    value = $bindable(""),
+    disabled = false,
+    error = "",
+    icon,
+    class: className = "",
+    oninput,
+    onkeydown,
+  }: Props = $props();
 </script>
 
 <div class="relative w-full">
-	{#if icon}
-		<span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted">
-			{@render icon()}
-		</span>
-	{/if}
+  {#if icon}
+    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-text-muted">
+      {@render icon()}
+    </span>
+  {/if}
 
-	<input
-		{type}
-		{placeholder}
-		{disabled}
-		bind:value
-		{oninput}
-		{onkeydown}
-		class="
+  <input
+    {type}
+    {placeholder}
+    {disabled}
+    bind:value
+    {oninput}
+    {onkeydown}
+    class="
 			w-full px-4 py-3.5 font-body text-base text-text-primary
 			bg-bg-paper border rounded outline-none
 			transition-all duration-200 ease-out
@@ -51,9 +51,9 @@
 			{error ? 'border-error' : 'border-border'}
 			{className}
 		"
-	/>
+  />
 
-	{#if error}
-		<p class="mt-2 text-sm text-error">{error}</p>
-	{/if}
+  {#if error}
+    <p class="mt-2 text-sm text-error">{error}</p>
+  {/if}
 </div>

@@ -21,7 +21,7 @@
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
-  import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
+  import Section from "$lib/components/ui/Section.svelte";
   import InsightCard from "$lib/components/ui/InsightCard.svelte";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
   import SectionLabel from "$lib/components/ui/SectionLabel.svelte";
@@ -90,13 +90,18 @@
   };
 </script>
 
-<section id="monetization" class="report-section">
-  <SectionHeader
-    icon={DollarSign}
-    title="Monetization Strategy"
-    subtitle="Pricing model and revenue projections"
-  />
-
+<Section
+  id="monetization"
+  class="report-section"
+  icon={DollarSign}
+  title="Monetization Strategy"
+  subtitle="Pricing model and revenue projections"
+  headerSize="lg"
+  elevated={false}
+  border="none"
+  padding="container"
+  marginBottom="none"
+>
   <!-- ═══════════════════════════════════════════════════════════════════
 	     SaaS PRICING SECTION
 	     ═══════════════════════════════════════════════════════════════════ -->
@@ -773,15 +778,8 @@
         </div>
       </div>
     </AnimateOnScroll>
-
-    <!-- Confidence -->
-    {#if trafficData.monetization_confidence}
-      <div class="mt-6 pt-4 border-t border-border text-xs text-text-muted">
-        <span>Confidence: {trafficData.monetization_confidence}</span>
-      </div>
-    {/if}
   {/if}
-</section>
+</Section>
 
 <style>
   .section-divider {
