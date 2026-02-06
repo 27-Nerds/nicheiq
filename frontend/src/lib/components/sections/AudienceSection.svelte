@@ -402,6 +402,23 @@
     color: #71717a;
   }
 
+  /* Discovery Channel Tags */
+  .insight-card__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.5rem;
+  }
+
+  .insight-card__tag {
+    font-size: 0.6875rem;
+    padding: 0.2rem 0.5rem;
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 9999px;
+    color: #71717a;
+  }
+
   /* Influencer Card */
   .influencer-card {
     padding: 0.75rem;
