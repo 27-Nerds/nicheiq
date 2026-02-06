@@ -14,10 +14,7 @@
     Table,
     Lightbulb,
   } from "lucide-svelte";
-  import type {
-    SEOStrategy,
-    SEOAnalytics,
-  } from "$lib/types/report";
+  import type { SEOStrategy, SEOAnalytics } from "$lib/types/report";
   import {
     formatNumber,
     formatScorePercent,
@@ -50,7 +47,9 @@
   let { strategy, analytics }: Props = $props();
 
   // Keyword tab state
-  let activeTab = $state<"tier0" | "tier1" | "tier2" | "tier3" | "tier4" | "all">("all");
+  let activeTab = $state<
+    "tier0" | "tier1" | "tier2" | "tier3" | "tier4" | "all"
+  >("all");
 
   // Keyword search and display state
   let searchQuery = $state("");
@@ -160,7 +159,7 @@
   // Check if high-priority keywords are missing
   const hasLimitedKeywords = $derived(
     (strategy.tier_0_keywords?.length || 0) === 0 ||
-    (strategy.tier_1_keywords?.length || 0) === 0
+      (strategy.tier_1_keywords?.length || 0) === 0,
   );
 
   // View mode for keywords section
@@ -347,288 +346,299 @@
 
   <!-- Expandable: Keywords Table -->
   <div id="seo-keywords-details">
-  <ExpandableSection
-    title="Keyword Details"
-    icon={Hash}
-    count={allKeywords.length}
-    countSuffix="keywords"
-  >
-        <!-- View Toggle -->
-        <div class="view-toggle">
-          <button
-            class="view-toggle-btn"
-            class:active={viewMode === "table"}
-            onclick={() => (viewMode = "table")}
-          >
-            <Table class="toggle-icon" />
-            Table
-          </button>
-          <button
-            class="view-toggle-btn"
-            class:active={viewMode === "insights"}
-            onclick={() => (viewMode = "insights")}
-          >
-            <Lightbulb class="toggle-icon" />
-            Insights
-          </button>
+    <ExpandableSection
+      title="Keyword Details"
+      icon={Hash}
+      count={allKeywords.length}
+      countSuffix="keywords"
+    >
+      <!-- View Toggle -->
+      <div class="view-toggle">
+        <button
+          class="view-toggle-btn"
+          class:active={viewMode === "table"}
+          onclick={() => (viewMode = "table")}
+        >
+          <Table class="toggle-icon" />
+          Table
+        </button>
+        <button
+          class="view-toggle-btn"
+          class:active={viewMode === "insights"}
+          onclick={() => (viewMode = "insights")}
+        >
+          <Lightbulb class="toggle-icon" />
+          Insights
+        </button>
+      </div>
+
+      <!-- Search and Tabs Row -->
+      <div class="keyword-controls">
+        <div class="search-input-wrapper">
+          <Search class="search-icon" />
+          <input
+            type="text"
+            class="search-input"
+            placeholder="Search keywords..."
+            bind:value={searchQuery}
+          />
+          {#if searchQuery}
+            <button class="search-clear" onclick={() => (searchQuery = "")}>
+              &times;
+            </button>
+          {/if}
         </div>
 
-        <!-- Search and Tabs Row -->
-        <div class="keyword-controls">
-          <div class="search-input-wrapper">
-            <Search class="search-icon" />
-            <input
-              type="text"
-              class="search-input"
-              placeholder="Search keywords..."
-              bind:value={searchQuery}
-            />
-            {#if searchQuery}
-              <button class="search-clear" onclick={() => (searchQuery = "")}>
-                &times;
-              </button>
-            {/if}
-          </div>
-
-          <!-- Tab Navigation -->
-          <div class="tabs-container">
-            <button
-              class="tab-button"
-              class:active={activeTab === "all"}
-              onclick={() => (activeTab = "all")}
-              type="button"
+        <!-- Tab Navigation -->
+        <div class="tabs-container">
+          <button
+            class="tab-button"
+            class:active={activeTab === "all"}
+            onclick={() => (activeTab = "all")}
+            type="button"
+          >
+            <span class="tab-label">All</span>
+            <span class="tab-count">{allKeywords.length}</span>
+          </button>
+          <button
+            class="tab-button"
+            class:active={activeTab === "tier0"}
+            onclick={() => (activeTab = "tier0")}
+            type="button"
+          >
+            <span class="tab-label">Premium</span>
+            <span class="tab-count success"
+              >{strategy.tier_0_keywords?.length || 0}</span
             >
-              <span class="tab-label">All</span>
-              <span class="tab-count">{allKeywords.length}</span>
-            </button>
-            <button
-              class="tab-button"
-              class:active={activeTab === "tier0"}
-              onclick={() => (activeTab = "tier0")}
-              type="button"
+          </button>
+          <button
+            class="tab-button"
+            class:active={activeTab === "tier1"}
+            onclick={() => (activeTab = "tier1")}
+            type="button"
+          >
+            <span class="tab-label">Quick Win</span>
+            <span class="tab-count accent"
+              >{strategy.tier_1_keywords?.length || 0}</span
             >
-              <span class="tab-label">Premium</span>
-              <span class="tab-count success"
-                >{strategy.tier_0_keywords?.length || 0}</span
-              >
-            </button>
-            <button
-              class="tab-button"
-              class:active={activeTab === "tier1"}
-              onclick={() => (activeTab = "tier1")}
-              type="button"
+          </button>
+          <button
+            class="tab-button"
+            class:active={activeTab === "tier2"}
+            onclick={() => (activeTab = "tier2")}
+            type="button"
+          >
+            <span class="tab-label">High Value</span>
+            <span class="tab-count"
+              >{strategy.tier_2_keywords?.length || 0}</span
             >
-              <span class="tab-label">Quick Win</span>
-              <span class="tab-count accent"
-                >{strategy.tier_1_keywords?.length || 0}</span
-              >
-            </button>
-            <button
-              class="tab-button"
-              class:active={activeTab === "tier2"}
-              onclick={() => (activeTab = "tier2")}
-              type="button"
-            >
-              <span class="tab-label">High Value</span>
-              <span class="tab-count"
-                >{strategy.tier_2_keywords?.length || 0}</span
-              >
-            </button>
-            <button
-              class="tab-button"
-              class:active={activeTab === "tier3"}
-              onclick={() => (activeTab = "tier3")}
-              type="button"
-            >
-              <span class="tab-label">Geographic</span>
-              <span class="tab-count info">{tier3Count}</span>
-            </button>
-            <button
-              class="tab-button"
-              class:active={activeTab === "tier4"}
-              onclick={() => (activeTab = "tier4")}
-              type="button"
-            >
-              <span class="tab-label">Category</span>
-              <span class="tab-count">{tier4Count}</span>
-            </button>
-          </div>
+          </button>
+          <button
+            class="tab-button"
+            class:active={activeTab === "tier3"}
+            onclick={() => (activeTab = "tier3")}
+            type="button"
+          >
+            <span class="tab-label">Geographic</span>
+            <span class="tab-count info">{tier3Count}</span>
+          </button>
+          <button
+            class="tab-button"
+            class:active={activeTab === "tier4"}
+            onclick={() => (activeTab = "tier4")}
+            type="button"
+          >
+            <span class="tab-label">Category</span>
+            <span class="tab-count">{tier4Count}</span>
+          </button>
         </div>
+      </div>
 
-        <!-- Search results count -->
-        {#if searchQuery}
-          <p class="search-results-count">
-            Found {getFilteredKeywords().length} keywords matching "{searchQuery}"
-          </p>
-        {/if}
+      <!-- Search results count -->
+      {#if searchQuery}
+        <p class="search-results-count">
+          Found {getFilteredKeywords().length} keywords matching "{searchQuery}"
+        </p>
+      {/if}
 
-        {#if viewMode === "table"}
-          <!-- Keywords Table -->
-          <div class="table-container">
-            <table class="keywords-table">
-              <thead>
+      {#if viewMode === "table"}
+        <!-- Keywords Table -->
+        <div class="table-container">
+          <table class="keywords-table">
+            <thead>
+              <tr>
+                <th class="th-keyword">Keyword</th>
+                <th class="th-volume">Volume</th>
+                <th class="th-difficulty">Difficulty</th>
+                <th class="th-competition">Competition</th>
+                <th class="th-tier">Tier</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each getFilteredKeywords().slice(0, displayLimit) as kw}
+                {@const competition = parseCompetition(kw.competition)}
                 <tr>
-                  <th class="th-keyword">Keyword</th>
-                  <th class="th-volume">Volume</th>
-                  <th class="th-difficulty">Difficulty</th>
-                  <th class="th-competition">Competition</th>
-                  <th class="th-tier">Tier</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each getFilteredKeywords().slice(0, displayLimit) as kw}
-                  {@const competition = parseCompetition(kw.competition)}
-                  <tr>
-                    <td class="td-keyword">
-                      <div class="td-keyword-inner">
-                        <Hash class="keyword-icon" />
-                        <span>{kw.keyword}</span>
-                      </div>
-                    </td>
-                    <td class="td-volume">
-                      <span class="volume-value"
-                        >{formatNumber(kw.search_volume)}</span
-                      >
-                      <span class="volume-unit">/mo</span>
-                    </td>
-                    <td class="td-difficulty">
-                      <div class="td-difficulty-inner">
-                        {#if kw.keyword_difficulty != null}
-                          <span
-                            class="difficulty-badge"
-                            style="background: {getSeoDifficultyColor(kw.keyword_difficulty)}20; color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
-                          >
-                            {Math.round(kw.keyword_difficulty)}
-                          </span>
-                          <span
-                            class="difficulty-label"
-                            style="color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
-                          >
-                            {getSeoDifficultyLabel(kw.keyword_difficulty)}
-                          </span>
-                        {:else}
-                          <span class="difficulty-na">—</span>
-                        {/if}
-                      </div>
-                    </td>
-                    <td class="td-competition">
-                      <div class="td-competition-inner">
-                        <div class="competition-bar">
-                          <div
-                            class="competition-fill"
-                            style="width: {competition *
-                              100}%; background: {getDifficultyColor(competition)}"
-                          ></div>
-                        </div>
-                        <span
-                          class="competition-value"
-                          style="color: {getDifficultyColor(competition)}"
-                          >{formatScorePercent(competition)}</span
-                        >
-                      </div>
-                    </td>
-                    <td class="td-tier">
-                      <Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
-                        >{getTierLabel(kw.tier)}</Badge
-                      >
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {:else}
-          <!-- Insights cards view -->
-          <div class="insights-grid">
-            {#each getFilteredKeywords().slice(0, displayLimit) as kw}
-              {@const competition = parseCompetition(kw.competition)}
-              <div class="insight-card">
-                <div class="insight-header">
-                  <span class="insight-keyword">{kw.keyword}</span>
-                  <Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
-                    >{getTierLabel(kw.tier)}</Badge
-                  >
-                </div>
-                <div class="insight-metrics">
-                  <div class="metric">
-                    <span class="metric-value"
+                  <td class="td-keyword">
+                    <div class="td-keyword-inner">
+                      <Hash class="keyword-icon" />
+                      <span>{kw.keyword}</span>
+                    </div>
+                  </td>
+                  <td class="td-volume">
+                    <span class="volume-value"
                       >{formatNumber(kw.search_volume)}</span
                     >
-                    <span class="metric-label">Volume/mo</span>
-                  </div>
-                  {#if kw.keyword_difficulty != null}
-                    <div class="metric">
-                      <span
-                        class="metric-value"
-                        style="color: {getSeoDifficultyColor(kw.keyword_difficulty)}"
-                        >{Math.round(kw.keyword_difficulty)}</span
-                      >
-                      <span class="metric-label">
-                        Difficulty
-                        <span class="difficulty-hint">({getSeoDifficultyLabel(kw.keyword_difficulty)})</span>
-                      </span>
+                    <span class="volume-unit">/mo</span>
+                  </td>
+                  <td class="td-difficulty">
+                    <div class="td-difficulty-inner">
+                      {#if kw.keyword_difficulty != null}
+                        <span
+                          class="difficulty-badge"
+                          style="background: {getSeoDifficultyColor(
+                            kw.keyword_difficulty,
+                          )}20; color: {getSeoDifficultyColor(
+                            kw.keyword_difficulty,
+                          )}"
+                        >
+                          {Math.round(kw.keyword_difficulty)}
+                        </span>
+                        <span
+                          class="difficulty-label"
+                          style="color: {getSeoDifficultyColor(
+                            kw.keyword_difficulty,
+                          )}"
+                        >
+                          {getSeoDifficultyLabel(kw.keyword_difficulty)}
+                        </span>
+                      {:else}
+                        <span class="difficulty-na">—</span>
+                      {/if}
                     </div>
-                  {/if}
+                  </td>
+                  <td class="td-competition">
+                    <div class="td-competition-inner">
+                      <div class="competition-bar">
+                        <div
+                          class="competition-fill"
+                          style="width: {competition *
+                            100}%; background: {getDifficultyColor(
+                            competition,
+                          )}"
+                        ></div>
+                      </div>
+                      <span
+                        class="competition-value"
+                        style="color: {getDifficultyColor(competition)}"
+                        >{formatScorePercent(competition)}</span
+                      >
+                    </div>
+                  </td>
+                  <td class="td-tier">
+                    <Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
+                      >{getTierLabel(kw.tier)}</Badge
+                    >
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      {:else}
+        <!-- Insights cards view -->
+        <div class="insights-grid">
+          {#each getFilteredKeywords().slice(0, displayLimit) as kw}
+            {@const competition = parseCompetition(kw.competition)}
+            <div class="insight-card">
+              <div class="insight-header">
+                <span class="insight-keyword">{kw.keyword}</span>
+                <Badge variant={getKeywordTierVariant(kw.tier)} size="sm"
+                  >{getTierLabel(kw.tier)}</Badge
+                >
+              </div>
+              <div class="insight-metrics">
+                <div class="metric">
+                  <span class="metric-value"
+                    >{formatNumber(kw.search_volume)}</span
+                  >
+                  <span class="metric-label">Volume/mo</span>
+                </div>
+                {#if kw.keyword_difficulty != null}
                   <div class="metric">
                     <span
                       class="metric-value"
-                      style="color: {getDifficultyColor(competition)}"
-                      >{formatScorePercent(competition)}</span
+                      style="color: {getSeoDifficultyColor(
+                        kw.keyword_difficulty,
+                      )}">{Math.round(kw.keyword_difficulty)}</span
                     >
-                    <span class="metric-label">Competition</span>
+                    <span class="metric-label">
+                      Difficulty
+                      <span class="difficulty-hint"
+                        >({getSeoDifficultyLabel(kw.keyword_difficulty)})</span
+                      >
+                    </span>
                   </div>
+                {/if}
+                <div class="metric">
+                  <span
+                    class="metric-value"
+                    style="color: {getDifficultyColor(competition)}"
+                    >{formatScorePercent(competition)}</span
+                  >
+                  <span class="metric-label">Competition</span>
                 </div>
-                {#if kw.intent}
-                  <div class="insight-intent">
-                    <Badge variant={getIntentVariant(kw.intent)} size="sm"
-                      >{kw.intent}</Badge
-                    >
-                    <span class="insight-label">Intent</span>
-                  </div>
-                {/if}
-                {#if kw.strategy}
-                  <div class="insight-strategy">
-                    <span class="insight-label">Strategy</span>
-                    <p class="insight-text">{kw.strategy}</p>
-                  </div>
-                {/if}
-                {#if kw.tier_rationale}
-                  <div class="insight-rationale">
-                    <span class="insight-label">Why this tier?</span>
-                    <p class="insight-text muted">{kw.tier_rationale}</p>
-                  </div>
-                {/if}
               </div>
-            {/each}
-          </div>
-        {/if}
+              {#if kw.intent}
+                <div class="insight-intent">
+                  <Badge variant={getIntentVariant(kw.intent)} size="sm"
+                    >{kw.intent}</Badge
+                  >
+                  <span class="insight-label">Intent</span>
+                </div>
+              {/if}
+              {#if kw.strategy}
+                <div class="insight-strategy">
+                  <span class="insight-label">Strategy</span>
+                  <p class="insight-text">{kw.strategy}</p>
+                </div>
+              {/if}
+              {#if kw.tier_rationale}
+                <div class="insight-rationale">
+                  <span class="insight-label">Why this tier?</span>
+                  <p class="insight-text muted">{kw.tier_rationale}</p>
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
 
-        <!-- Show More / Show Less -->
-        {#if getFilteredKeywords().length > INITIAL_KEYWORD_LIMIT}
-          {@const filteredCount = getFilteredKeywords().length}
-          <div class="table-footer-actions">
-            <p class="table-footer">
-              Showing {Math.min(displayLimit, filteredCount)} of {filteredCount}
-              keywords
-            </p>
-            {#if !showAllKeywords}
-              <button
-                class="show-more-btn"
-                onclick={() => (showAllKeywords = true)}
-              >
-                Show More Keywords
-              </button>
-            {:else}
-              <button
-                class="show-more-btn"
-                onclick={() => (showAllKeywords = false)}
-              >
-                Show Less
-              </button>
-            {/if}
-          </div>
-        {/if}
-  </ExpandableSection>
+      <!-- Show More / Show Less -->
+      {#if getFilteredKeywords().length > INITIAL_KEYWORD_LIMIT}
+        {@const filteredCount = getFilteredKeywords().length}
+        <div class="table-footer-actions">
+          <p class="table-footer">
+            Showing {Math.min(displayLimit, filteredCount)} of {filteredCount}
+            keywords
+          </p>
+          {#if !showAllKeywords}
+            <button
+              class="show-more-btn"
+              onclick={() => (showAllKeywords = true)}
+            >
+              Show More Keywords
+            </button>
+          {:else}
+            <button
+              class="show-more-btn"
+              onclick={() => (showAllKeywords = false)}
+            >
+              Show Less
+            </button>
+          {/if}
+        </div>
+      {/if}
+    </ExpandableSection>
   </div>
 
   <!-- Expandable: Topic Clusters -->
@@ -656,9 +666,7 @@
                 <span class="cluster-keyword">{keyword}</span>
               {/each}
               {#if clusterKeywords.length > 5}
-                <span class="cluster-more"
-                  >+{clusterKeywords.length - 5}</span
-                >
+                <span class="cluster-more">+{clusterKeywords.length - 5}</span>
               {/if}
             </div>
           </div>
@@ -705,9 +713,7 @@
   {#if strategy.technical_seo_recommendations}
     <ExpandableSection title="Technical SEO Recommendations" icon={Code}>
       <div class="markdown-content technical-content timeline-styled">
-        {@html renderTechnicalContent(
-          strategy.technical_seo_recommendations,
-        )}
+        {@html renderTechnicalContent(strategy.technical_seo_recommendations)}
       </div>
     </ExpandableSection>
   {/if}

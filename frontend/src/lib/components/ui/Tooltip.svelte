@@ -1,206 +1,211 @@
 <script lang="ts">
-	import { HelpCircle } from 'lucide-svelte';
-	import type { Snippet } from 'svelte';
+  import { HelpCircle } from "lucide-svelte";
+  import type { Snippet } from "svelte";
 
-	interface Props {
-		content: string;
-		position?: 'top' | 'bottom' | 'left' | 'right';
-		children?: Snippet;
-		class?: string;
-	}
+  interface Props {
+    content: string;
+    position?: "top" | "bottom" | "left" | "right";
+    children?: Snippet;
+    class?: string;
+  }
 
-	let { content, position = 'top', children, class: className = '' }: Props = $props();
+  let {
+    content,
+    position = "top",
+    children,
+    class: className = "",
+  }: Props = $props();
 
-	let isVisible = $state(false);
-	let triggerRef: HTMLElement | null = $state(null);
+  let isVisible = $state(false);
+  let triggerRef: HTMLElement | null = $state(null);
 
-	let portalEl: HTMLDivElement | null = null;
+  let portalEl: HTMLDivElement | null = null;
 
-	function show() {
-		isVisible = true;
-	}
+  function show() {
+    isVisible = true;
+  }
 
-	function hide() {
-		isVisible = false;
-	}
+  function hide() {
+    isVisible = false;
+  }
 
-	function positionPortal() {
-		if (!triggerRef || !portalEl) return;
-		const rect = triggerRef.getBoundingClientRect();
-		const tipRect = portalEl.getBoundingClientRect();
+  function positionPortal() {
+    if (!triggerRef || !portalEl) return;
+    const rect = triggerRef.getBoundingClientRect();
+    const tipRect = portalEl.getBoundingClientRect();
 
-		let top = 0;
-		let left = 0;
+    let top = 0;
+    let left = 0;
 
-		switch (position) {
-			case 'top':
-				top = rect.top - tipRect.height - 8;
-				left = rect.left + rect.width / 2 - tipRect.width / 2;
-				break;
-			case 'bottom':
-				top = rect.bottom + 8;
-				left = rect.left + rect.width / 2 - tipRect.width / 2;
-				break;
-			case 'left':
-				top = rect.top + rect.height / 2 - tipRect.height / 2;
-				left = rect.left - tipRect.width - 8;
-				break;
-			case 'right':
-				top = rect.top + rect.height / 2 - tipRect.height / 2;
-				left = rect.right + 8;
-				break;
-		}
+    switch (position) {
+      case "top":
+        top = rect.top - tipRect.height - 8;
+        left = rect.left + rect.width / 2 - tipRect.width / 2;
+        break;
+      case "bottom":
+        top = rect.bottom + 8;
+        left = rect.left + rect.width / 2 - tipRect.width / 2;
+        break;
+      case "left":
+        top = rect.top + rect.height / 2 - tipRect.height / 2;
+        left = rect.left - tipRect.width - 8;
+        break;
+      case "right":
+        top = rect.top + rect.height / 2 - tipRect.height / 2;
+        left = rect.right + 8;
+        break;
+    }
 
-		// Clamp to viewport
-		left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
-		top = Math.max(8, Math.min(top, window.innerHeight - tipRect.height - 8));
+    // Clamp to viewport
+    left = Math.max(8, Math.min(left, window.innerWidth - tipRect.width - 8));
+    top = Math.max(8, Math.min(top, window.innerHeight - tipRect.height - 8));
 
-		portalEl.style.top = `${top}px`;
-		portalEl.style.left = `${left}px`;
-	}
+    portalEl.style.top = `${top}px`;
+    portalEl.style.left = `${left}px`;
+  }
 
-	$effect(() => {
-		if (isVisible && triggerRef) {
-			const el = document.createElement('div');
-			el.className = `tooltip-portal tooltip-portal-${position}`;
-			el.setAttribute('role', 'tooltip');
+  $effect(() => {
+    if (isVisible && triggerRef) {
+      const el = document.createElement("div");
+      el.className = `tooltip-portal tooltip-portal-${position}`;
+      el.setAttribute("role", "tooltip");
 
-			const contentDiv = document.createElement('div');
-			contentDiv.className = 'tooltip-portal-content';
-			contentDiv.textContent = content;
-			el.appendChild(contentDiv);
+      const contentDiv = document.createElement("div");
+      contentDiv.className = "tooltip-portal-content";
+      contentDiv.textContent = content;
+      el.appendChild(contentDiv);
 
-			const arrowDiv = document.createElement('div');
-			arrowDiv.className = `tooltip-portal-arrow tooltip-portal-arrow-${position}`;
-			el.appendChild(arrowDiv);
+      const arrowDiv = document.createElement("div");
+      arrowDiv.className = `tooltip-portal-arrow tooltip-portal-arrow-${position}`;
+      el.appendChild(arrowDiv);
 
-			document.body.appendChild(el);
-			portalEl = el;
+      document.body.appendChild(el);
+      portalEl = el;
 
-			// Position after the element is in the DOM
-			requestAnimationFrame(() => {
-				positionPortal();
-				el.classList.add('tooltip-portal-visible');
-			});
+      // Position after the element is in the DOM
+      requestAnimationFrame(() => {
+        positionPortal();
+        el.classList.add("tooltip-portal-visible");
+      });
 
-			return () => {
-				el.remove();
-				portalEl = null;
-			};
-		}
-	});
+      return () => {
+        el.remove();
+        portalEl = null;
+      };
+    }
+  });
 </script>
 
 <span
-	class="tooltip-wrapper {className}"
-	bind:this={triggerRef}
-	onmouseenter={show}
-	onmouseleave={hide}
-	onfocus={show}
-	onblur={hide}
-	role="button"
-	tabindex="0"
+  class="tooltip-wrapper {className}"
+  bind:this={triggerRef}
+  onmouseenter={show}
+  onmouseleave={hide}
+  onfocus={show}
+  onblur={hide}
+  role="button"
+  tabindex="0"
 >
-	{#if children}
-		{@render children()}
-	{:else}
-		<span class="tooltip-trigger" aria-label="More information">
-			<HelpCircle class="w-3.5 h-3.5" />
-		</span>
-	{/if}
+  {#if children}
+    {@render children()}
+  {:else}
+    <span class="tooltip-trigger" aria-label="More information">
+      <HelpCircle class="w-3.5 h-3.5" />
+    </span>
+  {/if}
 </span>
 
 <style>
-	.tooltip-wrapper {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-	}
+  .tooltip-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+  }
 
-	.tooltip-trigger {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 18px;
-		height: 18px;
-		color: var(--color-text-muted);
-		border: 1px solid var(--color-border);
-		border-radius: 50%;
-		cursor: help;
-		transition: all 0.2s ease;
-	}
+  .tooltip-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 50%;
+    cursor: help;
+    transition: all 0.2s ease;
+  }
 
-	.tooltip-trigger:hover {
-		color: var(--color-accent);
-		border-color: var(--color-accent);
-		background: rgba(229, 90, 40, 0.1);
-	}
+  .tooltip-trigger:hover {
+    color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: rgba(229, 90, 40, 0.1);
+  }
 
-	/* Portal tooltip styles (global because they're appended to body) */
-	:global(.tooltip-portal) {
-		position: fixed;
-		z-index: 10000;
-		pointer-events: none;
-		opacity: 0;
-		transition: opacity 0.15s ease-out;
-	}
+  /* Portal tooltip styles (global because they're appended to body) */
+  :global(.tooltip-portal) {
+    position: fixed;
+    z-index: 10000;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease-out;
+  }
 
-	:global(.tooltip-portal-visible) {
-		opacity: 1;
-	}
+  :global(.tooltip-portal-visible) {
+    opacity: 1;
+  }
 
-	:global(.tooltip-portal-content) {
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border-emphasis);
-		border-radius: 8px;
-		padding: 0.75rem 1rem;
-		box-shadow: var(--shadow-lg);
-		max-width: 280px;
-		font-family: var(--font-body);
-		font-size: 0.8125rem;
-		line-height: 1.5;
-		color: var(--color-text-secondary);
-		white-space: pre-line;
-	}
+  :global(.tooltip-portal-content) {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-emphasis);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    box-shadow: var(--shadow-lg);
+    max-width: 280px;
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+    white-space: pre-line;
+  }
 
-	:global(.tooltip-portal-arrow) {
-		position: absolute;
-		width: 8px;
-		height: 8px;
-		background: var(--color-bg-elevated);
-		border: 1px solid var(--color-border-emphasis);
-		transform: rotate(45deg);
-	}
+  :global(.tooltip-portal-arrow) {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-emphasis);
+    transform: rotate(45deg);
+  }
 
-	:global(.tooltip-portal-arrow-top) {
-		bottom: -5px;
-		left: 50%;
-		margin-left: -4px;
-		border-top: none;
-		border-left: none;
-	}
+  :global(.tooltip-portal-arrow-top) {
+    bottom: -5px;
+    left: 50%;
+    margin-left: -4px;
+    border-top: none;
+    border-left: none;
+  }
 
-	:global(.tooltip-portal-arrow-bottom) {
-		top: -5px;
-		left: 50%;
-		margin-left: -4px;
-		border-bottom: none;
-		border-right: none;
-	}
+  :global(.tooltip-portal-arrow-bottom) {
+    top: -5px;
+    left: 50%;
+    margin-left: -4px;
+    border-bottom: none;
+    border-right: none;
+  }
 
-	:global(.tooltip-portal-arrow-left) {
-		right: -5px;
-		top: 50%;
-		margin-top: -4px;
-		border-top: none;
-		border-right: none;
-	}
+  :global(.tooltip-portal-arrow-left) {
+    right: -5px;
+    top: 50%;
+    margin-top: -4px;
+    border-top: none;
+    border-right: none;
+  }
 
-	:global(.tooltip-portal-arrow-right) {
-		left: -5px;
-		top: 50%;
-		margin-top: -4px;
-		border-bottom: none;
-		border-left: none;
-	}
+  :global(.tooltip-portal-arrow-right) {
+    left: -5px;
+    top: 50%;
+    margin-top: -4px;
+    border-bottom: none;
+    border-left: none;
+  }
 </style>

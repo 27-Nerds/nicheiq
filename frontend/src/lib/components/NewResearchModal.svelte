@@ -1,25 +1,35 @@
 <script lang="ts">
-  import { goto, invalidateAll } from '$app/navigation';
-  import { page } from '$app/stores';
-  import { X, ArrowRight, Loader2, AlertCircle, Coins, Sparkles, Wand2 } from 'lucide-svelte';
+  import { goto, invalidateAll } from "$app/navigation";
+  import { page } from "$app/stores";
+  import {
+    X,
+    ArrowRight,
+    Loader2,
+    AlertCircle,
+    Coins,
+    Sparkles,
+    Wand2,
+  } from "lucide-svelte";
 
   const MAX_NICHE_LENGTH = 500;
 
   const PLACEHOLDER_EXAMPLES = [
-    'Therapists who want to launch an online practice',
-    'Freelance developers overwhelmed by admin work',
-    'Solo entrepreneurs who want to start a digital agency',
-    'Remote workers struggling with productivity and focus',
-    'Parents looking for reliable after-school activities',
-    'Small gym owners competing with big fitness chains',
-    'Independent recruiters trying to scale without a team',
-    'First-time managers learning to lead a team',
-    'Real estate agents who want to automate lead gen',
-    'Pet sitters looking to grow beyond word-of-mouth',
+    "Therapists who want to launch an online practice",
+    "Freelance developers overwhelmed by admin work",
+    "Solo entrepreneurs who want to start a digital agency",
+    "Remote workers struggling with productivity and focus",
+    "Parents looking for reliable after-school activities",
+    "Small gym owners competing with big fitness chains",
+    "Independent recruiters trying to scale without a team",
+    "First-time managers learning to lead a team",
+    "Real estate agents who want to automate lead gen",
+    "Pet sitters looking to grow beyond word-of-mouth",
   ];
 
   function randomPlaceholder() {
-    return PLACEHOLDER_EXAMPLES[Math.floor(Math.random() * PLACEHOLDER_EXAMPLES.length)];
+    return PLACEHOLDER_EXAMPLES[
+      Math.floor(Math.random() * PLACEHOLDER_EXAMPLES.length)
+    ];
   }
 
   let { open = $bindable(false) } = $props();
@@ -33,27 +43,29 @@
   });
 
   // Get credit balance from page data
-  const creditBalance = $derived($page.data.creditBalance as number ?? 0);
+  const creditBalance = $derived(($page.data.creditBalance as number) ?? 0);
   const hasCredits = $derived(creditBalance > 0);
 
   const PROJECT_TYPES = [
-    { value: 'saas', label: 'SaaS' },
-    { value: 'directory', label: 'Directory' },
-    { value: 'aggregator', label: 'Aggregator' },
-    { value: 'comparison-tool', label: 'Comparison Tool' },
-    { value: 'marketplace', label: 'Marketplace' },
+    { value: "saas", label: "SaaS" },
+    { value: "directory", label: "Directory" },
+    { value: "aggregator", label: "Aggregator" },
+    { value: "comparison-tool", label: "Comparison Tool" },
+    { value: "marketplace", label: "Marketplace" },
   ] as const;
 
-  let niche = $state('');
-  let selectedProjectTypes = $state<string[]>(PROJECT_TYPES.map(t => t.value));
+  let niche = $state("");
+  let selectedProjectTypes = $state<string[]>(
+    PROJECT_TYPES.map((t) => t.value),
+  );
   let generateLandingPage = $state(false);
   let loading = $state(false);
-  let error = $state('');
+  let error = $state("");
   let isInsufficientCredits = $state(false);
 
   function toggleProjectType(value: string) {
     if (selectedProjectTypes.includes(value)) {
-      selectedProjectTypes = selectedProjectTypes.filter(t => t !== value);
+      selectedProjectTypes = selectedProjectTypes.filter((t) => t !== value);
     } else {
       selectedProjectTypes = [...selectedProjectTypes, value];
     }
@@ -61,24 +73,26 @@
 
   // Suggestion state
   let suggestLoading = $state(false);
-  let suggestMode = $state<'lucky' | 'complete' | null>(null);
-  let suggestError = $state('');
+  let suggestMode = $state<"lucky" | "complete" | null>(null);
+  let suggestError = $state("");
 
   async function handleSubmit(e: Event) {
     e.preventDefault();
     if (!niche.trim() || loading) return;
 
     loading = true;
-    error = '';
+    error = "";
     isInsufficientCredits = false;
 
     try {
-      const res = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           niche: niche.trim(),
-          ...(selectedProjectTypes.length > 0 && { allowedProjectTypes: selectedProjectTypes }),
+          ...(selectedProjectTypes.length > 0 && {
+            allowedProjectTypes: selectedProjectTypes,
+          }),
           generateLandingPage,
         }),
       });
@@ -87,26 +101,26 @@
 
       if (!res.ok) {
         // Handle insufficient credits error
-        if (res.status === 402 && data.code === 'INSUFFICIENT_CREDITS') {
+        if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
           isInsufficientCredits = true;
-          error = 'You need credits to start a new research.';
+          error = "You need credits to start a new research.";
           // Refresh page data to update credit balance
           await invalidateAll();
           return;
         }
         const detail = data.details?.[0]?.message;
-        throw new Error(detail || data.error || 'Failed to start research');
+        throw new Error(detail || data.error || "Failed to start research");
       }
 
       open = false;
-      niche = '';
-      selectedProjectTypes = PROJECT_TYPES.map(t => t.value);
+      niche = "";
+      selectedProjectTypes = PROJECT_TYPES.map((t) => t.value);
       generateLandingPage = false;
       // Refresh to update credit balance in header
       await invalidateAll();
       goto(`/jobs/${data.id}`);
     } catch (err) {
-      error = err instanceof Error ? err.message : 'Something went wrong';
+      error = err instanceof Error ? err.message : "Something went wrong";
     } finally {
       loading = false;
     }
@@ -119,28 +133,29 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape' && open) {
+    if (e.key === "Escape" && open) {
       open = false;
     }
   }
 
   async function handleFeelingLucky() {
     suggestLoading = true;
-    suggestMode = 'lucky';
-    suggestError = '';
+    suggestMode = "lucky";
+    suggestError = "";
 
     try {
-      const res = await fetch('/api/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'feeling_lucky', count: 1 }),
+      const res = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "feeling_lucky", count: 1 }),
       });
       const data = await res.json();
       if (!res.ok) {
         suggestError =
           res.status === 429
             ? `Too many requests. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} minutes.`
-            : data.error || 'Could not generate a suggestion. Please try again.';
+            : data.error ||
+              "Could not generate a suggestion. Please try again.";
         return;
       }
       // Directly set textarea value
@@ -148,7 +163,7 @@
         niche = data.suggestions[0].niche;
       }
     } catch {
-      suggestError = 'Connection error. Please try again.';
+      suggestError = "Connection error. Please try again.";
     } finally {
       suggestLoading = false;
       suggestMode = null;
@@ -158,21 +173,25 @@
   async function handleExpandThis() {
     if (!niche.trim()) return;
     suggestLoading = true;
-    suggestMode = 'complete';
-    suggestError = '';
+    suggestMode = "complete";
+    suggestError = "";
 
     try {
-      const res = await fetch('/api/suggest', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'auto_complete', partial_input: niche.trim(), count: 1 }),
+      const res = await fetch("/api/suggest", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "auto_complete",
+          partial_input: niche.trim(),
+          count: 1,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
         suggestError =
           res.status === 429
             ? `Too many requests. Try again in ${Math.ceil((data.retryAfter || 3600) / 60)} minutes.`
-            : data.error || 'Could not refine your input. Please try again.';
+            : data.error || "Could not refine your input. Please try again.";
         return;
       }
       // Directly replace textarea value
@@ -180,7 +199,7 @@
         niche = data.suggestions[0].niche;
       }
     } catch {
-      suggestError = 'Connection error. Please try again.';
+      suggestError = "Connection error. Please try again.";
     } finally {
       suggestLoading = false;
       suggestMode = null;
@@ -201,10 +220,14 @@
     tabindex="-1"
   >
     <!-- Modal -->
-    <div class="bg-bg-surface border border-border rounded-xl shadow-2xl w-full max-w-lg">
+    <div
+      class="bg-bg-surface border border-border rounded-xl shadow-2xl w-full max-w-lg"
+    >
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b border-border">
-        <h2 class="text-lg font-semibold text-text-primary">Start New Research</h2>
+        <h2 class="text-lg font-semibold text-text-primary">
+          Start New Research
+        </h2>
         <button
           onclick={() => (open = false)}
           aria-label="Close modal"
@@ -217,25 +240,44 @@
       <!-- Body -->
       <form onsubmit={handleSubmit} class="p-4 space-y-4">
         <!-- Credit Balance Indicator -->
-        <div class="flex items-center justify-between p-3 rounded-lg {hasCredits ? 'bg-accent/5 border border-accent/20' : 'bg-warning/5 border border-warning/20'}">
+        <div
+          class="flex items-center justify-between p-3 rounded-lg {hasCredits
+            ? 'bg-accent/5 border border-accent/20'
+            : 'bg-warning/5 border border-warning/20'}"
+        >
           <div class="flex items-center gap-2">
-            <Coins class="w-4 h-4 {hasCredits ? 'text-accent' : 'text-warning'}" />
-            <span class="text-sm font-medium {hasCredits ? 'text-text-primary' : 'text-warning'}">
-              {creditBalance} {creditBalance === 1 ? 'credit' : 'credits'} available
+            <Coins
+              class="w-4 h-4 {hasCredits ? 'text-accent' : 'text-warning'}"
+            />
+            <span
+              class="text-sm font-medium {hasCredits
+                ? 'text-text-primary'
+                : 'text-warning'}"
+            >
+              {creditBalance}
+              {creditBalance === 1 ? "credit" : "credits"} available
             </span>
           </div>
           <span class="text-xs text-text-muted">1 credit per research</span>
         </div>
 
         {#if !hasCredits}
-          <div class="flex items-start gap-3 p-3 bg-warning/5 border border-warning/20 rounded-lg">
+          <div
+            class="flex items-start gap-3 p-3 bg-warning/5 border border-warning/20 rounded-lg"
+          >
             <AlertCircle class="w-5 h-5 text-warning shrink-0 mt-0.5" />
             <div>
-              <p class="text-sm font-medium text-text-primary">No credits available</p>
+              <p class="text-sm font-medium text-text-primary">
+                No credits available
+              </p>
               <p class="text-xs text-text-muted mt-1">
                 You need at least 1 credit to start a new research.
               </p>
-              <a href="/billing" onclick={() => open = false} class="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-2">
+              <a
+                href="/billing"
+                onclick={() => (open = false)}
+                class="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-2"
+              >
                 Get credits
                 <ArrowRight class="w-3 h-3" />
               </a>
@@ -244,7 +286,10 @@
         {:else}
           <!-- Section 1: Research Input -->
           <div>
-            <label for="niche" class="block text-sm font-medium text-text-primary mb-2">
+            <label
+              for="niche"
+              class="block text-sm font-medium text-text-primary mb-2"
+            >
               What market should we research?
             </label>
             <textarea
@@ -258,9 +303,14 @@
             ></textarea>
             <div class="flex items-center justify-between mt-1.5">
               <p class="text-xs text-text-muted">
-                Describe one niche or audience in a sentence or two. Don't worry about perfect phrasing — we'll refine it if needed.
+                Describe one niche or audience in a sentence or two. Don't worry
+                about perfect phrasing — we'll refine it if needed.
               </p>
-              <span class="text-xs {niche.length > MAX_NICHE_LENGTH * 0.9 ? 'text-warning' : 'text-text-muted'}">
+              <span
+                class="text-xs {niche.length > MAX_NICHE_LENGTH * 0.9
+                  ? 'text-warning'
+                  : 'text-text-muted'}"
+              >
                 {niche.length}/{MAX_NICHE_LENGTH}
               </span>
             </div>
@@ -276,7 +326,7 @@
                        transition-colors flex items-center gap-1.5
                        disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {#if suggestLoading && suggestMode === 'lucky'}
+                {#if suggestLoading && suggestMode === "lucky"}
                   <Loader2 class="w-3.5 h-3.5 animate-spin" />
                   Generating...
                 {:else}
@@ -294,7 +344,7 @@
                        transition-colors flex items-center gap-1.5
                        disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {#if suggestLoading && suggestMode === 'complete'}
+                {#if suggestLoading && suggestMode === "complete"}
                   <Loader2 class="w-3.5 h-3.5 animate-spin" />
                   Refining...
                 {:else}
@@ -317,7 +367,9 @@
                 Project types to focus on
               </span>
               <span class="text-xs text-text-muted">
-                {selectedProjectTypes.length === PROJECT_TYPES.length ? 'All types' : `${selectedProjectTypes.length} of ${PROJECT_TYPES.length}`}
+                {selectedProjectTypes.length === PROJECT_TYPES.length
+                  ? "All types"
+                  : `${selectedProjectTypes.length} of ${PROJECT_TYPES.length}`}
               </span>
             </div>
             <div class="flex flex-wrap gap-1.5">
@@ -328,8 +380,8 @@
                   disabled={loading}
                   class="text-xs px-3 py-1.5 rounded-md border transition-colors
                          {selectedProjectTypes.includes(type.value)
-                           ? 'bg-accent/10 border-accent/40 text-accent font-medium'
-                           : 'bg-bg-surface border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
+                    ? 'bg-accent/10 border-accent/40 text-accent font-medium'
+                    : 'bg-bg-surface border-border text-text-muted hover:border-border-emphasis hover:text-text-secondary'}
                          disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {type.label}
@@ -340,10 +392,17 @@
 
           <!-- Section 3: Landing Page Option -->
           <div class="pt-3 border-t border-border/50">
-            <label class="flex items-center justify-between p-3 rounded-lg bg-bg-elevated/50 border border-border/50 cursor-pointer hover:bg-bg-elevated transition-colors">
+            <label
+              class="flex items-center justify-between p-3 rounded-lg bg-bg-elevated/50 border border-border/50 cursor-pointer hover:bg-bg-elevated transition-colors"
+            >
               <div>
-                <span class="text-sm font-medium text-text-primary">Generate landing page</span>
-                <p class="text-xs text-text-muted">Creates a ready-to-use landing page for your top solution. You can generate it later too.</p>
+                <span class="text-sm font-medium text-text-primary"
+                  >Generate landing page</span
+                >
+                <p class="text-xs text-text-muted">
+                  Creates a ready-to-use landing page for your top solution. You
+                  can generate it later too.
+                </p>
               </div>
               <input
                 type="checkbox"
@@ -356,11 +415,17 @@
         {/if}
 
         {#if error}
-          <div class="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm">
+          <div
+            class="flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm"
+          >
             <AlertCircle class="w-4 h-4 shrink-0" />
             <span>{error}</span>
             {#if isInsufficientCredits}
-              <a href="/billing" onclick={() => open = false} class="ml-auto text-accent hover:underline text-xs">
+              <a
+                href="/billing"
+                onclick={() => (open = false)}
+                class="ml-auto text-accent hover:underline text-xs"
+              >
                 Get credits
               </a>
             {/if}
@@ -369,7 +434,8 @@
 
         {#if hasCredits}
           <p class="text-xs text-text-muted text-center">
-            Research takes ~45 min. We'll dig deep and email you when it's ready.
+            Research takes ~45 min. We'll dig deep and email you when it's
+            ready.
           </p>
           <button
             type="submit"
@@ -387,7 +453,7 @@
         {:else}
           <a
             href="/billing"
-            onclick={() => open = false}
+            onclick={() => (open = false)}
             class="btn-primary w-full justify-center"
           >
             <Coins class="w-4 h-4" />

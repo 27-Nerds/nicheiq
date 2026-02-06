@@ -1,31 +1,43 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
+  import type { Snippet } from "svelte";
 
-	type BadgeVariant = 'default' | 'success' | 'error' | 'warning' | 'muted' | 'info' | 'accent';
-	type BadgeSize = 'sm' | 'md';
+  type BadgeVariant =
+    | "default"
+    | "success"
+    | "error"
+    | "warning"
+    | "muted"
+    | "info"
+    | "accent";
+  type BadgeSize = "sm" | "md";
 
-	interface Props {
-		variant?: BadgeVariant;
-		size?: BadgeSize;
-		class?: string;
-		children: Snippet;
-	}
+  interface Props {
+    variant?: BadgeVariant;
+    size?: BadgeSize;
+    class?: string;
+    children: Snippet;
+  }
 
-	let { variant = 'default', size = 'md', class: className = '', children }: Props = $props();
+  let {
+    variant = "default",
+    size = "md",
+    class: className = "",
+    children,
+  }: Props = $props();
 
-	const variantClasses: Record<BadgeVariant, string> = {
-		default: 'badge',
-		success: 'badge badge-success',
-		error: 'badge badge-error',
-		warning: 'badge badge-warning',
-		muted: 'badge badge-muted',
-		info: 'badge badge-info',
-		accent: 'badge badge-accent'
-	};
+  const variantClasses: Record<BadgeVariant, string> = {
+    default: "badge",
+    success: "badge badge-success",
+    error: "badge badge-error",
+    warning: "badge badge-warning",
+    muted: "badge badge-muted",
+    info: "badge badge-info",
+    accent: "badge badge-accent",
+  };
 
-	const sizeClass = $derived(size === 'sm' ? 'badge-sm' : '');
+  const sizeClass = $derived(size === "sm" ? "badge-sm" : "");
 </script>
 
 <span class="{variantClasses[variant]} {sizeClass} {className}">
-	{@render children()}
+  {@render children()}
 </span>

@@ -28,7 +28,11 @@
     SelectionCriteriaScore,
     BudgetEstimate,
   } from "$lib/types/report";
-  import { renderMarkdown, parseRationaleMetrics, formatScoreOn10 } from "$lib/utils/format";
+  import {
+    renderMarkdown,
+    parseRationaleMetrics,
+    formatScoreOn10,
+  } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import SectionHeader from "$lib/components/ui/SectionHeader.svelte";
@@ -48,7 +52,13 @@
     budgetEstimate?: BudgetEstimate | string | null;
   }
 
-  let { solution, dashboard, selectionRationale, scores, budgetEstimate }: Props = $props();
+  let {
+    solution,
+    dashboard,
+    selectionRationale,
+    scores,
+    budgetEstimate,
+  }: Props = $props();
 
   const solutionName = $derived(solution.solution_name || "Solution");
   const snapshot = $derived(dashboard.recommended_solution_snapshot);
@@ -82,56 +92,66 @@
   };
 
   // Format budget range for display (e.g., "$500-$2K")
-  const formatBudgetRange = (budget: BudgetEstimate | string | null | undefined): string | null => {
-    if (!budget || typeof budget === 'string') return null;
+  const formatBudgetRange = (
+    budget: BudgetEstimate | string | null | undefined,
+  ): string | null => {
+    if (!budget || typeof budget === "string") return null;
     const formatK = (n: number) =>
-      n >= 1000 ? `$${(n/1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `$${n}`;
+      n >= 1000 ? `$${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}K` : `$${n}`;
     return `${formatK(budget.monthly_budget_min)}-${formatK(budget.monthly_budget_max)}`;
   };
 
   const budgetDisplay = $derived(formatBudgetRange(budgetEstimate));
 
   // Get semantic variant for Selection Rationale metrics based on value
-  const getMetricCardVariant = (metric: { label: string; value: string }): 'default' | 'success' | 'warning' | 'accent' => {
+  const getMetricCardVariant = (metric: {
+    label: string;
+    value: string;
+  }): "default" | "success" | "warning" | "accent" => {
     const label = metric.label.toLowerCase();
     const value = metric.value;
 
     // Score-based metrics (e.g., "8.5/10" or "0.85")
-    if (label.includes('score') || label.includes('fit')) {
+    if (label.includes("score") || label.includes("fit")) {
       const numMatch = value.match(/(\d+\.?\d*)/);
       if (numMatch) {
         const num = parseFloat(numMatch[1]);
-        if (num >= 8 || (num >= 0.8 && num <= 1)) return 'success';
-        if (num >= 6 || (num >= 0.6 && num < 0.8)) return 'accent';
-        return 'warning';
+        if (num >= 8 || (num >= 0.8 && num <= 1)) return "success";
+        if (num >= 6 || (num >= 0.6 && num < 0.8)) return "accent";
+        return "warning";
       }
     }
 
     // Percentage-based metrics
-    if (value.includes('%')) {
+    if (value.includes("%")) {
       const numMatch = value.match(/(\d+)/);
       if (numMatch) {
         const num = parseInt(numMatch[1]);
-        if (num >= 70) return 'success';
-        if (num >= 40) return 'accent';
-        return 'warning';
+        if (num >= 70) return "success";
+        if (num >= 40) return "accent";
+        return "warning";
       }
     }
 
-    return 'accent';
+    return "accent";
   };
 
   // Get icon component for metric based on label pattern
   const getMetricIcon = (label: string): typeof Globe => {
     const lowerLabel = label.toLowerCase();
-    if (lowerLabel.includes('seo')) return Globe;
-    if (lowerLabel.includes('search')) return Search;
-    if (lowerLabel.includes('tech') || lowerLabel.includes('feasibility')) return Cpu;
-    if (lowerLabel.includes('settings') || lowerLabel.includes('config')) return Settings;
-    if (lowerLabel.includes('dev') || lowerLabel.includes('solo')) return Code;
-    if (lowerLabel.includes('user') || lowerLabel.includes('audience')) return User;
-    if (lowerLabel.includes('market') || lowerLabel.includes('fit')) return Target;
-    if (lowerLabel.includes('growth') || lowerLabel.includes('trend')) return TrendingUp;
+    if (lowerLabel.includes("seo")) return Globe;
+    if (lowerLabel.includes("search")) return Search;
+    if (lowerLabel.includes("tech") || lowerLabel.includes("feasibility"))
+      return Cpu;
+    if (lowerLabel.includes("settings") || lowerLabel.includes("config"))
+      return Settings;
+    if (lowerLabel.includes("dev") || lowerLabel.includes("solo")) return Code;
+    if (lowerLabel.includes("user") || lowerLabel.includes("audience"))
+      return User;
+    if (lowerLabel.includes("market") || lowerLabel.includes("fit"))
+      return Target;
+    if (lowerLabel.includes("growth") || lowerLabel.includes("trend"))
+      return TrendingUp;
     return BarChart3;
   };
 
@@ -147,7 +167,8 @@
 
     // Try to extract decimal (0.0-1.0)
     const decimalMatch = value.match(/^0\.(\d+)$/);
-    if (decimalMatch) return Math.min(100, parseFloat('0.' + decimalMatch[1]) * 100);
+    if (decimalMatch)
+      return Math.min(100, parseFloat("0." + decimalMatch[1]) * 100);
 
     // Try to extract any number and assume it's out of 10 if <= 10
     const numMatch = value.match(/(\d+(?:\.\d+)?)/);
@@ -161,12 +182,18 @@
   };
 
   // Get progress bar color based on variant
-  const getProgressColor = (variant: 'default' | 'success' | 'warning' | 'accent'): string => {
+  const getProgressColor = (
+    variant: "default" | "success" | "warning" | "accent",
+  ): string => {
     switch (variant) {
-      case 'success': return 'var(--color-success)';
-      case 'warning': return 'var(--color-warning)';
-      case 'accent': return 'var(--color-accent)';
-      default: return 'var(--color-text-muted)';
+      case "success":
+        return "var(--color-success)";
+      case "warning":
+        return "var(--color-warning)";
+      case "accent":
+        return "var(--color-accent)";
+      default:
+        return "var(--color-text-muted)";
     }
   };
 </script>
@@ -261,7 +288,9 @@
               <span class="param-value">
                 {solution.estimated_cac_organic}
                 {#if solution.estimated_cac_paid}
-                  <span class="cac-vs-paid">vs {solution.estimated_cac_paid} paid</span>
+                  <span class="cac-vs-paid"
+                    >vs {solution.estimated_cac_paid} paid</span
+                  >
                 {/if}
               </span>
               <span class="param-label">
@@ -282,7 +311,10 @@
               <span class="param-value">{budgetDisplay}</span>
               <span class="param-label">
                 Monthly Budget
-                <Tooltip content="Estimated monthly marketing budget to achieve growth targets" position="top" />
+                <Tooltip
+                  content="Estimated monthly marketing budget to achieve growth targets"
+                  position="top"
+                />
               </span>
             </div>
             <div class="param-glow"></div>
@@ -294,7 +326,12 @@
 
   <!-- Innovation Score Card -->
   {#if solution.novelty_score != null && !isNaN(solution.novelty_score)}
-    <InsightCard variant="warning" border="left" padding="md" class="innovation-card">
+    <InsightCard
+      variant="warning"
+      border="left"
+      padding="md"
+      class="innovation-card"
+    >
       {#snippet header()}
         <div class="innovation-header">
           <div class="innovation-label">
@@ -302,7 +339,9 @@
             <span>INNOVATION</span>
           </div>
           <div class="innovation-score">
-            <span class="score-value">{formatScoreOn10(solution.novelty_score)}</span>
+            <span class="score-value"
+              >{formatScoreOn10(solution.novelty_score)}</span
+            >
             <span class="score-max">/10</span>
           </div>
         </div>
@@ -334,7 +373,12 @@
 
   <!-- Discovery Queries -->
   {#if solution.organic_discovery_queries && solution.organic_discovery_queries.length > 0}
-    <InsightCard variant="info" border="left" padding="md" class="discovery-card">
+    <InsightCard
+      variant="info"
+      border="left"
+      padding="md"
+      class="discovery-card"
+    >
       {#snippet header()}
         <div class="discovery-header">
           <Search class="discovery-icon" />
@@ -348,7 +392,6 @@
       </div>
     </InsightCard>
   {/if}
-
 
   <!-- Target Personas -->
   {#if solution.target_personas && solution.target_personas.length > 0}
@@ -372,7 +415,10 @@
                 <span class="persona-num" class:primary={i === 0}>
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <SectionLabel text={i === 0 ? "Primary" : "Secondary"} variant={i === 0 ? "accent" : "muted"} />
+                <SectionLabel
+                  text={i === 0 ? "Primary" : "Secondary"}
+                  variant={i === 0 ? "accent" : "muted"}
+                />
               </div>
             {/snippet}
             <span class="persona-text">{persona}</span>
@@ -384,7 +430,12 @@
 
   <!-- Business Model -->
   {#if solution.pricing_strategy}
-    <InsightCard variant="success" border="left" padding="md" class="business-model-card">
+    <InsightCard
+      variant="success"
+      border="left"
+      padding="md"
+      class="business-model-card"
+    >
       {#snippet header()}
         <div class="business-model-header">
           <DollarSign class="business-model-icon" />
@@ -419,7 +470,12 @@
   <!-- How It Works -->
   {#if solution.description && solution.description !== solution.value_proposition}
     <div class="how-it-works-section">
-      <ExpandableSection title="How It Works" icon={FileText} defaultOpen={false} variant="muted">
+      <ExpandableSection
+        title="How It Works"
+        icon={FileText}
+        defaultOpen={false}
+        variant="muted"
+      >
         <InsightCard variant="muted" border="left" padding="md">
           <div class="how-it-works-content">
             {@html renderMarkdown(solution.description)}
@@ -432,7 +488,13 @@
   <!-- Core Features -->
   {#if solution.core_features && solution.core_features.length > 0}
     <div class="core-features-section">
-      <ExpandableSection title="Core Features" icon={Layers} count={solution.core_features.length} defaultOpen={false} variant="muted">
+      <ExpandableSection
+        title="Core Features"
+        icon={Layers}
+        count={solution.core_features.length}
+        defaultOpen={false}
+        variant="muted"
+      >
         <InsightCard variant="muted" border="left" padding="md">
           <ul class="feature-list">
             {#each solution.core_features as feature}
@@ -447,7 +509,12 @@
   <!-- SEO Content Engine -->
   {#if solution.content_generation_model}
     <div class="seo-engine-section">
-      <ExpandableSection title="SEO Content Engine" icon={Globe} defaultOpen={false} variant="muted">
+      <ExpandableSection
+        title="SEO Content Engine"
+        icon={Globe}
+        defaultOpen={false}
+        variant="muted"
+      >
         <InsightCard variant="muted" border="left" padding="md">
           <div class="seo-engine-content">
             {@html renderMarkdown(solution.content_generation_model)}
@@ -462,7 +529,9 @@
     <ExpandableSection
       title="Selection Rationale"
       icon={Target}
-      count={parsedRationale.metrics.length > 0 ? parsedRationale.metrics.length : null}
+      count={parsedRationale.metrics.length > 0
+        ? parsedRationale.metrics.length
+        : null}
       countSuffix="metrics"
     >
       <!-- Extracted Metrics as InsightCard Grid -->
@@ -493,7 +562,9 @@
                 <div class="metric-progress">
                   <div
                     class="metric-progress-fill"
-                    style="width: {progressValue}%; background: {getProgressColor(cardVariant)};"
+                    style="width: {progressValue}%; background: {getProgressColor(
+                      cardVariant,
+                    )};"
                   ></div>
                 </div>
               </InsightCard>
@@ -503,7 +574,9 @@
       {/if}
       <!-- Narrative -->
       <div class="rationale-text">
-        {@html renderMarkdown(parsedRationale.highlightedText || selectionRationale)}
+        {@html renderMarkdown(
+          parsedRationale.highlightedText || selectionRationale,
+        )}
       </div>
     </ExpandableSection>
   {/if}
@@ -1212,8 +1285,6 @@
     border-color: rgba(99, 102, 241, 0.3);
   }
 
-
-  
   /* =========================
 	   RESPONSIVE
 	   ========================= */

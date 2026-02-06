@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { invalidateAll, goto } from '$app/navigation';
+  import { invalidateAll, goto } from "$app/navigation";
   import {
     Coins,
     Gift,
@@ -15,8 +15,8 @@
     CreditCard,
     ShoppingCart,
     Zap,
-    X
-  } from 'lucide-svelte';
+    X,
+  } from "lucide-svelte";
 
   interface Transaction {
     id: string;
@@ -50,7 +50,7 @@
   const canceled = $derived(data.canceled as boolean);
 
   // Promo code state
-  let promoCode = $state('');
+  let promoCode = $state("");
   let promoError = $state<string | null>(null);
   let promoSuccess = $state<string | null>(null);
   let isRedeeming = $state(false);
@@ -64,7 +64,7 @@
 
   // Dismiss success/canceled banners
   function dismissBanner() {
-    goto('/billing', { replaceState: true });
+    goto("/billing", { replaceState: true });
   }
 
   async function redeemPromoCode() {
@@ -75,9 +75,9 @@
     promoSuccess = null;
 
     try {
-      const response = await fetch('/api/billing/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/billing/redeem", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: promoCode.trim() }),
       });
 
@@ -85,14 +85,14 @@
 
       if (response.ok) {
         promoSuccess = result.message;
-        promoCode = '';
+        promoCode = "";
         // Refresh the page data to update balance
         await invalidateAll();
       } else {
-        promoError = result.error || 'Failed to redeem promo code';
+        promoError = result.error || "Failed to redeem promo code";
       }
     } catch (error) {
-      promoError = 'Network error. Please try again.';
+      promoError = "Network error. Please try again.";
     } finally {
       isRedeeming = false;
     }
@@ -106,32 +106,32 @@
 
   function getTransactionIcon(type: string) {
     switch (type) {
-      case 'PURCHASE':
-      case 'PROMO_REDEMPTION':
-        return { icon: ArrowUpRight, class: 'text-success bg-success/10' };
-      case 'JOB_DEDUCTION':
-        return { icon: ArrowDownRight, class: 'text-warning bg-warning/10' };
-      case 'REFUND':
-        return { icon: ArrowUpRight, class: 'text-accent bg-accent/10' };
-      case 'ADMIN_ADJUSTMENT':
-        return { icon: Sparkles, class: 'text-secondary bg-secondary/10' };
+      case "PURCHASE":
+      case "PROMO_REDEMPTION":
+        return { icon: ArrowUpRight, class: "text-success bg-success/10" };
+      case "JOB_DEDUCTION":
+        return { icon: ArrowDownRight, class: "text-warning bg-warning/10" };
+      case "REFUND":
+        return { icon: ArrowUpRight, class: "text-accent bg-accent/10" };
+      case "ADMIN_ADJUSTMENT":
+        return { icon: Sparkles, class: "text-secondary bg-secondary/10" };
       default:
-        return { icon: Clock, class: 'text-text-muted bg-bg-elevated' };
+        return { icon: Clock, class: "text-text-muted bg-bg-elevated" };
     }
   }
 
   function formatTransactionType(type: string): string {
     switch (type) {
-      case 'PURCHASE':
-        return 'Purchase';
-      case 'JOB_DEDUCTION':
-        return 'Research Job';
-      case 'PROMO_REDEMPTION':
-        return 'Promo Code';
-      case 'REFUND':
-        return 'Refund';
-      case 'ADMIN_ADJUSTMENT':
-        return 'Adjustment';
+      case "PURCHASE":
+        return "Purchase";
+      case "JOB_DEDUCTION":
+        return "Research Job";
+      case "PROMO_REDEMPTION":
+        return "Promo Code";
+      case "REFUND":
+        return "Refund";
+      case "ADMIN_ADJUSTMENT":
+        return "Adjustment";
       default:
         return type;
     }
@@ -139,12 +139,12 @@
 
   function formatDate(dateStr: string): string {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   }
 
@@ -156,15 +156,15 @@
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return 'Just now';
+    if (diffMins < 1) return "Just now";
     if (diffMins < 60) return `${diffMins}m ago`;
     if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return 'Yesterday';
+    if (diffDays === 1) return "Yesterday";
     if (diffDays < 7) return `${diffDays}d ago`;
 
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
     });
   }
 
@@ -179,9 +179,9 @@
     checkoutError = null;
 
     try {
-      const response = await fetch('/api/billing/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ packageId }),
       });
 
@@ -191,10 +191,10 @@
         // Redirect to Stripe Checkout
         window.location.href = result.url;
       } else {
-        checkoutError = result.error || 'Failed to start checkout';
+        checkoutError = result.error || "Failed to start checkout";
       }
     } catch (error) {
-      checkoutError = 'Network error. Please try again.';
+      checkoutError = "Network error. Please try again.";
     } finally {
       checkoutLoading = null;
     }
@@ -231,21 +231,35 @@
   </div>
 
   <!-- Balance Card -->
-  <div class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 mb-8 border-l-4 border-l-accent">
-    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+  <div
+    class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 mb-8 border-l-4 border-l-accent"
+  >
+    <div
+      class="flex flex-col sm:flex-row sm:items-center justify-between gap-6"
+    >
       <div>
-        <p class="text-xs font-mono uppercase tracking-wider text-text-muted mb-2">Available Credits</p>
+        <p
+          class="text-xs font-mono uppercase tracking-wider text-text-muted mb-2"
+        >
+          Available Credits
+        </p>
         <div class="flex items-baseline gap-2">
-          <span class="text-5xl font-display font-bold text-text-primary">{billing.balance}</span>
+          <span class="text-5xl font-display font-bold text-text-primary"
+            >{billing.balance}</span
+          >
           <span class="text-lg text-text-muted">credits</span>
         </div>
         <div class="flex items-center gap-4 mt-3 text-sm">
           <span class="text-text-muted">
-            <span class="font-display font-bold text-success">{billing.totalPurchased}</span>
+            <span class="font-display font-bold text-success"
+              >{billing.totalPurchased}</span
+            >
             <span class="text-xs uppercase tracking-wide">earned</span>
           </span>
           <span class="text-text-muted">
-            <span class="font-display font-bold text-warning">{billing.totalUsed}</span>
+            <span class="font-display font-bold text-warning"
+              >{billing.totalUsed}</span
+            >
             <span class="text-xs uppercase tracking-wide">used</span>
           </span>
         </div>
@@ -271,7 +285,11 @@
             </p>
           </div>
         </div>
-        <button onclick={dismissBanner} class="text-text-muted hover:text-text-primary p-1" aria-label="Dismiss">
+        <button
+          onclick={dismissBanner}
+          class="text-text-muted hover:text-text-primary p-1"
+          aria-label="Dismiss"
+        >
           <X class="w-4 h-4" />
         </button>
       </div>
@@ -293,7 +311,11 @@
             </p>
           </div>
         </div>
-        <button onclick={dismissBanner} class="text-text-muted hover:text-text-primary p-1" aria-label="Dismiss">
+        <button
+          onclick={dismissBanner}
+          class="text-text-muted hover:text-text-primary p-1"
+          aria-label="Dismiss"
+        >
           <X class="w-4 h-4" />
         </button>
       </div>
@@ -310,7 +332,8 @@
             You need research credits to start new research
           </p>
           <p class="text-sm text-text-muted mt-1">
-            Purchase a credit package below or redeem a promo code to get started.
+            Purchase a credit package below or redeem a promo code to get
+            started.
           </p>
         </div>
       </div>
@@ -322,13 +345,17 @@
     <div class="mb-8">
       <div class="flex items-center gap-3 mb-4">
         <div class="w-1 h-6 rounded-full bg-accent"></div>
-        <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+        <h2
+          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
+        >
           Buy Credits
         </h2>
       </div>
 
       {#if checkoutError}
-        <div class="mb-4 p-3 rounded-lg bg-error/10 border border-error/30 flex items-center gap-2 text-sm text-error">
+        <div
+          class="mb-4 p-3 rounded-lg bg-error/10 border border-error/30 flex items-center gap-2 text-sm text-error"
+        >
           <AlertCircle class="w-4 h-4 shrink-0" />
           {checkoutError}
         </div>
@@ -337,11 +364,15 @@
       <div class="grid gap-4 sm:grid-cols-3">
         {#each packages as pkg (pkg.id)}
           <div
-            class="card relative {pkg.isPopular ? 'border-accent/50 bg-accent/5' : ''}"
+            class="card relative {pkg.isPopular
+              ? 'border-accent/50 bg-accent/5'
+              : ''}"
           >
             {#if pkg.isPopular}
               <div class="absolute -top-3 left-1/2 -translate-x-1/2">
-                <span class="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full flex items-center gap-1">
+                <span
+                  class="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full flex items-center gap-1"
+                >
                   <Zap class="w-3 h-3" />
                   Most Popular
                 </span>
@@ -349,18 +380,26 @@
             {/if}
 
             <div class="text-center pt-2">
-              <h3 class="text-lg font-display font-bold text-text-primary">{pkg.name}</h3>
+              <h3 class="text-lg font-display font-bold text-text-primary">
+                {pkg.name}
+              </h3>
               {#if pkg.description}
                 <p class="text-sm text-text-muted mt-1">{pkg.description}</p>
               {/if}
 
               <div class="my-4">
-                <span class="text-3xl font-display font-bold text-text-primary">{formatPrice(pkg.priceInCents)}</span>
+                <span class="text-3xl font-display font-bold text-text-primary"
+                  >{formatPrice(pkg.priceInCents)}</span
+                >
               </div>
 
-              <div class="flex items-center justify-center gap-2 text-sm text-text-muted mb-4">
+              <div
+                class="flex items-center justify-center gap-2 text-sm text-text-muted mb-4"
+              >
                 <Coins class="w-4 h-4 text-accent" />
-                <span class="font-semibold text-text-primary">{pkg.credits}</span>
+                <span class="font-semibold text-text-primary"
+                  >{pkg.credits}</span
+                >
                 <span>credits</span>
               </div>
 
@@ -389,11 +428,15 @@
     <div class="card">
       <div class="flex items-center gap-3 mb-2">
         <div class="w-1 h-6 rounded-full bg-secondary"></div>
-        <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+        <h2
+          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
+        >
           Redeem Promo Code
         </h2>
       </div>
-      <p class="text-sm text-text-muted mb-4">Enter your code to receive credits</p>
+      <p class="text-sm text-text-muted mb-4">
+        Enter your code to receive credits
+      </p>
 
       <div class="space-y-4">
         <div>
@@ -404,7 +447,7 @@
             class="input w-full uppercase tracking-wider"
             maxlength="50"
             disabled={isRedeeming}
-            onkeydown={(e) => e.key === 'Enter' && redeemPromoCode()}
+            onkeydown={(e) => e.key === "Enter" && redeemPromoCode()}
           />
         </div>
 
@@ -442,7 +485,9 @@
     <div class="card">
       <div class="flex items-center gap-3 mb-2">
         <div class="w-1 h-6 rounded-full bg-accent"></div>
-        <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
+        <h2
+          class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
+        >
           Recent Activity
         </h2>
       </div>
@@ -470,15 +515,25 @@
                   <span class="text-sm font-medium text-text-primary truncate">
                     {formatTransactionType(tx.type)}
                   </span>
-                  <span class="text-sm font-semibold {tx.amount > 0 ? 'text-success' : 'text-warning'}">
-                    {tx.amount > 0 ? '+' : ''}{tx.amount}
+                  <span
+                    class="text-sm font-semibold {tx.amount > 0
+                      ? 'text-success'
+                      : 'text-warning'}"
+                  >
+                    {tx.amount > 0 ? "+" : ""}{tx.amount}
                   </span>
                 </div>
                 <div class="flex items-center justify-between gap-2 mt-0.5">
-                  <span class="text-xs text-text-muted truncate" title={tx.description || ''}>
-                    {tx.description || '-'}
+                  <span
+                    class="text-xs text-text-muted truncate"
+                    title={tx.description || ""}
+                  >
+                    {tx.description || "-"}
                   </span>
-                  <span class="text-xs text-text-muted shrink-0" title={formatDate(tx.createdAt)}>
+                  <span
+                    class="text-xs text-text-muted shrink-0"
+                    title={formatDate(tx.createdAt)}
+                  >
                     {formatRelativeDate(tx.createdAt)}
                   </span>
                 </div>
@@ -492,15 +547,21 @@
 
   <!-- Gradient Divider -->
   <div class="my-8">
-    <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
+    <div
+      class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
+    ></div>
   </div>
 
   <!-- How It Works -->
   <div class="card bg-bg-elevated/50">
-    <h3 class="text-lg font-semibold text-text-primary mb-4">How Credits Work</h3>
+    <h3 class="text-lg font-semibold text-text-primary mb-4">
+      How Credits Work
+    </h3>
     <div class="grid gap-4 sm:grid-cols-3">
       <div class="flex items-start gap-3">
-        <div class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0">
+        <div
+          class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0"
+        >
           1
         </div>
         <div>
@@ -511,7 +572,9 @@
         </div>
       </div>
       <div class="flex items-start gap-3">
-        <div class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0">
+        <div
+          class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0"
+        >
           2
         </div>
         <div>
@@ -522,7 +585,9 @@
         </div>
       </div>
       <div class="flex items-start gap-3">
-        <div class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0">
+        <div
+          class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0"
+        >
           3
         </div>
         <div>

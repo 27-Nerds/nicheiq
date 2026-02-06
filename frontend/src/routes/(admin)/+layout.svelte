@@ -1,23 +1,34 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { LayoutDashboard, BarChart3, Gift, Users, Package, Settings, Shield, ArrowLeft, Menu, X } from 'lucide-svelte';
+  import { page } from "$app/stores";
+  import {
+    LayoutDashboard,
+    BarChart3,
+    Gift,
+    Users,
+    Package,
+    Settings,
+    Shield,
+    ArrowLeft,
+    Menu,
+    X,
+  } from "lucide-svelte";
 
   let { children } = $props();
 
   let mobileMenuOpen = $state(false);
 
   const navItems = [
-    { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-    { href: '/admin/reports', label: 'Report Stats', icon: BarChart3 },
-    { href: '/admin/promo-codes', label: 'Promo Codes', icon: Gift },
-    { href: '/admin/users', label: 'Users', icon: Users },
-    { href: '/admin/packages', label: 'Packages', icon: Package },
-    { href: '/admin/settings', label: 'Settings', icon: Settings },
+    { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/admin/reports", label: "Report Stats", icon: BarChart3 },
+    { href: "/admin/promo-codes", label: "Promo Codes", icon: Gift },
+    { href: "/admin/users", label: "Users", icon: Users },
+    { href: "/admin/packages", label: "Packages", icon: Package },
+    { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 
   function isActive(href: string): boolean {
     const path = $page.url.pathname;
-    if (href === '/admin') return path === '/admin';
+    if (href === "/admin") return path === "/admin";
     return path.startsWith(href);
   }
 </script>
@@ -30,7 +41,7 @@
         <div class="flex items-center gap-3">
           <button
             class="lg:hidden p-1.5 rounded-lg hover:bg-bg-elevated transition-colors"
-            onclick={() => mobileMenuOpen = !mobileMenuOpen}
+            onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
           >
             {#if mobileMenuOpen}
               <X class="w-5 h-5 text-text-secondary" />
@@ -54,15 +65,17 @@
 
   <div class="flex flex-1">
     <!-- Sidebar -->
-    <aside class="hidden lg:flex flex-col w-60 bg-bg-surface border-r border-border">
+    <aside
+      class="hidden lg:flex flex-col w-60 bg-bg-surface border-r border-border"
+    >
       <nav class="flex-1 p-4 space-y-1">
         {#each navItems as item}
           <a
             href={item.href}
             class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
               {isActive(item.href)
-                ? 'bg-accent/10 text-accent'
-                : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'}"
+              ? 'bg-accent/10 text-accent'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'}"
           >
             <item.icon class="w-4 h-4" />
             {item.label}
@@ -76,21 +89,25 @@
       <div class="fixed inset-0 z-40 lg:hidden">
         <div
           class="fixed inset-0 bg-black/30"
-          onclick={() => mobileMenuOpen = false}
+          onclick={() => (mobileMenuOpen = false)}
           role="button"
           tabindex="-1"
-          onkeydown={(e) => { if (e.key === 'Escape') mobileMenuOpen = false; }}
+          onkeydown={(e) => {
+            if (e.key === "Escape") mobileMenuOpen = false;
+          }}
         ></div>
-        <aside class="fixed left-0 top-14 bottom-0 w-60 bg-bg-surface border-r border-border z-50">
+        <aside
+          class="fixed left-0 top-14 bottom-0 w-60 bg-bg-surface border-r border-border z-50"
+        >
           <nav class="p-4 space-y-1">
             {#each navItems as item}
               <a
                 href={item.href}
-                onclick={() => mobileMenuOpen = false}
+                onclick={() => (mobileMenuOpen = false)}
                 class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors
                   {isActive(item.href)
-                    ? 'bg-accent/10 text-accent'
-                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'}"
+                  ? 'bg-accent/10 text-accent'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-elevated'}"
               >
                 <item.icon class="w-4 h-4" />
                 {item.label}

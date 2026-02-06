@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from '$app/stores';
+  import { page } from "$app/stores";
   import {
     Hero,
     HowItWorks,
@@ -12,8 +12,8 @@
     Pricing,
     FAQ,
     FinalCTA,
-    Footer
-  } from '$lib/components/landing';
+    Footer,
+  } from "$lib/components/landing";
 
   let { data } = $props();
 
@@ -22,13 +22,28 @@
 
 <svelte:head>
   <title>NicheIQ - AI-Powered Market Research for SaaS Founders</title>
-  <meta name="description" content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict." />
-  <meta property="og:title" content="NicheIQ - AI-Powered Market Research for SaaS Founders" />
-  <meta property="og:description" content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict." />
+  <meta
+    name="description"
+    content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict."
+  />
+  <meta
+    property="og:title"
+    content="NicheIQ - AI-Powered Market Research for SaaS Founders"
+  />
+  <meta
+    property="og:description"
+    content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict."
+  />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="NicheIQ - AI-Powered Market Research for SaaS Founders" />
-  <meta name="twitter:description" content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict." />
+  <meta
+    name="twitter:title"
+    content="NicheIQ - AI-Powered Market Research for SaaS Founders"
+  />
+  <meta
+    name="twitter:description"
+    content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict."
+  />
 </svelte:head>
 
 <main class="overflow-hidden">

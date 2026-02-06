@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { onDestroy, untrack } from 'svelte';
-  import { browser } from '$app/environment';
-  import { SvelteMap, SvelteSet } from 'svelte/reactivity';
-  import { subscribeToProgress, isTerminalStatus } from '$lib/api';
+  import { page } from "$app/stores";
+  import { onDestroy, untrack } from "svelte";
+  import { browser } from "$app/environment";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
+  import { subscribeToProgress, isTerminalStatus } from "$lib/api";
   import {
     Plus,
     XCircle,
@@ -14,10 +14,10 @@
     X,
     FolderOpen,
     ShieldCheck,
-    RefreshCw
-  } from 'lucide-svelte';
-  import { showNewResearchModal } from '$lib/stores/newResearchModal';
-  import JobCard from '$lib/components/ui/JobCard.svelte';
+    RefreshCw,
+  } from "lucide-svelte";
+  import { showNewResearchModal } from "$lib/stores/newResearchModal";
+  import JobCard from "$lib/components/ui/JobCard.svelte";
 
   interface StopReasonDetails {
     qualityTier?: string;
@@ -69,15 +69,15 @@
   // Merge initial jobs with live updates and sort by priority
   const jobs = $derived(
     initialJobs
-      .map(job => jobUpdates.get(job.id) || job)
+      .map((job) => jobUpdates.get(job.id) || job)
       .sort((a, b) => {
         // Priority: Running > Pending/Queued > Failed > Completed
         const statusPriority: Record<string, number> = {
-          'RUNNING': 0,
-          'PENDING': 1,
-          'QUEUED': 1,
-          'FAILED': 2,
-          'COMPLETED': 3
+          RUNNING: 0,
+          PENDING: 1,
+          QUEUED: 1,
+          FAILED: 2,
+          COMPLETED: 3,
         };
         const priorityA = statusPriority[a.status.toUpperCase()] ?? 4;
         const priorityB = statusPriority[b.status.toUpperCase()] ?? 4;
@@ -85,19 +85,37 @@
         if (priorityA !== priorityB) return priorityA - priorityB;
 
         // Within same priority, sort by date (newest first)
-        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-      })
+        return (
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+      }),
   );
 
   // Stats counts
-  const completedCount = $derived(jobs.filter((j) => j.status.toUpperCase() === 'COMPLETED').length);
-  const inProgressCount = $derived(jobs.filter((j) => ['RUNNING', 'PENDING', 'QUEUED'].includes(j.status.toUpperCase())).length);
-  const failedCount = $derived(jobs.filter((j) => j.status.toUpperCase() === 'FAILED').length);
+  const completedCount = $derived(
+    jobs.filter((j) => j.status.toUpperCase() === "COMPLETED").length,
+  );
+  const inProgressCount = $derived(
+    jobs.filter((j) =>
+      ["RUNNING", "PENDING", "QUEUED"].includes(j.status.toUpperCase()),
+    ).length,
+  );
+  const failedCount = $derived(
+    jobs.filter((j) => j.status.toUpperCase() === "FAILED").length,
+  );
 
   // Group jobs by category for visual separation
-  const activeJobs = $derived(jobs.filter((j) => ['RUNNING', 'PENDING', 'QUEUED'].includes(j.status.toUpperCase())));
-  const completedJobs = $derived(jobs.filter((j) => j.status.toUpperCase() === 'COMPLETED'));
-  const failedJobs = $derived(jobs.filter((j) => j.status.toUpperCase() === 'FAILED'));
+  const activeJobs = $derived(
+    jobs.filter((j) =>
+      ["RUNNING", "PENDING", "QUEUED"].includes(j.status.toUpperCase()),
+    ),
+  );
+  const completedJobs = $derived(
+    jobs.filter((j) => j.status.toUpperCase() === "COMPLETED"),
+  );
+  const failedJobs = $derived(
+    jobs.filter((j) => j.status.toUpperCase() === "FAILED"),
+  );
 
   // Collapsible state for completed jobs
   const INITIAL_VISIBLE_COMPLETED = 6;
@@ -106,42 +124,58 @@
   // Collapsible state for failed jobs
   let showFailedJobs = $state(true);
   const visibleCompletedJobs = $derived(
-    showAllCompleted ? completedJobs : completedJobs.slice(0, INITIAL_VISIBLE_COMPLETED)
+    showAllCompleted
+      ? completedJobs
+      : completedJobs.slice(0, INITIAL_VISIBLE_COMPLETED),
   );
-  const hasMoreCompleted = $derived(completedJobs.length > INITIAL_VISIBLE_COMPLETED);
+  const hasMoreCompleted = $derived(
+    completedJobs.length > INITIAL_VISIBLE_COMPLETED,
+  );
 
   // Search/filter state
-  let searchQuery = $state('');
+  let searchQuery = $state("");
   const filteredActiveJobs = $derived(
     searchQuery.trim()
-      ? activeJobs.filter(j => j.niche.toLowerCase().includes(searchQuery.toLowerCase()))
-      : activeJobs
+      ? activeJobs.filter((j) =>
+          j.niche.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      : activeJobs,
   );
   const filteredFailedJobs = $derived(
     searchQuery.trim()
-      ? failedJobs.filter(j => j.niche.toLowerCase().includes(searchQuery.toLowerCase()))
-      : failedJobs
+      ? failedJobs.filter((j) =>
+          j.niche.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      : failedJobs,
   );
   const filteredCompletedJobs = $derived(
     searchQuery.trim()
-      ? completedJobs.filter(j => j.niche.toLowerCase().includes(searchQuery.toLowerCase()))
-      : completedJobs
+      ? completedJobs.filter((j) =>
+          j.niche.toLowerCase().includes(searchQuery.toLowerCase()),
+        )
+      : completedJobs,
   );
   const filteredVisibleCompleted = $derived(
-    showAllCompleted ? filteredCompletedJobs : filteredCompletedJobs.slice(0, INITIAL_VISIBLE_COMPLETED)
+    showAllCompleted
+      ? filteredCompletedJobs
+      : filteredCompletedJobs.slice(0, INITIAL_VISIBLE_COMPLETED),
   );
   const hasFilteredResults = $derived(
-    filteredActiveJobs.length > 0 || filteredFailedJobs.length > 0 || filteredCompletedJobs.length > 0
+    filteredActiveJobs.length > 0 ||
+      filteredFailedJobs.length > 0 ||
+      filteredCompletedJobs.length > 0,
   );
 
   // Dismissable tip banner
-  const TIP_DISMISSED_KEY = 'nicheiq_tip_dismissed';
-  let tipDismissed = $state(browser ? localStorage.getItem(TIP_DISMISSED_KEY) === 'true' : false);
+  const TIP_DISMISSED_KEY = "nicheiq_tip_dismissed";
+  let tipDismissed = $state(
+    browser ? localStorage.getItem(TIP_DISMISSED_KEY) === "true" : false,
+  );
 
   function dismissTip() {
     tipDismissed = true;
     if (browser) {
-      localStorage.setItem(TIP_DISMISSED_KEY, 'true');
+      localStorage.setItem(TIP_DISMISSED_KEY, "true");
     }
   }
 
@@ -162,19 +196,23 @@
 
   // Total filtered count for search results indicator
   const totalFilteredCount = $derived(
-    filteredActiveJobs.length + filteredFailedJobs.length + filteredCompletedJobs.length
+    filteredActiveJobs.length +
+      filteredFailedJobs.length +
+      filteredCompletedJobs.length,
   );
 
   // Get effective job data (live update or initial)
   function getJobData(jobId: string): Job | undefined {
-    return jobUpdates.get(jobId) || initialJobs.find(j => j.id === jobId);
+    return jobUpdates.get(jobId) || initialJobs.find((j) => j.id === jobId);
   }
 
   // Connect SSE for active jobs (including queued to catch status changes)
   // Use $effect.pre with untrack() to prevent reactive tracking of map mutations
   $effect.pre(() => {
     // Only track initialJobs for dependencies
-    const activeJobsList = initialJobs.filter(j => !isTerminalStatus(j.status));
+    const activeJobsList = initialJobs.filter(
+      (j) => !isTerminalStatus(j.status),
+    );
 
     // Use untrack to prevent tracking map mutations
     untrack(() => {
@@ -194,7 +232,7 @@
                 setTimeout(() => jobUpdates.delete(job.id), 5000);
               }
             },
-            (err) => console.warn(`SSE error for job ${job.id}:`, err.message)
+            (err) => console.warn(`SSE error for job ${job.id}:`, err.message),
           );
 
           sseUnsubscribers.set(job.id, unsubscribe);
@@ -204,7 +242,7 @@
       // Cleanup subscriptions for jobs no longer active
       // Use initialJobs.find() instead of getJobData() to avoid reading jobUpdates
       for (const [jobId] of sseUnsubscribers) {
-        const job = initialJobs.find(j => j.id === jobId);
+        const job = initialJobs.find((j) => j.id === jobId);
         if (!job || isTerminalStatus(job.status)) {
           sseUnsubscribers.get(jobId)?.();
           sseUnsubscribers.delete(jobId);
@@ -215,7 +253,7 @@
 
   // Cleanup on destroy
   onDestroy(() => {
-    sseUnsubscribers.forEach(unsubscribe => unsubscribe());
+    sseUnsubscribers.forEach((unsubscribe) => unsubscribe());
     sseUnsubscribers.clear();
   });
 
@@ -228,7 +266,7 @@
     resumingJobs.add(job.id);
     try {
       const res = await fetch(`/api/jobs/${job.id}/resume`, {
-        method: 'POST',
+        method: "POST",
       });
 
       if (res.ok) {
@@ -236,10 +274,10 @@
         window.location.href = `/jobs/${job.id}`;
       } else {
         const data = await res.json();
-        console.error('Resume failed:', data.error || 'Unknown error');
+        console.error("Resume failed:", data.error || "Unknown error");
       }
     } catch (err) {
-      console.error('Resume failed:', err);
+      console.error("Resume failed:", err);
     } finally {
       resumingJobs.delete(job.id);
     }
@@ -254,12 +292,16 @@
     cancellingJobs.add(job.id);
     try {
       const res = await fetch(`/api/jobs/${job.id}/cancel`, {
-        method: 'POST',
+        method: "POST",
       });
 
       if (res.ok) {
         // Update local state to reflect cancellation
-        jobUpdates.set(job.id, { ...job, status: 'CANCELLED', errorMessage: 'Cancelled by user' });
+        jobUpdates.set(job.id, {
+          ...job,
+          status: "CANCELLED",
+          errorMessage: "Cancelled by user",
+        });
 
         // Close SSE connection for this job
         const unsubscribe = sseUnsubscribers.get(job.id);
@@ -269,12 +311,11 @@
         }
       }
     } catch (err) {
-      console.error('Cancel failed:', err);
+      console.error("Cancel failed:", err);
     } finally {
       cancellingJobs.delete(job.id);
     }
   }
-
 </script>
 
 <svelte:head>
@@ -284,16 +325,20 @@
 <!-- Keyboard shortcut for search + close menus on outside click -->
 <svelte:window
   onkeydown={(e) => {
-    if (e.key === '/' && document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+    if (
+      e.key === "/" &&
+      document.activeElement?.tagName !== "INPUT" &&
+      document.activeElement?.tagName !== "TEXTAREA"
+    ) {
       e.preventDefault();
       searchInput?.focus();
     }
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       if (openMenuId) {
         closeMenu();
       } else if (document.activeElement === searchInput) {
         searchInput?.blur();
-        searchQuery = '';
+        searchQuery = "";
       }
     }
   }}
@@ -301,7 +346,7 @@
     // Close overflow menu when clicking outside
     if (openMenuId) {
       const target = e.target as HTMLElement;
-      if (!target.closest('[data-menu-container]')) {
+      if (!target.closest("[data-menu-container]")) {
         closeMenu();
       }
     }
@@ -315,18 +360,18 @@
       <div>
         <div class="flex items-center gap-3 mb-1">
           <h1 class="text-2xl font-bold text-text-primary">
-            Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}
+            Welcome back{session?.user?.name ? `, ${session.user.name}` : ""}
           </h1>
           {#if inProgressCount > 0}
-            <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20 animate-pulse">
+            <span
+              class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20 animate-pulse"
+            >
               <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
               {inProgressCount} active
             </span>
           {/if}
         </div>
-        <p class="text-text-muted">
-          Manage your market research reports
-        </p>
+        <p class="text-text-muted">Manage your market research reports</p>
       </div>
       {#if jobs.length > 0 && inProgressCount === 0}
         <button
@@ -342,15 +387,19 @@
 
   <!-- Pro tip banner (show when no active jobs and has completed jobs, unless dismissed) -->
   {#if jobs.length > 0 && inProgressCount === 0 && completedCount > 0 && !tipDismissed}
-    <div class="mb-6 p-4 rounded-lg bg-gradient-to-r from-accent/5 via-secondary/5 to-accent/5 border border-accent/10 animate-fade-slide-in">
+    <div
+      class="mb-6 p-4 rounded-lg bg-gradient-to-r from-accent/5 via-secondary/5 to-accent/5 border border-accent/10 animate-fade-slide-in"
+    >
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <div class="p-2 rounded-lg bg-accent/10">
             <Sparkles class="w-4 h-4 text-accent" />
           </div>
           <p class="text-sm text-text-secondary">
-            <span class="font-medium text-text-primary">Ready for more insights?</span>
-            {' '}Start another research to explore new market opportunities.
+            <span class="font-medium text-text-primary"
+              >Ready for more insights?</span
+            >
+            {" "}Start another research to explore new market opportunities.
           </p>
         </div>
         <button
@@ -366,36 +415,66 @@
 
   <!-- Stats Overview -->
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-    <div class="card hover:shadow-md hover:border-accent/30 transition-all duration-200 cursor-default border-l-4 border-l-accent">
+    <div
+      class="card hover:shadow-md hover:border-accent/30 transition-all duration-200 cursor-default border-l-4 border-l-accent"
+    >
       <div class="flex items-center gap-4">
         <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
           <FolderOpen class="w-5 h-5 text-accent" />
         </div>
         <div>
-          <p class="text-4xl font-display font-bold text-text-primary tracking-tight">{jobs.length}</p>
-          <p class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1">Total Research</p>
+          <p
+            class="text-4xl font-display font-bold text-text-primary tracking-tight"
+          >
+            {jobs.length}
+          </p>
+          <p
+            class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1"
+          >
+            Total Research
+          </p>
         </div>
       </div>
     </div>
-    <div class="card hover:shadow-md hover:border-success/30 transition-all duration-200 cursor-default border-l-4 border-l-success">
+    <div
+      class="card hover:shadow-md hover:border-success/30 transition-all duration-200 cursor-default border-l-4 border-l-success"
+    >
       <div class="flex items-center gap-4">
         <div class="p-2.5 rounded-xl bg-success/10 border border-success/20">
           <ShieldCheck class="w-5 h-5 text-success" />
         </div>
         <div>
-          <p class="text-4xl font-display font-bold text-text-primary tracking-tight">{completedCount}</p>
-          <p class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1">Completed</p>
+          <p
+            class="text-4xl font-display font-bold text-text-primary tracking-tight"
+          >
+            {completedCount}
+          </p>
+          <p
+            class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1"
+          >
+            Completed
+          </p>
         </div>
       </div>
     </div>
-    <div class="card hover:shadow-md hover:border-warning/30 transition-all duration-200 cursor-default border-l-4 border-l-warning">
+    <div
+      class="card hover:shadow-md hover:border-warning/30 transition-all duration-200 cursor-default border-l-4 border-l-warning"
+    >
       <div class="flex items-center gap-4">
         <div class="p-2.5 rounded-xl bg-warning/10 border border-warning/20">
           <RefreshCw class="w-5 h-5 text-warning" />
         </div>
         <div>
-          <p class="text-4xl font-display font-bold text-text-primary tracking-tight">{inProgressCount}</p>
-          <p class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1">In Progress</p>
+          <p
+            class="text-4xl font-display font-bold text-text-primary tracking-tight"
+          >
+            {inProgressCount}
+          </p>
+          <p
+            class="text-xs font-mono uppercase tracking-wider text-text-muted mt-1"
+          >
+            In Progress
+          </p>
         </div>
       </div>
     </div>
@@ -405,7 +484,9 @@
   {#if jobs.length > 0}
     <div class="mb-6 flex flex-col sm:flex-row sm:items-center gap-3">
       <div class="relative">
-        <Search class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
+        <Search
+          class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted"
+        />
         <input
           type="text"
           bind:this={searchInput}
@@ -413,23 +494,29 @@
           placeholder="Search research..."
           class="input input-with-icon w-full sm:w-72"
         />
-        <div class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+        <div
+          class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2"
+        >
           {#if searchQuery}
             <button
-              onclick={() => searchQuery = ''}
+              onclick={() => (searchQuery = "")}
               aria-label="Clear search"
               class="text-text-muted hover:text-text-primary transition-colors"
             >
               <XCircle class="w-4 h-4" />
             </button>
           {:else}
-            <kbd class="hidden sm:inline-flex items-center justify-center w-5 h-5 text-[10px] font-mono text-text-muted bg-bg-elevated border border-border rounded shadow-sm">/</kbd>
+            <kbd
+              class="hidden sm:inline-flex items-center justify-center w-5 h-5 text-[10px] font-mono text-text-muted bg-bg-elevated border border-border rounded shadow-sm"
+              >/</kbd
+            >
           {/if}
         </div>
       </div>
       {#if searchQuery}
         <p class="text-sm text-text-muted">
-          {totalFilteredCount} {totalFilteredCount === 1 ? 'result' : 'results'}
+          {totalFilteredCount}
+          {totalFilteredCount === 1 ? "result" : "results"}
         </p>
       {/if}
     </div>
@@ -437,22 +524,34 @@
 
   <!-- Job List -->
   {#if jobs.length === 0}
-    <div class="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-bg-surface via-bg-elevated to-accent/5 text-center py-16 px-6">
+    <div
+      class="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-bg-surface via-bg-elevated to-accent/5 text-center py-16 px-6"
+    >
       <!-- Decorative elements -->
-      <div class="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
-      <div class="absolute bottom-0 left-0 w-48 h-48 bg-secondary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"></div>
+      <div
+        class="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"
+      ></div>
+      <div
+        class="absolute bottom-0 left-0 w-48 h-48 bg-secondary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"
+      ></div>
 
       <div class="relative">
-        <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 flex items-center justify-center shadow-lg animate-float">
+        <div
+          class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 flex items-center justify-center shadow-lg animate-float"
+        >
           <Search class="w-10 h-10 text-accent" />
         </div>
         <h2 class="text-2xl font-bold text-text-primary mb-3">
           Ready to discover your next opportunity?
         </h2>
         <p class="text-text-secondary mb-8 max-w-lg mx-auto leading-relaxed">
-          NicheIQ analyzes Reddit discussions, identifies pain points, and generates a comprehensive market research report in minutes.
+          NicheIQ analyzes Reddit discussions, identifies pain points, and
+          generates a comprehensive market research report in minutes.
         </p>
-        <button onclick={() => ($showNewResearchModal = true)} class="btn-primary inline-flex text-base px-6 py-3">
+        <button
+          onclick={() => ($showNewResearchModal = true)}
+          class="btn-primary inline-flex text-base px-6 py-3"
+        >
           <Plus class="w-5 h-5" />
           Start Your First Research
         </button>
@@ -466,133 +565,154 @@
     {#if searchQuery && !hasFilteredResults}
       <div class="card text-center py-12">
         <Search class="w-12 h-12 mx-auto mb-4 text-text-muted" />
-        <h3 class="text-lg font-semibold text-text-primary mb-2">No results found</h3>
+        <h3 class="text-lg font-semibold text-text-primary mb-2">
+          No results found
+        </h3>
         <p class="text-text-muted mb-4">No research matches "{searchQuery}"</p>
         <button
-          onclick={() => searchQuery = ''}
+          onclick={() => (searchQuery = "")}
           class="btn-secondary inline-flex"
         >
           Clear search
         </button>
       </div>
     {:else}
-    <div class="space-y-6">
-      <!-- Active Jobs Section -->
-      {#if filteredActiveJobs.length > 0}
-        <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <div class="w-1 h-6 rounded-full bg-warning"></div>
-            <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
-              In Progress
-            </h2>
-            <span class="text-xs font-mono text-warning bg-warning/10 px-2 py-0.5 rounded-full">
-              {filteredActiveJobs.length}
-            </span>
-          </div>
-          <div class="grid gap-3">
-            {#each filteredActiveJobs as job, i}
-              <JobCard
-                {job}
-                onCancel={cancelJob}
-                isCancelling={cancellingJobs.has(job.id)}
-                animationDelay={i * 50}
-              />
-            {/each}
-          </div>
-        </div>
-      {/if}
-
-      <!-- Completed Jobs Section -->
-      {#if filteredCompletedJobs.length > 0}
+      <div class="space-y-6">
+        <!-- Active Jobs Section -->
         {#if filteredActiveJobs.length > 0}
-          <div class="my-6">
-            <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
-          </div>
-        {/if}
-        <div class="space-y-4">
-          <div class="flex items-center gap-3">
-            <div class="w-1 h-6 rounded-full bg-success"></div>
-            <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
-              Completed
-            </h2>
-            <span class="text-xs font-mono text-success bg-success/10 px-2 py-0.5 rounded-full">
-              {filteredCompletedJobs.length}
-            </span>
-          </div>
-          <div class="grid gap-3">
-            {#each filteredVisibleCompleted as job, i}
-              <JobCard
-                {job}
-                animationDelay={i * 50}
-                isMenuOpen={openMenuId === job.id}
-                onMenuToggle={toggleMenu}
-              />
-            {/each}
-          </div>
-
-          <!-- Show more/less button -->
-          {#if filteredCompletedJobs.length > INITIAL_VISIBLE_COMPLETED}
-            <button
-              onclick={() => showAllCompleted = !showAllCompleted}
-              class="w-full py-3 px-4 rounded-lg border border-border bg-bg-surface hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center justify-center gap-2 text-sm font-medium"
-            >
-              {#if showAllCompleted}
-                <ChevronUp class="w-4 h-4" />
-                Show less
-              {:else}
-                <ChevronDown class="w-4 h-4" />
-                Show {filteredCompletedJobs.length - INITIAL_VISIBLE_COMPLETED} more completed
-              {/if}
-            </button>
-          {/if}
-        </div>
-      {/if}
-
-      <!-- Failed Jobs Section -->
-      {#if filteredFailedJobs.length > 0}
-        {#if filteredActiveJobs.length > 0 || filteredCompletedJobs.length > 0}
-          <div class="my-6">
-            <div class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"></div>
-          </div>
-        {/if}
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
+          <div class="space-y-4">
             <div class="flex items-center gap-3">
-              <div class="w-1 h-6 rounded-full bg-error"></div>
-              <h2 class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide">
-                Failed
+              <div class="w-1 h-6 rounded-full bg-warning"></div>
+              <h2
+                class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
+              >
+                In Progress
               </h2>
-              <span class="text-xs font-mono text-error bg-error/10 px-2 py-0.5 rounded-full">
-                {filteredFailedJobs.length}
+              <span
+                class="text-xs font-mono text-warning bg-warning/10 px-2 py-0.5 rounded-full"
+              >
+                {filteredActiveJobs.length}
               </span>
             </div>
-            <button
-              onclick={() => showFailedJobs = !showFailedJobs}
-              class="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-              aria-label={showFailedJobs ? 'Collapse failed jobs' : 'Expand failed jobs'}
-            >
-              {#if showFailedJobs}
-                <ChevronUp class="w-4 h-4" />
-              {:else}
-                <ChevronDown class="w-4 h-4" />
-              {/if}
-            </button>
-          </div>
-          {#if showFailedJobs}
             <div class="grid gap-3">
-              {#each filteredFailedJobs as job, i}
+              {#each filteredActiveJobs as job, i}
                 <JobCard
                   {job}
-                  onResume={resumeJob}
-                  isResuming={resumingJobs.has(job.id)}
+                  onCancel={cancelJob}
+                  isCancelling={cancellingJobs.has(job.id)}
                   animationDelay={i * 50}
                 />
               {/each}
             </div>
+          </div>
+        {/if}
+
+        <!-- Completed Jobs Section -->
+        {#if filteredCompletedJobs.length > 0}
+          {#if filteredActiveJobs.length > 0}
+            <div class="my-6">
+              <div
+                class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
+              ></div>
+            </div>
           {/if}
-        </div>
-      {/if}
-    </div>
+          <div class="space-y-4">
+            <div class="flex items-center gap-3">
+              <div class="w-1 h-6 rounded-full bg-success"></div>
+              <h2
+                class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
+              >
+                Completed
+              </h2>
+              <span
+                class="text-xs font-mono text-success bg-success/10 px-2 py-0.5 rounded-full"
+              >
+                {filteredCompletedJobs.length}
+              </span>
+            </div>
+            <div class="grid gap-3">
+              {#each filteredVisibleCompleted as job, i}
+                <JobCard
+                  {job}
+                  animationDelay={i * 50}
+                  isMenuOpen={openMenuId === job.id}
+                  onMenuToggle={toggleMenu}
+                />
+              {/each}
+            </div>
+
+            <!-- Show more/less button -->
+            {#if filteredCompletedJobs.length > INITIAL_VISIBLE_COMPLETED}
+              <button
+                onclick={() => (showAllCompleted = !showAllCompleted)}
+                class="w-full py-3 px-4 rounded-lg border border-border bg-bg-surface hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center justify-center gap-2 text-sm font-medium"
+              >
+                {#if showAllCompleted}
+                  <ChevronUp class="w-4 h-4" />
+                  Show less
+                {:else}
+                  <ChevronDown class="w-4 h-4" />
+                  Show {filteredCompletedJobs.length -
+                    INITIAL_VISIBLE_COMPLETED} more completed
+                {/if}
+              </button>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Failed Jobs Section -->
+        {#if filteredFailedJobs.length > 0}
+          {#if filteredActiveJobs.length > 0 || filteredCompletedJobs.length > 0}
+            <div class="my-6">
+              <div
+                class="h-px bg-gradient-to-r from-transparent via-border-emphasis/50 to-transparent"
+              ></div>
+            </div>
+          {/if}
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-1 h-6 rounded-full bg-error"></div>
+                <h2
+                  class="text-sm font-display font-semibold text-text-primary uppercase tracking-wide"
+                >
+                  Failed
+                </h2>
+                <span
+                  class="text-xs font-mono text-error bg-error/10 px-2 py-0.5 rounded-full"
+                >
+                  {filteredFailedJobs.length}
+                </span>
+              </div>
+              <button
+                onclick={() => (showFailedJobs = !showFailedJobs)}
+                class="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                aria-label={showFailedJobs
+                  ? "Collapse failed jobs"
+                  : "Expand failed jobs"}
+              >
+                {#if showFailedJobs}
+                  <ChevronUp class="w-4 h-4" />
+                {:else}
+                  <ChevronDown class="w-4 h-4" />
+                {/if}
+              </button>
+            </div>
+            {#if showFailedJobs}
+              <div class="grid gap-3">
+                {#each filteredFailedJobs as job, i}
+                  <JobCard
+                    {job}
+                    onResume={resumeJob}
+                    isResuming={resumingJobs.has(job.id)}
+                    animationDelay={i * 50}
+                  />
+                {/each}
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
     {/if}
   {/if}
 </div>

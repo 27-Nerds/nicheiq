@@ -1,5 +1,12 @@
 <script lang="ts">
-  import { Users, Briefcase, CheckCircle, XCircle, Coins, TrendingUp } from 'lucide-svelte';
+  import {
+    Users,
+    Briefcase,
+    CheckCircle,
+    XCircle,
+    Coins,
+    TrendingUp,
+  } from "lucide-svelte";
 
   let { data } = $props();
 
@@ -22,7 +29,9 @@
           </div>
           <span class="text-sm text-text-muted">Total Users</span>
         </div>
-        <p class="text-3xl font-bold text-text-primary">{stats.totalUsers.toLocaleString()}</p>
+        <p class="text-3xl font-bold text-text-primary">
+          {stats.totalUsers.toLocaleString()}
+        </p>
       </div>
 
       <div class="bg-bg-surface border border-border rounded-xl p-5">
@@ -32,8 +41,12 @@
           </div>
           <span class="text-sm text-text-muted">Active Jobs</span>
         </div>
-        <p class="text-3xl font-bold text-text-primary">{stats.activeJobs.toLocaleString()}</p>
-        <p class="text-xs text-text-muted mt-1">{stats.totalJobs.toLocaleString()} total</p>
+        <p class="text-3xl font-bold text-text-primary">
+          {stats.activeJobs.toLocaleString()}
+        </p>
+        <p class="text-xs text-text-muted mt-1">
+          {stats.totalJobs.toLocaleString()} total
+        </p>
       </div>
 
       <div class="bg-bg-surface border border-border rounded-xl p-5">
@@ -43,7 +56,9 @@
           </div>
           <span class="text-sm text-text-muted">Completed</span>
         </div>
-        <p class="text-3xl font-bold text-success">{stats.completedJobs.toLocaleString()}</p>
+        <p class="text-3xl font-bold text-success">
+          {stats.completedJobs.toLocaleString()}
+        </p>
       </div>
 
       <div class="bg-bg-surface border border-border rounded-xl p-5">
@@ -53,7 +68,9 @@
           </div>
           <span class="text-sm text-text-muted">Failed</span>
         </div>
-        <p class="text-3xl font-bold text-error">{stats.failedJobs.toLocaleString()}</p>
+        <p class="text-3xl font-bold text-error">
+          {stats.failedJobs.toLocaleString()}
+        </p>
       </div>
 
       <div class="bg-bg-surface border border-border rounded-xl p-5">
@@ -63,7 +80,9 @@
           </div>
           <span class="text-sm text-text-muted">Credits Purchased</span>
         </div>
-        <p class="text-3xl font-bold text-text-primary">{stats.totalCreditsPurchased.toLocaleString()}</p>
+        <p class="text-3xl font-bold text-text-primary">
+          {stats.totalCreditsPurchased.toLocaleString()}
+        </p>
       </div>
 
       <div class="bg-bg-surface border border-border rounded-xl p-5">
@@ -73,7 +92,9 @@
           </div>
           <span class="text-sm text-text-muted">Credits Used</span>
         </div>
-        <p class="text-3xl font-bold text-text-primary">{stats.totalCreditsUsed.toLocaleString()}</p>
+        <p class="text-3xl font-bold text-text-primary">
+          {stats.totalCreditsUsed.toLocaleString()}
+        </p>
       </div>
     </div>
   {:else}
