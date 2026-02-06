@@ -555,6 +555,20 @@ python -m nicheiq.main --niche "Inventory management for restaurants"
 
 ---
 
+### ChromaDB Maintenance
+
+Over time, orphaned ChromaDB collections can accumulate from interrupted runs. Use the cleanup command to manage them:
+
+```bash
+# Audit collections (dry run — lists names and doc counts)
+python -m nicheiq.main --cleanup-collections
+
+# Purge all collections (ensure no jobs are running)
+python -m nicheiq.main --cleanup-collections --force
+```
+
+---
+
 ## Troubleshooting
 
 ### Common Issues and Solutions

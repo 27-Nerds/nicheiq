@@ -55,6 +55,7 @@ def run_research_job(
     output_dir = output_base / job_id
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    flow = None
     try:
         # Import here to avoid loading heavy dependencies until needed
         from nicheiq.flows.research_flow import ResearchFlow
@@ -69,6 +70,7 @@ def run_research_job(
         flow = ResearchFlow(
             niche_description=niche,
             allowed_project_types=allowed_project_types,
+            job_id=job_id,
         )
 
         # Attach progress callback to flow
@@ -184,6 +186,14 @@ def run_research_job(
 
         # Re-raise - queue_consumer handles all failure notification via notify_job_failed()
         raise
+
+    finally:
+        # Clean up ChromaDB collections to prevent cross-job data leakage
+        try:
+            if flow is not None:
+                flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
 
 
 def run_landing_page_only(

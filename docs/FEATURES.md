@@ -69,6 +69,40 @@ python -m nicheiq.main --niche "AI tools" --checkpoint ./output/checkpoints/chec
 python -m nicheiq.main --niche "AI tools" --no-checkpoint
 ```
 
+### ChromaDB Collection Cleanup
+
+Each research job creates ChromaDB collections for knowledge storage. These are automatically cleaned up on completion, but orphaned collections can accumulate if a job is killed (e.g., SIGKILL, OOM) before the cleanup runs.
+
+> **Note:** This is primarily a local development concern. In production Docker, ChromaDB data is ephemeral (no named volume), so it's destroyed on every container restart.
+
+#### List Collections (Dry Run)
+```bash
+python -m nicheiq.main --cleanup-collections
+```
+
+Output example:
+```
+ChromaDB storage path: /home/user/.local/share/nicheiq
+
+Found 63 collection(s):
+
+  Name                                                   Docs
+  -------------------------------------------------- --------
+  knowledge_audience_ai_prompt_management                 571
+  knowledge_solution_indie_hackers                        623
+  ...
+
+  Total: 63 collections, 144613 documents
+
+This was a dry run. To delete all collections, re-run with --force
+```
+
+#### Delete All Collections
+```bash
+# Ensure no research jobs are running first
+python -m nicheiq.main --cleanup-collections --force
+```
+
 ### Configuration
 
 Add to `.env` file:

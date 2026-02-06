@@ -70,19 +70,24 @@ class ResearchFlow(Flow[ResearchState]):
     10: Final Report Generation (Flow)
     """
 
-    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None):
+    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None, job_id: str | None = None):
         """
         Initialize ResearchFlow with niche description.
 
         Args:
             niche_description: User's niche area description
             allowed_project_types: Optional list of allowed project types (saas, directory, aggregator, comparison-tool, marketplace)
+            job_id: Optional job identifier for per-job ChromaDB collection isolation
         """
         super().__init__()
 
         # Store niche description for use in flow methods
         self.niche_description = niche_description
         self.allowed_project_types = allowed_project_types
+        self.job_id = job_id
+
+        # Track Knowledge objects created during the run for cleanup
+        self._knowledge_objects: list = []
 
         # Initialize tools
         self.search_tool = SerperDevTool()
@@ -109,6 +114,32 @@ class ResearchFlow(Flow[ResearchState]):
         # Can be set after initialization: flow.progress_callback = callback
         # Callback signature: (stage_num: float, stage_name: str, status: str) -> None
         self.progress_callback = None
+
+    # ========== KNOWLEDGE CLEANUP ==========
+
+    def register_knowledge(self, knowledge) -> None:
+        """Register a Knowledge object for cleanup at the end of the run."""
+        if knowledge is not None:
+            self._knowledge_objects.append(knowledge)
+
+    def cleanup_collections(self) -> None:
+        """
+        Delete all ChromaDB collections created during this run.
+
+        Uses Knowledge.reset() which correctly handles the ``knowledge_``
+        prefix that CrewAI's KnowledgeStorage adds internally.
+        Each reset is wrapped in try/except so concurrent workers or
+        missing collections don't propagate errors.
+        """
+        if not self._knowledge_objects:
+            return
+        logger.info(f"Cleaning up {len(self._knowledge_objects)} ChromaDB knowledge collections...")
+        for knowledge_obj in self._knowledge_objects:
+            try:
+                knowledge_obj.reset()
+            except Exception as e:
+                logger.debug(f"Knowledge cleanup skipped (already removed or unavailable): {e}")
+        self._knowledge_objects.clear()
 
     # ========== HELPER METHODS ==========
 
@@ -988,6 +1019,10 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info(f"[OK] Target location: {settings.target_location}")
         logger.info(f"[OK] Target language: {settings.target_language}")
 
+        # Assign job_id to state (generate UUID if not provided)
+        import uuid as _uuid
+        self.state.job_id = self.job_id or str(_uuid.uuid4())
+
         # Store user constraints in state for persistence
         self.state.allowed_project_types = self.allowed_project_types
         if self.allowed_project_types:
@@ -1450,15 +1485,24 @@ Return a valid JSON object with this structure:
             twitter_threads=self.state.social_content.twitter_threads,
             niche_description=self.niche_description,
             market_segments=self.state.niche_context.market_segments,
-            industry_boundaries=self.state.niche_context.industry_boundaries
+            industry_boundaries=self.state.niche_context.industry_boundaries,
+            job_id=self.state.job_id,
         )
 
         result = pain_point_crew.analyze()
         logger.info(f"[Parallel] PainPointCrew complete: {len(result.pain_points) if result else 0} pain points")
 
+        # Collect Knowledge objects for cleanup
+        knowledge_objects = []
+        if getattr(pain_point_crew, '_crew_knowledge', None):
+            knowledge_objects.append(pain_point_crew._crew_knowledge)
+        if getattr(pain_point_crew, '_enrichment_knowledge', None):
+            knowledge_objects.append(pain_point_crew._enrichment_knowledge)
+
         return {
             "result": result,
-            "usage_metrics": pain_point_crew.usage_metrics
+            "usage_metrics": pain_point_crew.usage_metrics,
+            "knowledge_objects": knowledge_objects,
         }
 
     def _run_audience_mapping_crew(self, pain_point_analysis=None) -> dict:
@@ -1480,7 +1524,8 @@ Return a valid JSON object with this structure:
         audience_crew = AudienceMappingCrew(
             reddit_posts=self.state.social_content.reddit_posts if self.state.social_content else [],
             twitter_threads=self.state.social_content.twitter_threads if self.state.social_content else [],
-            niche_description=self.niche_description
+            niche_description=self.niche_description,
+            job_id=self.state.job_id,
         )
 
         # Use provided pain_point_analysis or create empty placeholder for parallel execution
@@ -1501,9 +1546,15 @@ Return a valid JSON object with this structure:
 
         logger.info(f"[Parallel] AudienceMappingCrew complete: {len(result.audience_segments) if result else 0} segments")
 
+        # Collect Knowledge objects for cleanup
+        knowledge_objects = []
+        if getattr(audience_crew, '_crew_knowledge', None):
+            knowledge_objects.append(audience_crew._crew_knowledge)
+
         return {
             "result": result,
-            "usage_metrics": audience_crew.usage_metrics
+            "usage_metrics": audience_crew.usage_metrics,
+            "knowledge_objects": knowledge_objects,
         }
 
     @listen(stage_5_search_and_discover)
@@ -1588,10 +1639,14 @@ Return a valid JSON object with this structure:
                     if task_name == "pain_points":
                         pain_point_result = result_dict["result"]
                         pain_point_usage = result_dict["usage_metrics"]
+                        for k in result_dict.get("knowledge_objects", []):
+                            self.register_knowledge(k)
                         logger.info("[Parallel] PainPointCrew finished successfully")
                     else:  # audience
                         audience_result = result_dict["result"]
                         audience_usage = result_dict["usage_metrics"]
+                        for k in result_dict.get("knowledge_objects", []):
+                            self.register_knowledge(k)
                         logger.info("[Parallel] AudienceMappingCrew finished successfully")
                 except Exception as e:
                     logger.error(f"[Parallel] {task_name} crew failed: {e}")
@@ -1854,7 +1909,8 @@ Return a valid JSON object with this structure:
                 allowed_project_types=self.allowed_project_types,
                 niche_context=self.state.niche_context,
                 audience_mapping=self.state.audience_mapping,
-                checkpoint_mgr=self.checkpoint_mgr
+                checkpoint_mgr=self.checkpoint_mgr,
+                job_id=self.state.job_id,
             )
 
             # Execute complete pipeline (6 tasks in sequence with context chaining)
@@ -1865,6 +1921,10 @@ Return a valid JSON object with this structure:
                 solution_selection,
                 competitive_enhancements,
             ) = unified_crew.execute_pipeline()
+
+            # Collect Knowledge objects for cleanup
+            if getattr(unified_crew, '_crew_knowledge', None):
+                self.register_knowledge(unified_crew._crew_knowledge)
 
             # Record crew cost
             if unified_crew.usage_metrics:
@@ -4023,6 +4083,7 @@ Return a valid JSON object with this structure:
                 allowed_project_types=self.state.allowed_project_types,
                 audience_mapping=self.state.audience_mapping,
                 covered_keywords=anchor_keyword_strings or None,
+                job_id=self.state.job_id,
             )
 
             # Check for existing sub-phase checkpoints (enables partial resume)
@@ -4224,6 +4285,7 @@ Return a valid JSON object with this structure:
                 niche_context=self.state.niche_context,
                 allowed_project_types=self.state.allowed_project_types,
                 audience_mapping=self.state.audience_mapping,
+                job_id=self.state.job_id,
             )
 
         try:
@@ -4232,6 +4294,10 @@ Return a valid JSON object with this structure:
                 enriched_keywords=enriched_keywords,
                 expanded_keywords=expanded_keywords
             )
+
+            # Collect Knowledge objects for cleanup
+            if getattr(seo_crew, '_crew_knowledge', None):
+                self.register_knowledge(seo_crew._crew_knowledge)
 
             # Record crew cost
             if seo_crew.usage_metrics:

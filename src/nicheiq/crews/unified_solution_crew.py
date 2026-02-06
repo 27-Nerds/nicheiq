@@ -77,6 +77,7 @@ class UnifiedSolutionCrew:
         niche_context: NicheContext | None = None,
         audience_mapping: AudienceMappingResult | None = None,
         checkpoint_mgr: "CheckpointManager | None" = None,
+        job_id: str | None = None,
     ):
         """
         Initialize UnifiedSolutionCrew with pain points and optional context.
@@ -88,6 +89,7 @@ class UnifiedSolutionCrew:
             niche_context: Optional structured niche context with market segments and boundaries
             audience_mapping: Optional audience intelligence from AudienceMappingCrew
             checkpoint_mgr: Optional checkpoint manager for task-level saves
+            job_id: Optional job identifier for per-job ChromaDB collection isolation
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
@@ -95,6 +97,7 @@ class UnifiedSolutionCrew:
         self.niche_context = niche_context
         self.audience_mapping = audience_mapping
         self.checkpoint_mgr = checkpoint_mgr
+        self.job_id = job_id
 
         # Initialize search tool for competitive research
         self.search_tool = CachedSerperDevTool()
@@ -468,9 +471,10 @@ class UnifiedSolutionCrew:
         }
 
         # Create Knowledge with niche-specific collection name for isolation
+        self._crew_knowledge = None
         if self.knowledge_sources:
             niche = self.niche_context.niche_input if self.niche_context else "default"
-            collection_name = sanitize_collection_name(niche, "solution")
+            collection_name = sanitize_collection_name(niche, "solution", self.job_id)
             logger.info(f"Creating solution knowledge with collection: {collection_name}")
             knowledge = Knowledge(
                 sources=self.knowledge_sources,
@@ -479,6 +483,7 @@ class UnifiedSolutionCrew:
             )
             knowledge.add_sources()
             crew_config["knowledge"] = knowledge
+            self._crew_knowledge = knowledge
 
         return Crew(**crew_config)
 

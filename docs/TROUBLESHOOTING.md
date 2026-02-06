@@ -254,6 +254,23 @@ Useful checkpoint files:
 
 ---
 
+### Clean Up Orphaned ChromaDB Collections
+
+If a job is killed before its cleanup runs (SIGKILL, OOM, etc.), ChromaDB collections persist on disk. Use the cleanup command to audit and purge them:
+
+```bash
+# List all collections (safe, read-only)
+python -m nicheiq.main --cleanup-collections
+
+# Delete all collections (ensure no jobs are running)
+python -m nicheiq.main --cleanup-collections --force
+
+# Verify cleanup
+python -m nicheiq.main --cleanup-collections
+```
+
+---
+
 ### Validate Report Output
 
 Use the validation script to check for hallucinations and data accuracy:

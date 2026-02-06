@@ -263,7 +263,7 @@ class PainPointCrew:
     agents_config = "config/pain_point_agents.yaml"
     tasks_config = "config/pain_point_tasks.yaml"
 
-    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = ""):
+    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -321,6 +321,7 @@ class PainPointCrew:
         self.niche_description = niche_description
         self.market_segments = market_segments or []
         self.industry_boundaries = industry_boundaries
+        self.job_id = job_id
         self.knowledge_sources = []
 
         # Store formatted content for direct injection into Task 1 (categorization)
@@ -461,16 +462,10 @@ class PainPointCrew:
         Args:
             niche_description: Niche description for collection naming
         """
-        import re
-        import time
-
         from crewai.knowledge.knowledge import Knowledge
 
+        from ..utils.helpers import sanitize_collection_name
         from ..utils.knowledge import RedditKnowledgeSource, TwitterKnowledgeSource
-
-        # Sanitize collection name (alphanumeric, dash, underscore only)
-        def sanitize_name(s: str) -> str:
-            return re.sub(r'[^a-zA-Z0-9_-]', '_', s)[:50]
 
         enrichment_sources = []
 
@@ -493,7 +488,7 @@ class PainPointCrew:
             enrichment_sources.append(twitter_source)
 
         if enrichment_sources:
-            collection_name = f"enrich_{sanitize_name(niche_description)}_{int(time.time())}"
+            collection_name = sanitize_collection_name(niche_description, "enrich", self.job_id)
             self._enrichment_knowledge = Knowledge(
                 collection_name=collection_name,
                 sources=enrichment_sources,
@@ -729,7 +724,6 @@ class PainPointCrew:
                 temperature=0.3,  # Low-moderate for consistent pattern extraction
                 max_tokens=16000,  # Prevent truncation of large extraction outputs
             )),
-            knowledge_sources=self.knowledge_sources,  # RAG for supplementary quote retrieval
             knowledge_config=KnowledgeConfig(results_limit=20),  # More tagged content available
             verbose=True,
         )
@@ -741,11 +735,13 @@ class PainPointCrew:
         Assesses severity, willingness to pay, and market potential.
 
         Uses low temperature (0.2) for objective, consistent scoring.
-        Has knowledge_sources attached for RAG-based evidence validation.
+        Uses crew-level knowledge for RAG-based evidence validation.
         Uses dedicated pain_point_validation_llm (non-reasoning) to allow max_tokens.
         """
         from langchain_openai import ChatOpenAI
         from ..utils.llm_service import build_llm_kwargs
+
+        from crewai.knowledge.knowledge_config import KnowledgeConfig
 
         return Agent(
             config=self.agents_config["pain_point_validator"],
@@ -754,7 +750,7 @@ class PainPointCrew:
                 temperature=0.2,  # Low temperature for consistent scoring
                 max_tokens=8192,  # Prevent truncation of large validation outputs
             )),
-            knowledge_sources=self.knowledge_sources,  # RAG for evidence validation
+            knowledge_config=KnowledgeConfig(results_limit=5),  # Evidence validation
             verbose=True,
         )
 
@@ -1042,12 +1038,15 @@ class PainPointCrew:
 
         Architecture:
         - Task 1 (content_researcher): NO RAG - uses direct injection only
-        - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): HAVE RAG via agent-level knowledge_sources
+        - Tasks 2 & 3 (pain_point_analyst, pain_point_validator): HAVE RAG via crew-level knowledge
         - Task 4 (quote_enrichment_researcher): Uses QuoteSearchTool (not used in analyze())
 
         Returns:
             Configured Crew instance with all 4 tasks
         """
+        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.helpers import sanitize_collection_name
+
         embedder_config = {
             "provider": "openai",
             "config": {
@@ -1055,21 +1054,34 @@ class PainPointCrew:
             }
         }
 
-        # Note: Knowledge sources are attached at agent level
+        # Create crew-level Knowledge for job-isolated RAG
+        knowledge = None
+        if self.knowledge_sources:
+            collection_name = sanitize_collection_name(self.niche_description, "pain", self.job_id)
+            logger.info(f"Creating pain point knowledge with collection: {collection_name}")
+            knowledge = Knowledge(
+                sources=self.knowledge_sources,
+                embedder=embedder_config,
+                collection_name=collection_name,
+            )
+            knowledge.add_sources()
+            self._crew_knowledge = knowledge  # Store for cleanup
+
         has_enrichment = self._enrichment_knowledge is not None
         logger.info(
-            f"PainPointCrew using agent-level knowledge: "
-            f"content_researcher=NO RAG, pain_point_analyst=RAG ({len(self.knowledge_sources)} sources), "
-            f"pain_point_validator=RAG ({len(self.knowledge_sources)} sources), "
+            f"PainPointCrew using crew-level knowledge: "
+            f"collection={getattr(knowledge, '_collection_name', 'none') if knowledge else 'none'}, "
+            f"sources={len(self.knowledge_sources)}, "
             f"quote_enrichment=parallel Python (enrichment_knowledge={has_enrichment})"
         )
 
         return Crew(
             agents=self.agents,
             tasks=self.tasks,
+            knowledge=knowledge,
             verbose=True,
             process_type="sequential",  # Tasks run in order
-            embedder=embedder_config  # Shared embedder config for agent-level knowledge
+            embedder=embedder_config,
         )
 
     def _extract_and_clean_sources(self, pain_points: list[UnvalidatedPainPoint]) -> list[UnvalidatedPainPoint]:

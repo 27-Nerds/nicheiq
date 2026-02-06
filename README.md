@@ -179,6 +179,8 @@ nicheiq/
 |---------|-------------|
 | `python -m nicheiq.main --niche "Your niche"` | Run research |
 | `python -m nicheiq.main --niche "Your niche" --resume` | Resume from checkpoint |
+| `python -m nicheiq.main --cleanup-collections` | List orphaned ChromaDB collections |
+| `python -m nicheiq.main --cleanup-collections --force` | Delete all ChromaDB collections |
 | `pytest` | Run tests |
 | `pytest --cov` | With coverage |
 

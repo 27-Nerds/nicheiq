@@ -1270,6 +1270,7 @@ class ResearchState(BaseModel):
     final_report: Optional[FinalReport] = None
 
     # Metadata
+    job_id: Optional[str] = Field(default=None, description="Unique job identifier for ChromaDB collection isolation")
     started_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
     current_stage: int = Field(default=1, description="Current pipeline stage (1-10)")

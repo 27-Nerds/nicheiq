@@ -3,9 +3,12 @@ Main entry point for NicheIQ - Autonomous Market Research Agent.
 """
 
 import sys
+import uuid
 from pathlib import Path
 
+import chromadb
 import nest_asyncio
+from crewai.utilities.paths import db_storage_path
 from loguru import logger
 
 from .config.settings import settings
@@ -101,28 +104,39 @@ def run_research(
     if not validate_environment():
         raise OSError("Environment validation failed. Please check your .env file.")
 
-    # Initialize research flow
-    flow = ResearchFlow(niche_description=niche_description, allowed_project_types=allowed_project_types)
+    # Initialize research flow with unique job_id for collection isolation
+    flow = ResearchFlow(
+        niche_description=niche_description,
+        allowed_project_types=allowed_project_types,
+        job_id=str(uuid.uuid4()),
+    )
 
-    # Handle checkpoint resume
-    if checkpoint_path:
-        logger.info(f"Attempting to resume from checkpoint: {checkpoint_path}")
-        checkpoint = Path(checkpoint_path)
-        if not checkpoint.exists():
-            logger.error(f"Checkpoint not found: {checkpoint_path}")
-            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
-        if flow.resume_from_checkpoint(checkpoint):
-            report_path = flow._execute_remaining_stages()
+    try:
+        # Handle checkpoint resume
+        if checkpoint_path:
+            logger.info(f"Attempting to resume from checkpoint: {checkpoint_path}")
+            checkpoint = Path(checkpoint_path)
+            if not checkpoint.exists():
+                logger.error(f"Checkpoint not found: {checkpoint_path}")
+                raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+            if flow.resume_from_checkpoint(checkpoint):
+                report_path = flow._execute_remaining_stages()
+            else:
+                logger.warning("Failed to resume from checkpoint, starting fresh")
+                report_path = flow.run_with_resume(auto_resume=False)
+        elif resume:
+            logger.info("Auto-resume enabled - checking for latest checkpoint")
+            report_path = flow.run_with_resume(auto_resume=True)
         else:
-            logger.warning("Failed to resume from checkpoint, starting fresh")
             report_path = flow.run_with_resume(auto_resume=False)
-    elif resume:
-        logger.info("Auto-resume enabled - checking for latest checkpoint")
-        report_path = flow.run_with_resume(auto_resume=True)
-    else:
-        report_path = flow.run_with_resume(auto_resume=False)
 
-    return report_path
+        return report_path
+    finally:
+        # Clean up ChromaDB collections to prevent data leakage
+        try:
+            flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
 
 def list_checkpoints(niche_description: str = None):
     """
@@ -183,6 +197,68 @@ def list_checkpoints(niche_description: str = None):
 
     logger.info("\n" + "=" * 80)
 
+def cleanup_chromadb(dry_run: bool = True):
+    """
+    Audit and optionally purge all ChromaDB collections.
+
+    Useful for clearing orphaned collections from previous runs
+    (e.g., after SIGKILL where the finally cleanup block didn't run).
+
+    Args:
+        dry_run: If True (default), only list collections. If False, delete them.
+    """
+    storage_path = str(db_storage_path())
+
+    if not Path(storage_path).exists():
+        print(f"No ChromaDB storage found at {storage_path}")
+        return
+
+    print(f"ChromaDB storage path: {storage_path}")
+
+    client = chromadb.PersistentClient(path=storage_path)
+    collections = client.list_collections()
+
+    if not collections:
+        print("No collections found.")
+        return
+
+    # Display collection summary
+    total_docs = 0
+    print(f"\nFound {len(collections)} collection(s):\n")
+    print(f"  {'Name':<50} {'Docs':>8}")
+    print(f"  {'-'*50} {'-'*8}")
+    for coll in collections:
+        doc_count = coll.count()
+        total_docs += doc_count
+        print(f"  {coll.name:<50} {doc_count:>8}")
+    print(f"\n  Total: {len(collections)} collections, {total_docs} documents")
+
+    if dry_run:
+        print("\nThis was a dry run. To delete all collections, re-run with --force")
+        return
+
+    # Force mode: delete collections
+    print("\n⚠ WARNING: Ensure no research jobs are currently running.")
+    print("Deleting collections...\n")
+
+    deleted = 0
+    failed = []
+    for i, coll in enumerate(collections, 1):
+        try:
+            client.delete_collection(name=coll.name)
+            print(f"  [{i}/{len(collections)}] Deleted: {coll.name}")
+            deleted += 1
+        except Exception as e:
+            print(f"  [{i}/{len(collections)}] FAILED: {coll.name} ({e})")
+            failed.append(coll.name)
+
+    print(f"\nDone. Deleted {deleted}/{len(collections)}.", end="")
+    if failed:
+        print(f" {len(failed)} failed: {failed}")
+    else:
+        print()
+
+
 def main():
     """
     CLI entry point for NicheIQ.
@@ -222,6 +298,13 @@ Examples:
 
   # Disable checkpointing for this run
   python -m nicheiq.main --niche "AI tools" --no-checkpoint
+
+  # ChromaDB cleanup:
+  # List all orphaned collections (dry run, safe)
+  python -m nicheiq.main --cleanup-collections
+
+  # Delete all collections (use after confirming the list)
+  python -m nicheiq.main --cleanup-collections --force
         """
     )
 
@@ -275,7 +358,24 @@ Examples:
         help="Disable checkpointing for this run",
     )
 
+    parser.add_argument(
+        "--cleanup-collections",
+        action="store_true",
+        help="List all ChromaDB collections (dry run). Combine with --force to delete them.",
+    )
+
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Actually delete collections (used with --cleanup-collections)",
+    )
+
     args = parser.parse_args()
+
+    # Handle --cleanup-collections command
+    if args.cleanup_collections:
+        cleanup_chromadb(dry_run=not args.force)
+        sys.exit(0)
 
     # Handle --list-checkpoints command
     if args.list_checkpoints:

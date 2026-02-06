@@ -47,7 +47,8 @@ class AudienceMappingCrew:
         self,
         reddit_posts: list[RedditPost] = None,
         twitter_threads: list[TwitterThread] = None,
-        niche_description: str = ""
+        niche_description: str = "",
+        job_id: str | None = None,
     ):
         """
         Initialize AudienceMappingCrew with social content as knowledge sources.
@@ -59,12 +60,14 @@ class AudienceMappingCrew:
             reddit_posts: List of collected Reddit posts
             twitter_threads: List of collected Twitter threads
             niche_description: Description of the niche being analyzed
+            job_id: Optional job identifier for per-job ChromaDB collection isolation
         """
         # The @CrewBase decorator handles parent class initialization
 
         self.reddit_posts = reddit_posts or []
         self.twitter_threads = twitter_threads or []
         self.niche_description = niche_description
+        self.job_id = job_id
         self.knowledge_sources = []
 
         # Calculate content stats for logging
@@ -296,9 +299,10 @@ class AudienceMappingCrew:
         }
 
         # Create Knowledge with niche-specific collection name for isolation
+        self._crew_knowledge = None
         knowledge = None
         if self.knowledge_sources:
-            collection_name = sanitize_collection_name(self.niche_description, "audience")
+            collection_name = sanitize_collection_name(self.niche_description, "audience", self.job_id)
             logger.info(f"Creating knowledge with collection: {collection_name}")
             knowledge = Knowledge(
                 sources=self.knowledge_sources,
@@ -306,6 +310,7 @@ class AudienceMappingCrew:
                 collection_name=collection_name,
             )
             knowledge.add_sources()
+            self._crew_knowledge = knowledge
 
         return Crew(
             agents=[self.audience_researcher()],

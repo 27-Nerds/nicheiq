@@ -570,6 +570,7 @@ class SEOStrategyCrew:
         allowed_project_types: list[str] | None = None,
         audience_mapping: "AudienceMappingResult | None" = None,
         covered_keywords: list[str] | None = None,
+        job_id: str | None = None,
     ):
         """
         Initialize SEOStrategyCrew with SELECTED solution focus.
@@ -601,6 +602,7 @@ class SEOStrategyCrew:
         self.allowed_project_types = allowed_project_types
         self.audience_mapping = audience_mapping
         self.covered_keywords = covered_keywords
+        self.job_id = job_id
 
         # Initialize DataForSEO tools for keyword expansion and search volume
         self.dataforseo_expand_tool = DataForSEOExpandTool()
@@ -1355,8 +1357,9 @@ class SEOStrategyCrew:
         }
 
         # Create Knowledge with niche-specific collection name for isolation
+        self._crew_knowledge = None
         if self.knowledge_sources:
-            collection_name = sanitize_collection_name(self.niche, "seo")
+            collection_name = sanitize_collection_name(self.niche, "seo", self.job_id)
             logger.info(f"Creating SEO knowledge with collection: {collection_name}")
             knowledge = Knowledge(
                 sources=self.knowledge_sources,
@@ -1365,6 +1368,7 @@ class SEOStrategyCrew:
             )
             knowledge.add_sources()
             crew_config["knowledge"] = knowledge
+            self._crew_knowledge = knowledge
 
         return Crew(**crew_config)
 
