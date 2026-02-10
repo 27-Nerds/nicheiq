@@ -105,6 +105,7 @@ describe('GET /api/users/:userId/notification-preferences', () => {
         emailOnJobStart: true,
         emailOnJobComplete: true,
         emailOnJobError: true,
+        emailOnSolutionsReady: true,
       });
     }
   });
@@ -118,6 +119,7 @@ describe('GET /api/users/:userId/notification-preferences', () => {
       emailOnJobStart: false,
       emailOnJobComplete: true,
       emailOnJobError: false,
+      emailOnSolutionsReady: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -139,6 +141,7 @@ describe('GET /api/users/:userId/notification-preferences', () => {
         emailOnJobStart: false,
         emailOnJobComplete: true,
         emailOnJobError: false,
+        emailOnSolutionsReady: true,
       });
     }
   });
@@ -179,6 +182,7 @@ describe('PUT /api/users/:userId/notification-preferences', () => {
       emailOnJobStart: true,
       emailOnJobComplete: true,
       emailOnJobError: false,
+      emailOnSolutionsReady: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -204,6 +208,7 @@ describe('PUT /api/users/:userId/notification-preferences', () => {
         emailOnJobStart: true,
         emailOnJobComplete: true,
         emailOnJobError: false,
+        emailOnSolutionsReady: true,
       });
     }
   });

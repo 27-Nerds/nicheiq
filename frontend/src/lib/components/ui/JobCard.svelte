@@ -40,12 +40,18 @@
   const HIDDEN_STAGES = [6.5];
 
   // Derived state
-  const isRunning = $derived(job.status.toUpperCase() === "RUNNING");
-  const isQueued = $derived(
-    ["PENDING", "QUEUED"].includes(job.status.toUpperCase()),
+  const statusUpper = $derived(job.status.toUpperCase());
+  const isRunning = $derived(
+    statusUpper === "RUNNING" || statusUpper === "RUNNING_PHASE2",
   );
-  const isCompleted = $derived(job.status.toUpperCase() === "COMPLETED");
-  const isFailed = $derived(job.status.toUpperCase() === "FAILED");
+  const isQueued = $derived(["PENDING", "QUEUED"].includes(statusUpper));
+  const isCompleted = $derived(statusUpper === "COMPLETED");
+  const isFailed = $derived(statusUpper === "FAILED");
+  const isAwaitingSelection = $derived(statusUpper === "AWAITING_SELECTION");
+  const isRegenerating = $derived(statusUpper === "REGENERATING");
+  const isInteractive = $derived(
+    isAwaitingSelection || isRegenerating,
+  );
 
   // Human-readable error for failed jobs
   const humanError = $derived(getHumanReadableError(job));
@@ -70,31 +76,39 @@
 
   // Border and dot colors based on state
   const borderClass = $derived(
-    isRunning
-      ? "border-l-warning"
-      : isQueued
-        ? "border-l-secondary"
-        : isCompleted
-          ? "border-l-success"
-          : isFailed
-            ? isQualityGate
-              ? "border-l-warning"
-              : "border-l-error"
-            : "border-l-border",
+    isAwaitingSelection
+      ? "border-l-accent"
+      : isRunning
+        ? "border-l-warning"
+        : isRegenerating
+          ? "border-l-warning"
+          : isQueued
+            ? "border-l-secondary"
+            : isCompleted
+              ? "border-l-success"
+              : isFailed
+                ? isQualityGate
+                  ? "border-l-warning"
+                  : "border-l-error"
+                : "border-l-border",
   );
 
   const dotClass = $derived(
-    isRunning
-      ? "bg-warning animate-pulse"
-      : isQueued
-        ? "bg-secondary"
-        : isCompleted
-          ? "bg-success"
-          : isFailed
-            ? isQualityGate
-              ? "bg-warning"
-              : "bg-error"
-            : "bg-text-muted",
+    isAwaitingSelection
+      ? "bg-accent animate-pulse"
+      : isRunning
+        ? "bg-warning animate-pulse"
+        : isRegenerating
+          ? "bg-warning animate-pulse"
+          : isQueued
+            ? "bg-secondary"
+            : isCompleted
+              ? "bg-success"
+              : isFailed
+                ? isQualityGate
+                  ? "bg-warning"
+                  : "bg-error"
+                : "bg-text-muted",
   );
 
   // Stage name overrides for parallel stages
@@ -432,7 +446,7 @@
       <div class="flex items-center gap-3">
         <div class="flex-1 h-1.5 bg-bg-surface rounded-full overflow-hidden">
           <div
-            class="h-full bg-warning rounded-full transition-all duration-300 animate-shimmer"
+            class="h-full bg-warning rounded-full transition-all duration-300 animate-shimmer motion-reduce:animate-none"
             style="width: {job.progressPercent}%"
           ></div>
         </div>
@@ -456,6 +470,45 @@
       {/snippet}
       {@render jobCardHeader(queueBadge)}
       {@render projectTypeBadges()}
+
+      <!-- Footer -->
+      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
+        {@render cancelButton()}
+      </div>
+    {:else if isAwaitingSelection}
+      <!-- AWAITING SELECTION STATE -->
+      {#snippet awaitingBadge()}
+        <span
+          class="text-xs px-2 py-0.5 bg-accent/10 text-accent rounded-full font-medium shrink-0"
+        >
+          Action Required
+        </span>
+      {/snippet}
+      {@render jobCardHeader(awaitingBadge)}
+      {@render projectTypeBadges()}
+
+      <p class="mt-2 text-sm text-text-secondary">
+        Solutions are ready for your review.
+      </p>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
+        <Button href="/jobs/{job.id}" label="Review Solutions" class="btn-primary text-sm py-2 px-4" />
+      </div>
+    {:else if isRegenerating}
+      <!-- REGENERATING STATE -->
+      {#snippet regeneratingBadge()}
+        <span class="text-xs font-medium text-warning shrink-0 flex items-center gap-1.5">
+          <Loader2 class="w-3 h-3 animate-spin" />
+          Generating New Ideas
+        </span>
+      {/snippet}
+      {@render jobCardHeader(regeneratingBadge)}
+      {@render projectTypeBadges()}
+
+      <p class="mt-2 text-sm text-text-muted">
+        Generating new solutions...
+      </p>
 
       <!-- Footer -->
       <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">

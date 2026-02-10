@@ -12,12 +12,16 @@ datasource db {
 
 // Job lifecycle states
 enum JobStatus {
-  PENDING    // Job created, not yet queued
-  QUEUED     // Added to Redis queue
-  RUNNING    // Worker is processing
-  COMPLETED  // Successfully finished
-  FAILED     // Error occurred
-  CANCELLED  // User cancelled
+  PENDING            // Job created, not yet queued
+  QUEUED             // Added to Redis queue
+  RUNNING            // Worker is processing
+  VALIDATING_IDEAS   // Phase 1 done, validating solution ideas
+  AWAITING_SELECTION // All ideas validated, waiting for user selection
+  REGENERATING       // User requested new ideas, regenerating
+  RUNNING_PHASE2     // User selected solution, running deep investigation
+  COMPLETED          // Successfully finished
+  FAILED             // Error occurred
+  CANCELLED          // User cancelled
 }
 
 // Stage execution states
@@ -95,9 +99,10 @@ model NotificationPreferences {
   emailEnabled          Boolean  @default(true)
 
   // Notification types
-  emailOnJobStart       Boolean  @default(true)    // Notify when job starts processing
-  emailOnJobComplete    Boolean  @default(true)    // Notify when job completes successfully
-  emailOnJobError       Boolean  @default(true)    // Notify when job fails
+  emailOnJobStart           Boolean  @default(true)    // Notify when job starts processing
+  emailOnJobComplete        Boolean  @default(true)    // Notify when job completes successfully
+  emailOnJobError           Boolean  @default(true)    // Notify when job fails
+  emailOnSolutionsReady     Boolean  @default(true)    // Notify when solution ideas are ready for review
 
   // Timestamps
   createdAt             DateTime @default(now())
@@ -164,6 +169,19 @@ model Job {
   niche                String      @db.Text
   allowedProjectTypes  Json?       // Optional list of project types
   generateLandingPage  Boolean     @default(false)
+
+  // Interactive job flow
+  jobMode              String?     @db.VarChar(20)   // 'interactive' or null (legacy one-shot)
+  solutionIdeas        Json?                          // Array of solution preview objects
+  selectedSolution     String?     @db.VarChar(255)   // Name of winning solution (set by Phase 2 re-ranking)
+  selectedSolutions    String[]                       // User's 1-3 selected solution names
+  selectionRationale   String?     @db.Text           // User's reason for selection
+  ideasRegeneratedAt   DateTime?                      // When ideas were last regenerated (null = not regenerated)
+  awaitingSelectionAt  DateTime?                      // When job entered AWAITING_SELECTION
+  ideasShownAt         DateTime?                      // When ideas were first shown to user
+  phase1CheckpointPath String?     @db.VarChar(500)   // Path to phase 1 checkpoint for resuming phase 2
+  selectionReminderCount Int       @default(0)        // Number of selection reminders sent
+  lastReminderSentAt   DateTime?                      // When last reminder was sent
 
   // Status tracking
   status               JobStatus   @default(PENDING)

@@ -118,9 +118,8 @@
       niche = "";
       selectedProjectTypes = PROJECT_TYPES.map((t) => t.value);
       generateLandingPage = false;
-      // Refresh to update credit balance in header
-      await invalidateAll();
-      goto(`/jobs/${data.id}`);
+      // Navigate to job page (invalidateAll refreshes credit balance in header)
+      goto(`/jobs/${data.id}`, { invalidateAll: true });
     } catch (err) {
       error = err instanceof Error ? err.message : "Something went wrong";
     } finally {

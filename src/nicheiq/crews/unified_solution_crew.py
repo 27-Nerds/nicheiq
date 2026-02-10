@@ -34,7 +34,6 @@ from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult, NicheContext
 from ..models.social_content import SocialContentCollection
 from ..models.solution_idea import (
-    CompetitiveEnhancements,
     FilteredConceptList,
     IdeaGenerationResult,
     RawConceptList,
@@ -48,7 +47,6 @@ from ..utils.crew_helpers import (
 from ..utils.validation import (
     create_diversity_guardrail,
     validate_competitive_analysis,
-    validate_competitive_enhancements,
     validate_filtered_concepts,
     validate_raw_concepts,
 )
@@ -385,40 +383,22 @@ class UnifiedSolutionCrew:
             guardrail_max_retries=2,  # Allow 2 retries on truncation
         )
 
-    @task
-    def competitive_refinement_task(self) -> Task:
-        """
-        Task 5: Generate competitive enhancements for solutions.
-        Depends on: solution_refinement_task + competitive_analysis_task (via context)
-        Output: CompetitiveEnhancements (enhancements only)
-
-        Guardrail fixes JSON errors (especially unescaped newlines in overall_competitive_insights)
-        and validates structure completeness.
-        """
-        return Task(
-            config=self.tasks_config["competitive_refinement"],
-            agent=self.solution_refiner(),
-            context=[self.solution_refinement_task(), self.competitive_analysis_task()],
-            output_pydantic=CompetitiveEnhancements,
-            guardrail=validate_competitive_enhancements,
-            guardrail_max_retries=2,
-        )
+    # competitive_refinement_task removed — competitive analysis is now on-demand per-solution
 
     @task
     def solution_selection_task(self) -> Task:
         """
-        Task 6: Select best solution based on scoring criteria.
-        Depends on: solution_refinement_task (full specs) + competitive_refinement_task (enhancements)
+        Task 4: Select best solution based on scoring criteria.
+        Depends on: solution_refinement_task (full specs)
         Output: SolutionSelection with selected solution and rationale.
 
         NOTE: Must include solution_refinement_task in context to provide complete solution
         specs with numeric scores (market_fit_score, technical_feasibility_score, etc.).
-        Without Task 3's data, the selection agent only sees enhancement deltas from Task 5.
         """
         return Task(
             config=self.tasks_config["solution_selection"],
             agent=self.strategic_selector(),
-            context=[self.solution_refinement_task(), self.competitive_refinement_task()],
+            context=[self.solution_refinement_task()],
             output_pydantic=SolutionSelection,
         )
 
@@ -428,15 +408,15 @@ class UnifiedSolutionCrew:
     @crew
     def crew(self) -> Crew:
         """
-        Assemble UnifiedSolutionCrew with 6-task divergent-convergent pipeline.
+        Assemble UnifiedSolutionCrew with 4-task divergent-convergent pipeline.
 
         Tasks:
         1. divergent_exploration - Generate 8-12 raw concepts (high creativity)
         2. diversity_filtering - Filter to 5-7 unique concepts
         3. solution_refinement - Expand to full specifications (3-5 solutions)
-        4. competitive_analysis - Analyze competitive landscape
-        5. competitive_refinement - Enhance with competitive insights
-        6. solution_selection - Select best solution
+        4. solution_selection - Select best solution
+
+        Competitive analysis is run on-demand per-solution (not in pipeline).
 
         Benefits:
         - Forced ideation techniques prevent obvious/similar ideas
@@ -452,14 +432,12 @@ class UnifiedSolutionCrew:
             "config": {"model_name": "text-embedding-3-small"}
         }
 
-        # 6-task divergent-convergent pipeline
+        # 4-task divergent-convergent pipeline
         pipeline_tasks = [
             self.divergent_exploration_task(),   # Task 1: Generate 8-12 raw concepts
             self.diversity_filtering_task(),     # Task 2: Filter to 5-7 unique
             self.solution_refinement_task(),     # Task 3: Expand to full specs
-            self.competitive_analysis_task(),    # Task 4: Competitive research
-            self.competitive_refinement_task(),  # Task 5: Enhance with insights
-            self.solution_selection_task(),      # Task 6: Select best
+            self.solution_selection_task(),      # Task 4: Select best
         ]
 
         crew_config = {
@@ -491,24 +469,21 @@ class UnifiedSolutionCrew:
 
     def execute_pipeline(self) -> tuple[
         IdeaGenerationResult,
-        CompetitiveAnalysisResult,
         SolutionSelection,
-        Optional[CompetitiveEnhancements],
     ]:
         """
-        Execute complete solution pipeline using divergent-convergent architecture (6 tasks).
+        Execute complete solution pipeline using divergent-convergent architecture (4 tasks).
 
         Architecture:
         1. Divergent Exploration - Generate 8-12 raw concepts with forced ideation
         2. Diversity Filtering - Filter to 5-7 unique concepts
         3. Solution Refinement - Expand to 3-5 full specifications
-        4. Competitive Analysis - Analyze competitive landscape
-        5. Competitive Refinement - Enhance with competitive insights
-        6. Solution Selection - Select best solution
+        4. Solution Selection - Select best solution
+
+        Competitive analysis is run on-demand per-solution (not in pipeline).
 
         Returns:
-            Tuple of (refined_solutions, competitive_analysis, solution_selection,
-                      competitive_enhancements, ideation_process)
+            Tuple of (refined_solutions, solution_selection)
         """
         logger.info("Starting Unified Solution Pipeline (Divergent-Convergent Architecture)...")
 
@@ -519,7 +494,6 @@ class UnifiedSolutionCrew:
                     solution_ideas=[],
                     recommended_solution=None,
                 ),
-                CompetitiveAnalysisResult(solution_landscapes=[]),
                 SolutionSelection(
                     selected_solution_name="",
                     selection_rationale="No solutions generated",
@@ -527,8 +501,6 @@ class UnifiedSolutionCrew:
                     runner_up_solutions=[],
                     recommended_focus=""
                 ),
-                None,  # competitive_enhancements
-                None   # ideation_process
             )
 
         try:
@@ -589,7 +561,7 @@ class UnifiedSolutionCrew:
                 logger.info(f"Passing audience intelligence: {len(self.audience_mapping.common_vocabulary or [])} vocabulary terms, {len(self.audience_mapping.audience_segments or [])} segments")
 
             # Execute crew with divergent-convergent pipeline
-            logger.info("Executing Pipeline: Divergent Exploration → Diversity Filtering → Solution Refinement...")
+            logger.info("Executing Pipeline: Divergent Exploration → Diversity Filtering → Solution Refinement → Selection...")
             self._last_crew = self.crew()  # Store for usage_metrics access
             crew_output = self._last_crew.kickoff(inputs={
                 "analysis_summary": self.pain_point_analysis.analysis_summary,
@@ -609,19 +581,19 @@ class UnifiedSolutionCrew:
                 **audience_context,
             })
 
-            # Extract final result (Task 6 output - SolutionSelection)
+            # Extract final result (Task 4 output - SolutionSelection)
             solution_selection = crew_output.pydantic
             if solution_selection is None:
                 raise ValueError(
-                    "Task 6 (Solution Selection) returned None pydantic output. "
+                    "Task 4 (Solution Selection) returned None pydantic output. "
                     "Check task configuration and agent prompt."
                 )
 
             # Access intermediate task outputs (CrewAI provides access via crew_output.tasks_outputs)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-            if len(task_outputs) < 6:
+            if len(task_outputs) < 4:
                 raise ValueError(
-                    f"Expected 6 task outputs, got {len(task_outputs)}. "
+                    f"Expected 4 task outputs, got {len(task_outputs)}. "
                     "Pipeline may have failed mid-execution."
                 )
 
@@ -643,17 +615,6 @@ class UnifiedSolutionCrew:
                     "Check IdeaGenerationResult schema and agent prompt."
                 )
 
-            # Extract Task 4 (competitive analysis) - REQUIRED
-            competitive_analysis = task_outputs[3].pydantic
-            if competitive_analysis is None:
-                raise ValueError(
-                    "Task 4 (Competitive Analysis) returned None pydantic output. "
-                    "Check CompetitiveAnalysisResult schema and agent prompt."
-                )
-
-            # Extract Task 5 (enhancements) - OPTIONAL (can be None if no enhancements generated)
-            enhancements = task_outputs[4].pydantic  # CompetitiveEnhancements or None
-
             # Save task-level checkpoints for resume capability
             if self.checkpoint_mgr:
                 if raw_concepts:
@@ -665,56 +626,13 @@ class UnifiedSolutionCrew:
                 if base_solutions:
                     self.checkpoint_mgr.save_stage("stage_7_3_refinement", base_solutions)
                     logger.debug("Checkpoint saved: stage_7_3_refinement")
-                if competitive_analysis:
-                    self.checkpoint_mgr.save_stage("stage_7_4_competitive", competitive_analysis)
-                    logger.debug("Checkpoint saved: stage_7_4_competitive")
-                if enhancements:
-                    self.checkpoint_mgr.save_stage("stage_7_5_enhancements", enhancements)
-                    logger.debug("Checkpoint saved: stage_7_5_enhancements")
                 if solution_selection:
                     self.checkpoint_mgr.save_stage("stage_7_6_selection", solution_selection)
                     logger.debug("Checkpoint saved: stage_7_6_selection")
 
-            # Python merge: Apply enhancements to base solutions
+            # Use base solutions directly (no enhancement merging)
             from copy import deepcopy
             refined_solutions = deepcopy(base_solutions)
-
-            if enhancements and enhancements.solution_enhancements:
-                for solution in refined_solutions.solution_ideas:
-                    # Find matching enhancement
-                    enhancement = next(
-                        (e for e in enhancements.solution_enhancements if e.solution_name == solution.solution_name),
-                        None
-                    )
-
-                    if enhancement:
-                        # Merge new features (extend, don't replace)
-                        if enhancement.new_core_features:
-                            solution.core_features = list(set(solution.core_features + enhancement.new_core_features))
-
-                        # Merge new differentiation factors
-                        if enhancement.new_differentiation_factors:
-                            solution.differentiation_factors = list(set(
-                                solution.differentiation_factors + enhancement.new_differentiation_factors
-                            ))
-
-                        # Update value proposition if refined
-                        if enhancement.value_proposition_update:
-                            solution.value_proposition = enhancement.value_proposition_update
-
-                        # Update pricing strategy if refined
-                        if enhancement.pricing_strategy_update:
-                            solution.pricing_strategy = enhancement.pricing_strategy_update
-
-                        # Adjust market fit score if suggested
-                        if enhancement.market_fit_score_adjustment:
-                            solution.market_fit_score = min(10.0, max(0.0,
-                                solution.market_fit_score + enhancement.market_fit_score_adjustment
-                            ))
-
-                logger.info(
-                    f"[OK] Applied competitive enhancements to {len(refined_solutions.solution_ideas)} solutions"
-                )
 
             # Log pipeline summary
             removed_count = len(filtered_concepts.removed_concepts) if filtered_concepts else 0
@@ -724,10 +642,9 @@ class UnifiedSolutionCrew:
             logger.info(f"  - Filtered concepts: {len(filtered_concepts.concepts) if filtered_concepts else 0}")
             logger.info(f"  - Removed concepts: {removed_count}")
             logger.info(f"  - Final solutions: {len(refined_solutions.solution_ideas)}")
-            logger.info(f"  - Competitive landscapes: {len(competitive_analysis.solution_landscapes)}")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
 
-            return (refined_solutions, competitive_analysis, solution_selection, enhancements)
+            return (refined_solutions, solution_selection)
 
         except Exception as e:
             error_msg = str(e)
@@ -742,7 +659,6 @@ class UnifiedSolutionCrew:
                         solution_ideas=[],
                         recommended_solution=None,
                     ),
-                    CompetitiveAnalysisResult(solution_landscapes=[]),
                     SolutionSelection(
                         selected_solution_name="",
                         selection_rationale="Guardrail validation failed",
@@ -750,8 +666,6 @@ class UnifiedSolutionCrew:
                         runner_up_solutions=[],
                         recommended_focus=""
                     ),
-                    None,  # competitive_enhancements
-                    None   # ideation_process
                 )
             logger.error(f"Unified pipeline failed: {e}")
             raise

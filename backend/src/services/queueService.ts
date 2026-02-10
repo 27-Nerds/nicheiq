@@ -30,7 +30,8 @@ export async function enqueueJob(
   userId?: string,
   allowedProjectTypes?: string[],
   resume: boolean = false,
-  generateLandingPage: boolean = false
+  generateLandingPage: boolean = false,
+  jobMode?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -39,6 +40,7 @@ export async function enqueueJob(
     allowed_project_types: allowedProjectTypes,
     resume,
     generate_landing_page: generateLandingPage,
+    job_mode: jobMode || null,
     created_at: new Date().toISOString(),
   });
 
@@ -65,6 +67,53 @@ export async function enqueueLandingPageJob(
 
   await redis.lpush(QUEUE_NAME, jobData);
   console.log(`Enqueued landing page job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
+ * Enqueue Phase 2 deep investigation for selected solutions (1-3)
+ */
+export async function enqueuePhase2Job(
+  jobId: string,
+  checkpointPath: string,
+  selectedSolutions: string[],
+  selectionRationale?: string,
+  generateLandingPage: boolean = false
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    checkpoint_path: checkpointPath,
+    selected_solutions: selectedSolutions,
+    selected_solution: selectedSolutions[0],  // backward compat for in-flight workers
+    selection_rationale: selectionRationale || '',
+    generate_landing_page: generateLandingPage,
+    task_type: 'research_phase2',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued phase 2 job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
+ * Enqueue idea regeneration task
+ */
+export async function enqueueRegenerateJob(
+  jobId: string,
+  checkpointPath: string,
+  existingSolutionNames: string[],
+  niche: string
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    checkpoint_path: checkpointPath,
+    existing_solution_names: existingSolutionNames,
+    niche,
+    task_type: 'regenerate_ideas',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued regenerate ideas job ${jobId} to ${QUEUE_NAME}`);
 }
 
 /**

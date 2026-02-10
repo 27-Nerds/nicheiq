@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
-import { enqueueJob, enqueueLandingPageJob, getQueueStats, getQueueLength } from '../services/queueService.js';
+import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueRegenerateJob, getQueueStats, getQueueLength } from '../services/queueService.js';
 import { createJobWithCreditDeduction, InsufficientCreditsError, refundCreditsForJob } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
-import { CreateJobSchema } from '../types/job.js';
+import { CreateJobSchema, SelectSolutionSchema } from '../types/job.js';
 import { JobStatus, AssetType, CreditTransactionType, StageStatus } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
@@ -35,18 +35,22 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       input.niche,
       1, // Credit cost per job
       input.allowedProjectTypes,
-      input.generateLandingPage
+      input.generateLandingPage,
+      // TODO: jobMode is hardcoded to 'interactive' during feature rollout.
+      // All new jobs use the interactive flow. Add jobMode to CreateJobSchema
+      // when we need to support both auto and interactive modes.
+      'interactive'
     );
 
     // Enqueue job for Python worker (email retrieved from DB when needed for notifications)
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, input.generateLandingPage ?? false);
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, input.generateLandingPage ?? false, 'interactive');
 
     // Update status to QUEUED and set queuedAt timestamp
     await prisma.job.update({
       where: { id: job.id },
       data: {
         status: JobStatus.QUEUED,
-        queuedAt: new Date()
+        queuedAt: new Date(),
       }
     });
 
@@ -276,8 +280,12 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
       return;
     }
 
-    // Check if job can be cancelled (only PENDING, QUEUED, RUNNING allowed)
-    const cancellableStatuses: JobStatus[] = [JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING];
+    // Check if job can be cancelled
+    const cancellableStatuses: JobStatus[] = [
+      JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING,
+      JobStatus.VALIDATING_IDEAS, JobStatus.AWAITING_SELECTION,
+      JobStatus.REGENERATING, JobStatus.RUNNING_PHASE2,
+    ];
     if (!cancellableStatuses.includes(job.status)) {
       res.status(400).json({
         error: 'Job already finished',
@@ -413,15 +421,30 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
       },
     });
 
-    // Re-enqueue with resume flag
-    await enqueueJob(
-      job.id,
-      job.niche,
-      userId,
-      job.allowedProjectTypes as string[] | undefined,
-      true, // resume = true
-      job.generateLandingPage
-    );
+    // Interactive job that failed during Phase 2: re-enqueue as phase 2
+    if (job.jobMode === 'interactive' && job.selectedSolution && job.phase1CheckpointPath) {
+      const selectedSolutions = job.selectedSolutions?.length
+        ? job.selectedSolutions as string[]
+        : [job.selectedSolution];
+      await enqueuePhase2Job(
+        job.id,
+        job.phase1CheckpointPath,
+        selectedSolutions,
+        job.selectionRationale || undefined,
+        job.generateLandingPage
+      );
+    } else {
+      // Re-enqueue with resume flag
+      await enqueueJob(
+        job.id,
+        job.niche,
+        userId,
+        job.allowedProjectTypes as string[] | undefined,
+        true, // resume = true
+        job.generateLandingPage,
+        job.jobMode || undefined
+      );
+    }
 
     const creditCharged = refundTransaction ? 1 : 0;
     console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}${creditCharged ? ' (credit charged)' : ''}`);
@@ -550,21 +573,256 @@ jobsRouter.patch('/:jobId/status', requireInternalService, validateJobId, async 
       return;
     }
 
+    // Detect Phase 2 jobs (user has already selected solutions)
+    const isPhase2 = job.selectedSolutions && job.selectedSolutions.length > 0;
+    const runningStatus = isPhase2 ? JobStatus.RUNNING_PHASE2 : JobStatus.RUNNING;
+
     // Perform update
     const updatedJob = await prisma.job.update({
       where: { id: jobId },
       data: {
-        status: JobStatus.RUNNING,
+        status: runningStatus,
         startedAt: new Date(),
       },
     });
 
-    console.log(`Job ${jobId} status updated to RUNNING by worker`);
+    console.log(`Job ${jobId} status updated to ${runningStatus} by worker`);
 
     res.json({ id: updatedJob.id, status: updatedJob.status, currentStage: updatedJob.currentStage });
   } catch (error) {
     console.error('Failed to update job status:', error);
     res.status(500).json({ error: 'Failed to update job status' });
+  }
+});
+
+// ============================================
+// Interactive Job Flow User Endpoints
+// ============================================
+
+/**
+ * POST /api/jobs/:jobId/select-solution
+ * User selects a solution for deep investigation (requires authentication and ownership)
+ */
+jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+
+    const input = SelectSolutionSchema.parse(req.body);
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId },
+      select: {
+        status: true,
+        selectedSolution: true,
+        phase1CheckpointPath: true,
+        solutionIdeas: true,
+        generateLandingPage: true,
+      },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Reject if already selected
+    if (job.selectedSolution) {
+      res.status(400).json({ error: 'Solution already selected', selectedSolution: job.selectedSolution });
+      return;
+    }
+
+    // Validate ALL selected solutions exist in solutionIdeas
+    const solutions = (job.solutionIdeas as any[]) || [];
+    const missingNames = input.solutionNames.filter(
+      name => !solutions.some((s: any) => s.name === name || s.solution_name === name)
+    );
+    if (missingNames.length > 0) {
+      res.status(400).json({ error: 'Selected solution(s) not found in available ideas', missing: missingNames });
+      return;
+    }
+
+    if (job.status !== JobStatus.AWAITING_SELECTION) {
+      res.status(400).json({
+        error: 'Job not in a state that accepts solution selection',
+        status: job.status,
+      });
+      return;
+    }
+
+    // Worker is done — atomically transition to QUEUED and enqueue phase 2
+    if (!job.phase1CheckpointPath) {
+      res.status(500).json({ error: 'Missing checkpoint path for phase 2' });
+      return;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Atomically update status
+      const result = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          status: JobStatus.AWAITING_SELECTION,
+          selectedSolution: null, // Guard against double-selection race
+        },
+        data: {
+          status: JobStatus.QUEUED,
+          selectedSolution: input.solutionNames[0],
+          selectedSolutions: input.solutionNames,
+          selectionRationale: input.rationale || null,
+          queuedAt: new Date(),
+        },
+      });
+
+      if (result.count === 0) {
+        throw new Error('CONFLICT');
+      }
+    });
+
+    // Enqueue phase 2 outside transaction
+    await enqueuePhase2Job(
+      jobId,
+      job.phase1CheckpointPath,
+      input.solutionNames,
+      input.rationale,
+      job.generateLandingPage
+    );
+
+    res.json({
+      status: 'phase2_queued',
+      message: 'Solution selected. Deep investigation is now queued.',
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONFLICT') {
+      res.status(409).json({ error: 'Solution already selected by another request' });
+      return;
+    }
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('Failed to select solution:', error);
+    res.status(500).json({ error: 'Failed to select solution' });
+  }
+});
+
+/**
+ * POST /api/jobs/:jobId/regenerate-ideas
+ * User requests regeneration of solution ideas (requires authentication and ownership)
+ * Only allowed once per job, and only in AWAITING_SELECTION state.
+ */
+jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const userId = req.user!.id;
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId },
+      select: {
+        status: true,
+        ideasRegeneratedAt: true,
+        phase1CheckpointPath: true,
+        solutionIdeas: true,
+        niche: true,
+      },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.status !== JobStatus.AWAITING_SELECTION) {
+      res.status(400).json({ error: 'Can only regenerate ideas when awaiting selection', status: job.status });
+      return;
+    }
+
+    if (job.ideasRegeneratedAt !== null) {
+      res.status(400).json({ error: 'Ideas can only be regenerated once per job' });
+      return;
+    }
+
+    if (!job.phase1CheckpointPath) {
+      res.status(500).json({ error: 'Missing checkpoint path for regeneration' });
+      return;
+    }
+
+    // Get existing solution names to exclude
+    const existingSolutionNames = ((job.solutionIdeas as any[]) || []).map(
+      (s: any) => s.name || s.solution_name
+    );
+
+    // Atomically update status
+    await prisma.$transaction(async (tx) => {
+      const result = await tx.job.updateMany({
+        where: {
+          id: jobId,
+          status: JobStatus.AWAITING_SELECTION,
+          ideasRegeneratedAt: null,
+        },
+        data: {
+          status: JobStatus.REGENERATING,
+          ideasRegeneratedAt: new Date(),
+        },
+      });
+
+      if (result.count === 0) {
+        throw new Error('CONFLICT');
+      }
+    });
+
+    // Enqueue regeneration
+    await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche);
+
+    res.json({
+      status: 'regenerating',
+      message: 'Generating new solution ideas. Existing ideas will be preserved.',
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'CONFLICT') {
+      res.status(409).json({ error: 'Regeneration already in progress or completed' });
+      return;
+    }
+    console.error('Failed to regenerate ideas:', error);
+    res.status(500).json({ error: 'Failed to regenerate ideas' });
+  }
+});
+
+/**
+ * GET /api/jobs/:jobId/solutions
+ * Get solution ideas for an interactive job (requires authentication and ownership)
+ */
+jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await prisma.job.findFirst({
+      where: { id: jobId, userId: req.user!.id },
+      select: {
+        solutionIdeas: true,
+        selectedSolution: true,
+        selectedSolutions: true,
+        selectionRationale: true,
+        ideasRegeneratedAt: true,
+        status: true,
+      },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    res.json({
+      solutionIdeas: job.solutionIdeas || [],
+      selectedSolution: job.selectedSolution,
+      selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
+      selectionRationale: job.selectionRationale,
+      canRegenerate: job.ideasRegeneratedAt === null,
+      status: job.status,
+    });
+  } catch (error) {
+    console.error('Failed to get solutions:', error);
+    res.status(500).json({ error: 'Failed to get solutions' });
   }
 });
 

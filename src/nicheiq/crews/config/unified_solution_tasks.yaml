@@ -1,6 +1,7 @@
 # UnifiedSolutionCrew Tasks
-# 6-task pipeline: 3 new divergent-convergent ideation tasks + 3 existing tasks
-# Architecture: divergent_exploration → diversity_filtering → solution_refinement → competitive_analysis → competitive_refinement → solution_selection
+# 4-task pipeline: 3 divergent-convergent ideation tasks + selection
+# Architecture: divergent_exploration → diversity_filtering → solution_refinement → solution_selection
+# Note: competitive_analysis task definition kept for on-demand per-solution analysis
 
 # =============================================================================
 # NEW: Divergent-Convergent Ideation Architecture (3 Tasks)
@@ -585,157 +586,6 @@ competitive_analysis:
 
     Complete competitive context ready for solution refinement.
 
-competitive_refinement:
-  description: >
-    **TASK 3: Competitive Refinement (Generate Enhancements)**
-
-    Generate competitive enhancements for solutions from Task 1 based on insights from Task 2.
-
-    **HOW TO ACCESS CONTEXT:**
-
-    Tasks 1 and 2 are available in your context for reference:
-    - Task 1: IdeaGenerationResult (base solutions - reference for solution names)
-    - Task 2: CompetitiveAnalysisResult (competitive insights to apply)
-
-    <uncertainty_and_ambiguity>
-    - If Task 2 competitive insights are sparse: Proceed with available data
-    - Note gaps in overall_competitive_insights: "Limited competitive data available for [solution]"
-    - Never fabricate competitor details or market gaps
-    - Make reasonable positioning recommendations based on available evidence
-    - If no competitive data exists for a solution: Generate enhancements based on general market knowledge, noting this limitation
-    </uncertainty_and_ambiguity>
-
-    **YOUR TASK: Generate Competitive Enhancements**
-
-    For EACH solution from Task 1, analyze Task 2 competitive insights and generate ONLY:
-
-    **1. new_core_features** (List[str]): 2-4 NEW features inspired by competitive gaps
-       - NOT all features - ONLY new additions from competitive analysis
-       - Example: "Real-time pricing dashboard", "AI-powered provider matching"
-
-    **2. new_differentiation_factors** (List[str]): 2-3 NEW factors based on market gaps
-       - What makes this solution stand out vs competitors?
-       - Example: "Real-time pricing transparency dashboard", "No competitor offers live pricing"
-
-    **3. value_proposition_update** (Optional[str]): Refined value prop (ONLY if competitive analysis suggests changes)
-       - Leave empty if no refinement needed
-       - If provided: Enhanced version focusing on competitive positioning
-
-    **4. pricing_strategy_update** (Optional[str]): Refined pricing (ONLY if competitive analysis suggests changes)
-       - Leave empty if no refinement needed
-       - If provided: Updated strategy with competitive pricing context
-
-    **5. market_fit_score_adjustment** (Optional[float]): ±0.1 score adjustment (ONLY if competitive insights justify)
-       - Range: -0.1 to +0.1
-       - Leave empty if no adjustment warranted
-       - Positive if gaps reveal better fit, negative if competition is stronger than expected
-
-    **6. overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs)
-       - Summarize key competitive themes across ALL solutions
-       - Highlight market opportunities and positioning strategies
-       - CRITICAL: Do NOT state which solution is "strongest" or "best" - that decision is made in Task 4
-       - Present competitive analysis neutrally, discussing each solution's unique positioning
-       - JSON FORMAT: Use \\n for paragraph breaks, not literal newlines (e.g., "Para 1.\\n\\nPara 2.")
-
-    **WORKFLOW:**
-
-    1. For each solution in Task 1:
-       a. Find matching CompetitiveLandscape from Task 2
-       b. Review: market_gaps, differentiation_opportunities, recommended_positioning
-       c. Generate enhancements based on competitive insights
-
-    2. Create one SolutionEnhancement object per solution with:
-       - solution_name (must match Task 1 exactly)
-       - new_core_features (2-4 new features)
-       - new_differentiation_factors (2-3 new factors)
-       - Optional updates (only if warranted)
-
-    3. Write overall_competitive_insights covering all solutions NEUTRALLY (no "strongest" or "best" recommendations)
-
-    **PRE-SUBMISSION VALIDATION CHECKLIST:**
-
-    Before finalizing output, verify:
-    - [ ] Generated ONE SolutionEnhancement per Task 1 solution (1:1 mapping)
-    - [ ] solution_name is EXACT character-by-character match to Task 1
-    - [ ] new_core_features are ADDITIONS (not all features - Python merges)
-    - [ ] new_differentiation_factors reference competitive gaps from Task 2
-    - [ ] Optional updates (value_proposition, pricing) only provided if competitive analysis justifies changes
-    - [ ] market_fit_score_adjustment is ±0.1 max, only if warranted
-    - [ ] overall_competitive_insights synthesizes themes across ALL solutions
-
-    ═══ CRITICAL RULES (Read Last - Recency Reminder) ═══
-
-    **JSON OUTPUT FORMAT:**
-    ✓ All string values must use \\n for newlines, NOT literal line breaks
-    ✓ Example: "First paragraph.\\n\\nSecond paragraph." (CORRECT)
-    ✗ Literal newlines in JSON strings → Invalid JSON parse error
-
-    **FIELD REQUIREMENTS:**
-    ✗ Copying all features from Task 1 → Python merges automatically (only add NEW)
-      ❌ Example: new_core_features = [all 7 original features from Task 1]
-      ✅ Example: new_core_features = [2-3 NEW features from competitive gaps identified in Task 2]
-    ✗ Inexact solution_name match → Python merge will fail
-      ❌ Example: Task 1 = "RelocatePro", Task 3 = "RelocatePro Platform" (mismatch)
-      ✅ Example: Task 1 = "RelocatePro", Task 3 = "RelocatePro" (exact character-by-character match)
-
-    **DATA ACCURACY:**
-    ✗ Enhancements unrelated to competitive analysis → Invalid
-      ❌ Example: Adding "Mobile app" when Task 2 showed no mobile-related competitive gap
-      ✅ Example: Adding "Real-time pricing dashboard" when Task 2 identified pricing transparency as market gap
-    ✗ Large score adjustments without justification → Arbitrary
-      ❌ Example: market_fit_score_adjustment: -0.3 (exceeds ±0.1 limit, unjustified)
-      ✅ Example: market_fit_score_adjustment: 0.05 (competitive gap increases fit, within ±0.1 range)
-    ✗ Generic value proposition updates → Vague
-      ❌ Example: "A better platform for users" (meaningless fluff)
-      ✅ Example: "Enhanced with real-time pricing transparency and AI-powered matching" (specific competitive advantages)
-
-    **SCOPE VIOLATIONS:**
-    ✗ overall_competitive_insights not covering all solutions → Incomplete synthesis
-      ❌ Example: Insights discuss only 1 of 3 solutions (ignores 2 solutions)
-      ✅ Example: Insights synthesize competitive themes across all 3 solutions with cross-cutting patterns
-    ✗ overall_competitive_insights recommending one solution as "strongest" or "best" → Premature selection
-      ❌ Example: "Competitive evidence is strongest for Solution A" (biased before Task 4 selection)
-      ✅ Example: "Solution A has pricing transparency advantages; Solution B excels at community features; Solution C offers unique privacy positioning" (neutral comparison)
-
-    **FORMAT EXAMPLE (DO NOT COPY — names and content are placeholders only):**
-
-    **ANTI-COPYING RULE:** The example below uses "RelocatePro Directory" as a placeholder.
-    Your output MUST use the actual solution names from Task 1. Do NOT reference "RelocatePro" or any relocation-related content.
-
-    {
-      "solution_enhancements": [
-        {
-          "solution_name": "RelocatePro Directory",
-          "new_core_features": [
-            "Real-time pricing dashboard for service transparency",
-            "AI-powered provider matching based on user preferences"
-          ],
-          "new_differentiation_factors": [
-            "Real-time pricing transparency - no competitor offers live pricing",
-            "AI matching technology reduces search time by 60%"
-          ],
-          "value_proposition_update": "A comprehensive directory enhanced with real-time pricing transparency and AI-powered matching",
-          "pricing_strategy_update": null,
-          "market_fit_score_adjustment": 0.05
-        }
-      ],
-      "overall_competitive_insights": "The relocation market shows strong opportunity for price transparency... [2-3 paragraphs]"
-    }
-
-  expected_output: >
-    CompetitiveEnhancements Pydantic model with enhancements ONLY:
-
-    **solution_enhancements** (List[SolutionEnhancement]): One enhancement per solution
-    - solution_name: Must match Task 1 solution name exactly
-    - new_core_features: 2-4 NEW features from competitive gaps (not all features)
-    - new_differentiation_factors: 2-3 NEW competitive advantages (not all factors)
-    - value_proposition_update: Optional refined value prop
-    - pricing_strategy_update: Optional refined pricing
-    - market_fit_score_adjustment: Optional ±0.1 adjustment
-
-    **overall_competitive_insights** (str): Cross-solution competitive positioning (2-3 paragraphs) - MUST be neutral, no "strongest/best" recommendations
-
-    NOTE: Task 1 base solution fields will be merged automatically by Python. Focus on generating excellent enhancements.
 
 solution_selection:
   description: >
@@ -745,11 +595,11 @@ solution_selection:
 
     **CONTEXT from Task 3** (Automatic via CrewAI Context Chaining):
 
-    You have access to IdeaGenerationResult with enhanced solutions containing:
+    You have access to IdeaGenerationResult with solutions containing:
     - Complete solution details (all 25 fields)
-    - Competitive positioning (differentiation_factors)
     - Market fit and technical feasibility scores
     - SEO scalability and CAC estimates
+    - Differentiation factors and novelty assessment
 
     **WORKFLOW:**
 
@@ -758,11 +608,11 @@ solution_selection:
     Consider all factors and select the solution most likely to succeed:
     - **Market fit** (pain point alignment, evidence strength)
     - **Technical feasibility** (can be built solo in reasonable time)
-    - **Competitive advantage** (gaps to exploit, differentiation)
+    - **Differentiation potential** (novelty, unique approach, specificity)
     - **SEO growth potential** (organic acquisition economics)
 
-    Weight factors based on this specific context. A low-competition niche might
-    weight competitive advantage less. A technical product might weight feasibility more.
+    Weight factors based on this specific context. A high-novelty niche might
+    weight differentiation more. A technical product might weight feasibility more.
     Your judgment matters - use the scores as inputs, not rigid formulas.
 
     **Selection Process:**
@@ -787,7 +637,7 @@ solution_selection:
 
     For EVERY solution evaluated, populate the all_solution_scores field with:
     - Solution name (exact match from Task 3 output)
-    - Selection criteria scores: [market_fit, technical_feasibility, competitive_advantage, seo_growth_potential]
+    - Selection criteria scores: [market_fit, technical_feasibility, differentiation_potential, seo_growth_potential]
     - Composite score (your overall assessment of merit)
     - Rank (1=best, 2=runner-up #1, 3=runner-up #2, etc.)
     - Key evidence supporting each score
@@ -813,8 +663,8 @@ solution_selection:
       ❌ Example: "Strong market fit and low competition" (vague, no numbers)
       ✅ Example: "Addresses 3 pain points (avg severity 0.82), LOW competitive intensity with 5 gaps"
     ✗ Scores without evidence → Arbitrary scoring
-      ❌ Example: competitive_advantage_score: 0.9 (no justification)
-      ✅ Example: competitive_advantage_score: 0.85 (LOW intensity + 5 market gaps from Task 2)
+      ❌ Example: differentiation_potential_score: 0.9 (no justification)
+      ✅ Example: differentiation_potential_score: 0.85 (high novelty + unique data source + underserved niche)
     ✗ Vague recommended focus → Generic fluff
       ❌ Example: "Build MVP and validate market"
       ✅ Example: "Validate directory curation model with 50 early adopters"
@@ -835,7 +685,7 @@ solution_selection:
     **selection_criteria_scores** (List[SelectionCriteriaScore]): 4 scores for selected solution only:
     - criterion="market_fit", score=0.X, justification="[specific data]"
     - criterion="technical_feasibility", score=0.X, justification="[specific data]"
-    - criterion="competitive_advantage", score=0.X, justification="[specific data]"
+    - criterion="differentiation_potential", score=0.X, justification="[specific data]"
     - criterion="seo_growth_potential", score=0.X, justification="[specific data]"
 
     **all_solution_scores** (List[SolutionScores]): Scores for ALL solutions evaluated:
@@ -843,7 +693,7 @@ solution_selection:
     - solution_name: [exact name from Task 3]
     - market_fit_score: 0.X
     - technical_feasibility_score: 0.X
-    - competitive_advantage_score: 0.X
+    - differentiation_potential_score: 0.X
     - seo_growth_potential_score: 0.X
     - composite_score: 0.X (your overall assessment of merit)
     - rank: N (1=best, 2=second, etc.)

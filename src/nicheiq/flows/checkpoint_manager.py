@@ -35,7 +35,8 @@ class CheckpointManager:
         self,
         niche_description: str,
         state: ResearchState,
-        allowed_project_types: list[str | None] = None
+        allowed_project_types: list[str | None] = None,
+        job_id: str | None = None,
     ):
         """
         Initialize checkpoint manager.
@@ -44,10 +45,12 @@ class CheckpointManager:
             niche_description: Niche being researched
             state: Research state object to checkpoint
             allowed_project_types: Optional project type constraints
+            job_id: Optional job identifier for cross-user checkpoint isolation
         """
         self.niche_description = niche_description
         self.state = state
         self.allowed_project_types = allowed_project_types
+        self.job_id = job_id
         self.checkpoint_folder: Path | None = None
         self.validator = CheckpointValidator()
 
@@ -55,6 +58,13 @@ class CheckpointManager:
         """Generate filesystem-safe slug from niche description."""
         slug = "".join(c if c.isalnum() else "_" for c in self.niche_description[:50])
         return slug.lower().strip("_")
+
+    def _get_checkpoint_pattern(self) -> str:
+        """Get glob pattern for matching checkpoint folders belonging to this job."""
+        niche_slug = self._get_niche_slug()
+        if self.job_id:
+            return f"checkpoint_{niche_slug}_{self.job_id}_*"
+        return f"checkpoint_{niche_slug}_*"
 
     def _init_checkpoint_folder(self) -> Path:
         """Initialize checkpoint folder on first checkpoint save."""
@@ -66,7 +76,10 @@ class CheckpointManager:
 
         niche_slug = self._get_niche_slug()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        folder_name = f"checkpoint_{niche_slug}_{timestamp}"
+        if self.job_id:
+            folder_name = f"checkpoint_{niche_slug}_{self.job_id}_{timestamp}"
+        else:
+            folder_name = f"checkpoint_{niche_slug}_{timestamp}"
         self.checkpoint_folder = settings.checkpoint_dir / folder_name
         self.checkpoint_folder.mkdir(parents=True, exist_ok=True)
 
@@ -139,6 +152,7 @@ class CheckpointManager:
         else:
             metadata = {
                 "niche_description": self.niche_description,
+                "job_id": self.job_id,
                 "allowed_project_types": self.allowed_project_types,
                 "started_at": self.state.started_at.isoformat() if self.state.started_at else datetime.now().isoformat(),
                 "completed_stages": [],
@@ -199,19 +213,30 @@ class CheckpointManager:
             raise  # Re-raise so outer try/catch can handle
 
     def find_latest_checkpoint(self) -> Path | None:
-        """Find most recent checkpoint folder for current niche."""
+        """Find most recent checkpoint folder for current niche/job."""
         if not settings.checkpoint_enabled or not settings.checkpoint_dir.exists():
             return None
 
         niche_slug = self._get_niche_slug()
-        pattern = f"checkpoint_{niche_slug}_*"
 
+        # Tier 1: job_id-scoped search (exact isolation)
+        if self.job_id:
+            pattern = f"checkpoint_{niche_slug}_{self.job_id}_*"
+            checkpoints = sorted(
+                settings.checkpoint_dir.glob(pattern),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if checkpoints:
+                return checkpoints[0]
+
+        # Tier 2: niche-only fallback (CLI resume with different job_id)
+        pattern = f"checkpoint_{niche_slug}_*"
         checkpoints = sorted(
             settings.checkpoint_dir.glob(pattern),
             key=lambda p: p.stat().st_mtime,
-            reverse=True
+            reverse=True,
         )
-
         return checkpoints[0] if checkpoints else None
 
     def load_checkpoint_folder(self, folder_path: Path) -> bool:
@@ -231,8 +256,9 @@ class CheckpointManager:
             if not is_valid:
                 return False
 
-            # Validate niche matches
-            if metadata["niche_description"] != self.niche_description:
+            # Validate niche matches (skip when niche is empty, e.g. on-demand
+            # tasks that load everything from the checkpoint)
+            if self.niche_description and metadata["niche_description"] != self.niche_description:
                 logger.warning(
                     f"Checkpoint niche doesn't match current niche:\n"
                     f"  Checkpoint: {metadata['niche_description'][:100]}...\n"
@@ -435,8 +461,7 @@ class CheckpointManager:
             return
 
         cutoff_time = datetime.now() - timedelta(days=settings.checkpoint_max_age_days)
-        niche_slug = self._get_niche_slug()
-        pattern = f"checkpoint_{niche_slug}_*"
+        pattern = self._get_checkpoint_pattern()
 
         removed_count = 0
         for checkpoint_folder in settings.checkpoint_dir.glob(pattern):

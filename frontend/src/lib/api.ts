@@ -19,8 +19,8 @@ export interface CreateJobResponse {
   message: string;
 }
 
-export type { Job, JobAsset, StageProgress as JobProgress, ErrorDetails, ErrorSeverity } from '$lib/types/job';
-import type { Job } from '$lib/types/job';
+export type { Job, JobAsset, StageProgress as JobProgress, ErrorDetails, ErrorSeverity, SolutionPreview, SolutionValidationData } from '$lib/types/job';
+import type { Job, SolutionPreview } from '$lib/types/job';
 
 export class ApiError extends Error {
   constructor(
@@ -77,6 +77,53 @@ export async function cancelJob(jobId: string): Promise<{ message: string }> {
   });
 
   return handleResponse<{ message: string }>(response);
+}
+
+// ============================================
+// Interactive Job Flow
+// ============================================
+
+export interface SelectSolutionRequest {
+  solutionNames: string[];
+  rationale?: string;
+}
+
+export interface SolutionsResponse {
+  solutionIdeas: SolutionPreview[] | null;
+  selectedSolution: string | null;
+  selectedSolutions: string[] | null;
+  selectionRationale: string | null;
+  canRegenerate: boolean;
+}
+
+/**
+ * Select a solution for deep investigation (Phase 2)
+ */
+export async function selectSolution(jobId: string, request: SelectSolutionRequest): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/select-solution`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return handleResponse<{ message: string }>(response);
+}
+
+/**
+ * Regenerate solution ideas
+ */
+export async function regenerateIdeas(jobId: string): Promise<{ message: string }> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/regenerate-ideas`, {
+    method: 'POST',
+  });
+  return handleResponse<{ message: string }>(response);
+}
+
+/**
+ * Get solution ideas for an interactive job
+ */
+export async function getSolutions(jobId: string): Promise<SolutionsResponse> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/solutions`);
+  return handleResponse<SolutionsResponse>(response);
 }
 
 /**
@@ -273,6 +320,7 @@ export interface NotificationPreferences {
   emailOnJobStart: boolean;
   emailOnJobComplete: boolean;
   emailOnJobError: boolean;
+  emailOnSolutionsReady: boolean;
 }
 
 export type NotificationPreferencesUpdate = Partial<NotificationPreferences>;

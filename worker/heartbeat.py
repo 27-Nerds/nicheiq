@@ -62,6 +62,19 @@ def check_cancellation() -> None:
         raise JobCancelledException("Job cancelled by user")
 
 
+def request_shutdown_cancellation() -> None:
+    """Set cancellation flag directly from signal handler.
+
+    IMPORTANT: This function is called from a signal handler, so it must NOT
+    acquire _cancellation_lock. Signal handlers run in the main thread between
+    bytecodes — if the main thread already holds the lock (e.g. inside
+    clear_cancellation_flag()), acquiring it here would deadlock.
+    CPython's GIL guarantees atomic bool assignment, so this is safe.
+    """
+    global _cancellation_requested
+    _cancellation_requested = True
+
+
 def get_worker_id() -> str:
     """Get the unique worker ID for this process."""
     return WORKER_ID

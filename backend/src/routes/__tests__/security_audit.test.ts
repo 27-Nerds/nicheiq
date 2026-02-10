@@ -72,6 +72,9 @@ const mockGetQueueLength = vi.fn();
 
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: (...args: any[]) => mockEnqueueJob(...args),
+  enqueueLandingPageJob: vi.fn(),
+  enqueuePhase2Job: vi.fn(),
+  enqueueRegenerateJob: vi.fn(),
   getQueueStats: (...args: any[]) => mockGetQueueStats(...args),
   getQueueLength: (...args: any[]) => mockGetQueueLength(...args),
 }));
@@ -377,7 +380,8 @@ describe('Security Audit: Jobs API', () => {
         expect.any(String),
         1,
         undefined,
-        false // generateLandingPage defaults to false
+        false, // generateLandingPage defaults to false
+        'interactive' // jobMode
       );
     });
 

@@ -1,0 +1,12 @@
+Your NicheIQ Solutions Are Ready for Review!
+
+We've generated {{SOLUTION_COUNT}} solutions for your research on "{{NICHE}}".
+
+What's next:
+- Review the solutions and their validation scores
+- Select the solution you want to investigate further
+- We'll run a deep analysis on your chosen solution
+
+Review Solutions: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

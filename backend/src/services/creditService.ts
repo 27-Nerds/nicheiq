@@ -84,7 +84,8 @@ export async function createJobWithCreditDeduction(
   niche: string,
   creditCost: number = 1,
   allowedProjectTypes?: string[],
-  generateLandingPage?: boolean
+  generateLandingPage?: boolean,
+  jobMode?: string
 ): Promise<{ job: Job; transaction: CreditTransaction }> {
   return prisma.$transaction(async (tx) => {
     // 1. Get or create credits record and lock the row
@@ -130,6 +131,7 @@ export async function createJobWithCreditDeduction(
         userId,
         allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
         generateLandingPage: wantLanding,
+        jobMode,
         status: JobStatus.PENDING,
         totalStages: stages.length,
         progress: {

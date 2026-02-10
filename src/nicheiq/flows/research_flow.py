@@ -107,7 +107,8 @@ class ResearchFlow(Flow[ResearchState]):
         self.checkpoint_mgr = CheckpointManager(
             niche_description=niche_description,
             state=self.state,
-            allowed_project_types=allowed_project_types
+            allowed_project_types=allowed_project_types,
+            job_id=self.job_id
         )
 
         # Optional progress callback for web worker integration
@@ -199,6 +200,9 @@ class ResearchFlow(Flow[ResearchState]):
             try:
                 self.progress_callback(stage_num, stage_name, status)
             except Exception as e:
+                # Re-raise cancellation exceptions — must not be swallowed
+                if type(e).__name__ == "JobCancelledException":
+                    raise
                 logger.warning(f"Progress callback failed for stage {stage_num}: {e}")
 
     def resume_from_checkpoint(self, checkpoint_path: Path | None = None) -> bool:
@@ -216,7 +220,7 @@ class ResearchFlow(Flow[ResearchState]):
             return False
 
         # Find checkpoint
-        checkpoint = checkpoint_path or self.checkpoint_mgr.find_latest_checkpoint()
+        checkpoint = Path(checkpoint_path) if isinstance(checkpoint_path, str) else (checkpoint_path or self.checkpoint_mgr.find_latest_checkpoint())
         if not checkpoint:
             logger.info("No checkpoint found for this niche")
             return False
@@ -231,12 +235,13 @@ class ResearchFlow(Flow[ResearchState]):
         logger.info(f"Resume from stage {self.state.current_stage}")
         return True
 
-    def run_with_resume(self, auto_resume: bool = True) -> str:
+    def run_with_resume(self, auto_resume: bool = True, stop_after_stage: float | None = None) -> str:
         """
         Execute research pipeline with checkpoint resume support.
 
         Args:
             auto_resume: If True, automatically resume from latest checkpoint if available
+            stop_after_stage: If set, stop execution after this stage completes (e.g. 7 for Phase 1 only)
 
         Returns:
             Path to final report
@@ -249,10 +254,16 @@ class ResearchFlow(Flow[ResearchState]):
             # Pass None for stage_name - the callback will look it up from STAGE_NAMES
             self._emit_progress(self.state.current_stage, None, "running")
 
-            return self._execute_remaining_stages()
+            return self._execute_remaining_stages(stop_after_stage=stop_after_stage)
 
         # No checkpoint or resume failed - run normal flow
         logger.info("Starting fresh research run")
+
+        if stop_after_stage is not None:
+            # Use _execute_remaining_stages for fresh runs with stop_after_stage.
+            # current_stage defaults to 1, completed_stages is empty, so all stages run sequentially.
+            return self._execute_remaining_stages(stop_after_stage=stop_after_stage)
+
         self.kickoff()
 
         # Return the actual report path stored during stage 10
@@ -260,6 +271,179 @@ class ResearchFlow(Flow[ResearchState]):
             return self.report_path
 
         return ""
+
+    def analyze_single_solution_competitors(self, solution_name: str) -> dict:
+        """Run competitive analysis for a single solution on demand.
+
+        Creates a mini 1-task crew with the competitive_researcher agent and a custom
+        task description (standalone, not relying on CrewAI context chaining).
+        Updates state.competitive_analysis with the result.
+
+        Returns:
+            Dict with solution_name, analyzed flag, and competitive_landscape data.
+        """
+        from crewai import Agent, Crew, Task
+        from ..models.competitor import CompetitiveLandscape, CompetitiveAnalysisResult
+
+        solution = find_solution_by_name(solution_name, self.state.idea_generation.solution_ideas)
+        if not solution:
+            logger.warning(f"Solution '{solution_name}' not found in state — cannot analyze competitors")
+            return {"solution_name": solution_name, "analyzed": False, "error": "solution_not_found"}
+
+        # Build standalone task description with embedded solution context
+        niche_desc = ""
+        if self.state.niche_context:
+            niche_desc = self.state.niche_context.niche_description
+        features_str = ", ".join(solution.core_features[:7]) if solution.core_features else "N/A"
+        personas_str = ", ".join(
+            (p if isinstance(p, str) else getattr(p, "persona_name", str(p)))
+            for p in (solution.target_personas or [])[:4]
+        )
+
+        task_description = f"""Analyze the competitive landscape for a specific solution.
+
+**Solution:** {solution.solution_name}
+**Description:** {solution.description}
+**Project Type:** {solution.project_type}
+**Value Proposition:** {solution.value_proposition}
+**Core Features:** {features_str}
+**Target Personas:** {personas_str}
+**Niche:** {niche_desc}
+
+WORKFLOW:
+1. Generate search queries for this solution's competitive space
+2. Search for competitors using available tools
+3. Profile top 5-8 competitors (URL, features, pricing, positioning)
+4. Identify market gaps and differentiation opportunities
+5. Assess competitive intensity (LOW/MEDIUM/HIGH)
+6. Recommend positioning strategy
+
+OUTPUT: CompetitiveLandscape with solution_name, competitors, market_gaps,
+differentiation_opportunities, competitive_intensity, recommended_positioning, pricing_insights.
+
+RULES:
+- Every competitor must have a verifiable source (URL or mention)
+- Features must be from actual websites (not assumed)
+- If no competitors found, report honestly
+- Be comprehensive with market gaps — list ALL gaps found
+"""
+
+        # Create a standalone crew with the competitive researcher agent
+        unified_crew = UnifiedSolutionCrew(
+            pain_point_analysis=self.state.pain_point_analysis,
+            social_content=self.state.social_content,
+            allowed_project_types=getattr(self, "allowed_project_types", None),
+            niche_context=self.state.niche_context,
+            audience_mapping=getattr(self.state, "audience_mapping", None),
+            checkpoint_mgr=self.checkpoint_mgr,
+            job_id=self.state.job_id,
+        )
+
+        researcher_agent = unified_crew.competitive_researcher()
+        analysis_task = Task(
+            description=task_description,
+            expected_output="CompetitiveLandscape Pydantic model with all fields populated.",
+            agent=researcher_agent,
+            output_pydantic=CompetitiveLandscape,
+        )
+
+        mini_crew = Crew(
+            agents=[researcher_agent],
+            tasks=[analysis_task],
+            verbose=True,
+        )
+
+        logger.info(f"Running competitive analysis crew for: {solution_name}")
+        crew_output = mini_crew.kickoff()
+
+        landscape = crew_output.pydantic
+        if landscape is None:
+            raise ValueError(f"Competitive analysis returned None for {solution_name}")
+
+        # Ensure solution_name matches
+        landscape.solution_name = solution_name
+
+        # Record crew cost
+        if hasattr(mini_crew, 'usage_metrics') and mini_crew.usage_metrics:
+            self.cost_tracker.record_crew_usage(
+                stage="Stage 7.5 - Competitive Analysis (On-Demand)",
+                usage_metrics=mini_crew.usage_metrics,
+                model=settings.brainstorm_llm,
+            )
+
+        # Collect Knowledge objects for cleanup
+        if getattr(unified_crew, '_crew_knowledge', None):
+            self.register_knowledge(unified_crew._crew_knowledge)
+
+        # Build/update state.competitive_analysis
+        if self.state.competitive_analysis is None:
+            # Generate strategic recommendations from landscape data
+            strategic_recs = self._generate_strategic_recommendations(landscape)
+            top_opps = landscape.differentiation_opportunities[:5] if landscape.differentiation_opportunities else ["No opportunities identified"]
+            self.state.competitive_analysis = CompetitiveAnalysisResult(
+                solution_landscapes=[landscape],
+                top_opportunities=top_opps,
+                strategic_recommendations=strategic_recs,
+            )
+        else:
+            # Replace or append landscape by solution name
+            existing = self.state.competitive_analysis.solution_landscapes
+            replaced = False
+            for i, ls in enumerate(existing):
+                if ls.solution_name.strip().lower() == solution_name.strip().lower():
+                    existing[i] = landscape
+                    replaced = True
+                    break
+            if not replaced:
+                existing.append(landscape)
+            # Update strategic recommendations
+            self.state.competitive_analysis.strategic_recommendations = (
+                self._generate_strategic_recommendations(landscape)
+            )
+            # Update top opportunities
+            if landscape.differentiation_opportunities:
+                self.state.competitive_analysis.top_opportunities = landscape.differentiation_opportunities[:5]
+
+        # Save to checkpoint (raw file write — no metadata update)
+        if self.checkpoint_mgr and self.checkpoint_mgr.checkpoint_folder:
+            import json as _json
+            cp_file = self.checkpoint_mgr.checkpoint_folder / "stage_7_4_competitive.json"
+            _json.dumps(self.state.competitive_analysis.model_dump(mode='json'), default=str)  # validate serializable
+            cp_file.write_text(
+                _json.dumps(self.state.competitive_analysis.model_dump(mode='json'), indent=2, default=str)
+            )
+            logger.debug("Checkpoint saved: stage_7_4_competitive (on-demand)")
+
+        result_data = landscape.model_dump(mode='json')
+        return {
+            "solution_name": solution_name,
+            "analyzed": True,
+            "competitive_landscape": result_data,
+        }
+
+    def _generate_strategic_recommendations(self, landscape: "CompetitiveLandscape") -> str:
+        """Generate strategic recommendations text from a competitive landscape (min 50 chars)."""
+        parts = []
+        parts.append(f"Competitive intensity for {landscape.solution_name}: {landscape.competitive_intensity}.")
+
+        comp_count = len(landscape.competitors) if landscape.competitors else 0
+        parts.append(f"Identified {comp_count} competitor{'s' if comp_count != 1 else ''} in this space.")
+
+        if landscape.market_gaps:
+            gaps_preview = ", ".join(landscape.market_gaps[:3])
+            parts.append(f"Key market gaps: {gaps_preview}.")
+
+        if landscape.differentiation_opportunities:
+            opps_preview = ", ".join(landscape.differentiation_opportunities[:3])
+            parts.append(f"Differentiation opportunities: {opps_preview}.")
+
+        parts.append(f"Recommended positioning: {landscape.recommended_positioning}")
+
+        text = " ".join(parts)
+        # Ensure min_length=50 for CompetitiveAnalysisResult.strategic_recommendations
+        if len(text) < 50:
+            text += " Further analysis recommended for detailed competitive strategy."
+        return text
 
     def _validate_stage_prerequisites(self, stage_num: float) -> bool:
         """
@@ -795,7 +979,7 @@ class ResearchFlow(Flow[ResearchState]):
             "stage_6_pain_points": (6, "Pain Point Analysis"),
             "stage_6_5_audience_mapping": (6.5, "Audience Mapping"),
             "stage_7_6_selection": (7, "Solution Pipeline"),
-            "stage_8_pricing": (8, "Pricing Validation"),
+            "stage_8_pricing_validation": (8, "Pricing Validation"),
             "stage_8_5_keyword_validation": (8.5, "Keyword Validation"),
             "stage_8_55_traffic_monetization": (8.55, "Traffic Monetization"),
             "stage_8_6_market_sizing": (8.6, "Market Sizing"),
@@ -813,11 +997,15 @@ class ResearchFlow(Flow[ResearchState]):
                 logger.info(f"[Resume] Replaying completed status for stage {stage_num}: {stage_name}")
                 self._emit_progress(stage_num, stage_name, "completed")
 
-    def _execute_remaining_stages(self) -> str:
+    def _execute_remaining_stages(self, stop_after_stage: float | None = None) -> str:
         """
         Execute remaining stages after checkpoint resume.
         Manually calls stage methods based on current_stage.
         Validates prerequisites before executing each stage to prevent cascade failures.
+
+        Args:
+            stop_after_stage: If set, stop execution after this stage completes
+                              (e.g. 7 to stop after the unified solution pipeline)
         """
         current = self.state.current_stage
         logger.info(f"Executing stages from {current} onwards...")
@@ -865,6 +1053,33 @@ class ResearchFlow(Flow[ResearchState]):
                     self.state.current_stage = 9
             else:
                 logger.info("Skipping Stages 7-8.75 (Unified Solution Pipeline) - already completed")
+
+            # Check if we should stop after a specific stage (interactive mode)
+            if stop_after_stage is not None and stop_after_stage <= 7:
+                logger.info(f"Stopping after stage {stop_after_stage} (interactive mode)")
+                return ""
+
+            # Auto-run competitive analysis for selected solution if not already done
+            if (self.state.solution_selection
+                and self.state.solution_selection.selected_solution_name):
+                selected_name = self.state.solution_selection.selected_solution_name
+                # STRICT matching — do NOT use find_landscape_for_solution() here because
+                # its fallback returns the first landscape regardless of name match,
+                # which would skip auto-run when wrong solution's data exists.
+                has_landscape = False
+                if self.state.competitive_analysis:
+                    needle = selected_name.strip().lower()
+                    has_landscape = any(
+                        ls.solution_name.strip().lower() == needle
+                        for ls in self.state.competitive_analysis.solution_landscapes
+                    )
+                if not has_landscape:
+                    self._emit_progress(7.5, "Competitive Analysis", "running")
+                    logger.info(f"Auto-running competitive analysis for selected solution: {selected_name}")
+                    self.analyze_single_solution_competitors(selected_name)  # must let exceptions propagate
+                    self._emit_progress(7.5, "Competitive Analysis", "completed")
+                    # Refresh completed_stages
+                    completed_stages = self.checkpoint_mgr.get_completed_stages()
 
             # Stage 8: Only run if not already completed (listener stage)
             # NOTE: Don't use `current <= 8` check because Stage 8 sets current_stage = 8.5
@@ -1856,17 +2071,13 @@ Return a valid JSON object with this structure:
         """
         Stage 7: Unified Solution Pipeline (CrewAI Best Practice)
 
-        Consolidates stages using UnifiedSolutionCrew with context chaining:
-        - Task 7.1: Solution Ideation (brainstorm + evaluate + refine)
-        - Task 7.2: Competitive Analysis (research + gap analysis)
-        - Task 7.3: Competitive Refinement (enhance with insights)
+        4-task divergent-convergent pipeline:
+        - Task 7.1: Divergent Exploration (generate 8-12 raw concepts)
+        - Task 7.2: Diversity Filtering (filter to 5-7 unique)
+        - Task 7.3: Solution Refinement (expand to full specs)
         - Task 7.4: Solution Selection (strategic scoring and selection)
 
-        Benefits:
-        - Automatic field preservation via output_pydantic + context
-        - No manual data formatting between stages
-        - Guardrails prevent data loss
-        - Follows CrewAI documentation best practices
+        Competitive analysis is run on-demand per-solution in Stage 7.5.
         """
         logger.info("=" * 80)
         logger.info("STAGES 7-8.75: Unified Solution Pipeline")
@@ -1913,13 +2124,11 @@ Return a valid JSON object with this structure:
                 job_id=self.state.job_id,
             )
 
-            # Execute complete pipeline (6 tasks in sequence with context chaining)
-            logger.info("Executing unified solution pipeline (6-task flow)...")
+            # Execute complete pipeline (4 tasks in sequence with context chaining)
+            logger.info("Executing unified solution pipeline (4-task flow)...")
             (
                 refined_solutions,
-                competitive_analysis,
                 solution_selection,
-                competitive_enhancements,
             ) = unified_crew.execute_pipeline()
 
             # Collect Knowledge objects for cleanup
@@ -1936,9 +2145,8 @@ Return a valid JSON object with this structure:
 
             # Save results to state
             self.state.idea_generation = refined_solutions
-            self.state.competitive_analysis = competitive_analysis
             self.state.solution_selection = solution_selection
-            self.state.competitive_enhancements = competitive_enhancements  # Preserves overall_competitive_insights
+            # competitive_analysis is now populated on-demand per-solution (stage 7.5)
 
             # DEFENSIVE: Validate solution selection - detect error strings
             # The LLM may return "Insufficient evidence for strategic selection" if context chain fails
@@ -2031,8 +2239,45 @@ Return a valid JSON object with this structure:
             # Log results
             logger.info("[OK] Solution Pipeline Complete:")
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
-            logger.info(f"  - Analyzed {len(competitive_analysis.solution_landscapes)} competitive landscapes")
             logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
+
+            # Backfill all_solution_scores for solutions the LLM didn't score
+            # Ensures all solutions have scores for the selection UI and Phase 2 filtering
+            if (self.state.solution_selection
+                    and self.state.idea_generation
+                    and self.state.idea_generation.solution_ideas):
+                scored_names = {
+                    s.solution_name
+                    for s in (self.state.solution_selection.all_solution_scores or [])
+                }
+                if self.state.solution_selection.all_solution_scores is None:
+                    self.state.solution_selection.all_solution_scores = []
+
+                for idea in self.state.idea_generation.solution_ideas:
+                    if idea.solution_name not in scored_names:
+                        from nicheiq.models.solution_selection import SolutionScores
+                        raw_mf = getattr(idea, 'market_fit_score', None)
+                        mf = raw_mf if raw_mf is not None else 0.5
+                        raw_tf = getattr(idea, 'technical_feasibility_score', None)
+                        tf = raw_tf if raw_tf is not None else 0.5
+                        self.state.solution_selection.all_solution_scores.append(
+                            SolutionScores(
+                                solution_name=idea.solution_name,
+                                market_fit_score=mf,
+                                technical_feasibility_score=tf,
+                                competitive_advantage_score=0.5,
+                                seo_growth_potential_score=0.5,
+                                composite_score=round((mf + tf + 0.5 + 0.5) / 4, 3),
+                                rank=0,
+                            )
+                        )
+                        logger.info(f"[Stage 7] Backfilled scores for '{idea.solution_name}'")
+
+                # Reassign ranks by composite_score
+                all_scores = self.state.solution_selection.all_solution_scores
+                all_scores.sort(key=lambda s: s.composite_score, reverse=True)
+                for i, s in enumerate(all_scores, 1):
+                    s.rank = i
 
             # Update stage (continue to keyword validation)
             self.state.current_stage = 8.8
@@ -2041,7 +2286,7 @@ Return a valid JSON object with this structure:
             self._mark_stage_complete(7)
 
             # Checkpoints saved internally by UnifiedSolutionCrew.execute_pipeline()
-            # All 6 task outputs checkpointed: stage_7_1 through stage_7_6
+            # All 4 task outputs checkpointed: stage_7_1 through stage_7_3, stage_7_6
             logger.debug("Stage 7 checkpoints saved by UnifiedSolutionCrew")
 
         except Exception as e:
@@ -2615,6 +2860,28 @@ Return a valid JSON object with this structure:
         }
 
     @listen(stage_7_unified_solution_pipeline)
+    def stage_7_5_competitive_analysis(self):
+        """Stage 7.5: On-demand competitive analysis for selected solution (classic mode).
+
+        In classic mode (@listen chain via kickoff()), competitive analysis is needed
+        before downstream stages 8, 8.6, 8.7 can use it. This stage auto-runs it
+        for the selected solution.
+        """
+        if self.state.competitive_analysis:
+            return  # Already have data (e.g., from checkpoint)
+        if not self.state.solution_selection:
+            logger.warning("[Stage 7.5] No solution selection - skipping")
+            return
+        selected_name = self.state.solution_selection.selected_solution_name
+        if not selected_name:
+            logger.warning("[Stage 7.5] No selected solution name - skipping")
+            return
+        logger.info(f"[Stage 7.5] Running competitive analysis for: {selected_name}")
+        self._emit_progress(7.5, "Competitive Analysis", "running")
+        self.analyze_single_solution_competitors(selected_name)
+        self._emit_progress(7.5, "Competitive Analysis", "completed")
+
+    @listen(stage_7_5_competitive_analysis)
     def stage_8_pricing_validation(self):
         """
         Stage 8: Pricing Strategy Validation for Top N Solutions (Parallel Execution)
@@ -2687,6 +2954,10 @@ Return a valid JSON object with this structure:
         if not solutions_to_validate:
             logger.info("[Stage 8] All solutions already validated - skipping")
             self.state.current_stage = 8.5
+            self.checkpoint_mgr.save_stage(
+                "stage_8_pricing_validation",
+                [p.model_dump() for p in pricing_results]
+            )
             self._mark_stage_complete(8)
             return
 
@@ -3297,6 +3568,14 @@ Return a valid JSON object with this structure:
                     if len(new_runner_ups) > 3:
                         new_runner_ups = new_runner_ups[:3]
 
+                # Preserve user-selected solutions in runner_up_solutions (interactive mode)
+                user_selected = getattr(self.state, '_user_selected_solutions', None)
+                if user_selected:
+                    new_winner = self.state.solution_selection.selected_solution_name
+                    for name in user_selected:
+                        if name != new_winner and name not in new_runner_ups:
+                            new_runner_ups.append(name)
+
                 self.state.solution_selection.runner_up_solutions = new_runner_ups
                 logger.info(f"[Stage 8.5] Updated runner-ups after pivot: {new_runner_ups}")
 
@@ -3607,6 +3886,10 @@ Return a valid JSON object with this structure:
 
         if not solutions_to_analyze:
             logger.info("[Stage 8.55] All solutions already analyzed - skipping")
+            self.checkpoint_mgr.save_stage(
+                "stage_8_55_traffic_monetization",
+                [r.model_dump() for r in traffic_results]
+            )
             self._mark_stage_complete(8.55)
             return
 

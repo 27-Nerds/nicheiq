@@ -6,6 +6,7 @@ Generates strategic competitor search queries using context-aware prompting.
 
 import json
 import re
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -112,9 +113,10 @@ class CompetitorQueryGenerator:
             score += 1
 
         # C. Ranking Signals
+        current_year = str(datetime.now(timezone.utc).year)
         ranking_markers = [
             'top 5', 'top 10', 'top 15', 'top 20', 'best', 'leading', 'popular',
-            '2024', '2025', 'ranking', 'rated', 'reviewed', 'ranked'
+            current_year, 'ranking', 'rated', 'reviewed', 'ranked'
         ]
         if any(marker in query_lower for marker in ranking_markers):
             score += 1
@@ -204,11 +206,14 @@ Pain Points Addressed:
 {pain_points_formatted}
 """
 
+        current_year = str(datetime.now(timezone.utc).year)
+
         prompt = get_prompt(
             "competitor_query",
             context_section=context_section,
             num_queries=num_queries,
-            project_type=sanitized_project_type
+            project_type=sanitized_project_type,
+            current_year=current_year,
         )
 
         try:

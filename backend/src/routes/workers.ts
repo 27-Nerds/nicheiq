@@ -18,6 +18,12 @@ import {
 } from '../services/heartbeatService.js';
 import { failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
+import { notifySolutionsReady } from '../services/notificationService.js';
+import {
+  IdeasReadySchema,
+  RegenerationCompleteSchema,
+  RegenerationFailedSchema,
+} from '../types/job.js';
 import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/notificationService.js';
 import { AssetType } from '@prisma/client';
 import { requireInternalService } from '../middleware/auth.js';
@@ -203,6 +209,14 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
+    // Detect Phase 2 jobs (user has already selected solutions)
+    const existingJob = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { selectedSolutions: true },
+    });
+    const isPhase2 = existingJob?.selectedSolutions && existingJob.selectedSolutions.length > 0;
+    const runningStatus = isPhase2 ? JobStatus.RUNNING_PHASE2 : JobStatus.RUNNING;
+
     // Atomic conditional update - only if job is in startable state
     // This prevents overwriting CANCELLED status when a job was cancelled while in queue
     const result = await prisma.job.updateMany({
@@ -213,7 +227,7 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
       data: {
         workerId: data.worker_id,
         lastHeartbeat: new Date(),
-        status: JobStatus.RUNNING,
+        status: runningStatus,
         startedAt: new Date(),
         errorMessage: null, // Clear any retry messages from previous attempts
       },
@@ -307,6 +321,7 @@ const ReportReadySchema = z.object({
   worker_id: z.string().min(1),
   job_id: z.string().uuid(),
   report_path: z.string().min(1).max(500),
+  winner_name: z.string().max(255).optional(),
 });
 
 /**
@@ -325,8 +340,16 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
     const { prisma } = await import('../services/db.js');
     const job = await prisma.job.findUnique({
       where: { id: data.job_id },
-      select: { userId: true, niche: true },
+      select: { userId: true, niche: true, selectedSolutions: true },
     });
+
+    // Persist Phase 2 winner if provided
+    if (data.winner_name && job?.selectedSolutions?.includes(data.winner_name)) {
+      await prisma.job.update({
+        where: { id: data.job_id },
+        data: { selectedSolution: data.winner_name },
+      });
+    }
 
     if (job?.userId) {
       const user = await prisma.user.findUnique({
@@ -661,3 +684,189 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// ============================================
+// Interactive Job Flow Worker Endpoints
+// ============================================
+
+/**
+ * POST /api/workers/ideas-ready
+ * Worker reports that Phase 1 solution ideas are ready for user review.
+ * Transitions job from RUNNING → AWAITING_SELECTION.
+ */
+workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
+  try {
+    const data = IdeasReadySchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    // Atomic conditional update: RUNNING → AWAITING_SELECTION
+    const result = await prisma.job.updateMany({
+      where: {
+        id: data.job_id,
+        status: JobStatus.RUNNING,
+      },
+      data: {
+        status: JobStatus.AWAITING_SELECTION,
+        solutionIdeas: data.solutions as any,
+        phase1CheckpointPath: data.checkpoint_path,
+        ideasShownAt: new Date(),
+        awaitingSelectionAt: new Date(),
+      },
+    });
+
+    if (result.count === 0) {
+      res.status(409).json({ error: 'Job not in RUNNING state' });
+      return;
+    }
+
+    // Broadcast progress update to SSE clients
+    broadcastProgress(data.job_id, {
+      stage: 7,
+      name: 'Solution Pipeline',
+      status: 'completed',
+    });
+
+    // Send "solutions ready" email notification
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { userId: true, niche: true },
+    });
+
+    if (job?.userId) {
+      const user = await prisma.user.findUnique({
+        where: { id: job.userId },
+        select: { email: true },
+      });
+      if (user?.email) {
+        notifySolutionsReady(job.userId, user.email, data.job_id, job.niche, data.solutions.length).catch(err => {
+          console.error('Failed to send solutions-ready notification:', err);
+        });
+      }
+    }
+
+    console.log(`[Workers] Ideas ready for job ${data.job_id}: ${data.solutions.length} solutions`);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Ideas ready error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/workers/regeneration-complete
+ * Worker reports new solution ideas from regeneration. Merges new solutions and transitions REGENERATING → AWAITING_SELECTION.
+ */
+workersRouter.post('/regeneration-complete', async (req: Request, res: Response) => {
+  try {
+    const data = RegenerationCompleteSchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    // Get existing solutions to merge with new ones
+    const job = await prisma.job.findFirst({
+      where: {
+        id: data.job_id,
+        status: JobStatus.REGENERATING,
+      },
+      select: { solutionIdeas: true },
+    });
+
+    if (!job) {
+      res.status(409).json({ error: 'Job not in REGENERATING state' });
+      return;
+    }
+
+    const existingSolutions = (job.solutionIdeas as any[]) || [];
+    const mergedSolutions = [...existingSolutions, ...data.solutions];
+
+    // Atomic update: REGENERATING → AWAITING_SELECTION (skip validation)
+    const result = await prisma.job.updateMany({
+      where: {
+        id: data.job_id,
+        status: JobStatus.REGENERATING,
+      },
+      data: {
+        status: JobStatus.AWAITING_SELECTION,
+        solutionIdeas: mergedSolutions as any,
+      },
+    });
+
+    if (result.count === 0) {
+      res.status(409).json({ error: 'Job state changed during regeneration' });
+      return;
+    }
+
+    // Broadcast progress update
+    broadcastProgress(data.job_id, {
+      stage: 7,
+      name: 'Solution Pipeline',
+      status: 'completed',
+    });
+
+    console.log(`[Workers] Regeneration complete for job ${data.job_id}: ${data.solutions.length} new solutions`);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Regeneration complete error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /api/workers/regeneration-failed
+ * Worker reports that idea regeneration failed. Reverts REGENERATING → AWAITING_SELECTION
+ * so the user can see existing solutions and retry. Does NOT refund credits.
+ */
+workersRouter.post('/regeneration-failed', async (req: Request, res: Response) => {
+  try {
+    const data = RegenerationFailedSchema.parse(req.body);
+    const { prisma } = await import('../services/db.js');
+    const { JobStatus } = await import('@prisma/client');
+
+    // Atomic revert: REGENERATING → AWAITING_SELECTION, reset ideasRegeneratedAt
+    const result = await prisma.job.updateMany({
+      where: {
+        id: data.job_id,
+        status: JobStatus.REGENERATING,
+      },
+      data: {
+        status: JobStatus.AWAITING_SELECTION,
+        ideasRegeneratedAt: null,
+      },
+    });
+
+    if (result.count === 0) {
+      res.status(409).json({ error: 'Job not in REGENERATING state' });
+      return;
+    }
+
+    // Clear worker's current job
+    await registerWorkerHeartbeat(data.worker_id, null);
+
+    // Broadcast progress so frontend re-fetches and shows solutions
+    broadcastProgress(data.job_id, {
+      stage: 7,
+      name: 'Solution Pipeline',
+      status: 'completed',
+    });
+
+    console.log(`[Workers] Regeneration failed for job ${data.job_id}, reverted to AWAITING_SELECTION: ${data.error_message}`);
+    res.json({ status: 'ok' });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    console.error('[Workers] Regeneration failed error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+

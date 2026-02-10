@@ -45,6 +45,9 @@ vi.mock('../../services/creditService.js', () => ({
 
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: vi.fn(),
+  enqueueLandingPageJob: vi.fn(),
+  enqueuePhase2Job: vi.fn(),
+  enqueueRegenerateJob: vi.fn(),
   getQueueStats: vi.fn(),
   getQueueLength: vi.fn(),
 }));
@@ -172,5 +175,55 @@ describe('POST /api/jobs/:jobId/cancel - stage marking', () => {
 
     expect(response.status).toBe(400);
     expect(mockUpdateMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/jobs/:jobId/cancel - interactive statuses', () => {
+  const jobId = '00000000-0000-0000-0000-000000000001';
+
+  it('cancels from VALIDATING_IDEAS (refund called, stages marked FAILED)', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'VALIDATING_IDEAS' });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/cancel`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockRefundCreditsForJob).toHaveBeenCalledWith(jobId, 1);
+    expect(mockUpdateMany).toHaveBeenCalled();
+  });
+
+  it('cancels from AWAITING_SELECTION (refund called)', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'AWAITING_SELECTION' });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/cancel`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockRefundCreditsForJob).toHaveBeenCalled();
+  });
+
+  it('cancels from REGENERATING (refund called)', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'REGENERATING' });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/cancel`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockRefundCreditsForJob).toHaveBeenCalled();
+  });
+
+  it('cancels from RUNNING_PHASE2 (refund called, stages marked FAILED)', async () => {
+    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'RUNNING_PHASE2' });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/cancel`)
+      .set(authHeaders);
+
+    expect(response.status).toBe(200);
+    expect(mockRefundCreditsForJob).toHaveBeenCalled();
+    expect(mockUpdateMany).toHaveBeenCalled();
   });
 });

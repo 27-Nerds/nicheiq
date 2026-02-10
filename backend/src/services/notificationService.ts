@@ -1,13 +1,14 @@
 import { prisma } from './db.js';
-import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail } from './emailService.js';
+import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail } from './emailService.js';
 
-export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError';
+export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError' | 'solutionsReady';
 
 const DEFAULT_PREFERENCES = {
   emailEnabled: true,
   emailOnJobStart: true,
   emailOnJobComplete: true,
   emailOnJobError: true,
+  emailOnSolutionsReady: true,
 };
 
 /**
@@ -34,6 +35,8 @@ export async function shouldNotifyUser(
       return settings.emailOnJobComplete;
     case 'jobError':
       return settings.emailOnJobError;
+    case 'solutionsReady':
+      return settings.emailOnSolutionsReady;
     default:
       return false;
   }
@@ -102,4 +105,38 @@ export async function notifyJobError(
     return;
   }
   await sendFailureEmail(email, jobId, niche, errorMessage, errorDetails);
+}
+
+/**
+ * Send solutions ready email if user preferences allow
+ */
+export async function notifySolutionsReady(
+  userId: string | null | undefined,
+  email: string,
+  jobId: string,
+  niche: string,
+  solutionCount: number
+): Promise<void> {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady'))) {
+    console.log(`[Notification] Skipping solutions-ready email for job ${jobId} - disabled by preference`);
+    return;
+  }
+  await sendSolutionsReadyEmail(email, jobId, niche, solutionCount);
+}
+
+/**
+ * Send selection reminder email if user preferences allow
+ */
+export async function notifySelectionReminder(
+  userId: string | null | undefined,
+  email: string,
+  jobId: string,
+  niche: string,
+  solutionCount: number
+): Promise<void> {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady'))) {
+    console.log(`[Notification] Skipping selection reminder email for job ${jobId} - disabled by preference`);
+    return;
+  }
+  await sendSelectionReminderEmail(email, jobId, niche, solutionCount);
 }

@@ -63,6 +63,8 @@ const mockGetQueueLength = vi.fn();
 vi.mock('../../services/queueService.js', () => ({
   enqueueJob: (...args: any[]) => mockEnqueueJob(...args),
   enqueueLandingPageJob: (...args: any[]) => mockEnqueueLandingPageJob(...args),
+  enqueuePhase2Job: vi.fn(),
+  enqueueRegenerateJob: vi.fn(),
   getQueueStats: (...args: any[]) => mockGetQueueStats(...args),
   getQueueLength: (...args: any[]) => mockGetQueueLength(...args),
 }));

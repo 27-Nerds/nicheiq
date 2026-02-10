@@ -49,33 +49,44 @@ logger.add(
 # Queue configuration
 QUEUE_NAME = "nicheiq:jobs"
 
+# Task types and modes (must match backend/src/services/queueService.ts)
+TASK_TYPE_LANDING_PAGE = "landing_page"
+TASK_TYPE_RESEARCH_PHASE2 = "research_phase2"
+TASK_TYPE_REGENERATE_IDEAS = "regenerate_ideas"
+JOB_MODE_INTERACTIVE = "interactive"
+STATUS_AWAITING_SELECTION = "awaiting_selection"
+
 # Graceful shutdown
 shutdown_requested = False
 current_job_id = None
+_signal_count = 0
 
 
 def signal_handler(signum, frame):
-    """Handle shutdown signals (SIGTERM, SIGINT)."""
-    global shutdown_requested
+    """Handle shutdown signals with two-phase approach.
 
+    1st signal: Graceful — set shutdown flag + trigger cancellation so the
+    current job stops at the next stage boundary.
+    2nd signal: Forced — os._exit(1) for immediate hard exit.
+    """
+    global shutdown_requested, _signal_count
+    _signal_count += 1
     signal_name = "SIGTERM" if signum == signal.SIGTERM else "SIGINT"
-    logger.info(f"Received {signal_name}, initiating graceful shutdown...")
 
-    shutdown_requested = True
-
-    # Immediately notify backend about shutdown
-    # This triggers job recovery if we were processing a job
-    try:
-        from .heartbeat import notify_shutdown, get_current_job_id, stop_heartbeat
-
-        job_id = get_current_job_id()
-        if job_id:
-            logger.info(f"Shutting down while processing job {job_id} - notifying backend for recovery")
-
-        notify_shutdown(signal_name)
-        stop_heartbeat()
-    except Exception as e:
-        logger.error(f"Error during shutdown notification: {e}")
+    if _signal_count == 1:
+        # --- GRACEFUL: stop at next stage boundary ---
+        logger.info(f"Received {signal_name}, initiating graceful shutdown...")
+        logger.info("Send signal again to force immediate exit.")
+        shutdown_requested = True
+        try:
+            from .heartbeat import request_shutdown_cancellation
+            request_shutdown_cancellation()
+        except Exception as e:
+            logger.error(f"Error setting cancellation flag: {e}")
+    else:
+        # --- FORCED: exit now ---
+        logger.warning(f"Received {signal_name} again — forcing immediate exit")
+        os._exit(1)
 
 
 def get_redis_connection() -> redis.Redis:
@@ -111,7 +122,7 @@ def process_job(job_data: dict) -> None:
             set_current_job(None)
             return
 
-        if task_type == "landing_page":
+        if task_type == TASK_TYPE_LANDING_PAGE:
             from .tasks import run_landing_page_only
 
             result = run_landing_page_only(
@@ -119,46 +130,103 @@ def process_job(job_data: dict) -> None:
                 report_path=job_data["report_path"],
                 page_mode=job_data.get("page_mode", "coming_soon"),
             )
+        elif task_type == TASK_TYPE_RESEARCH_PHASE2:
+            from .tasks import run_research_phase2
+
+            result = run_research_phase2(
+                job_id=job_id,
+                checkpoint_path=job_data["checkpoint_path"],
+                selected_solutions=job_data.get("selected_solutions") or [job_data.get("selected_solution", "")],
+                selection_rationale=job_data.get("selection_rationale", ""),
+                generate_landing_page=job_data.get("generate_landing_page", True),
+            )
+        elif task_type == TASK_TYPE_REGENERATE_IDEAS:
+            from .tasks import run_regenerate_ideas
+
+            result = run_regenerate_ideas(
+                job_id=job_id,
+                checkpoint_path=job_data["checkpoint_path"],
+                existing_solution_names=job_data.get("existing_solution_names", []),
+                niche=job_data.get("niche", ""),
+            )
         else:
+            # Default research task
             niche = job_data.get("niche")
             user_id = job_data.get("user_id")
             allowed_project_types = job_data.get("allowed_project_types")
             resume = job_data.get("resume", False)
             generate_landing_page = job_data.get("generate_landing_page", True)
+            job_mode = job_data.get("job_mode")
 
-            logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume})")
+            logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume}, mode={job_mode})")
 
-            from .tasks import run_research_job
+            if job_mode == JOB_MODE_INTERACTIVE:
+                from .tasks import run_interactive_research
 
-            result = run_research_job(
-                job_id=job_id,
-                niche=niche,
-                user_id=user_id,
-                allowed_project_types=allowed_project_types,
-                resume=resume,
-                generate_landing_page=generate_landing_page,
-            )
+                result = run_interactive_research(
+                    job_id=job_id,
+                    niche=niche,
+                    user_id=user_id,
+                    allowed_project_types=allowed_project_types,
+                    generate_landing_page=generate_landing_page,
+                )
+            else:
+                from .tasks import run_research_job
+
+                result = run_research_job(
+                    job_id=job_id,
+                    niche=niche,
+                    user_id=user_id,
+                    allowed_project_types=allowed_project_types,
+                    resume=resume,
+                    generate_landing_page=generate_landing_page,
+                )
 
         logger.info(f"Job {job_id} completed: {result}")
 
-        # Notify backend that job is done
-        from .heartbeat import notify_job_completed
-        notify_job_completed(job_id)
+        # For interactive jobs that are awaiting selection, don't notify completion
+        if isinstance(result, dict) and result.get("status") == STATUS_AWAITING_SELECTION:
+            logger.info(f"Job {job_id} awaiting user selection - worker releasing without completion notification")
+        elif task_type == TASK_TYPE_REGENERATE_IDEAS:
+            logger.info(f"Job {job_id} regeneration complete - worker releasing")
+            from .heartbeat import notify_job_completed
+            notify_job_completed(job_id)
+        else:
+            # Notify backend that job is done
+            from .heartbeat import notify_job_completed
+            notify_job_completed(job_id)
 
     except Exception as e:
         # Import here to avoid circular imports
         from .heartbeat import JobCancelledException, notify_job_completed, notify_job_failed
 
-        # Handle user-initiated cancellation gracefully
+        # Handle cancellation (user-initiated or shutdown-triggered)
         if isinstance(e, JobCancelledException):
-            logger.info(f"Job {job_id} cancelled by user - stopping gracefully")
-            # Don't publish failure - backend already knows job is CANCELLED
-            notify_job_completed(job_id)
-            return
+            if shutdown_requested:
+                logger.info(f"Job {job_id} interrupted by worker shutdown")
+                from .heartbeat import notify_shutdown
+                notify_shutdown("shutdown")
+                return  # run_consumer() loop will exit and call stop_heartbeat()
+            else:
+                logger.info(f"Job {job_id} cancelled by user - stopping gracefully")
+                # Don't publish failure - backend already knows job is CANCELLED
+                notify_job_completed(job_id)
+                return
 
         error_msg = str(e)
         error_traceback = traceback.format_exc()
         logger.error(f"Job {job_id} failed: {error_msg}\n{error_traceback}")
+
+        # Regeneration failures should revert to AWAITING_SELECTION, not FAILED.
+        # This preserves existing solutions and avoids an incorrect credit refund.
+        if task_type == TASK_TYPE_REGENERATE_IDEAS:
+            try:
+                from .progress import notify_regeneration_failed
+                notify_regeneration_failed(job_id, error_msg)
+                return  # Don't fall through to notify_job_failed
+            except Exception as revert_err:
+                logger.error(f"Failed to revert regeneration for {job_id}: {revert_err}")
+                # Fall through to notify_job_failed as last resort
 
         # Extract stage from exception if available (set by tasks.py)
         failed_stage = getattr(e, 'failed_stage', None)

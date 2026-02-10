@@ -203,6 +203,60 @@ export async function sendFailureEmail(
 }
 
 /**
+ * Send solutions ready notification email
+ */
+export async function sendSolutionsReadyEmail(
+  to: string,
+  jobId: string,
+  niche: string,
+  solutionCount: number
+): Promise<void> {
+  const vars = {
+    JOB_ID: jobId,
+    NICHE: truncateNiche(niche),
+    SOLUTION_COUNT: String(solutionCount),
+    STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('solutionsReady.html'), vars);
+    const text = renderTemplate(loadTemplate('solutionsReady.txt'), vars);
+
+    await sendEmail(to, 'Your NicheIQ Solutions Are Ready for Review!', text, html);
+    console.log(`Solutions ready email sent to ${to} for job ${jobId}`);
+  } catch (error) {
+    console.error('Failed to send solutions ready email:', error);
+  }
+}
+
+/**
+ * Send selection reminder notification email
+ */
+export async function sendSelectionReminderEmail(
+  to: string,
+  jobId: string,
+  niche: string,
+  solutionCount: number
+): Promise<void> {
+  const vars = {
+    JOB_ID: jobId,
+    NICHE: truncateNiche(niche),
+    SOLUTION_COUNT: String(solutionCount),
+    STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('selectionReminder.html'), vars);
+    const text = renderTemplate(loadTemplate('selectionReminder.txt'), vars);
+
+    await sendEmail(to, 'Reminder: Your NicheIQ Solutions Are Waiting', text, html);
+    console.log(`Selection reminder email sent to ${to} for job ${jobId}`);
+  } catch (error) {
+    console.error('Failed to send selection reminder email:', error);
+  }
+}
+
+/**
  * Test email configuration
  */
 export async function verifyEmailConfig(): Promise<boolean> {

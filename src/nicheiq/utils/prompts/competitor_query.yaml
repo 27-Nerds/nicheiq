@@ -64,7 +64,7 @@ template: |
 
   **Correct Transformations (adapt to your niche):**
   - "[niche] aggregator platforms" → "[inferred incumbent] alternatives for [segment]"
-  - "[niche] comparison tools" → "top 10 [niche] directories vs [incumbent] 2024"
+  - "[niche] comparison tools" → "top 10 [niche] directories vs [incumbent] {current_year}"
   - "tools for [segment]" → "[incumbent A] vs [incumbent B] for [niche] discovery"
 
   ### INFER LIKELY INCUMBENTS (Dynamic - Based on Niche Analysis)
@@ -184,8 +184,9 @@ template: |
   - Example: "Kayak vs Skyscanner for budget flights"
 
   **C. Ranking Signals:**
-  - "top 5", "top 10", "best", "leading", "2024"
-  - Example: "top 10 pet care marketplaces 2024"
+  - "top 5", "top 10", "best", "leading", "{current_year}"
+  - Example: "top 10 pet care marketplaces {current_year}"
+  - IMPORTANT: The current year is {current_year}. Always use {current_year} when including a year in queries. Never use outdated years.
 
   **D. Concrete Constraints:**
   - Price: "free", "under $50", "enterprise pricing", "budget"
@@ -209,7 +210,7 @@ template: |
   **Examples by niche**:
   - Home appliances: "Consumer Reports alternatives for budget appliances"
   - Pet care: "directories like Rover for pet sitting services"
-  - Legal services: "top 10 lawyer directories vs Avvo 2024"
+  - Legal services: "top 10 lawyer directories vs Avvo {current_year}"
   - Travel: "Kayak alternatives for budget flight comparison"
   - SaaS: "G2 alternatives for small business software reviews"
   - Developer tools: "GitHub code snippet repositories vs StackOverflow for payment integration"
@@ -257,7 +258,7 @@ template: |
   - Legal services: "lawyer directories for small business disputes"
   - Travel: "comparison sites for budget family vacations"
   - B2B: "software directories for nonprofit organizations"
-  - Developer tools: "best payment SDK code libraries for solo developers 2024"
+  - Developer tools: "best payment SDK code libraries for solo developers {current_year}"
   - API resources: "top API documentation sites for startup developers"
 
   ### 5. Problem-Specific Alternatives (10%)

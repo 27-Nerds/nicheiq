@@ -48,25 +48,65 @@ export type CompletionEvent = z.infer<typeof CompletionEventSchema>;
 // Stage definitions for the NicheIQ pipeline
 // Must match worker/progress.py STAGE_NAMES and research_flow.py stage methods
 export const PIPELINE_STAGES = [
-  { number: 1, name: 'Niche Validation' },
-  { number: 5, name: 'Search & Discovery' },
-  { number: 6, name: 'Pain Point Analysis' },
-  { number: 6.5, name: 'Audience Mapping' },
-  { number: 7, name: 'Solution Pipeline' },
-  { number: 8, name: 'Pricing Validation' },
-  { number: 8.5, name: 'Keyword Validation' },
-  { number: 8.55, name: 'Traffic Monetization' },
-  { number: 8.6, name: 'Market Sizing' },
-  { number: 8.7, name: 'Solution Refinement' },
-  { number: 9, name: 'SEO Strategy' },
-  { number: 9.5, name: 'Trend Analysis' },
-  { number: 9.6, name: 'SEO Score Refinement' },
-  { number: 9.7, name: 'Data Source Research' },
-  { number: 10, name: 'Report Generation' },
-  { number: 11, name: 'Landing Page Generation' },
+  { number: 1, name: 'Niche Validation', phase: 1 },
+  { number: 5, name: 'Search & Discovery', phase: 1 },
+  { number: 6, name: 'Pain Point Analysis', phase: 1 },
+  { number: 6.5, name: 'Audience Mapping', phase: 1 },
+  { number: 7, name: 'Solution Pipeline', phase: 1 },
+  { number: 8, name: 'Pricing Validation', phase: 'validation' as const },
+  { number: 8.5, name: 'Keyword Validation', phase: 'validation' as const },
+  { number: 8.55, name: 'Traffic Monetization', phase: 2 },
+  { number: 8.6, name: 'Market Sizing', phase: 2 },
+  { number: 8.7, name: 'Solution Refinement', phase: 2 },
+  { number: 9, name: 'SEO Strategy', phase: 2 },
+  { number: 9.5, name: 'Trend Analysis', phase: 2 },
+  { number: 9.6, name: 'SEO Score Refinement', phase: 2 },
+  { number: 9.7, name: 'Data Source Research', phase: 2 },
+  { number: 10, name: 'Report Generation', phase: 2 },
+  { number: 11, name: 'Landing Page Generation', phase: 2 },
 ] as const;
 
 export const TOTAL_STAGES = PIPELINE_STAGES.length;
+
+// Interactive job flow schemas
+export const SelectSolutionSchema = z.object({
+  solutionNames: z.array(z.string().trim().min(1).max(255)).min(1).max(3),
+  rationale: z.string().max(2000).optional(),
+});
+
+export type SelectSolutionInput = z.infer<typeof SelectSolutionSchema>;
+
+export const RegenerateIdeasSchema = z.object({});
+
+export type RegenerateIdeasInput = z.infer<typeof RegenerateIdeasSchema>;
+
+// Worker → backend schemas for interactive flow
+export const IdeasReadySchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  solutions: z.array(z.record(z.any())),
+  checkpoint_path: z.string().min(1).max(500),
+  total_to_validate: z.number().int().min(0).default(0),
+  skip_validation: z.boolean().optional(),
+});
+
+export type IdeasReadyInput = z.infer<typeof IdeasReadySchema>;
+
+export const RegenerationCompleteSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  solutions: z.array(z.record(z.any())),
+});
+
+export type RegenerationCompleteInput = z.infer<typeof RegenerationCompleteSchema>;
+
+export const RegenerationFailedSchema = z.object({
+  worker_id: z.string().min(1),
+  job_id: z.string().uuid(),
+  error_message: z.string().max(2000),
+});
+
+export type RegenerationFailedInput = z.infer<typeof RegenerationFailedSchema>;
 
 // API response types
 export interface JobResponse {
@@ -79,11 +119,36 @@ export interface JobResponse {
   totalStages: number;
   progressPercent: number;
   errorMessage: string | null;
-  createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
-  progress: StageProgress[];
-  assets: Asset[];
+  // Quality gate stop metadata
+  stopReason: string | null;
+  stopReasonDetails: string | null;
+  // User-friendly error information
+  errorCode: string | null;
+  errorDetails: Record<string, unknown> | null;
+  // Landing page lifecycle
+  generateLandingPage: boolean;
+  landingPageStatus: string | null;
+  // Interactive job flow
+  jobMode: string | null;
+  selectedSolution: string | null;
+  selectedSolutions: string[] | null;
+  awaitingSelectionAt: string | null;
+  ideasShownAt: string | null;
+  // Optional fields (endpoint-dependent)
+  createdAt?: string;
+  progress?: StageProgress[];
+  assets?: Asset[];
+  hasReport?: boolean;
+  hasLandingPage?: boolean;
+  creditRefunded?: boolean;
+  queuePosition?: number | null;
+  aheadCount?: number;
+  totalQueued?: number;
+  solutionIdeas?: Record<string, unknown>[] | null;
+  canRegenerate?: boolean;
+  selectionRationale?: string | null;
 }
 
 export interface StageProgress {

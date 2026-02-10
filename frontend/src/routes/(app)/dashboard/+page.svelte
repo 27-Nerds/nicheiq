@@ -38,9 +38,13 @@
     initialJobs
       .map((job) => jobUpdates.get(job.id) || job)
       .sort((a, b) => {
-        // Priority: Running > Pending/Queued > Failed > Completed
+        // Priority: Awaiting Selection > Running > Pending/Queued > Failed > Completed
         const statusPriority: Record<string, number> = {
+          AWAITING_SELECTION: -1,
+          VALIDATING_IDEAS: 0,
           RUNNING: 0,
+          RUNNING_PHASE2: 0,
+          REGENERATING: 0,
           PENDING: 1,
           QUEUED: 1,
           FAILED: 2,
@@ -62,10 +66,18 @@
   const completedCount = $derived(
     jobs.filter((j) => j.status.toUpperCase() === "COMPLETED").length,
   );
+  const ACTIVE_STATUSES = [
+    "RUNNING",
+    "PENDING",
+    "QUEUED",
+    "VALIDATING_IDEAS",
+    "AWAITING_SELECTION",
+    "REGENERATING",
+    "RUNNING_PHASE2",
+  ];
+
   const inProgressCount = $derived(
-    jobs.filter((j) =>
-      ["RUNNING", "PENDING", "QUEUED"].includes(j.status.toUpperCase()),
-    ).length,
+    jobs.filter((j) => ACTIVE_STATUSES.includes(j.status.toUpperCase())).length,
   );
   const failedCount = $derived(
     jobs.filter((j) => j.status.toUpperCase() === "FAILED").length,
@@ -73,9 +85,7 @@
 
   // Group jobs by category for visual separation
   const activeJobs = $derived(
-    jobs.filter((j) =>
-      ["RUNNING", "PENDING", "QUEUED"].includes(j.status.toUpperCase()),
-    ),
+    jobs.filter((j) => ACTIVE_STATUSES.includes(j.status.toUpperCase())),
   );
   const completedJobs = $derived(
     jobs.filter((j) => j.status.toUpperCase() === "COMPLETED"),

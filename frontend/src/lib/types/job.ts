@@ -3,9 +3,53 @@
  * Single source of truth — do not duplicate these interfaces elsewhere.
  */
 
-export type JobStatus = 'PENDING' | 'QUEUED' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type JobStatus =
+  | 'PENDING'
+  | 'QUEUED'
+  | 'RUNNING'
+  | 'VALIDATING_IDEAS'
+  | 'AWAITING_SELECTION'
+  | 'REGENERATING'
+  | 'RUNNING_PHASE2'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED';
 
 export type ErrorSeverity = 'info' | 'warning' | 'error';
+
+// Interactive job flow — solution selection types
+
+export interface SolutionValidationData {
+  keyword_demand_score?: number | null;
+  demand_signal?: string | null;
+  total_volume?: number | null;
+  validated_count?: number | null;
+  avg_keyword_difficulty?: number | null;
+  rankability_factor?: number | null;
+  top_keywords?: { keyword: string; volume: number; difficulty?: number }[] | null;
+  top_geographic_keywords?: { keyword: string; volume: number }[] | null;
+  pricing_validation?: Record<string, unknown> | null;
+}
+
+export interface SolutionPreview {
+  solution_name: string;
+  description: string;
+  value_proposition: string;
+  pain_points_addressed?: string[];
+  core_features?: string[];
+  target_personas?: string[];
+  project_type?: string | null;
+  differentiation_factors?: string[] | null;
+  market_fit_score?: number | null;
+  technical_feasibility_score?: number | null;
+  seo_scalability_score?: number | null;
+  novelty_score?: number | null;
+  programmatic_seo_opportunity?: string | null;
+  estimated_cac_organic?: string | null;
+  organic_discovery_queries?: string[] | null;
+  validation?: SolutionValidationData | null;
+  adjusted_composite_score?: number | null;
+}
 
 export interface ErrorDetails {
   code: string;
@@ -74,4 +118,13 @@ export interface Job {
   // Landing page lifecycle
   generateLandingPage?: boolean;
   landingPageStatus?: string | null;
+  // Interactive job flow
+  jobMode?: 'interactive' | 'auto' | null;
+  selectedSolution?: string | null;
+  selectedSolutions?: string[] | null;
+  selectionRationale?: string | null;
+  awaitingSelectionAt?: string | null;
+  ideasShownAt?: string | null;
+  solutionIdeas?: SolutionPreview[] | null;
+  canRegenerate?: boolean;
 }

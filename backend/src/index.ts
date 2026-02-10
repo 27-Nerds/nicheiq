@@ -17,6 +17,7 @@ import { webhooksRouter } from './routes/webhooks.js';
 import { statsRouter } from './routes/stats.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
+import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
 
 // Validate configuration
 validateConfig();
@@ -84,6 +85,9 @@ const server = app.listen(CONFIG.port, () => {
 
   // Start the heartbeat monitor for worker crash detection
   startHeartbeatMonitor();
+
+  // Start the selection reminder monitor for interactive jobs
+  startSelectionReminderMonitor();
 });
 
 // Track connections for graceful shutdown
@@ -98,6 +102,7 @@ async function shutdown() {
 
   // Stop the heartbeat monitor
   stopHeartbeatMonitor();
+  stopSelectionReminderMonitor();
 
   // Stop accepting new connections
   server.close();

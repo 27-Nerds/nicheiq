@@ -566,11 +566,8 @@ class ReportGenerator:
 
             # REMOVED: ideation_process - not reliably populated
 
-            # Competitive Strategic Insights (NEW - from Stage 7.5)
-            overall_competitive_insights=(
-                self.state.competitive_enhancements.overall_competitive_insights
-                if self.state.competitive_enhancements else None
-            ),
+            # Competitive Strategic Insights (generated from landscape data)
+            overall_competitive_insights=self._generate_competitive_insights(),
 
             # ========== FULL STAGE DATA (NEW - preserves complete pipeline outputs) ==========
 
@@ -1484,8 +1481,12 @@ class ReportGenerator:
                 else:
                     selected_solo_dev = None
 
+            selected_solution_name = getattr(solution_selection, 'selected_solution_name', None)
+
             alternative_solutions = []
             for runner_up_name in runner_up_names[:4]:  # Top 4 runners-up (enhanced from 2)
+                if runner_up_name == selected_solution_name:
+                    continue
                 if runner_up_name not in all_solutions:
                     logger.warning(f"Runner-up solution '{runner_up_name}' not found in idea generation results")
                     continue
@@ -1647,7 +1648,7 @@ It differentiates through {diff_text}.
                             }
                         competitor_appearances[competitor.name]["solutions"].append(landscape.solution_name)
 
-            # Create competitor matrix entries (only multi-solution competitors)
+            # Create competitor matrix entries (selected solution's competitors)
             competitor_overlap = [
                 CompetitorMatrixEntry(
                     competitor_name=name,
@@ -1656,7 +1657,6 @@ It differentiates through {diff_text}.
                     threat_level=data["threat_level"]
                 )
                 for name, data in competitor_appearances.items()
-                if len(data["solutions"]) > 1  # Only show competitors in multiple solution spaces
             ]
 
             # Sort by number of solutions competed (most versatile competitors first)
@@ -1667,11 +1667,12 @@ It differentiates through {diff_text}.
             for entry in competitive_intensity_list:
                 intensity_counts[entry.intensity] = intensity_counts.get(entry.intensity, 0) + 1
 
-            market_insight = f"Analyzed {len(all_solutions)} solution concepts across the competitive landscape. "
+            solution_word = "concept" if len(all_solutions) == 1 else "concepts"
+            market_insight = f"Analyzed {len(all_solutions)} solution {solution_word} across the competitive landscape. "
             if intensity_counts:
                 market_insight += f"Competitive intensity distribution: {', '.join(f'{k}: {v}' for k, v in intensity_counts.items())}. "
             if competitor_overlap:
-                market_insight += f"{len(competitor_overlap)} competitors appear across multiple solution spaces, indicating platform players with broad market coverage. "
+                market_insight += f"{len(competitor_overlap)} competitor{'s' if len(competitor_overlap) != 1 else ''} identified in the competitive landscape. "
                 top_competitor = competitor_overlap[0]
                 market_insight += f"Most versatile competitor: {top_competitor.competitor_name} (competes in {len(top_competitor.solutions_competed)} solution categories)."
 
@@ -1690,6 +1691,49 @@ It differentiates through {diff_text}.
             )
         except Exception as e:
             logger.warning(f"Failed to generate competitive landscape matrix: {e}")
+            return None
+
+    def _generate_competitive_insights(self) -> str | None:
+        """Generate overall competitive insights from the selected solution's landscape data.
+
+        Returns formatted 2-3 paragraph string, or None if no landscape data.
+        No LLM call — programmatic generation from structured data.
+        """
+        try:
+            selected_landscape = self.accessor.get_selected_landscape()
+            if not selected_landscape:
+                return None
+
+            paragraphs = []
+
+            # Paragraph 1: Overview and intensity
+            comp_count = len(selected_landscape.competitors) if selected_landscape.competitors else 0
+            intensity = selected_landscape.competitive_intensity
+            p1 = (
+                f"The competitive landscape for {selected_landscape.solution_name} shows "
+                f"{intensity} competitive intensity with {comp_count} identified "
+                f"competitor{'s' if comp_count != 1 else ''}."
+            )
+            if selected_landscape.recommended_positioning:
+                p1 += f" {selected_landscape.recommended_positioning}"
+            paragraphs.append(p1)
+
+            # Paragraph 2: Market gaps and differentiation
+            if selected_landscape.market_gaps:
+                gaps = selected_landscape.market_gaps[:5]
+                p2 = f"Key market gaps identified: {'; '.join(gaps)}."
+                if selected_landscape.differentiation_opportunities:
+                    opps = selected_landscape.differentiation_opportunities[:3]
+                    p2 += f" Top differentiation opportunities include: {'; '.join(opps)}."
+                paragraphs.append(p2)
+
+            # Paragraph 3: Pricing insights
+            if selected_landscape.pricing_insights:
+                paragraphs.append(f"Pricing landscape: {selected_landscape.pricing_insights}")
+
+            return "\n\n".join(paragraphs) if paragraphs else None
+        except Exception as e:
+            logger.warning(f"Failed to generate competitive insights: {e}")
             return None
 
     def _build_competitor_profiles(self) -> list["CompetitorCard"]:

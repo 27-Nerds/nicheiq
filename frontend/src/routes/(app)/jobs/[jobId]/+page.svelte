@@ -23,9 +23,11 @@
     Globe,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
-  import type { Job, StageProgress } from "$lib/types/job";
+  import type { Job, StageProgress, SolutionPreview } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import SolutionSelectionView from "$lib/components/SolutionSelectionView.svelte";
+  import { getSolutions } from "$lib/api";
 
   let job = $state<Job | null>(null);
   let loading = $state(true);
@@ -38,8 +40,24 @@
   let showTechnicalDetails = $state(false);
   let generatingLanding = $state(false);
   let landingError = $state("");
+  let localSolutions = $state<SolutionPreview[] | null>(null);
 
   const jobId = $derived($page.params.jobId);
+
+  const isInteractiveStatus = $derived(
+    job
+      ? [
+          "AWAITING_SELECTION",
+          "REGENERATING",
+          "RUNNING_PHASE2",
+        ].includes(job.status)
+      : false,
+  );
+
+  // Use local solutions (updated via SSE) or fall back to job data
+  const displaySolutions = $derived(
+    localSolutions ?? job?.solutionIdeas ?? [],
+  );
 
   function connectSSE() {
     // Clean up existing subscription
@@ -54,9 +72,18 @@
       (data) => {
         if (data && data.id) {
           job = data as Job;
+          // Sync solutions from SSE job data:
+          // - initial sync when localSolutions is null
+          // - after regeneration when backend sends merged array (length changes)
+          if (data.solutionIdeas) {
+            if (!localSolutions || data.solutionIdeas.length !== localSolutions.length) {
+              localSolutions = data.solutionIdeas as SolutionPreview[];
+            }
+          }
         }
       },
       (err) => console.warn("SSE error:", err.message),
+      {},
     );
   }
 
@@ -174,6 +201,28 @@
       loading = false;
     }
 
+    // For interactive jobs returning to selection page, fetch solutions via REST
+    if (
+      job &&
+      jobId &&
+      ["AWAITING_SELECTION", "REGENERATING"].includes(
+        job.status,
+      )
+    ) {
+      try {
+        const solData = await getSolutions(jobId);
+        // Only overwrite if SSE hasn't already provided fresher data
+        if (!localSolutions) {
+          localSolutions = solData.solutionIdeas;
+        }
+      } catch {
+        // Fall back to solutions from job data
+        if (!localSolutions) {
+          localSolutions = job.solutionIdeas ?? null;
+        }
+      }
+    }
+
     // SSE for real-time updates if job is still in progress or landing page is generating
     if (job && shouldKeepSSEOpen(job)) {
       connectSSE();
@@ -186,19 +235,50 @@
 
   function getStatusVariant(
     status: string,
-  ): "success" | "warning" | "error" | "muted" | "info" {
+  ): "success" | "warning" | "error" | "muted" | "info" | "accent" {
     switch (status) {
       case "COMPLETED":
         return "success";
       case "RUNNING":
+      case "RUNNING_PHASE2":
         return "info";
       case "FAILED":
         return "error";
       case "CANCELLED":
         return "muted";
+      case "VALIDATING_IDEAS":
+      case "AWAITING_SELECTION":
+        return "accent";
+      case "REGENERATING":
+        return "warning";
       default:
         return "warning"; // PENDING, QUEUED
     }
+  }
+
+  function getStatusLabel(status: string): string {
+    switch (status) {
+      case "VALIDATING_IDEAS":
+        return "Validating Ideas";
+      case "AWAITING_SELECTION":
+        return "Awaiting Selection";
+      case "REGENERATING":
+        return "Generating New Ideas";
+      case "RUNNING_PHASE2":
+        return "Deep Analysis";
+      default:
+        return status;
+    }
+  }
+
+  function handleSelectionComplete() {
+    // Refetch job to get updated status (RUNNING_PHASE2 or QUEUED)
+    fetch(`/api/jobs/${jobId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        job = data;
+        connectSSE();
+      });
   }
 
   function formatDuration(seconds: number | null): string {
@@ -321,14 +401,14 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status)}
+            {#if ["QUEUED", "PENDING", "RUNNING", "VALIDATING_IDEAS", "AWAITING_SELECTION", "REGENERATING", "RUNNING_PHASE2"].includes(job.status)}
               <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
             {/if}
             <Badge variant={getStatusVariant(job.status)}>
-              {#if job.status === "RUNNING"}
+              {#if ["RUNNING", "RUNNING_PHASE2", "VALIDATING_IDEAS", "REGENERATING"].includes(job.status)}
                 <Loader2 class="w-3.5 h-3.5 animate-spin" />
               {/if}
-              {job.status}
+              {getStatusLabel(job.status)}
             </Badge>
           </div>
         </div>
@@ -388,8 +468,8 @@
           </div>
           <div class="progress-bar h-3">
             <div
-              class="progress-bar-fill {job.status === 'RUNNING'
-                ? 'animate-shimmer'
+              class="progress-bar-fill {job.status === 'RUNNING' || job.status === 'RUNNING_PHASE2'
+                ? 'animate-shimmer motion-reduce:animate-none'
                 : ''} {job.status === 'FAILED' ? 'progress-failed' : ''}"
               style="width: {job.progressPercent}%"
             ></div>
@@ -397,6 +477,21 @@
           <p class="mt-3 text-sm text-text-muted">
             {adjustedStagesCompleted} of {adjustedTotalStages} stages completed
           </p>
+        </div>
+      {/if}
+
+      <!-- Interactive Flow: Solution Selection -->
+      {#if job.status === "AWAITING_SELECTION" || job.status === "REGENERATING"}
+        <div class="mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
+          <SolutionSelectionView
+            jobId={jobId ?? ''}
+            solutions={displaySolutions}
+            selectedSolution={job.selectedSolution}
+            selectedSolutions={job.selectedSolutions}
+            isRegenerating={job.status === "REGENERATING"}
+            canRegenerate={job.canRegenerate ?? false}
+            onSelectionComplete={handleSelectionComplete}
+          />
         </div>
       {/if}
 

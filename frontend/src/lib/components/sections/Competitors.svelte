@@ -220,10 +220,10 @@
     </ExpandableSection>
   {/if}
 
-  <!-- Expandable: Competitor Overlap -->
+  <!-- Expandable: Competitive Landscape -->
   {#if landscapeMatrix?.competitor_overlap && landscapeMatrix.competitor_overlap.length > 0}
     <ExpandableSection
-      title="Competitor Overlap"
+      title="Competitive Landscape"
       icon={Layers}
       count={landscapeMatrix.competitor_overlap.length}
     >

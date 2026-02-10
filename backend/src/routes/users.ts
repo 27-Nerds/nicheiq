@@ -145,6 +145,7 @@ usersRouter.get('/:userId/notification-preferences', requireInternalAuth, async 
         emailOnJobStart: true,
         emailOnJobComplete: true,
         emailOnJobError: true,
+        emailOnSolutionsReady: true,
       });
       return;
     }
@@ -154,6 +155,7 @@ usersRouter.get('/:userId/notification-preferences', requireInternalAuth, async 
       emailOnJobStart: preferences.emailOnJobStart,
       emailOnJobComplete: preferences.emailOnJobComplete,
       emailOnJobError: preferences.emailOnJobError,
+      emailOnSolutionsReady: preferences.emailOnSolutionsReady,
     });
   } catch (error) {
     console.error('Failed to get notification preferences:', error);
@@ -188,6 +190,7 @@ usersRouter.put('/:userId/notification-preferences', requireInternalAuth, async 
       emailOnJobStart,
       emailOnJobComplete,
       emailOnJobError,
+      emailOnSolutionsReady,
     } = req.body;
 
     // Build update data (only include provided fields)
@@ -196,6 +199,7 @@ usersRouter.put('/:userId/notification-preferences', requireInternalAuth, async 
     if (typeof emailOnJobStart === 'boolean') updateData.emailOnJobStart = emailOnJobStart;
     if (typeof emailOnJobComplete === 'boolean') updateData.emailOnJobComplete = emailOnJobComplete;
     if (typeof emailOnJobError === 'boolean') updateData.emailOnJobError = emailOnJobError;
+    if (typeof emailOnSolutionsReady === 'boolean') updateData.emailOnSolutionsReady = emailOnSolutionsReady;
 
     if (Object.keys(updateData).length === 0) {
       res.status(400).json({ error: 'No valid preference fields provided' });
@@ -217,6 +221,7 @@ usersRouter.put('/:userId/notification-preferences', requireInternalAuth, async 
       emailOnJobStart: preferences.emailOnJobStart,
       emailOnJobComplete: preferences.emailOnJobComplete,
       emailOnJobError: preferences.emailOnJobError,
+      emailOnSolutionsReady: preferences.emailOnSolutionsReady,
     });
   } catch (error) {
     console.error('Failed to update notification preferences:', error);

@@ -163,14 +163,15 @@ def create_progress_callback(
         )
 
         # Check for cancellation when a stage starts running (best point to stop)
-        if check_cancellation and status == "running" and should_cancel:
-            from .heartbeat import JobCancelledException
-            raise JobCancelledException("Job cancelled by user")
+        if check_cancellation and status == "running":
+            from .heartbeat import JobCancelledException, is_cancellation_requested
+            if should_cancel or is_cancellation_requested():
+                raise JobCancelledException("Job cancelled")
 
     return callback
 
 
-def publish_report_ready(job_id: str, report_path: str) -> None:
+def publish_report_ready(job_id: str, report_path: str, winner_name: str = None) -> None:
     """
     Notify backend that the research report is ready (before landing page).
     This triggers "report ready" notification so users can view reports immediately.
@@ -178,6 +179,7 @@ def publish_report_ready(job_id: str, report_path: str) -> None:
     Args:
         job_id: The job UUID
         report_path: Path to the generated report JSON
+        winner_name: Optional name of the winning solution
     """
     try:
         payload = {
@@ -185,6 +187,8 @@ def publish_report_ready(job_id: str, report_path: str) -> None:
             "job_id": job_id,
             "report_path": report_path,
         }
+        if winner_name:
+            payload["winner_name"] = winner_name
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/report-ready",
@@ -245,6 +249,101 @@ def publish_job_failed(job_id: str, error: str, stage: Optional[float] = None) -
         error=error,
     )
     logger.error(f"[Progress] Job {job_id} failed at stage {stage}: {error}")
+
+
+
+
+def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str, total_to_validate: int = 0, skip_validation: bool = False) -> None:
+    """
+    Notify backend that Phase 1 solution ideas are ready.
+
+    Args:
+        job_id: The job UUID
+        solutions: List of solution preview dicts
+        checkpoint_path: Path to phase 1 checkpoint
+        total_to_validate: Number of solutions to validate
+        skip_validation: If True, skip VALIDATING_IDEAS and go directly to AWAITING_SELECTION
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "solutions": solutions,
+            "checkpoint_path": checkpoint_path,
+            "total_to_validate": total_to_validate,
+            "skip_validation": skip_validation,
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/ideas-ready",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Ideas ready notification sent for job {job_id} ({len(solutions)} solutions)")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify ideas ready: {e}")
+
+
+
+def notify_regeneration_complete(job_id: str, new_solutions: list[dict]) -> None:
+    """
+    Notify backend that regeneration is complete with new solutions.
+
+    Args:
+        job_id: The job UUID
+        new_solutions: List of new solution preview dicts
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "solutions": new_solutions,
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/regeneration-complete",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Regeneration complete notification sent for job {job_id}")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify regeneration complete: {e}")
+
+
+
+def notify_regeneration_failed(job_id: str, error_message: str) -> None:
+    """
+    Notify backend that regeneration failed. Reverts job to AWAITING_SELECTION
+    so the user can see existing solutions and retry.
+
+    Args:
+        job_id: The job UUID
+        error_message: Description of what went wrong
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "error_message": error_message[:2000],
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/regeneration-failed",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Regeneration failed notification sent for job {job_id}")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify regeneration failed: {e}")
 
 
 def notify_job_quality_gate_stop(

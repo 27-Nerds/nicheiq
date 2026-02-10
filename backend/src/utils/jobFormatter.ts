@@ -12,6 +12,7 @@ interface FormatOptions {
   includeProgress?: boolean;            // Job detail, SSE
   includeProgressTimestamps?: boolean;  // Job detail only (startedAt/completedAt per stage)
   includeAssets?: boolean;              // Job detail, SSE
+  includeSolutionIdeas?: boolean;       // Interactive flow: include solution ideas
   queueStats?: { position: number | null; totalQueued: number; aheadCount: number } | null;
 }
 
@@ -32,11 +33,17 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     stopReason: job.stopReason || null,
     stopReasonDetails: job.stopReasonDetails || null,
     // User-friendly error information
-    errorCode: (job as any).errorCode || null,
-    errorDetails: (job as any).errorDetails || null,
+    errorCode: job.errorCode || null,
+    errorDetails: job.errorDetails || null,
     // Landing page lifecycle
-    generateLandingPage: (job as any).generateLandingPage ?? false,
-    landingPageStatus: (job as any).landingPageStatus || null,
+    generateLandingPage: job.generateLandingPage ?? false,
+    landingPageStatus: job.landingPageStatus || null,
+    // Interactive job flow
+    jobMode: job.jobMode || null,
+    selectedSolution: job.selectedSolution || null,
+    selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
+    awaitingSelectionAt: job.awaitingSelectionAt?.toISOString() || null,
+    ideasShownAt: job.ideasShownAt?.toISOString() || null,
   };
 
   // Optional fields based on endpoint needs
@@ -56,6 +63,12 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
     result.queuePosition = options.queueStats.position ?? null;
     result.aheadCount = options.queueStats.aheadCount ?? 0;
     result.totalQueued = options.queueStats.totalQueued ?? 0;
+  }
+
+  if (options.includeSolutionIdeas) {
+    result.solutionIdeas = job.solutionIdeas || null;
+    result.canRegenerate = job.ideasRegeneratedAt === null;
+    result.selectionRationale = job.selectionRationale || null;
   }
 
   if (options.includeProgress) {

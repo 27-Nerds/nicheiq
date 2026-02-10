@@ -1,0 +1,9 @@
+Reminder: Your NicheIQ Solutions Are Waiting
+
+Just a reminder — you have {{SOLUTION_COUNT}} validated solutions waiting for your review for "{{NICHE}}".
+
+Select a solution to continue with a deep analysis including SEO strategy, market sizing, and a full research report.
+
+Review Solutions: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

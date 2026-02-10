@@ -320,6 +320,19 @@
     </div>
   {/if}
 
+  <!-- How It Works -->
+  {#if solution.description && solution.description !== solution.value_proposition}
+    <InsightCard variant="accent" border="left" padding="md" class="how-it-works-card">
+      {#snippet header()}
+        <div class="how-it-works-header">
+          <Settings class="how-it-works-icon" />
+          <span class="how-it-works-title">HOW IT WORKS</span>
+        </div>
+      {/snippet}
+      <p class="how-it-works-content">{solution.description}</p>
+    </InsightCard>
+  {/if}
+
   <!-- Innovation Score Card -->
   {#if solution.novelty_score != null && !isNaN(solution.novelty_score)}
     <InsightCard
@@ -463,23 +476,6 @@
     </div>
   {/if}
 
-  <!-- How It Works -->
-  {#if solution.description && solution.description !== solution.value_proposition}
-    <div class="how-it-works-section">
-      <ExpandableSection
-        title="How It Works"
-        icon={FileText}
-        defaultOpen={false}
-        variant="muted"
-      >
-        <InsightCard variant="muted" border="left" padding="md">
-          <div class="how-it-works-content">
-            {@html renderMarkdown(solution.description)}
-          </div>
-        </InsightCard>
-      </ExpandableSection>
-    </div>
-  {/if}
 
   <!-- Core Features -->
   {#if solution.core_features && solution.core_features.length > 0}
@@ -944,18 +940,36 @@
   /* =========================
 	   HOW IT WORKS
 	   ========================= */
+  :global(.how-it-works-card) {
+    margin-bottom: 0.75rem;
+  }
+
+  .how-it-works-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  :global(.how-it-works-icon) {
+    width: 1rem;
+    height: 1rem;
+    color: var(--color-accent);
+  }
+
+  .how-it-works-title {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--color-accent);
+    text-transform: uppercase;
+  }
+
   .how-it-works-content {
     font-size: 0.8125rem;
     line-height: 1.65;
     color: var(--color-text-secondary);
-  }
-
-  .how-it-works-content :global(p) {
-    margin-bottom: 0.625rem;
-  }
-
-  .how-it-works-content :global(p:last-child) {
-    margin-bottom: 0;
+    margin: 0;
   }
 
   /* =========================
@@ -1068,7 +1082,6 @@
   /* =========================
 	   SECTION WRAPPERS
 	   ========================= */
-  .how-it-works-section,
   .core-features-section,
   .seo-engine-section {
     margin-bottom: 1.5rem;

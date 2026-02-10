@@ -9,7 +9,8 @@ import { refundCreditsForJob } from './creditService.js';
 export async function createJob(
   niche: string,
   allowedProjectTypes?: string[],
-  userId?: string
+  userId?: string,
+  jobMode?: string
 ) {
   // Create job with initial progress entries for all stages
   const job = await prisma.job.create({
@@ -17,6 +18,7 @@ export async function createJob(
       niche,
       userId, // Associate with user if provided
       allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
+      jobMode,
       status: JobStatus.PENDING,
       totalStages: TOTAL_STAGES,
       progress: {
@@ -239,6 +241,13 @@ export async function completeJob(
     });
   }
 
+  // Accept RUNNING_PHASE2 as valid pre-completion state (interactive flow)
+  const validPreCompletionStatuses: JobStatus[] = [JobStatus.RUNNING, JobStatus.RUNNING_PHASE2];
+  if (!validPreCompletionStatuses.includes(existingJob.status)) {
+    console.log(`[JobService] Job ${jobId} is in ${existingJob.status}, not a valid pre-completion state`);
+    return null;
+  }
+
   // Add report asset
   await addJobAsset(jobId, AssetType.REPORT_JSON, reportPath);
 
@@ -289,6 +298,16 @@ export async function failJob(
   if (existingJob.status === JobStatus.FAILED) {
     console.log(`[JobService] Job ${jobId} is already FAILED, skipping duplicate failJob() call`);
     return prisma.job.findUnique({ where: { id: jobId } });
+  }
+
+  // Accept interactive flow statuses as valid pre-fail states
+  const validPreFailStatuses: JobStatus[] = [
+    JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING,
+    JobStatus.VALIDATING_IDEAS, JobStatus.AWAITING_SELECTION, JobStatus.REGENERATING, JobStatus.RUNNING_PHASE2,
+  ];
+  if (!validPreFailStatuses.includes(existingJob.status)) {
+    console.log(`[JobService] Job ${jobId} is in ${existingJob.status}, cannot fail from this state`);
+    return null;
   }
 
   // Update job status to FAILED with optional quality gate metadata
