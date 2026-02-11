@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { Component } from "svelte";
+  import type { ComponentType } from "svelte";
 
   interface Props {
-    icon?: Component;
+    icon?: ComponentType;
     value: string | number;
     label: string;
     variant?: "default" | "success" | "warning" | "error" | "accent";

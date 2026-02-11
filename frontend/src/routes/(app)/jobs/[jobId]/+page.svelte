@@ -27,6 +27,8 @@
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SolutionSelectionView from "$lib/components/SolutionSelectionView.svelte";
+  import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
+  import PhaseResultsCard from "$lib/components/PhaseResultsCard.svelte";
   import { getSolutions } from "$lib/api";
 
   let job = $state<Job | null>(null);
@@ -354,6 +356,48 @@
     ).length;
     return job.totalStages - hiddenCount;
   });
+
+  // Build artifact maps from stage progress for PhaseResultsCard
+  const stageArtifacts = $derived.by(() => {
+    const map: Record<number, Record<string, any>> = {};
+    for (const stage of job?.progress ?? []) {
+      if (stage.artifact && typeof stage.artifact === 'object') {
+        map[stage.stageNumber] = stage.artifact as Record<string, any>;
+      }
+    }
+    return map;
+  });
+
+  const discoveryArtifacts = $derived.by(() => {
+    const result: Record<number, Record<string, any>> = {};
+    for (const num of [1, 2, 3, 4]) {
+      if (stageArtifacts[num]) result[num] = stageArtifacts[num];
+    }
+    return result;
+  });
+
+  const analysisArtifacts = $derived.by(() => {
+    const result: Record<number, Record<string, any>> = {};
+    for (const num of [6, 7, 9, 11]) {
+      if (stageArtifacts[num]) result[num] = stageArtifacts[num];
+    }
+    return result;
+  });
+
+  const showDiscoveryCard = $derived(
+    Object.keys(discoveryArtifacts).length > 0 &&
+    job?.status !== 'PENDING' && job?.status !== 'QUEUED'
+  );
+
+  const showAnalysisCard = $derived(
+    Object.keys(analysisArtifacts).length > 0
+  );
+
+  const showSelectedSummary = $derived(
+    (job?.selectedSolutions?.length ?? 0) > 0 &&
+    (job?.solutionIdeas?.length ?? 0) > 0 &&
+    (job?.status === 'RUNNING_PHASE2' || job?.status === 'COMPLETED')
+  );
 </script>
 
 <svelte:head>
@@ -491,6 +535,18 @@
             isRegenerating={job.status === "REGENERATING"}
             canRegenerate={job.canRegenerate ?? false}
             onSelectionComplete={handleSelectionComplete}
+          />
+        </div>
+      {/if}
+
+      <!-- Selected Solutions Summary (during Phase 2 / completed) -->
+      {#if showSelectedSummary}
+        <div class="mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
+          <SelectedSolutionsSummary
+            selectedNames={job.selectedSolutions ?? []}
+            solutionIdeas={job.solutionIdeas ?? []}
+            primaryWinner={job.selectedSolution}
+            status={job.status}
           />
         </div>
       {/if}
@@ -778,6 +834,20 @@
           {/each}
         </ul>
       </div>
+
+      <!-- Discovery Findings (Phase 1 artifacts) -->
+      {#if showDiscoveryCard}
+        <div class="mb-6 animate-fade-slide-in">
+          <PhaseResultsCard phase="discovery" artifacts={discoveryArtifacts} />
+        </div>
+      {/if}
+
+      <!-- Analysis Results (Phase 2 artifacts) -->
+      {#if showAnalysisCard}
+        <div class="mb-6 animate-fade-slide-in">
+          <PhaseResultsCard phase="analysis" artifacts={analysisArtifacts} />
+        </div>
+      {/if}
 
       <!-- Results Section -->
       {@const reportAsset = (job.assets ?? []).find((a) => a.type === "REPORT_JSON")}

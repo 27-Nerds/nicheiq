@@ -8,6 +8,7 @@
   } from "lucide-svelte";
   import SolutionCard from "./SolutionCard.svelte";
   import SelectSolutionModal from "./SelectSolutionModal.svelte";
+  import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import type { SolutionPreview } from "$lib/types/job";
   import { selectSolution, regenerateIdeas } from "$lib/api";
 
@@ -53,6 +54,18 @@
 
   const selectionCount = $derived(selectedNames.size);
   const canSubmit = $derived(selectionCount > 0 && !alreadySubmitted);
+
+  // Dynamic header narrative based on selection count
+  const headerNarrative = $derived.by(() => {
+    if (alreadySubmitted) return { title: `Solution${submittedNames.size > 1 ? 's' : ''} Selected`, subtitle: '' };
+    if (isRegenerating) return { title: 'Generating New Solutions...', subtitle: 'New solutions are being generated and will be added to your options shortly.' };
+    switch (selectionCount) {
+      case 0: return { title: 'Choose Your Solutions', subtitle: `Select 1 to ${MAX_SELECTIONS} solutions for deep analysis. The system will evaluate all selected and choose the best one for your final report.` };
+      case 1: return { title: 'Good choice!', subtitle: 'Select more to compare, or run analysis on this one.' };
+      case 2: return { title: 'Comparing solutions', subtitle: 'Add one more or run analysis on your picks.' };
+      default: return { title: 'All slots filled', subtitle: 'Ready to run deep analysis on your selections.' };
+    }
+  });
 
   function handleToggle(name: string) {
     if (alreadySubmitted || selectLoading || isRegenerating) return;
@@ -121,13 +134,7 @@
       </div>
       <div class="flex-1">
         <h2 class="text-lg font-semibold text-text-primary">
-          {#if alreadySubmitted}
-            Solution{submittedNames.size > 1 ? 's' : ''} Selected
-          {:else if isRegenerating}
-            Generating New Solutions...
-          {:else}
-            Choose Your Solutions
-          {/if}
+          {headerNarrative.title}
         </h2>
         <p class="mt-1 text-sm text-text-secondary">
           {#if alreadySubmitted}
@@ -136,10 +143,8 @@
             {:else}
               You selected {submittedNames.size} solutions for deep analysis. The system will evaluate all and pick the best for your report.
             {/if}
-          {:else if isRegenerating}
-            New solutions are being generated and will be added to your options shortly.
           {:else}
-            Select 1 to {MAX_SELECTIONS} solutions for deep analysis. The system will evaluate all selected and choose the best one for your final report.
+            {headerNarrative.subtitle}
           {/if}
         </p>
       </div>
@@ -172,16 +177,18 @@
 
   <!-- Solution Cards Grid -->
   <div class="grid gap-4">
-    {#each solutions as solution}
-      <SolutionCard
-        {solution}
-        onSelect={handleToggle}
-        disabled={alreadySubmitted || selectLoading || isRegenerating}
-        isSelected={alreadySubmitted
-          ? submittedNames.has(solution.solution_name)
-          : selectedNames.has(solution.solution_name)}
-        maxReached={!alreadySubmitted && selectionCount >= MAX_SELECTIONS}
-      />
+    {#each solutions as solution, i}
+      <AnimateOnScroll animation="fade-up" delay={100 + i * 200} duration={500} once={true}>
+        <SolutionCard
+          {solution}
+          onSelect={handleToggle}
+          disabled={alreadySubmitted || selectLoading || isRegenerating}
+          isSelected={alreadySubmitted
+            ? submittedNames.has(solution.solution_name)
+            : selectedNames.has(solution.solution_name)}
+          maxReached={!alreadySubmitted && selectionCount >= MAX_SELECTIONS}
+        />
+      </AnimateOnScroll>
     {/each}
   </div>
 

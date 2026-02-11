@@ -74,6 +74,7 @@ export interface StageProgress {
   startedAt?: string | null;
   completedAt?: string | null;
   durationSeconds: number | null;
+  artifact?: Record<string, any> | null;
 }
 
 export interface JobAsset {

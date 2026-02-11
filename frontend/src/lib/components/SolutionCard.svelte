@@ -7,6 +7,7 @@
   } from "lucide-svelte";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressBar from "$lib/components/ui/ProgressBar.svelte";
+  import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import type { SolutionPreview } from "$lib/types/job";
   import { renderTechnicalContent } from "$lib/utils/format";
 
@@ -46,11 +47,52 @@
     return { short: devTime.slice(0, 17) + "...", full: devTime };
   });
 
+  // Composite score for ProgressRing (0-1)
+  const compositeScore = $derived.by(() => {
+    if (solution.adjusted_composite_score != null) return solution.adjusted_composite_score;
+    const vals = [
+      solution.market_fit_score ?? 0,
+      solution.technical_feasibility_score ?? 0,
+      solution.seo_scalability_score ?? 0,
+      solution.novelty_score ?? 0,
+      solution.solo_dev_feasibility ?? 0,
+    ];
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  });
+
+  // Superpower badge — based on highest score attribute
+  const SUPERPOWER_MAP: Record<string, { label: string; variant: "success" | "accent" | "info" | "warning" }> = {
+    market_fit_score: { label: "Strong Market Fit", variant: "success" },
+    seo_scalability_score: { label: "SEO Powerhouse", variant: "accent" },
+    novelty_score: { label: "Innovator", variant: "info" },
+    technical_feasibility_score: { label: "Quick to Build", variant: "warning" },
+    solo_dev_feasibility: { label: "Solo-Friendly", variant: "success" },
+  };
+
+  const superpower = $derived.by(() => {
+    const entries: [string, number][] = [
+      ["market_fit_score", solution.market_fit_score ?? 0],
+      ["seo_scalability_score", solution.seo_scalability_score ?? 0],
+      ["novelty_score", solution.novelty_score ?? 0],
+      ["technical_feasibility_score", solution.technical_feasibility_score ?? 0],
+      ["solo_dev_feasibility", solution.solo_dev_feasibility ?? 0],
+    ];
+    entries.sort((a, b) => b[1] - a[1]);
+    return SUPERPOWER_MAP[entries[0][0]];
+  });
+
+  // Selection pulse micro-interaction
+  let justSelected = $state(false);
+
   // Card is clickable to toggle selection (unless disabled or max reached and not selected)
   const isToggleable = $derived(!disabled && (isSelected || !maxReached));
 
   function handleCardClick() {
     if (isToggleable) {
+      if (!isSelected) {
+        justSelected = true;
+        setTimeout(() => { justSelected = false; }, 300);
+      }
       onSelect(solution.solution_name);
     }
   }
@@ -70,7 +112,8 @@
       ? 'border-l-accent ring-2 ring-accent/20'
       : isToggleable
         ? 'border-l-border hover:border-l-accent/50 cursor-pointer'
-        : 'border-l-border opacity-60'}"
+        : 'border-l-border opacity-60'}
+    {justSelected ? 'selection-pulse' : ''}"
   role="option"
   aria-selected={isSelected}
   aria-label="Solution: {solution.solution_name}"
@@ -78,8 +121,13 @@
   onclick={handleCardClick}
   onkeydown={handleKeydown}
 >
-  <!-- Header with checkbox -->
-  <div class="flex items-start justify-between gap-3">
+  <!-- Header with ProgressRing and checkbox -->
+  <div class="flex items-start gap-3">
+    <!-- Composite Score Ring -->
+    <div class="shrink-0">
+      <ProgressRing value={compositeScore} size={48} color="auto" glow={isSelected} animate={true} showTooltip={true} description="Composite Score" />
+    </div>
+
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2">
         <h3 class="text-base font-semibold text-text-primary truncate">
@@ -89,9 +137,12 @@
           <Badge variant="accent" size="sm">Selected</Badge>
         {/if}
       </div>
-      {#if solution.project_type}
-        <Badge size="sm" class="mt-1">{solution.project_type}</Badge>
-      {/if}
+      <div class="flex flex-wrap items-center gap-1.5 mt-1">
+        {#if solution.project_type}
+          <Badge size="sm">{solution.project_type}</Badge>
+        {/if}
+        <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
+      </div>
     </div>
 
     <!-- Selection checkbox indicator -->
@@ -284,6 +335,17 @@
 </div>
 
 <style>
+  /* Selection pulse micro-interaction */
+  :global(.selection-pulse) {
+    animation: selectionPulse 300ms ease-out;
+  }
+
+  @keyframes selectionPulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 90, 40, 0); }
+    50% { transform: scale(1.015); box-shadow: 0 0 0 4px rgba(229, 90, 40, 0.15); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 90, 40, 0); }
+  }
+
   .markdown-content-compact :global(h1),
   .markdown-content-compact :global(h2),
   .markdown-content-compact :global(h3),

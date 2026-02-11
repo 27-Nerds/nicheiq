@@ -78,6 +78,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
         stageName: p.stageName,
         status: p.status,
         durationSeconds: p.durationSeconds,
+        artifact: p.details ?? null,
       };
       if (options.includeProgressTimestamps) {
         stage.startedAt = p.startedAt?.toISOString() || null;

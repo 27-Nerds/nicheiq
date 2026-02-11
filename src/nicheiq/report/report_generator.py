@@ -422,7 +422,9 @@ class ReportGenerator:
         # Override LLM numeric fields with pre-computed evidence-based values + populate growth trajectory
         if traffic_monetization and getattr(self.state, 'seo_strategy_report', None):
             seo_report = self.state.seo_strategy_report
-            niche_desc = getattr(self.state, 'niche_description', '') or ''
+            niche_ctx = getattr(self.state, 'niche_context', None)
+            niche_desc = getattr(niche_ctx, 'niche_description', '') if niche_ctx else ''
+            niche_desc = niche_desc or ''
 
             # Collect tiered keywords
             t0 = list(getattr(seo_report, 'tier_0_keywords', None) or [])

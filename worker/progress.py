@@ -59,6 +59,7 @@ def publish_progress_via_api(
     error: Optional[str] = None,
     report_path: Optional[str] = None,
     landing_path: Optional[str] = None,
+    artifact: Optional[dict] = None,
 ) -> bool:
     """
     Publish progress update to backend API.
@@ -76,6 +77,7 @@ def publish_progress_via_api(
         error: Optional error message (for failed status)
         report_path: Optional path to report (for job completion)
         landing_path: Optional path to landing page (for job completion)
+        artifact: Optional lightweight artifact dict for stage results
 
     Returns:
         True if job should be cancelled, False otherwise
@@ -95,6 +97,8 @@ def publish_progress_via_api(
             payload["report_path"] = report_path
         if landing_path is not None:
             payload["landing_path"] = landing_path
+        if artifact is not None:
+            payload["artifact"] = artifact
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/progress",
@@ -124,7 +128,7 @@ def publish_progress_via_api(
 def create_progress_callback(
     job_id: str,
     check_cancellation: bool = True
-) -> Callable[[float, Optional[str], str], None]:
+) -> Callable[[float, Optional[str], str, Optional[dict]], None]:
     """
     Create a progress callback function for ResearchFlow.
 
@@ -140,9 +144,9 @@ def create_progress_callback(
         check_cancellation: If True, check for cancellation at stage transitions
 
     Returns:
-        Callback function that takes (stage_num, stage_name, status)
+        Callback function that takes (stage_num, stage_name, status, artifact)
     """
-    def callback(stage_num: float, stage_name: Optional[str], status: str) -> None:
+    def callback(stage_num: float, stage_name: Optional[str], status: str, artifact: Optional[dict] = None) -> None:
         """
         Progress callback for ResearchFlow stages.
 
@@ -150,6 +154,7 @@ def create_progress_callback(
             stage_num: Stage number (e.g., 1, 2, 3, 4, 5)
             stage_name: Human-readable stage name (optional - looked up from STAGE_NAMES if None)
             status: 'running', 'completed', or 'failed'
+            artifact: Optional lightweight artifact dict for stage results
         """
         # Look up stage name if not provided
         name = stage_name if stage_name else STAGE_NAMES.get(stage_num, f"Stage {stage_num}")
@@ -160,6 +165,7 @@ def create_progress_callback(
             stage=stage_num,
             name=name,
             status=status,
+            artifact=artifact,
         )
 
         # Check for cancellation when a stage starts running (best point to stop)

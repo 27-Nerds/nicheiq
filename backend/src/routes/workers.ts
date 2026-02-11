@@ -525,6 +525,7 @@ const ProgressSchema = z.object({
   error: z.string().max(10000).optional(),
   report_path: z.string().max(500).optional(),
   landing_path: z.string().max(500).optional(),
+  artifact: z.record(z.unknown()).optional(),
 });
 
 /**
@@ -574,7 +575,8 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
       data.job_id,
       data.stage,
       stageStatus,
-      data.error
+      data.error,
+      data.artifact
     );
 
     // Track landing page lifecycle via landingPageStatus

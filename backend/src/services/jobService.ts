@@ -93,7 +93,8 @@ export async function updateStageProgress(
   jobId: string,
   stageNumber: number,
   status: StageStatus,
-  errorMessage?: string
+  errorMessage?: string,
+  details?: Record<string, unknown>
 ) {
   const now = new Date();
 
@@ -104,8 +105,14 @@ export async function updateStageProgress(
   });
 
   // Skip update if stage is already completed (preserve historical timestamps during resume)
+  // BUT still persist details/artifact if provided (handles resume/reload artifact population)
   if (currentStage?.status === StageStatus.COMPLETED && status === StageStatus.COMPLETED) {
-    // Stage already completed - don't overwrite timestamps
+    if (details) {
+      await prisma.jobProgress.update({
+        where: { jobId_stageNumber: { jobId, stageNumber } },
+        data: { details: details as Prisma.InputJsonValue },
+      });
+    }
     const existingProgress = await prisma.jobProgress.findUnique({
       where: { jobId_stageNumber: { jobId, stageNumber } },
     });
@@ -129,12 +136,14 @@ export async function updateStageProgress(
       startedAt: status === StageStatus.RUNNING ? now : undefined,
       completedAt: (status === StageStatus.COMPLETED || status === StageStatus.FAILED) ? now : undefined,
       errorMessage,
+      ...(details ? { details: details as Prisma.InputJsonValue } : {}),
     },
     update: {
       status,
       startedAt: status === StageStatus.RUNNING && !currentStage?.startedAt ? now : undefined,
       completedAt: (status === StageStatus.COMPLETED || status === StageStatus.FAILED) && !currentStage?.completedAt ? now : undefined,
       errorMessage,
+      ...(details ? { details: details as Prisma.InputJsonValue } : {}),
     },
   });
 

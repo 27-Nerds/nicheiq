@@ -189,7 +189,7 @@ class ResearchFlow(Flow[ResearchState]):
         if last_exception:
             raise last_exception
 
-    def _emit_progress(self, stage_num: float, stage_name: str | None, status: str) -> None:
+    def _emit_progress(self, stage_num: float, stage_name: str | None, status: str, artifact: dict | None = None) -> None:
         """
         Emit progress update via callback if set.
 
@@ -199,10 +199,11 @@ class ResearchFlow(Flow[ResearchState]):
             stage_num: Stage number (e.g., 1, 5, 6, 14)
             stage_name: Human-readable stage name (None to let callback look it up)
             status: 'running', 'completed', or 'failed'
+            artifact: Optional lightweight artifact dict (<2KB) for stage results
         """
         if self.progress_callback:
             try:
-                self.progress_callback(stage_num, stage_name, status)
+                self.progress_callback(stage_num, stage_name, status, artifact)
             except Exception as e:
                 # Re-raise cancellation exceptions — must not be swallowed
                 if type(e).__name__ == "JobCancelledException":
@@ -894,7 +895,143 @@ RULES:
             14: "Report Generation",
         }
         stage_name = stage_names.get(stage, f"Stage {stage}")
-        self._emit_progress(stage, stage_name, "completed")
+        artifact = self._extract_stage_artifact(stage)
+        self._emit_progress(stage, stage_name, "completed", artifact=artifact)
+
+    def _extract_stage_artifact(self, stage: float) -> dict | None:
+        """Extract a lightweight artifact dict (<2KB) for a completed stage.
+
+        Returns None if no artifact is available or extraction fails.
+        """
+        try:
+            artifact = self._build_stage_artifact(stage)
+            if artifact and len(json.dumps(artifact)) > 2048:
+                logger.warning(f"Artifact for stage {stage} exceeds 2KB, omitting")
+                return None
+            return artifact
+        except Exception as e:
+            logger.warning(f"Failed to extract artifact for stage {stage}: {e}")
+            return None
+
+    def _build_stage_artifact(self, stage: float) -> dict | None:
+        """Build artifact dict for a specific stage from current state."""
+        if stage == 1 and self.state.niche_context:
+            ctx = self.state.niche_context
+            return {
+                "type": "niche_validation",
+                "niche_description": ctx.niche_description[:200],
+                "market_segments": ctx.market_segments[:5],
+                "industry_boundaries": ctx.industry_boundaries[:150],
+            }
+        elif stage == 2 and self.state.social_content:
+            sc = self.state.social_content
+            fs = self.state.filtering_stats or {}
+            return {
+                "type": "search_discovery",
+                "reddit_posts": len(sc.reddit_posts),
+                "twitter_threads": len(sc.twitter_threads),
+                "quality_tier": self.state.social_content_quality_tier,
+                "subreddit_count": len(set(
+                    getattr(p, 'subreddit', '') for p in sc.reddit_posts
+                )),
+                "urls_searched": fs.get("total_urls_searched", 0),
+                "urls_relevant": fs.get("total_urls_relevant", 0),
+            }
+        elif stage == 3 and self.state.pain_point_analysis:
+            ppa = self.state.pain_point_analysis
+            top3 = sorted(ppa.pain_points, key=lambda p: p.severity_score, reverse=True)[:3]
+            return {
+                "type": "pain_points",
+                "count": len(ppa.pain_points),
+                "confidence": self.state.pain_point_confidence_score,
+                "quality_tier": self.state.pain_point_quality_tier,
+                "top": [{"title": p.title, "severity": p.severity_score} for p in top3],
+            }
+        elif stage == 4:
+            am = self.state.audience_mapping
+            if am:
+                return {
+                    "type": "audience_mapping",
+                    "segment_count": len(am.audience_segments),
+                    "primary_target": am.primary_target_segment,
+                    "community_hubs": am.community_hubs[:3] if am.community_hubs else [],
+                }
+            return None
+        elif stage == 6:
+            seo = self.state.seo_strategy_report
+            kvr = self.state.keyword_validation_results
+            sel = self.state.solution_selection
+            result: dict = {"type": "seo_opportunity"}
+            if kvr and len(kvr) > 0:
+                primary_name = sel.selected_solution_name if sel else None
+                k = next((v for v in kvr if getattr(v, 'solution_name', None) == primary_name), kvr[0])
+                result.update({
+                    "validated_keywords": k.validated_count,
+                    "total_volume": k.total_volume,
+                    "demand_signal": getattr(k, 'demand_signal', None),
+                    "avg_difficulty": getattr(k, 'avg_keyword_difficulty', None),
+                    "rankability_factor": getattr(k, 'rankability_factor', None),
+                })
+            if seo:
+                result.update({
+                    "cluster_count": len(seo.topic_clusters) if seo.topic_clusters else 0,
+                    "top_clusters": [
+                        c.cluster_name for c in (seo.topic_clusters or [])[:3]
+                    ],
+                    "total_keywords_analyzed": getattr(seo, 'total_keywords_analyzed', None),
+                })
+            if sel and hasattr(sel, 'selected_solution_name'):
+                result["winner_name"] = sel.selected_solution_name
+            return result if len(result) > 1 else None
+        elif stage == 7:
+            ps = self.state.pricing_strategies
+            sel = self.state.solution_selection
+            if ps and len(ps) > 0:
+                primary_name = sel.selected_solution_name if sel else None
+                p = next((v for v in ps if getattr(v, 'solution_name', None) == primary_name), ps[0])
+                return {
+                    "type": "pricing",
+                    "pricing_model": getattr(p, 'pricing_model', None),
+                    "starter_price": p.recommended_starter_price,
+                    "pro_price": p.recommended_pro_price,
+                    "arpu": getattr(p, 'estimated_arpu', None),
+                    "confidence": getattr(p, 'pricing_confidence', None),
+                }
+            return None
+        elif stage == 9:
+            ms = self.state.market_sizing
+            if ms:
+                result = {
+                    "type": "market_sizing",
+                    "tam": ms.total_addressable_market,
+                    "sam": ms.serviceable_available_market,
+                    "som_y1": ms.serviceable_obtainable_market_y1,
+                    "viability": getattr(ms, 'market_viability_verdict', None),
+                    "growth_rate": getattr(ms, 'market_growth_rate', None),
+                }
+                tm = self.state.traffic_monetization_results
+                if tm and len(tm) > 0:
+                    t = tm[0]
+                    result["monetization"] = {
+                        "model": getattr(t, 'monetization_model', None),
+                        "monthly_revenue_range": getattr(t, 'estimated_monthly_revenue_range', None),
+                    }
+                return result
+            return None
+        elif stage == 11:
+            tl = self.state.trend_longevity
+            if tl:
+                return {
+                    "type": "trend_analysis",
+                    "trend_direction": tl.trend_direction,
+                    "momentum_score": tl.momentum_score,
+                    "longevity_verdict": getattr(tl, 'longevity_verdict', None),
+                    "market_maturity": getattr(tl, 'market_maturity', None),
+                    "timing_recommendation": getattr(tl, 'timing_recommendation', None),
+                    "trend_confidence": getattr(tl, 'trend_confidence', None),
+                }
+            return None
+        return None
 
     def _map_pain_points_to_segments(self, audience_result) -> None:
         """
