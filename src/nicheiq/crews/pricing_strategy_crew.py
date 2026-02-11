@@ -1,5 +1,5 @@
 """
-Pricing Strategy Validation Crew (Stage 8.7).
+Pricing Strategy Validation Crew (Stage 7).
 
 Validates monetization strategy by determining optimal pricing based on:
 - Competitor pricing benchmarks
@@ -28,7 +28,7 @@ from ..utils.crew_helpers import (
 @CrewBase
 class PricingStrategyCrew:
     """
-    Crew for validating pricing strategy in Stage 8.7.
+    Crew for validating pricing strategy in Stage 7.
 
     Analyzes:
     - Competitor pricing from competitive analysis
@@ -251,19 +251,19 @@ class PricingStrategyCrew:
         Execute pricing strategy crew to generate pricing recommendations.
 
         Args:
-            selected_solution: Selected solution from Stage 8.75 (SolutionIdea)
+            selected_solution: Selected solution from Stage 75 (SolutionIdea)
             pain_point_analysis: Pain point analysis from Stage 6 (PainPointAnalysisResult)
             competitive_analysis: Competitive analysis from Stage 8 (CompetitiveAnalysisResult)
             niche_description: Niche description for context
             allowed_project_types: Optional project type constraints from user
-            market_sizing: Optional market sizing result from Stage 8.6
+            market_sizing: Optional market sizing result from Stage 9
             audience_mapping: Optional audience mapping result from Stage 6.5
-            solution_scores: Optional list of SolutionScores from Stage 8.5
+            solution_scores: Optional list of SolutionScores from keyword validation
 
         Returns:
             PricingStrategyResult with recommended pricing strategy, or None if analysis fails
         """
-        logger.info("[Stage 8.7] Starting Pricing Strategy Validation...")
+        logger.info("[Stage 7] Starting Pricing Strategy Validation...")
         logger.info(f"  Solution: {selected_solution.solution_name}")
         logger.info(f"  Analyzing competitor pricing and WTP scores...")
 
@@ -317,18 +317,18 @@ class PricingStrategyCrew:
 
             if result and result.pydantic:
                 pricing_result = result.pydantic
-                logger.info("[Stage 8.7] Pricing Strategy Validation Complete")
+                logger.info("[Stage 7] Pricing Strategy Validation Complete")
                 logger.info(f"  Recommended Starter: {pricing_result.recommended_starter_price}")
                 logger.info(f"  Recommended Pro: {pricing_result.recommended_pro_price}")
                 logger.info(f"  Estimated ARPU: {pricing_result.estimated_arpu}")
                 logger.info(f"  Pricing Confidence: {pricing_result.pricing_confidence}")
                 return pricing_result
             else:
-                logger.error("[Stage 8.7] Pricing analysis failed - no Pydantic output")
+                logger.error("[Stage 7] Pricing analysis failed - no Pydantic output")
                 return None
 
         except Exception as e:
-            logger.error(f"[Stage 8.7] Pricing analysis error: {str(e)}")
+            logger.error(f"[Stage 7] Pricing analysis error: {str(e)}")
             return None
 
     @property

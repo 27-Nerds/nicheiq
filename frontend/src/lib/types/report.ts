@@ -18,7 +18,7 @@ export interface Report {
 	solution_user_journey?: string;
 	solution_implementation_overview?: string;
 	mvp_scope_definition?: string;
-	// Site Structure and User Flows (Stage 10.5 - LLM-generated)
+	// Site Structure and User Flows (Stage 15 - LLM-generated)
 	site_structure?: SiteStructure;
 	user_flows?: UserFlowsSection;
 	pricing_strategy?: PricingStrategy;
@@ -57,10 +57,10 @@ export interface Report {
 	// Stage 1-4: Full Niche Context
 	niche_context?: NicheContext;
 
-	// Stage 9: Full SEO Strategy Report (not just seo_strategy)
+	// Stage 6: Full SEO Strategy Report (not just seo_strategy)
 	seo_strategy_report?: SEOStrategy;
 
-	/// Stage 9.7: Full Data Source Research (not just summary)
+	/// Stage 13: Full Data Source Research (not just summary)
 	data_source_research_full?: DataSourceResearchFull;
 
 	// Competitive Strategic Insights
@@ -69,7 +69,7 @@ export interface Report {
 	// Traffic Monetization (Stage 8 pricing crew)
 	traffic_monetization?: TrafficMonetization;
 
-	// Refinement Highlights (Stage 8.7 solution refinement)
+	// Refinement Highlights (Stage 10 solution refinement)
 	refinement_highlights?: RefinementHighlights;
 
 	// SEO Calculation Transparency
@@ -129,6 +129,19 @@ export interface TrafficMonetization {
 	monetization_confidence?: 'High' | 'Medium' | 'Low';
 	saas_alternative_viable: boolean;
 	saas_vs_traffic_recommendation: string;
+	traffic_methodology?: string;
+	traffic_data_sources?: string[];
+	year3_monthly_pageviews?: string;
+	year3_monthly_revenue?: string;
+	full_potential_monthly_pageviews?: string;
+	full_potential_monthly_revenue?: string;
+	revenue_growth_note?: string;
+	revenue_milestones?: Array<{
+		traffic: string;
+		ad_revenue: string;
+		unlock: string;
+		total_potential: string;
+	}>;
 }
 
 // Refinement Highlights interface
@@ -876,7 +889,7 @@ export interface NicheContext {
 }
 
 // =============================================================================
-// Site Structure (Stage 10.5 - LLM-generated)
+// Site Structure (Stage 15 - LLM-generated)
 // =============================================================================
 
 export interface SitePage {
@@ -904,7 +917,7 @@ export interface SiteStructure {
 }
 
 // =============================================================================
-// User Flows (Stage 10.5 - LLM-generated)
+// User Flows (Stage 15 - LLM-generated)
 // =============================================================================
 
 export interface UserFlowStep {
@@ -929,7 +942,7 @@ export interface UserFlowsSection {
 	key_insight?: string;
 }
 
-// Full data source research from Stage 9.7 (when requires_data_aggregation=true)
+// Full data source research from Stage 13 (when requires_data_aggregation=true)
 export interface DataSourceResearchFull {
 	solution_name: string;
 	primary_data_sources: DataSourceProvider[];

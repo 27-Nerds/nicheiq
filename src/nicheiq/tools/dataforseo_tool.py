@@ -36,7 +36,7 @@ class DataForSEOBaseClient:
     _expand_cache: dict[str, list[dict]] | None = None
     _volume_cache: dict[str, dict] | None = None
     _difficulty_cache: dict[str, float] | None = None
-    _cache_lock: "threading.RLock | None" = None  # Thread safety for parallel Stage 8.5 validation
+    _cache_lock: "threading.RLock | None" = None  # Thread safety for parallel keyword validation validation
     _cache_hits: int = 0
     _cache_misses: int = 0
 
@@ -629,7 +629,7 @@ class DataForSEOBaseClient:
         NOT the Google Ads competition index (which measures advertiser density).
 
         CACHING: Results are cached per location to avoid redundant API calls.
-        Stage 8.5 difficulty data will be reused in Phase 9.5d for overlapping keywords.
+        keyword validation difficulty data will be reused in Phase 6d for overlapping keywords.
 
         Use this for:
         - Accurate timeline estimates (higher difficulty = longer to rank)

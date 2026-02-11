@@ -16,6 +16,7 @@ from .crew_guardrails import (
     validate_geographic_tier_output,
     validate_implementation_plan_output,
     validate_raw_concepts,
+    validate_solution_selection,
     validate_strategic_tier_output,
 )
 # Removed: validate_implementation_guide_output, validate_implementation_guide_light_output (Task 5 deleted)
@@ -46,6 +47,8 @@ __all__ = [
     "validate_filtered_concepts",
     "validate_audience_mapping",
     "validate_data_source_evaluation",
+    # Solution selection guardrail
+    "validate_solution_selection",
     # SEO keyword analysis guardrails (Tasks 1a-1d)
     "validate_category_tier_output",
     "validate_geographic_tier_output",

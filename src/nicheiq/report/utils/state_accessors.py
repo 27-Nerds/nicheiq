@@ -65,11 +65,11 @@ class StateAccessor:
         return self.state.competitive_analysis
 
     def get_solution_selection(self) -> Optional["SolutionSelection"]:
-        """Get Stage 8.5 solution selection result."""
+        """Get keyword validation solution selection result."""
         return self.state.solution_selection
 
     def get_solution_refinement(self) -> Optional["SolutionRefinement"]:
-        """Get Stage 8.85 solution refinement result."""
+        """Get Stage 10 solution refinement result."""
         return self.state.solution_refinement
 
     def get_seo_strategy(self) -> Optional["SEOStrategyReport"]:
@@ -77,7 +77,7 @@ class StateAccessor:
         return self.state.seo_strategy_report
 
     def get_data_source_research(self) -> Optional["DataSourceResearchResult"]:
-        """Get Stage 9.75 data source research result (conditional)."""
+        """Get Stage 13 data source research result (conditional)."""
         return self.state.data_source_research
 
     def get_social_content(self) -> Optional["SocialContentCollection"]:
@@ -85,7 +85,7 @@ class StateAccessor:
         return self.state.social_content
 
     def get_trend_longevity(self):
-        """Get Stage 9.2 trend longevity analysis result."""
+        """Get Stage 11 trend longevity analysis result."""
         return self.state.trend_longevity
 
     # ==================================================================================
@@ -449,7 +449,7 @@ class StateAccessor:
         from the highest-priority tier (lowest tier number).
 
         Primary source: seo_strategy_report (Stage 9 tiered keywords)
-        Fallback: keyword_validation_results (Stage 8.5 validated keywords)
+        Fallback: keyword_validation_results (keyword validation validated keywords)
 
         Returns:
             Sum of search volumes from available keyword data
@@ -515,7 +515,7 @@ class StateAccessor:
             if total_volume > 0:
                 return total_volume
 
-        # Fallback: keyword_validation_results (Stage 8.5)
+        # Fallback: keyword_validation_results (keyword validation)
         # Used when Stage 9 SEO strategy failed or returned no keywords
         if self.state.keyword_validation_results:
             total_volume = sum(
@@ -529,7 +529,7 @@ class StateAccessor:
 
     def get_niche_relevant_search_volume(self) -> int:
         """
-        Get niche-relevant search volume from Stage 8.5 keyword validation.
+        Get niche-relevant search volume from keyword validation keyword validation.
 
         Returns the filtered volume (niche_relevant_volume) for the selected solution,
         which excludes broad/off-topic keywords from the Stage 9 SEO expansion.

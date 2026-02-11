@@ -492,13 +492,13 @@ LANDING_PAGE_EXECUTION_LLM=gpt-5.1-codex-max
 
 ```bash
 TOP_SOLUTIONS_FOR_VALIDATION=3
-# Number of top-ranked solutions to validate in Stage 8 (Pricing) and Stage 8.5 (Keyword Validation)
+# Number of top-ranked solutions to validate in Stage 8 (Pricing) and keyword validation
 # Use cases:
 #   - 1: Fastest, only validates the top solution
 #   - 3: Balanced (recommended), validates top 3 solutions
 #   - 5: Thorough, validates all generated solutions
 # Higher values increase API costs but provide pricing/keyword data for more solutions
-# Useful when Stage 8.5 re-ranking might change the winner
+# Useful when keyword validation re-ranking might change the winner
 
 # Solution refinement toggle
 SOLUTION_REFINEMENT_ENABLED=true
@@ -731,9 +731,9 @@ TARGET_LANGUAGE=en
 
 ---
 
-## Keyword Enrichment Configuration (Stage 9.5c)
+## Keyword Enrichment Configuration (Phase 6c)
 
-Stage 9.5c enriches and validates keywords for relevance to the identified pain points and solutions. These settings control the enrichment process.
+Phase 6c enriches and validates keywords for relevance to the identified pain points and solutions. These settings control the enrichment process.
 
 ### Pivot Detection & Recovery
 
@@ -917,7 +917,7 @@ REPORTS_DIR=./output/reports
 ### Parallel Validation
 
 NicheIQ can process validation tasks in parallel for faster execution. This applies to:
-- **Keyword validation** (Stage 9.5c): Validating 150-500+ keywords for relevance
+- **Keyword validation** (Phase 6c): Validating 150-500+ keywords for relevance
 - **Thread validation** (Stage 5): Validating Reddit/Twitter search results
 
 ```bash
@@ -926,7 +926,7 @@ VALIDATION_PARALLEL_ENABLED=true
 
 # Keyword validation workers (default: 3)
 # Recommended: 3-5 for balance of speed and API limits
-# Stage 9.5c processes 150-500+ keywords
+# Phase 6c processes 150-500+ keywords
 KEYWORD_VALIDATION_MAX_WORKERS=3
 
 # Keywords per API call within each parallel worker (default: 50)
@@ -1059,7 +1059,7 @@ Per-Stage Breakdown:
 
 ### Validation Thresholds
 
-These settings control the validation and scoring logic in Stage 10 (Final Report Generation). All thresholds are configurable to allow tuning for different market conditions or business requirements.
+These settings control the validation and scoring logic in Stage 14 (Final Report Generation). All thresholds are configurable to allow tuning for different market conditions or business requirements.
 
 #### Market Validation Levels
 

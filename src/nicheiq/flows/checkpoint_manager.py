@@ -26,8 +26,8 @@ class CheckpointManager:
     Checkpoints are stored in a folder structure:
         output/checkpoints/checkpoint_{niche_slug}_{timestamp}/
             ├── metadata.json
-            ├── stage_5_social_content.json
-            ├── stage_6_pain_points.json
+            ├── stage_2_social_content.json
+            ├── stage_3_pain_points.json
             └── ...
     """
 
@@ -91,7 +91,7 @@ class CheckpointManager:
         Save individual stage data to checkpoint folder.
 
         Args:
-            stage_name: Stage identifier (e.g., "stage_5_social_content")
+            stage_name: Stage identifier (e.g., "stage_2_social_content")
             stage_data: Pydantic model or dict to serialize
         """
         if not settings.checkpoint_enabled:
@@ -286,37 +286,36 @@ class CheckpointManager:
         """Reconstruct ResearchState from individual stage checkpoint files."""
         # Map stage files to state attributes
         stage_mapping = {
-            # Stage 1-6.5: Initial stages
+            # Stage 1-4: Initial stages
             "stage_1_niche_context.json": "niche_context",
-            "stage_5_social_content.json": "social_content",
-            "stage_6_pain_points.json": "pain_point_analysis",
-            "stage_6_5_audience_mapping.json": "audience_mapping",
-            # Stage 7: Unified solution pipeline (6 tasks - divergent-convergent architecture)
+            "stage_2_social_content.json": "social_content",
+            "stage_3_pain_points.json": "pain_point_analysis",
+            "stage_4_audience_mapping.json": "audience_mapping",
+            # Stage 5: Unified solution pipeline (6 tasks - divergent-convergent architecture)
             # Tasks 1-2: Intermediate outputs (for debugging, not loaded to state)
-            "stage_7_1_divergent.json": None,  # RawConceptList - debug only
-            "stage_7_2_filtered.json": None,   # FilteredConceptList - debug only
+            "stage_5_1_divergent.json": None,  # RawConceptList - debug only
+            "stage_5_2_filtered.json": None,   # FilteredConceptList - debug only
             # Tasks 3-6: Essential outputs (loaded to state for resume)
-            "stage_7_3_refinement.json": "idea_generation",
-            "stage_7_4_competitive.json": "competitive_analysis",
-            "stage_7_5_enhancements.json": "competitive_enhancements",  # Load for overall_competitive_insights
-            "stage_7_6_selection.json": "solution_selection",
-            # Stage 8-8.7: Post-solution validation stages
-            "stage_8_pricing_validation.json": "pricing_strategies",
-            "stage_8_5_keyword_validation.json": "keyword_validation_results",
-            "stage_8_5_keyword_validation_partial.json": "keyword_validation_results",
-            "stage_8_55_traffic_monetization.json": "traffic_monetization_results",
-            "stage_8_55_traffic_monetization_partial.json": "traffic_monetization_results",
-            "stage_8_6_market_sizing.json": "market_sizing",
-            "stage_8_7_solution_refinement.json": "solution_refinement",
-            # Stage 9: SEO strategy (internal phases 9.5a/b/c)
-            "stage_9_5a_seed_expansion.json": "stage_9_5a_expanded_keywords",
-            "stage_9_5b_bulk_validation.json": "stage_9_5b_validation_results",
-            "stage_9_5c_enrichment.json": "stage_9_5c_enriched_keywords",
-            "stage_9_seo_strategy.json": "seo_strategy_report",
-            # Stage 9.5-9.7: Post-SEO stages
-            "stage_9_5_trend_longevity.json": "trend_longevity",
-            "stage_9_6_seo_refinement.json": "seo_enrichment",
-            "stage_9_7_data_sources.json": "data_source_research",
+            "stage_5_3_refinement.json": "idea_generation",
+            "stage_5_5_competitive.json": "competitive_analysis",
+            "stage_5_6_selection.json": "solution_selection",
+            # Stage 6: SEO strategy (internal phases 6a/b/c/d)
+            "stage_6a_seed_expansion.json": "seo_expanded_keywords",
+            "stage_6b_bulk_validation.json": "seo_validation_results",
+            "stage_6c_enrichment.json": "seo_enriched_keywords",
+            "stage_6d_difficulty.json": "seo_enriched_keywords",
+            "stage_6_seo_strategy.json": "seo_strategy_report",
+            "stage_6_keyword_validation.json": "keyword_validation_results",
+            "stage_6_keyword_validation_partial.json": "keyword_validation_results",
+            # Stage 7-13: Post-solution validation stages
+            "stage_7_pricing_validation.json": "pricing_strategies",
+            "stage_8_traffic_monetization.json": "traffic_monetization_results",
+            "stage_8_traffic_monetization_partial.json": "traffic_monetization_results",
+            "stage_9_market_sizing.json": "market_sizing",
+            "stage_10_solution_refinement.json": "solution_refinement",
+            "stage_11_trend_longevity.json": "trend_longevity",
+            "stage_12_seo_refinement.json": "seo_enrichment",
+            "stage_13_data_sources.json": "data_source_research",
         }
 
         # Load each stage file if it exists

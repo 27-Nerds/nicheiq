@@ -1,7 +1,7 @@
 """
 Tests for Keyword Validation Crew Pydantic models.
 
-Validates model_dump() compatibility with Stage 8.85 expectations
+Validates model_dump() compatibility with Stage 5.8 expectations
 and ensures proper serialization for solution refinement logic.
 """
 
@@ -175,11 +175,11 @@ class TestCrewKeywordValidationResult:
         assert "validated_count" in result_dict
         assert "total_volume" in result_dict
 
-    def test_model_dump_contains_all_stage_8_85_fields(self, sample_validation_result):
-        """Test that model_dump() contains ALL fields expected by Stage 8.85."""
+    def test_model_dump_contains_all_stage_5_8_fields(self, sample_validation_result):
+        """Test that model_dump() contains ALL fields expected by Stage 5.8."""
         result_dict = sample_validation_result.model_dump()
 
-        # Stage 8.85 compatibility fields (required for solution refinement)
+        # Stage 5.8 compatibility fields (required for solution refinement)
         required_fields = [
             "solution_name",
             "validated_count",
@@ -199,7 +199,7 @@ class TestCrewKeywordValidationResult:
         """Test that model_dump() contains crew-specific fields."""
         result_dict = sample_validation_result.model_dump()
 
-        # Crew-specific fields (new in Stage 8.8)
+        # Crew-specific fields (new in Stage 5.7)
         crew_fields = [
             "attempts_made",
             "best_relevance_score",
@@ -315,10 +315,10 @@ class TestCrewKeywordValidationResult:
                 best_relevance_score=0.0
             )
 
-    def test_stage_8_85_compatibility_example(self):
+    def test_stage_5_8_compatibility_example(self):
         """
         Integration test: Verify model_dump() output can be used directly
-        in Stage 8.85 solution refinement logic.
+        in Stage 5.8 solution refinement logic.
         """
         # Create result as crew would return it
         crew_result = CrewKeywordValidationResult(
@@ -344,10 +344,10 @@ class TestCrewKeywordValidationResult:
             accumulated_keywords_count=68
         )
 
-        # Convert to dict as Stage 8.85 expects
+        # Convert to dict as Stage 5.8 expects
         refinement_input = crew_result.model_dump()
 
-        # Verify Stage 8.85 can access all required fields
+        # Verify Stage 5.8 can access all required fields
         assert refinement_input["solution_name"] == "NicheHire Marketplace"
         assert refinement_input["keyword_demand_score"] == 0.72
         assert refinement_input["demand_signal"] == "strong"

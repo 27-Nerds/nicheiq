@@ -82,7 +82,7 @@ class KeywordRelevanceValidator:
     Model can be configured via KEYWORD_VALIDATION_LLM in .env
     (defaults to gpt-4o-mini for cost efficiency).
 
-    Used in: Stage 9.5c (keyword expansion validation).
+    Used in: Phase 6c (keyword expansion validation).
     """
 
     # Load exception list from external file

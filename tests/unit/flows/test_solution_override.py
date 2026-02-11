@@ -1,6 +1,6 @@
 """
 Tests for _build_recommended_focus helper and solution override logic
-at Stage 8.5 (keyword validation) and Stage 7.4 (fallback selection).
+at Stage 6 (integrated keyword validation) and Stage 5.4 (fallback selection).
 """
 
 import pytest
@@ -174,7 +174,7 @@ class TestBuildRecommendedFocus:
 # ---------------------------------------------------------------------------
 
 class TestStage85RationaleOverride:
-    """Tests for the rationale rewrite in stage_8_5_keyword_validation."""
+    """Tests for the rationale rewrite in _run_integrated_keyword_validation."""
 
     def _build_rationale(
         self,
@@ -275,7 +275,7 @@ class TestStage85RationaleOverride:
 # ---------------------------------------------------------------------------
 
 class TestStage85RecommendedFocusUpdate:
-    """Tests for recommended_focus update at Stage 8.5."""
+    """Tests for recommended_focus update at Stage 6 (integrated keyword validation)."""
 
     def test_focus_updated_on_winner_change(self, _build_focus, sample_solution, sample_keyword_validation):
         """When winner changes, recommended_focus references new winner."""
@@ -314,7 +314,7 @@ class TestStage85RecommendedFocusUpdate:
 # ---------------------------------------------------------------------------
 
 class TestStage74FallbackFocusUpdate:
-    """Tests for recommended_focus update at Stage 7.4 fallback."""
+    """Tests for recommended_focus update at Stage 5.4 fallback."""
 
     def test_focus_updated_on_fallback(self, _build_focus, sample_solution):
         """Fallback triggers _build_recommended_focus with no keyword data."""

@@ -64,7 +64,7 @@ class ContentType(str, Enum):
 
 class ConceptualKeyword(BaseModel):
     """
-    Conceptual keyword from Phase 9.5a hybrid seed generation (before DataForSEO enrichment).
+    Conceptual keyword from Phase 6a hybrid seed generation (before DataForSEO enrichment).
 
     Keywords should follow the 70-30 hybrid approach:
     - 70% Broad Seeds: 1-2 words (max 3 words)
@@ -92,12 +92,12 @@ class ConceptualKeyword(BaseModel):
             import logging
             logging.getLogger(__name__).warning(
                 f"Keyword '{v}' has {word_count} words (recommended: 1-5 words). "
-                f"Review Phase 9.5a prompt if many keywords exceed 5 words."
+                f"Review Phase 6a prompt if many keywords exceed 5 words."
             )
         return v
 
 class ConceptualTopicCluster(BaseModel):
-    """Topic cluster for organizing keywords strategically (Phase 9.5a output)."""
+    """Topic cluster for organizing keywords strategically (Phase 6a output)."""
 
     model_config = ConfigDict(extra='ignore')
 
@@ -109,7 +109,7 @@ class ConceptualTopicCluster(BaseModel):
 
 class ExpandedKeywordList(BaseModel):
     """
-    Result of Phase 9.5a hybrid seed keyword generation.
+    Result of Phase 6a hybrid seed keyword generation.
     Contains 40-50 strategically selected keywords using 70-30 mix:
     - 70% Broad Seeds (28-35 keywords, 1-2 words)
     - 30% Targeted Keywords (12-15 keywords, 3-5 words)

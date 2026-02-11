@@ -40,7 +40,7 @@ class SEORefinementMetadata(BaseModel):
 
 class SolutionSEORefinement(BaseModel):
     """
-    SEO score refinements from Stage 9.5 using actual keyword data.
+    SEO score refinements from Stage 12 using actual keyword data.
 
     Contains ONLY the refined/new fields added after keyword research.
     Used in unified enrichment pattern where each stage outputs only its additions,
@@ -128,8 +128,8 @@ class BaseSolutionIdea(BaseModel):
     Solution idea as output by Stage 7 (UnifiedSolutionCrew).
 
     Contains ONLY the fields that Stage 7 should populate. Does NOT include:
-    - Stage 8.85 keyword refinement fields (keyword_geographic_priorities, etc.)
-    - Stage 9.5 SEO refinement fields (seo_scalability_score_refined, etc.)
+    - Stage 10 keyword refinement fields (keyword_geographic_priorities, etc.)
+    - Stage 12 SEO refinement fields (seo_scalability_score_refined, etc.)
 
     Those fields are added via Python merging in report_generator._merge_solution_enrichments()
     using separate output models (SolutionRefinement, SolutionSEORefinement).
@@ -269,7 +269,7 @@ class BaseSolutionIdea(BaseModel):
             "Estimated total potential indexable pages for SEO. "
             "Represents the full scope of programmatic content generation potential. "
             "Used for CAC calculations and growth projections. "
-            "Populated during Stage 9.5 SEO refinement based on keyword research."
+            "Populated during Stage 12 SEO refinement based on keyword research."
         )
     )
 
@@ -343,19 +343,19 @@ class SolutionIdea(BaseSolutionIdea):
     Full solution idea with all enrichments from Stage 7, 8.85, and 9.5.
 
     Extends BaseSolutionIdea with fields populated by later pipeline stages:
-    - Stage 8.85: Keyword refinement fields (from SolutionRefinement)
-    - Stage 9.5: SEO refinement fields (from SolutionSEORefinement)
+    - Stage 10: Keyword refinement fields (from SolutionRefinement)
+    - Stage 12: SEO refinement fields (from SolutionSEORefinement)
 
     Used in final reports after merging. NOT used as LLM output model in Stage 7.
     The report_generator._merge_solution_enrichments() creates SolutionIdea instances
     by combining BaseSolutionIdea with SolutionRefinement and SolutionSEORefinement.
     """
 
-    # Stage 8.85: Keyword Validation & Refinement (from SolutionRefinement)
+    # Stage 10: Keyword Validation & Refinement (from SolutionRefinement)
     keyword_geographic_priorities: Optional[list[str]] = Field(
         default=None,
         description=(
-            "Geographic priorities identified from keyword validation data (Stage 8.8). "
+            "Geographic priorities identified from keyword validation data (keyword validation). "
             "List of 3-8 countries/regions with highest keyword opportunity based on search volume and competition. "
             "Examples: 'Portugal (450 keywords, avg vol 1.2k)', 'Spain (320 keywords, avg vol 890)', "
             "'Germany (280 keywords, high competition)'. "
@@ -366,7 +366,7 @@ class SolutionIdea(BaseSolutionIdea):
     keyword_feature_priorities: Optional[list[str]] = Field(
         default=None,
         description=(
-            "Feature or category priorities identified from keyword themes in Stage 8.8 validation. "
+            "Feature or category priorities identified from keyword themes in keyword validation validation. "
             "List of 3-8 feature areas or product categories with strong keyword support. "
             "Examples: 'Health insurance (580 keywords, Tier 1: 45)', 'Tax planning (320 keywords, Tier 1: 28)', "
             "'Banking services (210 keywords, high competition)'. "
@@ -377,7 +377,7 @@ class SolutionIdea(BaseSolutionIdea):
     keyword_strategic_insights: Optional[str] = Field(
         default=None,
         description=(
-            "Strategic insights derived from keyword validation data in Stage 8.8. "
+            "Strategic insights derived from keyword validation data in keyword validation. "
             "2-3 sentence analysis covering: unexpected keyword opportunities discovered, "
             "competitive gaps revealed by low-competition/high-volume keywords, "
             "or geographic/categorical patterns that suggest pivot opportunities. "
@@ -389,7 +389,7 @@ class SolutionIdea(BaseSolutionIdea):
     category_pivot_suggestion: Optional[str] = Field(
         default=None,
         description=(
-            "Category or positioning pivot suggestion based on keyword validation findings from Stage 8.8. "
+            "Category or positioning pivot suggestion based on keyword validation findings from keyword validation. "
             "Single sentence recommendation if keyword data reveals stronger opportunity in adjacent category. "
             "Format: 'Consider pivoting from [original positioning] to [suggested positioning] based on [data insight]'. "
             "Examples: 'Consider pivoting from general expat directory to tax-focused platform based on 2.5x higher keyword volume in tax residency vertical', "
@@ -397,7 +397,7 @@ class SolutionIdea(BaseSolutionIdea):
         )
     )
 
-    # Stage 9.5: Refined SEO Metrics (from SolutionSEORefinement)
+    # Stage 12: Refined SEO Metrics (from SolutionSEORefinement)
     seo_scalability_score_refined: Optional[float] = Field(
         default=None,
         ge=0.0,
@@ -449,7 +449,7 @@ class IdeaGenerationResult(BaseModel):
     Complete result of solution idea generation (Stage 7).
 
     Uses BaseSolutionIdea (NOT SolutionIdea) to ensure LLM only outputs
-    Stage 7 fields. Enrichment fields from Stage 8.85 and 9.5 are added
+    Stage 7 fields. Enrichment fields from Stage 10 and 12 are added
     later via Python merging in report_generator._merge_solution_enrichments().
     """
 

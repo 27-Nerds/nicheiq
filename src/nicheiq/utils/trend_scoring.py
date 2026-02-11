@@ -3,7 +3,7 @@ Trend scoring calculations for market momentum analysis.
 
 Computes deterministic market signals from keyword trend data, social
 discussion timestamps, and competitive landscape. Used by TrendLongevityCrew
-(Stage 9.5) but independent of CrewAI.
+(Stage 11) but independent of CrewAI.
 
 Architecture: Score-First Design
   rising_volume_pct → momentum_score → trend_direction
@@ -378,7 +378,7 @@ def compute_data_sources(
     """List data sources used in the analysis."""
     sources: list[str] = []
     if keyword_validation:
-        sources.append("Keyword validation (Stage 8.5)")
+        sources.append("Keyword validation (keyword validation)")
     if social_content and (social_content.reddit_posts or social_content.twitter_threads):
         sources.append("Social discussions (Stage 5)")
     if competitive_analysis:
@@ -402,10 +402,10 @@ def compute_deterministic_signals(
     This is the main entry point called by TrendLongevityCrew.analyze().
 
     Args:
-        keyword_validation: Keyword data from Stage 8.5
+        keyword_validation: Keyword data from keyword validation
         social_content: Social discussions from Stage 5
         competitive_analysis: Competitive landscape from Stage 7
-        enriched_keywords_trends: Aggregated trends from Stage 9.5c
+        enriched_keywords_trends: Aggregated trends from Phase 6c
 
     Returns:
         Dict with keys: keyword_volume_trend, momentum_score,

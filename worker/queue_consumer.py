@@ -169,6 +169,7 @@ def process_job(job_data: dict) -> None:
                     user_id=user_id,
                     allowed_project_types=allowed_project_types,
                     generate_landing_page=generate_landing_page,
+                    resume=resume,
                 )
             else:
                 from .tasks import run_research_job

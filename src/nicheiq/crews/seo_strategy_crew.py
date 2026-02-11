@@ -582,7 +582,7 @@ class SEOStrategyCrew:
 
         Args:
             niche: The niche/market area being researched
-            selected_solution: THE SINGLE SOLUTION to focus SEO strategy on (from Stage 8.5)
+            selected_solution: THE SINGLE SOLUTION to focus SEO strategy on (from Stage 5)
             selection_rationale: Why this solution was selected over alternatives
             competitive_analysis: Competitive landscape from Stage 8
             pain_points: Optional pain point analysis from Stage 6
@@ -731,7 +731,7 @@ class SEOStrategyCrew:
         """
         Agent responsible for analyzing pre-enriched keywords from CSV input and creating tiered opportunity structure.
 
-        NOTE: Receives complete keyword data via CSV input (enriched in Phase 9.5b with DataForSEO).
+        NOTE: Receives complete keyword data via CSV input (enriched in Phase 6b with DataForSEO).
         Agent analyzes existing data to identify quick wins (Tier 1) vs long-term plays (Tier 4).
         Does NOT call external APIs - all keyword data is pre-validated and provided in task context.
 
@@ -1002,7 +1002,7 @@ class SEOStrategyCrew:
     @task
     def expand_keywords_conceptually_task(self) -> Task:
         """
-        Task: Phase 9.5a - Hybrid seed keyword generation (70% broad seeds + 30% targeted keywords).
+        Task: Phase 6a - Hybrid seed keyword generation (70% broad seeds + 30% targeted keywords).
 
         Output: ExpandedKeywordList with 40-50 total keywords organized by 5-8 topic clusters.
         """
@@ -1374,7 +1374,7 @@ class SEOStrategyCrew:
 
     def expand_keywords_phase_1(self) -> ExpandedKeywordList:
         """
-        Execute Phase 9.5a: Hybrid Seed Keyword Generation using KeywordSeedGenerator.
+        Execute Phase 6a: Hybrid Seed Keyword Generation using KeywordSeedGenerator.
 
         Generates a strategic mix using 70-30 approach:
         - 70% Broad Seeds (28-35 keywords, 1-2 words): For DataForSEO expansion into thousands of variations
@@ -1383,10 +1383,10 @@ class SEOStrategyCrew:
         Returns 40-50 total keywords organized by 5-8 topic clusters.
 
         Returns:
-            ExpandedKeywordList with hybrid seed keywords for Phase 9.5b bulk validation and expansion
+            ExpandedKeywordList with hybrid seed keywords for Phase 6b bulk validation and expansion
         """
         logger.info(
-            f"Starting Phase 9.5a: Context-aware seed keyword generation for: {self.selected_solution.solution_name}"
+            f"Starting Phase 6a: Context-aware seed keyword generation for: {self.selected_solution.solution_name}"
         )
 
         try:
@@ -1442,13 +1442,13 @@ class SEOStrategyCrew:
                 )
 
             logger.info(
-                f"Phase 9.5a complete: {len(result.keywords)} seed keywords generated, "
+                f"Phase 6a complete: {len(result.keywords)} seed keywords generated, "
                 f"{len(result.topic_clusters)} topic clusters identified"
             )
             return result
 
         except Exception as e:
-            logger.error(f"Phase 9.5a keyword generation failed: {e}", exc_info=True)
+            logger.error(f"Phase 6a keyword generation failed: {e}", exc_info=True)
             raise
 
     def _extract_page_types_from_task2(self, task2_output) -> str:
@@ -2160,7 +2160,7 @@ class SEOStrategyCrew:
 
         Args:
             enriched_keywords: List of dicts from DataForSEO with volumes/competition
-            expanded_keywords: Optional ExpandedKeywordList from Phase 9.5a
+            expanded_keywords: Optional ExpandedKeywordList from Phase 6a
             parallel: Use parallel execution for keyword analysis (default True)
 
         Returns:

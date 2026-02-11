@@ -57,7 +57,7 @@ NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 5. MarketSizingCrew (Stage 8.6) - 1 Agent
+### 5. MarketSizingCrew (Stage 9) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -65,7 +65,7 @@ NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 6. TrendLongevityCrew (Stage 9.2) - 1 Agent
+### 6. TrendLongevityCrew (Stage 11) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -73,7 +73,7 @@ NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 7. PricingStrategyCrew (Stage 8.7) - 1 Agent
+### 7. PricingStrategyCrew (Stage 7) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -81,7 +81,7 @@ NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 8. SolutionRefinementCrew (Stage 8.85) - 1 Agent
+### 8. SolutionRefinementCrew (Stage 10) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -89,7 +89,7 @@ NicheIQ uses **36 specialized AI agents** organized into **11 crews**, orchestra
 
 ---
 
-### 9. DataSourceCrew (Stage 9.75, conditional) - 2 Agents
+### 9. DataSourceCrew (Stage 13, conditional) - 2 Agents
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -126,7 +126,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
 
 ---
 
-### 11. TrafficMonetizationCrew (Stage 8.55, conditional) - 1 Agent
+### 11. TrafficMonetizationCrew (Stage 8, conditional) - 1 Agent
 
 | Agent | Role | Framework |
 |-------|------|-----------|
@@ -223,7 +223,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
           │  │   └──────────────────────────────────────────────────────┘  │ │
           │  └─────────────────────────────────────────────────────────────┘ │
           │                                                                  │
-          │  ┌─── Stage 8.5 ───┐  ┌─── Stage 8.6 ───┐  ┌── Stage 8.7 ──┐  │
+          │  ┌── KW Valid. ───┐  ┌─── Stage 9 ───┐  ┌── Stage 10 ─┐  │
           │  │ KeywordValidate │  │ MarketSizingCrew│  │ SolutionRefine│  │
           │  │ (DataForSEO)    │  │ market_analyst  │  │ strategic_    │  │
           │  │                 │  │ TAM/SAM/SOM     │  │ advisor       │  │
@@ -232,7 +232,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
           └────────────────────────────────────┬───────────────────────────┘
                                                │
           ┌────────────────────────────────────┴────────────────────────────┐
-          │                    STAGE 9: SEO & KEYWORDS                       │
+          │                    STAGE 6: SEO & KEYWORDS                       │
           │  ┌─────────────────────────────────────────────────────────────┐ │
           │  │                    SEOStrategyCrew (CSV Input)              │ │
           │  │                                                              │ │
@@ -244,14 +244,14 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
           │  │   │ Keywords     │   │ Clusters     │   │ Roadmap      │   │ │
           │  │   └──────────────┘   └──────────────┘   └──────────────┘   │ │
           │  │                                                              │ │
-          │  │   Phase 9.1a: LLM seed generation (40-50 keywords)          │ │
-          │  │   Phase 9.1b: DataForSEO bulk validation                    │ │
-          │  │   Phase 9.1c: Expand to 150+ with metrics & tiering         │ │
+          │  │   Phase 6a: LLM seed generation (40-50 keywords)          │ │
+          │  │   Phase 6b: DataForSEO bulk validation                    │ │
+          │  │   Phase 6c: Expand to 150+ with metrics & tiering         │ │
           │  └─────────────────────────────────────────────────────────────┘ │
           └────────────────────────────────────┬───────────────────────────┘
                                                │
           ┌────────────────────────────────────┴────────────────────────────┐
-          │                   STAGE 9.2: TREND ANALYSIS                      │
+          │                   STAGE 11: TREND ANALYSIS                      │
           │  ┌─────────────────────────────────────────────────────────────┐ │
           │  │                   TrendLongevityCrew                         │ │
           │  │   ┌──────────────────────────────────────────────────────┐  │ │
@@ -265,7 +265,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
           ┌─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┴─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┐
           ╎              CONDITIONAL STAGES (Based on solution type)        ╎
           ╎                                                                  ╎
-          ╎  ┌─── Stage 9.6 ───┐  ┌─── Stage 9.7 ───┐  ┌─ Stage 8.55 ──┐  ╎
+          ╎  ┌─── Stage 12 ───┐  ┌─── Stage 13 ───┐  ┌─ Stage 8 ──┐  ╎
           ╎  │ SEO Refinement  │  │ DataSourceCrew  │  │ TrafficMonet. │  ╎
           ╎  │ (if enabled)    │  │ (if aggregator) │  │ (if directory)│  ╎
           ╎  │                 │  │                 │  │               │  ╎
@@ -277,7 +277,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
           └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┬─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─┘
                                    │
           ┌────────────────────────┴────────────────────────────────────────┐
-          │                    STAGE 10: REPORT GENERATION                   │
+          │                    STAGE 14: REPORT GENERATION                   │
           │  ┌─────────────────────────────────────────────────────────────┐ │
           │  │               Hybrid: Python (80%) + LLM (20%)              │ │
           │  │                                                              │ │
@@ -354,7 +354,7 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
                                 │
                                 ▼
     ┌─────────────────────────────────────────────────────────┐
-    │  STAGE 9: SEO & KEYWORDS                                │
+    │  STAGE 6: SEO & KEYWORDS                                │
     │  • 150+ keywords validated with search volume data      │
     │  • Content strategy with topic clusters                 │
     │  • Implementation roadmap                               │
@@ -362,14 +362,14 @@ Strategy → Creative Direction → Visual Design → Brand Identity → Copy �
                                 │
                                 ▼
     ┌─────────────────────────────────────────────────────────┐
-    │  STAGE 9.2: TREND ANALYSIS                              │
+    │  STAGE 11: TREND ANALYSIS                              │
     │  Is the market growing, stable, or declining?           │
     │  Fad detection to avoid short-lived opportunities       │
     └───────────────────────────┬─────────────────────────────┘
                                 │
                                 ▼
     ┌─────────────────────────────────────────────────────────┐
-    │  STAGE 10: FINAL REPORT                                 │
+    │  STAGE 14: FINAL REPORT                                 │
     │  • Executive dashboard with go/no-go verdict            │
     │  • Go-to-market blueprint                               │
     │  • Visualizations & analytics                           │

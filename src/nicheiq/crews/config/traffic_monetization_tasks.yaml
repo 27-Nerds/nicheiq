@@ -1,5 +1,5 @@
 # Traffic Monetization Crew - Task Configuration
-# Stage 8.55: For directories, aggregators, and comparison tools
+# Stage 8: For directories, aggregators, and comparison tools
 
 traffic_monetization_analysis:
   description: >
@@ -27,21 +27,47 @@ traffic_monetization_analysis:
 
     Use these pre-computed values as anchors. Adjust based on competitive analysis and niche specifics.
 
+    ## SEO-Enriched Traffic Intelligence
+    {seo_enrichment}
+
+    IMPORTANT: If SEO enrichment data is provided above, your traffic projections are CONSTRAINED:
+    - Year 1 monthly organic traffic MUST NOT exceed the Traffic Ceiling Y1 value
+    - For each projection, CITE the ceiling value and explain why your estimate is at or below it
+    - If no SEO data is available, clearly state this and label projections as [UNCONSTRAINED ESTIMATE]
+
+    MONETIZATION DECISION RULES (evaluate top-to-bottom, first match is PRIMARY):
+    Rule 1 — IF commercial intent >= 40%:
+      → Primary: Affiliate marketing (3-5% click rate, 2-4% purchase CVR, avg $100-500 commission for SaaS)
+      → Secondary: Display ads
+    Rule 2 — IF informational intent >= 60%:
+      → Primary: Display advertising ($8-25 RPM for SaaS/Tech vertical)
+      → Secondary: Email list building → digital products
+    Rule 3 — IF neither rule above matched, default:
+      → Primary: Hybrid (display ads + affiliate)
+    ADDITIONALLY, IF transactional intent >= 25%:
+      → Include: Lead generation channel (5-8% click rate, 3-5% CVR) alongside primary
+    State which rules triggered and why.
+
+    PHASED RAMP-UP:
+    - IF pre-computed projections include a phased breakdown above → USE THEM DIRECTLY
+    - Describe the milestone timeline for each phase (cite tier data from enrichment)
+    - Do NOT invent your own monthly curves or recalculate per-phase traffic
+    - Do NOT use a single flat annual estimate — anchor to the tier-based phases
+
     ## Your Analysis Framework
 
     ### Step 1: Estimate Traffic Potential
 
-    Use keyword search volumes to estimate achievable monthly pageviews:
-    ```
-    Total monthly search volume from keywords → Apply 3-5% CTR → Monthly organic visitors
-    Add 20-30% for direct/referral → Total monthly pageviews
-    ```
+    ASSERT: Pre-computed traffic projection is provided above as {traffic_projection}.
+    Your Year 1 monthly organic traffic MUST NOT exceed the Traffic Ceiling Y1 value.
+    Do NOT recalculate traffic using CTR formulas — the pre-computed values already account for
+    keyword difficulty, position-based CTR, and ranking probability.
 
-    Consider:
-    - Search volume concentration (head vs long-tail keywords)
-    - Competition difficulty (can this site realistically rank?)
-    - Content depth required (pages per keyword cluster)
-    - Time to rank (6-12 months for new domains)
+    Focus your analysis on:
+    - What these traffic levels mean for this specific niche
+    - Competitive risks to achieving the ceiling
+    - Realistic timeline to reach steady state
+    - Factors that might cause under-performance vs. ceiling
 
     ### Step 2: Determine Viable Monetization Channels
 
@@ -108,6 +134,13 @@ traffic_monetization_analysis:
     - Ads: 50,000 × $5 CPM / 1000 = $250
     - Affiliate: 50,000 × 3% CTR × 2% conversion × $40 × 8% = $48
     - Total: ~$300/month passive
+
+    Pre-Computed Revenue Estimates:
+    - Ad Revenue: {ad_revenue_estimate}
+    - Affiliate Revenue: {affiliate_revenue_estimate}
+    - Total Estimated Revenue: {total_revenue_estimate}
+    Use these as your baseline. Adjust only if you have specific niche factors that justify deviation.
+    Explain any adjustments.
 
     Provide conservative (Year 1) and optimistic (Year 2+) projections.
 

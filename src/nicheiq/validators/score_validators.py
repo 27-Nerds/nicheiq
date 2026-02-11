@@ -469,8 +469,8 @@ class VerdictValidator:
             verdict: Current verdict (after Phase 1+2)
             risk_level: Current risk level (after Phase 1+2)
             primary_concern: Current primary concern (may be None)
-            market_viability_verdict: "Strong", "Moderate", or "Weak" from Stage 8.6
-            recommended_entry_strategy: Entry strategy from Stage 8.6 (e.g. "Reconsider")
+            market_viability_verdict: "Strong", "Moderate", or "Weak" from Stage 9
+            recommended_entry_strategy: Entry strategy from Stage 9 (e.g. "Reconsider")
 
         Returns:
             Tuple of (verdict, risk_level, primary_concern, market_viability_context)

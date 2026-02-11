@@ -1,5 +1,5 @@
 """
-Pydantic models for solution refinement based on keyword insights (Stage 8.85).
+Pydantic models for solution refinement based on keyword insights (Stage 10).
 """
 
 from typing import Optional

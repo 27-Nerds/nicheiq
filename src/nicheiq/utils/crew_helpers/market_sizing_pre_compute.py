@@ -81,3 +81,126 @@ def compute_wtp_stats(
         "high_wtp_count": high_wtp,
         "avg_wtp": f"{avg:.2f}",
     }
+
+
+def compute_seo_market_enrichment(seo_report) -> str:
+    """Extract SEO tier data for market sizing enrichment.
+
+    Uses shared helpers from traffic_pre_compute for difficulty-weighted traffic
+    and intent analysis.
+
+    Args:
+        seo_report: SEOStrategyReport object with tier keywords and geographic/category groups.
+
+    Returns:
+        Formatted string with SEO-enriched market signals for crew context.
+    """
+    if seo_report is None:
+        return ""
+
+    from .traffic_pre_compute import (
+        collect_all_tiered_keywords,
+        compute_commercial_intent_ratio,
+        compute_difficulty_weighted_traffic,
+        compute_intent_breakdown,
+    )
+
+    t1 = getattr(seo_report, 'tier_1_keywords', None) or []
+    t2 = getattr(seo_report, 'tier_2_keywords', None) or []
+    t1_volume = sum(getattr(kw, 'search_volume', 0) or 0 for kw in t1)
+    t2_volume = sum(getattr(kw, 'search_volume', 0) or 0 for kw in t2)
+
+    # Difficulty-weighted traffic ceilings
+    t1_low, t1_high = compute_difficulty_weighted_traffic(t1)
+    t2_low, t2_high = compute_difficulty_weighted_traffic(t2)
+    y1_low = t1_low + int(t2_low * 0.6)
+    y1_high = t1_high + int(t2_high * 0.6)
+    y3_low = t1_low + t2_low
+    y3_high = t1_high + t2_high
+
+    # Intent analysis
+    all_keywords = collect_all_tiered_keywords(seo_report)
+    intent = compute_intent_breakdown(all_keywords)
+    commercial_pct = compute_commercial_intent_ratio(intent)
+    commercial_vol = intent.get("commercial", {}).get("volume", 0)
+    informational_vol = intent.get("informational", {}).get("volume", 0)
+
+    # Geographic / category expansion
+    geo_groups = getattr(seo_report, 'tier_3_geographic_groups', None) or []
+    cat_groups = getattr(seo_report, 'tier_4_category_groups', None) or []
+
+    geo_volume = sum(
+        sum(getattr(kw, 'search_volume', 0) or 0 for kw in (getattr(g, 'keywords', None) or []))
+        for g in geo_groups
+    )
+    cat_volume = sum(
+        sum(getattr(kw, 'search_volume', 0) or 0 for kw in (getattr(g, 'keywords', None) or []))
+        for g in cat_groups
+    )
+
+    core_volume = t1_volume + t2_volume
+    geo_uplift_pct = (geo_volume / core_volume * 100) if core_volume > 0 else 0
+    cat_uplift_pct = (cat_volume / core_volume * 100) if core_volume > 0 else 0
+
+    # Difficulty distribution
+    all_kws = list(t1) + list(t2)
+    total = len(all_kws) or 1
+    easy = sum(1 for kw in all_kws if (getattr(kw, 'keyword_difficulty', None) or 0) < 25)
+    medium = sum(1 for kw in all_kws if 25 <= (getattr(kw, 'keyword_difficulty', None) or 0) < 50)
+    hard = sum(1 for kw in all_kws if (getattr(kw, 'keyword_difficulty', None) or 0) >= 50)
+
+    # Topic clusters
+    topic_clusters = getattr(seo_report, "topic_clusters", None) or []
+
+    lines = [
+        "DIFFICULTY-WEIGHTED DEMAND ANALYSIS:",
+        f"- Organic Traffic Ceiling Y1: {y1_low:,}-{y1_high:,} visits/mo "
+        f"(Tier 1 fully + 60% Tier 2, difficulty-weighted)",
+        f"- Organic Traffic Ceiling Y3: {y3_low:,}-{y3_high:,} visits/mo "
+        f"(Tier 1+2 fully, difficulty-weighted)",
+        f"  Method: sum(volume x CTR_at_expected_position x ranking_probability)",
+        "NOTE: The traffic ceiling validates demand signal strength, not SOM revenue ceiling.",
+        "SOM represents total market opportunity (product sales, services, partnerships)",
+        "while traffic ceiling represents organic content monetization only.",
+        "",
+        "COMMERCIAL VIABILITY:",
+        f"- Commercial Intent Ratio: {commercial_pct:.0f}%",
+    ]
+
+    if commercial_pct >= 40:
+        lines.append("  (>40% = strong commercial viability)")
+    elif commercial_pct >= 20:
+        lines.append("  (20-40% = moderate commercial viability)")
+    else:
+        lines.append("  (<20% = weak direct revenue potential)")
+
+    lines.append(f"- Commercial keyword volume: {commercial_vol:,}/mo (direct revenue potential)")
+    lines.append(f"- Informational keyword volume: {informational_vol:,}/mo (content/ad monetization only)")
+
+    lines.append("")
+    lines.append("TAM EXPANSION SCENARIOS:")
+    lines.append(f"- Core (Tier 1+2): {core_volume:,}/mo search volume")
+    if geo_volume > 0:
+        lines.append(f"- Geographic expansion: +{geo_volume:,}/mo ({geo_uplift_pct:.0f}% uplift over core)")
+    if cat_volume > 0:
+        lines.append(f"- Category expansion: +{cat_volume:,}/mo ({cat_uplift_pct:.0f}% uplift over core)")
+
+    if topic_clusters:
+        lines.append("")
+        lines.append("MARKET SEGMENTATION (from topic clusters):")
+        total_cluster_vol = sum(getattr(c, "total_monthly_volume", 0) or 0 for c in topic_clusters)
+        lines.append(f"- {len(topic_clusters)} content clusters identified, total addressable: {total_cluster_vol:,}/mo")
+        largest = max(topic_clusters, key=lambda c: getattr(c, "total_monthly_volume", 0) or 0, default=None)
+        if largest:
+            l_name = getattr(largest, "cluster_name", "Unknown")
+            l_vol = getattr(largest, "total_monthly_volume", 0) or 0
+            l_pct = (l_vol / total_cluster_vol * 100) if total_cluster_vol > 0 else 0
+            lines.append(f"- Largest cluster: {l_name} ({l_vol:,}/mo, {l_pct:.0f}% of total)")
+
+    lines.append("")
+    lines.append(
+        f"Difficulty Distribution: {easy/total*100:.0f}% easy / "
+        f"{medium/total*100:.0f}% medium / {hard/total*100:.0f}% hard"
+    )
+
+    return "\n".join(lines)

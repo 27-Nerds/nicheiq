@@ -49,6 +49,7 @@ from ..utils.validation import (
     validate_competitive_analysis,
     validate_filtered_concepts,
     validate_raw_concepts,
+    validate_solution_selection,
 )
 
 
@@ -400,6 +401,8 @@ class UnifiedSolutionCrew:
             agent=self.strategic_selector(),
             context=[self.solution_refinement_task()],
             output_pydantic=SolutionSelection,
+            guardrail=validate_solution_selection,
+            guardrail_max_retries=2,
         )
 
 
@@ -618,16 +621,16 @@ class UnifiedSolutionCrew:
             # Save task-level checkpoints for resume capability
             if self.checkpoint_mgr:
                 if raw_concepts:
-                    self.checkpoint_mgr.save_stage("stage_7_1_divergent", raw_concepts)
+                    self.checkpoint_mgr.save_stage("stage_5_1_divergent", raw_concepts)
                     logger.debug("Checkpoint saved: stage_7_1_divergent")
                 if filtered_concepts:
-                    self.checkpoint_mgr.save_stage("stage_7_2_filtered", filtered_concepts)
+                    self.checkpoint_mgr.save_stage("stage_5_2_filtered", filtered_concepts)
                     logger.debug("Checkpoint saved: stage_7_2_filtered")
                 if base_solutions:
-                    self.checkpoint_mgr.save_stage("stage_7_3_refinement", base_solutions)
+                    self.checkpoint_mgr.save_stage("stage_5_3_refinement", base_solutions)
                     logger.debug("Checkpoint saved: stage_7_3_refinement")
                 if solution_selection:
-                    self.checkpoint_mgr.save_stage("stage_7_6_selection", solution_selection)
+                    self.checkpoint_mgr.save_stage("stage_5_6_selection", solution_selection)
                     logger.debug("Checkpoint saved: stage_7_6_selection")
 
             # Use base solutions directly (no enhancement merging)

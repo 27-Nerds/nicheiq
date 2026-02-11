@@ -71,10 +71,24 @@ vi.mock('../../types/job.js', async (importOriginal) => {
   return {
     ...actual,
     PIPELINE_STAGES: [
-      { number: 1 }, { number: 5 }, { number: 6 }, { number: 6.5 },
-      { number: 7 }, { number: 8 }, { number: 8.5 }, { number: 9 },
-      { number: 10 }, { number: 11 },
+      { number: 1, name: 'Niche Validation', phase: 1 },
+      { number: 2, name: 'Search & Discovery', phase: 1 },
+      { number: 3, name: 'Pain Point Analysis', phase: 1 },
+      { number: 4, name: 'Audience Mapping', phase: 1 },
+      { number: 5, name: 'Solution Pipeline', phase: 1 },
+      { number: 5.5, name: 'Competitive Analysis', phase: 2 },
+      { number: 6, name: 'SEO & Keyword Strategy', phase: 2 },
+      { number: 7, name: 'Pricing Validation', phase: 2 },
+      { number: 8, name: 'Traffic Monetization', phase: 2 },
+      { number: 9, name: 'Market Sizing', phase: 2 },
+      { number: 10, name: 'Solution Refinement', phase: 2 },
+      { number: 11, name: 'Trend Analysis', phase: 2 },
+      { number: 12, name: 'SEO Score Refinement', phase: 2 },
+      { number: 13, name: 'Data Source Research', phase: 2 },
+      { number: 14, name: 'Report Generation', phase: 2 },
+      { number: 15, name: 'Landing Page Generation', phase: 2 },
     ],
+    TOTAL_STAGES: 16,
   };
 });
 
@@ -165,7 +179,7 @@ describe('POST /api/workers/ideas-ready', () => {
       .send(validPayload);
 
     expect(mockBroadcastProgress).toHaveBeenCalledWith(jobId, {
-      stage: 7,
+      stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });
@@ -301,7 +315,7 @@ describe('POST /api/workers/regeneration-complete', () => {
       .send(validPayload);
 
     expect(mockBroadcastProgress).toHaveBeenCalledWith(jobId, {
-      stage: 7,
+      stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });
@@ -391,7 +405,7 @@ describe('POST /api/workers/regeneration-failed', () => {
       .send(validPayload);
 
     expect(mockBroadcastProgress).toHaveBeenCalledWith(jobId, {
-      stage: 7,
+      stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });

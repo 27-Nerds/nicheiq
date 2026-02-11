@@ -1,5 +1,5 @@
 """
-Market Sizing & Validation Crew (Stage 8.6).
+Market Sizing & Validation Crew (Stage 9).
 
 Calculates TAM/SAM/SOM (Total/Serviceable/Obtainable Market) estimates and validates
 market attractiveness using keyword demand, pain point frequency, and competitive analysis.
@@ -21,6 +21,11 @@ from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import MarketSizingResult
 from ..models.solution_idea import SolutionIdea
 from ..utils.crew_helpers import (
+    collect_all_tiered_keywords,
+    compute_commercial_intent_ratio,
+    compute_difficulty_weighted_traffic,
+    compute_intent_breakdown,
+    compute_seo_market_enrichment,
     compute_strive_pre_check,
     compute_saturation_level,
     compute_tam_seed,
@@ -32,7 +37,7 @@ from ..utils.parsing.json_extractor import clean_llm_response
 @CrewBase
 class MarketSizingCrew:
     """
-    Crew for market sizing and validation in Stage 8.6.
+    Crew for market sizing and validation in Stage 9.
 
     Analyzes:
     - Keyword search volumes (market demand signals)
@@ -233,22 +238,23 @@ class MarketSizingCrew:
         keyword_validation: CrewKeywordValidationResult,
         pain_point_analysis: PainPointAnalysisResult,
         competitive_analysis: CompetitiveAnalysisResult,
-        niche_description: str
+        niche_description: str,
+        seo_strategy_report=None
     ) -> MarketSizingResult | None:
         """
         Execute market sizing crew to calculate TAM/SAM/SOM and validate market.
 
         Args:
-            selected_solution: Selected solution from Stage 8.75
-            keyword_validation: Keyword validation data from Stage 8.8
+            selected_solution: Selected solution from Stage 5
+            keyword_validation: Keyword validation data from keyword validation
             pain_point_analysis: Pain point data from Stage 6
-            competitive_analysis: Competitive landscape from Stage 8
+            competitive_analysis: Competitive landscape from Stage 7
             niche_description: Niche description for context
 
         Returns:
             MarketSizingResult with TAM/SAM/SOM estimates and viability verdict, or None if analysis fails
         """
-        logger.info("[Stage 8.6] Starting Market Sizing & Validation...")
+        logger.info("[Stage 9] Starting Market Sizing & Validation...")
         logger.info(f"  Solution: {selected_solution.solution_name}")
 
         # Extract keyword demand signals
@@ -274,11 +280,11 @@ class MarketSizingCrew:
 
         if kv_volume != unfiltered_volume:
             logger.info(
-                f"[Stage 8.6] Using niche-relevant volume {kv_volume:,} "
+                f"[Stage 9] Using niche-relevant volume {kv_volume:,} "
                 f"(unfiltered: {unfiltered_volume:,}, "
                 f"reduction: {(1 - kv_volume / unfiltered_volume) * 100:.0f}%)"
                 if unfiltered_volume > 0
-                else f"[Stage 8.6] Using niche-relevant volume {kv_volume:,}"
+                else f"[Stage 9] Using niche-relevant volume {kv_volume:,}"
             )
 
         pp_mentions = pain_point_analysis.total_mentions if pain_point_analysis else 0
@@ -289,6 +295,26 @@ class MarketSizingCrew:
         suggested_saturation_level = compute_saturation_level(competitor_count)
         tam_seed = compute_tam_seed(kv_volume)
         wtp = compute_wtp_stats(pain_point_analysis)
+        seo_market_enrichment = compute_seo_market_enrichment(seo_strategy_report)
+
+        # Set unconditional defaults for all new template variables FIRST
+        seo_som_ceiling_y1 = "N/A (no SEO data)"
+        seo_commercial_intent_pct = "N/A (no SEO data)"
+
+        # Override with real values if SEO data available
+        if seo_strategy_report:
+            tier_1 = getattr(seo_strategy_report, "tier_1_keywords", None) or []
+            tier_2 = getattr(seo_strategy_report, "tier_2_keywords", None) or []
+            t1_low, t1_high = compute_difficulty_weighted_traffic(tier_1)
+            t2_low, t2_high = compute_difficulty_weighted_traffic(tier_2)
+            y1_low = t1_low + int(t2_low * 0.6)
+            y1_high = t1_high + int(t2_high * 0.6)
+            seo_som_ceiling_y1 = f"{y1_low:,}-{y1_high:,} visits/mo"
+
+            all_keywords = collect_all_tiered_keywords(seo_strategy_report)
+            intent = compute_intent_breakdown(all_keywords)
+            commercial_pct = compute_commercial_intent_ratio(intent)
+            seo_commercial_intent_pct = f"{commercial_pct:.0f}%"
 
         # Prepare inputs for market sizing task
         inputs = {
@@ -310,6 +336,9 @@ class MarketSizingCrew:
             "high_severity_count": wtp["high_severity_count"],
             "high_wtp_count": wtp["high_wtp_count"],
             "avg_wtp": wtp["avg_wtp"],
+            "seo_market_enrichment": seo_market_enrichment,
+            "seo_som_ceiling_y1": seo_som_ceiling_y1,
+            "seo_commercial_intent_pct": seo_commercial_intent_pct,
         }
 
         try:
@@ -320,7 +349,7 @@ class MarketSizingCrew:
 
             if result and result.pydantic:
                 market_result = result.pydantic
-                logger.info("[Stage 8.6] Market Sizing Complete")
+                logger.info("[Stage 9] Market Sizing Complete")
                 logger.info(f"  TAM: {market_result.total_addressable_market}")
                 logger.info(f"  SAM: {market_result.serviceable_available_market}")
                 logger.info(f"  SOM (Y1): {market_result.serviceable_obtainable_market_y1}")
@@ -328,11 +357,11 @@ class MarketSizingCrew:
                 logger.info(f"  Entry Strategy: {market_result.recommended_entry_strategy}")
                 return market_result
             else:
-                logger.error("[Stage 8.6] Market sizing failed - no Pydantic output")
+                logger.error("[Stage 9] Market sizing failed - no Pydantic output")
                 return None
 
         except Exception as e:
-            logger.error(f"[Stage 8.6] Market sizing error: {str(e)}")
+            logger.error(f"[Stage 9] Market sizing error: {str(e)}")
             return None
 
     def _format_keyword_signals(self, keyword_validation: CrewKeywordValidationResult | None) -> str:

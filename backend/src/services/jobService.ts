@@ -112,15 +112,25 @@ export async function updateStageProgress(
     return existingProgress;
   }
 
-  // Only set timestamps for new transitions (not already set)
-  const progress = await prisma.jobProgress.update({
+  // Upsert: creates the row if it doesn't exist yet (forward compat for new stages)
+  const stageName = PIPELINE_STAGES.find(s => s.number === stageNumber)?.name ?? `Stage ${stageNumber}`;
+  const progress = await prisma.jobProgress.upsert({
     where: {
       jobId_stageNumber: {
         jobId,
         stageNumber,
       },
     },
-    data: {
+    create: {
+      jobId,
+      stageNumber,
+      stageName,
+      status,
+      startedAt: status === StageStatus.RUNNING ? now : undefined,
+      completedAt: (status === StageStatus.COMPLETED || status === StageStatus.FAILED) ? now : undefined,
+      errorMessage,
+    },
+    update: {
       status,
       startedAt: status === StageStatus.RUNNING && !currentStage?.startedAt ? now : undefined,
       completedAt: (status === StageStatus.COMPLETED || status === StageStatus.FAILED) && !currentStage?.completedAt ? now : undefined,
@@ -152,8 +162,7 @@ export async function updateStageProgress(
     }),
   ]);
 
-  const dynamicTotal = jobRecord?.totalStages ?? TOTAL_STAGES;
-  const stageName = PIPELINE_STAGES.find(s => s.number === stageNumber)?.name;
+  const dynamicTotal = Math.max(jobRecord?.totalStages ?? TOTAL_STAGES, TOTAL_STAGES);
 
   await prisma.job.update({
     where: { id: jobId },

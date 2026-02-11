@@ -29,7 +29,7 @@ class CheckpointValidator:
 
     # Checkpoint metadata schema requirements
     REQUIRED_METADATA_FIELDS = ["niche_description", "started_at", "current_stage"]
-    VALID_STAGE_RANGE = (1, 10)  # Main stages 1-10, with decimal sub-stages
+    VALID_STAGE_RANGE = (1, 14)  # Main stages 1-14, with decimal sub-stages
 
     def __init__(self):
         """Initialize checkpoint validator."""
@@ -66,7 +66,7 @@ class CheckpointValidator:
             logger.error("Checkpoint current_stage must be numeric")
             return False
 
-        # Validate current_stage range (1-10 for main stages, with decimal sub-stages)
+        # Validate current_stage range (1-14 for main stages, with decimal sub-stages)
         min_stage, max_stage = self.VALID_STAGE_RANGE
         if not (min_stage <= metadata["current_stage"] <= max_stage):
             logger.error(

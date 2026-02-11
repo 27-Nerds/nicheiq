@@ -147,6 +147,7 @@
           selectionRationale={report.selection_rationale || ""}
           scores={report.selection_criteria_scores}
           budgetEstimate={report.go_to_market_blueprint?.budget_estimate}
+          pricingStrategy={report.pricing_strategy}
         />
       {/if}
     </div>

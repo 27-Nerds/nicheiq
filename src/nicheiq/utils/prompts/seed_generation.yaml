@@ -1,4 +1,4 @@
-# Seed Generation Prompt for Stage 8.8 LLM-based keyword generation
+# Seed Generation Prompt for keyword validation LLM-based keyword generation
 # Used by: SeedGenerator.generate_llm_seeds()
 # Variables: solution_name, solution_description, core_features, target_personas,
 #            pain_points, project_type, competitors

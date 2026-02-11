@@ -499,9 +499,9 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
         throw new Error('Report not found');
       }
 
-      // Create stage 11 progress entry
+      // Create stage 15 progress entry
       await tx.jobProgress.create({
-        data: { jobId, stageNumber: 11, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
+        data: { jobId, stageNumber: 15, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
       });
 
       // Update job

@@ -62,6 +62,13 @@ from ..models.research_state import (
     SubredditBreakdown,
     TopRedditThread,
 )
+from ..utils.crew_helpers.traffic_pre_compute import (
+    collect_all_tiered_keywords,
+    compute_commercial_intent_ratio,
+    compute_difficulty_weighted_traffic,
+    compute_intent_breakdown,
+    match_niche_to_cpm,
+)
 from ..utils.helpers import find_solution_by_name
 from ..utils.prompts import safe_format
 from .templates import ReportTemplates
@@ -71,7 +78,7 @@ from .utils import ScoreAccessor, StateAccessor
 
 class ReportGenerator:
     """
-    Stage 10 Final Report Generation.
+    Stage 14 Final Report Generation.
 
     Generates comprehensive research reports using hybrid Python + LLM approach.
 
@@ -118,7 +125,7 @@ class ReportGenerator:
         )
 
         # Store enriched solution for all downstream methods to share (RC1 fix)
-        # final_report.selected_solution_details has Stage 9.5 SEO refinements merged
+        # final_report.selected_solution_details has Stage 12 SEO refinements merged
         self._enriched_solution = final_report.selected_solution_details
 
         # Step 2: Enhance with LLM for strategic synthesis
@@ -144,7 +151,7 @@ class ReportGenerator:
         logger.info("Step 3: Generating enhanced report sections (Python)...")
 
         # Executive Dashboard (Phase 1 Enhancement) - TOP-LEVEL SUMMARY
-        # Pass enriched solution from final_report (already has Stage 9.5 SEO refinements merged)
+        # Pass enriched solution from final_report (already has Stage 12 SEO refinements merged)
         final_report.executive_dashboard = self._generate_executive_dashboard(
             enriched_solution=final_report.selected_solution_details
         )
@@ -339,7 +346,7 @@ class ReportGenerator:
         # Extract competitive summary (use existing strategic_recommendations)
         competitive_summary = self.accessor.get_competitive_summary()
 
-        # Extract solution selection (Stage 8.5)
+        # Extract solution selection (Stage 5)
         selected_solution_name = self.accessor.get_selected_solution_name()
         selection_rationale = self.accessor.get_selection_rationale()
         # runner_up_solutions removed - use alternative_solutions instead
@@ -349,14 +356,14 @@ class ReportGenerator:
         # Find selected solution details using fuzzy match helper
         selected_solution_details = self.accessor.get_selected_solution_details()
 
-        # Extract keyword validation and refinement data (Stage 8.8 and 8.85)
+        # Extract keyword validation and refinement data (keyword validation and 8.85)
         # Extract keyword validation and content strategy data using accessor
         keyword_validation_overview = self.accessor.get_keyword_validation_overview()
         solution_keyword_comparison = self.accessor.get_keyword_validation_comparison()
         content_strategy_preview = self.accessor.get_content_strategy_preview()
 
         # Merge enrichments into selected_solution_details (unified enrichment pattern)
-        # This merges Stage 8.85 (keyword refinement) + Stage 9.5 (SEO refinement) into base solution
+        # This merges Stage 10 (keyword refinement) + Stage 12 (SEO refinement) into base solution
         if selected_solution_details:
             selected_solution_details = self._merge_solution_enrichments(
                 base_solution=selected_solution_details,
@@ -364,8 +371,8 @@ class ReportGenerator:
                 seo_enrichment=getattr(self.state, 'seo_enrichment', None)
             )
             # Align selection_criteria_scores SEO entry with canonical score.
-            # selection_criteria_scores is built at Stage 8.5 with raw seo_growth_potential,
-            # but Stage 9.5 may refine it. Update to match canonical resolution.
+            # selection_criteria_scores is built at Stage 5 with raw seo_growth_potential,
+            # but Stage 12 may refine it. Update to match canonical resolution.
             # NOTE: This mutates the shared list from state_accessors — the mutation
             # propagates to all consumers that read via accessor (e.g. _compute_key_metrics).
             if selection_criteria_scores:
@@ -382,7 +389,7 @@ class ReportGenerator:
                             f"{score_entry.score:.4f} -> {canonical_seo:.4f} (canonical)"
                         )
                         score_entry.score = canonical_seo
-            # Sync scores with selection criteria (Stage 8.5) - NO FALLBACKS
+            # Sync scores with selection criteria (Stage 5) - NO FALLBACKS
             # This ensures selected_solution_details shows the same final scores
             # as selection_criteria_scores and executive_dashboard.key_metrics
             selected_solution_details = self._sync_solution_with_selection_scores(
@@ -404,7 +411,7 @@ class ReportGenerator:
                     pricing_strategy = p
                     break
 
-        # Extract traffic monetization for selected solution from list (Stage 8.55)
+        # Extract traffic monetization for selected solution from list (Stage 8)
         traffic_monetization = None
         if hasattr(self.state, 'traffic_monetization_results') and self.state.traffic_monetization_results:
             for tm in self.state.traffic_monetization_results:
@@ -412,8 +419,198 @@ class ReportGenerator:
                     traffic_monetization = tm
                     break
 
+        # Override LLM numeric fields with pre-computed evidence-based values + populate growth trajectory
+        if traffic_monetization and getattr(self.state, 'seo_strategy_report', None):
+            seo_report = self.state.seo_strategy_report
+            niche_desc = getattr(self.state, 'niche_description', '') or ''
+
+            # Collect tiered keywords
+            t0 = list(getattr(seo_report, 'tier_0_keywords', None) or [])
+            t1 = list(getattr(seo_report, 'tier_1_keywords', None) or [])
+            t2 = list(getattr(seo_report, 'tier_2_keywords', None) or [])
+
+            # Per-tier difficulty-weighted traffic
+            t0_low, t0_high = compute_difficulty_weighted_traffic(t0)
+            t1_low, t1_high = compute_difficulty_weighted_traffic(t1)
+            t2_low, t2_high = compute_difficulty_weighted_traffic(t2)
+
+            # Content compounding multiplier (internal links, topical authority)
+            compound = 1.25
+
+            # Year 1: T1 + 60% T2 (T2 needs more time to rank)
+            y1_pv_low = int((t1_low + 0.6 * t2_low) * compound)
+            y1_pv_high = int((t1_high + 0.6 * t2_high) * compound)
+
+            # Year 3: T1 + T2 fully ramped
+            y3_pv_low = int((t1_low + t2_low) * compound)
+            y3_pv_high = int((t1_high + t2_high) * compound)
+
+            # Full Potential: all tiers including T0 (hard keywords)
+            fp_pv_low = int((t0_low + t1_low + t2_low) * compound)
+            fp_pv_high = int((t0_high + t1_high + t2_high) * compound)
+
+            # CPM from niche vertical
+            cpm_low, cpm_high, vertical = match_niche_to_cpm(niche_desc)
+
+            # Intent breakdown for affiliate estimates
+            all_keywords = collect_all_tiered_keywords(seo_report)
+            intent = compute_intent_breakdown(all_keywords)
+            commercial_pct = compute_commercial_intent_ratio(intent)
+
+            # --- Revenue calculations (evidence-based rates) ---
+            # Ad revenue: pageviews × CPM / 1000
+            y1_ad_low = int(y1_pv_low * cpm_low / 1000)
+            y1_ad_high = int(y1_pv_high * cpm_high / 1000)
+            y3_ad_low = int(y3_pv_low * cpm_low / 1000)
+            y3_ad_high = int(y3_pv_high * cpm_high / 1000)
+            fp_ad_low = int(fp_pv_low * cpm_low / 1000)
+            fp_ad_high = int(fp_pv_high * cpm_high / 1000)
+
+            # Affiliate revenue: commercial_traffic × CTR(1-3%) × CVR(1-3%) × avg commission($50-$150)
+            commercial_frac = commercial_pct / 100.0
+            y1_aff_low = int(y1_pv_low * commercial_frac * 0.01 * 0.01 * 50)
+            y1_aff_high = int(y1_pv_high * commercial_frac * 0.03 * 0.03 * 150)
+            y3_aff_low = int(y3_pv_low * commercial_frac * 0.01 * 0.01 * 50)
+            y3_aff_high = int(y3_pv_high * commercial_frac * 0.03 * 0.03 * 150)
+            fp_aff_low = int(fp_pv_low * commercial_frac * 0.01 * 0.01 * 50)
+            fp_aff_high = int(fp_pv_high * commercial_frac * 0.03 * 0.03 * 150)
+
+            # Totals
+            y1_total_low = y1_ad_low + y1_aff_low
+            y1_total_high = y1_ad_high + y1_aff_high
+            y3_total_low = y3_ad_low + y3_aff_low
+            y3_total_high = y3_ad_high + y3_aff_high
+            fp_total_low = fp_ad_low + fp_aff_low
+            fp_total_high = fp_ad_high + fp_aff_high
+
+            # --- Revenue growth note (varies by commercial intent) ---
+            if commercial_pct < 20:
+                revenue_growth_note = (
+                    f"These projections show ad revenue from organic search on a new domain — the most "
+                    f"conservative baseline. With {commercial_pct:.0f}% commercial intent, early monetization "
+                    f"comes primarily from display advertising.\n\n"
+                    f"What these numbers don't include — and where the real opportunity lies:\n\n"
+                    f"Content compounds: Every article is a permanent traffic asset. After the initial "
+                    f"6-12 month ranking period, quality articles typically generate 30-80 sessions/month "
+                    f"each, growing to 100-300+ as domain authority builds.\n\n"
+                    f"Revenue multipliers at scale: Basic ad networks (AdSense, Ezoic) pay "
+                    f"${cpm_low}-${cpm_high} CPM. Premium networks pay significantly more — Raptive "
+                    f"accepts sites at 25,000 pageviews/month (lowered Oct 2025), and Mediavine's Journey "
+                    f"program starts at just 1,000 sessions/month. Premium networks typically pay $10-$30 "
+                    f"RPM for {vertical} content — a 2-4x uplift over basic networks.\n\n"
+                    f"Beyond ads: Established content sites typically earn 2-4x their display ad revenue "
+                    f"through additional channels — digital products, sponsored content ($1,000-$5,000/post "
+                    f"for tech/B2B audiences), newsletter sponsorships, and consulting. This requires "
+                    f"deliberate effort building an email list and developing products, typically achievable "
+                    f"6-12 months after establishing consistent traffic.\n\n"
+                    f"These projections are the floor, not the ceiling. They show what a new site earns "
+                    f"using the simplest monetization model (display ads only). The growth trajectory and "
+                    f"milestones below show how revenue scales as traffic grows."
+                )
+            elif commercial_pct < 40:
+                revenue_growth_note = (
+                    f"These projections represent baseline ad + affiliate revenue from organic search on a "
+                    f"new domain. With {commercial_pct:.0f}% commercial intent, this niche supports hybrid "
+                    f"monetization from the start — display ads for informational traffic and affiliate "
+                    f"commissions for commercial-intent visitors.\n\n"
+                    f"Revenue scales with traffic: as you rank for more keywords and move up in search "
+                    f"positions, both traffic and revenue per visitor increase. Premium ad networks "
+                    f"(Raptive at 25K pageviews, Mediavine Journey at 1K sessions) pay 2-4x basic rates. "
+                    f"Affiliate conversion rates also improve as domain authority builds.\n\n"
+                    f"Additional revenue channels unlock at scale — sponsored content, digital products, "
+                    f"and lead generation typically add 2-3x on top of baseline ad + affiliate revenue "
+                    f"for {vertical} sites, though this requires deliberate product development and "
+                    f"outreach effort."
+                )
+            else:
+                revenue_growth_note = (
+                    f"Strong commercial intent ({commercial_pct:.0f}%) makes affiliate marketing viable as a "
+                    f"primary revenue driver from the start. Tech/SaaS affiliate programs typically pay "
+                    f"$50-$150 per conversion (e.g., Semrush $200, Freshbooks $200, with many programs "
+                    f"at $20-$50). With a 1-3% click rate and 1-3% conversion rate on commercial-intent "
+                    f"traffic, revenue scales directly with traffic growth.\n\n"
+                    f"As traffic grows, additional monetization layers compound: premium ad networks "
+                    f"(Raptive at 25K pageviews), sponsored listings, and lead generation."
+                )
+
+            # --- Revenue milestones (evidence-based thresholds) ---
+            revenue_milestones = [
+                {
+                    "traffic": "5,000 sessions/mo",
+                    "ad_revenue": f"${int(5000 * cpm_low / 1000)}-${int(5000 * cpm_high / 1000)}/mo",
+                    "unlock": "Ezoic, Mediavine Journey eligible (basic programmatic ads)",
+                    "total_potential": f"${int(5000 * cpm_low / 1000)}-${int(5000 * cpm_high * 1.3 / 1000)}/mo with affiliate",
+                },
+                {
+                    "traffic": "25,000 sessions/mo",
+                    "ad_revenue": f"${int(25000 * cpm_low / 1000)}-${int(25000 * cpm_high / 1000)}/mo",
+                    "unlock": "Raptive eligible ($10-$30 RPM), newsletter sponsors viable",
+                    "total_potential": f"${int(25000 * 10 / 1000)}-${int(25000 * 30 / 1000)}/mo with premium ads",
+                },
+                {
+                    "traffic": "50,000 sessions/mo",
+                    "ad_revenue": f"${int(50000 * 10 / 1000)}-${int(50000 * 30 / 1000)}/mo",
+                    "unlock": "Mediavine Official, premium RPMs ($10-$30), sponsored content",
+                    "total_potential": f"${int(50000 * 10 * 2 / 1000)}-${int(50000 * 30 * 2.5 / 1000)}/mo total",
+                },
+                {
+                    "traffic": "100,000 sessions/mo",
+                    "ad_revenue": f"${int(100000 * 10 / 1000)}-${int(100000 * 30 / 1000)}/mo",
+                    "unlock": "Sponsored posts ($1K-$5K/post for tech/B2B), digital products, consulting",
+                    "total_potential": f"${int(100000 * 10 * 2 / 1000)}-${int(100000 * 30 * 3 / 1000)}/mo total",
+                },
+            ]
+
+            # Build model_copy update dict — always include methodology + growth trajectory
+            update_fields: dict[str, Any] = {
+                "traffic_methodology": (
+                    "Traffic projections are computed using evidence-based models rather than flat estimates. "
+                    "Click-through rates by SERP position are based on the Backlinko & ClickFlow study "
+                    "(874,000 URLs, 5 million queries, updated 2025). Keyword difficulty scores are mapped "
+                    "to estimated ranking probability using a model calibrated for well-optimized new sites "
+                    "(DA < 30) — these are projections, not guarantees. Easy keywords (KD < 25) are "
+                    "estimated at ~80% probability of page-1 ranking within 6-12 months with quality "
+                    "content, medium keywords (KD 25-50) at ~45% in 9-12 months, and hard keywords "
+                    "(KD 50+) at ~12% in 12-18+ months. Note: Ahrefs' aggregate data shows only 5.7% of "
+                    "all published pages reach the top 10 within a year — our higher estimates assume "
+                    "strategic keyword targeting and quality content execution. "
+                    "Year 1 traffic ceilings are the sum of (search volume x position-based CTR x ranking probability) "
+                    "across all keywords in each difficulty tier. "
+                    "Monetization benchmarks use evidence-based rates: "
+                    "affiliate click rates of 1-3% for commercial-intent traffic, "
+                    "conversion rates of 1-3%, average SaaS commission of $50-$150, "
+                    "and display CPMs of ${}-${} for {} verticals.".format(cpm_low, cpm_high, vertical)
+                ),
+                "traffic_data_sources": [
+                    "Backlinko & ClickFlow CTR Study (874K URLs)",
+                    "KD-to-Ranking Probability Model (calibrated estimates for new sites)",
+                    "Raptive/Mediavine Ad Network Thresholds (2025-2026)",
+                    "DataForSEO Keyword Metrics",
+                ],
+                # Growth trajectory fields
+                "year3_monthly_pageviews": f"{y3_pv_low:,}-{y3_pv_high:,}",
+                "year3_monthly_revenue": f"${y3_total_low:,}-${y3_total_high:,}/mo",
+                "full_potential_monthly_pageviews": f"{fp_pv_low:,}-{fp_pv_high:,}",
+                "full_potential_monthly_revenue": f"${fp_total_low:,}-${fp_total_high:,}/mo",
+                "revenue_growth_note": revenue_growth_note,
+                "revenue_milestones": revenue_milestones,
+            }
+
+            # Override LLM numeric fields only if pre-computed values are non-zero
+            if y1_pv_low > 0:
+                update_fields.update({
+                    "estimated_monthly_pageviews": f"{y1_pv_low:,}-{y1_pv_high:,}",
+                    "estimated_cpm_rate": f"${cpm_low}-${cpm_high} CPM ({vertical})",
+                    "estimated_monthly_ad_revenue": f"${y1_ad_low:,}-${y1_ad_high:,}",
+                    "estimated_monthly_affiliate_revenue": f"${y1_aff_low:,}-${y1_aff_high:,}",
+                    "estimated_monthly_revenue_range": f"${y1_total_low:,}-${y1_total_high:,}",
+                    "estimated_annual_revenue_range": f"${y1_total_low * 12:,}-${y1_total_high * 12:,}",
+                })
+
+            traffic_monetization = traffic_monetization.model_copy(update=update_fields)
+
         # Generate market_validation based on actual metrics
-        # Use niche-relevant volume (Stage 8.5 filtered) to prevent inflation from broad Stage 9 keywords
+        # Use niche-relevant volume (keyword validation filtered) to prevent inflation from broad Stage 6 keywords
         niche_vol = self.accessor.get_niche_relevant_search_volume()
         total_volume_for_validation = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
         if total_volume_for_validation == 0:
@@ -507,7 +704,7 @@ class ReportGenerator:
             f"{len(recommended_solutions)} solution concepts. "
             f"Selected solution: {selected_solution_name}.",
 
-            # Solution selection (Stage 8.75)
+            # Solution selection (Stage 5)
             selected_solution_name=selected_solution_name,
             selection_rationale=selection_rationale,
             # runner_up_solutions removed - use alternative_solutions
@@ -524,7 +721,7 @@ class ReportGenerator:
             # Pricing strategy (Stage 8)
             pricing_strategy=pricing_strategy,
 
-            # Traffic monetization (Stage 8.55) - for directories/aggregators
+            # Traffic monetization (Stage 8) - for directories/aggregators
             traffic_monetization=traffic_monetization,
 
             # Pain points (detailed_pain_points is source of truth)
@@ -548,7 +745,7 @@ class ReportGenerator:
             acquisition_strategy_summary=acquisition_strategy_summary,
             estimated_cac_breakdown=estimated_cac_breakdown,
 
-            # Keyword validation & refinement (Stage 8.8 and 8.85)
+            # Keyword validation & refinement (keyword validation and 8.85)
             keyword_validation_overview=keyword_validation_overview,
             solution_keyword_comparison=solution_keyword_comparison,
             content_strategy_preview=content_strategy_preview,
@@ -577,16 +774,16 @@ class ReportGenerator:
             # Stage 6.5: Audience Intelligence (full object)
             audience_mapping=self.state.audience_mapping,
 
-            # Stage 8.6: Market Sizing (full object)
+            # Stage 9: Market Sizing (full object)
             market_sizing=self.state.market_sizing,
 
-            # Stage 9.5: Trend Longevity (full object)
+            # Stage 12: Trend Longevity (full object)
             trend_longevity=self.state.trend_longevity,
 
             # Stage 9: Full SEO Strategy (full object, not just analytics)
             seo_strategy_report=self.state.seo_strategy_report,
 
-            # Stage 9.7: Full Data Source Research (full object, not just string summary)
+            # Stage 13: Full Data Source Research (full object, not just string summary)
             data_source_research_full=self.state.data_source_research,
 
             # Metadata
@@ -604,8 +801,8 @@ class ReportGenerator:
 
         This implements the unified enrichment pattern where:
         - Stage 7 creates BaseSolutionIdea with core fields (no enrichment fields)
-        - Stage 8.85 outputs keyword enrichment (geographic priorities, features, insights)
-        - Stage 9.5 outputs SEO enrichment (refined scores using keyword data)
+        - Stage 10 outputs keyword enrichment (geographic priorities, features, insights)
+        - Stage 12 outputs SEO enrichment (refined scores using keyword data)
         - Report generator merges all into complete SolutionIdea
 
         Benefits:
@@ -616,8 +813,8 @@ class ReportGenerator:
 
         Args:
             base_solution: Original solution from Stage 7 (BaseSolutionIdea or legacy SolutionIdea)
-            keyword_enrichment: Optional enrichment from Stage 8.85 (SolutionRefinementCrew)
-            seo_enrichment: Optional enrichment from Stage 9.5 (Flow-based SEO refinement)
+            keyword_enrichment: Optional enrichment from Stage 10 (SolutionRefinementCrew)
+            seo_enrichment: Optional enrichment from Stage 12 (Flow-based SEO refinement)
 
         Returns:
             Complete SolutionIdea with all available enrichments applied
@@ -628,7 +825,7 @@ class ReportGenerator:
         # This upgrades BaseSolutionIdea to SolutionIdea, adding enrichment fields
         enriched = SolutionIdea(**base_solution.model_dump())
 
-        # Apply keyword enrichment (Stage 8.85)
+        # Apply keyword enrichment (Stage 10)
         if keyword_enrichment:
             # Map SolutionRefinement fields to SolutionIdea fields
             enriched.keyword_geographic_priorities = keyword_enrichment.geographic_priorities
@@ -651,7 +848,7 @@ class ReportGenerator:
                 f"{len(keyword_enrichment.feature_priorities) if keyword_enrichment.feature_priorities else 0} feature priorities"
             )
 
-        # Apply SEO enrichment (Stage 9.5)
+        # Apply SEO enrichment (Stage 12)
         if seo_enrichment:
             enriched.seo_scalability_score_refined = seo_enrichment.seo_scalability_score_refined
             enriched.estimated_cac_organic_refined = seo_enrichment.estimated_cac_organic_refined
@@ -741,28 +938,28 @@ class ReportGenerator:
         Sync solution scores and fields with final values from various stages.
 
         Score Priority (NO FALLBACKS - uses single authoritative source):
-        - market_fit_score: selection_criteria_scores (Stage 8.5)
-        - technical_feasibility_score: selection_criteria_scores (Stage 8.5)
-        - seo_scalability_score: seo_scalability_score_refined (Stage 9.5) if available,
-                                 otherwise selection_criteria_scores (Stage 8.5)
+        - market_fit_score: selection_criteria_scores (Stage 5)
+        - technical_feasibility_score: selection_criteria_scores (Stage 5)
+        - seo_scalability_score: seo_scalability_score_refined (Stage 12) if available,
+                                 otherwise selection_criteria_scores (Stage 5)
 
         Field Sync (Refined → Baseline):
-        - estimated_cac_organic: from estimated_cac_organic_refined (Stage 9.5)
-        - programmatic_seo_opportunity: from programmatic_seo_opportunity_refined (Stage 9.5)
+        - estimated_cac_organic: from estimated_cac_organic_refined (Stage 12)
+        - programmatic_seo_opportunity: from programmatic_seo_opportunity_refined (Stage 12)
 
         This ensures:
         1. selected_solution_details shows the SAME scores as executive_dashboard.key_metrics
         2. Frontend components only need to check baseline fields (no fallback chains)
-        3. Refined Stage 9.5 values are used when available
+        3. Refined Stage 12 values are used when available
 
         Args:
             solution: SolutionIdea to update (after _merge_solution_enrichments)
-            selection_criteria_scores: List of SelectionCriteriaScore from Stage 8.5
+            selection_criteria_scores: List of SelectionCriteriaScore from Stage 5
 
         Returns:
             SolutionIdea with scores and fields synced from authoritative sources
         """
-        # Build score map from selection criteria (Stage 8.5)
+        # Build score map from selection criteria (Stage 5)
         score_map = {}
         if selection_criteria_scores:
             score_map = {s.criterion: s.score for s in selection_criteria_scores}
@@ -771,7 +968,7 @@ class ReportGenerator:
         solution.market_fit_score = score_map.get('market_fit')
         solution.technical_feasibility_score = score_map.get('technical_feasibility')
 
-        # SEO score: prefer refined (Stage 9.5), fall back to selection criteria (Stage 8.5)
+        # SEO score: prefer refined (Stage 12), fall back to selection criteria (Stage 5)
         seo_refined = getattr(solution, 'seo_scalability_score_refined', None)
         if seo_refined is not None:
             solution.seo_scalability_score = seo_refined
@@ -1145,7 +1342,7 @@ class ReportGenerator:
 
     def _generate_refinement_highlights(self) -> RefinementHighlights | None:
         """
-        Extract key strategic insights from Stage 8.7 solution refinement.
+        Extract key strategic insights from Stage 10 solution refinement.
         """
         try:
             refinement = self.state.solution_refinement
@@ -1224,7 +1421,7 @@ class ReportGenerator:
 
     def _generate_seo_calculation_transparency(self) -> SEOCalculationTransparency | None:
         """
-        Extract SEO score calculation methodology from Stage 9.6 enrichment.
+        Extract SEO score calculation methodology from Stage 12 enrichment.
         """
         try:
             enrichment = self.state.seo_enrichment
@@ -2037,7 +2234,7 @@ It differentiates through {diff_text}.
 
         Args:
             enriched_solution: Pre-enriched SolutionIdea from final_report.selected_solution_details
-                               (already has Stage 9.5 SEO refinements merged). If None, falls back
+                               (already has Stage 12 SEO refinements merged). If None, falls back
                                to accessor which returns raw BaseSolutionIdea.
 
         Returns:
@@ -2057,7 +2254,7 @@ It differentiates through {diff_text}.
                 return None
 
             # Step 1: Compute metrics (Python - 60% of work)
-            # Pass the enriched solution to ensure we have access to Stage 9.5 refined fields
+            # Pass the enriched solution to ensure we have access to Stage 12 refined fields
             key_metrics = self._compute_executive_metrics(enriched_solution=selected_solution)
             if not key_metrics:
                 logger.warning("Failed to compute executive metrics")
@@ -2130,7 +2327,7 @@ It differentiates through {diff_text}.
         Compute top-line metrics for executive dashboard (Python-only).
 
         Args:
-            enriched_solution: Pre-enriched SolutionIdea with Stage 9.5 SEO refinements.
+            enriched_solution: Pre-enriched SolutionIdea with Stage 12 SEO refinements.
                                Used to access seo_scalability_score_refined directly.
 
         Returns:
@@ -2156,7 +2353,7 @@ It differentiates through {diff_text}.
             tier2_keyword_count = tier_counts["tier_2"]
             tier3_keyword_count = tier_counts.get("tier_3", 0)
             tier4_keyword_count = tier_counts.get("tier_4", 0)
-            # Use niche-relevant volume for KeyMetrics (prevents TAM inflation from broad Stage 9 keywords)
+            # Use niche-relevant volume for KeyMetrics (prevents TAM inflation from broad Stage 6 keywords)
             niche_vol = self.accessor.get_niche_relevant_search_volume()
             total_keyword_search_volume = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
 
@@ -2184,7 +2381,7 @@ It differentiates through {diff_text}.
                 social_evidence_threads += len(self.state.social_content.reddit_posts)
                 social_evidence_threads += len(self.state.social_content.twitter_threads)
 
-            # Extract score fields from selection criteria (Stage 8.5 final scores)
+            # Extract score fields from selection criteria (Stage 5 final scores)
             # NO FALLBACKS - use only final selection criteria scores, None if missing
             selection_criteria_scores = self.accessor.get_selection_criteria_scores()
             score_map = {}

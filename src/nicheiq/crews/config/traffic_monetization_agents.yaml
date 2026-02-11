@@ -1,5 +1,5 @@
 # Traffic Monetization Crew - Agent Configuration
-# Stage 8.55: For directories, aggregators, and comparison tools
+# Stage 8: For directories, aggregators, and comparison tools
 
 traffic_monetization_analyst:
   role: >

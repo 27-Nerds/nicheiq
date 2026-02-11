@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // ============================================
 const mockJobProgressFindUnique = vi.fn();
 const mockJobProgressUpdate = vi.fn();
+const mockJobProgressUpsert = vi.fn();
 const mockJobProgressCount = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockJobFindUnique = vi.fn();
@@ -14,6 +15,7 @@ vi.mock('../db.js', () => ({
     jobProgress: {
       findUnique: (...args: any[]) => mockJobProgressFindUnique(...args),
       update: (...args: any[]) => mockJobProgressUpdate(...args),
+      upsert: (...args: any[]) => mockJobProgressUpsert(...args),
       count: (...args: any[]) => mockJobProgressCount(...args),
     },
     job: {
@@ -33,7 +35,7 @@ import { updateStageProgress } from '../jobService.js';
 // Setup
 // ============================================
 const JOB_ID = 'job-123';
-const STAGE_NUMBER = 5; // 'Search & Discovery' — must match a PIPELINE_STAGES entry
+const STAGE_NUMBER = 2; // 'Search & Discovery' — must match a PIPELINE_STAGES entry
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -41,7 +43,18 @@ beforeEach(() => {
   // Default: stage not yet started
   mockJobProgressFindUnique.mockResolvedValue(null);
 
-  // Default: stage progress update returns a progress record
+  // Default: stage progress upsert returns a progress record
+  mockJobProgressUpsert.mockResolvedValue({
+    id: 'progress-1',
+    jobId: JOB_ID,
+    stageNumber: STAGE_NUMBER,
+    status: 'RUNNING',
+    startedAt: new Date(),
+    completedAt: null,
+    durationSeconds: null,
+  });
+
+  // Default: stage progress update returns a progress record (for duration calc)
   mockJobProgressUpdate.mockResolvedValue({
     id: 'progress-1',
     jobId: JOB_ID,
@@ -81,7 +94,7 @@ describe('updateStageProgress', () => {
       completedAt: null,
       durationSeconds: null,
     });
-    mockJobProgressUpdate.mockResolvedValue({
+    mockJobProgressUpsert.mockResolvedValue({
       id: 'progress-1',
       jobId: JOB_ID,
       stageNumber: STAGE_NUMBER,
@@ -105,7 +118,7 @@ describe('updateStageProgress', () => {
       completedAt: null,
       durationSeconds: null,
     });
-    mockJobProgressUpdate.mockResolvedValue({
+    mockJobProgressUpsert.mockResolvedValue({
       id: 'progress-1',
       jobId: JOB_ID,
       stageNumber: STAGE_NUMBER,

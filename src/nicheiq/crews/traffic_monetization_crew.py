@@ -1,5 +1,5 @@
 """
-Traffic Monetization Crew (Stage 8.55).
+Traffic Monetization Crew (Stage 8).
 
 For directories, aggregators, and comparison tools that monetize via
 traffic (ads, affiliates) rather than subscriptions.
@@ -17,9 +17,15 @@ from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import TrafficMonetizationResult
 from ..utils.crew_helpers import (
+    collect_all_tiered_keywords,
+    compute_ad_revenue_estimate,
+    compute_affiliate_revenue_estimate,
+    compute_commercial_intent_ratio,
+    compute_intent_breakdown,
+    compute_seo_traffic_enrichment,
+    compute_total_revenue_estimate,
     compute_traffic_projection,
     match_niche_to_cpm,
-    compute_ad_revenue_estimate,
 )
 
 
@@ -101,7 +107,7 @@ class TrafficMonetizationCrew:
         Format keyword validation results for traffic estimation.
 
         Args:
-            keyword_validation_results: List of CrewKeywordValidationResult from Stage 8.5
+            keyword_validation_results: List of CrewKeywordValidationResult from keyword validation
             solution_name: Name of solution to find keyword data for
 
         Returns:
@@ -197,21 +203,23 @@ class TrafficMonetizationCrew:
         selected_solution,
         keyword_validation_results,
         competitive_analysis,
-        niche_description: str
+        niche_description: str,
+        seo_strategy_report=None
     ) -> TrafficMonetizationResult | None:
         """
         Execute traffic monetization analysis.
 
         Args:
             selected_solution: SolutionIdea with project_type in [directory, aggregator, comparison-tool]
-            keyword_validation_results: List of CrewKeywordValidationResult from Stage 8.5
+            keyword_validation_results: List of CrewKeywordValidationResult from keyword validation
             competitive_analysis: CompetitiveAnalysisResult from Stage 7.2
             niche_description: Niche description for context
+            seo_strategy_report: Optional SEOStrategyReport for enriched traffic data
 
         Returns:
             TrafficMonetizationResult with traffic-based monetization strategy, or None if analysis fails
         """
-        logger.info("[Stage 8.55] Starting Traffic Monetization Analysis...")
+        logger.info("[Stage 8] Starting Traffic Monetization Analysis...")
         logger.info(f"  Solution: {selected_solution.solution_name}")
         logger.info(f"  Project Type: {selected_solution.project_type}")
         logger.info(f"  Analyzing traffic potential and monetization channels...")
@@ -238,10 +246,59 @@ class TrafficMonetizationCrew:
                     total_volume = validation.total_volume or 0
                     break
 
-        traffic_projection, total_low, total_high = compute_traffic_projection(total_volume)
+        traffic_projection, total_low, total_high = compute_traffic_projection(
+            total_volume, seo_strategy_report=seo_strategy_report
+        )
         cpm_low, cpm_high, cpm_vertical = match_niche_to_cpm(niche_description)
         suggested_cpm = f"${cpm_low}-${cpm_high} CPM ({cpm_vertical} vertical)"
         ad_revenue_estimate = compute_ad_revenue_estimate(total_low, total_high, cpm_low, cpm_high)
+
+        # Set unconditional defaults for all template variables FIRST
+        seo_enrichment = ""
+        seo_traffic_ceiling_y1 = "N/A (no SEO data)"
+        seo_commercial_intent_pct = "N/A (no SEO data)"
+        affiliate_revenue_estimate = ""
+        total_revenue_estimate = ""
+
+        # Override with real values if SEO data available
+        if seo_strategy_report:
+            seo_enrichment = compute_seo_traffic_enrichment(seo_strategy_report)
+            logger.debug(f"  SEO enrichment added: {len(seo_enrichment)} chars")
+
+            # Extract focused input keys from SEO data
+            tier_1 = getattr(seo_strategy_report, "tier_1_keywords", None) or []
+            tier_2 = getattr(seo_strategy_report, "tier_2_keywords", None) or []
+            from ..utils.crew_helpers import compute_difficulty_weighted_traffic
+            t1_low, t1_high = compute_difficulty_weighted_traffic(tier_1)
+            t2_low, t2_high = compute_difficulty_weighted_traffic(tier_2)
+            y1_low = t1_low + int(t2_low * 0.6)
+            y1_high = t1_high + int(t2_high * 0.6)
+            seo_traffic_ceiling_y1 = f"{y1_low:,}-{y1_high:,} visits/mo"
+
+            all_keywords = collect_all_tiered_keywords(seo_strategy_report)
+            intent = compute_intent_breakdown(all_keywords)
+            commercial_pct = compute_commercial_intent_ratio(intent)
+            seo_commercial_intent_pct = f"{commercial_pct:.0f}%"
+
+            # Affiliate and total revenue estimates
+            affiliate_revenue_estimate = compute_affiliate_revenue_estimate(
+                intent, total_low, total_high, niche_description
+            )
+            # Parse ad revenue numbers for total
+            ad_rev_low = int(total_low * cpm_low / 1000) if total_low > 0 else 0
+            ad_rev_high = int(total_high * cpm_high / 1000) if total_high > 0 else 0
+            # Parse affiliate revenue numbers
+            aff_rev_low = 0
+            aff_rev_high = 0
+            if affiliate_revenue_estimate:
+                import re as _re
+                aff_match = _re.findall(r'\$([0-9,]+)', affiliate_revenue_estimate)
+                if len(aff_match) >= 2:
+                    aff_rev_low = int(aff_match[0].replace(',', ''))
+                    aff_rev_high = int(aff_match[1].replace(',', ''))
+            total_revenue_estimate = compute_total_revenue_estimate(
+                ad_rev_low, ad_rev_high, aff_rev_low, aff_rev_high
+            )
 
         # Prepare inputs for the task
         inputs = {
@@ -254,6 +311,11 @@ class TrafficMonetizationCrew:
             "traffic_projection": traffic_projection,
             "suggested_cpm": suggested_cpm,
             "ad_revenue_estimate": ad_revenue_estimate,
+            "seo_enrichment": seo_enrichment,
+            "seo_traffic_ceiling_y1": seo_traffic_ceiling_y1,
+            "seo_commercial_intent_pct": seo_commercial_intent_pct,
+            "affiliate_revenue_estimate": affiliate_revenue_estimate,
+            "total_revenue_estimate": total_revenue_estimate,
         }
 
         try:
@@ -264,18 +326,18 @@ class TrafficMonetizationCrew:
 
             if result and result.pydantic:
                 traffic_result = result.pydantic
-                logger.info("[Stage 8.55] Traffic Monetization Analysis Complete")
+                logger.info("[Stage 8] Traffic Monetization Analysis Complete")
                 logger.info(f"  Monetization Model: {traffic_result.monetization_model}")
                 logger.info(f"  Est. Monthly Pageviews: {traffic_result.estimated_monthly_pageviews}")
                 logger.info(f"  Est. Monthly Revenue: {traffic_result.estimated_monthly_revenue_range}")
                 logger.info(f"  Confidence: {traffic_result.monetization_confidence}")
                 return traffic_result
             else:
-                logger.error("[Stage 8.55] Traffic monetization analysis failed - no Pydantic output")
+                logger.error("[Stage 8] Traffic monetization analysis failed - no Pydantic output")
                 return None
 
         except Exception as e:
-            logger.error(f"[Stage 8.55] Traffic monetization analysis error: {str(e)}")
+            logger.error(f"[Stage 8] Traffic monetization analysis error: {str(e)}")
             return None
 
     @property

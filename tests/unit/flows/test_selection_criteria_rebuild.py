@@ -2,11 +2,11 @@
 Tests for selection_criteria_scores rebuild after re-ranking.
 
 Covers:
-- _build_selection_criteria_from_scores (Stage 8.5 pivot path)
-- _build_selection_criteria_from_solution_idea (Stage 7 fallback path)
-- Regression tests for Stage 8.5 pivot and Stage 7 fallback
+- _build_selection_criteria_from_scores (Stage 6 KV pivot path)
+- _build_selection_criteria_from_solution_idea (Stage 5 fallback path)
+- Regression tests for Stage 6 KV pivot and Stage 5 fallback
 - Downstream consumer compatibility
-- SEO score canonical alignment (Stage 9.5 refinement)
+- SEO score canonical alignment (Stage 12 refinement)
 """
 
 import pytest
@@ -154,11 +154,11 @@ class TestBuildSelectionCriteriaFromScores:
         for entry in result:
             assert isinstance(entry, SelectionCriteriaScore)
 
-    def test_stage_85_justification_mentions_pivot_and_old_winner(
+    def test_stage_6_kv_justification_mentions_pivot_and_old_winner(
         self, _from_scores, sample_solution_scores
     ):
         prefix = (
-            "Updated after Stage 8.5 keyword validation pivot. "
+            "Updated after Stage 6 keyword validation pivot. "
             "Previous winner: SoloClientQueue."
         )
         result = _from_scores(sample_solution_scores, justification_prefix=prefix)
@@ -276,7 +276,7 @@ class TestStage85PivotRegression:
 # ---------------------------------------------------------------------------
 
 class TestStage7FallbackPaths:
-    """Tests for Stage 7 fallback selection_criteria_scores rebuild."""
+    """Tests for Stage 5 fallback selection_criteria_scores rebuild."""
 
     def test_uses_all_solution_scores_when_available(
         self, _from_scores, sample_solution_scores
@@ -416,7 +416,7 @@ class TestSEOScoreCanonicalAlignment:
     """Tests for SEO score alignment between selection_criteria_scores and canonical score."""
 
     def test_seo_score_updated_when_refined_available(self):
-        """When Stage 9.5 refined score exists, selection_criteria SEO entry is updated."""
+        """When Stage 12 refined score exists, selection_criteria SEO entry is updated."""
         scores = _make_selection_criteria(seo_score=0.86)
         solution = _make_solution_idea(seo_raw=0.86, seo_refined=0.84)
 
@@ -426,7 +426,7 @@ class TestSEOScoreCanonicalAlignment:
         assert seo_entry.score == 0.84
 
     def test_seo_score_unchanged_when_no_refinement(self):
-        """When no Stage 9.5 refined score, raw Stage 8.5 value is preserved."""
+        """When no Stage 12 refined score, raw Stage 6 KV value is preserved."""
         scores = _make_selection_criteria(seo_score=0.86)
         solution = _make_solution_idea(seo_raw=0.86, seo_refined=None)
 

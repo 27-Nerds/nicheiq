@@ -34,6 +34,7 @@ from ...models.solution_idea import (
     IdeaGenerationResult,
     RawConceptList,
 )
+from ...models.solution_selection import SolutionSelection
 from ..parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 
 
@@ -1541,4 +1542,39 @@ def validate_quote_enrichment(task_output) -> tuple[bool, Any]:
         f"✓ Quote enrichment guardrail passed: "
         f"{total_quotes} quotes for {len(result.enriched_pain_points)} pain points"
     )
+    return (True, task_output.raw)
+
+
+def validate_solution_selection(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for solution_selection_task to catch malformed JSON.
+
+    CrewAI 1.7.0 Compatibility: When guardrails exist, pydantic=None by design.
+    Must parse from .raw and return (True, raw_string) on success.
+
+    Validates:
+    1. JSON parses into SolutionSelection (catches malformed JSON crash)
+    2. selected_solution_name present and >= 3 chars
+    3. selection_rationale present and >= 100 chars
+    4. recommended_focus present and non-empty
+
+    Returns:
+        tuple[bool, Any]: (success, raw_string_or_error)
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, SolutionSelection, "Solution selection"
+    )
+    if error:
+        return (False, error)
+
+    if not result.selected_solution_name or len(result.selected_solution_name.strip()) < 3:
+        return (False, "selected_solution_name must be at least 3 characters.")
+
+    if not result.selection_rationale or len(result.selection_rationale) < 100:
+        return (False, f"selection_rationale too short ({len(result.selection_rationale or '')} chars, minimum 100).")
+
+    if not result.recommended_focus or len(result.recommended_focus.strip()) < 5:
+        return (False, "recommended_focus is required.")
+
+    logger.info(f"✓ Solution selection guardrail passed: '{result.selected_solution_name}'")
     return (True, task_output.raw)

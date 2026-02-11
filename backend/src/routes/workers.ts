@@ -365,7 +365,7 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
 
     // Broadcast SSE event so frontend can show the report
     broadcastProgress(data.job_id, {
-      stage: 10,
+      stage: 14,
       name: 'Report Generation',
       status: 'completed',
       report_path: data.report_path,
@@ -426,7 +426,7 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
 
     // Check if this is a landing-page-only failure with existing report
     const reportAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
-    const isLandingPageFailure = data.error_stage === 11 && reportAsset;
+    const isLandingPageFailure = data.error_stage === 15 && reportAsset;
 
     let jobStatus: string;
 
@@ -439,14 +439,14 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
         data: { landingPageStatus: 'FAILED' },
       });
 
-      // Mark stage 11 as FAILED
+      // Mark stage 15 as FAILED
       try {
         await prisma.jobProgress.updateMany({
-          where: { jobId: data.job_id, stageNumber: 11, status: StageStatus.RUNNING },
+          where: { jobId: data.job_id, stageNumber: 15, status: StageStatus.RUNNING },
           data: { status: StageStatus.FAILED, errorMessage: data.error_message },
         });
       } catch (stageErr) {
-        console.error(`[Workers] Failed to update stage 11 to FAILED:`, stageErr);
+        console.error(`[Workers] Failed to update stage 15 to FAILED:`, stageErr);
       }
 
       // Complete the job if not already completed
@@ -578,7 +578,7 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     );
 
     // Track landing page lifecycle via landingPageStatus
-    if (data.stage === 11) {
+    if (data.stage === 15) {
       const { prisma: db } = await import('../services/db.js');
       if (data.status === 'running') {
         await db.job.update({
@@ -586,7 +586,7 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
           data: { landingPageStatus: 'RUNNING' },
         });
       } else if (data.status === 'completed' && !data.landing_path) {
-        // Stage 11 completed without landing_path means guardrail failure (None result)
+        // Stage 15 completed without landing_path means guardrail failure (None result)
         await db.job.update({
           where: { id: data.job_id },
           data: { landingPageStatus: 'COMPLETED' },
@@ -621,7 +621,7 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     if (data.status === 'failed' && data.error) {
       // Check if this is a landing-page-only failure
       const reportAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
-      if (data.stage === 11 && reportAsset) {
+      if (data.stage === 15 && reportAsset) {
         // Landing page failure - don't fail the entire job
         const { prisma: db } = await import('../services/db.js');
         await db.job.update({
@@ -722,7 +722,7 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
 
     // Broadcast progress update to SSE clients
     broadcastProgress(data.job_id, {
-      stage: 7,
+      stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });
@@ -803,7 +803,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
 
     // Broadcast progress update
     broadcastProgress(data.job_id, {
-      stage: 7,
+      stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });
@@ -853,7 +853,7 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
 
     // Broadcast progress so frontend re-fetches and shows solutions
     broadcastProgress(data.job_id, {
-      stage: 7,
+      stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });

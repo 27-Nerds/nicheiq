@@ -33,7 +33,18 @@
     { label: "Feasibility", value: solution.technical_feasibility_score },
     { label: "SEO Potential", value: solution.seo_scalability_score },
     { label: "Novelty", value: solution.novelty_score },
+    { label: "Solo Dev", value: solution.solo_dev_feasibility },
   ]);
+
+  // Extract just the duration part from dev time (e.g., "6-8 weeks" from "6-8 weeks for MVP...")
+  const devTimeParsed = $derived.by(() => {
+    const devTime = solution.estimated_development_time;
+    if (!devTime) return null;
+    const match = devTime.match(/^[\d\-\+]+\s*(?:weeks?|months?|days?)/i);
+    if (match) return { short: match[0], full: devTime };
+    if (devTime.length <= 20) return { short: devTime, full: devTime };
+    return { short: devTime.slice(0, 17) + "...", full: devTime };
+  });
 
   // Card is clickable to toggle selection (unless disabled or max reached and not selected)
   const isToggleable = $derived(!disabled && (isSelected || !maxReached));
@@ -106,7 +117,7 @@
   </p>
 
   <!-- Score Grid -->
-  <div class="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-x-3 gap-y-4">
+  <div class="mt-4 grid grid-cols-2 sm:grid-cols-5 gap-x-3 gap-y-4">
     {#each scores as score}
       <div>
         <div class="min-w-0">
@@ -121,6 +132,14 @@
       </div>
     {/each}
   </div>
+
+  <!-- Dev Time -->
+  {#if devTimeParsed}
+    <div class="mt-2 flex items-center gap-1.5 text-xs text-text-muted" title={devTimeParsed.full}>
+      <span>&#9201;</span>
+      <span>{devTimeParsed.short} MVP</span>
+    </div>
+  {/if}
 
   <!-- Expandable Details -->
   <button
@@ -139,6 +158,39 @@
 
   {#if expanded}
     <div class="mt-3 space-y-4 text-sm border-t border-border pt-3">
+      {#if solution.pricing_strategy}
+        <div>
+          <h4 class="mono-label mb-1">Pricing Strategy</h4>
+          <p class="text-text-secondary">{solution.pricing_strategy}</p>
+        </div>
+      {/if}
+
+      {#if solution.conventional_approach || solution.innovation_angle || solution.why_it_works}
+        <div>
+          <h4 class="mono-label mb-2">Innovation Breakdown</h4>
+          <div class="space-y-2">
+            {#if solution.conventional_approach}
+              <div class="rounded border border-border px-3 py-2">
+                <span class="text-xs font-medium uppercase tracking-wider text-text-muted">Conventional Path</span>
+                <p class="mt-0.5 text-text-secondary">{solution.conventional_approach}</p>
+              </div>
+            {/if}
+            {#if solution.innovation_angle}
+              <div class="rounded border border-accent/30 bg-accent/5 px-3 py-2">
+                <span class="text-xs font-medium uppercase tracking-wider text-accent">What's Different</span>
+                <p class="mt-0.5 text-text-secondary">{solution.innovation_angle}</p>
+              </div>
+            {/if}
+            {#if solution.why_it_works}
+              <div class="rounded border border-border px-3 py-2">
+                <span class="text-xs font-medium uppercase tracking-wider text-text-muted">Why It Works</span>
+                <p class="mt-0.5 text-text-secondary">{solution.why_it_works}</p>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {/if}
+
       {#if solution.pain_points_addressed && solution.pain_points_addressed.length > 0}
         <div>
           <h4 class="mono-label mb-1">Pain Points Addressed</h4>
@@ -206,8 +258,10 @@
 
       {#if solution.estimated_cac_organic}
         <div>
-          <h4 class="mono-label mb-1">Estimated Organic CAC</h4>
-          <p class="text-text-secondary">{solution.estimated_cac_organic}</p>
+          <h4 class="mono-label mb-1">Estimated CAC</h4>
+          <p class="text-text-secondary">
+            {solution.estimated_cac_organic}{#if solution.estimated_cac_paid} <span class="text-text-muted">(vs {solution.estimated_cac_paid} paid)</span>{/if}
+          </p>
         </div>
       {/if}
 

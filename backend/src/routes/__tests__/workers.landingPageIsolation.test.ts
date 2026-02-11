@@ -65,10 +65,24 @@ vi.mock('../../utils/errorTranslator.js', () => ({
 
 vi.mock('../../types/job.js', () => ({
   PIPELINE_STAGES: [
-    { number: 1 }, { number: 2 }, { number: 3 }, { number: 4 },
-    { number: 5 }, { number: 6 }, { number: 6.5 }, { number: 7 },
-    { number: 8 }, { number: 9 }, { number: 10 }, { number: 11 },
+    { number: 1, name: 'Niche Validation', phase: 1 },
+    { number: 2, name: 'Search & Discovery', phase: 1 },
+    { number: 3, name: 'Pain Point Analysis', phase: 1 },
+    { number: 4, name: 'Audience Mapping', phase: 1 },
+    { number: 5, name: 'Solution Pipeline', phase: 1 },
+    { number: 5.5, name: 'Competitive Analysis', phase: 2 },
+    { number: 6, name: 'SEO & Keyword Strategy', phase: 2 },
+    { number: 7, name: 'Pricing Validation', phase: 2 },
+    { number: 8, name: 'Traffic Monetization', phase: 2 },
+    { number: 9, name: 'Market Sizing', phase: 2 },
+    { number: 10, name: 'Solution Refinement', phase: 2 },
+    { number: 11, name: 'Trend Analysis', phase: 2 },
+    { number: 12, name: 'SEO Score Refinement', phase: 2 },
+    { number: 13, name: 'Data Source Research', phase: 2 },
+    { number: 14, name: 'Report Generation', phase: 2 },
+    { number: 15, name: 'Landing Page Generation', phase: 2 },
   ],
+  TOTAL_STAGES: 16,
 }));
 
 // ============================================
@@ -104,10 +118,10 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
     worker_id: 'worker-1',
     job_id: JOB_ID,
     error_message: 'Landing page generation failed: template error',
-    error_stage: 11,
+    error_stage: 15,
   };
 
-  it('error_stage=11 + report asset exists → calls completeJob(), not failJob()', async () => {
+  it('error_stage=15 + report asset exists → calls completeJob(), not failJob()', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     const res = await request(app)
@@ -119,7 +133,7 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
     expect(mockFailJob).not.toHaveBeenCalled();
   });
 
-  it('error_stage=11 + report asset exists → does NOT trigger credit refund (failJob not called)', async () => {
+  it('error_stage=15 + report asset exists → does NOT trigger credit refund (failJob not called)', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     await request(app)
@@ -130,7 +144,7 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
     expect(mockFailJob).not.toHaveBeenCalled();
   });
 
-  it('error_stage=11 + report asset exists → marks stage 11 as FAILED via updateMany', async () => {
+  it('error_stage=15 + report asset exists → marks stage 15 as FAILED via updateMany', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     await request(app)
@@ -138,12 +152,12 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
       .send(baseLandingFailPayload);
 
     expect(mockUpdateMany).toHaveBeenCalledWith({
-      where: { jobId: JOB_ID, stageNumber: 11, status: 'RUNNING' },
+      where: { jobId: JOB_ID, stageNumber: 15, status: 'RUNNING' },
       data: { status: 'FAILED', errorMessage: baseLandingFailPayload.error_message },
     });
   });
 
-  it('error_stage=11 + report asset exists → sets landingPageStatus=FAILED on job', async () => {
+  it('error_stage=15 + report asset exists → sets landingPageStatus=FAILED on job', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     await request(app)
@@ -156,7 +170,7 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
     });
   });
 
-  it('error_stage=11 + report asset exists → broadcasts failure with name=Landing Page Generation', async () => {
+  it('error_stage=15 + report asset exists → broadcasts failure with name=Landing Page Generation', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     await request(app)
@@ -164,14 +178,14 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
       .send(baseLandingFailPayload);
 
     expect(mockBroadcastProgress).toHaveBeenCalledWith(JOB_ID, {
-      stage: 11,
+      stage: 15,
       name: 'Landing Page Generation',
       status: 'failed',
       error: baseLandingFailPayload.error_message,
     });
   });
 
-  it('error_stage=11 + NO report asset → falls through to normal failJob() path', async () => {
+  it('error_stage=15 + NO report asset → falls through to normal failJob() path', async () => {
     mockGetJobAsset.mockResolvedValue(null);
 
     const res = await request(app)
@@ -183,7 +197,7 @@ describe('POST /api/workers/job-failed — landing page isolation', () => {
     expect(mockCompleteJob).not.toHaveBeenCalled();
   });
 
-  it('error_stage=6 + report asset exists → still calls failJob() (not stage 11)', async () => {
+  it('error_stage=6 + report asset exists → still calls failJob() (not stage 15)', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     const payload = { ...baseLandingFailPayload, error_stage: 6 };
@@ -204,13 +218,13 @@ describe('POST /api/workers/progress — landing page isolation', () => {
   const baseProgressPayload = {
     worker_id: 'worker-1',
     job_id: JOB_ID,
-    stage: 11,
+    stage: 15,
     name: 'Landing Page Generation',
     status: 'failed' as const,
     error: 'Landing page template error',
   };
 
-  it('stage=11, status=failed + report asset exists → sets landingPageStatus=FAILED and completeJob()', async () => {
+  it('stage=15, status=failed + report asset exists → sets landingPageStatus=FAILED and completeJob()', async () => {
     mockGetJobAsset.mockResolvedValue(REPORT_ASSET);
 
     const res = await request(app)
@@ -231,7 +245,7 @@ describe('POST /api/workers/progress — landing page isolation', () => {
     expect(mockFailJob).not.toHaveBeenCalled();
   });
 
-  it('stage=11, status=failed + NO report asset → calls failJob() normally', async () => {
+  it('stage=15, status=failed + NO report asset → calls failJob() normally', async () => {
     mockGetJobAsset.mockResolvedValue(null);
     mockGetJob.mockResolvedValue({ userId: 'user-1', niche: 'test' });
     mockUserFindUnique.mockResolvedValue(null);
@@ -241,15 +255,15 @@ describe('POST /api/workers/progress — landing page isolation', () => {
       .send(baseProgressPayload);
 
     expect(res.status).toBe(200);
-    expect(mockFailJob).toHaveBeenCalledWith(JOB_ID, baseProgressPayload.error, 11);
+    expect(mockFailJob).toHaveBeenCalledWith(JOB_ID, baseProgressPayload.error, 15);
     expect(mockCompleteJob).not.toHaveBeenCalled();
   });
 
-  it('stage=11, status=running → sets landingPageStatus=RUNNING', async () => {
+  it('stage=15, status=running → sets landingPageStatus=RUNNING', async () => {
     const runningPayload = {
       worker_id: 'worker-1',
       job_id: JOB_ID,
-      stage: 11,
+      stage: 15,
       name: 'Landing Page Generation',
       status: 'running',
     };
@@ -267,11 +281,11 @@ describe('POST /api/workers/progress — landing page isolation', () => {
     );
   });
 
-  it('stage=11, status=completed + landing_path (no report_path) → adds landing asset, sets COMPLETED', async () => {
+  it('stage=15, status=completed + landing_path (no report_path) → adds landing asset, sets COMPLETED', async () => {
     const completedPayload = {
       worker_id: 'worker-1',
       job_id: JOB_ID,
-      stage: 11,
+      stage: 15,
       name: 'Landing Page Generation',
       status: 'completed',
       landing_path: 'outputs/job-1/landing.html',

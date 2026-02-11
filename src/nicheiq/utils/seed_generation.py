@@ -1,5 +1,5 @@
 """
-Seed generation utilities for Stage 8.8 keyword research.
+Seed generation utilities for keyword validation keyword research.
 
 Contains strategies for generating seed keywords for DataForSEO expansion.
 """
@@ -34,7 +34,7 @@ class SeedGenerator:
     """
     Generates seed keywords for DataForSEO expansion using multiple strategies.
 
-    Encapsulates all seed generation logic from Stage 8.8 of the research flow.
+    Encapsulates all seed generation logic from keyword validation of the research flow.
     """
 
     def __init__(
@@ -89,7 +89,7 @@ class SeedGenerator:
 
         # Method 1: KeywordSeedGenerator (context-aware with semantic validation)
         try:
-            logger.info(f"[Stage 8.8] Generating KeywordSeedGenerator seeds for {solution.solution_name}")
+            logger.info(f"[KW Validation] Generating KeywordSeedGenerator seeds for {solution.solution_name}")
             generator = KeywordSeedGenerator()
 
             # Try to get competitive analysis for this specific solution
@@ -115,34 +115,34 @@ class SeedGenerator:
                 generator_seeds = [kw.keyword for kw in result.keywords[:10]]
                 all_seeds.extend(generator_seeds)
                 logger.info(
-                    f"[Stage 8.8] KeywordSeedGenerator produced {len(generator_seeds)} seeds: "
+                    f"[KW Validation] KeywordSeedGenerator produced {len(generator_seeds)} seeds: "
                     f"{generator_seeds[:3]}..."
                 )
             else:
-                logger.warning("[Stage 8.8] KeywordSeedGenerator returned no results - will rely on LLM seeds")
+                logger.warning("[KW Validation] KeywordSeedGenerator returned no results - will rely on LLM seeds")
 
         except Exception as e:
             logger.warning(
-                f"[Stage 8.8] KeywordSeedGenerator failed: {str(e)} - "
+                f"[KW Validation] KeywordSeedGenerator failed: {str(e)} - "
                 f"falling back to LLM-only seeds"
             )
 
         # Method 2: LLM Creative Generation (diverse patterns)
         try:
-            logger.info(f"[Stage 8.8] Generating LLM creative seeds for {solution.solution_name}")
+            logger.info(f"[KW Validation] Generating LLM creative seeds for {solution.solution_name}")
             llm_seeds = self.generate_llm_seeds(solution, count=10)
 
             if llm_seeds:
                 all_seeds.extend(llm_seeds)
                 logger.info(
-                    f"[Stage 8.8] LLM creative generation produced {len(llm_seeds)} seeds: "
+                    f"[KW Validation] LLM creative generation produced {len(llm_seeds)} seeds: "
                     f"{llm_seeds[:3]}..."
                 )
             else:
-                logger.warning("[Stage 8.8] LLM seed generation returned no results")
+                logger.warning("[KW Validation] LLM seed generation returned no results")
 
         except Exception as e:
-            logger.error(f"[Stage 8.8] LLM seed generation failed: {str(e)}")
+            logger.error(f"[KW Validation] LLM seed generation failed: {str(e)}")
 
         # Combine and deduplicate
         unique_seeds = list(dict.fromkeys(all_seeds))
@@ -150,7 +150,7 @@ class SeedGenerator:
         # Handle fallback scenarios
         if not unique_seeds:
             logger.error(
-                f"[Stage 8.8] Both seed generation methods failed for {solution.solution_name} - "
+                f"[KW Validation] Both seed generation methods failed for {solution.solution_name} - "
                 f"using minimal fallback"
             )
             fallback = [
@@ -162,15 +162,15 @@ class SeedGenerator:
         # Truncate or pad to target count
         if len(unique_seeds) > count:
             unique_seeds = unique_seeds[:count]
-            logger.info(f"[Stage 8.8] Truncated to {count} unique seeds")
+            logger.info(f"[KW Validation] Truncated to {count} unique seeds")
         elif len(unique_seeds) < count:
             logger.info(
-                f"[Stage 8.8] Generated {len(unique_seeds)} unique seeds "
+                f"[KW Validation] Generated {len(unique_seeds)} unique seeds "
                 f"(target: {count}) - proceeding with available seeds"
             )
 
         logger.info(
-            f"[Stage 8.8] Hybrid seed generation complete: {len(unique_seeds)} unique seeds "
+            f"[KW Validation] Hybrid seed generation complete: {len(unique_seeds)} unique seeds "
             f"from {len(all_seeds)} total (including duplicates)"
         )
 
@@ -199,26 +199,26 @@ class SeedGenerator:
         Returns:
             List of seed keywords
         """
-        logger.info(f"[Stage 8.8] Generating seeds with strategy #{attempt}...")
+        logger.info(f"[KW Validation] Generating seeds with strategy #{attempt}...")
 
         if attempt == 1:
-            logger.debug("[Stage 8.8] Strategy: Hybrid (KeywordSeedGenerator + LLM)")
+            logger.debug("[KW Validation] Strategy: Hybrid (KeywordSeedGenerator + LLM)")
             return self.generate_hybrid_seeds(solution, count)
 
         elif attempt == 2:
-            logger.debug("[Stage 8.8] Strategy: Competitor alternatives")
+            logger.debug("[KW Validation] Strategy: Competitor alternatives")
             return self.generate_competitor_alternative_seeds(solution, count)
 
         elif attempt == 3:
-            logger.debug("[Stage 8.8] Strategy: Pain point problem queries")
+            logger.debug("[KW Validation] Strategy: Pain point problem queries")
             return self.generate_pain_point_seeds(solution, count)
 
         elif attempt == 4:
-            logger.debug("[Stage 8.8] Strategy: Broader category combinations")
+            logger.debug("[KW Validation] Strategy: Broader category combinations")
             return self.generate_category_broadening_seeds(solution, count)
 
         else:
-            logger.warning(f"[Stage 8.8] Unknown attempt {attempt}, defaulting to hybrid")
+            logger.warning(f"[KW Validation] Unknown attempt {attempt}, defaulting to hybrid")
             return self.generate_hybrid_seeds(solution, count)
 
     def generate_competitor_alternative_seeds(
@@ -489,11 +489,11 @@ class SeedGenerator:
             result = structured_llm.invoke(seed_prompt)
             seed_keywords = result.seeds
 
-            logger.info(f"[Stage 8.8] LLM generated {len(seed_keywords)} seeds for {solution.solution_name}")
+            logger.info(f"[KW Validation] LLM generated {len(seed_keywords)} seeds for {solution.solution_name}")
             return seed_keywords
 
         except Exception as e:
-            logger.error(f"[Stage 8.8] LLM seed generation failed: {str(e)}")
+            logger.error(f"[KW Validation] LLM seed generation failed: {str(e)}")
             return []
 
     def expand_seeds_quick(
@@ -791,7 +791,7 @@ class SeedGenerator:
             }
 
             logger.info(
-                f"[Stage 8.8] {solution_name} validation: "
+                f"[KW Validation] {solution_name} validation: "
                 f"{total_volume:,} total volume, {keyword_count}/{len(seeds)} valid keywords, "
                 f"demand score: {keyword_demand_score:.2f}"
             )
@@ -816,7 +816,7 @@ class SeedGenerator:
             }
 
         except Exception as e:
-            logger.error(f"[Stage 8.8] Validation error for {solution_name}: {str(e)}")
+            logger.error(f"[KW Validation] Validation error for {solution_name}: {str(e)}")
             return {
                 "solution_name": solution_name,
                 "validated_count": 0,

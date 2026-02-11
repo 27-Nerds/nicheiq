@@ -46,9 +46,16 @@ export interface SolutionPreview {
   novelty_score?: number | null;
   programmatic_seo_opportunity?: string | null;
   estimated_cac_organic?: string | null;
+  estimated_cac_paid?: string | null;
   organic_discovery_queries?: string[] | null;
   validation?: SolutionValidationData | null;
   adjusted_composite_score?: number | null;
+  solo_dev_feasibility?: number | null;
+  pricing_strategy?: string | null;
+  estimated_development_time?: string | null;
+  why_it_works?: string | null;
+  innovation_angle?: string | null;
+  conventional_approach?: string | null;
 }
 
 export interface ErrorDetails {

@@ -28,7 +28,7 @@ def find_solution_by_name(
     Handles cases where LLM returns shortened names (e.g., "PaperPath" instead of
     "PaperPath (Global Paperwork Aggregator)").
 
-    Used by: Stage 9 (SEO), Stage 9.5 (SEO refinement), Stage 10 (Report generation).
+    Used by: Stage 6 (SEO), Stage 12 (SEO refinement), Stage 10 (Report generation).
 
     Args:
         solution_name: Name to search for (may be shortened)

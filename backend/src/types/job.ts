@@ -49,24 +49,24 @@ export type CompletionEvent = z.infer<typeof CompletionEventSchema>;
 // Must match worker/progress.py STAGE_NAMES and research_flow.py stage methods
 export const PIPELINE_STAGES = [
   { number: 1, name: 'Niche Validation', phase: 1 },
-  { number: 5, name: 'Search & Discovery', phase: 1 },
-  { number: 6, name: 'Pain Point Analysis', phase: 1 },
-  { number: 6.5, name: 'Audience Mapping', phase: 1 },
-  { number: 7, name: 'Solution Pipeline', phase: 1 },
-  { number: 8, name: 'Pricing Validation', phase: 'validation' as const },
-  { number: 8.5, name: 'Keyword Validation', phase: 'validation' as const },
-  { number: 8.55, name: 'Traffic Monetization', phase: 2 },
-  { number: 8.6, name: 'Market Sizing', phase: 2 },
-  { number: 8.7, name: 'Solution Refinement', phase: 2 },
-  { number: 9, name: 'SEO Strategy', phase: 2 },
-  { number: 9.5, name: 'Trend Analysis', phase: 2 },
-  { number: 9.6, name: 'SEO Score Refinement', phase: 2 },
-  { number: 9.7, name: 'Data Source Research', phase: 2 },
-  { number: 10, name: 'Report Generation', phase: 2 },
-  { number: 11, name: 'Landing Page Generation', phase: 2 },
+  { number: 2, name: 'Search & Discovery', phase: 1 },
+  { number: 3, name: 'Pain Point Analysis', phase: 1 },
+  { number: 4, name: 'Audience Mapping', phase: 1 },
+  { number: 5, name: 'Solution Pipeline', phase: 1 },
+  { number: 5.5, name: 'Competitive Analysis', phase: 2 },
+  { number: 6, name: 'SEO & Keyword Strategy', phase: 2 },
+  { number: 7, name: 'Pricing Validation', phase: 2 },
+  { number: 8, name: 'Traffic Monetization', phase: 2 },
+  { number: 9, name: 'Market Sizing', phase: 2 },
+  { number: 10, name: 'Solution Refinement', phase: 2 },
+  { number: 11, name: 'Trend Analysis', phase: 2 },
+  { number: 12, name: 'SEO Score Refinement', phase: 2 },
+  { number: 13, name: 'Data Source Research', phase: 2 },
+  { number: 14, name: 'Report Generation', phase: 2 },
+  { number: 15, name: 'Landing Page Generation', phase: 2 },
 ] as const;
 
-export const TOTAL_STAGES = PIPELINE_STAGES.length;
+export const TOTAL_STAGES = 16;
 
 // Interactive job flow schemas
 export const SelectSolutionSchema = z.object({

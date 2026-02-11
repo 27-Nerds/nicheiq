@@ -1,5 +1,5 @@
 """
-Trend Longevity Analysis Crew (Stage 9.2).
+Trend Longevity Analysis Crew (Stage 11).
 
 Analyzes keyword trends, discussion momentum, and competitive activity to assess
 market timing, trend sustainability, and longevity. Determines if the market is
@@ -29,7 +29,7 @@ from ..utils.trend_scoring import compute_deterministic_signals, compute_timing
 @CrewBase
 class TrendLongevityCrew:
     """
-    Crew for trend longevity and market momentum analysis in Stage 9.2.
+    Crew for trend longevity and market momentum analysis in Stage 11.
 
     Analyzes:
     - Keyword search volume trends over time
@@ -117,19 +117,19 @@ class TrendLongevityCrew:
         into the unchanged TrendLongevityResult.
 
         Args:
-            keyword_validation: Keyword validation data from Stage 8.5
+            keyword_validation: Keyword validation data from keyword validation
             social_content: Social media discussions from Stage 5
             pain_point_analysis: Pain point data from Stage 6
             competitive_analysis: Competitive landscape from Stage 7-8.75
             niche_description: Niche description for context
-            enriched_keywords_trends: Aggregated trend data from Stage 9.5c
+            enriched_keywords_trends: Aggregated trend data from Phase 6c
             top_enriched_keywords: Top 20 keywords with 12-month monthly_searches
 
         Returns:
             TrendLongevityResult with trend analysis and timing recommendation,
             or None if analysis fails
         """
-        logger.info("[Stage 9.5] Starting Trend Longevity Analysis...")
+        logger.info("[Stage 11] Starting Trend Longevity Analysis...")
         logger.info(f"  Niche: {niche_description}")
 
         # 1. Pre-compute deterministic signals
@@ -187,7 +187,7 @@ class TrendLongevityCrew:
             result = crew_instance.kickoff(inputs=inputs)
 
             if not result or not result.pydantic:
-                logger.error("[Stage 9.2] Trend analysis failed - no Pydantic output")
+                logger.error("[Stage 11] Trend analysis failed - no Pydantic output")
                 return None
 
             narrative: TrendNarrativeOutput = result.pydantic
@@ -235,7 +235,7 @@ class TrendLongevityCrew:
                 trend_reversal_risks=narrative.trend_reversal_risks,
             )
 
-            logger.info("[Stage 9.2] Trend Longevity Analysis Complete")
+            logger.info("[Stage 11] Trend Longevity Analysis Complete")
             logger.info(f"  Trend Direction: {trend_result.trend_direction}")
             logger.info(f"  Momentum Score: {trend_result.momentum_score:.2f}")
             logger.info(f"  Longevity Verdict: {trend_result.longevity_verdict}")
@@ -243,7 +243,7 @@ class TrendLongevityCrew:
             return trend_result
 
         except Exception as e:
-            logger.error(f"[Stage 9.2] Trend analysis error: {str(e)}")
+            logger.error(f"[Stage 11] Trend analysis error: {str(e)}")
             return None
 
     # ── Formatting helpers (unchanged) ──────────────────────────────

@@ -1,5 +1,5 @@
 """
-Solution Selection Model - Stage 8.5
+Solution Selection Model - Stage 5
 
 Captures the selected solution and selection rationale after competitive analysis.
 This model represents the strategic decision of which solution to focus on for
@@ -33,13 +33,13 @@ class SolutionScores(BaseModel):
     composite_score: float = Field(..., ge=0.0, le=1.0, description="Weighted composite score")
     rank: int = Field(..., description="Rank among all solutions (1 = best)")
 
-    # Stage 8.8: Keyword Validation Fields
+    # keyword validation: Keyword Validation Fields
     keyword_demand_score: Optional[float] = Field(
         default=None,
         ge=0.0,
         le=1.0,
         description=(
-            "Keyword demand score from Stage 8.8 validation (0-1). "
+            "Keyword demand score from keyword validation validation (0-1). "
             "Formula: (0.60 × volume_score) + (0.40 × opportunity_score). "
             "0.80-1.0: Exceptional, 0.65-0.79: Strong, 0.50-0.64: Moderate, <0.50: Weak"
         )
@@ -52,13 +52,13 @@ class SolutionScores(BaseModel):
         description=(
             "Adjusted composite score after keyword validation. "
             "Formula: composite_score × keyword_demand_score. "
-            "Used for final re-ranking in Stage 8.8."
+            "Used for final re-ranking in keyword validation."
         )
     )
 
 class SolutionSelection(BaseModel):
     """
-    Results of solution selection process (Stage 8.5).
+    Results of solution selection process (Stage 5).
 
     After analyzing all solution ideas through competitive research,
     this model identifies which single solution to focus on for

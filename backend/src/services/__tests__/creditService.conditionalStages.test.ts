@@ -72,8 +72,8 @@ beforeEach(() => {
 // ============================================
 // Tests
 // ============================================
-describe('createJobWithCreditDeduction — conditional stage 11', () => {
-  it('generateLandingPage=true → creates 16 progress entries (includes stage 11)', async () => {
+describe('createJobWithCreditDeduction — conditional stage 15', () => {
+  it('generateLandingPage=true → creates 16 progress entries (includes stage 15)', async () => {
     const { createJobWithCreditDeduction } = await import('../creditService.js');
 
     await createJobWithCreditDeduction(USER_ID, 'test niche', 1, undefined, true);
@@ -81,14 +81,14 @@ describe('createJobWithCreditDeduction — conditional stage 11', () => {
     const jobCreateCall = mockJobCreate.mock.calls[0][0];
     const progressEntries = jobCreateCall.data.progress.create;
 
-    // Should include stage 11
+    // Should include stage 15
     const stageNumbers = progressEntries.map((p: any) => p.stageNumber);
-    expect(stageNumbers).toContain(11);
+    expect(stageNumbers).toContain(15);
     expect(progressEntries).toHaveLength(16);
     expect(jobCreateCall.data.totalStages).toBe(16);
   });
 
-  it('generateLandingPage=false → creates 15 progress entries (no stage 11)', async () => {
+  it('generateLandingPage=false → creates 15 progress entries (no stage 15)', async () => {
     const { createJobWithCreditDeduction } = await import('../creditService.js');
 
     await createJobWithCreditDeduction(USER_ID, 'test niche', 1, undefined, false);
@@ -96,9 +96,9 @@ describe('createJobWithCreditDeduction — conditional stage 11', () => {
     const jobCreateCall = mockJobCreate.mock.calls[0][0];
     const progressEntries = jobCreateCall.data.progress.create;
 
-    // Should NOT include stage 11
+    // Should NOT include stage 15
     const stageNumbers = progressEntries.map((p: any) => p.stageNumber);
-    expect(stageNumbers).not.toContain(11);
+    expect(stageNumbers).not.toContain(15);
     expect(progressEntries).toHaveLength(15);
     expect(jobCreateCall.data.totalStages).toBe(15);
   });
@@ -112,25 +112,25 @@ describe('createJobWithCreditDeduction — conditional stage 11', () => {
     const progressEntries = jobCreateCall.data.progress.create;
 
     const stageNumbers = progressEntries.map((p: any) => p.stageNumber);
-    expect(stageNumbers).not.toContain(11);
+    expect(stageNumbers).not.toContain(15);
     expect(progressEntries).toHaveLength(15);
     expect(jobCreateCall.data.totalStages).toBe(15);
   });
 
-  it('job.create progress array contains stageNumber: 11 only when landing page enabled', async () => {
+  it('job.create progress array contains stageNumber: 15 only when landing page enabled', async () => {
     const { createJobWithCreditDeduction } = await import('../creditService.js');
 
     // With landing page
     await createJobWithCreditDeduction(USER_ID, 'niche with landing', 1, undefined, true);
     const withLanding = mockJobCreate.mock.calls[0][0].data.progress.create;
-    expect(withLanding.some((p: any) => p.stageNumber === 11)).toBe(true);
+    expect(withLanding.some((p: any) => p.stageNumber === 15)).toBe(true);
 
     mockJobCreate.mockClear();
 
     // Without landing page
     await createJobWithCreditDeduction(USER_ID, 'niche without landing', 1, undefined, false);
     const withoutLanding = mockJobCreate.mock.calls[0][0].data.progress.create;
-    expect(withoutLanding.some((p: any) => p.stageNumber === 11)).toBe(false);
+    expect(withoutLanding.some((p: any) => p.stageNumber === 15)).toBe(false);
   });
 
   it('generateLandingPage sets the generateLandingPage flag on job data', async () => {

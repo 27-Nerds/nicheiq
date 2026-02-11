@@ -123,7 +123,7 @@ export async function createJobWithCreditDeduction(
     const wantLanding = generateLandingPage === true;
     const stages = wantLanding
       ? PIPELINE_STAGES
-      : PIPELINE_STAGES.filter(s => s.number !== 11);
+      : PIPELINE_STAGES.filter(s => s.number !== 15);
 
     const job = await tx.job.create({
       data: {

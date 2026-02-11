@@ -215,10 +215,10 @@ class KeywordValidationResult(BaseModel):
         ..., description="Overall market size assessment"
     )
 
-# Stage 8.8 - Quick Keyword Validation Models
+# keyword validation - Quick Keyword Validation Models
 
 class KeywordSeedResult(BaseModel):
-    """LLM-generated seed keywords for quick validation (Stage 8.8)."""
+    """LLM-generated seed keywords for quick validation (keyword validation)."""
 
     model_config = ConfigDict(extra='forbid')
 
@@ -230,7 +230,7 @@ class KeywordSeedResult(BaseModel):
     )
 
 class KeywordValidationSummary(BaseModel):
-    """Quick validation results for a single solution (Stage 8.8)."""
+    """Quick validation results for a single solution (keyword validation)."""
 
     model_config = ConfigDict(
         extra='forbid',
@@ -298,7 +298,7 @@ class KeywordValidationSummary(BaseModel):
         )
     )
 
-# Stage 8.8 - CrewAI Agent-Based Validation Models
+# keyword validation - CrewAI Agent-Based Validation Models
 
 class EnrichedKeyword(BaseModel):
     """Keyword with metrics from DataForSEO expansion."""
@@ -328,7 +328,7 @@ class CrewKeywordValidationResult(BaseModel):
     """
     Final keyword validation result from KeywordValidationCrew.
 
-    IMPORTANT: This model MUST maintain backward compatibility with Stage 8.85.
+    IMPORTANT: This model MUST maintain backward compatibility with Stage 10.
     Use model_dump() to convert to dict format expected by solution refinement logic.
 
     Note: No custom to_dict() needed - Pydantic's model_dump() handles serialization.
@@ -386,11 +386,11 @@ class CrewKeywordValidationResult(BaseModel):
     )
     top_keywords: list[dict] = Field(
         default_factory=list,
-        description="Top keywords with metrics (for Stage 8.85 compatibility)"
+        description="Top keywords with metrics (for Stage 10 compatibility)"
     )
     top_geographic_keywords: list[str] = Field(
         default_factory=list,
-        description="Geographic keywords (for Stage 8.85 compatibility)"
+        description="Geographic keywords (for Stage 10 compatibility)"
     )
     demand_signal: str = Field(
         ...,
@@ -398,7 +398,7 @@ class CrewKeywordValidationResult(BaseModel):
     )
     validation_signals: dict = Field(
         ...,
-        description="Binary validation flags for Stage 8.85"
+        description="Binary validation flags for Stage 10"
     )
 
     # New fields specific to crew-based approach
@@ -420,13 +420,13 @@ class CrewKeywordValidationResult(BaseModel):
     validated_keywords: Optional[list[dict]] = Field(
         default=None,
         description=(
-            "Full list of semantically-validated keywords from Stage 8.5 "
+            "Full list of semantically-validated keywords from keyword validation "
             "(dicts with 'keyword', 'search_volume', 'competition_index', 'keyword_difficulty'). "
             "Used as anchor seeds for Stage 9 deep SEO. None for legacy data."
         )
     )
 
-    # Difficulty-adjusted scoring fields (populated after batched difficulty enrichment in Stage 8.5)
+    # Difficulty-adjusted scoring fields (populated after batched difficulty enrichment in keyword validation)
     avg_keyword_difficulty: Optional[float] = Field(
         default=None,
         ge=0.0,

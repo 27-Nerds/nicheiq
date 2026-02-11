@@ -1,5 +1,5 @@
 """
-Pydantic models for data source research (Stage 9.5).
+Pydantic models for data source research (Stage 13).
 """
 
 from typing import Optional

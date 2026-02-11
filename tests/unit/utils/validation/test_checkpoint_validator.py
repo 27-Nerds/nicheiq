@@ -34,9 +34,9 @@ class TestCheckpointValidatorInit:
         ]
 
     def test_valid_stage_range_constant(self):
-        """Should define valid stage range (1-10)."""
+        """Should define valid stage range (1-14)."""
         validator = CheckpointValidator()
-        assert validator.VALID_STAGE_RANGE == (1, 10)
+        assert validator.VALID_STAGE_RANGE == (1, 14)
 
 
 class TestMetadataValidation:
@@ -128,12 +128,12 @@ class TestMetadataValidation:
         assert result is False
 
     def test_current_stage_accepts_float(self):
-        """Should accept float current_stage (for sub-stages like 8.5)."""
+        """Should accept float current_stage (for sub-stages like 5.5)."""
         validator = CheckpointValidator()
         metadata = {
             "niche_description": "Test niche",
             "started_at": "2025-01-15T10:30:00",
-            "current_stage": 8.5  # Decimal sub-stage
+            "current_stage": 5.5  # Decimal sub-stage
         }
         result = validator.validate_metadata(metadata)
         assert result is True
@@ -163,9 +163,9 @@ class TestMetadataValidation:
         assert result is False
 
     # Stage range validation tests
-    @pytest.mark.parametrize("stage", [1, 2, 5, 8, 10])
+    @pytest.mark.parametrize("stage", [1, 2, 5, 8, 14])
     def test_valid_stage_range_passes(self, stage):
-        """Should accept current_stage within valid range (1-10)."""
+        """Should accept current_stage within valid range (1-14)."""
         validator = CheckpointValidator()
         metadata = {
             "niche_description": "Test niche",
@@ -175,9 +175,9 @@ class TestMetadataValidation:
         result = validator.validate_metadata(metadata)
         assert result is True
 
-    @pytest.mark.parametrize("stage", [0, -1, 11, 99, 100])
+    @pytest.mark.parametrize("stage", [0, -1, 15, 99, 100])
     def test_invalid_stage_range_fails(self, stage):
-        """Should reject current_stage outside valid range (1-10)."""
+        """Should reject current_stage outside valid range (1-14)."""
         validator = CheckpointValidator()
         metadata = {
             "niche_description": "Test niche",
@@ -187,9 +187,9 @@ class TestMetadataValidation:
         result = validator.validate_metadata(metadata)
         assert result is False
 
-    @pytest.mark.parametrize("stage", [8.5, 8.75, 9.5, 9.75])
+    @pytest.mark.parametrize("stage", [5.5, 5.7, 6.5, 13.5])
     def test_decimal_substages_pass(self, stage):
-        """Should accept decimal sub-stages (8.5, 8.75, 9.5, 9.75)."""
+        """Should accept decimal sub-stages (5.5, 5.7, 6.5, 13.5)."""
         validator = CheckpointValidator()
         metadata = {
             "niche_description": "Test niche",
@@ -206,7 +206,7 @@ class TestStageFileValidation:
     def test_valid_stage_file_dict_passes(self, checkpoint_temp_dir, valid_stage_data_dict):
         """Should accept valid stage file with dict data."""
         validator = CheckpointValidator()
-        stage_file = checkpoint_temp_dir / "stage_6_pain_points.json"
+        stage_file = checkpoint_temp_dir / "stage_3_pain_points.json"
         with open(stage_file, "w", encoding="utf-8") as f:
             json.dump(valid_stage_data_dict, f)
 
@@ -216,7 +216,7 @@ class TestStageFileValidation:
     def test_valid_stage_file_list_passes(self, checkpoint_temp_dir, valid_stage_data_list):
         """Should accept valid stage file with list data."""
         validator = CheckpointValidator()
-        stage_file = checkpoint_temp_dir / "stage_9_keywords.json"
+        stage_file = checkpoint_temp_dir / "stage_6_keywords.json"
         with open(stage_file, "w", encoding="utf-8") as f:
             json.dump(valid_stage_data_list, f)
 
@@ -440,11 +440,11 @@ class TestEdgeCasesAndErrorHandling:
         }
         assert validator.validate_metadata(metadata_min) is True
 
-        # Max boundary (10)
+        # Max boundary (14)
         metadata_max = {
             "niche_description": "Test",
             "started_at": "2025-01-15T10:30:00",
-            "current_stage": 10
+            "current_stage": 14
         }
         assert validator.validate_metadata(metadata_max) is True
 
@@ -456,10 +456,10 @@ class TestEdgeCasesAndErrorHandling:
         }
         assert validator.validate_metadata(metadata_below) is False
 
-        # Just above max (10.01)
+        # Just above max (14.01)
         metadata_above = {
             "niche_description": "Test",
             "started_at": "2025-01-15T10:30:00",
-            "current_stage": 10.01
+            "current_stage": 14.01
         }
         assert validator.validate_metadata(metadata_above) is False

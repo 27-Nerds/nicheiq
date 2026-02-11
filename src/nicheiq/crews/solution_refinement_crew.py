@@ -1,5 +1,5 @@
 """
-SolutionRefinementCrew - Stage 8.85: Solution Refinement Based on Keyword Insights
+SolutionRefinementCrew - Stage 10: Solution Refinement Based on Keyword Insights
 Single-agent crew for strategic refinement of selected solution using keyword validation data.
 """
 
@@ -92,9 +92,9 @@ class SolutionRefinementCrew:
         Execute refinement crew to generate strategic recommendations.
 
         Args:
-            selected_solution: The selected solution from Stage 8.75/8.8
+            selected_solution: The selected solution from Stage 5 / keyword validation
             keyword_validation: Validation results with validated_count, total_volume, etc.
-            composite_score: Original composite score from Stage 8.75
+            composite_score: Original composite score from Stage 5
             allowed_project_types: Optional project type constraints from user
 
         Returns:
@@ -109,7 +109,7 @@ class SolutionRefinementCrew:
             )
             return None
 
-        logger.info(f"[Stage 8.85] Refining strategy for: {selected_solution.solution_name}")
+        logger.info(f"[Stage 10] Refining strategy for: {selected_solution.solution_name}")
 
         # Prepare inputs for the refinement task
         top_keywords_str = ", ".join([
@@ -144,7 +144,7 @@ class SolutionRefinementCrew:
 
             if result and result.pydantic:
                 logger.info(
-                    f"[Stage 8.85] Refinement completed:\n"
+                    f"[Stage 10] Refinement completed:\n"
                     f"  - Geographic priorities: {', '.join(result.pydantic.geographic_priorities[:3])}\n"
                     f"  - Category pivot: {result.pydantic.category_pivot_recommendation or 'None'}\n"
                     f"  - Feature priorities: {len(result.pydantic.feature_priorities)} recommendations\n"
@@ -152,11 +152,11 @@ class SolutionRefinementCrew:
                 )
                 return result.pydantic
             else:
-                logger.error("[Stage 8.85] Refinement failed - no Pydantic output")
+                logger.error("[Stage 10] Refinement failed - no Pydantic output")
                 return None
 
         except Exception as e:
-            logger.error(f"[Stage 8.85] Refinement error: {str(e)}")
+            logger.error(f"[Stage 10] Refinement error: {str(e)}")
             return None
 
     @property

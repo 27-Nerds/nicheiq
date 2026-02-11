@@ -130,14 +130,14 @@ class ReportConsistencyValidator:
                     actual_value=str(report.seo_analytics.total_keywords),
                 ))
 
-            # Search volume: KeyMetrics uses niche-relevant volume (Stage 8.5 filtered),
+            # Search volume: KeyMetrics uses niche-relevant volume (keyword validation filtered),
             # SEOAnalytics.core_search_volume uses Tier 0-2 volume (niche-targeted keywords).
             # Compare against core volume (Tier 0-2) instead of total (Tier 0-4) to avoid
             # false positives from broad Tier 3-4 expansion keywords inflating the denominator.
             core_vol = getattr(report.seo_analytics, 'core_search_volume', None) or report.seo_analytics.total_search_volume
             km_vol = km.total_keyword_search_volume
             if core_vol > 0 and km_vol > core_vol:
-                # Filtered > core = data corruption or stale Stage 8.5 data
+                # Filtered > core = data corruption or stale keyword validation data
                 ratio = km_vol / core_vol
                 warnings.append(ConsistencyWarning(
                     field_path="seo_analytics.core_search_volume",
@@ -166,14 +166,14 @@ class ReportConsistencyValidator:
                     actual_value=str(core_vol),
                 ))
             elif km_vol != core_vol:
-                # Expected: KeyMetrics = Stage 8.5 filtered, core = Stage 9 Tier 0-2
+                # Expected: KeyMetrics = keyword validation filtered, core = Stage 6 Tier 0-2
                 warnings.append(ConsistencyWarning(
                     field_path="seo_analytics.core_search_volume",
                     severity="INFO",
                     message=(
                         f"Search volume difference (expected): dashboard shows niche-relevant "
                         f"volume {km_vol:,}, Tier 0-2 core volume is {core_vol:,}. "
-                        f"KeyMetrics uses Stage 8.5 filtered volume; core uses Stage 9 Tier 0-2."
+                        f"KeyMetrics uses keyword validation filtered volume; core uses Stage 6 Tier 0-2."
                     ),
                     expected_value=str(km_vol),
                     actual_value=str(core_vol),
@@ -224,7 +224,7 @@ class ReportConsistencyValidator:
         return warnings
 
     # ------------------------------------------------------------------
-    # Check: Market timing (Stage 8.6) vs trend direction (Stage 9.5)
+    # Check: Market timing (Stage 9) vs trend direction (Stage 11)
     # ------------------------------------------------------------------
 
     def _check_market_timing_vs_trend(self, report, state=None) -> list[ConsistencyWarning]:
@@ -251,9 +251,9 @@ class ReportConsistencyValidator:
                 field_path="market_sizing.market_timing_assessment",
                 severity="WARNING",
                 message=(
-                    f"Market timing contradiction: Stage 8.6 assessed market as '{timing}' "
-                    f"but Stage 9.5 trend analysis shows '{trend_dir}' direction. "
-                    f"Stage 8.6 uses snapshot data; Stage 9.5 uses 12-month historical trends."
+                    f"Market timing contradiction: Stage 9 assessed market as '{timing}' "
+                    f"but Stage 11 trend analysis shows '{trend_dir}' direction. "
+                    f"Stage 9 uses snapshot data; Stage 11 uses 12-month historical trends."
                 ),
                 expected_value=trend_dir,
                 actual_value=timing,
@@ -265,8 +265,8 @@ class ReportConsistencyValidator:
                 field_path="market_sizing.market_timing_assessment",
                 severity="WARNING",
                 message=(
-                    f"Market maturity concern: Stage 8.6 assessed market as '{timing}' "
-                    f"and Stage 9.5 confirms '{trend_dir}' direction. "
+                    f"Market maturity concern: Stage 9 assessed market as '{timing}' "
+                    f"and Stage 11 confirms '{trend_dir}' direction. "
                     f"This combination suggests a contracting market."
                 ),
                 expected_value=trend_dir,
@@ -543,7 +543,7 @@ class ReportConsistencyValidator:
 
             # Search volume: intentionally NOT reconciled.
             # KeyMetrics uses niche-relevant (filtered) volume.
-            # SEOAnalytics uses full Stage 9 volume for content strategy.
+            # SEOAnalytics uses full Stage 6 volume for content strategy.
 
         # Competitor count
         if report.competitive_analytics and km:
@@ -581,7 +581,7 @@ class ReportConsistencyValidator:
     def _reconcile_market_timing_vs_trend(self, report, state=None) -> list[str]:
         """Reconcile market_timing_assessment when it contradicts trend_direction.
 
-        If Stage 8.6 assessed "Growth" but Stage 9.5 shows "Declining",
+        If Stage 9 assessed "Growth" but Stage 11 shows "Declining",
         downgrade market_timing_assessment to "Mature" and nullify
         market_growth_rate (which was based on the now-contradicted snapshot).
         """
@@ -607,7 +607,7 @@ class ReportConsistencyValidator:
             report.market_sizing.market_timing_assessment = "Mature"
             fixes.append(
                 "market_sizing.market_timing_assessment: 'Growth' → 'Mature' "
-                "(contradicted by Stage 9.5 trend_direction='Declining')"
+                "(contradicted by Stage 11 trend_direction='Declining')"
             )
 
             # Rule 2: Nullify growth rate since it was based on contradicted snapshot

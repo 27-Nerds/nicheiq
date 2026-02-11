@@ -137,8 +137,8 @@ def _cached_validation(
 ## Next Steps
 
 ### Medium Effort Optimizations (Pending)
-- Parallel DataForSEO batch requests (Stage 9.5b)
-- Parallel solution validation (Stage 8.8)
+- Parallel DataForSEO batch requests (Phase 6b)
+- Parallel solution validation (keyword validation)
 - Persistent Serper search cache
 
 ### Future Optimizations (Phase 4+)

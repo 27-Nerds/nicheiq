@@ -1,7 +1,7 @@
 """
 Keyword filtering and relevance validation utilities.
 
-Used for Stage 8.8 keyword quality checks.
+Used for keyword validation keyword quality checks.
 """
 
 import re
@@ -57,11 +57,11 @@ def filter_single_word_keywords(
         examples_str = ", ".join(f"'{kw}'" for kw in examples)
 
         logger.info(
-            f"[Stage 8.8] {label}: Filtered {removed_count} single-word keywords "
+            f"[KW Validation] {label}: Filtered {removed_count} single-word keywords "
             f"(kept {filtered_count} multi-word). Examples removed: {examples_str}"
         )
     else:
-        logger.debug(f"[Stage 8.8] {label}: No single-word keywords to filter")
+        logger.debug(f"[KW Validation] {label}: No single-word keywords to filter")
 
     return filtered
 

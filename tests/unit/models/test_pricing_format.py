@@ -100,3 +100,38 @@ class TestFormatSummary:
         )
         result = pricing.format_summary()
         assert result == "Usage-Based"
+
+
+class TestFreemiumLiteFormatSummary:
+    """Freemium-Lite is a 2-tier model (Free + Pro), so starter is never shown."""
+
+    def test_both_prices_shows_only_pro(self):
+        """When both starter and pro prices exist, only pro is displayed."""
+        pricing = _make_pricing(
+            pricing_model="Freemium-Lite",
+            recommended_starter_price="$29/mo",
+            recommended_pro_price="$49/mo",
+        )
+        result = pricing.format_summary()
+        assert result == "Freemium-Lite: $49/mo pro"
+        assert "starter" not in result
+
+    def test_only_starter_falls_back_as_pro(self):
+        """When only starter price exists, it's used as the pro display price."""
+        pricing = _make_pricing(
+            pricing_model="Freemium-Lite",
+            recommended_starter_price="$29/mo",
+            recommended_pro_price=None,
+        )
+        result = pricing.format_summary()
+        assert result == "Freemium-Lite: $29/mo pro"
+
+    def test_no_prices_shows_model_only(self):
+        """When no prices are set, only the model name is returned."""
+        pricing = _make_pricing(
+            pricing_model="Freemium-Lite",
+            recommended_starter_price=None,
+            recommended_pro_price=None,
+        )
+        result = pricing.format_summary()
+        assert result == "Freemium-Lite"

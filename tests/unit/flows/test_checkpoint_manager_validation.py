@@ -137,7 +137,7 @@ class TestCheckpointManagerValidatorIntegration:
             json.dump(metadata, f)
 
         # Create corrupted stage file (empty)
-        corrupted_file = checkpoint_folder / "stage_5_social_content.json"
+        corrupted_file = checkpoint_folder / "stage_2_social_content.json"
         corrupted_file.touch()
 
         with patch("nicheiq.flows.checkpoint_manager.settings") as mock_settings:
@@ -293,7 +293,7 @@ class TestCheckpointManagerEndToEnd:
             "niche_description": niche,
             "started_at": "2025-01-15T10:30:00",
             "current_stage": 6,
-            "completed_stages": ["stage_5_social_content", "stage_6_pain_points"],
+            "completed_stages": ["stage_2_social_content", "stage_3_pain_points"],
             "errors": []
         }
         metadata_file = checkpoint_folder / "metadata.json"
@@ -302,7 +302,7 @@ class TestCheckpointManagerEndToEnd:
 
         # Create valid stage files
         stage_data = {"test": "data"}
-        stage_files = ["stage_5_social_content.json", "stage_6_pain_points.json"]
+        stage_files = ["stage_2_social_content.json", "stage_3_pain_points.json"]
         for filename in stage_files:
             stage_file = checkpoint_folder / filename
             with open(stage_file, "w") as f:
@@ -333,7 +333,7 @@ class TestCheckpointManagerEndToEnd:
             "niche_description": niche,
             "started_at": "2025-01-15T10:30:00",
             "current_stage": 6,
-            "completed_stages": ["stage_5_social_content", "stage_6_pain_points"],
+            "completed_stages": ["stage_2_social_content", "stage_3_pain_points"],
             "errors": []
         }
         metadata_file = checkpoint_folder / "metadata.json"
@@ -341,7 +341,7 @@ class TestCheckpointManagerEndToEnd:
             json.dump(metadata, f)
 
         # Only create one stage file (other is missing)
-        stage_file = checkpoint_folder / "stage_5_social_content.json"
+        stage_file = checkpoint_folder / "stage_2_social_content.json"
         with open(stage_file, "w") as f:
             json.dump({"test": "data"}, f)
 

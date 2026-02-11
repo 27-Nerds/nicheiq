@@ -13,6 +13,7 @@
     Scale,
     BarChart3,
     FileText,
+    Database,
   } from "lucide-svelte";
   import type { PricingStrategy, TrafficMonetization } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
@@ -25,6 +26,8 @@
   import InsightCard from "$lib/components/ui/InsightCard.svelte";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
   import SectionLabel from "$lib/components/ui/SectionLabel.svelte";
+  import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
+  import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
 
   interface Props {
@@ -479,59 +482,99 @@
   {/if}
 
   <!-- ═══════════════════════════════════════════════════════════════════
-	     TRAFFIC-BASED REVENUE SECTION (optional)
+	     REVENUE SCALING ROADMAP (optional)
 	     ═══════════════════════════════════════════════════════════════════ -->
 
   {#if trafficData}
     <div class="section-divider my-8"></div>
 
-    <SubsectionHeader title="Traffic-Based Revenue">
+    <SubsectionHeader title="Revenue Scaling Roadmap">
       <Badge variant="accent">{trafficData.monetization_model}</Badge>
     </SubsectionHeader>
 
-    <!-- Revenue Overview Cards -->
-    <AnimateOnScroll animation="fade-up">
-      <div class="grid md:grid-cols-3 gap-4 mb-8">
-        <!-- Monthly Revenue Range -->
-        <div class="card bento-accent">
+    <!-- 1. HERO ANCHOR — at-scale revenue potential -->
+    {#if trafficData.revenue_milestones?.length}
+      {@const lastMilestone = trafficData.revenue_milestones[trafficData.revenue_milestones.length - 1]}
+      <AnimateOnScroll animation="fade-up">
+        <div class="card bento-accent mb-6">
           <div class="flex items-center gap-2 mb-2">
-            <TrendingUp class="w-4 h-4 text-accent" />
-            <span class="text-xs text-text-muted uppercase tracking-wider"
-              >Monthly Revenue</span
-            >
+            <TrendingUp class="w-5 h-5 text-accent" />
+            <span class="text-xs uppercase tracking-wider text-text-muted">Revenue Potential at Scale</span>
           </div>
-          <div class="text-2xl font-bold text-accent">
-            {trafficData.estimated_monthly_revenue_range}
-          </div>
+          <div class="text-3xl font-bold text-accent">{lastMilestone.total_potential}</div>
+          <p class="text-sm text-text-muted mt-2">
+            Starting from {trafficData.estimated_monthly_revenue_range}/mo with organic growth alone.
+            These projections assume basic ad networks only — premium networks and diversified revenue add 2-4x.
+          </p>
         </div>
+      </AnimateOnScroll>
+    {/if}
 
-        <!-- Annual Revenue Range -->
-        <div class="card">
-          <div class="flex items-center gap-2 mb-2">
-            <DollarSign class="w-4 h-4 text-success" />
-            <span class="text-xs text-text-muted uppercase tracking-wider"
-              >Annual Revenue</span
-            >
-          </div>
-          <div class="text-2xl font-bold text-success">
-            {trafficData.estimated_annual_revenue_range}
-          </div>
+    <!-- 2. YEAR PROGRESSION -->
+    {#if trafficData.year3_monthly_revenue || trafficData.full_potential_monthly_revenue}
+      <HeroStrip>
+        <HeroMetric
+          value={trafficData.estimated_monthly_revenue_range ?? "N/A"}
+          label="Year 1"
+          progress={0.25}
+        />
+        {#if trafficData.year3_monthly_revenue}
+          <HeroMetric
+            value={trafficData.year3_monthly_revenue}
+            label="Year 3"
+            progress={0.5}
+          />
+        {/if}
+        {#if trafficData.full_potential_monthly_revenue}
+          <HeroMetric
+            value={trafficData.full_potential_monthly_revenue}
+            label="Full Potential"
+            color="accent"
+            progress={1.0}
+          />
+        {/if}
+      </HeroStrip>
+    {/if}
+
+    <!-- 3. MILESTONE ROADMAP — vertical timeline -->
+    {#if trafficData.revenue_milestones?.length}
+      <AnimateOnScroll animation="fade-up">
+        <div class="relative ml-4 mb-8">
+          <div class="absolute left-3 top-0 bottom-0 w-0.5 bg-border"></div>
+          {#each trafficData.revenue_milestones as milestone, i}
+            {@const isLast = i === trafficData.revenue_milestones.length - 1}
+            {@const isFirst = i === 0}
+            <div class="relative pl-10 pb-6">
+              <div class="absolute left-0 top-1.5 w-6 h-6 rounded-full flex items-center justify-center text-xs
+                {isLast ? 'bg-accent text-white' : isFirst ? 'border-2 border-accent bg-background' : 'border-2 border-border bg-background'}">
+                {#if isLast}&#9733;{/if}
+              </div>
+              <div class="card {isLast ? 'bento-accent' : ''}">
+                <div class="flex items-baseline justify-between mb-1">
+                  <span class="text-sm font-medium">{milestone.traffic}</span>
+                  {#if isFirst}
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent">Starting Point</span>
+                  {/if}
+                </div>
+                <div class="text-xl font-bold {isLast ? 'text-accent' : ''}">{milestone.total_potential}</div>
+                <p class="text-xs text-text-muted mt-1">{milestone.unlock}</p>
+              </div>
+            </div>
+          {/each}
         </div>
+      </AnimateOnScroll>
+    {/if}
 
-        <!-- Model -->
-        <div class="card">
-          <div class="flex items-center gap-2 mb-2">
-            <Zap class="w-4 h-4 text-text-muted" />
-            <span class="text-xs text-text-muted uppercase tracking-wider"
-              >Model</span
-            >
-          </div>
-          <Badge variant="accent">{trafficData.monetization_model}</Badge>
-        </div>
-      </div>
-    </AnimateOnScroll>
+    <!-- 4. GROWTH STORY -->
+    {#if trafficData.revenue_growth_note}
+      <ExpandableSection title="Why These Numbers Are the Floor" icon={TrendingUp} defaultOpen={true}>
+        <InsightCard variant="muted">
+          <p class="text-sm text-muted-foreground whitespace-pre-line">{trafficData.revenue_growth_note}</p>
+        </InsightCard>
+      </ExpandableSection>
+    {/if}
 
-    <!-- Three Revenue Streams -->
+    <!-- 5. REVENUE STREAMS -->
     <AnimateOnScroll animation="fade-up">
       <div class="grid md:grid-cols-3 gap-6 mb-8 items-start">
         <!-- Advertising Revenue -->
@@ -666,6 +709,7 @@
       </div>
     </AnimateOnScroll>
 
+    <!-- 6. SUPPORTING DETAILS -->
     <!-- Traffic & Break-even -->
     <AnimateOnScroll animation="fade-up">
       <div class="grid md:grid-cols-2 gap-4 mb-8">
@@ -721,7 +765,7 @@
 
     <!-- Strategy & Rationale -->
     <AnimateOnScroll animation="fade-up">
-      <div class="grid md:grid-cols-2 gap-6 mb-8 items-start">
+      <div class="grid md:grid-cols-2 gap-6 mb-6 items-start">
         <div class="card">
           <h4 class="text-lg font-semibold text-text-primary mb-3">
             Monetization Rationale
@@ -744,7 +788,7 @@
     <!-- SaaS Alternative Recommendation -->
     <AnimateOnScroll animation="fade-up">
       <div
-        class="card {trafficData.saas_alternative_viable
+        class="card mb-6 {trafficData.saas_alternative_viable
           ? 'border-success/30'
           : 'border-border'}"
       >
@@ -778,6 +822,28 @@
         </div>
       </div>
     </AnimateOnScroll>
+
+    <!-- Traffic Methodology -->
+    {#if trafficData.traffic_methodology}
+      <ExpandableSection
+        title="Traffic Methodology"
+        icon={Database}
+        count={trafficData.traffic_data_sources?.length}
+        variant="muted"
+        defaultOpen={false}
+      >
+        <InsightCard variant="muted" border="left" padding="md">
+          <p class="text-sm text-muted-foreground">{trafficData.traffic_methodology}</p>
+          {#if trafficData.traffic_data_sources && trafficData.traffic_data_sources.length > 0}
+            <div class="flex flex-wrap gap-1.5 mt-3">
+              {#each trafficData.traffic_data_sources as source}
+                <span class="px-2 py-0.5 bg-muted rounded-md text-xs">{source}</span>
+              {/each}
+            </div>
+          {/if}
+        </InsightCard>
+      </ExpandableSection>
+    {/if}
   {/if}
 </Section>
 

@@ -114,7 +114,7 @@ class DataQualitySummary(BaseModel):
 
 
 class RefinementHighlights(BaseModel):
-    """Key strategic insights from Stage 8.7 solution refinement."""
+    """Key strategic insights from Stage 10 solution refinement."""
 
     model_config = ConfigDict(extra='ignore')
 
@@ -160,7 +160,7 @@ class StageTimingSummary(BaseModel):
 
 
 class SEOCalculationTransparency(BaseModel):
-    """Transparency into SEO score calculations from Stage 9.6."""
+    """Transparency into SEO score calculations from Stage 12."""
 
     model_config = ConfigDict(extra='ignore')
 
@@ -432,7 +432,7 @@ class FinalReport(BaseModel):
     )
     refinement_highlights: Optional[RefinementHighlights] = Field(
         default=None,
-        description="Key strategic insights from Stage 8.7 solution refinement"
+        description="Key strategic insights from Stage 10 solution refinement"
     )
     stage_timing_summary: Optional[StageTimingSummary] = Field(
         default=None,
@@ -440,10 +440,10 @@ class FinalReport(BaseModel):
     )
     seo_calculation_transparency: Optional[SEOCalculationTransparency] = Field(
         default=None,
-        description="SEO score calculation methodology from Stage 9.6"
+        description="SEO score calculation methodology from Stage 12"
     )
 
-    # Solution Selection (Stage 8.5)
+    # Solution Selection (Stage 5)
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
     # runner_up_solutions removed - use alternative_solutions instead
@@ -552,11 +552,11 @@ class FinalReport(BaseModel):
         )
     )
 
-    # Keyword Validation & Refinement (Stage 8.5 and 8.7)
+    # Keyword Validation & Refinement (keyword validation and Stage 10)
     keyword_validation_overview: Optional[str] = Field(
         default=None,
         description=(
-            "Executive summary of keyword validation results across top N solution candidates from Stage 8.5. "
+            "Executive summary of keyword validation results across top N solution candidates from keyword validation. "
             "Format: 2-3 paragraphs covering: "
             "(1) Validation methodology and data sources (e.g., DataForSEO metrics), "
             "(2) Key findings per solution with quantitative metrics (total keywords, Tier 1 count, avg search volume), "
@@ -568,7 +568,7 @@ class FinalReport(BaseModel):
     solution_keyword_comparison: Optional[str] = Field(
         default=None,
         description=(
-            "Comparative keyword analysis showing how top N solutions differ in SEO opportunity from Stage 8.5. "
+            "Comparative keyword analysis showing how top N solutions differ in SEO opportunity from keyword validation. "
             "Format: Markdown table or structured comparison with: "
             "(1) Solution name and total validated keywords, "
             "(2) Tier 1 quick wins count and average competition level, "
@@ -581,7 +581,7 @@ class FinalReport(BaseModel):
     content_strategy_preview: Optional[str] = Field(
         default=None,
         description=(
-            "Preview of content strategy recommendations based on keyword validation insights from Stage 8.5. "
+            "Preview of content strategy recommendations based on keyword validation insights from keyword validation. "
             "Format: 2-3 paragraphs outlining: "
             "(1) Programmatic content opportunities identified (page templates, topic clusters), "
             "(2) Geographic or categorical expansion priorities from keyword data, "
@@ -658,30 +658,30 @@ class FinalReport(BaseModel):
         description="Complete audience mapping: segments, influencers, messaging frameworks from Stage 6.5"
     )
 
-    # Stage 8.6: Market Sizing (full object)
+    # Stage 9: Market Sizing (full object)
     # Note: Using string forward reference since MarketSizingResult is defined later in this file
     market_sizing: Optional["MarketSizingResult"] = Field(
         default=None,
-        description="TAM/SAM/SOM analysis, viability verdict, growth drivers, risks from Stage 8.6"
+        description="TAM/SAM/SOM analysis, viability verdict, growth drivers, risks from Stage 9"
     )
 
-    # Stage 9.5: Trend Longevity (full object)
+    # Stage 11: Trend Longevity (full object)
     # Note: Using string forward reference since TrendLongevityResult is defined later in this file
     trend_longevity: Optional["TrendLongevityResult"] = Field(
         default=None,
-        description="Market momentum, trend direction, seasonality, timing recommendation from Stage 9.5"
+        description="Market momentum, trend direction, seasonality, timing recommendation from Stage 11"
     )
 
     # Stage 9: Full SEO Strategy (full object, not just analytics)
     seo_strategy_report: Optional[SEOStrategyReport] = Field(
         default=None,
-        description="Complete SEO strategy with implementation roadmap, content strategy from Stage 9"
+        description="Complete SEO strategy with implementation roadmap, content strategy from Stage 6"
     )
 
-    # Stage 9.7: Full Data Source Research (full object, not just string summary)
+    # Stage 13: Full Data Source Research (full object, not just string summary)
     data_source_research_full: Optional[DataSourceResearchResult] = Field(
         default=None,
-        description="Full data source analysis with provider details, costs, integration plan from Stage 9.7"
+        description="Full data source analysis with provider details, costs, integration plan from Stage 13"
     )
 
     # Metadata
@@ -690,9 +690,9 @@ class FinalReport(BaseModel):
     )
 
 
-# Stage 8.7: Pricing Strategy Validation
+# Stage 7: Pricing Strategy Validation
 class PricingStrategyResult(BaseModel):
-    """Pricing strategy validation result from Stage 8.7."""
+    """Pricing strategy validation result from Stage 7."""
 
     model_config = ConfigDict(extra='ignore')
 
@@ -779,10 +779,16 @@ class PricingStrategyResult(BaseModel):
     def format_summary(self) -> str:
         """Format a concise pricing summary for display and LLM prompts."""
         parts = [self.pricing_model]
-        if self.recommended_starter_price:
-            parts.append(f"{self.recommended_starter_price} starter")
-        if self.recommended_pro_price:
-            parts.append(f"{self.recommended_pro_price} pro")
+        if self.pricing_model == "Freemium-Lite":
+            # 2-tier model: Free + Pro. Use pro price, fall back to starter if pro is missing
+            display_price = self.recommended_pro_price or self.recommended_starter_price
+            if display_price:
+                parts.append(f"{display_price} pro")
+        else:
+            if self.recommended_starter_price:
+                parts.append(f"{self.recommended_starter_price} starter")
+            if self.recommended_pro_price:
+                parts.append(f"{self.recommended_pro_price} pro")
         if self.recommended_enterprise_price:
             parts.append(f"{self.recommended_enterprise_price} enterprise")
         # Ad/affiliate models with no subscription prices
@@ -796,7 +802,7 @@ class PricingStrategyResult(BaseModel):
         return parts[0]
 
 
-# Stage 8.55: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
+# Stage 8: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
 class TrafficMonetizationResult(BaseModel):
     """Traffic-based monetization strategy for directories/aggregators."""
 
@@ -883,6 +889,34 @@ class TrafficMonetizationResult(BaseModel):
         ..., description="Recommendation on traffic vs SaaS monetization with rationale"
     )
 
+    # Methodology (populated post-LLM by report generator, not by CrewAI agent)
+    traffic_methodology: Optional[str] = Field(
+        default=None, description="Methodology explanation for traffic projections (set by report generator)"
+    )
+    traffic_data_sources: Optional[list[str]] = Field(
+        default=None, description="Data sources used for traffic estimation (set by report generator)"
+    )
+
+    # Growth trajectory (populated by report generator, not CrewAI)
+    year3_monthly_pageviews: Optional[str] = Field(
+        default=None, description="Year 3 monthly pageviews (set by report generator)"
+    )
+    year3_monthly_revenue: Optional[str] = Field(
+        default=None, description="Year 3 monthly revenue range (set by report generator)"
+    )
+    full_potential_monthly_pageviews: Optional[str] = Field(
+        default=None, description="Full potential monthly pageviews - all tiers (set by report generator)"
+    )
+    full_potential_monthly_revenue: Optional[str] = Field(
+        default=None, description="Full potential monthly revenue range (set by report generator)"
+    )
+    revenue_growth_note: Optional[str] = Field(
+        default=None, description="Contextual note explaining revenue growth path (set by report generator)"
+    )
+    revenue_milestones: Optional[list[dict[str, str]]] = Field(
+        default=None, description="Revenue milestones at traffic levels. Keys: traffic, ad_revenue, unlock, total_potential (set by report generator)"
+    )
+
 
 # Stage 6.5: Audience & Influence Mapping
 class AudienceSegment(BaseModel):
@@ -948,7 +982,7 @@ class AudienceMappingResult(BaseModel):
     early_adopter_tactics: Optional[str] = Field(default=None, description="Tactics to acquire first 100 users")
 
 
-# Stage 8.6: Market Sizing & Validation
+# Stage 9: Market Sizing & Validation
 class MarketSegmentSizing(BaseModel):
     """Market size breakdown for a specific segment."""
 
@@ -963,7 +997,7 @@ class MarketSegmentSizing(BaseModel):
 
 
 class MarketSizingResult(BaseModel):
-    """Complete market sizing and validation analysis from Stage 8.6."""
+    """Complete market sizing and validation analysis from Stage 9."""
 
     model_config = ConfigDict(extra='ignore')
 
@@ -1045,7 +1079,7 @@ class TrendNarrativeOutput(BaseModel):
 
 
 class TrendLongevityResult(BaseModel):
-    """Trend longevity and market momentum analysis from Stage 9.2."""
+    """Trend longevity and market momentum analysis from Stage 11."""
 
     model_config = ConfigDict(extra='ignore')
 
@@ -1198,16 +1232,16 @@ class ResearchState(BaseModel):
     # Stage 7.4: Solution Selection
     solution_selection: Optional[SolutionSelection] = None
 
-    # Stage 8.5: Keyword Validation Results (quick validation for top N solutions)
+    # Keyword Validation Results (quick validation for top N solutions)
     keyword_validation_results: Optional[list[CrewKeywordValidationResult]] = Field(
         default=None,
-        description="Keyword validation results for top N solutions from Stage 8.5"
+        description="Keyword validation results for top N solutions from keyword validation"
     )
 
-    # Stage 8.7: Solution Refinement (strategic recommendations based on keyword insights)
+    # Stage 10: Solution Refinement (strategic recommendations based on keyword insights)
     solution_refinement: Optional[SolutionRefinement] = Field(
         default=None,
-        description="Strategic refinement recommendations from Stage 8.7"
+        description="Strategic refinement recommendations from Stage 7"
     )
 
     # Stage 8: Pricing Strategy Validation (for top N solutions)
@@ -1216,57 +1250,57 @@ class ResearchState(BaseModel):
         description="Pricing strategies for top N solutions from Stage 8"
     )
 
-    # Stage 8.55: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
+    # Stage 8: Traffic Monetization Strategy (for directories/aggregators/comparison-tools)
     traffic_monetization_results: Optional[list[TrafficMonetizationResult]] = Field(
         default=None,
-        description="Traffic monetization strategies for directory/aggregator/comparison-tool solutions from Stage 8.55"
+        description="Traffic monetization strategies for directory/aggregator/comparison-tool solutions from Stage 8"
     )
 
-    # Stage 8.6: Market Sizing & Validation
+    # Stage 9: Market Sizing & Validation
     market_sizing: Optional[MarketSizingResult] = Field(
         default=None,
-        description="Market sizing analysis with TAM/SAM/SOM estimates and viability assessment from Stage 8.6"
+        description="Market sizing analysis with TAM/SAM/SOM estimates and viability assessment from Stage 9"
     )
 
-    # Stage 9.2: Trend Longevity Analysis
+    # Stage 11: Trend Longevity Analysis
     trend_longevity: Optional[TrendLongevityResult] = Field(
         default=None,
-        description="Trend longevity and market momentum analysis from Stage 9.2"
+        description="Trend longevity and market momentum analysis from Stage 11"
     )
 
     # Stage 9: Seed Keywords
     seed_keywords: list[str] = Field(default_factory=list, description="Seed keywords for SEO research")
 
     # Stage 9 Sub-Phase Checkpoints (for resume capability)
-    stage_9_5a_expanded_keywords: Optional[dict[str, Any]] = Field(
+    seo_expanded_keywords: Optional[dict[str, Any]] = Field(
         default=None,
-        description="Phase 9.5a output: expanded keywords and topic clusters from conceptual expansion"
+        description="Phase 6a output: expanded keywords and topic clusters from conceptual expansion"
     )
-    stage_9_5b_validation_results: Optional[dict[str, Any]] = Field(
+    seo_validation_results: Optional[dict[str, Any]] = Field(
         default=None,
-        description="Phase 9.5b output: DataForSEO validated keywords meeting volume threshold"
+        description="Phase 6b output: DataForSEO validated keywords meeting volume threshold"
     )
-    stage_9_5c_enriched_keywords: Optional[list[dict[str, Any]]] = Field(
+    seo_enriched_keywords: Optional[list[dict[str, Any]]] = Field(
         default=None,
-        description="Phase 9.5c output: enriched keywords with full search metrics"
+        description="Phase 6c output: enriched keywords with full search metrics"
     )
 
-    # Stage 9.5: SEO Enrichment (refined scores using keyword data from Stage 9)
+    # Stage 12: SEO Enrichment (refined scores using keyword data from Stage 6)
     seo_enrichment: Optional[SolutionSEORefinement] = Field(
         default=None,
-        description="SEO score refinements from Stage 9.5 using actual keyword research data"
+        description="SEO score refinements from Stage 12 using actual keyword research data"
     )
 
     # Stage 9 (Legacy): Keyword Validation - DEPRECATED, kept for backward compatibility
     keyword_validation: Optional[KeywordValidationResult] = None
 
-    # Stage 9.5: SEO Strategy (includes integrated keyword research)
+    # Stage 6: SEO Strategy (includes integrated keyword research)
     seo_strategy_report: Optional[SEOStrategyReport] = None
 
-    # Stage 9.75: Data Source Research (for selected solution only)
+    # Stage 13: Data Source Research (for selected solution only)
     data_source_research: Optional[DataSourceResearchResult] = None
 
-    # Stage 10: Final Report
+    # Stage 14: Final Report
     final_report: Optional[FinalReport] = None
 
     # Metadata

@@ -483,7 +483,7 @@ def validate_batch_parallel(
 
 **Usage in research_flow.py:**
 ```python
-# Stage 9.5c: Keyword validation with parallel processing
+# Phase 6c: Keyword validation with parallel processing
 validator = KeywordRelevanceValidator()
 validation_results = validator.validate_batch_parallel(
     keywords=suggestions,
@@ -680,7 +680,7 @@ def competitive_refinement_task(self) -> Task:
 **Configuration** (`.env`):
 ```bash
 VALIDATION_PARALLEL_ENABLED=true  # Global toggle (default: true)
-KEYWORD_VALIDATION_MAX_WORKERS=3  # Stage 9.5c workers (default: 3)
+KEYWORD_VALIDATION_MAX_WORKERS=3  # Phase 6c workers (default: 3)
 THREAD_VALIDATION_MAX_WORKERS=2   # Stage 5 workers (default: 2)
 ```
 
@@ -692,7 +692,7 @@ THREAD_VALIDATION_MAX_WORKERS=2   # Stage 5 workers (default: 2)
 
 **Usage Example**:
 ```python
-# Stage 9.5c keyword validation (research_flow.py)
+# Phase 6c keyword validation (research_flow.py)
 validator = KeywordRelevanceValidator()
 results = validator.validate_batch_parallel(
     keywords=suggestions,

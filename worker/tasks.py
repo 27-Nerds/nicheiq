@@ -294,12 +294,13 @@ def run_interactive_research(
     user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None,
     generate_landing_page: bool = True,
+    resume: bool = False,
 ) -> dict:
     """
     Interactive research task: runs Phase 1, validates solutions, waits for user selection.
 
-    Phase 1: stages 1→7 (idea generation)
-    Validation: stages 8, 8.5 per solution (pricing + keyword scoring)
+    Phase 1: stages 1→5 (idea generation)
+    Validation: pricing + keyword scoring per solution
     If user selects during validation → immediately continue to Phase 2
     If validation completes without selection → return awaiting_selection
 
@@ -329,13 +330,15 @@ def run_interactive_research(
         flow.progress_callback = progress_callback
 
         mark_job_running(job_id)
-        progress_callback(1, "Niche Analysis", "running")
 
-        # ======= PHASE 1: Run stages 1→7 (idea generation) =======
-        logger.info(f"[Worker] Running Phase 1 for job {job_id}")
-        flow.run_with_resume(auto_resume=False, stop_after_stage=7)
+        if not resume:
+            progress_callback(1, "Niche Analysis", "running")
 
-        # At this point stages 1→7 are done. Get solution ideas.
+        # ======= PHASE 1: Run stages 1→5 (idea generation) =======
+        logger.info(f"[Worker] Running Phase 1 for job {job_id} (resume={resume})")
+        flow.run_with_resume(auto_resume=resume, stop_after_phase=1)
+
+        # At this point Phase 1 (stages 1→5) is done.
         state = flow.state
         idea_gen = getattr(state, "idea_generation", None)
         if not idea_gen or not hasattr(idea_gen, "solution_ideas") or not idea_gen.solution_ideas:
@@ -443,7 +446,7 @@ def _run_phase2_continuation(
             runner_up_solutions=[n for n in selected_solutions[1:]],
         )
 
-    # Store user selections for downstream Stage 8.5 guard
+    # Store user selections for downstream keyword validation guard
     state._user_selected_solutions = set(selected_solutions)
 
     # Replay Phase 1 completed stages so UI immediately shows them as green
@@ -451,12 +454,30 @@ def _run_phase2_continuation(
     completed_stages = flow.checkpoint_mgr.get_completed_stages()
     flow._replay_completed_stages_progress(completed_stages)
 
-    # Run competitive analysis for ALL selected solutions
-    for sol_name in selected_solutions:
+    # Run competitive analysis for ALL selected solutions (with progress tracking)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    flow._emit_progress(5.5, "Competitive Analysis", "running")
+
+    if len(selected_solutions) == 1:
         try:
-            flow.analyze_single_solution_competitors(sol_name)
+            flow.analyze_single_solution_competitors(selected_solutions[0])
         except Exception as e:
-            logger.warning(f"Competitive analysis failed for {sol_name}: {e}")
+            logger.warning(f"Competitive analysis failed for {selected_solutions[0]}: {e}")
+    else:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            futures = {
+                executor.submit(flow.analyze_single_solution_competitors, sol_name): sol_name
+                for sol_name in selected_solutions
+            }
+            for future in as_completed(futures):
+                sol_name = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    logger.warning(f"Competitive analysis failed for {sol_name}: {e}")
+
+    flow._emit_progress(5.5, "Competitive Analysis", "completed")
 
     # Ensure top_solutions_for_validation config >= len(selected_solutions)
     from nicheiq.config.settings import settings as app_settings
@@ -477,7 +498,7 @@ def _run_phase2_continuation(
     with open(job_report_path, "w") as dst:
         json.dump(report_data, dst, indent=2)
 
-    # Read final winner from state (Stage 8.5 re-ranking may have changed it)
+    # Read final winner from state (keyword validation re-ranking may have changed it)
     final_winner = state.solution_selection.selected_solution_name if state.solution_selection else selected_solution
     publish_report_ready(job_id, str(job_report_path), winner_name=final_winner)
 
@@ -622,7 +643,7 @@ def run_regenerate_ideas(
 
         # Re-run the solution generation stage with exclusion list
         state = flow.state
-        progress_callback(7, "Solution Pipeline", "running")
+        progress_callback(5, "Solution Pipeline", "running")
 
         from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
 
@@ -676,12 +697,12 @@ def run_regenerate_ideas(
         if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
             state.idea_generation.solution_ideas = merged_solutions
         if flow.checkpoint_mgr and state.idea_generation:
-            flow.checkpoint_mgr.save_stage("stage_7_3_refinement", state.idea_generation)
+            flow.checkpoint_mgr.save_stage("stage_5_3_refinement", state.idea_generation)
 
         # Send only NEW previews — backend appends to existing list
         new_previews = [_solution_to_preview_dict(s) for s in new_solutions]
 
-        progress_callback(7, "Solution Pipeline", "completed")
+        progress_callback(5, "Solution Pipeline", "completed")
 
         # Notify backend with new solutions
         notify_regeneration_complete(job_id, new_previews)

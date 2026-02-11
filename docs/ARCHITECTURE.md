@@ -146,7 +146,7 @@ def task_2_competitive(self) -> Task:
 
 **5-Task Sequential Pipeline**:
 
-**Phase 9.5a-c** (Flow-managed):
+**Phase 6a-c** (Flow-managed):
 - 9.5a: Generate 40-50 seed keywords (LLM)
 - 9.5b: Bulk validate with DataForSEO API
 - 9.5c: Expand and enrich (DataForSEO → 150+ keywords)

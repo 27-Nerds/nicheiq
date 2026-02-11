@@ -142,7 +142,7 @@
         throw new Error(data.error || "Failed to generate landing page");
       }
 
-      // Refetch job to get updated state (landingPageStatus, new stage 11)
+      // Refetch job to get updated state (landingPageStatus, new stage 15)
       const updatedRes = await fetch(`/api/jobs/${jobId}`);
       if (updatedRes.ok) {
         job = await updatedRes.json();
@@ -297,7 +297,7 @@
     number,
     { hide: number[]; combinedName: string }
   > = {
-    6: { hide: [6.5], combinedName: "Pain Point & Audience Analysis" },
+    3: { hide: [4], combinedName: "Pain Point & Audience Analysis" },
   };
 
   // Process stages to combine parallel stages into single lines
@@ -451,8 +451,8 @@
       {:else}
         <!-- Progress Bar (for non-queued jobs) -->
         {@const displayCurrentStageName =
-          job.currentStage === 6 || job.currentStage === 6.5
-            ? PARALLEL_STAGE_GROUPS[6].combinedName
+          job.currentStage === 3 || job.currentStage === 4
+            ? PARALLEL_STAGE_GROUPS[3].combinedName
             : job.currentStageName || "Initializing..."}
         <div
           class="card p-6 mb-6 animate-fade-slide-in"
@@ -829,7 +829,7 @@
                 </div>
                 <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Retrying..." icon={RotateCw} label="Retry Landing Page" class="btn-secondary btn-sm" />
               </div>
-            {:else if job.status === "COMPLETED" && reportAsset && !(job.progress ?? []).some((s) => s.stageNumber === 11)}
+            {:else if job.status === "COMPLETED" && reportAsset && !(job.progress ?? []).some((s) => s.stageNumber === 15)}
               <div class="flex flex-col items-start gap-1">
                 <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate Landing Page" class="btn-secondary" />
                 <span class="text-xs text-text-muted"

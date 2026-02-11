@@ -1,9 +1,10 @@
 """
-Tests for crew guardrails - content categorization and quote enrichment validation.
+Tests for crew guardrails - content categorization, quote enrichment, and solution selection validation.
 
 Tests:
 - validate_content_categorization: checks anchor_keywords on themes
 - validate_quote_enrichment: checks post_id presence and quote quality
+- validate_solution_selection: checks JSON parsing and field validation
 """
 
 import json
@@ -14,6 +15,7 @@ import pytest
 from nicheiq.utils.validation.crew_guardrails import (
     validate_content_categorization,
     validate_quote_enrichment,
+    validate_solution_selection,
 )
 
 
@@ -357,3 +359,85 @@ class TestValidateContentCategorizationEdgeCases:
 
         # Should pass using pydantic directly
         assert success
+
+
+def _make_valid_selection_raw(**overrides) -> str:
+    """Helper to build valid SolutionSelection JSON with optional overrides."""
+    data = {
+        "selected_solution_name": "NicheTracker Pro",
+        "selection_rationale": (
+            "NicheTracker Pro was selected because it addresses the strongest validated pain point "
+            "in the market with a clear competitive gap. The solution scores highest on market fit "
+            "(0.85) and competitive advantage (0.78), while maintaining strong technical feasibility."
+        ),
+        "recommended_focus": "Enterprise segment first, then SMB expansion",
+        "runner_up_solutions": ["CompetitorRadar", "MarketPulse"],
+    }
+    data.update(overrides)
+    return json.dumps(data)
+
+
+class TestValidateSolutionSelection:
+    """Tests for validate_solution_selection guardrail."""
+
+    def test_valid_selection(self):
+        """Valid SolutionSelection JSON -> (True, raw)."""
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_valid_selection_raw()
+
+        success, result = validate_solution_selection(output)
+
+        assert success
+        assert result == output.raw
+
+    def test_invalid_json(self):
+        """Malformed JSON (the actual production crash scenario) -> (False, error)."""
+        output = MagicMock()
+        output.pydantic = None
+        # Unescaped quote inside selection_rationale - the real crash scenario
+        output.raw = '{"selected_solution_name": "Test", "selection_rationale": "It\'s the "best" solution because reasons", "recommended_focus": "focus"}'
+
+        success, result = validate_solution_selection(output)
+
+        assert not success
+        assert "json" in result.lower() or "parse" in result.lower()
+
+    def test_short_rationale(self):
+        """selection_rationale < 100 chars -> (False, error)."""
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_valid_selection_raw(
+            selection_rationale="Too short rationale."
+        )
+
+        success, result = validate_solution_selection(output)
+
+        assert not success
+        assert "selection_rationale" in result.lower()
+
+    def test_short_name(self):
+        """selected_solution_name < 3 chars -> (False, error)."""
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_valid_selection_raw(
+            selected_solution_name="AB"
+        )
+
+        success, result = validate_solution_selection(output)
+
+        assert not success
+        assert "selected_solution_name" in result.lower()
+
+    def test_empty_focus(self):
+        """Empty recommended_focus -> (False, error)."""
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_valid_selection_raw(
+            recommended_focus=""
+        )
+
+        success, result = validate_solution_selection(output)
+
+        assert not success
+        assert "recommended_focus" in result.lower()

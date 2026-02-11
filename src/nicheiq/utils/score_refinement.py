@@ -1,5 +1,5 @@
 """
-Score refinement utilities for Stage 9.5 SEO refinement.
+Score refinement utilities for Stage 12 SEO refinement.
 
 Refines solution scores based on keyword data from SEO analysis.
 """

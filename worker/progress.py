@@ -33,21 +33,21 @@ def _get_worker_id() -> str:
 # Stage name mapping (matches backend/src/types/job.ts)
 STAGE_NAMES = {
     1: "Niche Validation",
-    5: "Search & Discovery",
-    6: "Pain Point Analysis",
-    6.5: "Audience Mapping",
-    7: "Solution Pipeline",
-    8: "Pricing Validation",
-    8.5: "Keyword Validation",
-    8.55: "Traffic Monetization",
-    8.6: "Market Sizing",
-    8.7: "Solution Refinement",
-    9: "SEO Strategy",
-    9.5: "Trend Analysis",
-    9.6: "SEO Score Refinement",
-    9.7: "Data Source Research",
-    10: "Report Generation",
-    11: "Landing Page Generation",
+    2: "Search & Discovery",
+    3: "Pain Point Analysis",
+    4: "Audience Mapping",
+    5: "Solution Pipeline",
+    5.5: "Competitive Analysis",
+    6: "SEO & Keyword Strategy",
+    7: "Pricing Validation",
+    8: "Traffic Monetization",
+    9: "Market Sizing",
+    10: "Solution Refinement",
+    11: "Trend Analysis",
+    12: "SEO Score Refinement",
+    13: "Data Source Research",
+    14: "Report Generation",
+    15: "Landing Page Generation",
 }
 
 
@@ -70,7 +70,7 @@ def publish_progress_via_api(
 
     Args:
         job_id: The job UUID
-        stage: Stage number (e.g., 1, 5, 6.5, 9)
+        stage: Stage number (e.g., 1, 2, 3, 4, 5)
         name: Human-readable stage name
         status: 'running', 'completed', or 'failed'
         error: Optional error message (for failed status)
@@ -147,7 +147,7 @@ def create_progress_callback(
         Progress callback for ResearchFlow stages.
 
         Args:
-            stage_num: Stage number (e.g., 1, 5, 6.5, 8.5)
+            stage_num: Stage number (e.g., 1, 2, 3, 4, 5)
             stage_name: Human-readable stage name (optional - looked up from STAGE_NAMES if None)
             status: 'running', 'completed', or 'failed'
         """
@@ -219,7 +219,7 @@ def publish_job_completed(
     # Use a final stage to indicate completion
     publish_progress_via_api(
         job_id=job_id,
-        stage=11 if landing_path else 10,  # Use last completed stage
+        stage=15 if landing_path else 14,  # Use last completed stage
         name="Completed",
         status="completed",
         report_path=report_path,

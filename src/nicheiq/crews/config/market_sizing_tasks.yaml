@@ -59,6 +59,34 @@ market_sizing_analysis:
     - High-WTP Pain Points (>=0.5): {high_wtp_count}
     - Average WTP Score: {avg_wtp}
 
+    **SEO-ENRICHED MARKET SIGNALS:**
+    {seo_market_enrichment}
+
+    IMPORTANT: If SEO data provides a difficulty-weighted traffic ceiling:
+    - Traffic ceiling = organic content monetization ceiling only (ads + affiliate)
+    - SOM = total market opportunity (product, services, partnerships, content)
+    VALIDATION RULES:
+    1. IF SOM Y1 > (traffic ceiling implied revenue x 10):
+       → REQUIRED: List specific non-content revenue channels with estimated contribution
+       → REQUIRED: Explain the revenue model split (% content vs % product/service)
+    2. IF SOM Y1 <= (traffic ceiling implied revenue x 3):
+       → Confirm SOM is primarily content-monetization driven
+    3. ALWAYS: CITE the traffic ceiling value and explain alignment or divergence
+
+    If topic cluster data is available, use cluster volumes to validate SAM segmentation.
+    Each cluster represents a distinct market segment. SAM should approximate the sum
+    of clusters you can realistically serve.
+
+    If geographic/category expansion data is available, use it for TAM expansion scenarios:
+    - Geographic expansion represents international opportunity
+    - Category expansion represents adjacent-market opportunity
+    - State percent uplift over core for each scenario
+
+    Use the commercial intent ratio as a market quality signal:
+    - >40% = strong commercial viability (revenue-ready traffic)
+    - 20-40% = moderate (mix of content + commercial monetization)
+    - <20% = weak direct revenue potential (flag as risk factor)
+
 
     **YOUR TASK:**
 
@@ -138,7 +166,7 @@ market_sizing_analysis:
       - Base on: Keyword trend data, competitive analysis insights, industry context
       - **IMPORTANT CAVEAT:** Historical trend data is NOT available at this stage (snapshot data only).
         Use conservative estimates and wide ranges. Mark confidence level as LOW for growth rate
-        estimates based solely on current competitive and keyword signals. Stage 9.5 trend analysis
+        estimates based solely on current competitive and keyword signals. Stage 11 trend analysis
         will provide data-driven trend validation later.
 
     - **growth_drivers:** List 3-5 factors driving market expansion

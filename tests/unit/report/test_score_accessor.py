@@ -223,7 +223,7 @@ class TestSeoScoreCanonical:
     """Test canonical SEO score resolution order."""
 
     def test_prefers_refined_over_selection(self):
-        """Stage 9.5 refined score should take priority over selection score."""
+        """Stage 12 refined score should take priority over selection score."""
         solution_selection = MagicMock()
         solution_score = MagicMock()
         solution_score.solution_name = "TestSolution"

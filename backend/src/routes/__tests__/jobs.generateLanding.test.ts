@@ -211,7 +211,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     expect(mockTx.jobProgress.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         jobId: JOB_ID,
-        stageNumber: 11,
+        stageNumber: 15,
         stageName: 'Landing Page Generation',
         status: 'PENDING',
       }),

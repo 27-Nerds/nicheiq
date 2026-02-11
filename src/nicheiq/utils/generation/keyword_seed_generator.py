@@ -108,7 +108,7 @@ class KeywordSeedGenerator:
             if audience_vocabulary:
                 logger.info(f"Including {len(audience_vocabulary[:15])} audience vocabulary terms in keyword generation")
 
-            # Format covered keywords (from Stage 8.5 anchor enrichment)
+            # Format covered keywords (from keyword validation anchor enrichment)
             covered_keywords_formatted = "Not available"
             if covered_keywords:
                 covered_keywords_formatted = "\n".join([f"- {kw}" for kw in covered_keywords[:30]])

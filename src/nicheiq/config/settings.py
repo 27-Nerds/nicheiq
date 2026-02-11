@@ -91,11 +91,11 @@ class Settings(BaseSettings):
     )
     keyword_validation_llm: str = Field(
         default="gpt-4.1-nano",
-        description="Model to use for keyword relevance validation in Stage 9.5c (gpt-4.1-nano recommended for cost efficiency)"
+        description="Model to use for keyword relevance validation in Phase 6c (gpt-4.1-nano recommended for cost efficiency)"
     )
     keyword_research_llm: str = Field(
         default="gpt-4o-mini",
-        description="Model to use for keyword research crew in Stage 8.8 (gpt-4o-mini for cost efficiency, gpt-4o for better quality)"
+        description="Model to use for keyword research crew in keyword validation (gpt-4o-mini for cost efficiency, gpt-4o for better quality)"
     )
     pain_point_validation_llm: str = Field(
         default="gpt-4.1-mini",
@@ -236,10 +236,10 @@ class Settings(BaseSettings):
     )
     keyword_relevance_threshold: float = Field(
         default=0.65,
-        description="Minimum relevance score (0.0-1.0) for keyword validation in Stage 9.5c (never lowered)"
+        description="Minimum relevance score (0.0-1.0) for keyword validation in Phase 6c (never lowered)"
     )
 
-    # SEO Refinement Settings (Stage 9.5)
+    # SEO Refinement Settings (Stage 12)
     seo_refinement_enabled: bool = Field(
         default=True,
         description="Enable SEO score refinement based on keyword data from Stage 9"
@@ -267,7 +267,7 @@ class Settings(BaseSettings):
         description="Minimum volume discount for CAC calculations (default 0.7 = 30% max discount)"
     )
 
-    # Keyword Enrichment Settings (Stage 9.5 Iterative)
+    # Keyword Enrichment Settings (Stage 6 Iterative)
     keyword_enrichment_target_count: int = Field(
         default=150,
         description="Target number of keywords with meaningful search volume"
@@ -296,11 +296,11 @@ class Settings(BaseSettings):
     )
     keyword_validation_max_workers: int = Field(
         default=3,
-        description="Maximum parallel workers for keyword validation (Stage 9.5c). Recommended: 3-5 for balance of speed and API limits"
+        description="Maximum parallel workers for keyword validation (Phase 6c). Recommended: 3-5 for balance of speed and API limits"
     )
     keyword_validation_batch_size: int = Field(
         default=50,
-        description="Number of keywords per API call within each parallel worker (Stage 9.5c). Recommended: 50-150"
+        description="Number of keywords per API call within each parallel worker (Phase 6c). Recommended: 50-150"
     )
     thread_validation_max_workers: int = Field(
         default=4,
@@ -388,7 +388,7 @@ class Settings(BaseSettings):
         description="Number of top solutions to validate with pricing, keywords, and competitive analysis"
     )
 
-    # Stage 8.8: Keyword Validation Configuration
+    # keyword validation: Keyword Validation Configuration
     keyword_validation_enabled: bool = Field(
         default=True,
         description="Enable keyword demand validation for top N solutions before final selection"
@@ -422,7 +422,7 @@ class Settings(BaseSettings):
         description="LLM temperature for keyword research crew (0.7 recommended for creative tasks with constraints)"
     )
 
-    # Stage 9.5c: Keyword Enrichment Quality Gates
+    # Phase 6c: Keyword Enrichment Quality Gates
     keyword_enrichment_min_coverage: float = Field(
         default=0.30,
         ge=0.0,
@@ -495,7 +495,7 @@ class Settings(BaseSettings):
             raise ValueError("Coverage must be between 0.0 and 1.0")
         return v
 
-    # Stage 8.85: Solution Refinement Configuration
+    # Stage 10: Solution Refinement Configuration
     solution_refinement_enabled: bool = Field(
         default=True,
         description="Enable strategic refinement of selected solution based on keyword insights"

@@ -369,7 +369,7 @@ result = generator.generate_queries(
 
 #### 3. KeywordSeedGenerator (SEO Keywords)
 
-Generates SEO seed keywords for Stage 9.5a.
+Generates SEO seed keywords for Phase 6a.
 
 ```python
 from nicheiq.utils.generation.keyword_seed_generator import KeywordSeedGenerator

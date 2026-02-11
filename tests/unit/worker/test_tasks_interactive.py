@@ -42,7 +42,7 @@ class TestRunInteractiveResearch:
 
             mock_mark.assert_called_once_with('job-1')
             MockFlow.assert_called_once()
-            flow.run_with_resume.assert_called_once_with(auto_resume=False, stop_after_stage=7)
+            flow.run_with_resume.assert_called_once_with(auto_resume=False, stop_after_phase=1)
 
     @patch('worker.tasks.notify_ideas_ready')
     @patch('worker.tasks.mark_job_running')
@@ -413,7 +413,7 @@ class TestPhase2MultiSelectFix:
         assert selection.selected_solution_name not in selection.runner_up_solutions
 
     def test_user_selected_solutions_stored_on_state(self):
-        """_user_selected_solutions should be stored as a set for Stage 8.5 guard."""
+        """_user_selected_solutions should be stored as a set for keyword validation guard."""
         state = self._make_state(
             scored_names=["Sol A", "Sol B"],
             all_ideas=["Sol A", "Sol B"],

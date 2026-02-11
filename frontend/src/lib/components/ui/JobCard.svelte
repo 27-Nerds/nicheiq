@@ -36,8 +36,8 @@
     onMenuToggle,
   }: Props = $props();
 
-  const TOTAL_STAGES = 16;
-  const HIDDEN_STAGES = [6.5];
+  const TOTAL_STAGES = 17;
+  const HIDDEN_STAGES = [4];
 
   // Derived state
   const statusUpper = $derived(job.status.toUpperCase());
@@ -129,7 +129,7 @@
     const hiddenCount = HIDDEN_STAGES.length;
     const total = (job.totalStages || TOTAL_STAGES) - hiddenCount;
     const hiddenCompleted =
-      job.currentStage > 6.5 || job.status.toUpperCase() === "COMPLETED"
+      job.currentStage > 4 || job.status.toUpperCase() === "COMPLETED"
         ? hiddenCount
         : 0;
     const completed = job.stagesCompleted - hiddenCompleted;

@@ -19,7 +19,7 @@ from keyword search volume data, social discussions, and competitive landscape.
 
 ## Overview
 
-Stage 9.5 computes deterministic market signals in Python (`src/nicheiq/utils/trend_scoring.py`),
+Stage 11 computes deterministic market signals in Python (`src/nicheiq/utils/trend_scoring.py`),
 then passes them to an LLM agent that generates narrative judgment (market maturity, longevity
 rationale, community growth indicators, trend reversal risks).
 

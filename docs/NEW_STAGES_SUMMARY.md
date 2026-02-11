@@ -6,15 +6,15 @@ Four new stages were added to the NicheIQ research pipeline to transform it from
 
 **Added Stages:**
 - **Stage 6.5**: Audience & Influence Mapping
-- **Stage 8.7**: Pricing Strategy Validation
-- **Stage 8.6**: Market Sizing & Validation
-- **Stage 9.2**: Trend Longevity Analysis
+- **Stage 7**: Pricing Strategy Validation
+- **Stage 9**: Market Sizing & Validation
+- **Stage 11**: Trend Longevity Analysis
 
 Together, these stages answer the critical market validation questions:
 1. **WHO** are the customers? (Stage 6.5 - Audience segments, influencers, channels)
-2. What can we **CHARGE**? (Stage 8.7 - Pricing, ARPU, LTV/CAC viability)
-3. How **BIG** is the opportunity? (Stage 8.6 - TAM/SAM/SOM, market viability)
-4. Is this market **GROWING** or declining? (Stage 9.2 - Trend momentum, timing)
+2. What can we **CHARGE**? (Stage 7 - Pricing, ARPU, LTV/CAC viability)
+3. How **BIG** is the opportunity? (Stage 9 - TAM/SAM/SOM, market viability)
+4. Is this market **GROWING** or declining? (Stage 11 - Trend momentum, timing)
 
 ---
 
@@ -29,7 +29,7 @@ Stage 6: Pain Point Analysis
   ↓
 Stage 6.5: Audience & Influence Mapping ← NEW
   ↓
-Stages 7-8.75: Unified Solution Pipeline
+Stage 7: Unified Solution Pipeline
 ```
 
 **Trigger**: Runs as a listener immediately after Stage 6 (Pain Point Analysis) completes.
@@ -73,21 +73,21 @@ Before Stage 6.5, NicheIQ identified problems but not the people experiencing th
 
 ---
 
-## Stage 8.7: Pricing Strategy Validation
+## Stage 7: Pricing Strategy Validation
 
 ### Main Goal
 Validates monetization strategy by determining optimal pricing based on competitor pricing benchmarks, pain point willingness-to-pay (WTP) scores, and solution features/positioning.
 
 ### Position in Pipeline
 ```
-Stages 7-8.75: Unified Solution Pipeline
+Stage 7: Unified Solution Pipeline
   ↓
-Stage 8.7: Pricing Strategy Validation ← NEW
+Stage 7: Pricing Strategy Validation ← NEW
   ↓
-Stage 8.6: Market Sizing & Validation
+Stage 9: Market Sizing & Validation
 ```
 
-**Trigger**: Runs as a listener immediately after Stage 8.75 (Solution Selection) completes.
+**Trigger**: Runs as a listener immediately after Stage 5 (Solution Selection) completes.
 
 ### Key Outputs (PricingStrategyResult)
 
@@ -114,7 +114,7 @@ Stage 8.6: Market Sizing & Validation
 - Pricing rationale explaining tier allocation logic
 
 ### Inputs Required
-- **Selected solution** from Stage 8.75 (SolutionSelectionResult)
+- **Selected solution** from Stage 5 (SolutionSelectionResult)
 - **Pain point analysis** from Stage 6 (includes WTP scores for each pain point)
 - **Competitive analysis** from Stage 8 (includes competitor pricing data)
 - **Niche description** (for context)
@@ -126,7 +126,7 @@ Bridges the gap between solution selection and market sizing by validating **mon
 - **Unit economics** are viable (LTV/CAC ratio ≥2:1)
 - Pricing strategy fits the **solution's features and positioning**
 
-Before Stage 8.7, NicheIQ selected solutions without validating if they could be monetized profitably.
+Before Stage 7, NicheIQ selected solutions without validating if they could be monetized profitably.
 
 ### Implementation Details
 - **Crew**: `PricingStrategyCrew` with single agent (`pricing_strategist`)
@@ -137,21 +137,21 @@ Before Stage 8.7, NicheIQ selected solutions without validating if they could be
 
 ---
 
-## Stage 8.6: Market Sizing & Validation
+## Stage 9: Market Sizing & Validation
 
 ### Main Goal
 Calculates TAM/SAM/SOM (Total/Serviceable/Obtainable Market) estimates and validates market attractiveness using keyword demand, pain point frequency, and competitive analysis.
 
 ### Position in Pipeline
 ```
-Stage 8.7: Pricing Strategy Validation
+Stage 7: Pricing Strategy Validation
   ↓
-Stage 8.6: Market Sizing & Validation ← NEW
+Stage 9: Market Sizing & Validation ← NEW
   ↓
-Stage 8.8: Keyword Validation
+Keyword Validation
 ```
 
-**Trigger**: Runs as a listener after Stage 8.7 (Pricing Validation) completes.
+**Trigger**: Runs as a listener after Stage 7 (Pricing Validation) completes.
 
 ### Key Outputs (MarketSizingResult)
 
@@ -180,8 +180,8 @@ Stage 8.8: Keyword Validation
 - **Assumptions** underlying the estimates
 
 ### Inputs Required
-- **Selected solution** from Stage 8.75 (SolutionSelectionResult)
-- **Keyword validation data** from Stage 8.8 (optional - can run without it)
+- **Selected solution** from Stage 5 (SolutionSelectionResult)
+- **Keyword validation data** from keyword validation (optional - can run without it)
 - **Pain point analysis** from Stage 6 (pain frequency, severity)
 - **Competitive analysis** from Stage 8 (competitor count, market gaps)
 - **Niche description** (for context)
@@ -197,7 +197,7 @@ This triangulation produces defensible market size estimates critical for:
 - **Strategic planning** (entry strategy, growth targets)
 - **Risk assessment** (market viability, saturation)
 
-Before Stage 8.6, NicheIQ lacked quantitative market size validation.
+Before Stage 9, NicheIQ lacked quantitative market size validation.
 
 ### Implementation Details
 - **Crew**: `MarketSizingCrew` with single agent (`market_analyst`)
@@ -208,18 +208,18 @@ Before Stage 8.6, NicheIQ lacked quantitative market size validation.
 
 ---
 
-## Stage 9.2: Trend Longevity & Market Momentum Analysis
+## Stage 11: Trend Longevity & Market Momentum Analysis
 
 ### Main Goal
 Analyzes keyword trends, discussion momentum, and competitive activity to assess market timing, trend sustainability, and longevity. Determines if the market is growing/stable/declining and whether now is the right time to enter.
 
 ### Position in Pipeline
 ```
-Stage 9: SEO Strategy Generation
+Stage 6: SEO Strategy Generation
   ↓
-Stage 9.2: Trend Longevity Analysis ← NEW
+Stage 11: Trend Longevity Analysis ← NEW
   ↓
-Stage 9.5: SEO Score Refinement
+Stage 12: SEO Score Refinement
 ```
 
 **Trigger**: Runs as a listener after Stage 9 (SEO Strategy) completes.
@@ -263,10 +263,10 @@ Stage 9.5: SEO Score Refinement
 - **Analysis timeframe** (e.g., "12 months", "6 months")
 
 ### Inputs Required
-- **Keyword validation data** from Stage 8.8 (search volumes, trends)
+- **Keyword validation data** from keyword validation (search volumes, trends)
 - **Social media content** from Stage 5 (discussion trends and recency)
 - **Pain point analysis** from Stage 6 (problem validation recency)
-- **Competitive analysis** from Stage 7-8.75 (new entrants, market activity)
+- **Competitive analysis** from Stage 7 (new entrants, market activity)
 - **Niche description** (for context)
 
 ### Why It Was Added
@@ -284,7 +284,7 @@ Uses the **Momentum Triangle Analysis (MTA)** framework to triangulate signals f
 
 **Recency Bias Prevention**: Distinguishes short-term spikes (<6 months) from sustained trends (12+ months) using the Temporal Balance Rule.
 
-Before Stage 9.2, NicheIQ lacked market timing intelligence and couldn't distinguish fads from sustainable trends.
+Before Stage 11, NicheIQ lacked market timing intelligence and couldn't distinguish fads from sustainable trends.
 
 ### Implementation Details
 - **Crew**: `TrendLongevityCrew` with single agent (`trend_analyst`)
@@ -322,43 +322,43 @@ Before Stage 9.2, NicheIQ lacked market timing intelligence and couldn't disting
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stages 7-8.75: Unified Solution Pipeline                       │
+│  Stage 7: Unified Solution Pipeline                       │
 │  └─ Ideation → Competitive → Refinement → Selection             │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stage 8.7: Pricing Strategy Validation (NEW)                   │
+│  Stage 7: Pricing Strategy Validation (NEW)                   │
 │  └─ Validate pricing, ARPU, LTV/CAC → PRICE                     │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stage 8.6: Market Sizing & Validation (NEW)                    │
+│  Stage 9: Market Sizing & Validation (NEW)                    │
 │  └─ Calculate TAM/SAM/SOM, validate viability → SIZE            │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stage 8.8: Keyword Validation                                  │
+│  Keyword Validation                                  │
 │  └─ Validate keyword demand for selected solution               │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stage 9: SEO Strategy Generation                               │
+│  Stage 6: SEO Strategy Generation                               │
 │  └─ Generate comprehensive SEO strategy                         │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stage 9.2: Trend Longevity Analysis (NEW)                      │
+│  Stage 11: Trend Longevity Analysis (NEW)                      │
 │  └─ Assess trend momentum, timing → GROWING/DECLINING           │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  Stage 9.5-10: SEO Refinement → Final Report                    │
+│  Stages 12-14: SEO Refinement → Final Report                    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -383,7 +383,7 @@ The four new stages work together to provide comprehensive market validation:
 
 ---
 
-### 2. What can we CHARGE? (Stage 8.7)
+### 2. What can we CHARGE? (Stage 7)
 **Pricing Strategy Validation**
 - Recommended pricing tiers (Starter, Pro, Enterprise)
 - Estimated ARPU and LTV (12/24/36 month scenarios)
@@ -398,7 +398,7 @@ The four new stages work together to provide comprehensive market validation:
 
 ---
 
-### 3. How BIG is the opportunity? (Stage 8.6)
+### 3. How BIG is the opportunity? (Stage 9)
 **Market Sizing & Validation**
 - TAM/SAM/SOM estimates (e.g., $2.5B / $800M / $2M Y1)
 - Market viability verdict ("Strong", "Moderate", "Weak")
@@ -413,7 +413,7 @@ The four new stages work together to provide comprehensive market validation:
 
 ---
 
-### 4. Is this market GROWING or declining? (Stage 9.2)
+### 4. Is this market GROWING or declining? (Stage 11)
 **Trend Longevity Analysis**
 - Trend direction ("Growing", "Stable", "Declining")
 - Momentum score (0.0-1.0)
@@ -477,9 +477,9 @@ Each stage has two YAML configuration files:
 ### Models Location
 All Pydantic models defined in `src/nicheiq/models/research_state.py`:
 - `AudienceMappingResult` (Stage 6.5) - 11 fields
-- `PricingStrategyResult` (Stage 8.7) - 16 fields
-- `MarketSizingResult` (Stage 8.6) - 15 fields
-- `TrendLongevityResult` (Stage 9.2) - 20 fields
+- `PricingStrategyResult` (Stage 7) - 16 fields
+- `MarketSizingResult` (Stage 9) - 15 fields
+- `TrendLongevityResult` (Stage 11) - 20 fields
 
 ---
 
@@ -537,7 +537,7 @@ All stages are production-ready and can be:
 
 ### Optimizations (Deferred)
 - Prompt token reduction (25-30% savings possible)
-- Parallel crew execution for Stages 6.5, 8.6, 8.7 (2-3x speedup)
+- Parallel crew execution for Stages 6.5, 9, 7 (2-3x speedup)
 - Multi-model cost optimization (use gpt-4o-mini for simpler tasks)
 
 ---

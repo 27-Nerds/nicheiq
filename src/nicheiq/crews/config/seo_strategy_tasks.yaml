@@ -3,7 +3,7 @@
 
 expand_keywords_conceptually:
   description: >
-    Phase 9.5a: Hybrid Seed Keyword Generation - Generate a strategic mix of BROAD SEEDS
+    Phase 6a: Hybrid Seed Keyword Generation - Generate a strategic mix of BROAD SEEDS
     (1-2 words) for DataForSEO expansion + TARGETED KEYWORDS (3-5 words) for direct validation.
 
     **CRITICAL UNDERSTANDING:**
@@ -23,7 +23,7 @@ expand_keywords_conceptually:
     - Project Type Constraints: {allowed_project_types}
 
     **RELEVANCE REMINDER:**
-    All keywords generated here will be expanded by DataForSEO (Phase 9.5b) which may produce
+    All keywords generated here will be expanded by DataForSEO (Phase 6b) which may produce
     thousands of variations. Ensure your seed keywords are TIGHTLY ALIGNED with the niche and
     solution context above. Avoid generic terms from unrelated domains. Keywords should be
     extractable from the provided context fields, not invented from outside knowledge.
@@ -83,7 +83,7 @@ expand_keywords_conceptually:
     **expansion_rationale**: str (2-3 sentences explaining the hybrid strategy and expected expansion potential)
 
     **EXPANSION GUIDANCE:**
-    Generate 40-50 seeds recognizing this is INPUT for DataForSEO's expansion (Phase 9.5b),
+    Generate 40-50 seeds recognizing this is INPUT for DataForSEO's expansion (Phase 6b),
     which will multiply these into 300-1000+ keywords. Track total keyword counts and document
     expansion strategy in expansion_rationale field. Different seed categories enable thorough
     market coverage across problem discovery, solution-seeking, competitor alternatives, and

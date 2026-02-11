@@ -181,8 +181,8 @@ def valid_checkpoint_metadata():
         "niche_description": "AI-powered productivity tools for remote teams",
         "allowed_project_types": None,
         "started_at": "2025-01-15T10:30:00",
-        "current_stage": 6,
-        "completed_stages": ["stage_5_social_content", "stage_6_pain_points"],
+        "current_stage": 3,
+        "completed_stages": ["stage_2_social_content", "stage_3_pain_points"],
         "errors": [],
         "last_checkpoint_at": "2025-01-15T11:00:00",
         "environment": {"python_version": "3.11.0"}
@@ -214,7 +214,7 @@ def invalid_metadata_out_of_range():
     return {
         "niche_description": "Test niche",
         "started_at": "2025-01-15T10:30:00",
-        "current_stage": 99,  # Out of valid range (1-10)
+        "current_stage": 99,  # Out of valid range (1-14)
     }
 
 
@@ -263,8 +263,8 @@ def populated_checkpoint_folder(checkpoint_temp_dir, valid_checkpoint_metadata, 
 
     # Write stage files
     stage_files = {
-        "stage_5_social_content.json": {"posts": [], "tweets": []},
-        "stage_6_pain_points.json": valid_stage_data_dict
+        "stage_2_social_content.json": {"posts": [], "tweets": []},
+        "stage_3_pain_points.json": valid_stage_data_dict
     }
 
     for filename, data in stage_files.items():

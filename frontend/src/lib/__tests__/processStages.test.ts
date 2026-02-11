@@ -14,7 +14,7 @@ interface StageProgress {
 }
 
 const PARALLEL_STAGE_GROUPS: Record<number, { hide: number[]; combinedName: string }> = {
-  6: { hide: [6.5], combinedName: 'Pain Point & Audience Analysis' },
+  3: { hide: [4], combinedName: 'Pain Point & Audience Analysis' },
 };
 
 function processStagesForDisplay(stages: StageProgress[], jobStatus: string): StageProgress[] {
@@ -98,34 +98,34 @@ describe('processStagesForDisplay', () => {
     expect(result[2].status).toBe('PENDING');
   });
 
-  it('hides parallel stage 6.5 and renames stage 6', () => {
+  it('hides parallel stage 4 and renames stage 3', () => {
     const stages = [
-      makeStage(5, 'COMPLETED'),
-      makeStage(6, 'RUNNING', 'Pain Point Analysis'),
-      makeStage(6.5, 'RUNNING', 'Audience Analysis'),
-      makeStage(7, 'PENDING'),
+      makeStage(2, 'COMPLETED'),
+      makeStage(3, 'RUNNING', 'Pain Point Analysis'),
+      makeStage(4, 'RUNNING', 'Audience Analysis'),
+      makeStage(5, 'PENDING'),
     ];
 
     const result = processStagesForDisplay(stages, 'RUNNING');
 
-    // Stage 6.5 should be hidden
-    expect(result.find(s => s.stageNumber === 6.5)).toBeUndefined();
-    // Stage 6 should be renamed
-    expect(result.find(s => s.stageNumber === 6)?.stageName).toBe('Pain Point & Audience Analysis');
+    // Stage 4 should be hidden
+    expect(result.find(s => s.stageNumber === 4)).toBeUndefined();
+    // Stage 3 should be renamed
+    expect(result.find(s => s.stageNumber === 3)?.stageName).toBe('Pain Point & Audience Analysis');
   });
 
   it('maps multiple RUNNING stages to FAILED on job failure', () => {
     const stages = [
-      makeStage(5, 'COMPLETED'),
-      makeStage(6, 'RUNNING'),
-      // 6.5 is hidden, but if present it should also be mapped
-      makeStage(7, 'RUNNING'),
+      makeStage(2, 'COMPLETED'),
+      makeStage(3, 'RUNNING'),
+      // 4 is hidden, but if present it should also be mapped
+      makeStage(5, 'RUNNING'),
     ];
 
     const result = processStagesForDisplay(stages, 'FAILED');
 
-    expect(result.find(s => s.stageNumber === 6)?.status).toBe('FAILED');
-    expect(result.find(s => s.stageNumber === 7)?.status).toBe('FAILED');
+    expect(result.find(s => s.stageNumber === 3)?.status).toBe('FAILED');
+    expect(result.find(s => s.stageNumber === 5)?.status).toBe('FAILED');
   });
 });
 

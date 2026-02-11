@@ -27,12 +27,14 @@
     ExecutiveDashboard,
     SelectionCriteriaScore,
     BudgetEstimate,
+    PricingStrategy,
   } from "$lib/types/report";
   import {
     renderMarkdown,
     parseRationaleMetrics,
     formatScoreOn10,
   } from "$lib/utils/format";
+  import { formatPricingSummary } from "$lib/utils/pricing";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import Section from "$lib/components/ui/Section.svelte";
@@ -50,6 +52,7 @@
     selectionRationale: string;
     scores?: SelectionCriteriaScore[];
     budgetEstimate?: BudgetEstimate | string | null;
+    pricingStrategy?: PricingStrategy | null;
   }
 
   let {
@@ -58,6 +61,7 @@
     selectionRationale,
     scores,
     budgetEstimate,
+    pricingStrategy,
   }: Props = $props();
 
   const solutionName = $derived(solution.solution_name || "Solution");
@@ -94,6 +98,13 @@
   };
 
   const budgetDisplay = $derived(formatBudgetRange(budgetEstimate));
+
+  // Use structured pricing object when available (fixes Freemium-Lite display for existing reports)
+  const businessModelText = $derived(
+    pricingStrategy
+      ? formatPricingSummary(pricingStrategy)
+      : solution.pricing_strategy,
+  );
 
   // Get semantic variant for Selection Rationale metrics based on value
   const getMetricCardVariant = (metric: {
@@ -438,7 +449,7 @@
   {/if}
 
   <!-- Business Model -->
-  {#if solution.pricing_strategy}
+  {#if businessModelText}
     <InsightCard
       variant="success"
       border="left"
@@ -451,7 +462,7 @@
           <span class="business-model-title">Business Model</span>
         </div>
       {/snippet}
-      <p class="business-model-text">{solution.pricing_strategy}</p>
+      <p class="business-model-text">{businessModelText}</p>
     </InsightCard>
   {/if}
 

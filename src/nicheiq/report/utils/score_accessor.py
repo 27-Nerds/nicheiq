@@ -28,7 +28,7 @@ class ScoreAccessor:
         Initialize with solution selection result.
 
         Args:
-            solution_selection: SolutionSelectionResult from Stage 8.75 (can be None)
+            solution_selection: SolutionSelectionResult from Stage 5 (can be None)
         """
         self.solution_selection = solution_selection
 
@@ -166,8 +166,8 @@ class ScoreAccessor:
 
         Single source of truth for SEO score across all report sections.
         Resolution order:
-        1. Stage 9.5 refined score (most accurate, data-driven)
-        2. Stage 8.5 selection criteria score
+        1. Stage 12 refined score (most accurate, data-driven)
+        2. Stage 5 selection criteria score
         3. Stage 7 baseline score
         4. Default value
 
@@ -178,12 +178,12 @@ class ScoreAccessor:
         Returns:
             SEO score (0.0-1.0)
         """
-        # 1. Stage 9.5 refined (most accurate, data-driven)
+        # 1. Stage 12 refined (most accurate, data-driven)
         seo_refined = getattr(solution, 'seo_scalability_score_refined', None)
         if seo_refined is not None:
             return seo_refined
 
-        # 2. Stage 8.5 selection criteria
+        # 2. Stage 5 selection criteria
         scores = self.get_scores(solution.solution_name)
         if scores and scores.seo_growth_potential_score is not None:
             return scores.seo_growth_potential_score

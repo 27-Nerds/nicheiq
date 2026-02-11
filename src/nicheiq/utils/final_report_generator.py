@@ -34,7 +34,7 @@ def generate_markdown_report(final_report: FinalReport) -> str:
     # Executive Summary
     sections.append(_generate_executive_summary(final_report))
 
-    # Solution Selection (Stage 8.5)
+    # Solution Selection (Stage 5)
     sections.append(_generate_solution_selection_section(final_report))
 
     # Problem Section (Pain Points)
@@ -79,11 +79,11 @@ def _generate_executive_summary(report: FinalReport) -> str:
 {report.executive_summary}"""
 
 def _generate_solution_selection_section(report: FinalReport) -> str:
-    """Generate solution selection section (Stage 8.5)."""
+    """Generate solution selection section (Stage 5)."""
     section = [
         "---",
         "",
-        "## SOLUTION SELECTION (Stage 8.5)",
+        "## SOLUTION SELECTION (Stage 5)",
         "",
         f"### Selected Solution: {report.selected_solution_name}",
         "",

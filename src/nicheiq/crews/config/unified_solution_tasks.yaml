@@ -655,7 +655,7 @@ solution_selection:
     ═══ CRITICAL RULES ═══
 
     **FIELD REQUIREMENTS:**
-    ✗ Including keyword_demand_score in all_solution_scores → Premature (Stage 8.8 calculates)
+    ✗ Including keyword_demand_score in all_solution_scores → Premature (keyword validation calculates)
     ✗ Missing all_solution_scores → Must include scores for ALL solutions evaluated
 
     **DATA ACCURACY:**
@@ -699,7 +699,7 @@ solution_selection:
     - rank: N (1=best, 2=second, etc.)
 
     NOTE: DO NOT include keyword_demand_score or adjusted_composite_score fields.
-    These will be calculated later by Stage 8.8 using real DataForSEO API validation.
+    These will be calculated later by keyword validation using real DataForSEO API validation.
 
     **runner_up_solutions** (List[str]): 2-3 alternative solution names ranked by merit
 
