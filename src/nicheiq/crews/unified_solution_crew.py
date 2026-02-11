@@ -618,6 +618,19 @@ class UnifiedSolutionCrew:
                     "Check IdeaGenerationResult schema and agent prompt."
                 )
 
+            # Post-process: cap novelty_score when text fields are weak
+            for solution in base_solutions.solution_ideas:
+                if solution.novelty_score and solution.novelty_score > 0.45:
+                    ca = (solution.conventional_approach or "").strip()
+                    ia = (solution.innovation_angle or "").strip()
+                    wiw = (solution.why_it_works or "").strip()
+                    if len(ca) < 30 or len(ia) < 30 or len(wiw) < 30:
+                        logger.info(
+                            f"Capping novelty_score for '{solution.solution_name}' "
+                            f"from {solution.novelty_score} to 0.45 (weak text fields)"
+                        )
+                        solution.novelty_score = 0.45
+
             # Save task-level checkpoints for resume capability
             if self.checkpoint_mgr:
                 if raw_concepts:

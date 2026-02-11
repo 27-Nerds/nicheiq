@@ -576,7 +576,8 @@ class RawConcept(BaseModel):
             "'data_source_inversion' (unique data source), "
             "'cross_industry_template' (pattern from other industry), "
             "'atomic_feature' (single feature as product), "
-            "'community_flip' (users create content for each other)"
+            "'community_flip' (users create content for each other), "
+            "'platform_leverage' (build on existing platform APIs/ecosystems like Shopify, Stripe, GitHub)"
         )
     )
     project_type: str = Field(
@@ -598,6 +599,26 @@ class RawConcept(BaseModel):
         description=(
             "Hint about the primary data source or mechanism. "
             "Examples: 'Reddit discussions', 'Government APIs', 'User submissions', 'Web scraping [sites]'"
+        )
+    )
+    why_non_obvious: Optional[str] = Field(
+        default=None,
+        description=(
+            "Articulate the specific insight that makes this idea non-trivial. "
+            "Must explain WHY this approach is not obvious. "
+            "Must be specific to THIS concept — generic phrases like 'unique approach', "
+            "'nobody has built this', 'innovative solution' are INVALID. "
+            "Example: 'Building permit data is public but scattered across 3,100 counties; "
+            "aggregating it creates a cost truth-source that beats estimate-based competitors.'"
+        )
+    )
+    distribution_channel: Optional[str] = Field(
+        default="seo",
+        description=(
+            "Primary distribution channel: 'seo' (default, organic search), "
+            "'platform_marketplace' (Shopify App Store, Figma plugins — must ALSO have SEO keywords), "
+            "'hybrid' (platform + SEO). SEO remains the primary acquisition strategy; "
+            "platform distribution is a bonus, not a replacement."
         )
     )
 

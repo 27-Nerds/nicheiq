@@ -13,8 +13,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from nicheiq.utils.validation.crew_guardrails import (
+    _normalize_technique,
     validate_content_categorization,
     validate_quote_enrichment,
+    validate_raw_concepts,
     validate_solution_selection,
 )
 
@@ -441,3 +443,209 @@ class TestValidateSolutionSelection:
 
         assert not success
         assert "recommended_focus" in result.lower()
+
+
+def _make_raw_concept(
+    name="TestConcept",
+    technique="niche_drilling",
+    why_non_obvious=None,
+    distribution_channel="seo",
+    **overrides,
+) -> dict:
+    """Helper to build a valid raw concept dict."""
+    concept = {
+        "concept_name": name,
+        "one_liner": f"A detailed description of {name} that explains the unique angle and approach.",
+        "ideation_technique": technique,
+        "project_type": "aggregator",
+        "target_keywords": [f"{name.lower()} keyword 1", f"{name.lower()} keyword 2"],
+        "data_source_hint": "Public data sources",
+        "why_non_obvious": (
+            why_non_obvious if why_non_obvious is not None else
+            f"This approach exploits an information asymmetry in {name.lower()} data "
+            "that competitors miss because they focus on surface-level metrics."
+        ),
+        "distribution_channel": distribution_channel,
+    }
+    concept.update(overrides)
+    return concept
+
+
+def _make_raw_concept_list_json(concepts=None, techniques_used=None):
+    """Helper to build a valid RawConceptList JSON string."""
+    if concepts is None:
+        # Default: 6 concepts using 3+ different techniques
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling"),
+            _make_raw_concept("ConceptBeta", "niche_drilling"),
+            _make_raw_concept("ConceptGamma", "data_source_inversion"),
+            _make_raw_concept("ConceptDelta", "cross_industry_template"),
+            _make_raw_concept("ConceptEpsilon", "atomic_feature"),
+            _make_raw_concept("ConceptZeta", "community_flip"),
+        ]
+    if techniques_used is None:
+        techniques_used = list({c["ideation_technique"] for c in concepts})
+    return json.dumps({
+        "concepts": concepts,
+        "techniques_used": techniques_used,
+        "pain_points_referenced": ["Pain Point 1", "Pain Point 2"],
+    })
+
+
+class TestValidateRawConcepts:
+    """Tests for validate_raw_concepts guardrail."""
+
+    def test_valid_diverse_concepts_pass(self):
+        """Valid concepts with 3+ techniques and good why_non_obvious pass."""
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json()
+
+        success, result = validate_raw_concepts(output)
+
+        assert success
+        assert result == output.raw
+
+    def test_fails_with_fewer_than_3_techniques(self):
+        """Fails when fewer than 3 different techniques are used."""
+        concepts = [
+            _make_raw_concept(f"ConceptNum{i}", "niche_drilling")
+            for i in range(6)
+        ]
+        # All use same technique
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert not success
+        assert "technique diversity" in result.lower()
+
+    def test_no_platform_leverage_passes_with_warning(self):
+        """No platform_leverage → passes (soft check, not hard failure)."""
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling"),
+            _make_raw_concept("ConceptBeta", "niche_drilling"),
+            _make_raw_concept("ConceptGamma", "data_source_inversion"),
+            _make_raw_concept("ConceptDelta", "cross_industry_template"),
+            _make_raw_concept("ConceptEpsilon", "atomic_feature"),
+            _make_raw_concept("ConceptZeta", "community_flip"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert success  # Soft check, not a failure
+
+    def test_fails_with_missing_why_non_obvious(self):
+        """Fails when why_non_obvious is missing (< 50 chars)."""
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling", why_non_obvious=""),
+            _make_raw_concept("ConceptBeta", "data_source_inversion"),
+            _make_raw_concept("ConceptGamma", "cross_industry_template"),
+            _make_raw_concept("ConceptDelta", "atomic_feature"),
+            _make_raw_concept("ConceptEpsilon", "community_flip"),
+            _make_raw_concept("ConceptZeta", "niche_drilling"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert not success
+        assert "why_non_obvious" in result.lower()
+
+    def test_fails_with_short_why_non_obvious(self):
+        """Fails when why_non_obvious is too short (< 50 chars)."""
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling", why_non_obvious="Short reason here."),
+            _make_raw_concept("ConceptBeta", "data_source_inversion"),
+            _make_raw_concept("ConceptGamma", "cross_industry_template"),
+            _make_raw_concept("ConceptDelta", "atomic_feature"),
+            _make_raw_concept("ConceptEpsilon", "community_flip"),
+            _make_raw_concept("ConceptZeta", "niche_drilling"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert not success
+        assert "50+ chars" in result
+
+    def test_fails_with_generic_banned_phrase_in_short_text(self):
+        """Fails when short why_non_obvious (< 80 chars) contains banned phrase."""
+        concepts = [
+            _make_raw_concept(
+                "ConceptAlpha", "niche_drilling",
+                why_non_obvious="This is a unique approach to solving problems in this space."
+            ),
+            _make_raw_concept("ConceptBeta", "data_source_inversion"),
+            _make_raw_concept("ConceptGamma", "cross_industry_template"),
+            _make_raw_concept("ConceptDelta", "atomic_feature"),
+            _make_raw_concept("ConceptEpsilon", "community_flip"),
+            _make_raw_concept("ConceptZeta", "niche_drilling"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert not success
+        assert "unique approach" in result.lower()
+
+    def test_long_why_non_obvious_with_banned_phrase_passes(self):
+        """Long why_non_obvious (>= 80 chars) with banned phrase in context passes."""
+        long_wno = (
+            "While competitors take a unique approach of aggregating listings, this tool instead "
+            "exploits the information asymmetry in municipal building permit data scattered across "
+            "3,100 county sites, creating signals competitors fundamentally cannot replicate."
+        )
+        assert len(long_wno) >= 80  # Verify our test data
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling", why_non_obvious=long_wno),
+            _make_raw_concept("ConceptBeta", "data_source_inversion"),
+            _make_raw_concept("ConceptGamma", "cross_industry_template"),
+            _make_raw_concept("ConceptDelta", "atomic_feature"),
+            _make_raw_concept("ConceptEpsilon", "community_flip"),
+            _make_raw_concept("ConceptZeta", "niche_drilling"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert success
+
+    def test_technique_name_normalization(self):
+        """Technique names with spaces/hyphens normalize to underscores."""
+        assert _normalize_technique("platform leverage") == "platform_leverage"
+        assert _normalize_technique("platform-leverage") == "platform_leverage"
+        assert _normalize_technique("Platform_Leverage") == "platform_leverage"
+        assert _normalize_technique("  niche_drilling  ") == "niche_drilling"
+        assert _normalize_technique("CROSS-INDUSTRY TEMPLATE") == "cross_industry_template"
+
+    def test_platform_leverage_technique_accepted(self):
+        """Platform leverage counts as a valid technique for diversity."""
+        concepts = [
+            _make_raw_concept("ConceptAlpha", "niche_drilling"),
+            _make_raw_concept("ConceptBeta", "platform_leverage"),
+            _make_raw_concept("ConceptGamma", "data_source_inversion"),
+            _make_raw_concept("ConceptDelta", "platform_leverage"),
+            _make_raw_concept("ConceptEpsilon", "community_flip"),
+            _make_raw_concept("ConceptZeta", "niche_drilling"),
+        ]
+        output = MagicMock()
+        output.pydantic = None
+        output.raw = _make_raw_concept_list_json(concepts=concepts)
+
+        success, result = validate_raw_concepts(output)
+
+        assert success

@@ -49,6 +49,20 @@ divergent_exploration:
     4. If pain point data is sparse: Note this and proceed with available evidence
     </long_context_handling>
 
+    ## STEP 0: Anti-Obvious Blacklist (DO THIS FIRST)
+
+    Before generating concepts, list 3-5 OBVIOUS ideas that any lazy builder would
+    generate for "{niche_description}". These are the cached first-thought ideas.
+    Common obvious patterns:
+    - Generic "[niche] directory" without unique angle
+    - "AI-powered [niche] assistant" without specific data advantage
+    - "[Niche] comparison site" without unique scoring
+    - "All-in-one [niche] platform"
+
+    BLACKLIST these ideas. Your concepts must be STRUCTURALLY DIFFERENT from each one.
+    "Structurally different" = different mechanism, data source, or user journey.
+    Each concept's why_non_obvious field must explain the difference.
+
     ═══════════════════════════════════════════════════════════════════════════
 
     ## Creative Ideation Approaches
@@ -59,18 +73,27 @@ divergent_exploration:
     - **Cross-industry templates** - What patterns work elsewhere that could apply here?
     - **Atomic features** - What single feature delivers 80% of a complex product's value?
     - **Community flip** - How can users create value for each other?
+    - **Platform leverage** - What existing platform (Shopify, Stripe, GitHub, Pinterest,
+      Notion, Figma) has an API/ecosystem you can build on? The platform gives you:
+      (1) data access outsiders can't get, (2) trust from being inside the ecosystem,
+      (3) bonus distribution via app store ON TOP of SEO. Platform-leverage concepts
+      must STILL have clear SEO keywords (e.g., "shopify inventory management tool").
 
     Choose techniques that fit THIS problem space. Not all techniques apply to every niche.
 
     ## MANDATORY TECHNIQUE QUOTA
 
-    You MUST generate concepts using AT LEAST 4 different techniques:
+    You MUST generate concepts using AT LEAST 4 different techniques from these 6:
     - Minimum 2 concepts from: niche_drilling OR data_source_inversion
-    - Minimum 2 concepts from: cross_industry_template OR atomic_feature
-    - Minimum 1 concept from: community_flip
+    - Minimum 2 concepts from: cross_industry_template OR atomic_feature OR platform_leverage
+    - Minimum 1 concept from: community_flip OR platform_leverage
     - Remaining concepts: any technique
 
-    If you generate 8 concepts using only 2 techniques → INVALID OUTPUT.
+    STRONGLY ENCOURAGED: Include at least 1 platform_leverage concept if ANY
+    platform APIs are relevant to this niche (Shopify, Stripe, GitHub, Notion, etc.).
+    Platform leverage enhances SEO-first ideas with unique data access.
+
+    If you generate 8 concepts using only 2 techniques -> INVALID OUTPUT.
     Diversity in ideation technique leads to diversity in solutions.
 
     ═══════════════════════════════════════════════════════════════════════════
@@ -81,56 +104,71 @@ divergent_exploration:
 
     - **concept_name**: Catchy, specific name (e.g., "PlumbingCostCalc", "RemoteTaxAdvisors")
     - **one_liner**: 1-2 sentence description focusing on unique angle
-    - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip)
+    - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip, platform_leverage)
     - **project_type**: directory, aggregator, comparison-tool, marketplace, saas, or other
     - **target_keywords**: 2-5 specific SEO queries this would rank for
     - **data_source_hint**: Primary data source or mechanism
+    - **why_non_obvious**: 1-2 sentences explaining the SPECIFIC insight that makes this
+      non-trivial. What would a naive builder try instead, and why is THIS better?
+      BANNED phrases: "unique approach", "nobody has built this", "innovative solution"
+    - **distribution_channel**: Primary channel: seo (default), platform_marketplace,
+      or hybrid. SEO remains primary — platform distribution is a bonus accelerator.
 
-    **EXAMPLES (showing SEO-friendly architectural diversity):**
+    **EXAMPLES (showing non-trivial concepts with diverse techniques):**
 
-    Each example shows a DIFFERENT SEO acquisition pattern, not just different verticals.
+    Each example uses a DIFFERENT ideation technique and shows a non-obvious angle.
     These are architectural pattern illustrations only — do NOT reuse these names, verticals, or keywords in your output.
     Generate concepts relevant to the actual niche: {niche_description}.
 
-    1. concept_name: "PlumbingCostCalc"
-       one_liner: "Aggregates plumber pricing data from 50 cities to generate '[City] plumbing cost 2025' pages."
-       ideation_technique: "data_source_inversion"
-       project_type: "aggregator"
-       target_keywords: ["plumber cost [city]", "how much plumber charges", "plumbing prices near me"]
-       data_source_hint: "Scrape Angi, Thumbtack, Yelp pricing mentions"
-       **SEO pattern: [City] + [Service] + [Year] programmatic pages**
-
-    2. concept_name: "APILatencyBench"
-       one_liner: "Automated latency testing for popular APIs, generates '[API name] response time benchmark' and '[API A] vs [API B] latency' pages."
-       ideation_technique: "atomic_feature"
-       project_type: "comparison-tool"
-       target_keywords: ["stripe api latency", "twilio vs plivo speed", "fastest payment api"]
-       data_source_hint: "Automated testing infrastructure pinging APIs every hour"
-       **SEO pattern: [Product A] vs [Product B] comparison pages**
-
-    3. concept_name: "StartupCostTemplate"
-       one_liner: "Pre-built financial templates for specific startup types, generates '[Industry] startup budget template' and 'How much to start a [business type]' pages."
-       ideation_technique: "cross_industry_template"
+    1. concept_name: "ShopifyDeadstock"
+       one_liner: "Shopify app predicting slow inventory via Inventory API before merchants notice, with '[product type] deadstock risk' SEO pages."
+       ideation_technique: "platform_leverage"
        project_type: "saas"
-       target_keywords: ["saas startup costs spreadsheet", "restaurant budget template", "how much to start ecommerce"]
-       data_source_hint: "Curated templates + user-submitted cost breakdowns"
-       **SEO pattern: [Use case] + template/guide content pages**
+       target_keywords: ["shopify deadstock alert", "slow inventory shopify", "shopify overstock management"]
+       data_source_hint: "Shopify Inventory API — sell-through velocity aggregated across stores"
+       why_non_obvious: "Shopify API exposes sell-through velocity data that merchants never monitor directly; aggregating across 1000s of stores enables predictive alerts no standalone tool can match."
+       distribution_channel: "hybrid"
+       **Technique: platform_leverage — unique data from platform API + app store distribution**
 
-    4. concept_name: "RemoteTaxAdvisors"
-       one_liner: "Directory of tax advisors specializing in digital nomads, generates '[Country] remote worker tax advisor' pages."
-       ideation_technique: "niche_drilling"
-       project_type: "directory"
-       target_keywords: ["digital nomad tax advisor", "portugal remote worker taxes", "expat tax help"]
-       data_source_hint: "User submissions + LinkedIn outreach to tax professionals"
-       **SEO pattern: [Location] + [Niche service] directory pages**
-
-    5. concept_name: "SaaSPricingDB"
-       one_liner: "Tracks pricing changes for 500+ SaaS tools, generates '[Tool name] pricing 2025' and '[Category] software pricing comparison' pages."
+    2. concept_name: "EvictionRiskMap"
+       one_liner: "Scrapes county court eviction filings (public records) to generate '[zip code] eviction rate' and '[neighborhood] rental stability score' pages."
        ideation_technique: "data_source_inversion"
        project_type: "aggregator"
-       target_keywords: ["notion pricing", "slack vs teams cost", "project management software prices"]
-       data_source_hint: "Automated scraping of pricing pages + historical wayback data"
-       **SEO pattern: [Product] pricing + [Category] comparison data pages**
+       target_keywords: ["eviction rate by zip code", "rental stability score", "neighborhood eviction risk"]
+       data_source_hint: "County court eviction filings — public records scraped from 3,100+ county sites"
+       why_non_obvious: "Court records are public but scattered across 3,100+ county sites in non-standard formats; aggregating them creates a rental safety signal that Zillow and Apartments.com completely lack because they only track listings, not outcomes."
+       distribution_channel: "seo"
+       **Technique: data_source_inversion — public data nobody is productizing**
+
+    3. concept_name: "PermitTracker"
+       one_liner: "Monitors municipal meeting agendas and building permits via open data portals, generating '[neighborhood] development tracker' pages."
+       ideation_technique: "niche_drilling"
+       project_type: "aggregator"
+       target_keywords: ["building permits near me", "neighborhood development tracker", "zoning changes map"]
+       data_source_hint: "Municipal open data portals — meeting agendas and building permit filings"
+       why_non_obvious: "Municipal agendas are published 48-72 hours before meetings but nobody reads them; a zoning variance signals development 6-12 months before construction — information asymmetry that real estate investors pay for."
+       distribution_channel: "seo"
+       **Technique: niche_drilling — specific sub-niche (pre-construction intelligence)**
+
+    4. concept_name: "OneClickProposal"
+       one_liner: "Extracts ONLY the proposal/quote feature from full PM suites as a standalone tool, generating '[industry] proposal template' and '[service] quote calculator' pages."
+       ideation_technique: "atomic_feature"
+       project_type: "saas"
+       target_keywords: ["contractor proposal template", "freelance quote calculator", "service estimate generator"]
+       data_source_hint: "Pre-built industry templates + user-submitted rate data"
+       why_non_obvious: "Enterprise PM tools charge $30-100/month but most small contractors only use the quote builder; extracting that single feature at $9/month with pre-built industry templates captures 80% of the value at 10% of the price."
+       distribution_channel: "seo"
+       **Technique: atomic_feature — single high-value feature extracted from complex tools**
+
+    5. concept_name: "FreelancerRateRadar"
+       one_liner: "Freelancers anonymously submit actual project rates by skill/city, generating '[skill] freelance rate [city]' benchmark pages."
+       ideation_technique: "community_flip"
+       project_type: "aggregator"
+       target_keywords: ["freelance web developer rate NYC", "graphic design hourly rate", "freelance rate benchmark"]
+       data_source_hint: "Anonymized self-reported rates from verified freelancers"
+       why_non_obvious: "Upwork/Fiverr show asking prices, not actual paid rates; self-reported data from verified freelancers fills a trust gap no scraping approach can, and each submission creates a new indexable data point."
+       distribution_channel: "seo"
+       **Technique: community_flip — users create value for each other via submissions**
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -324,7 +362,11 @@ solution_refinement:
     **SELECTION GUIDANCE:**
 
     - Prioritize concepts with strong market fit and realistic execution paths
-    - Consider novelty as a tiebreaker when market fit is similar
+    - Novelty is a strong secondary signal. Market fit and SEO pragmatism remain primary,
+      but between two concepts with similar market fit, ALWAYS prefer the more novel one.
+    - If ALL top concepts have novelty_score < 0.4, flag this as a quality concern —
+      push at least one concept to explore a non-obvious angle even if it scores slightly
+      lower on market fit. Generic ideas in crowded markets struggle regardless of fit score.
 
     ## DIVERSITY REQUIREMENT: Different SEO Acquisition Patterns
 
@@ -424,6 +466,21 @@ solution_refinement:
     ❌ Bad: Picking novelty_score first, then writing fields to justify it
     ✓ Good: Each field answers a distinct question with specific evidence
     ✓ Good: Score derived from the strength of the three text fields
+
+    **NOVELTY QUALITY GATE:**
+
+    Before assigning novelty_score above 0.5, verify:
+    1. conventional_approach describes a SPECIFIC conventional strategy with enough
+       detail to be recognizable (not vague "standard approach" or "most would build a tool")
+    2. innovation_angle is STRUCTURAL (not just "better UX", "more data", or "AI-powered")
+    3. why_it_works cites SPECIFIC pain point evidence (title, severity, mention count)
+
+    If ANY check fails -> cap novelty_score at 0.45.
+
+    NOVELTY RED FLAGS (should cap at 0.45):
+    - conventional_approach is vague: "Most would build a platform"
+    - innovation_angle is incremental: "better design", "AI-powered"
+    - why_it_works is generic: "users want this" (which users? what evidence?)
 
   expected_output: >
     IdeaGenerationResult with:
@@ -608,7 +665,8 @@ solution_selection:
     Consider all factors and select the solution most likely to succeed:
     - **Market fit** (pain point alignment, evidence strength)
     - **Technical feasibility** (can be built solo in reasonable time)
-    - **Differentiation potential** (novelty, unique approach, specificity)
+    - **Differentiation & novelty** (innovation angle strength, non-obvious data sources,
+      platform leverage potential — strong secondary signal after market fit and SEO feasibility)
     - **SEO growth potential** (organic acquisition economics)
 
     Weight factors based on this specific context. A high-novelty niche might
@@ -620,6 +678,14 @@ solution_selection:
     2. Consider overall merit - not just weighted averages
     3. Select the solution that best balances all factors for THIS context
     4. Verify selection makes strategic sense
+
+    Novelty tiebreaker: When solutions have composite scores within 0.05, prefer the
+    one with higher novelty_score. A creative angle in a less crowded space outperforms
+    a generic idea in a saturated one. But never sacrifice strong SEO pragmatism for
+    novelty alone.
+
+    If ALL solutions have novelty_score <= 0.4, note this in selection_rationale as a
+    quality concern — it means every idea is a conventional approach.
 
     **Build Selection Rationale:**
     - Reference specific data from the analysis

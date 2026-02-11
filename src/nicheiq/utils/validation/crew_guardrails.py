@@ -1007,6 +1007,11 @@ def validate_content_categorization(task_output) -> tuple[bool, Any]:
 # ========================================
 
 
+def _normalize_technique(technique: str) -> str:
+    """Normalize technique names: spaces/hyphens → underscores, lowercase."""
+    return re.sub(r'[\s-]', '_', technique.strip().lower())
+
+
 def validate_raw_concepts(task_output) -> tuple[bool, Any]:
     """
     Guardrail for divergent_exploration_task to validate RawConceptList.
@@ -1052,6 +1057,55 @@ def validate_raw_concepts(task_output) -> tuple[bool, Any]:
                 f"got {len(concept.target_keywords or [])}. "
                 "Add specific SEO keywords this solution would target."
             )
+
+        # Validate why_non_obvious (Optional in model, enforced here for better per-concept feedback)
+        wno = getattr(concept, 'why_non_obvious', None) or ""
+        if len(wno.strip()) < 50:
+            return (
+                False,
+                f"Concept '{concept.concept_name}' missing/short why_non_obvious "
+                f"(needs 50+ chars, got {len(wno.strip())}). Explain the specific structural "
+                "insight: what would a naive builder try, and why is THIS approach better?"
+            )
+
+        # Check for generic phrases only when text is short (< 80 chars = likely just the phrase)
+        _banned_wno_phrases = [
+            "unique approach", "nobody has built", "innovative solution",
+            "first of its kind", "novel concept", "groundbreaking",
+            "no one else does this", "completely new",
+        ]
+        wno_lower = wno.lower()
+        if len(wno.strip()) < 80:
+            for phrase in _banned_wno_phrases:
+                if phrase in wno_lower:
+                    return (
+                        False,
+                        f"Concept '{concept.concept_name}' why_non_obvious is too generic: "
+                        f"contains '{phrase}' without sufficient specifics. Describe the SPECIFIC "
+                        "data asymmetry, workflow insight, or structural advantage."
+                    )
+
+    # Validate technique diversity (at least 3 different techniques)
+    techniques_used: set[str] = set()
+    for concept in result.concepts:
+        if concept.ideation_technique:
+            techniques_used.add(_normalize_technique(concept.ideation_technique))
+
+    if len(techniques_used) < 3:
+        return (
+            False,
+            f"Technique diversity violation: Only {len(techniques_used)} techniques used "
+            f"({', '.join(sorted(techniques_used))}). Need 3+ different techniques. "
+            "Available: niche_drilling, data_source_inversion, cross_industry_template, "
+            "atomic_feature, community_flip, platform_leverage."
+        )
+
+    # Soft check: log warning if no platform_leverage (not a hard failure)
+    if "platform_leverage" not in techniques_used:
+        logger.warning(
+            "No platform_leverage concepts generated. Consider if platform APIs "
+            "could enhance ideas for this niche."
+        )
 
     logger.info(f"✓ Raw concepts guardrail passed: {len(result.concepts)} concepts")
     return (True, task_output.raw)
