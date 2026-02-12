@@ -15,8 +15,7 @@ enum JobStatus {
   PENDING            // Job created, not yet queued
   QUEUED             // Added to Redis queue
   RUNNING            // Worker is processing
-  VALIDATING_IDEAS   // Phase 1 done, validating solution ideas
-  AWAITING_SELECTION // All ideas validated, waiting for user selection
+  AWAITING_SELECTION // Ideas ready, waiting for user selection
   REGENERATING       // User requested new ideas, regenerating
   RUNNING_PHASE2     // User selected solution, running deep investigation
   COMPLETED          // Successfully finished

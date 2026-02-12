@@ -270,7 +270,7 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
     ...overrides,
   });
 
-  it('transitions AWAITING_SELECTION → REGENERATING', async () => {
+  it('transitions AWAITING_SELECTION → QUEUED', async () => {
     mockJobFindFirst.mockResolvedValue(makeJob());
 
     const response = await request(app)
@@ -279,11 +279,11 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       .send({});
 
     expect(response.status).toBe(200);
-    expect(response.body.status).toBe('regenerating');
+    expect(response.body.status).toBe('queued');
 
     const txCallArgs = mockJobUpdateMany.mock.calls[0][0];
     expect(txCallArgs.where.status).toBe('AWAITING_SELECTION');
-    expect(txCallArgs.data.status).toBe('REGENERATING');
+    expect(txCallArgs.data.status).toBe('QUEUED');
   });
 
   it('calls enqueueRegenerateJob with correct args', async () => {

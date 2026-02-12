@@ -52,6 +52,7 @@
   const isInteractive = $derived(
     isAwaitingSelection || isRegenerating,
   );
+  const canCancel = $derived(["PENDING", "QUEUED", "RUNNING"].includes(statusUpper));
 
   // Human-readable error for failed jobs
   const humanError = $derived(getHumanReadableError(job));
@@ -361,7 +362,7 @@
 </script>
 
 {#snippet projectTypeBadges()}
-  <div class="flex flex-wrap items-center gap-1 mt-2">
+  <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
     {#if showAllTypes}
       <span
         class="text-[11px] px-2 py-0.5 rounded bg-bg-surface border border-border text-text-muted"
@@ -405,7 +406,7 @@
   <div class="flex items-center justify-between gap-4">
     <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
       <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
-      <h3 class="text-base font-semibold text-text-primary truncate min-w-0">
+      <h3 class="text-lg font-semibold text-text-primary truncate min-w-0">
         {formatNicheTitle(job.niche)}
       </h3>
     </div>
@@ -457,7 +458,7 @@
 
       <!-- Footer -->
       <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        {@render cancelButton()}
+        {#if canCancel}{@render cancelButton()}{/if}
       </div>
     {:else if isQueued}
       <!-- QUEUED STATE -->
@@ -510,10 +511,6 @@
         Generating new solutions...
       </p>
 
-      <!-- Footer -->
-      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        {@render cancelButton()}
-      </div>
     {:else if isCompleted}
       <!-- COMPLETED STATE -->
       {#snippet completedBadge()}

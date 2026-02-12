@@ -43,7 +43,7 @@
       {strokeWidth}
       color={effectiveColor}
       {showValue}
-      glow={true}
+      flat={true}
     />
   </div>
   <div class="hero-primary__content">

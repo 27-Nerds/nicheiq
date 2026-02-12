@@ -6,6 +6,7 @@ from .content_preparers import (
     prepare_competitor_intelligence,
     prepare_pain_point_content,
 )
+from .knowledge_helpers import create_knowledge
 from .market_sizing_pre_compute import (
     compute_strive_pre_check,
     compute_saturation_level,
@@ -34,6 +35,7 @@ from .traffic_pre_compute import (
 )
 
 __all__ = [
+    "create_knowledge",
     "prepare_competitor_intelligence",
     "prepare_pain_point_content",
     "compute_strive_pre_check",

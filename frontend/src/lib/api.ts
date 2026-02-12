@@ -19,8 +19,8 @@ export interface CreateJobResponse {
   message: string;
 }
 
-export type { Job, JobAsset, StageProgress as JobProgress, ErrorDetails, ErrorSeverity, SolutionPreview, SolutionValidationData } from '$lib/types/job';
-import type { Job, SolutionPreview } from '$lib/types/job';
+export type { Job, JobAsset, StageProgress as JobProgress, ErrorDetails, ErrorSeverity, SolutionPreview, SolutionValidationData, ReportSummary } from '$lib/types/job';
+import type { Job, SolutionPreview, ReportSummary } from '$lib/types/job';
 
 export class ApiError extends Error {
   constructor(
@@ -246,6 +246,14 @@ export function subscribeToProgress(
       reconnectTimeout = null;
     }
   };
+}
+
+/**
+ * Get lightweight report summary for preview cards
+ */
+export async function getReportSummary(jobId: string): Promise<ReportSummary> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/report-summary`);
+  return handleResponse<ReportSummary>(response);
 }
 
 /**

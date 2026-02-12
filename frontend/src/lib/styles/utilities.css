@@ -166,6 +166,20 @@
 	overflow: hidden;
 }
 
+.truncate-4 {
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
+.truncate-5 {
+	display: -webkit-box;
+	-webkit-line-clamp: 5;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+}
+
 /* ========================================
    Animation Utilities
    ======================================== */

@@ -321,7 +321,7 @@ export async function failJob(
   // Accept interactive flow statuses as valid pre-fail states
   const validPreFailStatuses: JobStatus[] = [
     JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING,
-    JobStatus.VALIDATING_IDEAS, JobStatus.AWAITING_SELECTION, JobStatus.REGENERATING, JobStatus.RUNNING_PHASE2,
+    JobStatus.AWAITING_SELECTION, JobStatus.REGENERATING, JobStatus.RUNNING_PHASE2,
   ];
   if (!validPreFailStatuses.includes(existingJob.status)) {
     console.log(`[JobService] Job ${jobId} is in ${existingJob.status}, cannot fail from this state`);

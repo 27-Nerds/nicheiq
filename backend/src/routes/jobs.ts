@@ -8,6 +8,7 @@ import { CreateJobSchema, SelectSolutionSchema } from '../types/job.js';
 import { JobStatus, AssetType, CreditTransactionType, StageStatus } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { requireInternalAuth, requireInternalService, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { jobCreationLimiter } from '../middleware/rateLimit.js';
 import { validateJobId } from '../middleware/validation.js';
@@ -15,6 +16,11 @@ import { formatJobResponse } from '../utils/jobFormatter.js';
 import { resolveAssetPath } from '../utils/assetPath.js';
 
 export const jobsRouter = Router();
+
+/** Statuses from which a user may cancel — only pre-selection (Phase 1) */
+const CANCELLABLE_STATUSES: JobStatus[] = [
+  JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING,
+];
 
 /**
  * POST /api/jobs
@@ -113,6 +119,7 @@ jobsRouter.get('/:jobId', requireInternalAuth, validateJobId, async (req: Authen
       includeProgress: true,
       includeProgressTimestamps: true,
       includeAssets: true,
+      includeSolutionIdeas: true,
     }));
   } catch (error) {
     console.error('Failed to get job:', error);
@@ -167,6 +174,82 @@ jobsRouter.get('/:jobId/reportjson', requireInternalAuth, validateJobId, async (
   } catch (error) {
     console.error('Failed to get report:', error);
     res.status(500).json({ error: 'Failed to download report' });
+  }
+});
+
+/**
+ * GET /api/jobs/:jobId/report-summary
+ * Lightweight summary of the report for preview cards (~1KB vs full 100-200KB report)
+ * Only available for COMPLETED jobs.
+ */
+const summaryCache = new Map<string, { data: object; ts: number }>();
+const SUMMARY_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const SUMMARY_CACHE_MAX = 200;
+
+jobsRouter.get('/:jobId/report-summary', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await getJob(jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.status !== JobStatus.COMPLETED) {
+      res.status(400).json({ error: 'Report not ready yet' });
+      return;
+    }
+
+    // Check cache
+    const cached = summaryCache.get(jobId);
+    if (cached && Date.now() - cached.ts < SUMMARY_CACHE_TTL) {
+      res.json(cached.data);
+      return;
+    }
+
+    const asset = await getJobAsset(jobId, AssetType.REPORT_JSON);
+    const resolvedPath = asset ? resolveAssetPath(asset.filePath) : '';
+    if (!asset || !existsSync(resolvedPath)) {
+      res.status(404).json({ error: 'Report not found' });
+      return;
+    }
+
+    const raw = await readFile(resolvedPath, 'utf-8');
+    const report = JSON.parse(raw);
+
+    const summary = {
+      opportunity_score: report.market_analytics?.overall_opportunity_score ?? null,
+      verdict: report.executive_dashboard?.go_no_go_verdict?.verdict ?? null,
+      risk_level: report.executive_dashboard?.go_no_go_verdict?.risk_level ?? null,
+      primary_concern: report.executive_dashboard?.go_no_go_verdict?.primary_concern ?? null,
+      solution_name: report.executive_dashboard?.recommended_solution_snapshot?.name ?? null,
+      solution_tagline: report.executive_dashboard?.recommended_solution_snapshot?.tagline ?? null,
+      core_value_prop: report.executive_dashboard?.recommended_solution_snapshot?.core_value_prop ?? null,
+      project_type: report.executive_dashboard?.recommended_solution_snapshot?.project_type ?? null,
+      confidence_score: report.executive_dashboard?.confidence_score ?? null,
+      total_keywords: report.executive_dashboard?.key_metrics?.total_keyword_count ?? null,
+      total_search_volume: report.executive_dashboard?.key_metrics?.total_keyword_search_volume ?? null,
+      competitor_count: report.executive_dashboard?.key_metrics?.primary_competitor_count ?? null,
+      pain_points_found: report.executive_dashboard?.key_metrics?.high_priority_pain_points ?? null,
+    };
+
+    // Evict oldest entries if cache is full
+    if (summaryCache.size >= SUMMARY_CACHE_MAX) {
+      const oldest = [...summaryCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) summaryCache.delete(oldest[0]);
+    }
+    summaryCache.set(jobId, { data: summary, ts: Date.now() });
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Failed to get report summary:', error);
+    res.status(500).json({ error: 'Failed to get report summary' });
   }
 });
 
@@ -242,13 +325,11 @@ jobsRouter.delete('/:jobId', requireInternalAuth, validateJobId, async (req: Aut
       return;
     }
 
-    if (job.status === JobStatus.COMPLETED) {
-      res.status(400).json({ error: 'Cannot cancel a completed job' });
-      return;
-    }
-
-    if (job.status === JobStatus.CANCELLED) {
-      res.status(400).json({ error: 'Job already cancelled' });
+    if (!CANCELLABLE_STATUSES.includes(job.status as JobStatus)) {
+      const msg = job.status === JobStatus.COMPLETED ? 'Cannot cancel a completed job'
+        : job.status === JobStatus.CANCELLED ? 'Job already cancelled'
+        : 'Cannot cancel job after solution selection';
+      res.status(400).json({ error: msg });
       return;
     }
 
@@ -280,15 +361,12 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
       return;
     }
 
-    // Check if job can be cancelled
-    const cancellableStatuses: JobStatus[] = [
-      JobStatus.PENDING, JobStatus.QUEUED, JobStatus.RUNNING,
-      JobStatus.VALIDATING_IDEAS, JobStatus.AWAITING_SELECTION,
-      JobStatus.REGENERATING, JobStatus.RUNNING_PHASE2,
-    ];
-    if (!cancellableStatuses.includes(job.status)) {
+    // Check if job can be cancelled (only pre-selection statuses)
+    if (!CANCELLABLE_STATUSES.includes(job.status)) {
       res.status(400).json({
-        error: 'Job already finished',
+        error: job.status === JobStatus.COMPLETED || job.status === JobStatus.FAILED || job.status === JobStatus.CANCELLED
+          ? 'Job already finished'
+          : 'Cannot cancel job after solution selection',
         status: job.status,
       });
       return;
@@ -760,8 +838,10 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
           ideasRegeneratedAt: null,
         },
         data: {
-          status: JobStatus.REGENERATING,
+          status: JobStatus.QUEUED,
           ideasRegeneratedAt: new Date(),
+          queuedAt: new Date(),
+          lastHeartbeat: null,        // Clear stale heartbeat from Phase 1; worker will send fresh ones
         },
       });
 
@@ -774,7 +854,7 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
     await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche);
 
     res.json({
-      status: 'regenerating',
+      status: 'queued',
       message: 'Generating new solution ideas. Existing ideas will be preserved.',
     });
   } catch (error) {

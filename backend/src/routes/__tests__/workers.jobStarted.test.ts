@@ -118,12 +118,14 @@ describe('POST /api/workers/job-started', () => {
 
     it('returns shouldCancel: false and updates status when job is QUEUED', async () => {
       mockJobUpdateMany.mockResolvedValue({ count: 1 });
-      mockJobFindUnique.mockResolvedValue({
-        id: jobId,
-        niche: 'test niche',
-        userId: 'user-1',
-        user: { id: 'user-1', email: 'test@example.com' },
-      });
+      mockJobFindUnique
+        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null, selectedSolution: null })
+        .mockResolvedValueOnce({
+          id: jobId,
+          niche: 'test niche',
+          userId: 'user-1',
+          user: { id: 'user-1', email: 'test@example.com' },
+        });
 
       const response = await request(app)
         .post('/api/workers/job-started')
@@ -219,6 +221,72 @@ describe('POST /api/workers/job-started', () => {
         .send({ worker_id: 'worker-1', job_id: jobId });
 
       expect(mockNotifyJobStart).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('regeneration detection', () => {
+    it('transitions QUEUED → REGENERATING when ideasRegeneratedAt is set and no selectedSolution', async () => {
+      mockJobUpdateMany.mockResolvedValue({ count: 1 });
+      mockJobFindUnique
+        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: new Date(), selectedSolution: null })
+        .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
+
+      await request(app)
+        .post('/api/workers/job-started')
+        .send({ worker_id: 'worker-1', job_id: jobId });
+
+      expect(mockJobUpdateMany).toHaveBeenCalledWith({
+        where: {
+          id: jobId,
+          status: { in: ['QUEUED', 'PENDING'] },
+        },
+        data: expect.objectContaining({
+          status: 'REGENERATING',
+          workerId: 'worker-1',
+        }),
+      });
+    });
+
+    it('transitions QUEUED → RUNNING_PHASE2 when selectedSolutions is set', async () => {
+      mockJobUpdateMany.mockResolvedValue({ count: 1 });
+      mockJobFindUnique
+        .mockResolvedValueOnce({ selectedSolutions: ['Sol A'], ideasRegeneratedAt: null, selectedSolution: null })
+        .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
+
+      await request(app)
+        .post('/api/workers/job-started')
+        .send({ worker_id: 'worker-1', job_id: jobId });
+
+      expect(mockJobUpdateMany).toHaveBeenCalledWith({
+        where: {
+          id: jobId,
+          status: { in: ['QUEUED', 'PENDING'] },
+        },
+        data: expect.objectContaining({
+          status: 'RUNNING_PHASE2',
+          workerId: 'worker-1',
+        }),
+      });
+    });
+
+    it('does not treat as regeneration when selectedSolution is already set (phase-2)', async () => {
+      // Has ideasRegeneratedAt but also selectedSolution — this is a phase-2 job after regen
+      mockJobUpdateMany.mockResolvedValue({ count: 1 });
+      mockJobFindUnique
+        .mockResolvedValueOnce({ selectedSolutions: ['Sol A'], ideasRegeneratedAt: new Date(), selectedSolution: 'Sol A' })
+        .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
+
+      await request(app)
+        .post('/api/workers/job-started')
+        .send({ worker_id: 'worker-1', job_id: jobId });
+
+      expect(mockJobUpdateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            status: 'RUNNING_PHASE2',
+          }),
+        })
+      );
     });
   });
 

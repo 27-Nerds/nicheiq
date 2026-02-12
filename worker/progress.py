@@ -268,7 +268,7 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
         solutions: List of solution preview dicts
         checkpoint_path: Path to phase 1 checkpoint
         total_to_validate: Number of solutions to validate
-        skip_validation: If True, skip VALIDATING_IDEAS and go directly to AWAITING_SELECTION
+        skip_validation: If True, skip validation step
     """
     try:
         payload = {

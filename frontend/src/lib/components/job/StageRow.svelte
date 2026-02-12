@@ -107,7 +107,15 @@
   }
 
   .stage-row.is-running {
-    background: rgba(59, 130, 246, 0.04);
+    background: rgba(59, 130, 246, 0.06);
+    background-image: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.12), transparent);
+    background-size: 200% 100%;
+    animation: running-shimmer 4s ease-in-out infinite alternate;
+  }
+
+  @keyframes running-shimmer {
+    0% { background-position: -100% 0; }
+    100% { background-position: 200% 0; }
   }
 
   .completion-glow {
@@ -207,5 +215,6 @@
     .check-spring { animation: none; }
     .completion-glow { animation: none; opacity: 0; }
     .celebration-t2 .duration { animation: none; }
+    .stage-row.is-running { animation: none; background-image: none; }
   }
 </style>

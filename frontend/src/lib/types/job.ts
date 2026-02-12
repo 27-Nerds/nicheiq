@@ -7,7 +7,6 @@ export type JobStatus =
   | 'PENDING'
   | 'QUEUED'
   | 'RUNNING'
-  | 'VALIDATING_IDEAS'
   | 'AWAITING_SELECTION'
   | 'REGENERATING'
   | 'RUNNING_PHASE2'
@@ -56,6 +55,22 @@ export interface SolutionPreview {
   why_it_works?: string | null;
   innovation_angle?: string | null;
   conventional_approach?: string | null;
+}
+
+export interface ReportSummary {
+  opportunity_score: number | null;
+  verdict: string | null;
+  risk_level: string | null;
+  primary_concern: string | null;
+  solution_name: string | null;
+  solution_tagline: string | null;
+  core_value_prop: string | null;
+  project_type: string | null;
+  confidence_score: number | null;
+  total_keywords: number | null;
+  total_search_volume: number | null;
+  competitor_count: number | null;
+  pain_points_found: number | null;
 }
 
 export interface ErrorDetails {

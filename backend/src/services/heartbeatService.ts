@@ -136,9 +136,8 @@ async function findStaleJobs(): Promise<Array<{
   //    a) lastHeartbeat is stale (worker crash)
   //    b) Job never received heartbeat but was started long enough ago
   //    c) Job has exceeded absolute max runtime (safety net)
-  // Note: VALIDATING_IDEAS and AWAITING_SELECTION are excluded — they are user-wait
-  // states with no active worker. Per-solution validations run as independent queue
-  // tasks that don't participate in the heartbeat lifecycle.
+  // Note: AWAITING_SELECTION is excluded — it is a user-wait state with no active
+  // worker and doesn't participate in the heartbeat lifecycle.
   const staleJobs = await prisma.job.findMany({
     where: {
       status: { in: [JobStatus.RUNNING, JobStatus.REGENERATING, JobStatus.RUNNING_PHASE2] },

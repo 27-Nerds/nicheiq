@@ -427,7 +427,7 @@ class UnifiedSolutionCrew:
         - Novelty scoring ensures innovation
         - Solo-dev feasibility weighted in scoring
         """
-        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.crew_helpers import create_knowledge
         from ..utils.helpers import sanitize_collection_name
 
         embedder_config = {
@@ -457,14 +457,14 @@ class UnifiedSolutionCrew:
             niche = self.niche_context.niche_input if self.niche_context else "default"
             collection_name = sanitize_collection_name(niche, "solution", self.job_id)
             logger.info(f"Creating solution knowledge with collection: {collection_name}")
-            knowledge = Knowledge(
+            knowledge = create_knowledge(
                 sources=self.knowledge_sources,
-                embedder=embedder_config,
+                embedder_config=embedder_config,
                 collection_name=collection_name,
             )
-            knowledge.add_sources()
-            crew_config["knowledge"] = knowledge
-            self._crew_knowledge = knowledge
+            if knowledge:
+                crew_config["knowledge"] = knowledge
+                self._crew_knowledge = knowledge
 
         return Crew(**crew_config)
 

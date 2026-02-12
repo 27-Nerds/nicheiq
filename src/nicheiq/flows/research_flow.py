@@ -1130,7 +1130,7 @@ RULES:
                 logger.info(f"[Resume] Replaying completed status for stage {stage_num}: {stage_name}")
                 self._emit_progress(stage_num, stage_name, "completed")
 
-    def _execute_remaining_stages(self, stop_after_phase: int | None = None) -> str:
+    def _execute_remaining_stages(self, stop_after_phase: int | None = None, skip_bulk_replay: bool = False) -> str:
         """
         Execute remaining stages after checkpoint resume.
         Manually calls stage methods based on current_stage.
@@ -1138,16 +1138,22 @@ RULES:
 
         Args:
             stop_after_phase: If set, stop after this phase (1 = Phase 1 / solution pipeline)
+            skip_bulk_replay: If True, skip bulk replay of completed stages at the top.
+                Phase 2 skip branches will emit staggered progress instead.
+                Used by interactive Phase 2 continuation to avoid all stages
+                flashing green at once.
         """
+        REPLAY_STAGGER_DELAY = 0.25  # seconds between replayed stage transitions
+
         current = self.state.current_stage
         logger.info(f"Executing stages from {current} onwards...")
 
         # Get list of completed stages to avoid re-running listener stages
         completed_stages = self.checkpoint_mgr.get_completed_stages()
 
-        # Replay progress for stages completed in previous runs
-        # This syncs the backend database with checkpoint state
-        self._replay_completed_stages_progress(completed_stages)
+        if not skip_bulk_replay:
+            # Default: replay all completed stages at once (crash-recovery, CLI resume)
+            self._replay_completed_stages_progress(completed_stages)
 
         # Stage mapping: (stage_number, method_name)
         # We need to execute stages >= current_stage
@@ -1212,6 +1218,9 @@ RULES:
                     self._emit_progress(5.5, "Competitive Analysis", "completed")
                     # Refresh completed_stages
                     completed_stages = self.checkpoint_mgr.get_completed_stages()
+                elif skip_bulk_replay:
+                    self._emit_progress(5.5, "Competitive Analysis", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
 
             # Stage 6: SEO & Keyword Strategy (runs FIRST in Phase 2)
             if "stage_6_seo_strategy" not in completed_stages:
@@ -1224,6 +1233,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 6 (SEO & Keyword Strategy) - awaiting Stage 5")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(6, "SEO & Keyword Strategy", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 6 (SEO & Keyword Strategy) - already completed")
 
             # Stage 7: Pricing Validation
@@ -1237,6 +1249,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 7 (Pricing Validation) - awaiting Stage 6")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(7, "Pricing Validation", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 7 (Pricing Validation) - already completed")
 
             # Stage 8: Traffic Monetization
@@ -1250,6 +1265,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 8 (Traffic Monetization) - awaiting Stage 7")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(8, "Traffic Monetization", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 8 (Traffic Monetization) - already completed")
 
             # Stage 9: Market Sizing
@@ -1263,6 +1281,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 9 (Market Sizing) - awaiting Stage 7")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(9, "Market Sizing", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 9 (Market Sizing) - already completed")
 
             # Stage 10: Solution Refinement
@@ -1273,6 +1294,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 10 (Solution Refinement) - prerequisites not met")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(10, "Solution Refinement", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 10 (Solution Refinement) - already completed")
 
             # Stage 11: Trend Longevity
@@ -1282,6 +1306,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 11 (Trend Longevity) - prerequisites not met")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(11, "Trend Analysis", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 11 (Trend Longevity) - already completed")
 
             # Stage 12: SEO Refinement
@@ -1291,6 +1318,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 12 (SEO Refinement) - prerequisites not met")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(12, "SEO Score Refinement", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 12 (SEO Refinement) - already completed")
 
             # Stage 13: Data Source Research
@@ -1300,6 +1330,9 @@ RULES:
                 else:
                     logger.info("Skipping Stage 13 (Data Source Research) - prerequisites not met")
             else:
+                if skip_bulk_replay:
+                    self._emit_progress(13, "Data Source Research", "completed")
+                    time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 13 (Data Source Research) - already completed")
 
             # Stage 14: Report Generation

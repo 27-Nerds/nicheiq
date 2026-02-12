@@ -49,13 +49,15 @@ export const PHASES: PhaseDefinition[] = [
         },
       },
       3: {
-        running: 'Analyzing emotional intensity in posts...',
+        running: 'Extracting pain points from discussions...',
         completed: (a) => {
           const count = a.count || a.top?.length || 0;
           const maxSev = a.top?.[0]?.severity;
           return maxSev
-            ? `${count} pain points extracted, severity up to ${(maxSev * 10).toFixed(1)}`
-            : `${count} pain points extracted`;
+            ? `${count} pain points found, peak severity ${(maxSev * 10).toFixed(0)}/10`
+            : count
+              ? `${count} pain points found`
+              : 'Pain points extracted';
         },
       },
       4: {
@@ -85,8 +87,8 @@ export const PHASES: PhaseDefinition[] = [
     artifactStages: [6, 7, 9, 11],
     narrativeTemplates: {
       5.5: {
-        running: 'Preparing selected solutions for deep analysis...',
-        completed: () => 'Solutions locked in',
+        running: 'Analyzing competitive landscape...',
+        completed: () => 'Competitive landscape mapped',
       },
       6: {
         running: 'Validating keyword volumes and SEO opportunity...',
@@ -95,55 +97,63 @@ export const PHASES: PhaseDefinition[] = [
           const kw = a.validated_keywords || 0;
           if (vol) {
             const fmt = vol >= 1000 ? `${(vol / 1000).toFixed(1)}K` : String(vol);
-            return `${fmt} monthly searches across ${kw} keywords`;
+            return `SEO demand: ${fmt} monthly searches, ${kw} keywords`;
           }
-          return `${kw} keywords validated`;
+          return kw ? `SEO demand: ${kw} keywords validated` : 'SEO demand validated';
         },
       },
       7: {
         running: 'Researching competitor pricing strategies...',
         completed: (a) => {
-          if (a.starter_price && a.pro_price) {
-            return `Price range: ${a.starter_price}–${a.pro_price}`;
-          }
-          return a.pricing_model ? `Model: ${a.pricing_model}` : 'Pricing analysis complete';
+          const friendlyNames: Record<string, string> = {
+            'Ad-Supported-Free': 'Ad-supported',
+            'Usage-Based': 'Usage-based',
+            'Affiliate-Only': 'Affiliate-based',
+          };
+          const model = a.pricing_model;
+          if (!model) return 'Pricing strategy defined';
+          const friendly = friendlyNames[model] || model;
+          const tierSuffix =
+            a.starter_price && a.pro_price ? ` (${a.starter_price}–${a.pro_price})` : '';
+          return `Revenue model: ${friendly}${tierSuffix}`;
         },
       },
       8: {
-        running: 'Analyzing competitive landscape...',
-        completed: () => 'Competitive analysis complete',
+        running: 'Analyzing monetization opportunities...',
+        completed: () => 'Monetization pathways identified',
       },
       9: {
-        running: 'Computing TAM/SAM/SOM...',
+        running: 'Sizing addressable market...',
         completed: (a) => {
-          if (a.som_y1) return `SOM Year 1: ${a.som_y1} estimated`;
-          return 'Market sizing complete';
+          if (a.som_y1) return `Addressable market: ${a.som_y1} Year 1`;
+          return 'Market opportunity estimated';
         },
       },
       10: {
-        running: 'Evaluating technical feasibility...',
-        completed: () => 'Technical feasibility assessed',
+        running: 'Generating strategic recommendations...',
+        completed: () => 'Solution concept refined',
       },
       11: {
         running: 'Analyzing market trends and momentum...',
         completed: (a) => {
-          const parts: string[] = [];
-          if (a.trend_direction) parts.push(a.trend_direction);
-          if (a.timing_recommendation) parts.push(a.timing_recommendation);
-          return parts.length ? parts.join(' — ') : 'Trend analysis complete';
+          const dir = a.trend_direction;
+          const timing = a.timing_recommendation;
+          if (dir && timing) return `Market trend: ${dir} — ${timing}`;
+          if (dir) return `Market trend: ${dir}`;
+          return 'Trend analysis complete';
         },
       },
       12: {
-        running: 'Building go-to-market strategy...',
-        completed: () => 'GTM strategy ready',
+        running: 'Refining SEO opportunity scores...',
+        completed: () => 'SEO scores recalculated',
       },
       13: {
-        running: 'Compiling executive summary...',
-        completed: () => 'Executive summary compiled',
+        running: 'Researching data sources and APIs...',
+        completed: () => 'Data sources verified',
       },
       14: {
         running: 'Assembling final research report...',
-        completed: () => 'Report assembled',
+        completed: () => 'Report complete',
       },
     },
   },
@@ -193,9 +203,9 @@ export function getNarrativeText(
     const tmpl = phase.narrativeTemplates[stageNumber];
     if (!tmpl) continue;
     if (status === 'RUNNING') return tmpl.running;
-    if (status === 'COMPLETED' && artifact) {
+    if (status === 'COMPLETED') {
       try {
-        return tmpl.completed(artifact);
+        return tmpl.completed(artifact ?? {});
       } catch {
         return undefined;
       }

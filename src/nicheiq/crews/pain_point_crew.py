@@ -462,8 +462,7 @@ class PainPointCrew:
         Args:
             niche_description: Niche description for collection naming
         """
-        from crewai.knowledge.knowledge import Knowledge
-
+        from ..utils.crew_helpers import create_knowledge
         from ..utils.helpers import sanitize_collection_name
         from ..utils.knowledge import RedditKnowledgeSource, TwitterKnowledgeSource
 
@@ -489,22 +488,19 @@ class PainPointCrew:
 
         if enrichment_sources:
             collection_name = sanitize_collection_name(niche_description, "enrich", self.job_id)
-            self._enrichment_knowledge = Knowledge(
-                collection_name=collection_name,
+            self._enrichment_knowledge = create_knowledge(
                 sources=enrichment_sources,
-                embedder={
+                embedder_config={
                     "provider": "openai",
                     "config": {"model_name": "text-embedding-3-small"}
-                }
+                },
+                collection_name=collection_name,
             )
-            # CRITICAL: Must call add_sources() to inject storage and index documents.
-            # When using Knowledge() directly (not via Crew.knowledge_sources), this is NOT automatic.
-            # See: crewai/knowledge/knowledge.py:add_sources() vs crewai/crew.py:create_crew_knowledge()
-            self._enrichment_knowledge.add_sources()
-            logger.info(
-                f"Task 4 enrichment Knowledge created and indexed: {len(self._raw_reddit_posts)} Reddit posts, "
-                f"{len(self._raw_twitter_threads)} Twitter threads (with post_id metadata)"
-            )
+            if self._enrichment_knowledge:
+                logger.info(
+                    f"Task 4 enrichment Knowledge created and indexed: {len(self._raw_reddit_posts)} Reddit posts, "
+                    f"{len(self._raw_twitter_threads)} Twitter threads (with post_id metadata)"
+                )
 
     def _format_comments_with_replies(self, comments: list[RedditComment], post_id: str = "unknown", depth: int = 0, max_depth: int = 3) -> str:
         """
@@ -1044,7 +1040,7 @@ class PainPointCrew:
         Returns:
             Configured Crew instance with all 4 tasks
         """
-        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.crew_helpers import create_knowledge
         from ..utils.helpers import sanitize_collection_name
 
         embedder_config = {
@@ -1059,12 +1055,11 @@ class PainPointCrew:
         if self.knowledge_sources:
             collection_name = sanitize_collection_name(self.niche_description, "pain", self.job_id)
             logger.info(f"Creating pain point knowledge with collection: {collection_name}")
-            knowledge = Knowledge(
+            knowledge = create_knowledge(
                 sources=self.knowledge_sources,
-                embedder=embedder_config,
+                embedder_config=embedder_config,
                 collection_name=collection_name,
             )
-            knowledge.add_sources()
             self._crew_knowledge = knowledge  # Store for cleanup
 
         has_enrichment = self._enrichment_knowledge is not None

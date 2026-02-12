@@ -449,10 +449,9 @@ def _run_phase2_continuation(
     # Store user selections for downstream keyword validation guard
     state._user_selected_solutions = set(selected_solutions)
 
-    # Replay Phase 1 completed stages so UI immediately shows them as green
-    # (The replay in _execute_remaining_stages is idempotent, so the duplicate is harmless)
-    completed_stages = flow.checkpoint_mgr.get_completed_stages()
-    flow._replay_completed_stages_progress(completed_stages)
+    # No bulk replay here — in the interactive flow the frontend already has
+    # Phase 1 stages as green from the live run.  Phase 2 skipped stages are
+    # replayed progressively inside _execute_remaining_stages(skip_bulk_replay=True).
 
     # Run competitive analysis for ALL selected solutions (with progress tracking)
     from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -485,8 +484,9 @@ def _run_phase2_continuation(
         app_settings.top_solutions_for_validation, len(selected_solutions)
     )
 
-    # Continue executing remaining stages (8.55 → 10)
-    report_path = flow._execute_remaining_stages()
+    # Continue executing remaining stages (6 → 14)
+    # skip_bulk_replay=True: Phase 2 stages replay progressively (not all at once)
+    report_path = flow._execute_remaining_stages(skip_bulk_replay=True)
 
     if not report_path or not Path(report_path).exists():
         raise RuntimeError("Phase 2 did not produce a report")

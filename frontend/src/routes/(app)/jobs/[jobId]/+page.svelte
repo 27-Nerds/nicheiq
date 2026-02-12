@@ -5,6 +5,7 @@
     subscribeToProgress,
     isTerminalStatus,
     shouldKeepSSEOpen,
+    getReportSummary,
   } from "$lib/api";
   import Badge from "$lib/components/ui/Badge.svelte";
   import {
@@ -25,7 +26,8 @@
     Zap,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
-  import type { Job, StageProgress, SolutionPreview } from "$lib/types/job";
+  import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
+  import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SolutionSelectionView from "$lib/components/SolutionSelectionView.svelte";
@@ -33,12 +35,11 @@
   import PhaseResultsCard from "$lib/components/PhaseResultsCard.svelte";
   import PhaseSection from "$lib/components/job/PhaseSection.svelte";
   import StageRow from "$lib/components/job/StageRow.svelte";
-  import FindingsStream from "$lib/components/job/FindingsStream.svelte";
   import JourneyTrack from "$lib/components/job/JourneyTrack.svelte";
   import CumulativeStats from "$lib/components/job/CumulativeStats.svelte";
   import { PHASES, PARALLEL_STAGE_GROUPS, getNarrativeText, CELEBRATION_TIERS } from "$lib/components/job/phaseConfig";
   import type { PhaseStatus } from "$lib/components/job/phaseConfig";
-  import { parseArtifactsToFindings, computeCumulativeStats } from "$lib/components/job/artifactParsers";
+  import { computeCumulativeStats } from "$lib/components/job/artifactParsers";
   import { getSolutions } from "$lib/api";
 
   let job = $state<Job | null>(null);
@@ -53,9 +54,11 @@
   let generatingLanding = $state(false);
   let landingError = $state("");
   let localSolutions = $state<SolutionPreview[] | null>(null);
-  let findingsCollapsed = $state(false);
   let hasPlayedReveal = $state(false);
   let showReveal = $state(false);
+  let reportSummary = $state<ReportSummary | null>(null);
+  let summaryFetched = $state(false);
+  let summaryLoading = $state(false);
 
   const jobId = $derived($page.params.jobId);
 
@@ -175,6 +178,20 @@
       loading = false;
     }
 
+    // For already-completed jobs (direct nav / bookmark): show teaser immediately, no delay
+    if (job?.status === 'COMPLETED' && jobId) {
+      hasPlayedReveal = true;
+      showReveal = true;
+      const asset = (job.assets ?? []).find(a => a.type === 'REPORT_JSON');
+      if (asset && !summaryFetched) {
+        summaryFetched = true;
+        summaryLoading = true;
+        try { reportSummary = await getReportSummary(jobId); }
+        catch { /* fallback to simple card */ }
+        finally { summaryLoading = false; }
+      }
+    }
+
     if (
       job && jobId &&
       ["AWAITING_SELECTION", "REGENERATING"].includes(job.status)
@@ -198,7 +215,7 @@
       case "RUNNING": case "RUNNING_PHASE2": return "info";
       case "FAILED": return "error";
       case "CANCELLED": return "muted";
-      case "VALIDATING_IDEAS": case "AWAITING_SELECTION": return "accent";
+      case "AWAITING_SELECTION": return "accent";
       case "REGENERATING": return "warning";
       default: return "warning";
     }
@@ -206,8 +223,8 @@
 
   function getStatusLabel(status: string): string {
     switch (status) {
-      case "VALIDATING_IDEAS": return "Validating Ideas";
       case "AWAITING_SELECTION": return "Awaiting Selection";
+      case "QUEUED": return "Queued";
       case "REGENERATING": return "Generating New Ideas";
       case "RUNNING_PHASE2": return "Deep Analysis";
       default: return status;
@@ -242,6 +259,10 @@
         let processed = group ? { ...stage, stageName: group.combinedName } : stage;
         if ((jobStatus === "FAILED" || jobStatus === "CANCELLED") && processed.status === "RUNNING") {
           processed = { ...processed, status: "FAILED" };
+        }
+        // After failed regeneration, job reverts to AWAITING_SELECTION but stage 5 may still be RUNNING in DB
+        if (jobStatus === "AWAITING_SELECTION" && processed.status === "RUNNING") {
+          processed = { ...processed, status: "COMPLETED" };
         }
         return processed;
       });
@@ -342,31 +363,15 @@
     return result;
   });
 
-  const analysisArtifacts = $derived.by(() => {
-    const result: Record<number, Record<string, any>> = {};
-    for (const num of [6, 7, 9, 11]) {
-      if (stageArtifacts[num]) result[num] = stageArtifacts[num];
-    }
-    return result;
-  });
-
   const showDiscoveryCard = $derived(
     Object.keys(discoveryArtifacts).length > 0 &&
     job?.status !== 'PENDING' && job?.status !== 'QUEUED'
   );
 
-  const showAnalysisCard = $derived(
-    Object.keys(analysisArtifacts).length > 0
-  );
-
   const showSelectedSummary = $derived(
     (job?.selectedSolutions?.length ?? 0) > 0 &&
-    (job?.solutionIdeas?.length ?? 0) > 0 &&
-    (job?.status === 'RUNNING_PHASE2' || job?.status === 'COMPLETED')
+    (job?.solutionIdeas?.length ?? 0) > 0
   );
-
-  // Findings stream
-  const findingsItems = $derived(parseArtifactsToFindings(stageArtifacts));
 
   // Cumulative stats
   const cumulativeStats = $derived(computeCumulativeStats(stageArtifacts));
@@ -406,14 +411,18 @@
     }
   });
 
-  // Should show findings stream (only during active processing or completed)
-  const showFindings = $derived(
-    job != null &&
-    job.status !== 'PENDING' &&
-    job.status !== 'QUEUED' &&
-    job.status !== 'CANCELLED' &&
-    findingsItems.length > 0
-  );
+  // Fetch report summary when job transitions to completed via SSE
+  $effect(() => {
+    if (isCompleted && reportAsset && !summaryFetched) {
+      summaryFetched = true;
+      summaryLoading = true;
+      getReportSummary(job!.id)
+        .then(s => { reportSummary = s; })
+        .catch(() => { /* fallback to simple card */ })
+        .finally(() => { summaryLoading = false; });
+    }
+  });
+
 </script>
 
 <svelte:head>
@@ -452,11 +461,14 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            {#if ["QUEUED", "PENDING", "RUNNING", "VALIDATING_IDEAS", "AWAITING_SELECTION", "REGENERATING", "RUNNING_PHASE2"].includes(job.status)}
+            {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status)}
               <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
             {/if}
+            {#if isCompleted && reportAsset}
+              <Button href="/jobs/{job.id}/report" icon={FileText} label="View Report" class="btn-primary btn-sm" />
+            {/if}
             <Badge variant={getStatusVariant(job.status)}>
-              {#if ["RUNNING", "RUNNING_PHASE2", "VALIDATING_IDEAS", "REGENERATING"].includes(job.status)}
+              {#if ["RUNNING", "RUNNING_PHASE2", "REGENERATING"].includes(job.status)}
                 <Loader2 class="w-3.5 h-3.5 animate-spin" />
               {/if}
               {getStatusLabel(job.status)}
@@ -493,6 +505,127 @@
             </div>
           </div>
         </div>
+      {:else if showReveal && reportAsset}
+        <!-- Report Teaser (replaces journey track for completed jobs) -->
+        {#if summaryLoading}
+          <div class="teaser-skeleton">
+            <div class="teaser-skeleton-ring"></div>
+            <div class="teaser-skeleton-content">
+              <div class="teaser-skeleton-line teaser-skeleton-line--wide"></div>
+              <div class="teaser-skeleton-line teaser-skeleton-line--medium"></div>
+              <div class="teaser-skeleton-metrics">
+                <div class="teaser-skeleton-metric"></div>
+                <div class="teaser-skeleton-metric"></div>
+                <div class="teaser-skeleton-metric"></div>
+                <div class="teaser-skeleton-metric"></div>
+              </div>
+            </div>
+          </div>
+        {:else if reportSummary}
+          {@const verdict = reportSummary.verdict?.toLowerCase() ?? ''}
+          {@const verdictColor = verdict === 'go' ? 'success' : verdict === 'no-go' ? 'error' : 'warning'}
+          <div class="teaser-card teaser-card--{verdictColor}">
+            <div class="teaser-layout">
+              <!-- Left: Score + Verdict -->
+              <div class="teaser-score-col">
+                {#if reportSummary.opportunity_score != null}
+                  <ProgressRing
+                    value={reportSummary.opportunity_score > 1 ? reportSummary.opportunity_score / 100 : reportSummary.opportunity_score}
+                    size={80}
+                    strokeWidth={6}
+                    color="auto"
+                    showValue={true}
+                    flat={true}
+                    showTooltip={false}
+                  />
+                {/if}
+                <Badge variant={verdictColor === 'success' ? 'success' : verdictColor === 'error' ? 'error' : 'warning'}>
+                  {#if verdict === 'go'}
+                    <CheckCircle class="w-3.5 h-3.5" />
+                  {:else if verdict === 'no-go'}
+                    <XCircle class="w-3.5 h-3.5" />
+                  {:else}
+                    <AlertTriangle class="w-3.5 h-3.5" />
+                  {/if}
+                  {reportSummary.verdict ?? 'Unknown'}
+                </Badge>
+                {#if reportSummary.risk_level}
+                  <span class="teaser-risk">{reportSummary.risk_level} Risk</span>
+                {/if}
+              </div>
+
+              <!-- Right: Solution + Metrics + CTA -->
+              <div class="teaser-details-col">
+                <div class="teaser-solution">
+                  {#if reportSummary.solution_name}
+                    <h2 class="teaser-solution-name">{reportSummary.solution_name}</h2>
+                  {/if}
+                  {#if reportSummary.solution_tagline}
+                    <p class="teaser-solution-tagline">{reportSummary.solution_tagline}</p>
+                  {/if}
+                  {#if reportSummary.project_type}
+                    <span class="teaser-project-type">{reportSummary.project_type}</span>
+                  {/if}
+                </div>
+
+                <div class="teaser-metrics">
+                  {#if reportSummary.total_search_volume != null}
+                    <div class="teaser-metric">
+                      <span class="teaser-metric-value">{reportSummary.total_search_volume.toLocaleString()}</span>
+                      <span class="teaser-metric-label">Search Vol</span>
+                    </div>
+                  {/if}
+                  {#if reportSummary.competitor_count != null}
+                    <div class="teaser-metric">
+                      <span class="teaser-metric-value">{reportSummary.competitor_count}</span>
+                      <span class="teaser-metric-label">Competitors</span>
+                    </div>
+                  {/if}
+                  {#if reportSummary.total_keywords != null}
+                    <div class="teaser-metric">
+                      <span class="teaser-metric-value">{reportSummary.total_keywords}</span>
+                      <span class="teaser-metric-label">Keywords</span>
+                    </div>
+                  {/if}
+                  {#if reportSummary.pain_points_found != null}
+                    <div class="teaser-metric">
+                      <span class="teaser-metric-value">{reportSummary.pain_points_found}</span>
+                      <span class="teaser-metric-label">Pain Points</span>
+                    </div>
+                  {/if}
+                </div>
+
+                <div class="teaser-cta">
+                  <Button href="/jobs/{job.id}/report" icon={FileText} label="View Full Report" class="btn-primary reveal-btn" />
+                </div>
+              </div>
+            </div>
+          </div>
+        {:else}
+          <!-- Fallback: simple card while summary not available -->
+          <div class="reveal-container">
+            <div class="reveal-check">
+              <svg class="checkmark-svg" viewBox="0 0 52 52">
+                <circle class="checkmark-circle" cx="26" cy="26" r="24" fill="none" />
+                <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+              </svg>
+            </div>
+            <h2 class="reveal-title">Your Research Report is Ready</h2>
+            {#if cumulativeStats.some((s) => s.value != null)}
+              <div class="reveal-stats">
+                {#each cumulativeStats.filter((s) => s.value != null) as stat, i}
+                  <div class="reveal-stat" style="animation-delay: {800 + i * 200}ms">
+                    <span class="reveal-stat-value">{stat.value?.toLocaleString()}</span>
+                    <span class="reveal-stat-label">{stat.label}</span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <div class="reveal-cta">
+              <Button href="/jobs/{job.id}/report" icon={FileText} label="View Full Report" class="btn-primary reveal-btn" />
+            </div>
+          </div>
+        {/if}
       {:else}
         <!-- Journey Track + Progress Bar + Cumulative Stats -->
         <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 100ms;">
@@ -642,10 +775,8 @@
         </div>
       {/if}
 
-      <!-- ===== TWO-COLUMN LAYOUT: Phases (left) + Findings Stream (right) ===== -->
-      <div class="two-column-layout" class:has-findings={showFindings}>
-        <!-- LEFT: Phases -->
-        <div class="phases-column">
+      <!-- ===== Phases ===== -->
+      <div class="phases-column">
           <!-- Phase 1: Discovery -->
           <PhaseSection
             title="Discovery"
@@ -685,6 +816,7 @@
                   isRegenerating={job.status === "REGENERATING"}
                   canRegenerate={job.canRegenerate ?? false}
                   onSelectionComplete={handleSelectionComplete}
+                  onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
                 />
               </div>
             {:else if showSelectedSummary}
@@ -799,57 +931,8 @@
               {/if}
             </div>
 
-            {#if showAnalysisCard}
-              <div class="mt-3">
-                <PhaseResultsCard phase="analysis" artifacts={analysisArtifacts} />
-              </div>
-            {/if}
           </PhaseSection>
-        </div>
-
-        <!-- RIGHT: Findings Stream (desktop sidebar, mobile collapsible) -->
-        {#if showFindings}
-          <div class="findings-column">
-            <FindingsStream
-              items={findingsItems}
-              collapsed={findingsCollapsed}
-              onToggleCollapse={() => findingsCollapsed = !findingsCollapsed}
-            />
-          </div>
-        {/if}
       </div>
-
-      <!-- Report-Ready Reveal (full width, below two-column) -->
-      {#if showReveal && reportAsset}
-        <div class="reveal-container">
-          <!-- Animated checkmark -->
-          <div class="reveal-check">
-            <svg class="checkmark-svg" viewBox="0 0 52 52">
-              <circle class="checkmark-circle" cx="26" cy="26" r="24" fill="none" />
-              <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
-            </svg>
-          </div>
-
-          <h2 class="reveal-title">Your Research Report is Ready</h2>
-
-          <!-- Key stats -->
-          {#if cumulativeStats.some((s) => s.value != null)}
-            <div class="reveal-stats">
-              {#each cumulativeStats.filter((s) => s.value != null) as stat, i}
-                <div class="reveal-stat" style="animation-delay: {800 + i * 200}ms">
-                  <span class="reveal-stat-value">{stat.value?.toLocaleString()}</span>
-                  <span class="reveal-stat-label">{stat.label}</span>
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          <!-- CTA -->
-          <div class="reveal-cta">
-            <Button href="/jobs/{job.id}/report" icon={FileText} label="View Full Report" class="btn-primary reveal-btn" />
-          </div>
-        </div>
-      {/if}
 
       <!-- Meta Info -->
       <div class="mt-6 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in" style="animation-delay: 350ms;">
@@ -886,34 +969,15 @@
     }
   }
 
-  .two-column-layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1.5rem;
+  .phases-column {
+    min-width: 0;
     margin-bottom: 1.5rem;
   }
 
-  @media (min-width: 1024px) {
-    .two-column-layout.has-findings {
-      grid-template-columns: 1fr 340px;
-    }
-  }
-
-  .phases-column {
-    min-width: 0;
-  }
-
-  .findings-column {
-    min-width: 0;
-  }
-
-  @media (min-width: 1024px) {
-    .findings-column {
-      position: sticky;
-      top: 2rem;
-      align-self: start;
-      max-height: calc(100vh - 4rem);
-    }
+  .phases-column :global(.insight-card--border-left) {
+    border-left: none;
+    background: var(--color-bg-elevated);
+    background-image: none;
   }
 
   .stage-list {
@@ -1167,5 +1231,210 @@
     .checkmark-circle { animation: none; stroke-dashoffset: 0; }
     .checkmark-path { animation: none; stroke-dashoffset: 0; }
     :global(.reveal-btn) { animation: none; }
+    .teaser-card { animation: none; }
+  }
+
+  /* ===== Report Teaser Card ===== */
+  .teaser-card {
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    animation: reveal-fade-in 500ms ease-out;
+  }
+
+  .teaser-card--success {
+    border-color: rgba(34, 197, 94, 0.35);
+    background-image: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, transparent 40%);
+  }
+
+  .teaser-card--error {
+    border-color: rgba(239, 68, 68, 0.35);
+    background-image: linear-gradient(135deg, rgba(239, 68, 68, 0.05) 0%, transparent 40%);
+  }
+
+  .teaser-card--warning {
+    border-color: rgba(234, 179, 8, 0.35);
+    background-image: linear-gradient(135deg, rgba(234, 179, 8, 0.05) 0%, transparent 40%);
+  }
+
+  .teaser-layout {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+  }
+
+  .teaser-score-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.625rem;
+    flex-shrink: 0;
+  }
+
+  .teaser-risk {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .teaser-details-col {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .teaser-solution-name {
+    font-family: var(--font-display);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    line-height: 1.3;
+  }
+
+  .teaser-solution-tagline {
+    font-size: 0.875rem;
+    font-style: italic;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+    margin-top: 0.25rem;
+  }
+
+  .teaser-project-type {
+    display: inline-block;
+    margin-top: 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+  }
+
+  .teaser-metrics {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+
+  .teaser-metric {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+  }
+
+  .teaser-metric-value {
+    font-family: var(--font-mono);
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-accent);
+    line-height: 1;
+  }
+
+  .teaser-metric-label {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .teaser-cta {
+    padding-top: 0.25rem;
+  }
+
+  /* ===== Teaser Skeleton ===== */
+  .teaser-skeleton {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-start;
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+  }
+
+  .teaser-skeleton-ring {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: var(--color-bg-surface);
+    flex-shrink: 0;
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+
+  .teaser-skeleton-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .teaser-skeleton-line {
+    height: 1rem;
+    border-radius: 0.25rem;
+    background: var(--color-bg-surface);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+
+  .teaser-skeleton-line--wide { width: 60%; }
+  .teaser-skeleton-line--medium { width: 40%; animation-delay: 0.15s; }
+
+  .teaser-skeleton-metrics {
+    display: flex;
+    gap: 1.25rem;
+    margin-top: 0.5rem;
+  }
+
+  .teaser-skeleton-metric {
+    width: 4rem;
+    height: 2.5rem;
+    border-radius: 0.375rem;
+    background: var(--color-bg-surface);
+    animation: skeleton-pulse 1.5s ease-in-out infinite;
+  }
+
+  .teaser-skeleton-metric:nth-child(2) { animation-delay: 0.1s; }
+  .teaser-skeleton-metric:nth-child(3) { animation-delay: 0.2s; }
+  .teaser-skeleton-metric:nth-child(4) { animation-delay: 0.3s; }
+
+  @keyframes skeleton-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.7; }
+  }
+
+  /* ===== Responsive: mobile stack ===== */
+  @media (max-width: 639px) {
+    .teaser-layout {
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    .teaser-details-col {
+      align-items: center;
+    }
+
+    .teaser-metrics {
+      justify-content: center;
+    }
+
+    .teaser-cta {
+      align-self: center;
+    }
+
+    .teaser-skeleton {
+      flex-direction: column;
+      align-items: center;
+    }
   }
 </style>

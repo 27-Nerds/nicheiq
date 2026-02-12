@@ -288,7 +288,7 @@ class AudienceMappingCrew:
         Knowledge sources enable semantic search through full discussion
         content for extracting real usernames, vocabulary, and tools.
         """
-        from crewai.knowledge.knowledge import Knowledge
+        from ..utils.crew_helpers import create_knowledge
         from ..utils.helpers import sanitize_collection_name
 
         embedder_config = {
@@ -304,12 +304,11 @@ class AudienceMappingCrew:
         if self.knowledge_sources:
             collection_name = sanitize_collection_name(self.niche_description, "audience", self.job_id)
             logger.info(f"Creating knowledge with collection: {collection_name}")
-            knowledge = Knowledge(
+            knowledge = create_knowledge(
                 sources=self.knowledge_sources,
-                embedder=embedder_config,
+                embedder_config=embedder_config,
                 collection_name=collection_name,
             )
-            knowledge.add_sources()
             self._crew_knowledge = knowledge
 
         return Crew(

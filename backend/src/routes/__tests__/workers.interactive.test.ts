@@ -293,7 +293,7 @@ describe('POST /api/workers/regeneration-complete', () => {
     expect(callArgs.data.solutionIdeas).toEqual([{ name: 'New1' }]);
   });
 
-  it('transitions REGENERATING → AWAITING_SELECTION', async () => {
+  it('transitions REGENERATING/QUEUED → AWAITING_SELECTION', async () => {
     mockJobFindFirst.mockResolvedValue({ solutionIdeas: [] });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
 
@@ -302,7 +302,8 @@ describe('POST /api/workers/regeneration-complete', () => {
       .send(validPayload);
 
     const callArgs = mockJobUpdateMany.mock.calls[0][0];
-    expect(callArgs.where.status).toBe('REGENERATING');
+    expect(callArgs.where.status).toEqual({ in: ['REGENERATING', 'QUEUED'] });
+    expect(callArgs.where.ideasRegeneratedAt).toEqual({ not: null });
     expect(callArgs.data.status).toBe('AWAITING_SELECTION');
   });
 
@@ -361,7 +362,7 @@ describe('POST /api/workers/regeneration-failed', () => {
     error_message: 'LLM rate limit exceeded',
   };
 
-  it('reverts REGENERATING → AWAITING_SELECTION and clears ideasRegeneratedAt', async () => {
+  it('reverts REGENERATING/QUEUED → AWAITING_SELECTION and clears ideasRegeneratedAt', async () => {
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
 
@@ -375,7 +376,8 @@ describe('POST /api/workers/regeneration-failed', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           id: jobId,
-          status: 'REGENERATING',
+          status: { in: ['REGENERATING', 'QUEUED'] },
+          ideasRegeneratedAt: { not: null },
         }),
         data: expect.objectContaining({
           status: 'AWAITING_SELECTION',
@@ -411,7 +413,7 @@ describe('POST /api/workers/regeneration-failed', () => {
     });
   });
 
-  it('returns 409 when job not in REGENERATING state', async () => {
+  it('returns 409 when job not in REGENERATING/QUEUED state', async () => {
     mockJobUpdateMany.mockResolvedValue({ count: 0 });
 
     const response = await request(app)

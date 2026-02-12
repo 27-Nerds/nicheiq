@@ -41,7 +41,6 @@
         // Priority: Awaiting Selection > Running > Pending/Queued > Failed > Completed
         const statusPriority: Record<string, number> = {
           AWAITING_SELECTION: -1,
-          VALIDATING_IDEAS: 0,
           RUNNING: 0,
           RUNNING_PHASE2: 0,
           REGENERATING: 0,
@@ -70,7 +69,6 @@
     "RUNNING",
     "PENDING",
     "QUEUED",
-    "VALIDATING_IDEAS",
     "AWAITING_SELECTION",
     "REGENERATING",
     "RUNNING_PHASE2",

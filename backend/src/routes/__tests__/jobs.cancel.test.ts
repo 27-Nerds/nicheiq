@@ -178,52 +178,45 @@ describe('POST /api/jobs/:jobId/cancel - stage marking', () => {
   });
 });
 
-describe('POST /api/jobs/:jobId/cancel - interactive statuses', () => {
+describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', () => {
   const jobId = '00000000-0000-0000-0000-000000000001';
 
-  it('cancels from VALIDATING_IDEAS (refund called, stages marked FAILED)', async () => {
-    mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'VALIDATING_IDEAS' });
-
-    const response = await request(app)
-      .post(`/api/jobs/${jobId}/cancel`)
-      .set(authHeaders);
-
-    expect(response.status).toBe(200);
-    expect(mockRefundCreditsForJob).toHaveBeenCalledWith(jobId, 1);
-    expect(mockUpdateMany).toHaveBeenCalled();
-  });
-
-  it('cancels from AWAITING_SELECTION (refund called)', async () => {
+  it('rejects cancel from AWAITING_SELECTION', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'AWAITING_SELECTION' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
-    expect(response.status).toBe(200);
-    expect(mockRefundCreditsForJob).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Cannot cancel job after solution selection');
+    expect(mockRefundCreditsForJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
-  it('cancels from REGENERATING (refund called)', async () => {
+  it('rejects cancel from REGENERATING', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'REGENERATING' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
-    expect(response.status).toBe(200);
-    expect(mockRefundCreditsForJob).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Cannot cancel job after solution selection');
+    expect(mockRefundCreditsForJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
-  it('cancels from RUNNING_PHASE2 (refund called, stages marked FAILED)', async () => {
+  it('rejects cancel from RUNNING_PHASE2', async () => {
     mockJobFindFirst.mockResolvedValue({ id: jobId, userId: 'user-123', status: 'RUNNING_PHASE2' });
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/cancel`)
       .set(authHeaders);
 
-    expect(response.status).toBe(200);
-    expect(mockRefundCreditsForJob).toHaveBeenCalled();
-    expect(mockUpdateMany).toHaveBeenCalled();
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Cannot cancel job after solution selection');
+    expect(mockRefundCreditsForJob).not.toHaveBeenCalled();
+    expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 });

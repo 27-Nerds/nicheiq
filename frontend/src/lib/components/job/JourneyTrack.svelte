@@ -112,29 +112,6 @@
     </div>
   </div>
 
-  <!-- Progress bar -->
-  {#if progressPercent > 0 || isRunning}
-    <div class="track-progress-bar">
-      <div class="progress-bar" style="height: 4px">
-        <div
-          class="progress-bar-fill {isRunning ? 'animate-shimmer motion-reduce:animate-none' : ''} {isFailed ? 'progress-failed' : ''}"
-          style="width: {progressPercent}%"
-        ></div>
-      </div>
-    </div>
-  {/if}
-
-  <!-- Info row: stage name left, count right -->
-  {#if currentStageName || totalStages > 0}
-    <div class="track-footer">
-      <span class="current-stage">
-        {currentStageName ?? ''}
-      </span>
-      {#if totalStages > 0}
-        <span class="stage-count">{stagesCompleted} of {totalStages} stages</span>
-      {/if}
-    </div>
-  {/if}
 </div>
 
 <style>
@@ -177,7 +154,16 @@
     background: rgba(229, 90, 40, 0.15);
     border: 2px solid rgba(229, 90, 40, 0.4);
     box-shadow: 0 0 12px rgba(229, 90, 40, 0.2);
-    animation: pulse-glow 2s ease-in-out infinite;
+    animation: pulse-glow 2.5s ease-in-out infinite;
+  }
+
+  .node-active::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(229, 90, 40, 0.3);
+    animation: ring-expand 2.5s ease-out infinite;
   }
 
   .node-failed {
@@ -290,36 +276,26 @@
     background: var(--color-success);
   }
 
-  .track-progress-bar {
-    margin-top: 0.75rem;
-  }
-
-  .track-footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-top: 0.375rem;
-  }
-
-  .current-stage {
-    font-size: 0.8125rem;
-    color: var(--color-text-secondary);
-  }
-
-  .stage-count {
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-  }
 
   @keyframes pulse-glow {
     0%, 100% { box-shadow: 0 0 12px rgba(229, 90, 40, 0.2); }
     50% { box-shadow: 0 0 20px rgba(229, 90, 40, 0.35); }
   }
 
+  @keyframes ring-expand {
+    0% { inset: -4px; opacity: 0.6; }
+    70% { inset: -10px; opacity: 0; }
+    100% { inset: -10px; opacity: 0; }
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .node-active {
       animation: none;
       box-shadow: 0 0 12px rgba(229, 90, 40, 0.2);
+    }
+    .node-active::after {
+      animation: none;
+      display: none;
     }
   }
 </style>

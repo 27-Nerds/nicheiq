@@ -209,13 +209,14 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
-    // Detect Phase 2 jobs (user has already selected solutions)
+    // Detect Phase 2 and regeneration jobs
     const existingJob = await prisma.job.findUnique({
       where: { id: data.job_id },
-      select: { selectedSolutions: true },
+      select: { selectedSolutions: true, ideasRegeneratedAt: true, selectedSolution: true },
     });
-    const isPhase2 = existingJob?.selectedSolutions && existingJob.selectedSolutions.length > 0;
-    const runningStatus = isPhase2 ? JobStatus.RUNNING_PHASE2 : JobStatus.RUNNING;
+    const isRegenerate = existingJob?.ideasRegeneratedAt != null && !existingJob?.selectedSolution;
+    const isPhase2 = !isRegenerate && existingJob?.selectedSolutions && existingJob.selectedSolutions.length > 0;
+    const runningStatus = isRegenerate ? JobStatus.REGENERATING : isPhase2 ? JobStatus.RUNNING_PHASE2 : JobStatus.RUNNING;
 
     // Atomic conditional update - only if job is in startable state
     // This prevents overwriting CANCELLED status when a job was cancelled while in queue
@@ -773,7 +774,8 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
     const job = await prisma.job.findFirst({
       where: {
         id: data.job_id,
-        status: JobStatus.REGENERATING,
+        status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+        ideasRegeneratedAt: { not: null },  // Guard: only regen-queued, not initial queued
       },
       select: { solutionIdeas: true },
     });
@@ -786,11 +788,12 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
     const existingSolutions = (job.solutionIdeas as any[]) || [];
     const mergedSolutions = [...existingSolutions, ...data.solutions];
 
-    // Atomic update: REGENERATING → AWAITING_SELECTION (skip validation)
+    // Atomic update: REGENERATING/QUEUED → AWAITING_SELECTION (skip validation)
     const result = await prisma.job.updateMany({
       where: {
         id: data.job_id,
-        status: JobStatus.REGENERATING,
+        status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+        ideasRegeneratedAt: { not: null },
       },
       data: {
         status: JobStatus.AWAITING_SELECTION,
@@ -833,11 +836,12 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
-    // Atomic revert: REGENERATING → AWAITING_SELECTION, reset ideasRegeneratedAt
+    // Atomic revert: REGENERATING/QUEUED → AWAITING_SELECTION, reset ideasRegeneratedAt
     const result = await prisma.job.updateMany({
       where: {
         id: data.job_id,
-        status: JobStatus.REGENERATING,
+        status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
+        ideasRegeneratedAt: { not: null },  // Guard: only revert regen-queued, not initial queued
       },
       data: {
         status: JobStatus.AWAITING_SELECTION,
@@ -852,6 +856,9 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
 
     // Clear worker's current job
     await registerWorkerHeartbeat(data.worker_id, null);
+
+    // Revert stage 5 from RUNNING back to COMPLETED (original solutions still valid)
+    await updateStageProgress(data.job_id, 5, StageStatus.COMPLETED);
 
     // Broadcast progress so frontend re-fetches and shows solutions
     broadcastProgress(data.job_id, {

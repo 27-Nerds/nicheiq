@@ -14,6 +14,7 @@
     showTooltip?: boolean;
     glow?: boolean;
     thick?: boolean;
+    flat?: boolean;
     class?: string;
   }
 
@@ -30,6 +31,7 @@
     showTooltip = true,
     glow = false,
     thick = false,
+    flat = false,
     class: className = "",
   }: Props = $props();
 
@@ -112,8 +114,9 @@
   <div
     bind:this={ref}
     class="progress-ring {className}"
-    class:hovered={isHovered}
-    class:glow
+    class:hovered={isHovered && !flat}
+    class:glow={glow && !flat}
+    class:flat
     role="img"
     aria-label="{label || 'Score'}: {Math.round(value * 100)}%"
     onmouseenter={() => (isHovered = true)}
@@ -168,7 +171,7 @@
     {#if showValue || showLabel}
       <div class="progress-ring-content">
         {#if showValue}
-          <span class="progress-ring-value" style:color={colorVar}>
+          <span class="progress-ring-value" style:color={colorVar} style:font-size="{size * 0.28}px">
             {Math.round(value * 100)}
           </span>
         {/if}
@@ -200,6 +203,8 @@
     overflow: visible;
     cursor: help;
     transition: transform 0.2s ease;
+    border-radius: 50%;
+    box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.06);
   }
 
   .progress-ring:focus-visible {
@@ -210,6 +215,7 @@
 
   .progress-ring.hovered {
     transform: scale(1.06);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10);
   }
 
   .progress-ring-svg {
@@ -221,7 +227,7 @@
   }
 
   .progress-ring-progress {
-    filter: drop-shadow(0 0 4px currentColor);
+    filter: drop-shadow(0 0 2px currentColor);
     transition:
       stroke-dashoffset 0s,
       filter 0.2s ease;
@@ -234,7 +240,7 @@
   }
 
   .progress-ring-progress.hovered {
-    filter: drop-shadow(0 0 10px currentColor);
+    filter: drop-shadow(0 0 6px currentColor);
   }
 
   /* Enhanced glow effect */
@@ -258,7 +264,7 @@
 
   .progress-ring-value {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    /* font-size set via inline style for dynamic scaling */
     font-weight: 700;
     line-height: 1;
     transition: transform 0.2s ease;
@@ -275,5 +281,15 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-muted);
+  }
+
+  /* Flat: no shadows, no hover scale */
+  .progress-ring.flat {
+    box-shadow: none;
+    cursor: default;
+  }
+
+  .progress-ring.flat .progress-ring-progress {
+    filter: none;
   }
 </style>

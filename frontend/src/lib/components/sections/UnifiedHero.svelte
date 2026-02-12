@@ -747,7 +747,7 @@
             color={getScoreColor(metrics?.market_fit_score)}
             showValue={true}
             showTooltip={true}
-            glow={true}
+            flat={true}
             label="Market Fit"
             description={marketFitTooltip}
           />
@@ -781,7 +781,7 @@
             color={getScoreColor(metrics?.technical_feasibility_score)}
             showValue={true}
             showTooltip={true}
-            glow={true}
+            flat={true}
             label="Feasibility"
             description={techFeasibilityTooltip}
           />
@@ -815,7 +815,7 @@
             color={getScoreColor(metrics?.seo_potential_score)}
             showValue={true}
             showTooltip={true}
-            glow={true}
+            flat={true}
             label="SEO Score"
             description={seoTooltip}
           />
@@ -840,7 +840,7 @@
             )}
             showValue={true}
             showTooltip={true}
-            glow={true}
+            flat={true}
             label="Solo Dev"
             description={soloDevTooltip}
           />
@@ -865,7 +865,7 @@
             color={getScoreColor(metrics?.competitive_advantage_score)}
             showValue={true}
             showTooltip={true}
-            glow={true}
+            flat={true}
             label="Comp. Edge"
             description={compEdgeTooltip}
           />

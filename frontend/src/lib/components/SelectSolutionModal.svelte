@@ -125,12 +125,11 @@
       <div class="p-4 space-y-4">
         {#if isSingle}
           <p class="text-sm text-text-secondary">
-            Run deep analysis on <span class="font-semibold text-text-primary">{solutionNames[0]}</span>.
-            This will run a full market analysis, SEO strategy, and generate your report.
+            Run deep analysis on <span class="font-semibold text-text-primary">{solutionNames[0]}</span>. We'll evaluate market demand, technical feasibility, SEO potential, and competitive landscape — you'll get a go/no-go verdict and a strategic action plan.
           </p>
         {:else}
           <p class="text-sm text-text-secondary">
-            Run deep analysis on {solutionNames.length} solutions. The system will evaluate all selected and choose the best one for your final report.
+            Run deep analysis on {solutionNames.length} solutions. We'll score each on market fit, feasibility, and SEO potential. Your report will feature the strongest as your primary recommendation with the rest as alternatives.
           </p>
           <ul class="space-y-1">
             {#each solutionNames as name}
@@ -147,12 +146,12 @@
             for="rationale"
             class="block text-sm font-medium text-text-primary mb-1.5"
           >
-            Why {isSingle ? 'this solution' : 'these solutions'}? <span class="text-text-muted font-normal">(optional)</span>
+            Why {isSingle ? 'this solution' : 'these solutions'}? <span class="text-text-muted font-normal">(optional — but helpful)</span>
           </label>
           <textarea
             id="rationale"
             bind:value={rationale}
-            placeholder="e.g., Best market fit for my skills, strong SEO potential..."
+            placeholder="e.g., Matches my technical skills, strong recurring revenue potential, underserved niche I know well..."
             rows={3}
             maxlength={2000}
             disabled={loading}
@@ -160,7 +159,7 @@
           ></textarea>
           <div class="mt-1 flex items-center justify-between">
             <p class="text-xs text-text-muted">
-              Your rationale helps tailor the analysis to your perspective.
+              Share your thinking — we'll use this to align the analysis with your situation.
             </p>
             <span
               class="text-xs tabular-nums {rationale.length > 1800

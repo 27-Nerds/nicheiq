@@ -89,15 +89,15 @@
       {@const superpower = getSuperpower(solution)}
       <div class="flex items-center gap-3 p-3 rounded-lg border border-border
         {solution.solution_name === primaryWinner ? 'bg-accent/5 border-accent/20' : ''}">
-        <ProgressRing value={score} size={selectedSolutions.length === 1 ? 48 : 40} glow={solution.solution_name === primaryWinner} animate={true} showTooltip={false} />
+        <ProgressRing value={score} size={selectedSolutions.length === 1 ? 48 : 40} animate={true} showTooltip={false} flat={true} />
         <div class="flex-1 min-w-0">
-          <h4 class="text-sm font-semibold text-text-primary truncate">{solution.solution_name}</h4>
-          <p class="text-xs text-text-secondary truncate">{solution.value_proposition}</p>
-          <div class="flex flex-wrap gap-1.5 mt-1">
+          <h4 class="text-base font-semibold text-text-primary leading-snug truncate">{solution.solution_name}</h4>
+          <p class="mt-1 text-xs text-text-muted italic truncate">{solution.value_proposition}</p>
+          <div class="flex flex-wrap gap-1.5 mt-1.5">
+            <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
             {#if solution.project_type}
               <Badge size="sm">{solution.project_type}</Badge>
             {/if}
-            <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
             {#if solution.estimated_development_time}
               <span class="text-xs text-text-muted">{solution.estimated_development_time}</span>
             {/if}
