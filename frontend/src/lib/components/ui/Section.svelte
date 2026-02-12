@@ -32,6 +32,9 @@
     padding?: SpacingSize;
     marginBottom?: SpacingSize;
 
+    // Callbacks
+    onToggle?: (expanded: boolean) => void;
+
     // Other
     id?: string;
     class?: string;
@@ -55,6 +58,7 @@
     elevated = true,
     padding = "md",
     marginBottom = "md",
+    onToggle,
     id,
     class: className = "",
     heroStrip,
@@ -62,9 +66,14 @@
   }: Props = $props();
 
   let expanded = $state<boolean>(false);
+  let prevDefaultOpen: boolean | undefined = undefined;
 
+  // Sync expanded from defaultOpen only when the prop actually changes value
   $effect(() => {
-    expanded = defaultOpen;
+    if (prevDefaultOpen !== defaultOpen) {
+      prevDefaultOpen = defaultOpen;
+      expanded = defaultOpen;
+    }
   });
 
   const isExpandable = $derived(mode === "expandable");
@@ -91,7 +100,7 @@
     <!-- Expandable header (clickable) -->
     <button
       class="section-header-row expandable-trigger"
-      onclick={() => (expanded = !expanded)}
+      onclick={() => { expanded = !expanded; onToggle?.(expanded); }}
     >
       <div class="header-content">
         {#if Icon}

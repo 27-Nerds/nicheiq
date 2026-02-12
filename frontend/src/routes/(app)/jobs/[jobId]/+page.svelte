@@ -21,6 +21,8 @@
     Activity,
     RotateCw,
     Globe,
+    Search,
+    Zap,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
   import type { Job, StageProgress, SolutionPreview } from "$lib/types/job";
@@ -29,6 +31,14 @@
   import SolutionSelectionView from "$lib/components/SolutionSelectionView.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
   import PhaseResultsCard from "$lib/components/PhaseResultsCard.svelte";
+  import PhaseSection from "$lib/components/job/PhaseSection.svelte";
+  import StageRow from "$lib/components/job/StageRow.svelte";
+  import FindingsStream from "$lib/components/job/FindingsStream.svelte";
+  import JourneyTrack from "$lib/components/job/JourneyTrack.svelte";
+  import CumulativeStats from "$lib/components/job/CumulativeStats.svelte";
+  import { PHASES, PARALLEL_STAGE_GROUPS, getNarrativeText, CELEBRATION_TIERS } from "$lib/components/job/phaseConfig";
+  import type { PhaseStatus } from "$lib/components/job/phaseConfig";
+  import { parseArtifactsToFindings, computeCumulativeStats } from "$lib/components/job/artifactParsers";
   import { getSolutions } from "$lib/api";
 
   let job = $state<Job | null>(null);
@@ -43,6 +53,9 @@
   let generatingLanding = $state(false);
   let landingError = $state("");
   let localSolutions = $state<SolutionPreview[] | null>(null);
+  let findingsCollapsed = $state(false);
+  let hasPlayedReveal = $state(false);
+  let showReveal = $state(false);
 
   const jobId = $derived($page.params.jobId);
 
@@ -56,16 +69,15 @@
       : false,
   );
 
+  const isInteractiveJob = $derived(job?.jobMode === 'interactive');
+
   // Use local solutions (updated via SSE) or fall back to job data
   const displaySolutions = $derived(
     localSolutions ?? job?.solutionIdeas ?? [],
   );
 
   function connectSSE() {
-    // Clean up existing subscription
     unsubscribeSSE?.();
-
-    // Don't connect if no jobId or job is fully terminal (no landing in progress)
     if (!jobId) return;
     if (job && !shouldKeepSSEOpen(job)) return;
 
@@ -74,9 +86,6 @@
       (data) => {
         if (data && data.id) {
           job = data as Job;
-          // Sync solutions from SSE job data:
-          // - initial sync when localSolutions is null
-          // - after regeneration when backend sends merged array (length changes)
           if (data.solutionIdeas) {
             if (!localSolutions || data.solutionIdeas.length !== localSolutions.length) {
               localSolutions = data.solutionIdeas as SolutionPreview[];
@@ -91,35 +100,20 @@
 
   async function resumeJob() {
     if (!job || isResuming) return;
-
     isResuming = true;
     resumeError = "";
-
     try {
-      const res = await fetch(`/api/jobs/${jobId}/resume`, {
-        method: "POST",
-      });
-
+      const res = await fetch(`/api/jobs/${jobId}/resume`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to resume job");
       }
-
-      // Update local state to show it's queued again
-      // Reset any FAILED or RUNNING stages to PENDING for proper visual feedback
       const updatedProgress = (job.progress ?? []).map((stage) =>
         stage.status === "FAILED" || stage.status === "RUNNING"
           ? { ...stage, status: "PENDING" as const }
           : stage,
       );
-      job = {
-        ...job,
-        status: "QUEUED",
-        errorMessage: null,
-        progress: updatedProgress,
-      };
-
-      // Reconnect SSE for real-time updates
+      job = { ...job, status: "QUEUED", errorMessage: null, progress: updatedProgress };
       connectSSE();
     } catch (e) {
       resumeError = e instanceof Error ? e.message : "Failed to resume job";
@@ -130,31 +124,19 @@
 
   async function generateLanding() {
     if (!job || generatingLanding) return;
-
     generatingLanding = true;
     landingError = "";
-
     try {
-      const res = await fetch(`/api/jobs/${jobId}/generate-landing`, {
-        method: "POST",
-      });
-
+      const res = await fetch(`/api/jobs/${jobId}/generate-landing`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to generate landing page");
       }
-
-      // Refetch job to get updated state (landingPageStatus, new stage 15)
       const updatedRes = await fetch(`/api/jobs/${jobId}`);
-      if (updatedRes.ok) {
-        job = await updatedRes.json();
-      }
-
-      // Reconnect SSE for real-time landing page progress
+      if (updatedRes.ok) { job = await updatedRes.json(); }
       connectSSE();
     } catch (e) {
-      landingError =
-        e instanceof Error ? e.message : "Failed to generate landing page";
+      landingError = e instanceof Error ? e.message : "Failed to generate landing page";
     } finally {
       generatingLanding = false;
     }
@@ -162,24 +144,15 @@
 
   async function cancelJob() {
     if (!job || cancelling) return;
-
     cancelling = true;
     cancelError = "";
-
     try {
-      const res = await fetch(`/api/jobs/${jobId}/cancel`, {
-        method: "POST",
-      });
-
+      const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Failed to cancel job");
       }
-
-      // Update local state
       job = { ...job, status: "CANCELLED", errorMessage: "Cancelled by user" };
-
-      // Close SSE connection
       unsubscribeSSE?.();
     } catch (e) {
       cancelError = e instanceof Error ? e.message : "Failed to cancel job";
@@ -189,7 +162,6 @@
   }
 
   onMount(async () => {
-    // Initial fetch
     try {
       const res = await fetch(`/api/jobs/${jobId}`);
       if (!res.ok) {
@@ -203,129 +175,72 @@
       loading = false;
     }
 
-    // For interactive jobs returning to selection page, fetch solutions via REST
     if (
-      job &&
-      jobId &&
-      ["AWAITING_SELECTION", "REGENERATING"].includes(
-        job.status,
-      )
+      job && jobId &&
+      ["AWAITING_SELECTION", "REGENERATING"].includes(job.status)
     ) {
       try {
         const solData = await getSolutions(jobId);
-        // Only overwrite if SSE hasn't already provided fresher data
-        if (!localSolutions) {
-          localSolutions = solData.solutionIdeas;
-        }
+        if (!localSolutions) { localSolutions = solData.solutionIdeas; }
       } catch {
-        // Fall back to solutions from job data
-        if (!localSolutions) {
-          localSolutions = job.solutionIdeas ?? null;
-        }
+        if (!localSolutions) { localSolutions = job.solutionIdeas ?? null; }
       }
     }
 
-    // SSE for real-time updates if job is still in progress or landing page is generating
-    if (job && shouldKeepSSEOpen(job)) {
-      connectSSE();
-    }
+    if (job && shouldKeepSSEOpen(job)) { connectSSE(); }
   });
 
-  onDestroy(() => {
-    unsubscribeSSE?.();
-  });
+  onDestroy(() => { unsubscribeSSE?.(); });
 
-  function getStatusVariant(
-    status: string,
-  ): "success" | "warning" | "error" | "muted" | "info" | "accent" {
+  function getStatusVariant(status: string): "success" | "warning" | "error" | "muted" | "info" | "accent" {
     switch (status) {
-      case "COMPLETED":
-        return "success";
-      case "RUNNING":
-      case "RUNNING_PHASE2":
-        return "info";
-      case "FAILED":
-        return "error";
-      case "CANCELLED":
-        return "muted";
-      case "VALIDATING_IDEAS":
-      case "AWAITING_SELECTION":
-        return "accent";
-      case "REGENERATING":
-        return "warning";
-      default:
-        return "warning"; // PENDING, QUEUED
+      case "COMPLETED": return "success";
+      case "RUNNING": case "RUNNING_PHASE2": return "info";
+      case "FAILED": return "error";
+      case "CANCELLED": return "muted";
+      case "VALIDATING_IDEAS": case "AWAITING_SELECTION": return "accent";
+      case "REGENERATING": return "warning";
+      default: return "warning";
     }
   }
 
   function getStatusLabel(status: string): string {
     switch (status) {
-      case "VALIDATING_IDEAS":
-        return "Validating Ideas";
-      case "AWAITING_SELECTION":
-        return "Awaiting Selection";
-      case "REGENERATING":
-        return "Generating New Ideas";
-      case "RUNNING_PHASE2":
-        return "Deep Analysis";
-      default:
-        return status;
+      case "VALIDATING_IDEAS": return "Validating Ideas";
+      case "AWAITING_SELECTION": return "Awaiting Selection";
+      case "REGENERATING": return "Generating New Ideas";
+      case "RUNNING_PHASE2": return "Deep Analysis";
+      default: return status;
     }
   }
 
   function handleSelectionComplete() {
-    // Refetch job to get updated status (RUNNING_PHASE2 or QUEUED)
     fetch(`/api/jobs/${jobId}`)
       .then((res) => res.json())
-      .then((data) => {
-        job = data;
-        connectSSE();
-      });
+      .then((data) => { job = data; connectSSE(); });
   }
 
   function formatDuration(seconds: number | null): string {
     if (!seconds) return "";
     if (seconds < 60) return `${Math.round(seconds)}s`;
-
-    // Use floor for both to avoid "60s" issue from rounding
     const totalSeconds = Math.round(seconds);
     const mins = Math.floor(totalSeconds / 60);
     const secs = totalSeconds % 60;
     return `${mins}m ${secs}s`;
   }
 
-  // Stages that run in parallel and should be combined into one line
-  const PARALLEL_STAGE_GROUPS: Record<
-    number,
-    { hide: number[]; combinedName: string }
-  > = {
-    3: { hide: [4], combinedName: "Pain Point & Audience Analysis" },
-  };
-
-  // Process stages to combine parallel stages into single lines
-  function processStagesForDisplay(
-    stages: StageProgress[],
-    jobStatus: string,
-  ): StageProgress[] {
+  // Process stages for display (combine parallel stages)
+  function processStagesForDisplay(stages: StageProgress[], jobStatus: string): StageProgress[] {
     const hiddenStages = new Set<number>();
-
-    // Collect all stages that should be hidden
     for (const group of Object.values(PARALLEL_STAGE_GROUPS)) {
       group.hide.forEach((s) => hiddenStages.add(s));
     }
-
     return stages
       .filter((stage) => !hiddenStages.has(stage.stageNumber))
       .map((stage) => {
         const group = PARALLEL_STAGE_GROUPS[stage.stageNumber];
-        let processed = group
-          ? { ...stage, stageName: group.combinedName }
-          : stage;
-        // Safety net: terminal jobs shouldn't show spinning stages
-        if (
-          (jobStatus === "FAILED" || jobStatus === "CANCELLED") &&
-          processed.status === "RUNNING"
-        ) {
+        let processed = group ? { ...stage, stageName: group.combinedName } : stage;
+        if ((jobStatus === "FAILED" || jobStatus === "CANCELLED") && processed.status === "RUNNING") {
           processed = { ...processed, status: "FAILED" };
         }
         return processed;
@@ -336,28 +251,23 @@
     job ? processStagesForDisplay(job.progress ?? [], job.status) : [],
   );
 
-  // Adjusted stage counts (subtract hidden stages)
+  // Adjusted counts
   const adjustedStagesCompleted = $derived.by(() => {
     if (!job) return 0;
-    const hiddenStageNumbers = Object.values(PARALLEL_STAGE_GROUPS).flatMap(
-      (g) => g.hide,
-    );
+    const hiddenStageNumbers = Object.values(PARALLEL_STAGE_GROUPS).flatMap((g) => g.hide);
     const hiddenCompleted = (job.progress ?? []).filter(
-      (s) =>
-        hiddenStageNumbers.includes(s.stageNumber) && s.status === "COMPLETED",
+      (s) => hiddenStageNumbers.includes(s.stageNumber) && s.status === "COMPLETED",
     ).length;
     return job.stagesCompleted - hiddenCompleted;
   });
 
   const adjustedTotalStages = $derived.by(() => {
     if (!job) return 0;
-    const hiddenCount = Object.values(PARALLEL_STAGE_GROUPS).flatMap(
-      (g) => g.hide,
-    ).length;
+    const hiddenCount = Object.values(PARALLEL_STAGE_GROUPS).flatMap((g) => g.hide).length;
     return job.totalStages - hiddenCount;
   });
 
-  // Build artifact maps from stage progress for PhaseResultsCard
+  // Build artifact maps from stage progress
   const stageArtifacts = $derived.by(() => {
     const map: Record<number, Record<string, any>> = {};
     for (const stage of job?.progress ?? []) {
@@ -368,6 +278,62 @@
     return map;
   });
 
+  // Phase-level derived state
+  const discoveryStages = $derived(
+    displayStages.filter((s) => PHASES[0].stageNumbers.includes(s.stageNumber))
+  );
+
+  const analysisStages = $derived(
+    displayStages.filter((s) => PHASES[1].stageNumbers.includes(s.stageNumber))
+  );
+
+  function computePhaseStatus(
+    stagesInPhase: StageProgress[],
+    phaseId: 'discovery' | 'analysis',
+    jobStatus: string,
+  ): PhaseStatus {
+    if (stagesInPhase.length === 0) {
+      // Analysis phase with no stages yet
+      if (phaseId === 'analysis') {
+        if (['AWAITING_SELECTION', 'REGENERATING'].includes(jobStatus)) return 'locked';
+        if (['RUNNING_PHASE2'].includes(jobStatus)) return 'active';
+      }
+      return 'pending';
+    }
+    const hasRunning = stagesInPhase.some((s) => s.status === 'RUNNING');
+    const hasFailed = stagesInPhase.some((s) => s.status === 'FAILED');
+    const allCompleted = stagesInPhase.every((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED');
+    const anyCompleted = stagesInPhase.some((s) => s.status === 'COMPLETED');
+
+    if (hasFailed) return 'failed';
+    if (allCompleted) return 'completed';
+    if (hasRunning) return 'active';
+    if (anyCompleted) return 'active'; // some done, some pending
+    // For analysis phase: locked until selection is done
+    if (phaseId === 'analysis' && isInteractiveJob) {
+      const gateStatus = computeGateStatus(jobStatus);
+      if (gateStatus === 'locked' || gateStatus === 'active') return 'locked';
+    }
+    return 'pending';
+  }
+
+  function computeGateStatus(jobStatus: string): 'locked' | 'active' | 'passed' {
+    if (['AWAITING_SELECTION', 'REGENERATING'].includes(jobStatus)) return 'active';
+    if (['RUNNING_PHASE2', 'COMPLETED'].includes(jobStatus)) return 'passed';
+    return 'locked';
+  }
+
+  const discoveryStatus = $derived<PhaseStatus>(
+    job ? computePhaseStatus(discoveryStages, 'discovery', job.status) : 'pending'
+  );
+
+  const analysisStatus = $derived<PhaseStatus>(
+    job ? computePhaseStatus(analysisStages, 'analysis', job.status) : 'locked'
+  );
+
+  const gateStatus = $derived(job ? computeGateStatus(job.status) : 'locked');
+
+  // Artifact subsets for PhaseResultsCard
   const discoveryArtifacts = $derived.by(() => {
     const result: Record<number, Record<string, any>> = {};
     for (const num of [1, 2, 3, 4]) {
@@ -398,6 +364,56 @@
     (job?.solutionIdeas?.length ?? 0) > 0 &&
     (job?.status === 'RUNNING_PHASE2' || job?.status === 'COMPLETED')
   );
+
+  // Findings stream
+  const findingsItems = $derived(parseArtifactsToFindings(stageArtifacts));
+
+  // Cumulative stats
+  const cumulativeStats = $derived(computeCumulativeStats(stageArtifacts));
+
+  // Journey track phase nodes
+  const journeyPhases = $derived([
+    { id: 'discovery', label: 'Discovery', status: discoveryStatus },
+    { id: 'analysis', label: 'Analysis', status: analysisStatus },
+  ]);
+
+  // Display current stage name (with parallel group handling)
+  const displayCurrentStageName = $derived(
+    job
+      ? (job.currentStage === 3 || job.currentStage === 4
+          ? PARALLEL_STAGE_GROUPS[3].combinedName
+          : job.currentStageName || "Initializing...")
+      : ""
+  );
+
+  // Report-ready reveal: trigger once when job transitions to COMPLETED
+  const isCompleted = $derived(job?.status === 'COMPLETED');
+
+  const reportAsset = $derived((job?.assets ?? []).find((a) => a.type === "REPORT_JSON"));
+  const landingAsset = $derived((job?.assets ?? []).find((a) => a.type === "LANDING_PAGE"));
+
+  const showLpRow = $derived(
+    !!landingAsset ||
+    (job?.progress ?? []).some((s) => s.stageNumber === 15) ||
+    (job?.status === "COMPLETED" && !!reportAsset)
+  );
+
+  $effect(() => {
+    if (isCompleted && !hasPlayedReveal) {
+      hasPlayedReveal = true;
+      // Brief delay to let the last stage animate
+      setTimeout(() => { showReveal = true; }, 500);
+    }
+  });
+
+  // Should show findings stream (only during active processing or completed)
+  const showFindings = $derived(
+    job != null &&
+    job.status !== 'PENDING' &&
+    job.status !== 'QUEUED' &&
+    job.status !== 'CANCELLED' &&
+    findingsItems.length > 0
+  );
 </script>
 
 <svelte:head>
@@ -405,7 +421,7 @@
 </svelte:head>
 
 <div class="py-8">
-  <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div class="page-container">
     {#if loading}
       <div class="text-center py-12 animate-fade-slide-in">
         <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
@@ -413,9 +429,7 @@
       </div>
     {:else if error}
       <div class="card p-8 text-center animate-fade-slide-in">
-        <div
-          class="p-3 rounded-xl bg-error/10 border border-error/20 w-fit mx-auto"
-        >
+        <div class="p-3 rounded-xl bg-error/10 border border-error/20 w-fit mx-auto">
           <AlertTriangle class="w-8 h-8 text-error" />
         </div>
         <h2 class="mt-4 text-xl font-semibold text-text-primary">Error</h2>
@@ -431,16 +445,9 @@
               <Activity class="w-5 h-5 text-accent" />
             </div>
             <div>
-              <h1 class="text-2xl font-bold text-text-primary">
-                Research Progress
-              </h1>
-              <p
-                class="mt-1 text-sm text-text-muted truncate max-w-xl"
-                title={job.niche}
-              >
-                {job.niche.length > 100
-                  ? job.niche.substring(0, 100) + "..."
-                  : job.niche}
+              <h1 class="text-2xl font-bold text-text-primary">Research Progress</h1>
+              <p class="mt-1 text-sm text-text-muted truncate max-w-xl" title={job.niche}>
+                {job.niche.length > 100 ? job.niche.substring(0, 100) + "..." : job.niche}
               </p>
             </div>
           </div>
@@ -463,14 +470,9 @@
 
       <!-- Queue Position (for QUEUED jobs) -->
       {#if job.status === "QUEUED" || job.status === "PENDING"}
-        <div
-          class="card p-6 mb-6 bg-warning/5 border-warning/20 animate-fade-slide-in"
-          style="animation-delay: 100ms;"
-        >
+        <div class="card p-6 mb-6 bg-warning/5 border-warning/20 animate-fade-slide-in" style="animation-delay: 100ms;">
           <div class="flex items-center gap-4">
-            <div
-              class="p-3 rounded-full bg-warning/10 border border-warning/20"
-            >
+            <div class="p-3 rounded-full bg-warning/10 border border-warning/20">
               <Clock class="w-6 h-6 text-warning" />
             </div>
             <div>
@@ -478,8 +480,7 @@
                 {#if job.queuePosition === 1}
                   You're next!
                 {:else if job.queuePosition && job.aheadCount}
-                  {job.aheadCount}
-                  {job.aheadCount === 1 ? "report" : "reports"} ahead of you
+                  {job.aheadCount} {job.aheadCount === 1 ? "report" : "reports"} ahead of you
                 {:else}
                   Waiting in queue...
                 {/if}
@@ -493,81 +494,33 @@
           </div>
         </div>
       {:else}
-        <!-- Progress Bar (for non-queued jobs) -->
-        {@const displayCurrentStageName =
-          job.currentStage === 3 || job.currentStage === 4
-            ? PARALLEL_STAGE_GROUPS[3].combinedName
-            : job.currentStageName || "Initializing..."}
-        <div
-          class="card p-6 mb-6 animate-fade-slide-in"
-          style="animation-delay: 100ms;"
-        >
-          <div class="flex justify-between items-center mb-3">
-            <span class="text-sm font-medium text-text-secondary">
-              {displayCurrentStageName}
-            </span>
-            <span class="text-sm font-semibold text-accent">
-              {Math.round(job.progressPercent)}%
-            </span>
-          </div>
-          <div class="progress-bar h-3">
-            <div
-              class="progress-bar-fill {job.status === 'RUNNING' || job.status === 'RUNNING_PHASE2'
-                ? 'animate-shimmer motion-reduce:animate-none'
-                : ''} {job.status === 'FAILED' ? 'progress-failed' : ''}"
-              style="width: {job.progressPercent}%"
-            ></div>
-          </div>
-          <p class="mt-3 text-sm text-text-muted">
-            {adjustedStagesCompleted} of {adjustedTotalStages} stages completed
-          </p>
-        </div>
-      {/if}
-
-      <!-- Interactive Flow: Solution Selection -->
-      {#if job.status === "AWAITING_SELECTION" || job.status === "REGENERATING"}
-        <div class="mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
-          <SolutionSelectionView
-            jobId={jobId ?? ''}
-            solutions={displaySolutions}
-            selectedSolution={job.selectedSolution}
-            selectedSolutions={job.selectedSolutions}
-            isRegenerating={job.status === "REGENERATING"}
-            canRegenerate={job.canRegenerate ?? false}
-            onSelectionComplete={handleSelectionComplete}
+        <!-- Journey Track + Progress Bar + Cumulative Stats -->
+        <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 100ms;">
+          <JourneyTrack
+            phases={journeyPhases}
+            gateStatus={isInteractiveJob ? gateStatus : 'passed'}
+            isInteractive={isInteractiveJob}
+            currentStageName={displayCurrentStageName}
+            progressPercent={job.progressPercent}
+            stagesCompleted={adjustedStagesCompleted}
+            totalStages={adjustedTotalStages}
+            isRunning={job.status === 'RUNNING' || job.status === 'RUNNING_PHASE2'}
+            isFailed={job.status === 'FAILED'}
           />
+          <CumulativeStats stats={cumulativeStats} />
         </div>
       {/if}
 
-      <!-- Selected Solutions Summary (during Phase 2 / completed) -->
-      {#if showSelectedSummary}
-        <div class="mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
-          <SelectedSolutionsSummary
-            selectedNames={job.selectedSolutions ?? []}
-            solutionIdeas={job.solutionIdeas ?? []}
-            primaryWinner={job.selectedSolution}
-            status={job.status}
-          />
-        </div>
-      {/if}
-
-      <!-- Cancelled Message -->
+      <!-- Error / Cancelled / Resume (above phases, full width) -->
       {#if job.status === "CANCELLED"}
-        <div
-          class="p-4 rounded-lg bg-bg-elevated border border-border mb-6 animate-fade-slide-in"
-          style="animation-delay: 150ms;"
-        >
+        <div class="p-4 rounded-lg bg-bg-elevated border border-border mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
           <div class="flex items-start gap-3">
             <div class="p-2 rounded-lg bg-text-muted/10 shrink-0">
               <XCircle class="w-5 h-5 text-text-muted" />
             </div>
             <div class="flex-1">
-              <h3 class="text-sm font-medium text-text-secondary">
-                Research Cancelled
-              </h3>
-              <p class="mt-1 text-sm text-text-muted">
-                This research was cancelled. Your credit has been refunded.
-              </p>
+              <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
+              <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credit has been refunded.</p>
               <button
                 onclick={() => ($showNewResearchModal = true)}
                 class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors"
@@ -580,43 +533,24 @@
         </div>
       {/if}
 
-      <!-- Quality Gate Stop Message (intentional stop, not an error) -->
       {#if job.status === "FAILED" && job.stopReason === "INSUFFICIENT_DATA"}
-        <div
-          class="p-5 rounded-lg bg-warning/5 border border-warning/20 mb-6 animate-fade-slide-in"
-          style="animation-delay: 150ms;"
-        >
+        <div class="p-5 rounded-lg bg-warning/5 border border-warning/20 mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
           <div class="flex items-start gap-4">
-            <div
-              class="p-2.5 rounded-xl bg-warning/10 border border-warning/20 shrink-0"
-            >
+            <div class="p-2.5 rounded-xl bg-warning/10 border border-warning/20 shrink-0">
               <AlertTriangle class="w-6 h-6 text-warning" />
             </div>
             <div class="flex-1">
-              <h3 class="text-base font-semibold text-text-primary">
-                Not Enough Data Found
-              </h3>
+              <h3 class="text-base font-semibold text-text-primary">Not Enough Data Found</h3>
               <p class="mt-1.5 text-sm text-text-secondary">
-                {job.stopReasonDetails?.recommendation ||
-                  "The research could not continue due to insufficient discussion data."}
+                {job.stopReasonDetails?.recommendation || "The research could not continue due to insufficient discussion data."}
               </p>
-
               {#if job.stopReasonDetails?.metrics}
-                <div
-                  class="mt-4 p-3 rounded-lg bg-bg-surface border border-border"
-                >
-                  <div
-                    class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2"
-                  >
-                    Quality Metrics
-                  </div>
+                <div class="mt-4 p-3 rounded-lg bg-bg-surface border border-border">
+                  <div class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Quality Metrics</div>
                   <div class="grid grid-cols-3 gap-4 text-sm">
                     <div>
                       <span class="text-text-muted">Pain Points:</span>
-                      <span class="ml-1 font-medium text-text-primary"
-                        >{job.stopReasonDetails.metrics.painPointCount ??
-                          0}</span
-                      >
+                      <span class="ml-1 font-medium text-text-primary">{job.stopReasonDetails.metrics.painPointCount ?? 0}</span>
                     </div>
                     <div>
                       <span class="text-text-muted">Quality:</span>
@@ -637,55 +571,22 @@
                   </div>
                 </div>
               {/if}
-
               <div class="mt-4 flex items-center gap-2">
                 <CheckCircle class="w-4 h-4 text-success" />
-                <span class="text-sm text-success"
-                  >Credit refunded automatically</span
-                >
+                <span class="text-sm text-success">Credit refunded automatically</span>
               </div>
             </div>
           </div>
         </div>
-
-        <!-- Regular Error Message (for actual failures) -->
       {:else if job.status === "FAILED" && (job.errorDetails || job.errorMessage)}
         {@const severity = job.errorDetails?.severity || "error"}
-        {@const bgColor =
-          severity === "info"
-            ? "bg-info/5"
-            : severity === "warning"
-              ? "bg-warning/5"
-              : "bg-error/5"}
-        {@const borderColor =
-          severity === "info"
-            ? "border-info/20"
-            : severity === "warning"
-              ? "border-warning/20"
-              : "border-error/20"}
-        {@const iconBg =
-          severity === "info"
-            ? "bg-info/10"
-            : severity === "warning"
-              ? "bg-warning/10"
-              : "bg-error/10"}
-        {@const iconColor =
-          severity === "info"
-            ? "text-info"
-            : severity === "warning"
-              ? "text-warning"
-              : "text-error"}
-        {@const textColor =
-          severity === "info"
-            ? "text-info"
-            : severity === "warning"
-              ? "text-warning"
-              : "text-error"}
+        {@const bgColor = severity === "info" ? "bg-info/5" : severity === "warning" ? "bg-warning/5" : "bg-error/5"}
+        {@const borderColor = severity === "info" ? "border-info/20" : severity === "warning" ? "border-warning/20" : "border-error/20"}
+        {@const iconBg = severity === "info" ? "bg-info/10" : severity === "warning" ? "bg-warning/10" : "bg-error/10"}
+        {@const iconColor = severity === "info" ? "text-info" : severity === "warning" ? "text-warning" : "text-error"}
+        {@const textColor = severity === "info" ? "text-info" : severity === "warning" ? "text-warning" : "text-error"}
 
-        <div
-          class="p-4 rounded-lg {bgColor} border {borderColor} mb-6 animate-fade-slide-in"
-          style="animation-delay: 150ms;"
-        >
+        <div class="p-4 rounded-lg {bgColor} border {borderColor} mb-6 animate-fade-slide-in" style="animation-delay: 150ms;">
           <div class="flex items-start gap-3">
             <div class="p-2 rounded-lg {iconBg} shrink-0">
               {#if severity === "info"}
@@ -698,41 +599,26 @@
             </div>
             <div class="flex-1">
               {#if job.errorDetails}
-                <h3 class="text-sm font-medium {textColor}">
-                  {job.errorDetails.userMessage}
-                </h3>
-                <p class="mt-1 text-sm text-text-muted">
-                  {job.errorDetails.actionableGuidance}
-                </p>
-
+                <h3 class="text-sm font-medium {textColor}">{job.errorDetails.userMessage}</h3>
+                <p class="mt-1 text-sm text-text-muted">{job.errorDetails.actionableGuidance}</p>
                 {#if job.errorDetails.retryDelayMinutes}
-                  <p class="mt-2 text-xs text-text-muted">
-                    Suggested wait time: {job.errorDetails.retryDelayMinutes} minutes
-                  </p>
+                  <p class="mt-2 text-xs text-text-muted">Suggested wait time: {job.errorDetails.retryDelayMinutes} minutes</p>
                 {/if}
-
-                <!-- Technical Details Toggle -->
                 {#if job.errorMessage}
                   <button
                     type="button"
                     class="mt-3 text-xs text-text-muted hover:text-text-secondary underline"
-                    onclick={() =>
-                      (showTechnicalDetails = !showTechnicalDetails)}
+                    onclick={() => (showTechnicalDetails = !showTechnicalDetails)}
                   >
                     {showTechnicalDetails ? "Hide" : "Show"} technical details
                   </button>
-
                   {#if showTechnicalDetails}
-                    <div
-                      class="mt-2 p-3 rounded bg-bg-elevated border border-border text-xs font-mono text-text-muted overflow-x-auto"
-                    >
-                      <pre
-                        class="whitespace-pre-wrap break-words">{job.errorMessage}</pre>
+                    <div class="mt-2 p-3 rounded bg-bg-elevated border border-border text-xs font-mono text-text-muted overflow-x-auto">
+                      <pre class="whitespace-pre-wrap break-words">{job.errorMessage}</pre>
                     </div>
                   {/if}
                 {/if}
               {:else}
-                <!-- Fallback for jobs without errorDetails (backward compatibility) -->
                 <h3 class="text-sm font-medium {textColor}">Error</h3>
                 <p class="mt-1 text-sm text-text-muted">{job.errorMessage}</p>
               {/if}
@@ -741,21 +627,12 @@
         </div>
       {/if}
 
-      <!-- Resume Button for Failed Jobs -->
       {#if job.status === "FAILED"}
-        <div
-          class="card p-6 mb-6 animate-fade-slide-in"
-          style="animation-delay: 175ms;"
-        >
+        <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 175ms;">
           <div class="flex items-center justify-between">
             <div>
-              <h3 class="text-sm font-medium text-text-primary">
-                Resume from Checkpoint
-              </h3>
-              <p class="mt-1 text-sm text-text-muted">
-                Continue where you left off. Your refund will be reversed (1
-                credit).
-              </p>
+              <h3 class="text-sm font-medium text-text-primary">Resume from Checkpoint</h3>
+              <p class="mt-1 text-sm text-text-muted">Continue where you left off. Your refund will be reversed (1 credit).</p>
             </div>
             <SubmitButton onclick={resumeJob} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" class="btn-primary flex items-center gap-2" />
           </div>
@@ -765,163 +642,218 @@
         </div>
       {/if}
 
-      <!-- Stage List -->
-      <div
-        class="card mb-6 p-0 animate-fade-slide-in"
-        style="animation-delay: 200ms;"
-      >
-        <div class="px-6 py-4 border-b border-border">
-          <h2 class="text-lg font-medium text-text-primary">Pipeline Stages</h2>
-        </div>
-        <ul class="divide-y divide-border">
-          {#each displayStages as stage, index}
-            <li
-              class="px-6 py-4 flex items-center justify-between transition-colors hover:bg-bg-hover {stage.status ===
-              'RUNNING'
-                ? 'bg-info/5'
-                : ''}"
-              style="animation-delay: {250 + index * 50}ms;"
-            >
-              <div class="flex items-center gap-3">
-                {#if stage.status === "COMPLETED"}
-                  <span
-                    class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-success/15 border border-success/20 text-success"
-                  >
-                    <CheckCircle class="w-4 h-4" />
-                  </span>
-                {:else if stage.status === "RUNNING"}
-                  <span
-                    class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-info/15 border border-info/20 text-info"
-                  >
-                    <Loader2 class="w-4 h-4 animate-spin" />
-                  </span>
-                {:else if stage.status === "FAILED"}
-                  <span
-                    class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-error/15 border border-error/20 text-error"
-                  >
-                    <XCircle class="w-4 h-4" />
-                  </span>
-                {:else if stage.status === "SKIPPED"}
-                  <span
-                    class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-bg-elevated border border-border text-text-muted"
-                  >
-                    <Minus class="w-4 h-4" />
-                  </span>
-                {:else}
-                  <span
-                    class="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-full bg-bg-elevated border border-border text-text-muted"
-                  >
-                    <span class="w-2 h-2 rounded-full bg-current opacity-50"
-                    ></span>
-                  </span>
-                {/if}
-                <span
-                  class="text-sm font-medium {stage.status === 'RUNNING'
-                    ? 'text-info'
-                    : stage.status === 'COMPLETED'
-                      ? 'text-text-primary'
-                      : 'text-text-secondary'}"
-                >
-                  {stage.stageName}
-                </span>
+      <!-- ===== TWO-COLUMN LAYOUT: Phases (left) + Findings Stream (right) ===== -->
+      <div class="two-column-layout" class:has-findings={showFindings}>
+        <!-- LEFT: Phases -->
+        <div class="phases-column">
+          <!-- Phase 1: Discovery -->
+          <PhaseSection
+            title="Discovery"
+            icon={Search}
+            status={discoveryStatus}
+            stagesCompleted={discoveryStages.filter((s) => s.status === 'COMPLETED').length}
+            stagesTotal={discoveryStages.length || PHASES[0].stageNumbers.length}
+            defaultOpen={discoveryStatus === 'active'}
+          >
+            <div class="stage-list">
+              {#each discoveryStages as stage, i (stage.stageNumber)}
+                <StageRow
+                  {stage}
+                  narrativeText={getNarrativeText(stage.stageNumber, stage.status, stageArtifacts[stage.stageNumber])}
+                  isLast={i === discoveryStages.length - 1}
+                  celebrationTier={CELEBRATION_TIERS[stage.stageNumber] ?? 1}
+                />
+              {/each}
+            </div>
+
+            {#if showDiscoveryCard}
+              <div class="mt-3">
+                <PhaseResultsCard phase="discovery" artifacts={discoveryArtifacts} />
               </div>
-              {#if stage.durationSeconds}
-                <span class="text-sm text-text-muted font-mono">
-                  {formatDuration(stage.durationSeconds)}
-                </span>
+            {/if}
+          </PhaseSection>
+
+          <!-- Selection Gate (interactive jobs only) -->
+          {#if isInteractiveJob}
+            {#if job.status === "AWAITING_SELECTION" || job.status === "REGENERATING"}
+              <div class="mb-3 animate-fade-slide-in">
+                <SolutionSelectionView
+                  jobId={jobId ?? ''}
+                  solutions={displaySolutions}
+                  selectedSolution={job.selectedSolution}
+                  selectedSolutions={job.selectedSolutions}
+                  isRegenerating={job.status === "REGENERATING"}
+                  canRegenerate={job.canRegenerate ?? false}
+                  onSelectionComplete={handleSelectionComplete}
+                />
+              </div>
+            {:else if showSelectedSummary}
+              <div class="mb-3 animate-fade-slide-in">
+                <SelectedSolutionsSummary
+                  selectedNames={job.selectedSolutions ?? []}
+                  solutionIdeas={job.solutionIdeas ?? []}
+                  primaryWinner={job.selectedSolution}
+                  status={job.status}
+                />
+              </div>
+            {:else if gateStatus === 'locked'}
+              <div class="gate-locked mb-3">
+                <div class="gate-locked-inner">
+                  <Zap class="w-4 h-4 text-text-muted" />
+                  <span class="text-sm text-text-muted">Solution selection unlocks after discovery</span>
+                </div>
+              </div>
+            {/if}
+          {:else}
+            <!-- Non-interactive: show selected summary if present -->
+            {#if showSelectedSummary}
+              <div class="mb-3 animate-fade-slide-in">
+                <SelectedSolutionsSummary
+                  selectedNames={job.selectedSolutions ?? []}
+                  solutionIdeas={job.solutionIdeas ?? []}
+                  primaryWinner={job.selectedSolution}
+                  status={job.status}
+                />
+              </div>
+            {/if}
+          {/if}
+
+          <!-- Phase 2: Deep Analysis -->
+          <PhaseSection
+            title="Deep Analysis"
+            icon={Zap}
+            status={analysisStatus}
+            stagesCompleted={analysisStages.filter((s) => s.status === 'COMPLETED').length}
+            stagesTotal={analysisStages.length || PHASES[1].stageNumbers.length}
+            defaultOpen={analysisStatus === 'active'}
+          >
+            <div class="stage-list">
+              {#each analysisStages as stage, i (stage.stageNumber)}
+                <StageRow
+                  {stage}
+                  narrativeText={getNarrativeText(stage.stageNumber, stage.status, stageArtifacts[stage.stageNumber])}
+                  isLast={i === analysisStages.length - 1 && !showLpRow}
+                  celebrationTier={CELEBRATION_TIERS[stage.stageNumber] ?? 1}
+                />
+              {/each}
+
+              {#if showLpRow}
+                {@const lpDisabled = job.generateLandingPage === false && !landingAsset}
+                {@const lpRunning = job.landingPageStatus === "RUNNING" || job.landingPageStatus === "QUEUED"}
+                {@const lpFailed = job.landingPageStatus === "FAILED" && !landingAsset}
+                <div
+                  class="stage-row-lp"
+                  class:is-completed={!!landingAsset}
+                  class:is-running={lpRunning}
+                  class:is-failed={lpFailed}
+                  class:is-skipped={lpDisabled}
+                >
+                  <!-- Dot -->
+                  <div class="dot-lp"
+                    class:dot-completed={!!landingAsset}
+                    class:dot-running={lpRunning}
+                    class:dot-failed={lpFailed}
+                    class:dot-skipped={lpDisabled && !landingAsset}
+                    class:dot-pending={!landingAsset && !lpRunning && !lpFailed && !lpDisabled}
+                  >
+                    {#if lpDisabled && !landingAsset}
+                      <Minus class="dot-icon dot-icon-muted" />
+                    {/if}
+                  </div>
+
+                  <!-- Label -->
+                  <span class="stage-name-lp"
+                    class:text-primary={!!landingAsset}
+                    class:text-info={lpRunning}
+                    class:text-secondary={!landingAsset && !lpRunning}
+                  >Landing Page</span>
+
+                  <!-- Actions -->
+                  <div class="lp-actions">
+                    {#if landingAsset}
+                      <a href={landingAsset.url} target="_blank" rel="noopener noreferrer" class="lp-link">
+                        <ExternalLink class="lp-link-icon" />
+                        View
+                      </a>
+                      <a href="{landingAsset.url}?download=true" class="lp-link" download>
+                        Download
+                      </a>
+                    {:else if lpRunning || generatingLanding}
+                      <span class="lp-generating">
+                        <Loader2 class="lp-spinner" />
+                        Generating...
+                      </span>
+                    {:else if lpFailed}
+                      <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Retrying..." icon={RotateCw} label="Retry" class="btn-secondary btn-sm" />
+                    {:else if lpDisabled}
+                      <span class="lp-skipped">Skipped</span>
+                      <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate" class="btn-secondary btn-sm" />
+                    {:else}
+                      <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate" class="btn-secondary btn-sm" />
+                    {/if}
+                  </div>
+                </div>
+                {#if landingError}
+                  <p class="lp-error">{landingError}</p>
+                {/if}
               {/if}
-            </li>
-          {/each}
-        </ul>
+            </div>
+
+            {#if showAnalysisCard}
+              <div class="mt-3">
+                <PhaseResultsCard phase="analysis" artifacts={analysisArtifacts} />
+              </div>
+            {/if}
+          </PhaseSection>
+        </div>
+
+        <!-- RIGHT: Findings Stream (desktop sidebar, mobile collapsible) -->
+        {#if showFindings}
+          <div class="findings-column">
+            <FindingsStream
+              items={findingsItems}
+              collapsed={findingsCollapsed}
+              onToggleCollapse={() => findingsCollapsed = !findingsCollapsed}
+            />
+          </div>
+        {/if}
       </div>
 
-      <!-- Discovery Findings (Phase 1 artifacts) -->
-      {#if showDiscoveryCard}
-        <div class="mb-6 animate-fade-slide-in">
-          <PhaseResultsCard phase="discovery" artifacts={discoveryArtifacts} />
-        </div>
-      {/if}
-
-      <!-- Analysis Results (Phase 2 artifacts) -->
-      {#if showAnalysisCard}
-        <div class="mb-6 animate-fade-slide-in">
-          <PhaseResultsCard phase="analysis" artifacts={analysisArtifacts} />
-        </div>
-      {/if}
-
-      <!-- Results Section -->
-      {@const reportAsset = (job.assets ?? []).find((a) => a.type === "REPORT_JSON")}
-      {@const landingAsset = (job.assets ?? []).find((a) => a.type === "LANDING_PAGE")}
-
-      {#if reportAsset || landingAsset}
-        <div
-          class="card p-6 animate-fade-slide-in"
-          style="animation-delay: 300ms;"
-        >
-          <h2 class="text-lg font-medium text-text-primary mb-4">
-            Your Results
-          </h2>
-          <div class="flex flex-wrap gap-4">
-            {#if reportAsset}
-              <div class="flex flex-col items-start">
-                <Button href="/jobs/{job.id}/report" icon={FileText} label="View Report" class="btn-primary" />
-                <a
-                  href={reportAsset.url}
-                  class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
-                  download
-                >
-                  Download JSON
-                </a>
-              </div>
-            {/if}
-
-            {#if landingAsset}
-              <div class="flex flex-col items-start">
-                <Button href={landingAsset.url} icon={ExternalLink} label="View Landing Page" target="_blank" class="btn-secondary" />
-                <a
-                  href="{landingAsset.url}?download=true"
-                  class="mt-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
-                  download
-                >
-                  Download HTML
-                </a>
-              </div>
-            {:else if job.landingPageStatus === "RUNNING" || job.landingPageStatus === "QUEUED"}
-              <div class="flex items-center gap-2 text-sm text-info">
-                <Loader2 class="w-4 h-4 animate-spin" />
-                <span>Landing page is being generated...</span>
-              </div>
-            {:else if job.landingPageStatus === "FAILED"}
-              <div class="flex flex-col items-start gap-2">
-                <div class="flex items-center gap-2 text-sm text-error">
-                  <XCircle class="w-4 h-4" />
-                  <span>Landing page generation failed</span>
-                </div>
-                <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Retrying..." icon={RotateCw} label="Retry Landing Page" class="btn-secondary btn-sm" />
-              </div>
-            {:else if job.status === "COMPLETED" && reportAsset && !(job.progress ?? []).some((s) => s.stageNumber === 15)}
-              <div class="flex flex-col items-start gap-1">
-                <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate Landing Page" class="btn-secondary" />
-                <span class="text-xs text-text-muted"
-                  >Free - included with your research</span
-                >
-              </div>
-            {/if}
+      <!-- Report-Ready Reveal (full width, below two-column) -->
+      {#if showReveal && reportAsset}
+        <div class="reveal-container">
+          <!-- Animated checkmark -->
+          <div class="reveal-check">
+            <svg class="checkmark-svg" viewBox="0 0 52 52">
+              <circle class="checkmark-circle" cx="26" cy="26" r="24" fill="none" />
+              <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
+            </svg>
           </div>
-          {#if landingError}
-            <p class="mt-3 text-sm text-error">{landingError}</p>
+
+          <h2 class="reveal-title">Your Research Report is Ready</h2>
+
+          <!-- Key stats -->
+          {#if cumulativeStats.some((s) => s.value != null)}
+            <div class="reveal-stats">
+              {#each cumulativeStats.filter((s) => s.value != null) as stat, i}
+                <div class="reveal-stat" style="animation-delay: {800 + i * 200}ms">
+                  <span class="reveal-stat-value">{stat.value?.toLocaleString()}</span>
+                  <span class="reveal-stat-label">{stat.label}</span>
+                </div>
+              {/each}
+            </div>
           {/if}
+
+          <!-- CTA -->
+          <div class="reveal-cta">
+            <Button href="/jobs/{job.id}/report" icon={FileText} label="View Full Report" class="btn-primary reveal-btn" />
+          </div>
         </div>
       {/if}
 
       <!-- Meta Info -->
-      <div
-        class="mt-6 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in"
-        style="animation-delay: 350ms;"
-      >
-        <div
-          class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-text-muted"
-        >
+      <div class="mt-6 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in" style="animation-delay: 350ms;">
+        <div class="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-text-muted">
           <span class="font-mono text-xs">ID: {job.id.substring(0, 8)}...</span>
           {#if job.startedAt}
             <span>Started: {new Date(job.startedAt).toLocaleString()}</span>
@@ -934,3 +866,306 @@
     {/if}
   </div>
 </div>
+
+<style>
+  .page-container {
+    max-width: 72rem; /* wider to accommodate two columns */
+    margin: 0 auto;
+    padding: 0 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .page-container {
+      padding: 0 1.5rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .page-container {
+      padding: 0 2rem;
+    }
+  }
+
+  .two-column-layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  @media (min-width: 1024px) {
+    .two-column-layout.has-findings {
+      grid-template-columns: 1fr 340px;
+    }
+  }
+
+  .phases-column {
+    min-width: 0;
+  }
+
+  .findings-column {
+    min-width: 0;
+  }
+
+  @media (min-width: 1024px) {
+    .findings-column {
+      position: sticky;
+      top: 2rem;
+      align-self: start;
+      max-height: calc(100vh - 4rem);
+    }
+  }
+
+  .stage-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    padding: 0.25rem 0;
+    position: relative;
+  }
+
+
+  .gate-locked {
+    border: 1px dashed var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    opacity: 0.6;
+  }
+
+  .gate-locked-inner {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  /* ===== Landing Page Row (inside stage-list) ===== */
+  .stage-row-lp {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.5rem 0.25rem;
+    position: relative;
+    border-radius: 0.375rem;
+    transition: background 0.15s ease;
+  }
+
+  .stage-row-lp.is-running {
+    background: rgba(59, 130, 246, 0.04);
+  }
+
+  .dot-lp {
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-top: 0.1875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 1;
+  }
+
+  .dot-lp.dot-completed {
+    background: rgba(34, 197, 94, 0.45);
+    border: 1px solid rgba(34, 197, 94, 0.55);
+  }
+  .dot-lp.dot-running {
+    background: rgba(59, 130, 246, 0.45);
+    border: 1px solid rgba(59, 130, 246, 0.55);
+  }
+  .dot-lp.dot-failed {
+    background: rgba(239, 68, 68, 0.45);
+    border: 1px solid rgba(239, 68, 68, 0.55);
+  }
+  .dot-lp.dot-skipped {
+    width: 0.875rem;
+    height: 0.875rem;
+    margin-top: 0.125rem;
+    margin-left: -0.0625rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+  }
+  .dot-lp.dot-pending {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+  }
+
+  .stage-name-lp {
+    font-size: 0.875rem;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+
+  .text-info { color: var(--color-info); }
+  .text-primary { color: var(--color-text-primary); }
+  .text-secondary { color: var(--color-text-secondary); }
+
+  .lp-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .lp-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-accent);
+    text-decoration: none;
+    transition: opacity 0.15s ease;
+  }
+  .lp-link:hover {
+    opacity: 0.8;
+  }
+
+  :global(.lp-link-icon) {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .lp-generating {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.8125rem;
+    color: var(--color-info);
+  }
+
+  :global(.lp-spinner) {
+    width: 0.875rem;
+    height: 0.875rem;
+    animation: spin 1s linear infinite;
+  }
+
+  .lp-skipped {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+  }
+
+  .lp-error {
+    margin-top: 0.25rem;
+    margin-left: calc(1.375rem + 0.625rem + 0.25rem);
+    font-size: 0.8125rem;
+    color: var(--color-error);
+  }
+
+  /* ===== Report-Ready Reveal ===== */
+  .reveal-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 2.5rem 1.5rem;
+    margin-bottom: 1.5rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 0.75rem;
+    animation: reveal-fade-in 500ms ease-out;
+    background-image: linear-gradient(135deg, rgba(34, 197, 94, 0.04) 0%, transparent 40%);
+  }
+
+  @keyframes reveal-fade-in {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  .reveal-check {
+    margin-bottom: 1.25rem;
+  }
+
+  .checkmark-svg {
+    width: 3.5rem;
+    height: 3.5rem;
+  }
+
+  .checkmark-circle {
+    stroke: var(--color-success);
+    stroke-width: 2;
+    stroke-dasharray: 166;
+    stroke-dashoffset: 166;
+    animation: stroke-draw 600ms cubic-bezier(0.65, 0, 0.45, 1) forwards;
+  }
+
+  .checkmark-path {
+    stroke: var(--color-success);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-dasharray: 48;
+    stroke-dashoffset: 48;
+    animation: stroke-draw 400ms cubic-bezier(0.65, 0, 0.45, 1) 400ms forwards;
+  }
+
+  @keyframes stroke-draw {
+    100% { stroke-dashoffset: 0; }
+  }
+
+  .reveal-title {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 1.25rem;
+    animation: reveal-fade-in 400ms ease-out 600ms both;
+  }
+
+  .reveal-stats {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .reveal-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.25rem;
+    animation: reveal-fade-in 400ms ease-out both;
+  }
+
+  .reveal-stat-value {
+    font-family: var(--font-mono);
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+
+  .reveal-stat-label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .reveal-cta {
+    animation: reveal-fade-in 400ms ease-out 1200ms both;
+  }
+
+  :global(.reveal-btn) {
+    box-shadow: 0 0 20px rgba(229, 90, 40, 0.2);
+    animation: cta-glow 2s ease-in-out 1600ms 2;
+  }
+
+  @keyframes cta-glow {
+    0%, 100% { box-shadow: 0 0 20px rgba(229, 90, 40, 0.2); }
+    50% { box-shadow: 0 0 30px rgba(229, 90, 40, 0.4); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal-container { animation: none; }
+    .reveal-title { animation: none; }
+    .reveal-stat { animation: none; }
+    .reveal-cta { animation: none; }
+    .checkmark-circle { animation: none; stroke-dashoffset: 0; }
+    .checkmark-path { animation: none; stroke-dashoffset: 0; }
+    :global(.reveal-btn) { animation: none; }
+  }
+</style>
