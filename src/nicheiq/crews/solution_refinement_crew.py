@@ -10,7 +10,6 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
-from ..models.keyword_data import CrewKeywordValidationResult
 from ..models.solution_idea import SolutionIdea
 from ..models.solution_refinement import SolutionRefinement
 
@@ -84,7 +83,7 @@ class SolutionRefinementCrew:
     def refine(
         self,
         selected_solution: SolutionIdea,
-        keyword_validation: CrewKeywordValidationResult,
+        seo_strategy_report,
         composite_score: float,
         allowed_project_types: list[str] | None = None
     ) -> SolutionRefinement | None:
@@ -92,47 +91,105 @@ class SolutionRefinementCrew:
         Execute refinement crew to generate strategic recommendations.
 
         Args:
-            selected_solution: The selected solution from Stage 5 / keyword validation
-            keyword_validation: Validation results with validated_count, total_volume, etc.
+            selected_solution: The selected solution from Stage 5
+            seo_strategy_report: SEOStrategyReport with comprehensive keyword data
             composite_score: Original composite score from Stage 5
             allowed_project_types: Optional project type constraints from user
 
         Returns:
             SolutionRefinement object with strategic recommendations, or None if refinement fails
         """
+        import math
+        import re
+
+        # Derive keyword context from SEO strategy report
+        all_keywords = []
+        for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+            tier_kws = getattr(seo_strategy_report, tier_attr, None) or []
+            all_keywords.extend(tier_kws)
+
+        total_volume = seo_strategy_report.total_monthly_volume or 0
+        keyword_count = seo_strategy_report.total_keywords_analyzed or 0
+
+        # Demand signal based on total volume
+        if total_volume >= 5000:
+            demand_signal = "strong"
+        elif total_volume >= 2000:
+            demand_signal = "moderate"
+        else:
+            demand_signal = "weak"
+
         # Early exit if demand signal is too weak
-        demand_signal = keyword_validation.demand_signal
-        if demand_signal == "weak" and keyword_validation.total_volume < 2000:
+        if demand_signal == "weak" and total_volume < 2000:
             logger.warning(
                 f"Skipping refinement for {selected_solution.solution_name} - "
-                f"weak demand signal ({keyword_validation.total_volume} monthly volume)"
+                f"weak demand signal ({total_volume} monthly volume)"
             )
             return None
 
-        logger.info(f"[Stage 10] Refining strategy for: {selected_solution.solution_name}")
+        # Avg competition: parse from tier keyword competition strings
+        competitions = []
+        for k in all_keywords:
+            comp = getattr(k, 'competition', None)
+            if comp and isinstance(comp, str):
+                match = re.search(r'\((\d+)\)', comp)
+                if match:
+                    competitions.append(int(match.group(1)))
+                    continue
+            kd = getattr(k, 'keyword_difficulty', None)
+            if kd is not None:
+                competitions.append(int(kd))
+        avg_competition = sum(competitions) / len(competitions) if competitions else 50.0
 
-        # Prepare inputs for the refinement task
+        # keyword_demand_score: logarithmic scale
+        if total_volume > 0:
+            keyword_demand_score = min(math.log10(total_volume) / 6.0, 1.0)
+        else:
+            keyword_demand_score = 0.0
+
+        # Top keywords sorted by volume
+        top_keywords = sorted(all_keywords, key=lambda k: k.search_volume, reverse=True)[:5]
         top_keywords_str = ", ".join([
-            f"{kw.get('keyword', 'N/A')} ({kw.get('volume', 0)}/mo)"
-            for kw in keyword_validation.top_keywords[:5]
+            f"{kw.keyword} ({kw.search_volume}/mo)"
+            for kw in top_keywords
         ])
 
-        geo_keywords_str = ", ".join(keyword_validation.top_geographic_keywords)
+        # Geographic keywords from tier 3
+        geo_keywords = []
+        for group in (getattr(seo_strategy_report, 'tier_3_geographic_groups', None) or []):
+            for entry in (getattr(group, 'keywords', None) or []):
+                kw_str = getattr(entry, 'keyword', None) or getattr(entry, 'term', None)
+                if kw_str:
+                    geo_keywords.append(kw_str)
+        if not geo_keywords:
+            for group in (getattr(seo_strategy_report, 'tier_3_geographic_groups', None) or []):
+                geo_keywords.append(group.region_name)
+        geo_keywords_str = ", ".join(geo_keywords[:10])
+
+        # Validation signals derived from SEO data
+        validation_signals = {
+            "has_search_demand": total_volume > 1000,
+            "keyword_diversity": keyword_count >= 5,
+            "high_volume_presence": any(k.search_volume > 500 for k in all_keywords) if all_keywords else False,
+            "average_volume_per_keyword": total_volume / keyword_count if keyword_count > 0 else 0,
+        }
+
+        logger.info(f"[Stage 10] Refining strategy for: {selected_solution.solution_name}")
 
         inputs = {
             "solution_name": selected_solution.solution_name,
             "solution_description": selected_solution.description,
             "core_features": ", ".join(selected_solution.core_features[:5]) if selected_solution.core_features else "Not specified",
             "target_personas": ", ".join(selected_solution.target_personas[:3]) if selected_solution.target_personas else "General users",
-            "validated_keyword_count": keyword_validation.validated_count,
-            "total_monthly_volume": keyword_validation.total_volume,
-            "keyword_demand_score": keyword_validation.keyword_demand_score,
+            "validated_keyword_count": keyword_count,
+            "total_monthly_volume": total_volume,
+            "keyword_demand_score": keyword_demand_score,
             "top_keywords": top_keywords_str,
             "top_geographic_keywords": geo_keywords_str,
             "demand_signal": demand_signal,
-            "avg_competition": keyword_validation.avg_competition,
+            "avg_competition": avg_competition,
             "composite_score": composite_score,
-            "validation_signals": keyword_validation.validation_signals,
+            "validation_signals": validation_signals,
             "allowed_project_types": ', '.join(allowed_project_types) if allowed_project_types else "All types allowed"
         }
 

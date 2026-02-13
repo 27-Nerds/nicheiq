@@ -898,6 +898,18 @@ RULES:
         artifact = self._extract_stage_artifact(stage)
         self._emit_progress(stage, stage_name, "completed", artifact=artifact)
 
+    def _skip_stage(self, stage_num: float, stage_name: str, reason: str) -> None:
+        """Mark a stage as skipped with a user-friendly reason."""
+        if stage_num not in self.state.completed_stages:
+            self.state.completed_stages.append(stage_num)
+            self.state.completed_stages.sort()
+        if stage_num not in self.state.skipped_stages:
+            self.state.skipped_stages.append(stage_num)
+            self.state.skipped_stages.sort()
+        self.state.stage_completion_timestamps[str(stage_num)] = datetime.now()
+        logger.info(f"[Stage Tracking] Stage {stage_num} ({stage_name}) skipped: {reason}")
+        self._emit_progress(stage_num, stage_name, "skipped", artifact={"skip_reason": reason})
+
     def _extract_stage_artifact(self, stage: float) -> dict | None:
         """Extract a lightweight artifact dict (<2KB) for a completed stage.
 
@@ -919,13 +931,18 @@ RULES:
             ctx = self.state.niche_context
             return {
                 "type": "niche_validation",
-                "niche_description": ctx.niche_description[:200],
+                "niche_description": ctx.niche_description[:500],
                 "market_segments": ctx.market_segments[:5],
                 "industry_boundaries": ctx.industry_boundaries[:150],
             }
         elif stage == 2 and self.state.social_content:
             sc = self.state.social_content
             fs = self.state.filtering_stats or {}
+            # Compute manually - sc.total_reddit_comments is never populated
+            total_comments = sum(len(p.comments) for p in sc.reddit_posts)
+            total_twitter_replies = sum(len(t.replies) for t in sc.twitter_threads)
+            total_interactions = total_comments + total_twitter_replies
+            total_upvotes = sum(p.score for p in sc.reddit_posts if p.score > 0)
             return {
                 "type": "search_discovery",
                 "reddit_posts": len(sc.reddit_posts),
@@ -936,6 +953,8 @@ RULES:
                 )),
                 "urls_searched": fs.get("total_urls_searched", 0),
                 "urls_relevant": fs.get("total_urls_relevant", 0),
+                "total_interactions": total_interactions,
+                "total_upvotes": total_upvotes,
             }
         elif stage == 3 and self.state.pain_point_analysis:
             ppa = self.state.pain_point_analysis
@@ -1127,8 +1146,12 @@ RULES:
         for checkpoint_name in completed_stages:
             if checkpoint_name in stage_mapping:
                 stage_num, stage_name = stage_mapping[checkpoint_name]
-                logger.info(f"[Resume] Replaying completed status for stage {stage_num}: {stage_name}")
-                self._emit_progress(stage_num, stage_name, "completed")
+                if stage_num in self.state.skipped_stages:
+                    logger.info(f"[Resume] Replaying skipped status for stage {stage_num}: {stage_name}")
+                    self._emit_progress(stage_num, stage_name, "skipped", artifact={"skip_reason": "Previously skipped"})
+                else:
+                    logger.info(f"[Resume] Replaying completed status for stage {stage_num}: {stage_name}")
+                    self._emit_progress(stage_num, stage_name, "completed")
 
     def _execute_remaining_stages(self, stop_after_phase: int | None = None, skip_bulk_replay: bool = False) -> str:
         """
@@ -1219,7 +1242,8 @@ RULES:
                     # Refresh completed_stages
                     completed_stages = self.checkpoint_mgr.get_completed_stages()
                 elif skip_bulk_replay:
-                    self._emit_progress(5.5, "Competitive Analysis", "completed")
+                    status = "skipped" if 5.5 in self.state.skipped_stages else "completed"
+                    self._emit_progress(5.5, "Competitive Analysis", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
 
             # Stage 6: SEO & Keyword Strategy (runs FIRST in Phase 2)
@@ -1234,7 +1258,8 @@ RULES:
                     logger.info("Skipping Stage 6 (SEO & Keyword Strategy) - awaiting Stage 5")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(6, "SEO & Keyword Strategy", "completed")
+                    status = "skipped" if 6 in self.state.skipped_stages else "completed"
+                    self._emit_progress(6, "SEO & Keyword Strategy", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 6 (SEO & Keyword Strategy) - already completed")
 
@@ -1250,7 +1275,8 @@ RULES:
                     logger.info("Skipping Stage 7 (Pricing Validation) - awaiting Stage 6")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(7, "Pricing Validation", "completed")
+                    status = "skipped" if 7 in self.state.skipped_stages else "completed"
+                    self._emit_progress(7, "Pricing Validation", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 7 (Pricing Validation) - already completed")
 
@@ -1266,7 +1292,8 @@ RULES:
                     logger.info("Skipping Stage 8 (Traffic Monetization) - awaiting Stage 7")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(8, "Traffic Monetization", "completed")
+                    status = "skipped" if 8 in self.state.skipped_stages else "completed"
+                    self._emit_progress(8, "Traffic Monetization", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 8 (Traffic Monetization) - already completed")
 
@@ -1282,7 +1309,8 @@ RULES:
                     logger.info("Skipping Stage 9 (Market Sizing) - awaiting Stage 7")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(9, "Market Sizing", "completed")
+                    status = "skipped" if 9 in self.state.skipped_stages else "completed"
+                    self._emit_progress(9, "Market Sizing", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 9 (Market Sizing) - already completed")
 
@@ -1295,7 +1323,8 @@ RULES:
                     logger.info("Skipping Stage 10 (Solution Refinement) - prerequisites not met")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(10, "Solution Refinement", "completed")
+                    status = "skipped" if 10 in self.state.skipped_stages else "completed"
+                    self._emit_progress(10, "Solution Refinement", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 10 (Solution Refinement) - already completed")
 
@@ -1307,7 +1336,8 @@ RULES:
                     logger.info("Skipping Stage 11 (Trend Longevity) - prerequisites not met")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(11, "Trend Analysis", "completed")
+                    status = "skipped" if 11 in self.state.skipped_stages else "completed"
+                    self._emit_progress(11, "Trend Analysis", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 11 (Trend Longevity) - already completed")
 
@@ -1319,7 +1349,8 @@ RULES:
                     logger.info("Skipping Stage 12 (SEO Refinement) - prerequisites not met")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(12, "SEO Score Refinement", "completed")
+                    status = "skipped" if 12 in self.state.skipped_stages else "completed"
+                    self._emit_progress(12, "SEO Score Refinement", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 12 (SEO Refinement) - already completed")
 
@@ -1331,7 +1362,8 @@ RULES:
                     logger.info("Skipping Stage 13 (Data Source Research) - prerequisites not met")
             else:
                 if skip_bulk_replay:
-                    self._emit_progress(13, "Data Source Research", "completed")
+                    status = "skipped" if 13 in self.state.skipped_stages else "completed"
+                    self._emit_progress(13, "Data Source Research", status)
                     time.sleep(REPLAY_STAGGER_DELAY)
                 logger.info("Skipping Stage 13 (Data Source Research) - already completed")
 
@@ -3494,24 +3526,28 @@ Return a valid JSON object with this structure:
         if not self.state.solution_selection:
             logger.warning("[Stage 7] No solution selected - skipping pricing validation")
             self.state.current_stage = 8
+            self._skip_stage(7, "Pricing Validation", "No solution selected for pricing analysis")
             return
 
         # Check if we have pain point analysis
         if not self.state.pain_point_analysis:
             logger.warning("[Stage 7] No pain point analysis - skipping pricing validation")
             self.state.current_stage = 8
+            self._skip_stage(7, "Pricing Validation", "Insufficient pain point data for pricing")
             return
 
         # Check if we have competitive analysis
         if not self.state.competitive_analysis:
             logger.warning("[Stage 7] No competitive analysis - skipping pricing validation")
             self.state.current_stage = 8
+            self._skip_stage(7, "Pricing Validation", "No competitive data for pricing benchmarking")
             return
 
         # Check if we have idea generation
         if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
             logger.warning("[Stage 7] No solution ideas - skipping pricing validation")
             self.state.current_stage = 8
+            self._skip_stage(7, "Pricing Validation", "No solution ideas for pricing validation")
             return
 
         # Get top N solutions from all_solution_scores (like keyword validation)
@@ -3519,6 +3555,7 @@ Return a valid JSON object with this structure:
         if not all_scores or len(all_scores) < 1:
             logger.warning("[Stage 7] No solution scores available - skipping")
             self.state.current_stage = 8
+            self._skip_stage(7, "Pricing Validation", "No solution scores for pricing analysis")
             return
 
         # Sort by composite score and take top N (configurable)
@@ -4324,6 +4361,86 @@ Return a valid JSON object with this structure:
 
         return " ".join(sentences)
 
+    def _derive_keyword_context_from_seo(self, seo_report) -> dict:
+        """Derive keyword context from SEO strategy report for stages 8-11.
+
+        Extracts keyword-validation-equivalent fields from the comprehensive
+        SEO strategy report so downstream crews can use richer data.
+        """
+        import math
+        import re
+
+        all_keywords = []
+        for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+            tier_kws = getattr(seo_report, tier_attr, None) or []
+            all_keywords.extend(tier_kws)
+
+        # Geo keywords: extract actual keyword strings from tier 3 groups
+        geo_keywords = []
+        for group in (getattr(seo_report, 'tier_3_geographic_groups', None) or []):
+            for entry in (getattr(group, 'keywords', None) or []):
+                kw_str = getattr(entry, 'keyword', None) or getattr(entry, 'term', None)
+                if kw_str:
+                    geo_keywords.append(kw_str)
+        # Fallback: use region names if no keyword entries
+        if not geo_keywords:
+            for group in (getattr(seo_report, 'tier_3_geographic_groups', None) or []):
+                geo_keywords.append(group.region_name)
+
+        # Top keywords sorted by volume
+        top_keywords = sorted(all_keywords, key=lambda k: k.search_volume, reverse=True)[:15]
+        top_kw_dicts = [{"keyword": k.keyword, "volume": k.search_volume} for k in top_keywords]
+
+        # Avg competition: parse number from "LOW (30)" format, fallback to keyword_difficulty
+        competitions = []
+        for k in all_keywords:
+            comp = getattr(k, 'competition', None)
+            if comp and isinstance(comp, str):
+                match = re.search(r'\((\d+)\)', comp)
+                if match:
+                    competitions.append(int(match.group(1)))
+                    continue
+            kd = getattr(k, 'keyword_difficulty', None)
+            if kd is not None:
+                competitions.append(int(kd))
+        avg_competition = sum(competitions) / len(competitions) if competitions else 50.0
+
+        total_volume = seo_report.total_monthly_volume or 0
+        keyword_count = seo_report.total_keywords_analyzed or 0
+
+        # Demand signal based on total volume
+        if total_volume >= 5000:
+            demand_signal = "strong"
+        elif total_volume >= 2000:
+            demand_signal = "moderate"
+        else:
+            demand_signal = "weak"
+
+        # keyword_demand_score: logarithmic scale to avoid always being 1.0
+        if total_volume > 0:
+            keyword_demand_score = min(math.log10(total_volume) / 6.0, 1.0)  # 1M = 1.0
+        else:
+            keyword_demand_score = 0.0
+
+        # Derive validation_signals equivalent from SEO data
+        validation_signals = {
+            "has_search_demand": total_volume > 1000,
+            "keyword_diversity": keyword_count >= 5,
+            "high_volume_presence": any(k.search_volume > 500 for k in all_keywords) if all_keywords else False,
+            "average_volume_per_keyword": total_volume / keyword_count if keyword_count > 0 else 0,
+        }
+
+        return {
+            "total_volume": total_volume,
+            "keyword_count": keyword_count,
+            "demand_signal": demand_signal,
+            "avg_competition": avg_competition,
+            "top_keywords": top_kw_dicts,
+            "geo_keywords": geo_keywords,
+            "keyword_demand_score": keyword_demand_score,
+            "validation_signals": validation_signals,
+        }
+
     def _analyze_traffic_monetization(self, solution_name: str) -> dict:
         """
         Helper method to analyze traffic monetization for a single solution (thread-safe).
@@ -4359,7 +4476,7 @@ Return a valid JSON object with this structure:
             # Run traffic monetization analysis
             result = traffic_crew.analyze(
                 selected_solution=solution,
-                keyword_validation_results=self.state.keyword_validation_results,
+                keyword_validation_results=None,
                 competitive_analysis=self.state.competitive_analysis,
                 niche_description=self.niche_description,
                 seo_strategy_report=self.state.seo_strategy_report
@@ -4410,15 +4527,21 @@ Return a valid JSON object with this structure:
         # Check prerequisites
         if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
             logger.warning("[Stage 8] No solution ideas - skipping traffic monetization")
+            self.state.current_stage = 9
+            self._skip_stage(8, "Traffic Monetization", "No solution ideas for traffic analysis")
             return
 
-        if not self.state.keyword_validation_results:
-            logger.warning("[Stage 8] No keyword validation results - skipping traffic monetization")
+        if not self.state.seo_strategy_report:
+            logger.warning("[Stage 8] No SEO strategy report - skipping traffic monetization")
+            self.state.current_stage = 9
+            self._skip_stage(8, "Traffic Monetization", "No SEO data for traffic estimation")
             return
 
         # Get solutions to analyze (same top N as keyword validation)
         if not self.state.solution_selection or not self.state.solution_selection.all_solution_scores:
             logger.warning("[Stage 8] No solution scores - skipping traffic monetization")
+            self.state.current_stage = 9
+            self._skip_stage(8, "Traffic Monetization", "No solution scores for traffic analysis")
             return
 
         all_scores = self.state.solution_selection.all_solution_scores
@@ -4447,6 +4570,8 @@ Return a valid JSON object with this structure:
                 f"[Stage 8] No traffic-based solutions found in top {len(top_n_scores)} "
                 f"(types: {traffic_types}). Skipping traffic monetization analysis."
             )
+            self.state.current_stage = 9
+            self._skip_stage(8, "Traffic Monetization", "Not applicable \u2014 SaaS revenue model")
             return
 
         logger.info(f"[Stage 8] Analyzing {len(traffic_solutions)} traffic-based solutions (PARALLEL)")
@@ -4558,24 +4683,28 @@ Return a valid JSON object with this structure:
         if not self.state.solution_selection:
             logger.warning("[Stage 9] No solution selected - skipping market sizing")
             self.state.current_stage = 10
+            self._skip_stage(9, "Market Sizing", "No solution selected for market sizing")
             return
 
         # Check if we have pain point analysis
         if not self.state.pain_point_analysis:
             logger.warning("[Stage 9] No pain point analysis - skipping market sizing")
             self.state.current_stage = 10
+            self._skip_stage(9, "Market Sizing", "Insufficient data for market estimation")
             return
 
         # Check if we have competitive analysis
         if not self.state.competitive_analysis:
             logger.warning("[Stage 9] No competitive analysis - skipping market sizing")
             self.state.current_stage = 10
+            self._skip_stage(9, "Market Sizing", "No competitive data for market sizing")
             return
 
         # Check if we have idea generation
         if not self.state.idea_generation or not self.state.idea_generation.solution_ideas:
             logger.warning("[Stage 9] No solution ideas - skipping market sizing")
             self.state.current_stage = 10
+            self._skip_stage(9, "Market Sizing", "No solution ideas for market sizing")
             return
 
         # Get selected solution
@@ -4588,6 +4717,7 @@ Return a valid JSON object with this structure:
         if not selected_solution:
             logger.error(f"[Stage 9] Selected solution '{selected_name}' not found")
             self.state.current_stage = 10
+            self._skip_stage(9, "Market Sizing", "Selected solution not found")
             return
 
         # Initialize and run market sizing crew
@@ -4597,24 +4727,12 @@ Return a valid JSON object with this structure:
 
         market_sizing_crew = MarketSizingCrew()
 
-        # Get keyword validation for selected solution (keyword validation runs before this)
-        keyword_validation = None
-        if hasattr(self.state, 'keyword_validation_results') and self.state.keyword_validation_results:
-            # Find keyword validation for the selected solution
-            keyword_validation = next(
-                (v for v in self.state.keyword_validation_results if v.solution_name == selected_name),
-                None
-            )
-            if keyword_validation:
-                logger.info(f"[Stage 9] Using keyword validation data for {selected_name}")
-            else:
-                logger.info(f"[Stage 9] No keyword validation data found for {selected_name} - will use pain point and competitive data only")
-        else:
-            logger.info("[Stage 9] Keyword validation data not available - will calculate market size from pain points and competitive analysis")
+        # Pass keyword_validation=None; crew derives demand signals from SEO report
+        logger.info(f"[Stage 9] Using SEO strategy report for market demand signals")
 
         market_sizing_result = market_sizing_crew.analyze(
             selected_solution=selected_solution,
-            keyword_validation=keyword_validation,
+            keyword_validation=None,
             pain_point_analysis=self.state.pain_point_analysis,
             competitive_analysis=self.state.competitive_analysis,
             niche_description=self.niche_description,
@@ -4633,6 +4751,7 @@ Return a valid JSON object with this structure:
         if not market_sizing_result:
             logger.warning("[Stage 9] Market sizing failed - continuing without market sizing data")
             self.state.current_stage = 10
+            self._skip_stage(9, "Market Sizing", "Market sizing could not be completed")
             return
 
         # Store result
@@ -4673,18 +4792,21 @@ Return a valid JSON object with this structure:
         if not getattr(settings, 'solution_refinement_enabled', True):
             logger.info("[Stage 10] Solution refinement disabled - skipping")
             self.state.current_stage = 11
+            self._skip_stage(10, "Solution Refinement", "Solution refinement disabled")
             return
 
         # Check if we have solution selection
         if not self.state.solution_selection:
             logger.warning("[Stage 10] No solution selected - skipping refinement")
             self.state.current_stage = 11
+            self._skip_stage(10, "Solution Refinement", "No solution selected for refinement")
             return
 
-        # Check if we have keyword validation results
-        if not self.state.keyword_validation_results:
-            logger.warning("[Stage 10] No keyword validation results - skipping refinement")
+        # Check if we have SEO strategy report
+        if not self.state.seo_strategy_report:
+            logger.warning("[Stage 10] No SEO strategy report - skipping refinement")
             self.state.current_stage = 11
+            self._skip_stage(10, "Solution Refinement", "No SEO data for refinement")
             return
 
         # Get selected solution
@@ -4697,27 +4819,19 @@ Return a valid JSON object with this structure:
         if not selected_solution:
             logger.error(f"[Stage 10] Selected solution '{selected_name}' not found")
             self.state.current_stage = 11
+            self._skip_stage(10, "Solution Refinement", "Selected solution not found")
             return
 
-        # Get keyword validation for selected solution
-        keyword_validation = next(
-            (v for v in self.state.keyword_validation_results if v.solution_name == selected_name),
-            None
-        )
-
-        if not keyword_validation:
-            logger.warning(f"[Stage 10] No keyword validation found for {selected_name}")
-            self.state.current_stage = 11
-            return
-
-        # Early exit if demand is too weak
-        if keyword_validation.demand_signal == "weak" and keyword_validation.total_volume < 2000:
+        # Early exit if SEO demand is too weak
+        seo_total_volume = self.state.seo_strategy_report.total_monthly_volume or 0
+        if seo_total_volume < 2000:
             logger.warning(
-                f"[Stage 10] Skipping refinement - weak demand signal "
-                f"({keyword_validation.total_volume} monthly volume)"
+                f"[Stage 10] Skipping refinement - weak SEO demand signal "
+                f"({seo_total_volume} monthly volume)"
             )
             self.state.current_stage = 11
             self.checkpoint_mgr.save_stage("stage_10_solution_refinement", {"skipped": True, "reason": "weak_demand"})
+            self._skip_stage(10, "Solution Refinement", "Low search demand \u2014 refinement skipped")
             return
 
         # Get composite score for context
@@ -4733,7 +4847,7 @@ Return a valid JSON object with this structure:
 
         refinement = refinement_crew.refine(
             selected_solution=selected_solution,
-            keyword_validation=keyword_validation,
+            seo_strategy_report=self.state.seo_strategy_report,
             composite_score=composite_score,
             allowed_project_types=self.state.allowed_project_types
         )
@@ -4848,16 +4962,20 @@ Return a valid JSON object with this structure:
                 analysis_timeframe="N/A"
             )
 
-        if not self.state.keyword_validation_results:
-            logger.warning("[Stage 11] No keyword validation data - creating fallback trend analysis")
-            self.state.trend_longevity = _create_minimal_trend_fallback("Missing keyword validation data")
+        if not self.state.seo_strategy_report:
+            logger.warning("[Stage 11] No SEO strategy report - creating fallback trend analysis")
+            self.state.trend_longevity = _create_minimal_trend_fallback("Missing SEO strategy data")
             self.state.current_stage = 12
+            self._mark_stage_complete(11, used_fallback=True)
+            self.checkpoint_mgr.save_stage("stage_11_trend_longevity", self.state.trend_longevity.model_dump())
             return
 
         if not self.state.social_content:
             logger.warning("[Stage 11] No social content - creating fallback trend analysis")
             self.state.trend_longevity = _create_minimal_trend_fallback("Missing social content data")
             self.state.current_stage = 12
+            self._mark_stage_complete(11, used_fallback=True)
+            self.checkpoint_mgr.save_stage("stage_11_trend_longevity", self.state.trend_longevity.model_dump())
             return
 
         # Get selected solution's keyword validation
@@ -4866,19 +4984,12 @@ Return a valid JSON object with this structure:
             logger.warning("[Stage 11] No solution selected - creating fallback trend analysis")
             self.state.trend_longevity = _create_minimal_trend_fallback("No solution selected")
             self.state.current_stage = 12
+            self._mark_stage_complete(11, used_fallback=True)
+            self.checkpoint_mgr.save_stage("stage_11_trend_longevity", self.state.trend_longevity.model_dump())
             return
 
-        # Find keyword validation for selected solution
-        keyword_validation = next(
-            (v for v in self.state.keyword_validation_results if v.solution_name == selected_name),
-            None
-        )
-
-        if not keyword_validation:
-            logger.warning(f"[Stage 11] No keyword validation for {selected_name} - creating fallback trend analysis")
-            self.state.trend_longevity = _create_minimal_trend_fallback(f"No keyword validation for {selected_name}")
-            self.state.current_stage = 12
-            return
+        # Derive keyword context from SEO report for trend analysis
+        seo_context = self._derive_keyword_context_from_seo(self.state.seo_strategy_report)
 
         # Initialize and run trend longevity crew
         from ..crews import TrendLongevityCrew
@@ -4900,7 +5011,7 @@ Return a valid JSON object with this structure:
         trend_crew = TrendLongevityCrew()
 
         trend_result = trend_crew.analyze(
-            keyword_validation=keyword_validation,
+            keyword_validation=None,
             social_content=self.state.social_content,
             pain_point_analysis=self.state.pain_point_analysis,
             competitive_analysis=self.state.competitive_analysis,
@@ -4908,6 +5019,7 @@ Return a valid JSON object with this structure:
             enriched_keywords_trends=trend_summary,  # Aggregated 12-month trend summary
             top_enriched_keywords=top_enriched_keywords,  # Per-keyword monthly trend data
             selected_solution_name=selected_name,
+            seo_strategy_report=self.state.seo_strategy_report,
         )
 
         # Record crew cost
@@ -4922,6 +5034,7 @@ Return a valid JSON object with this structure:
         if not trend_result:
             logger.warning("[Stage 11] Trend analysis failed - continuing without trend data")
             self.state.current_stage = 12
+            self._skip_stage(11, "Trend Analysis", "Trend analysis could not be completed")
             return
 
         # Store result
@@ -4967,6 +5080,7 @@ Return a valid JSON object with this structure:
             logger.info("SEO refinement disabled - skipping Stage 12")
             self.state.current_stage = 13
             self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": "SEO refinement disabled in settings"})
+            self._skip_stage(12, "SEO Score Refinement", "SEO score refinement disabled")
             return
 
         # Skip if no SEO strategy or no solution selection
@@ -4974,6 +5088,7 @@ Return a valid JSON object with this structure:
             logger.info("No SEO strategy or solution selection - skipping refinement")
             self.state.current_stage = 13
             self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": "No SEO strategy or solution selection"})
+            self._skip_stage(12, "SEO Score Refinement", "No SEO strategy data for refinement")
             return
 
         # Skip if no idea generation
@@ -4981,6 +5096,7 @@ Return a valid JSON object with this structure:
             logger.info("No solution ideas available - skipping refinement")
             self.state.current_stage = 13
             self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": "No solution ideas"})
+            self._skip_stage(12, "SEO Score Refinement", "No solution ideas for SEO refinement")
             return
 
         # Get selected solution
@@ -4995,6 +5111,7 @@ Return a valid JSON object with this structure:
             logger.warning(f"Selected solution '{selected_solution_name}' not found - skipping refinement")
             self.state.current_stage = 13
             self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
+            self._skip_stage(12, "SEO Score Refinement", "Selected solution not found for refinement")
             return
 
         # Check if solution has SEO fields to refine
@@ -5002,6 +5119,7 @@ Return a valid JSON object with this structure:
             logger.info("Solution has no SEO scores to refine - skipping")
             self.state.current_stage = 13
             self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": "Solution has no SEO scores to refine"})
+            self._skip_stage(12, "SEO Score Refinement", "Solution has no SEO scores to refine")
             return
 
         logger.info(f"Refining SEO scores for: {selected_solution_name}")

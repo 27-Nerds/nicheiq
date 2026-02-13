@@ -791,7 +791,6 @@
 
   .pain-card-enhanced:hover {
     border-color: rgba(239, 68, 68, 0.3);
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.1);
   }
 
   .pain-card-severity-high {
@@ -904,7 +903,6 @@
     border: 2px solid var(--color-accent);
     border-radius: 50%;
     flex-shrink: 0;
-    box-shadow: 0 0 12px rgba(229, 90, 40, 0.3);
   }
 
   .solution-card-enhanced {
@@ -922,7 +920,6 @@
 
   .solution-card-enhanced:hover {
     border-color: rgba(229, 90, 40, 0.4);
-    box-shadow: 0 4px 20px rgba(229, 90, 40, 0.1);
   }
 
   .solution-header {
@@ -1068,7 +1065,6 @@
 
   .pain-point-card-enhanced:hover {
     border-color: var(--color-border-hover);
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   }
 
   .pain-point-card-enhanced.opportunity-high {

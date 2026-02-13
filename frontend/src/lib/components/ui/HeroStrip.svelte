@@ -74,9 +74,6 @@
     );
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 2px 8px rgba(0, 0, 0, 0.04);
     position: relative;
     z-index: 1;
   }

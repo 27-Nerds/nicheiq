@@ -100,7 +100,7 @@ class TrendLongevityCrew:
 
     def analyze(
         self,
-        keyword_validation: CrewKeywordValidationResult,
+        keyword_validation: CrewKeywordValidationResult | None,
         social_content: SocialContentCollection,
         pain_point_analysis: PainPointAnalysisResult,
         competitive_analysis: CompetitiveAnalysisResult,
@@ -108,6 +108,7 @@ class TrendLongevityCrew:
         enriched_keywords_trends: dict | None = None,
         top_enriched_keywords: list[dict] | None = None,
         selected_solution_name: str | None = None,
+        seo_strategy_report=None,
     ) -> TrendLongevityResult | None:
         """
         Execute trend longevity crew to analyze market momentum and timing.
@@ -117,13 +118,15 @@ class TrendLongevityCrew:
         into the unchanged TrendLongevityResult.
 
         Args:
-            keyword_validation: Keyword validation data from keyword validation
+            keyword_validation: Keyword validation data (may be None when using SEO report)
             social_content: Social media discussions from Stage 5
             pain_point_analysis: Pain point data from Stage 6
             competitive_analysis: Competitive landscape from Stage 7-8.75
             niche_description: Niche description for context
             enriched_keywords_trends: Aggregated trend data from Phase 6c
             top_enriched_keywords: Top 20 keywords with 12-month monthly_searches
+            selected_solution_name: Name of selected solution for scoping
+            seo_strategy_report: Optional SEOStrategyReport for comprehensive keyword data
 
         Returns:
             TrendLongevityResult with trend analysis and timing recommendation,
@@ -136,6 +139,7 @@ class TrendLongevityCrew:
         deterministic = compute_deterministic_signals(
             keyword_validation, social_content, competitive_analysis,
             enriched_keywords_trends,
+            seo_strategy_report=seo_strategy_report,
         )
         logger.info(
             f"  Pre-computed: direction={deterministic['trend_direction']}, "
@@ -144,11 +148,22 @@ class TrendLongevityCrew:
         )
 
         # 2. Format raw data for LLM context (keep existing _format_* methods)
-        keyword_signals = self._format_keyword_trends(keyword_validation, enriched_keywords_trends)
+        keyword_signals = self._format_keyword_trends(keyword_validation, enriched_keywords_trends, seo_strategy_report=seo_strategy_report)
         if top_enriched_keywords:
             keyword_signals += self._format_keyword_monthly_trends(top_enriched_keywords)
         discussion_signals = self._format_discussion_trends(social_content, pain_point_analysis)
         competitive_signals = self._format_competitive_momentum(competitive_analysis, selected_solution_name)
+
+        # Derive volume/count from SEO report when keyword_validation is None
+        if keyword_validation:
+            total_kw_volume = keyword_validation.total_volume or 0
+            validated_kw_count = keyword_validation.validated_count or 0
+        elif seo_strategy_report:
+            total_kw_volume = seo_strategy_report.total_monthly_volume or 0
+            validated_kw_count = seo_strategy_report.total_keywords_analyzed or 0
+        else:
+            total_kw_volume = 0
+            validated_kw_count = 0
 
         # 3. Build inputs: pre-computed values + raw data + counts
         inputs = {
@@ -167,8 +182,8 @@ class TrendLongevityCrew:
             "competitive_momentum_data": competitive_signals,
             # Counts
             "niche_description": niche_description,
-            "total_keyword_volume": keyword_validation.total_volume if keyword_validation else 0,
-            "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
+            "total_keyword_volume": total_kw_volume,
+            "validated_keyword_count": validated_kw_count,
             "discussion_count": (
                 len(social_content.reddit_posts) + len(social_content.twitter_threads)
                 if social_content else 0
@@ -251,23 +266,51 @@ class TrendLongevityCrew:
     def _format_keyword_trends(
         self,
         keyword_validation: CrewKeywordValidationResult | None,
-        enriched_keywords_trends: dict | None = None
+        enriched_keywords_trends: dict | None = None,
+        seo_strategy_report=None,
     ) -> str:
-        """Format keyword trend signals for analysis with actual 12-month data."""
-        if not keyword_validation:
-            return "No keyword validation data available."
+        """Format keyword trend signals for analysis with actual 12-month data.
+
+        Uses SEO strategy report when keyword_validation is None.
+        """
+        # Derive volume/count from best available source
+        if keyword_validation:
+            total_volume = keyword_validation.total_volume or 0
+            validated_count = keyword_validation.validated_count or 0
+            demand_signal = keyword_validation.demand_signal or "unknown"
+            top_kw_lines = []
+            if keyword_validation.top_keywords:
+                for kw in keyword_validation.top_keywords[:5]:
+                    keyword_text = kw.get('keyword', 'N/A')
+                    volume = kw.get('volume', 0)
+                    top_kw_lines.append(f"- {keyword_text}: {volume:,}/month")
+        elif seo_strategy_report:
+            total_volume = seo_strategy_report.total_monthly_volume or 0
+            validated_count = seo_strategy_report.total_keywords_analyzed or 0
+            if total_volume >= 5000:
+                demand_signal = "strong"
+            elif total_volume >= 2000:
+                demand_signal = "moderate"
+            else:
+                demand_signal = "weak"
+
+            all_keywords = []
+            for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+                tier_kws = getattr(seo_strategy_report, tier_attr, None) or []
+                all_keywords.extend(tier_kws)
+            top_sorted = sorted(all_keywords, key=lambda k: k.search_volume, reverse=True)[:5]
+            top_kw_lines = [f"- {kw.keyword}: {kw.search_volume:,}/month" for kw in top_sorted]
+        else:
+            return "No keyword data available."
 
         signals = []
-        signals.append(f"**Total Monthly Search Volume:** {keyword_validation.total_volume:,} searches")
-        signals.append(f"**Validated Keywords:** {keyword_validation.validated_count}")
-        signals.append(f"**Demand Signal:** {keyword_validation.demand_signal}")
+        signals.append(f"**Total Monthly Search Volume:** {total_volume:,} searches")
+        signals.append(f"**Analyzed Keywords:** {validated_count}")
+        signals.append(f"**Demand Signal:** {demand_signal}")
 
-        if keyword_validation.top_keywords:
+        if top_kw_lines:
             signals.append("\n**Top Keywords (for trend context):**")
-            for kw in keyword_validation.top_keywords[:5]:
-                keyword_text = kw.get('keyword', 'N/A')
-                volume = kw.get('volume', 0)
-                signals.append(f"- {keyword_text}: {volume:,}/month")
+            signals.extend(top_kw_lines)
 
         # Add ACTUAL 12-month trend data if available
         if enriched_keywords_trends:

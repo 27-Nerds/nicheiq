@@ -574,45 +574,54 @@ def _make_state_with_kv(
     return state
 
 
-class TestNicheRelevantVolume:
-    """Tests for get_niche_relevant_search_volume() and get_volume_filter_ratio()."""
+class TestPrimarySearchVolume:
+    """Tests for get_primary_search_volume() and get_volume_filter_ratio()."""
 
-    def test_uses_filtered_when_available(self):
-        """Returns niche_relevant_volume when set."""
+    def test_seo_strategy_uses_computed_tier_total(self):
+        """Returns sum of tiered keyword volumes (not stale total_monthly_volume)."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("kw1", search_volume=500000)],
+            tier_1=[_make_tiered_kw("kw2", search_volume=264480)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_primary_search_volume() == 764480
+
+    def test_falls_back_to_kv_when_no_seo(self):
+        """Falls back to keyword_validation niche_relevant_volume when no SEO report."""
         state = _make_state_with_kv(
             selected_name="My Solution",
             kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=12000)],
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 12000
+        assert accessor.get_primary_search_volume() == 12000
 
-    def test_falls_back_to_total_when_none(self):
+    def test_kv_fallback_uses_total_when_niche_none(self):
         """Falls back to total_volume when niche_relevant_volume is None."""
         state = _make_state_with_kv(
             selected_name="My Solution",
             kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=None)],
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 50000
+        assert accessor.get_primary_search_volume() == 50000
 
-    def test_zero_is_valid_not_falsy(self):
+    def test_kv_fallback_zero_is_valid(self):
         """niche_relevant_volume=0 should return 0, NOT fall back to total_volume."""
         state = _make_state_with_kv(
             selected_name="My Solution",
             kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=0)],
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 0
+        assert accessor.get_primary_search_volume() == 0
 
     def test_returns_zero_when_no_selection(self):
-        """Returns 0 when no solution_selection exists."""
+        """Returns 0 when no solution_selection and no SEO report."""
         state = _make_state_with_kv(
             selected_name="My Solution",
             kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=12000)],
             include_selection=False,
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 0
+        assert accessor.get_primary_search_volume() == 0
 
     def test_returns_zero_when_not_found(self):
         """Returns 0 when selected solution is not in results."""
@@ -621,28 +630,51 @@ class TestNicheRelevantVolume:
             kv_results=[_make_kv_result("Other Solution", total_volume=50000, niche_relevant_volume=12000)],
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 0
+        assert accessor.get_primary_search_volume() == 0
 
     def test_case_insensitive_matching(self):
-        """Name matching should be case-insensitive."""
+        """Name matching should be case-insensitive (legacy fallback)."""
         state = _make_state_with_kv(
             selected_name="  My Solution  ",
             kv_results=[_make_kv_result("my solution", total_volume=50000, niche_relevant_volume=8000)],
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 8000
+        assert accessor.get_primary_search_volume() == 8000
 
     def test_returns_zero_when_no_kv_results(self):
-        """Returns 0 when keyword_validation_results is None."""
+        """Returns 0 when no SEO report and keyword_validation_results is None."""
         state = _make_state_with_kv(
             selected_name="My Solution",
             kv_results=None,
         )
         accessor = StateAccessor(state)
-        assert accessor.get_niche_relevant_search_volume() == 0
+        assert accessor.get_primary_search_volume() == 0
 
-    def test_volume_filter_ratio(self):
-        """Ratio = niche / total Stage 9 volume."""
+    def test_seo_empty_tiers_returns_zero(self):
+        """SEO report with no tier keywords returns 0."""
+        state = _make_seo_state(tier_0=None, tier_1=None, tier_2=None)
+        accessor = StateAccessor(state)
+        assert accessor.get_primary_search_volume() == 0
+
+    def test_seo_zero_volume_keywords_returns_zero(self):
+        """SEO report with all zero-volume keywords returns 0."""
+        state = _make_seo_state(
+            tier_1=[_make_tiered_kw("kw1", search_volume=0)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_primary_search_volume() == 0
+
+    def test_deprecated_alias_delegates(self):
+        """get_niche_relevant_search_volume() delegates to get_primary_search_volume()."""
+        state = _make_seo_state(
+            tier_0=[_make_tiered_kw("kw1", search_volume=500000)],
+            tier_1=[_make_tiered_kw("kw2", search_volume=264480)],
+        )
+        accessor = StateAccessor(state)
+        assert accessor.get_niche_relevant_search_volume() == 764480
+
+    def test_volume_filter_ratio_none_when_seo_present(self):
+        """Returns None when seo_strategy_report is present (no filtering concept)."""
         seo_state = _make_seo_state(
             tier_0=[_make_tiered_kw("kw1", search_volume=5000)],
             tier_1=[_make_tiered_kw("kw2", search_volume=5000)],
@@ -653,11 +685,23 @@ class TestNicheRelevantVolume:
             seo_state=seo_state,
         )
         accessor = StateAccessor(state)
+        assert accessor.get_volume_filter_ratio() is None
+
+    def test_volume_filter_ratio_works_without_seo(self):
+        """Returns ratio when no seo_strategy_report (legacy fallback)."""
+        state = _make_state_with_kv(
+            selected_name="My Solution",
+            kv_results=[_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=5000)],
+        )
+        # Also need total keyword search volume from keyword_validation fallback
+        state.keyword_validation_results = [_make_kv_result("My Solution", total_volume=50000, niche_relevant_volume=5000)]
+        accessor = StateAccessor(state)
         ratio = accessor.get_volume_filter_ratio()
-        assert ratio == pytest.approx(0.5)  # 5000 niche / 10000 Stage 9
+        # primary = 5000, total = 50000, ratio = 0.1
+        assert ratio == pytest.approx(0.1)
 
     def test_volume_filter_ratio_none_when_unavailable(self):
-        """Returns None when niche volume is 0."""
+        """Returns None when volumes are 0."""
         state = _make_state_with_kv(
             selected_name="My Solution",
             kv_results=None,

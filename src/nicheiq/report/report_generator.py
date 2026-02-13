@@ -124,6 +124,9 @@ class ReportGenerator:
             f"{len(final_report.recommended_solutions)} solutions"
         )
 
+        # Step 1.5: Enrich community hubs with real subreddit data
+        self._enrich_community_hubs(final_report)
+
         # Store enriched solution for all downstream methods to share (RC1 fix)
         # final_report.selected_solution_details has Stage 12 SEO refinements merged
         self._enriched_solution = final_report.selected_solution_details
@@ -612,8 +615,8 @@ class ReportGenerator:
             traffic_monetization = traffic_monetization.model_copy(update=update_fields)
 
         # Generate market_validation based on actual metrics
-        # Use niche-relevant volume (keyword validation filtered) to prevent inflation from broad Stage 6 keywords
-        niche_vol = self.accessor.get_niche_relevant_search_volume()
+        # Use primary search volume (SEO strategy report)
+        niche_vol = self.accessor.get_primary_search_volume()
         total_volume_for_validation = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
         if total_volume_for_validation == 0:
             logger.warning("⚠️ Keyword volume is 0 for market validation - check keyword pipeline")
@@ -630,7 +633,7 @@ class ReportGenerator:
 
         market_validation = (
             f"{validation_level} market validation. "
-            f"Niche-relevant search volume: {total_volume_for_validation:,} monthly searches. "
+            f"Search volume: {total_volume_for_validation:,} monthly searches. "
             f"Validated pain points: {pain_point_count}. "
             f"Competitive landscape shows existing market demand."
         )
@@ -1000,6 +1003,18 @@ class ReportGenerator:
 
         return solution
 
+    def _enrich_community_hubs(self, final_report: FinalReport) -> None:
+        """Replace LLM-hallucinated community hubs with real subreddit data."""
+        if not final_report.audience_mapping:
+            return
+
+        enriched = self.accessor.get_real_community_hubs(
+            final_report.audience_mapping.community_hubs
+        )
+        if enriched != final_report.audience_mapping.community_hubs:
+            final_report.audience_mapping.community_hubs = enriched
+            logger.info(f"[OK] Enriched community_hubs with {len(enriched)} real entries")
+
     def _enhance_report_with_llm(self, base_report: FinalReport) -> FinalReport:
         """
         Enhance Python-generated report with LLM using 3 focused calls.
@@ -1315,7 +1330,7 @@ class ReportGenerator:
             # Add volume filter ratio caveat when niche-relevant volume is significantly less than total
             volume_filter_ratio = self.accessor.get_volume_filter_ratio()
             if volume_filter_ratio is not None and volume_filter_ratio < 0.5:
-                niche = self.accessor.get_niche_relevant_search_volume()
+                niche = self.accessor.get_primary_search_volume()
                 total = self.accessor.get_total_keyword_search_volume()
                 quality_caveats.append(
                     f"Keyword volume filter ratio is {volume_filter_ratio:.0%} — "
@@ -2355,8 +2370,8 @@ It differentiates through {diff_text}.
             tier2_keyword_count = tier_counts["tier_2"]
             tier3_keyword_count = tier_counts.get("tier_3", 0)
             tier4_keyword_count = tier_counts.get("tier_4", 0)
-            # Use niche-relevant volume for KeyMetrics (prevents TAM inflation from broad Stage 6 keywords)
-            niche_vol = self.accessor.get_niche_relevant_search_volume()
+            # Use primary search volume for KeyMetrics (SEO strategy report)
+            niche_vol = self.accessor.get_primary_search_volume()
             total_keyword_search_volume = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
 
             # Pain point metrics
@@ -3400,9 +3415,9 @@ It differentiates through {diff_text}.
                 self.score_accessor.get_seo_score_canonical(selected_solution)
             ) / 4
 
-            # Market size from keyword volume (use niche-relevant to prevent inflation)
+            # Market size from primary search volume (SEO strategy report)
             market_size_category = "Small"
-            niche_vol = self.accessor.get_niche_relevant_search_volume()
+            niche_vol = self.accessor.get_primary_search_volume()
             sizing_volume = niche_vol if niche_vol > 0 else self.accessor.get_total_keyword_search_volume()
             if sizing_volume > 10000:
                 market_size_category = "Large"

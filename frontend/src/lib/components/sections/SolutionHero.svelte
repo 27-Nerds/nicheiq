@@ -595,12 +595,6 @@
     border-radius: 0.875rem;
     padding: 1.5rem;
     margin-bottom: 1rem;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-    transition: box-shadow 0.2s ease;
-  }
-
-  .solution-hero-card:hover {
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   }
 
   .hero-top {
@@ -629,14 +623,12 @@
     );
     border: 1px solid rgba(229, 90, 40, 0.3);
     border-radius: 0.5rem;
-    box-shadow: 0 0 12px rgba(229, 90, 40, 0.15);
   }
 
   :global(.sparkle-icon) {
     width: 1.25rem;
     height: 1.25rem;
     color: #e55a28;
-    filter: drop-shadow(0 0 2px rgba(229, 90, 40, 0.4));
   }
 
   .hero-title {
@@ -751,7 +743,6 @@
 
   .param-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   }
 
   .param-card:hover .param-glow {

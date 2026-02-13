@@ -1323,6 +1323,10 @@ class ResearchState(BaseModel):
         default_factory=list,
         description="Stages that used fallback/incomplete data (e.g., [9.5] if trend used fallback)"
     )
+    skipped_stages: list[float] = Field(
+        default_factory=list,
+        description="Stages that were skipped (e.g., stage 8 for SaaS solutions)"
+    )
     filtering_stats: Optional[dict[str, Any]] = Field(
         default=None,
         description="Filtering statistics from Stage 5: URLs searched, relevant found, filtering rate"

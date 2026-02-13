@@ -627,7 +627,6 @@
     background: var(--color-accent);
     border-radius: 50%;
     border: 2px solid var(--color-bg-surface);
-    box-shadow: 0 0 6px var(--color-accent);
   }
 
   .priorities-section {

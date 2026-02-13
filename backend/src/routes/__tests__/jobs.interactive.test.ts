@@ -113,7 +113,7 @@ beforeEach(async () => {
 describe('POST /api/jobs/:jobId/select-solution', () => {
   const makeJob = (overrides: Record<string, any> = {}) => ({
     status: 'AWAITING_SELECTION',
-    selectedSolution: null,
+    selectedSolutions: [],
     phase1CheckpointPath: '/cp/path',
     solutionIdeas: [{ name: 'Sol1' }, { name: 'Sol2' }],
     generateLandingPage: true,
@@ -166,7 +166,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
 
     const txCallArgs = mockJobUpdateMany.mock.calls[0][0];
     expect(txCallArgs.where).toEqual(expect.objectContaining({
-      selectedSolution: null,
+      selectedSolutions: { equals: [] },
     }));
   });
 
@@ -182,7 +182,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
   });
 
   it('returns 400 when solution already selected', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob({ selectedSolution: 'AlreadyPicked' }));
+    mockJobFindFirst.mockResolvedValue(makeJob({ selectedSolutions: ['AlreadyPicked'] }));
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/select-solution`)

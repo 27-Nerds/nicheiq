@@ -2,7 +2,7 @@
 
 refine_solution_strategy:
   description: >
-    Analyze keyword validation results for **{solution_name}** and provide strategic refinement recommendations
+    Analyze SEO strategy data for **{solution_name}** and provide strategic refinement recommendations
     to maximize market opportunity and organic acquisition potential.
 
     **SOLUTION CONTEXT:**
@@ -13,15 +13,15 @@ refine_solution_strategy:
     - Original Composite Score: {composite_score}
     - Project Type Constraints: {allowed_project_types}
 
-    **KEYWORD VALIDATION DATA:**
-    - Validated Keywords: {validated_keyword_count}/20 ({validated_keyword_count} seeds had real search volume)
+    **SEO DEMAND DATA:**
+    - Analyzed Keywords: {validated_keyword_count} (keywords with measurable search data)
     - Total Monthly Volume: {total_monthly_volume} searches/month
     - Keyword Demand Score: {keyword_demand_score} (0-1 scale: 0.80+ = exceptional, 0.65-0.79 = strong, 0.50-0.64 = moderate)
     - Top Keywords: {top_keywords}
     - Top Geographic Keywords: {top_geographic_keywords}
     - Demand Signal: {demand_signal} (strong >5k/mo, moderate 2k-5k, weak <2k)
     - Average Competition: {avg_competition} (0-100 scale, lower = easier to rank)
-    - Validation Signals: {validation_signals}
+    - Demand Signals: {validation_signals}
 
     **YOUR TASK:**
     Provide strategic recommendations across 4 dimensions based on keyword insights:

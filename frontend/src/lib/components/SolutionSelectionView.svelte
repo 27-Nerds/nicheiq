@@ -211,19 +211,17 @@
         <h2 class="text-lg font-semibold text-text-primary">
           {headerNarrative.title}
         </h2>
-        {#if alreadySubmitted || selectionCount === 0}
-          <p class="mt-1 text-sm text-text-secondary">
-            {#if alreadySubmitted}
-              {#if submittedNames.size === 1}
-                You selected <span class="font-medium text-text-primary">{[...submittedNames][0]}</span>. Deep analysis is in progress.
-              {:else}
-                You selected {submittedNames.size} solutions. The system is evaluating all of them and will feature the strongest in your report.
-              {/if}
+        <p class="mt-1 text-sm text-text-secondary">
+          {#if alreadySubmitted}
+            {#if submittedNames.size === 1}
+              You selected <span class="font-medium text-text-primary">{[...submittedNames][0]}</span>. Deep analysis is in progress.
             {:else}
-              {headerNarrative.subtitle}
+              You selected {submittedNames.size} solutions. The system is evaluating all of them and will feature the strongest in your report.
             {/if}
-          </p>
-        {/if}
+          {:else}
+            {headerNarrative.subtitle}
+          {/if}
+        </p>
         {#if !alreadySubmitted && selectionCount > 0}
           <div class="flex flex-wrap items-center gap-1.5 mt-2">
             {#each [...selectedNames] as name}
@@ -364,6 +362,7 @@
       ? submittedNames.has(solutions[modalIndex].solution_name)
       : selectedNames.has(solutions[modalIndex].solution_name)}
     disabled={alreadySubmitted || selectLoading || isRegenerating}
+    maxReached={!alreadySubmitted && selectionCount >= MAX_SELECTIONS}
     onSelect={handleToggle}
     onNavigate={handleNavigate}
     onClose={handleCloseDetail}
@@ -397,7 +396,7 @@
     border-color: var(--color-accent);
     background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, var(--color-bg-card) 60%);
     transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08), 0 0 0 1px var(--color-accent);
+    box-shadow: 0 0 0 1px var(--color-accent);
   }
   .generate-more-card:hover:not(:disabled) :global(.group-icon) {
     background: rgba(229, 90, 40, 0.15);

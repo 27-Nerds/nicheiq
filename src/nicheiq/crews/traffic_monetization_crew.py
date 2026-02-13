@@ -102,21 +102,63 @@ class TrafficMonetizationCrew:
             verbose=True,
         )
 
-    def _format_keyword_data(self, keyword_validation_results, solution_name: str) -> str:
+    def _format_keyword_data(self, keyword_validation_results, solution_name: str, seo_strategy_report=None) -> str:
         """
-        Format keyword validation results for traffic estimation.
+        Format keyword data for traffic estimation.
+
+        Prefers SEO strategy report data when available (comprehensive).
+        Falls back to keyword_validation_results for backward compatibility.
 
         Args:
-            keyword_validation_results: List of CrewKeywordValidationResult from keyword validation
+            keyword_validation_results: List of CrewKeywordValidationResult (may be None)
             solution_name: Name of solution to find keyword data for
+            seo_strategy_report: Optional SEOStrategyReport with comprehensive keyword data
 
         Returns:
             Formatted string with keyword volumes and metrics
         """
+        # Primary path: use SEO strategy report
+        if seo_strategy_report:
+            all_keywords = []
+            for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+                tier_kws = getattr(seo_strategy_report, tier_attr, None) or []
+                all_keywords.extend(tier_kws)
+
+            total_volume = seo_strategy_report.total_monthly_volume or 0
+            keyword_count = seo_strategy_report.total_keywords_analyzed or 0
+
+            if total_volume >= 5000:
+                demand_signal = "strong"
+            elif total_volume >= 2000:
+                demand_signal = "moderate"
+            else:
+                demand_signal = "weak"
+
+            lines = [
+                f"**Total Search Volume:** {total_volume:,} searches/month (SEO strategy data)",
+                f"**Analyzed Keywords:** {keyword_count}",
+                f"**Demand Signal:** {demand_signal}",
+                "",
+                "**Top Keywords by Volume:**"
+            ]
+
+            top_keywords = sorted(all_keywords, key=lambda k: k.search_volume, reverse=True)[:15]
+            for kw in top_keywords:
+                lines.append(f"  - {kw.keyword}: {kw.search_volume:,}/month")
+
+            if all_keywords:
+                volumes = [kw.search_volume for kw in all_keywords]
+                avg_volume = sum(volumes) / len(volumes) if volumes else 0
+                high_volume_count = len([v for v in volumes if v >= 1000])
+                lines.append("")
+                lines.append(f"**Distribution:** {high_volume_count} high-volume keywords (1,000+/month), avg volume: {avg_volume:,.0f}")
+
+            return "\n".join(lines)
+
+        # Fallback: use keyword validation results
         if not keyword_validation_results:
             return "No keyword data available."
 
-        # Find validation result for this solution
         for validation in keyword_validation_results:
             if validation.solution_name == solution_name:
                 lines = [
@@ -127,7 +169,6 @@ class TrafficMonetizationCrew:
                     "**Top Keywords by Volume:**"
                 ]
 
-                # Add top keywords
                 top_keywords = sorted(
                     validation.top_keywords,
                     key=lambda x: x.get('volume', 0),
@@ -139,7 +180,6 @@ class TrafficMonetizationCrew:
                     volume = kw.get('volume', 0)
                     lines.append(f"  - {keyword}: {volume:,}/month")
 
-                # Add keyword distribution insight
                 if validation.top_keywords:
                     volumes = [kw.get('volume', 0) for kw in validation.top_keywords]
                     avg_volume = sum(volumes) / len(volumes) if volumes else 0
@@ -227,7 +267,8 @@ class TrafficMonetizationCrew:
         # Format keyword data for traffic estimation
         keyword_data = self._format_keyword_data(
             keyword_validation_results,
-            selected_solution.solution_name
+            selected_solution.solution_name,
+            seo_strategy_report=seo_strategy_report
         )
         logger.debug(f"  Keyword data formatted: {len(keyword_data)} chars")
 
@@ -239,8 +280,11 @@ class TrafficMonetizationCrew:
         logger.debug(f"  Competitor info formatted: {len(competitor_info)} chars")
 
         # Pre-compute deterministic traffic and monetization values
+        # Prefer SEO strategy report volume (comprehensive) over keyword validation
         total_volume = 0
-        if keyword_validation_results:
+        if seo_strategy_report:
+            total_volume = seo_strategy_report.total_monthly_volume or 0
+        elif keyword_validation_results:
             for validation in keyword_validation_results:
                 if validation.solution_name == selected_solution.solution_name:
                     total_volume = validation.total_volume or 0

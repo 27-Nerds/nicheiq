@@ -3,7 +3,8 @@
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
-  import { Target } from "lucide-svelte";
+  import SolutionDetail from "./SolutionDetail.svelte";
+  import { Target, Clock } from "lucide-svelte";
   import type { SolutionPreview } from "$lib/types/job";
 
   interface Props {
@@ -14,6 +15,8 @@
   }
 
   let { selectedNames, solutionIdeas, primaryWinner = null, status }: Props = $props();
+
+  let modalIndex = $state<number | null>(null);
 
   const selectedSolutions = $derived(
     selectedNames
@@ -71,9 +74,6 @@
               {selectedSolutions.length === 1 ? "Your Selection" : `Your Selections (${selectedSolutions.length})`}
             </span>
           </div>
-          {#if primaryWinner}
-            <Badge variant="accent" size="sm">Primary: {primaryWinner}</Badge>
-          {/if}
         </div>
       {/snippet}
 
@@ -84,26 +84,56 @@
 
 {#snippet summaryContent()}
   <div class="grid grid-cols-1 {selectedSolutions.length > 1 ? `sm:grid-cols-${Math.min(selectedSolutions.length, 3)}` : ''} gap-3">
-    {#each selectedSolutions as solution}
+    {#each selectedSolutions as solution, i}
       {@const score = getCompositeScore(solution)}
       {@const superpower = getSuperpower(solution)}
-      <div class="flex items-center gap-3 p-3 rounded-lg border border-border
-        {solution.solution_name === primaryWinner ? 'bg-accent/5 border-accent/20' : ''}">
+      <button
+        type="button"
+        class="flex items-center gap-3 p-3 rounded-lg border border-border text-left cursor-pointer transition-colors hover:border-border-hover
+          {solution.solution_name === primaryWinner ? 'bg-accent/5 border-accent/20' : ''}"
+        onclick={() => modalIndex = i}
+      >
         <ProgressRing value={score} size={selectedSolutions.length === 1 ? 48 : 40} animate={true} showTooltip={false} flat={true} />
         <div class="flex-1 min-w-0">
           <h4 class="text-base font-semibold text-text-primary leading-snug truncate">{solution.solution_name}</h4>
           <p class="mt-1 text-xs text-text-muted italic truncate">{solution.value_proposition}</p>
-          <div class="flex flex-wrap gap-1.5 mt-1.5">
-            <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
+          <div class="flex items-center flex-wrap gap-1.5 mt-1.5">
+            {#if solution.solution_name === primaryWinner}
+              <Badge variant="accent" size="sm">Top Recommended</Badge>
+            {:else}
+              <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
+            {/if}
             {#if solution.project_type}
-              <Badge size="sm">{solution.project_type}</Badge>
+              <span class="text-[0.625rem] px-2 py-1 rounded-full bg-bg-elevated border border-border text-text-muted leading-none">
+                {solution.project_type}
+              </span>
             {/if}
             {#if solution.estimated_development_time}
-              <span class="text-xs text-text-muted">{solution.estimated_development_time}</span>
+              {@const devTime = solution.estimated_development_time}
+              {@const match = devTime.match(/^[\d\-\+]+\s*(?:weeks?|months?|days?)/i)}
+              {@const short = match ? match[0] : devTime.length <= 20 ? devTime : devTime.slice(0, 17) + '...'}
+              <span class="text-xs text-text-muted inline-flex items-center gap-1" title={devTime}>
+                <Clock class="w-3 h-3" />{short}
+              </span>
             {/if}
           </div>
         </div>
-      </div>
+      </button>
     {/each}
   </div>
 {/snippet}
+
+{#if modalIndex !== null && selectedSolutions[modalIndex]}
+  <SolutionDetail
+    open={true}
+    solution={selectedSolutions[modalIndex]}
+    solutions={selectedSolutions}
+    currentIndex={modalIndex}
+    isSelected={true}
+    disabled={true}
+    maxReached={true}
+    onSelect={() => {}}
+    onNavigate={(idx) => modalIndex = idx}
+    onClose={() => modalIndex = null}
+  />
+{/if}

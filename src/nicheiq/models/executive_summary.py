@@ -86,7 +86,7 @@ class KeyMetrics(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
     total_keyword_search_volume: int = Field(
-        description="Niche-relevant monthly search volume (filtered from keyword validation). Falls back to total Stage 6 volume for legacy data."
+        description="Total monthly search volume from SEO strategy analysis. Falls back to keyword validation volume for legacy data."
     )
     tier0_keyword_count: int = Field(
         description="Number of Tier 0 (Foundation) keywords"

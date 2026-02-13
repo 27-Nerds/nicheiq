@@ -34,9 +34,9 @@ market_sizing_analysis:
     - demand_signal: "strong" (>5k/mo) | "moderate" (2k-5k/mo) | "weak" (<2k/mo)
     - top_keywords: list of keyword strings sorted by volume
 
-    **Niche-Relevant Monthly Search Volume (semantically filtered):** {total_keyword_volume:,} searches
-    **Total Unfiltered Search Volume (includes broad/off-topic keywords):** {unfiltered_keyword_volume:,} searches
-    **Validated Keywords:** {validated_keyword_count}
+    **Total Monthly Search Volume (SEO strategy data):** {total_keyword_volume:,} searches
+    **Total Unfiltered Search Volume:** {unfiltered_keyword_volume:,} searches (when SEO data is used, both values match)
+    **Analyzed Keywords:** {validated_keyword_count}
 
     **IMPORTANT:** Use the niche-relevant volume for TAM calculations. The unfiltered volume is provided for reference only — it includes broad keywords that are not specific to this niche and would inflate market size estimates.
 

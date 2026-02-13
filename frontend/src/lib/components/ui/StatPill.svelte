@@ -68,6 +68,8 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+    line-height: 1;
+    margin-top: 0;
     color: var(--color-text-muted);
   }
 
@@ -75,6 +77,7 @@
     font-family: var(--font-display);
     font-size: 0.8125rem;
     font-weight: 600;
+    line-height: 1;
     color: var(--color-text-primary);
   }
 

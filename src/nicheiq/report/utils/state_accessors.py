@@ -323,6 +323,40 @@ class StateAccessor:
                 breakdown[subreddit] = breakdown.get(subreddit, 0) + 1
         return breakdown
 
+    def get_real_community_hubs(self, llm_hubs: list[str] | None = None) -> list[str]:
+        """
+        Build community hubs list from real Reddit data + non-Reddit LLM hubs.
+
+        Real subreddits (from collected posts) replace any r/... entries the LLM
+        produced. Non-Reddit hubs (Discord, Slack, forums) from the LLM are preserved.
+
+        Args:
+            llm_hubs: Original community_hubs from LLM audience mapping
+
+        Returns:
+            List of community hub names: real subreddits (sorted by post count desc,
+            capped at 10) followed by non-Reddit LLM hubs. Falls back to original
+            LLM list if no Reddit data exists.
+        """
+        subreddit_breakdown = self.get_subreddit_breakdown()
+
+        if not subreddit_breakdown:
+            return llm_hubs or []
+
+        # Build real subreddit list sorted by post count desc, capped at 10
+        sorted_subreddits = sorted(
+            subreddit_breakdown.items(), key=lambda x: x[1], reverse=True
+        )
+        real_hubs = [f"r/{name}" for name, _ in sorted_subreddits[:10]]
+
+        # Keep non-Reddit LLM hubs (anything not starting with "r/")
+        non_reddit_hubs = [
+            hub for hub in (llm_hubs or [])
+            if not hub.lower().startswith("r/")
+        ]
+
+        return real_hubs + non_reddit_hubs
+
     # ==================================================================================
     # Keyword & SEO Access Methods
     # ==================================================================================
@@ -527,17 +561,23 @@ class StateAccessor:
 
         return 0
 
-    def get_niche_relevant_search_volume(self) -> int:
+    def get_primary_search_volume(self) -> int:
         """
-        Get niche-relevant search volume from keyword validation keyword validation.
+        Get primary search volume, preferring SEO strategy report data.
 
-        Returns the filtered volume (niche_relevant_volume) for the selected solution,
-        which excludes broad/off-topic keywords from the Stage 9 SEO expansion.
-        Falls back to total_volume if niche_relevant_volume is None (legacy data).
+        Primary: computed sum of tiered keyword volumes (when seo_strategy_report exists).
+        Fallback: keyword_validation niche_relevant_volume for the selected solution.
 
         Returns:
-            Niche-relevant monthly search volume, or 0 if unavailable
+            Monthly search volume, or 0 if unavailable
         """
+        if self.state.seo_strategy_report:
+            # Use computed total from actual tier keywords, not the stale
+            # total_monthly_volume aggregate (which is set before cross-tier
+            # dedup/hydration and can diverge from real keyword data).
+            # There's no niche-filtering concept with SEO strategy data.
+            return self.get_total_keyword_search_volume()
+        # Legacy fallback: keyword validation
         if not self.state.solution_selection or not self.state.keyword_validation_results:
             return 0
         selected_name = self.state.solution_selection.selected_solution_name
@@ -548,17 +588,23 @@ class StateAccessor:
                 return v.total_volume or 0
         return 0
 
+    def get_niche_relevant_search_volume(self) -> int:
+        """Deprecated alias for get_primary_search_volume()."""
+        return self.get_primary_search_volume()
+
     def get_volume_filter_ratio(self) -> float | None:
         """
-        Get the ratio of niche-relevant volume to Stage 9 total volume.
+        Get the ratio of primary volume to Stage 9 total volume.
 
-        Returns None if either volume is unavailable. Can be >1.0 since
-        they measure different keyword sets.
+        Returns None when SEO strategy is the primary source (no filtering concept),
+        or when either volume is unavailable.
 
         Returns:
-            Ratio (niche / total) or None if unavailable
+            Ratio (primary / total) or None if unavailable
         """
-        niche_vol = self.get_niche_relevant_search_volume()
+        if self.state.seo_strategy_report:
+            return None  # No filtering concept with SEO primary
+        niche_vol = self.get_primary_search_volume()
         total_vol = self.get_total_keyword_search_volume()
         if total_vol == 0 or niche_vol == 0:
             return None
@@ -633,17 +679,73 @@ class StateAccessor:
 
     def get_keyword_validation_overview(self) -> str | None:
         """
-        Generate keyword validation methodology overview and findings.
+        Generate keyword analysis overview and findings.
 
-        Handles legacy checkpoint recovery and generates overview text.
+        When SEO strategy data is available, generates overview from tier data.
+        Falls back to keyword validation methodology overview for legacy runs.
 
         Returns:
-            Formatted markdown overview or None if no validation data
+            Formatted markdown overview or None if no data
         """
         import json
         from loguru import logger
         from .model_helpers import safe_get_attr
 
+        # Primary: SEO strategy report
+        if self.state.seo_strategy_report:
+            seo = self.state.seo_strategy_report
+            total_keywords = getattr(seo, 'total_keywords_analyzed', 0) or 0
+            total_volume = getattr(seo, 'total_monthly_volume', 0) or 0
+
+            overview_parts = [
+                f"## SEO Keyword Analysis Overview\n\n"
+                f"Analyzed {total_keywords} keywords with {total_volume:,} total monthly search volume "
+                f"across tiered strategy groups.\n\n"
+                f"## Keyword Tier Breakdown\n\n"
+            ]
+
+            # Tier 0-2 stats
+            for tier_num, tier_attr, tier_label in [
+                (0, 'tier_0_keywords', 'Tier 0 (Premium/Foundation)'),
+                (1, 'tier_1_keywords', 'Tier 1 (Quick Wins)'),
+                (2, 'tier_2_keywords', 'Tier 2 (Strategic Growth)'),
+            ]:
+                kws = getattr(seo, tier_attr, None) or []
+                count = len(kws)
+                vol = sum(getattr(k, 'search_volume', 0) or 0 for k in kws)
+                overview_parts.append(
+                    f"**{tier_label}**: {count} keywords, {vol:,} monthly volume\n"
+                )
+
+            # Tier 3 geographic groups
+            geo_groups = getattr(seo, 'tier_3_geographic_groups', None) or []
+            if geo_groups:
+                geo_count = sum(len(g.keywords) for g in geo_groups)
+                geo_vol = sum(
+                    getattr(k, 'search_volume', 0) or 0
+                    for g in geo_groups for k in g.keywords
+                )
+                overview_parts.append(
+                    f"**Tier 3 (Geographic)**: {len(geo_groups)} groups, "
+                    f"{geo_count} keywords, {geo_vol:,} monthly volume\n"
+                )
+
+            # Tier 4 category groups
+            cat_groups = getattr(seo, 'tier_4_category_groups', None) or []
+            if cat_groups:
+                cat_count = sum(len(g.keywords) for g in cat_groups)
+                cat_vol = sum(
+                    getattr(k, 'search_volume', 0) or 0
+                    for g in cat_groups for k in g.keywords
+                )
+                overview_parts.append(
+                    f"**Tier 4 (Category Expansion)**: {len(cat_groups)} groups, "
+                    f"{cat_count} keywords, {cat_vol:,} monthly volume\n"
+                )
+
+            return "\n".join(overview_parts)
+
+        # Fallback: keyword validation results (legacy)
         # Defensive: Handle malformed keyword_validation_results from old checkpoints
         if (self.state.keyword_validation_results and
             isinstance(self.state.keyword_validation_results, dict) and
@@ -702,13 +804,60 @@ class StateAccessor:
 
     def get_keyword_validation_comparison(self) -> str | None:
         """
-        Generate keyword validation comparison table.
+        Generate keyword analysis comparison table.
+
+        When SEO strategy data is available, builds table from tier data.
+        Falls back to keyword validation comparison for legacy runs.
 
         Returns:
-            Formatted markdown table or None if no validation data
+            Formatted markdown table or None if no data
         """
         from .model_helpers import safe_get_attr
 
+        # Primary: SEO strategy report
+        if self.state.seo_strategy_report:
+            seo = self.state.seo_strategy_report
+
+            comparison_rows = [
+                "| Tier | Keywords | Total Volume | Strategy |",
+                "|------|----------|--------------|----------|"
+            ]
+
+            tier_data = [
+                ('Tier 0 (Premium)', getattr(seo, 'tier_0_keywords', None) or []),
+                ('Tier 1 (Quick Wins)', getattr(seo, 'tier_1_keywords', None) or []),
+                ('Tier 2 (Long-tail)', getattr(seo, 'tier_2_keywords', None) or []),
+            ]
+
+            for label, kws in tier_data:
+                count = len(kws)
+                vol = sum(getattr(k, 'search_volume', 0) or 0 for k in kws)
+                strategy = "Foundation" if "Premium" in label else ("Quick ranking" if "Quick" in label else "Content depth")
+                comparison_rows.append(f"| {label} | {count} | {vol:,} | {strategy} |")
+
+            # Tier 3 geographic
+            geo_groups = getattr(seo, 'tier_3_geographic_groups', None) or []
+            if geo_groups:
+                geo_count = sum(len(g.keywords) for g in geo_groups)
+                geo_vol = sum(
+                    getattr(k, 'search_volume', 0) or 0
+                    for g in geo_groups for k in g.keywords
+                )
+                comparison_rows.append(f"| Tier 3 (Geographic) | {geo_count} | {geo_vol:,} | Local targeting |")
+
+            # Tier 4 category
+            cat_groups = getattr(seo, 'tier_4_category_groups', None) or []
+            if cat_groups:
+                cat_count = sum(len(g.keywords) for g in cat_groups)
+                cat_vol = sum(
+                    getattr(k, 'search_volume', 0) or 0
+                    for g in cat_groups for k in g.keywords
+                )
+                comparison_rows.append(f"| Tier 4 (Category) | {cat_count} | {cat_vol:,} | Category expansion |")
+
+            return "\n".join(comparison_rows)
+
+        # Fallback: keyword validation results (legacy)
         if not self.state.keyword_validation_results:
             return None
 

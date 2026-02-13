@@ -204,7 +204,6 @@
     cursor: help;
     transition: transform 0.2s ease;
     border-radius: 50%;
-    box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.06);
   }
 
   .progress-ring:focus-visible {
@@ -215,7 +214,6 @@
 
   .progress-ring.hovered {
     transform: scale(1.06);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.10);
   }
 
   .progress-ring-svg {
@@ -227,29 +225,13 @@
   }
 
   .progress-ring-progress {
-    filter: drop-shadow(0 0 2px currentColor);
     transition:
-      stroke-dashoffset 0s,
-      filter 0.2s ease;
+      stroke-dashoffset 0s;
   }
 
   .progress-ring-progress.animate {
     transition:
-      stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1),
-      filter 0.2s ease;
-  }
-
-  .progress-ring-progress.hovered {
-    filter: drop-shadow(0 0 6px currentColor);
-  }
-
-  /* Enhanced glow effect */
-  .progress-ring.glow .progress-ring-progress {
-    filter: drop-shadow(0 0 6px var(--ring-color, currentColor));
-  }
-
-  .progress-ring.glow.hovered .progress-ring-progress {
-    filter: drop-shadow(0 0 12px var(--ring-color, currentColor));
+      stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .progress-ring-content {

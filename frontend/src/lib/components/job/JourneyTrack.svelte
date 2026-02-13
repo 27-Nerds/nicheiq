@@ -153,8 +153,6 @@
   .node-active {
     background: rgba(229, 90, 40, 0.15);
     border: 2px solid rgba(229, 90, 40, 0.4);
-    box-shadow: 0 0 12px rgba(229, 90, 40, 0.2);
-    animation: pulse-glow 2.5s ease-in-out infinite;
   }
 
   .node-active::after {
@@ -252,7 +250,6 @@
   .diamond-active {
     border-color: rgba(229, 90, 40, 0.4);
     background: rgba(229, 90, 40, 0.1);
-    box-shadow: 0 0 8px rgba(229, 90, 40, 0.2);
   }
 
   .diamond-passed {
@@ -278,8 +275,8 @@
 
 
   @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 12px rgba(229, 90, 40, 0.2); }
-    50% { box-shadow: 0 0 20px rgba(229, 90, 40, 0.35); }
+    0%, 100% { box-shadow: none; }
+    50% { box-shadow: none; }
   }
 
   @keyframes ring-expand {

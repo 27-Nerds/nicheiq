@@ -374,10 +374,13 @@ def compute_data_sources(
     social_content: SocialContentCollection | None,
     competitive_analysis: CompetitiveAnalysisResult | None,
     enriched_keywords_trends: dict | None,
+    seo_strategy_report=None,
 ) -> list[str]:
     """List data sources used in the analysis."""
     sources: list[str] = []
-    if keyword_validation:
+    if seo_strategy_report:
+        sources.append("SEO strategy data (Stage 6)")
+    elif keyword_validation:
         sources.append("Keyword validation (keyword validation)")
     if social_content and (social_content.reddit_posts or social_content.twitter_threads):
         sources.append("Social discussions (Stage 5)")
@@ -393,6 +396,7 @@ def compute_deterministic_signals(
     social_content: SocialContentCollection | None,
     competitive_analysis: CompetitiveAnalysisResult | None,
     enriched_keywords_trends: dict | None,
+    seo_strategy_report=None,
 ) -> dict:
     """Compute all deterministic trend signals from available data.
 
@@ -402,10 +406,11 @@ def compute_deterministic_signals(
     This is the main entry point called by TrendLongevityCrew.analyze().
 
     Args:
-        keyword_validation: Keyword data from keyword validation
+        keyword_validation: Keyword data from keyword validation (may be None)
         social_content: Social discussions from Stage 5
         competitive_analysis: Competitive landscape from Stage 7
         enriched_keywords_trends: Aggregated trends from Phase 6c
+        seo_strategy_report: Optional SEO strategy report for comprehensive data
 
     Returns:
         Dict with keys: keyword_volume_trend, momentum_score,
@@ -435,7 +440,8 @@ def compute_deterministic_signals(
     verdict = compute_longevity_suggestion(enriched_keywords_trends)
     timeframe = "12 months" if enriched_keywords_trends else "Limited"
     sources = compute_data_sources(
-        keyword_validation, social_content, competitive_analysis, enriched_keywords_trends
+        keyword_validation, social_content, competitive_analysis, enriched_keywords_trends,
+        seo_strategy_report=seo_strategy_report,
     )
 
     return {

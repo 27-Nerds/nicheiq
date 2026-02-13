@@ -10,6 +10,7 @@ export type CelebrationTier = 1 | 2 | 3;
 export interface NarrativeTemplate {
   running: string;
   completed: (artifact: Record<string, any>) => string;
+  skipped?: (artifact: Record<string, any>) => string;
 }
 
 export interface PhaseDefinition {
@@ -117,10 +118,12 @@ export const PHASES: PhaseDefinition[] = [
             a.starter_price && a.pro_price ? ` (${a.starter_price}–${a.pro_price})` : '';
           return `Revenue model: ${friendly}${tierSuffix}`;
         },
+        skipped: (a) => a.skip_reason || 'Pricing validation skipped',
       },
       8: {
         running: 'Analyzing monetization opportunities...',
         completed: () => 'Monetization pathways identified',
+        skipped: (a) => a.skip_reason || 'Traffic monetization not applicable',
       },
       9: {
         running: 'Sizing addressable market...',
@@ -128,10 +131,12 @@ export const PHASES: PhaseDefinition[] = [
           if (a.som_y1) return `Addressable market: ${a.som_y1} Year 1`;
           return 'Market opportunity estimated';
         },
+        skipped: (a) => a.skip_reason || 'Market sizing skipped',
       },
       10: {
         running: 'Generating strategic recommendations...',
         completed: () => 'Solution concept refined',
+        skipped: (a) => a.skip_reason || 'Solution refinement skipped',
       },
       11: {
         running: 'Analyzing market trends and momentum...',
@@ -142,10 +147,12 @@ export const PHASES: PhaseDefinition[] = [
           if (dir) return `Market trend: ${dir}`;
           return 'Trend analysis complete';
         },
+        skipped: (a) => a.skip_reason || 'Trend analysis skipped',
       },
       12: {
         running: 'Refining SEO opportunity scores...',
         completed: () => 'SEO scores recalculated',
+        skipped: (a) => a.skip_reason || 'SEO refinement skipped',
       },
       13: {
         running: 'Researching data sources and APIs...',
@@ -206,6 +213,15 @@ export function getNarrativeText(
     if (status === 'COMPLETED') {
       try {
         return tmpl.completed(artifact ?? {});
+      } catch {
+        return undefined;
+      }
+    }
+    if (status === 'SKIPPED') {
+      try {
+        return tmpl.skipped
+          ? tmpl.skipped(artifact ?? {})
+          : `${tmpl.running.replace(/\.\.\.$/, '')} — skipped`;
       } catch {
         return undefined;
       }

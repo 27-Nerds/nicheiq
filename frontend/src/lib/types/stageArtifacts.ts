@@ -19,6 +19,8 @@ export interface SearchDiscoveryArtifact {
   subreddit_count: number;
   quality_tier?: string;
   subreddits?: string[];
+  total_interactions?: number;
+  total_upvotes?: number;
 }
 
 // Stage 3: Pain Point Extraction

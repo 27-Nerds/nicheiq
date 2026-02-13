@@ -73,6 +73,11 @@
   );
 
   const isInteractiveJob = $derived(job?.jobMode === 'interactive');
+  const isRegenQueued = $derived(
+    job?.status === 'QUEUED' &&
+    (job?.solutionIdeas?.length ?? 0) > 0 &&
+    !(job?.selectedSolutions?.length)
+  );
 
   // Use local solutions (updated via SSE) or fall back to job data
   const displaySolutions = $derived(
@@ -296,6 +301,15 @@
         map[stage.stageNumber] = stage.artifact as Record<string, any>;
       }
     }
+    // When the final report is available, use its definitive SEO metrics
+    // (Stage 6 only validates ~10 seed keywords; the full report has all tiered keywords)
+    if (reportSummary && map[6]) {
+      map[6] = {
+        ...map[6],
+        total_volume: reportSummary.total_search_volume ?? map[6].total_volume,
+        validated_keywords: reportSummary.total_keywords ?? map[6].validated_keywords,
+      };
+    }
     return map;
   });
 
@@ -341,6 +355,10 @@
   function computeGateStatus(jobStatus: string): 'locked' | 'active' | 'passed' {
     if (['AWAITING_SELECTION', 'REGENERATING'].includes(jobStatus)) return 'active';
     if (['RUNNING_PHASE2', 'COMPLETED'].includes(jobStatus)) return 'passed';
+    // Phase-2 queued: QUEUED with selections already made
+    if (jobStatus === 'QUEUED' && (job?.selectedSolutions?.length ?? 0) > 0) return 'passed';
+    // Regen-queued: QUEUED but already has solution ideas from phase 1
+    if (jobStatus === 'QUEUED' && (job?.solutionIdeas?.length ?? 0) > 0) return 'active';
     return 'locked';
   }
 
@@ -461,17 +479,17 @@
             </div>
           </div>
           <div class="flex items-center gap-3">
-            {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status)}
+            {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status) && !(job.solutionIdeas?.length)}
               <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
             {/if}
             {#if isCompleted && reportAsset}
               <Button href="/jobs/{job.id}/report" icon={FileText} label="View Report" class="btn-primary btn-sm" />
             {/if}
-            <Badge variant={getStatusVariant(job.status)}>
-              {#if ["RUNNING", "RUNNING_PHASE2", "REGENERATING"].includes(job.status)}
+            <Badge variant={getStatusVariant(isRegenQueued ? "REGENERATING" : job.status)}>
+              {#if ["RUNNING", "RUNNING_PHASE2", "REGENERATING"].includes(job.status) || isRegenQueued}
                 <Loader2 class="w-3.5 h-3.5 animate-spin" />
               {/if}
-              {getStatusLabel(job.status)}
+              {getStatusLabel(isRegenQueued ? "REGENERATING" : job.status)}
             </Badge>
           </div>
         </div>
@@ -480,8 +498,8 @@
         {/if}
       </div>
 
-      <!-- Queue Position (for QUEUED jobs) -->
-      {#if job.status === "QUEUED" || job.status === "PENDING"}
+      <!-- Queue Position (for QUEUED jobs, but not regen-queued which shows inline) -->
+      {#if (job.status === "QUEUED" || job.status === "PENDING") && !isRegenQueued}
         <div class="card p-6 mb-6 bg-warning/5 border-warning/20 animate-fade-slide-in" style="animation-delay: 100ms;">
           <div class="flex items-center gap-4">
             <div class="p-3 rounded-full bg-warning/10 border border-warning/20">
@@ -782,7 +800,7 @@
             title="Discovery"
             icon={Search}
             status={discoveryStatus}
-            stagesCompleted={discoveryStages.filter((s) => s.status === 'COMPLETED').length}
+            stagesCompleted={discoveryStages.filter((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED').length}
             stagesTotal={discoveryStages.length || PHASES[0].stageNumbers.length}
             defaultOpen={discoveryStatus === 'active'}
           >
@@ -806,14 +824,14 @@
 
           <!-- Selection Gate (interactive jobs only) -->
           {#if isInteractiveJob}
-            {#if job.status === "AWAITING_SELECTION" || job.status === "REGENERATING"}
+            {#if job.status === "AWAITING_SELECTION" || job.status === "REGENERATING" || isRegenQueued}
               <div class="mb-3 animate-fade-slide-in">
                 <SolutionSelectionView
                   jobId={jobId ?? ''}
                   solutions={displaySolutions}
                   selectedSolution={job.selectedSolution}
                   selectedSolutions={job.selectedSolutions}
-                  isRegenerating={job.status === "REGENERATING"}
+                  isRegenerating={job.status === "REGENERATING" || isRegenQueued}
                   canRegenerate={job.canRegenerate ?? false}
                   onSelectionComplete={handleSelectionComplete}
                   onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
@@ -855,7 +873,7 @@
             title="Deep Analysis"
             icon={Zap}
             status={analysisStatus}
-            stagesCompleted={analysisStages.filter((s) => s.status === 'COMPLETED').length}
+            stagesCompleted={analysisStages.filter((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED').length}
             stagesTotal={analysisStages.length || PHASES[1].stageNumbers.length}
             defaultOpen={analysisStatus === 'active'}
           >

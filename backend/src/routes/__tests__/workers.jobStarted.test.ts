@@ -119,7 +119,7 @@ describe('POST /api/workers/job-started', () => {
     it('returns shouldCancel: false and updates status when job is QUEUED', async () => {
       mockJobUpdateMany.mockResolvedValue({ count: 1 });
       mockJobFindUnique
-        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null, selectedSolution: null })
+        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: null })
         .mockResolvedValueOnce({
           id: jobId,
           niche: 'test niche',
@@ -228,7 +228,7 @@ describe('POST /api/workers/job-started', () => {
     it('transitions QUEUED → REGENERATING when ideasRegeneratedAt is set and no selectedSolution', async () => {
       mockJobUpdateMany.mockResolvedValue({ count: 1 });
       mockJobFindUnique
-        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: new Date(), selectedSolution: null })
+        .mockResolvedValueOnce({ selectedSolutions: [], ideasRegeneratedAt: new Date() })
         .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
 
       await request(app)
@@ -250,7 +250,7 @@ describe('POST /api/workers/job-started', () => {
     it('transitions QUEUED → RUNNING_PHASE2 when selectedSolutions is set', async () => {
       mockJobUpdateMany.mockResolvedValue({ count: 1 });
       mockJobFindUnique
-        .mockResolvedValueOnce({ selectedSolutions: ['Sol A'], ideasRegeneratedAt: null, selectedSolution: null })
+        .mockResolvedValueOnce({ selectedSolutions: ['Sol A'], ideasRegeneratedAt: null })
         .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
 
       await request(app)
@@ -269,11 +269,11 @@ describe('POST /api/workers/job-started', () => {
       });
     });
 
-    it('does not treat as regeneration when selectedSolution is already set (phase-2)', async () => {
-      // Has ideasRegeneratedAt but also selectedSolution — this is a phase-2 job after regen
+    it('does not treat as regeneration when selectedSolutions is non-empty (phase-2)', async () => {
+      // Has ideasRegeneratedAt but also selectedSolutions — this is a phase-2 job after regen
       mockJobUpdateMany.mockResolvedValue({ count: 1 });
       mockJobFindUnique
-        .mockResolvedValueOnce({ selectedSolutions: ['Sol A'], ideasRegeneratedAt: new Date(), selectedSolution: 'Sol A' })
+        .mockResolvedValueOnce({ selectedSolutions: ['Sol A'], ideasRegeneratedAt: new Date() })
         .mockResolvedValueOnce({ id: jobId, niche: 'test', userId: null, user: null });
 
       await request(app)

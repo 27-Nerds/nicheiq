@@ -6,10 +6,12 @@
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
   import {
     MessageCircle,
+    MessageSquare,
     Globe,
     Search,
     DollarSign,
     TrendingUp,
+    ThumbsUp,
     BarChart3,
     Target,
   } from "lucide-svelte";
@@ -45,6 +47,12 @@
     return String(vol);
   }
 
+  function formatCount(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+    return String(n);
+  }
+
   function tierVariant(tier: string | null | undefined): "success" | "warning" | "error" | "accent" | "default" {
     if (!tier) return "default";
     const t = tier.toUpperCase();
@@ -69,6 +77,12 @@
         {#if searchArtifact}
           <StatPill icon={MessageCircle} label="Posts" value={searchArtifact.reddit_posts + (searchArtifact.twitter_threads || 0)} />
           <StatPill icon={Globe} label="Communities" value={searchArtifact.subreddit_count} />
+          {#if searchArtifact.total_interactions && searchArtifact.total_interactions > 0}
+            <StatPill icon={MessageSquare} label="Interactions" value={formatCount(searchArtifact.total_interactions)} />
+          {/if}
+          {#if searchArtifact.total_upvotes && searchArtifact.total_upvotes > 0}
+            <StatPill icon={ThumbsUp} label="Upvotes" value={formatCount(searchArtifact.total_upvotes)} />
+          {/if}
           {#if searchArtifact.quality_tier}
             <Badge variant={tierVariant(searchArtifact.quality_tier)} size="sm">{searchArtifact.quality_tier}</Badge>
           {/if}

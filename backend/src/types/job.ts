@@ -29,7 +29,7 @@ export type CreateJobInput = z.infer<typeof CreateJobSchema>;
 export const ProgressUpdateSchema = z.object({
   stage: z.number(),
   name: z.string(),
-  status: z.enum(['running', 'completed', 'failed']),
+  status: z.enum(['running', 'completed', 'skipped', 'failed']),
   error: z.string().optional(),
 });
 

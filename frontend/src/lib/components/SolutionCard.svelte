@@ -95,7 +95,7 @@
   class="card compact-card group p-3 relative transition-all duration-200 cursor-pointer
     {isSelected ? 'card-selected' : ''}
     {justSelected ? 'selection-pulse' : ''}
-    {disabled && !isSelected ? 'opacity-60 cursor-default' : ''}"
+    {(disabled || maxReached) && !isSelected ? 'opacity-60 cursor-default' : ''}"
   role="option"
   aria-selected={isSelected}
   aria-label="Solution: {solution.solution_name}"
@@ -127,6 +127,7 @@
             {isToggleable ? 'hover:bg-accent/10' : ''}"
           onclick={handleCheckboxClick}
           aria-label={isSelected ? 'Deselect solution' : 'Select solution'}
+          title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
           tabindex={-1}
         >
           {#if isSelected}
@@ -172,7 +173,7 @@
 <style>
   .compact-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 0 var(--color-accent);
+    box-shadow: 0 1px 0 var(--color-accent);
   }
 
   /* Selected: accent tint + ring */

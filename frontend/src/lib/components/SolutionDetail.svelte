@@ -8,6 +8,7 @@
     ChevronRight,
     X,
   } from "lucide-svelte";
+  import { portal } from "$lib/actions/portal";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressBar from "$lib/components/ui/ProgressBar.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
@@ -21,6 +22,7 @@
     currentIndex: number;
     isSelected?: boolean;
     disabled?: boolean;
+    maxReached?: boolean;
     onSelect: (name: string) => void;
     onNavigate: (index: number) => void;
     onClose: () => void;
@@ -33,6 +35,7 @@
     currentIndex,
     isSelected = false,
     disabled = false,
+    maxReached = false,
     onSelect,
     onNavigate,
     onClose,
@@ -151,8 +154,11 @@
     expandedSections = next;
   }
 
+  const isToggleable = $derived(!disabled && (isSelected || !maxReached));
+
   function handleSelect() {
-    if (!disabled) onSelect(solution.solution_name);
+    if (!isToggleable) return;
+    onSelect(solution.solution_name);
   }
 
   function navigatePrev() {
@@ -184,7 +190,8 @@
 {#if open}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+    use:portal
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur p-4"
     onclick={handleBackdropClick}
     role="dialog"
     aria-modal="true"
@@ -236,7 +243,8 @@
           <button
             type="button"
             onclick={handleSelect}
-            disabled={disabled}
+            disabled={!isToggleable}
+            title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
             class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
               {isSelected
                 ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
@@ -247,6 +255,9 @@
             {#if isSelected}
               <CheckCircle class="w-4 h-4" />
               Selected
+            {:else if maxReached}
+              <Circle class="w-4 h-4" />
+              Limit reached
             {:else}
               <Circle class="w-4 h-4" />
               Select
@@ -480,14 +491,12 @@
     color: var(--color-text-secondary);
     cursor: pointer;
     transition: all 0.15s ease;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
 
   .nav-arrow:hover {
     background: var(--color-bg-elevated);
     color: var(--color-text-primary);
     border-color: var(--color-accent);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
   }
 
   .nav-arrow-left {

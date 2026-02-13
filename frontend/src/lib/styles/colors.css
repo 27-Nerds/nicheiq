@@ -82,13 +82,13 @@
 	   Shadow Colors
 	   Soft, professional shadows
 	   ======================================== */
-	--shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-	--shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-	--shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
-	--shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.15);
-	--shadow-glow: 0 0 20px rgba(229, 90, 40, 0.15);
-	--shadow-glow-lg: 0 0 40px rgba(229, 90, 40, 0.2);
-	--shadow-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+	--shadow-sm: none;
+	--shadow-md: none;
+	--shadow-lg: none;
+	--shadow-xl: none;
+	--shadow-glow: none;
+	--shadow-glow-lg: none;
+	--shadow-inner-glow: none;
 
 	/* ========================================
 	   Data Visualization Colors

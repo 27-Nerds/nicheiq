@@ -54,7 +54,9 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
 
   // Send initial state with queue position if queued
   const interactiveStatuses = ['AWAITING_SELECTION', 'REGENERATING', 'RUNNING_PHASE2'];
-  const includeSolutions = interactiveStatuses.includes(job.status);
+  const includeSolutions = interactiveStatuses.includes(job.status) ||
+    (job.status === JobStatus.QUEUED && (job.solutionIdeas as any[])?.length > 0) ||
+    (job.status === JobStatus.COMPLETED && (job.selectedSolutions as string[])?.length > 0);
   const queueStats = job.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
   const initialData = formatJobResponse(job, {
     includeProgress: true,
@@ -81,6 +83,7 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
             includeAssets: true,
             includeCreatedAt: true,
             includeAssetFlags: true,
+            includeSolutionIdeas: (currentJob.solutionIdeas as any[])?.length > 0,
             queueStats: stats,
           });
           res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -111,7 +114,9 @@ eventsRouter.get('/:jobId/events', requireInternalAuth, async (req: Authenticate
         }
 
         const updatedQueueStats = updatedJob.status === JobStatus.QUEUED ? await getQueueStats(jobId) : null;
-        const updatedIncludeSolutions = interactiveStatuses.includes(updatedJob.status);
+        const updatedIncludeSolutions = interactiveStatuses.includes(updatedJob.status) ||
+          (updatedJob.status === JobStatus.QUEUED && (updatedJob.solutionIdeas as any[])?.length > 0) ||
+          (updatedJob.status === JobStatus.COMPLETED && (updatedJob.selectedSolutions as string[])?.length > 0);
         const data = formatJobResponse(updatedJob, {
           includeProgress: true,
           includeAssets: true,

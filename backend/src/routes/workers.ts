@@ -212,10 +212,11 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
     // Detect Phase 2 and regeneration jobs
     const existingJob = await prisma.job.findUnique({
       where: { id: data.job_id },
-      select: { selectedSolutions: true, ideasRegeneratedAt: true, selectedSolution: true },
+      select: { selectedSolutions: true, ideasRegeneratedAt: true },
     });
-    const isRegenerate = existingJob?.ideasRegeneratedAt != null && !existingJob?.selectedSolution;
-    const isPhase2 = !isRegenerate && existingJob?.selectedSolutions && existingJob.selectedSolutions.length > 0;
+    const hasSelections = existingJob?.selectedSolutions && existingJob.selectedSolutions.length > 0;
+    const isRegenerate = existingJob?.ideasRegeneratedAt != null && !hasSelections;
+    const isPhase2 = !isRegenerate && hasSelections;
     const runningStatus = isRegenerate ? JobStatus.REGENERATING : isPhase2 ? JobStatus.RUNNING_PHASE2 : JobStatus.RUNNING;
 
     // Atomic conditional update - only if job is in startable state
@@ -522,7 +523,7 @@ const ProgressSchema = z.object({
     message: `Stage must be one of: ${VALID_STAGE_NUMBERS.join(', ')}`,
   }),
   name: z.string().min(1).max(100),
-  status: z.enum(['running', 'completed', 'failed']),
+  status: z.enum(['running', 'completed', 'skipped', 'failed']),
   error: z.string().max(10000).optional(),
   report_path: z.string().max(500).optional(),
   landing_path: z.string().max(500).optional(),
@@ -568,6 +569,7 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     // Convert status string to StageStatus enum
     const stageStatus = data.status === 'running' ? StageStatus.RUNNING
       : data.status === 'completed' ? StageStatus.COMPLETED
+      : data.status === 'skipped' ? StageStatus.SKIPPED
       : data.status === 'failed' ? StageStatus.FAILED
       : StageStatus.PENDING;
 

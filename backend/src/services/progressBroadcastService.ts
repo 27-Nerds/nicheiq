@@ -22,7 +22,7 @@ progressEmitter.setMaxListeners(100);
 export interface ProgressData {
   stage: number;
   name: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'skipped' | 'failed';
   error?: string;
   report_path?: string;
   landing_path?: string;

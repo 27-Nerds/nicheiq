@@ -1332,17 +1332,14 @@
 
   .verdict-giant.verdict-go {
     border-color: var(--color-border-success);
-    box-shadow: 0 0 20px rgba(34, 197, 94, 0.2);
   }
 
   .verdict-giant.verdict-conditional {
     border-color: rgba(99, 102, 241, 0.4);
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15);
   }
 
   .verdict-giant.verdict-nogo {
     border-color: var(--color-border-error);
-    box-shadow: 0 0 20px rgba(239, 68, 68, 0.2);
   }
 
   .verdict-score-label {
@@ -1363,7 +1360,7 @@
     letter-spacing: var(--tracking-tight);
     line-height: var(--leading-none);
     color: white;
-    text-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+    text-shadow: none;
   }
 
   .verdict-label-row {
@@ -1391,7 +1388,7 @@
   /* Verdict colors */
   .verdict-giant.verdict-go .verdict-percentage {
     color: var(--color-success);
-    text-shadow: 0 4px 20px rgba(34, 197, 94, 0.4);
+    text-shadow: none;
   }
   .verdict-giant.verdict-go :global(.verdict-icon-large) {
     color: var(--color-success);
@@ -1399,7 +1396,7 @@
 
   .verdict-giant.verdict-conditional .verdict-percentage {
     color: var(--color-info);
-    text-shadow: 0 4px 20px rgba(59, 130, 246, 0.4);
+    text-shadow: none;
   }
   .verdict-giant.verdict-conditional :global(.verdict-icon-large) {
     color: var(--color-info);
@@ -1407,7 +1404,7 @@
 
   .verdict-giant.verdict-nogo .verdict-percentage {
     color: var(--color-error);
-    text-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+    text-shadow: none;
   }
   .verdict-giant.verdict-nogo :global(.verdict-icon-large) {
     color: var(--color-error);
@@ -1439,7 +1436,7 @@
     color: white;
     line-height: var(--leading-tight);
     margin-bottom: var(--space-3);
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+    text-shadow: none;
   }
 
   .niche-description-wrapper {
@@ -2034,9 +2031,7 @@
     );
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.05),
-      0 4px 12px rgba(0, 0, 0, 0.08);
+    box-shadow: none;
     overflow: hidden;
     margin-bottom: var(--space-6);
   }

@@ -635,13 +635,11 @@
 .verdict-banner-go {
 	background: linear-gradient(135deg, rgba(229, 90, 40, 0.15) 0%, rgba(229, 90, 40, 0.05) 100%);
 	border: 1px solid rgba(229, 90, 40, 0.3);
-	box-shadow: 0 0 30px rgba(229, 90, 40, 0.1);
 }
 
 .verdict-banner-no-go {
 	background: linear-gradient(135deg, var(--color-error-subtle) 0%, rgba(239, 68, 68, 0.05) 100%);
 	border: 1px solid var(--color-border-error);
-	box-shadow: 0 0 30px rgba(239, 68, 68, 0.1);
 }
 
 .verdict-header {
@@ -1028,7 +1026,6 @@
 	background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);
 	border-color: var(--color-accent);
 	color: white;
-	box-shadow: 0 0 12px rgba(229, 90, 40, 0.3);
 }
 
 /* ========================================

@@ -500,10 +500,8 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
     });
 
     // Interactive job that failed during Phase 2: re-enqueue as phase 2
-    if (job.jobMode === 'interactive' && job.selectedSolution && job.phase1CheckpointPath) {
-      const selectedSolutions = job.selectedSolutions?.length
-        ? job.selectedSolutions as string[]
-        : [job.selectedSolution];
+    if (job.jobMode === 'interactive' && (job.selectedSolutions as string[])?.length > 0 && job.phase1CheckpointPath) {
+      const selectedSolutions = job.selectedSolutions as string[];
       await enqueuePhase2Job(
         job.id,
         job.phase1CheckpointPath,
@@ -692,7 +690,7 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       where: { id: jobId, userId },
       select: {
         status: true,
-        selectedSolution: true,
+        selectedSolutions: true,
         phase1CheckpointPath: true,
         solutionIdeas: true,
         generateLandingPage: true,
@@ -705,8 +703,8 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
     }
 
     // Reject if already selected
-    if (job.selectedSolution) {
-      res.status(400).json({ error: 'Solution already selected', selectedSolution: job.selectedSolution });
+    if ((job.selectedSolutions as string[])?.length) {
+      res.status(400).json({ error: 'Solution already selected' });
       return;
     }
 
@@ -740,11 +738,10 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
         where: {
           id: jobId,
           status: JobStatus.AWAITING_SELECTION,
-          selectedSolution: null, // Guard against double-selection race
+          selectedSolutions: { equals: [] }, // Guard against double-selection race
         },
         data: {
           status: JobStatus.QUEUED,
-          selectedSolution: input.solutionNames[0],
           selectedSolutions: input.solutionNames,
           selectionRationale: input.rationale || null,
           queuedAt: new Date(),

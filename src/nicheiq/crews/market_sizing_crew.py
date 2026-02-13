@@ -258,7 +258,7 @@ class MarketSizingCrew:
         logger.info(f"  Solution: {selected_solution.solution_name}")
 
         # Extract keyword demand signals
-        keyword_signals = self._format_keyword_signals(keyword_validation)
+        keyword_signals = self._format_keyword_signals(keyword_validation, seo_strategy_report=seo_strategy_report)
 
         # Extract pain point signals
         pain_signals = self._format_pain_signals(pain_point_analysis)
@@ -270,22 +270,28 @@ class MarketSizingCrew:
         solution_context = self._format_solution_context(selected_solution)
 
         # Pre-compute deterministic values
-        # Use niche_relevant_volume (semantically filtered) when available;
-        # explicit None check — 0 is a valid filtered result and must NOT fallback.
-        unfiltered_volume = keyword_validation.total_volume if keyword_validation else 0
-        if keyword_validation and keyword_validation.niche_relevant_volume is not None:
-            kv_volume = keyword_validation.niche_relevant_volume
+        # Prefer SEO strategy report volume when keyword_validation is None
+        if keyword_validation:
+            unfiltered_volume = keyword_validation.total_volume or 0
+            if keyword_validation.niche_relevant_volume is not None:
+                kv_volume = keyword_validation.niche_relevant_volume
+            else:
+                kv_volume = unfiltered_volume
+            if kv_volume != unfiltered_volume:
+                logger.info(
+                    f"[Stage 9] Using niche-relevant volume {kv_volume:,} "
+                    f"(unfiltered: {unfiltered_volume:,}, "
+                    f"reduction: {(1 - kv_volume / unfiltered_volume) * 100:.0f}%)"
+                    if unfiltered_volume > 0
+                    else f"[Stage 9] Using niche-relevant volume {kv_volume:,}"
+                )
+        elif seo_strategy_report:
+            kv_volume = seo_strategy_report.total_monthly_volume or 0
+            unfiltered_volume = kv_volume
+            logger.info(f"[Stage 9] Using SEO strategy volume {kv_volume:,}")
         else:
-            kv_volume = unfiltered_volume
-
-        if kv_volume != unfiltered_volume:
-            logger.info(
-                f"[Stage 9] Using niche-relevant volume {kv_volume:,} "
-                f"(unfiltered: {unfiltered_volume:,}, "
-                f"reduction: {(1 - kv_volume / unfiltered_volume) * 100:.0f}%)"
-                if unfiltered_volume > 0
-                else f"[Stage 9] Using niche-relevant volume {kv_volume:,}"
-            )
+            kv_volume = 0
+            unfiltered_volume = 0
 
         pp_mentions = pain_point_analysis.total_mentions if pain_point_analysis else 0
         selected_landscape = find_landscape_for_solution(competitive_analysis, selected_solution.solution_name)
@@ -327,7 +333,7 @@ class MarketSizingCrew:
             "competitive_signals": competitive_signals,
             "total_keyword_volume": kv_volume,
             "unfiltered_keyword_volume": unfiltered_volume,
-            "validated_keyword_count": keyword_validation.validated_count if keyword_validation else 0,
+            "validated_keyword_count": keyword_validation.validated_count if keyword_validation else (seo_strategy_report.total_keywords_analyzed if seo_strategy_report else 0),
             "pain_point_count": len(pain_point_analysis.pain_points) if pain_point_analysis else 0,
             "competitor_count": competitor_count,
             "strive_pre_check": strive_pre_check,
@@ -364,8 +370,58 @@ class MarketSizingCrew:
             logger.error(f"[Stage 9] Market sizing error: {str(e)}")
             return None
 
-    def _format_keyword_signals(self, keyword_validation: CrewKeywordValidationResult | None) -> str:
-        """Format keyword demand signals for market sizing."""
+    def _format_keyword_signals(self, keyword_validation: CrewKeywordValidationResult | None, seo_strategy_report=None) -> str:
+        """Format keyword demand signals for market sizing.
+
+        Prefers SEO strategy report data when keyword_validation is None.
+        """
+        # Primary path: use SEO strategy report when keyword_validation is None
+        if not keyword_validation and seo_strategy_report:
+            import re
+
+            all_keywords = []
+            for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+                tier_kws = getattr(seo_strategy_report, tier_attr, None) or []
+                all_keywords.extend(tier_kws)
+
+            total_volume = seo_strategy_report.total_monthly_volume or 0
+            keyword_count = seo_strategy_report.total_keywords_analyzed or 0
+
+            if total_volume >= 5000:
+                demand_signal = "strong"
+            elif total_volume >= 2000:
+                demand_signal = "moderate"
+            else:
+                demand_signal = "weak"
+
+            # Parse avg competition from tier keywords
+            competitions = []
+            for k in all_keywords:
+                comp = getattr(k, 'competition', None)
+                if comp and isinstance(comp, str):
+                    match = re.search(r'\((\d+)\)', comp)
+                    if match:
+                        competitions.append(int(match.group(1)))
+                        continue
+                kd = getattr(k, 'keyword_difficulty', None)
+                if kd is not None:
+                    competitions.append(int(kd))
+            avg_competition = sum(competitions) / len(competitions) if competitions else 50.0
+
+            signals = []
+            signals.append(f"**Total Monthly Search Volume:** {total_volume:,} searches (SEO strategy data)")
+            signals.append(f"**Analyzed Keywords:** {keyword_count}")
+            signals.append(f"**Demand Signal:** {demand_signal}")
+            signals.append(f"**Average Competition:** {avg_competition:.2f}")
+
+            top_keywords = sorted(all_keywords, key=lambda k: k.search_volume, reverse=True)[:5]
+            if top_keywords:
+                signals.append("\n**Top Keywords:**")
+                for kw in top_keywords:
+                    signals.append(f"- {kw.keyword}: {kw.search_volume:,}/month")
+
+            return "\n".join(signals)
+
         if not keyword_validation:
             return "No keyword validation data available."
 

@@ -159,15 +159,15 @@ class TestValidateExactMatches:
         kw_warnings = [w for w in warnings if "keyword count" in w.message.lower()]
         assert len(kw_warnings) == 0
 
-    def test_search_volume_difference_is_info(self):
-        """Expected difference (niche-filtered < total) should be INFO, not WARNING."""
+    def test_search_volume_km_gt_core_is_info(self):
+        """Expected: KeyMetrics total > core (includes extra tiers) → INFO."""
         report = _make_report(
-            dashboard_search_volume=50000,
+            dashboard_search_volume=200000,
             seo_total_search_volume=130000,
         )
         validator = ReportConsistencyValidator()
         warnings = validator.validate(report)
-        vol_warnings = [w for w in warnings if "search volume" in w.message.lower()]
+        vol_warnings = [w for w in warnings if "search volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
         assert len(vol_warnings) == 1
         assert vol_warnings[0].severity == "INFO"
 
@@ -841,22 +841,14 @@ class TestReconcileMarketTimingVsTrend:
 
 
 class TestVolumeRatioAwareChecks:
-    """Test ratio-aware volume validation between KeyMetrics and SEOAnalytics."""
+    """Test ratio-aware volume validation between KeyMetrics and SEOAnalytics.
 
-    def test_volume_mismatch_is_info_not_warning(self):
-        """Expected difference (filtered < total) should be INFO."""
-        report = _make_report(
-            dashboard_search_volume=15000,
-            seo_total_search_volume=125000,
-        )
-        validator = ReportConsistencyValidator()
-        warnings = validator.validate(report)
-        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
-        assert len(vol_warnings) == 1
-        assert vol_warnings[0].severity == "INFO"
+    With SEO-primary data, KeyMetrics carries total SEO volume (all tiers),
+    while core_search_volume is Tier 0-2 only. km_vol >= core_vol is expected.
+    """
 
-    def test_volume_filtered_gt_total_is_error(self):
-        """Filtered > total = data corruption → ERROR."""
+    def test_volume_km_gt_core_is_info(self):
+        """Expected: KeyMetrics total > core (includes Tier 3-4) → INFO."""
         report = _make_report(
             dashboard_search_volume=200000,
             seo_total_search_volume=125000,
@@ -865,12 +857,12 @@ class TestVolumeRatioAwareChecks:
         warnings = validator.validate(report)
         vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
         assert len(vol_warnings) == 1
-        assert vol_warnings[0].severity == "ERROR"
+        assert vol_warnings[0].severity == "INFO"
 
-    def test_volume_suspiciously_low_ratio_is_warning(self):
-        """Ratio < 5% → WARNING (overly aggressive filtering)."""
+    def test_volume_km_lt_core_is_warning(self):
+        """KeyMetrics < core = stale/legacy data → WARNING."""
         report = _make_report(
-            dashboard_search_volume=500,
+            dashboard_search_volume=15000,
             seo_total_search_volume=125000,
         )
         validator = ReportConsistencyValidator()
@@ -878,11 +870,36 @@ class TestVolumeRatioAwareChecks:
         vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
         assert len(vol_warnings) == 1
         assert vol_warnings[0].severity == "WARNING"
+        assert "less than" in vol_warnings[0].message.lower()
+
+    def test_volume_unusually_high_ratio_is_warning(self):
+        """KeyMetrics > 5x core → WARNING (Tier 3-4 inflation)."""
+        report = _make_report(
+            dashboard_search_volume=700000,
+            seo_total_search_volume=125000,
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
+        assert len(vol_warnings) == 1
+        assert vol_warnings[0].severity == "WARNING"
+        assert "unusually high" in vol_warnings[0].message.lower()
+
+    def test_volume_equal_no_warning(self):
+        """KeyMetrics == core → no warning at all."""
+        report = _make_report(
+            dashboard_search_volume=125000,
+            seo_total_search_volume=125000,
+        )
+        validator = ReportConsistencyValidator()
+        warnings = validator.validate(report)
+        vol_warnings = [w for w in warnings if "volume" in w.message.lower() and w.field_path == "seo_analytics.core_search_volume"]
+        assert len(vol_warnings) == 0
 
     def test_volume_no_longer_reconciled(self):
         """reconcile() should NOT overwrite seo_analytics.total_search_volume."""
         report = _make_report(
-            dashboard_search_volume=15000,
+            dashboard_search_volume=200000,
             seo_total_search_volume=125000,
         )
         validator = ReportConsistencyValidator()
