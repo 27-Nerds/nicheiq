@@ -4949,8 +4949,8 @@ Return a valid JSON object with this structure:
                 discussion_frequency_trend="Stable",  # Conservative default (valid Literal)
                 discussion_recency="Unknown",
                 community_growth_indicators=["Trend analysis unavailable - insufficient data"],
-                new_entrants_trend="Unknown",
-                competitive_activity_level="Unknown",
+                new_entrants_trend="Stable",  # Conservative default (valid Literal)
+                competitive_activity_level="Low",  # Conservative default (valid Literal)
                 seasonal_pattern="Unknown",
                 peak_periods=None,
                 market_maturity="Emerging",  # Conservative default (valid Literal)

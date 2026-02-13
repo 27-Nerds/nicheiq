@@ -7,7 +7,7 @@ that combine into the comprehensive SEO section of the final report.
 
 import json
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -737,6 +737,20 @@ class CategoryLightResult(BaseModel):
         default=None, description="Overall category strategy (1-2 paragraphs, or null)"
     )
 
+    @model_validator(mode='before')
+    @classmethod
+    def filter_invalid_category_groups(cls, data: Any) -> Any:
+        """Filter out category groups with empty/missing keywords before validation."""
+        if isinstance(data, dict):
+            groups = data.get('tier_4_category_groups')
+            if groups is not None and isinstance(groups, list):
+                filtered = [
+                    g for g in groups
+                    if isinstance(g, dict) and g.get('keywords') and len(g['keywords']) > 0
+                ]
+                data['tier_4_category_groups'] = filtered if filtered else None
+        return data
+
 
 # ----------------------------------------
 # Task 2: Lightweight Content Strategy Output
@@ -856,6 +870,22 @@ class ContentStrategyResultLight(BaseModel):
     keyword_coverage_explanation: Optional[str] = Field(
         default=None, description="How site structure ensures keyword coverage (2-3 sentences)"
     )
+
+    @model_validator(mode='before')
+    @classmethod
+    def filter_invalid_page_types(cls, data: Any) -> Any:
+        """Filter out page types with fewer than 2 example_keywords before validation."""
+        if isinstance(data, dict):
+            page_types = data.get('keyword_based_page_types')
+            if page_types is not None and isinstance(page_types, list):
+                filtered = [
+                    pt for pt in page_types
+                    if isinstance(pt, dict)
+                    and isinstance(pt.get('example_keywords'), list)
+                    and len(pt['example_keywords']) >= 2
+                ]
+                data['keyword_based_page_types'] = filtered if filtered else None
+        return data
 
 
 # ========================================
@@ -1252,6 +1282,23 @@ class ContentStrategyResult(BaseModel):
         min_length=2,
         description="Page types derived from keyword analysis (4-8 page types, minimum 2)"
     )
+
+    @model_validator(mode='before')
+    @classmethod
+    def filter_invalid_page_types(cls, data: Any) -> Any:
+        """Filter out page types with fewer than 2 example_keywords before validation."""
+        if isinstance(data, dict):
+            page_types = data.get('keyword_based_page_types')
+            if page_types is not None and isinstance(page_types, list):
+                filtered = [
+                    pt for pt in page_types
+                    if isinstance(pt, dict)
+                    and isinstance(pt.get('example_keywords'), list)
+                    and len(pt['example_keywords']) >= 2
+                ]
+                # Field has min_length=2, so set None if fewer than 2 valid items remain
+                data['keyword_based_page_types'] = filtered if len(filtered) >= 2 else None
+        return data
 
 class ImplementationPlanResult(BaseModel):
     """

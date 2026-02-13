@@ -10,6 +10,9 @@ from nicheiq.models.seo_strategy import (
     Tier0LightResult,
     Tier1LightResult,
     LightweightKeywordSelection,
+    CategoryLightResult,
+    ContentStrategyResultLight,
+    ContentStrategyResult,
 )
 
 
@@ -315,3 +318,241 @@ class TestTier1LightResultEmptyKeywords:
         )
         assert len(result.tier_1_keywords) == 1
         assert result.tier_1_keywords[0].keyword == "project management app"
+
+
+# --- Shared helpers for content strategy tests ---
+
+_CONTENT_STRATEGY_TEXT = "A" * 100  # Meets min_length=100
+_TECH_SEO_TEXT = "B" * 50  # Meets min_length=50
+
+
+def _make_page_type_dict(name: str, keywords: list[str]) -> dict:
+    """Helper to build a minimal KeywordBasedPageTypeLight dict."""
+    return {
+        "page_type_name": name,
+        "url_pattern": f"/{name.lower().replace(' ', '-')}/",
+        "target_keyword_cluster": "Tier 1",
+        "example_keywords": keywords,
+        "primary_intent": "informational",
+        "priority": "P0",
+        "seo_optimization_notes": "Target these keywords.",
+    }
+
+
+def _make_full_page_type_dict(name: str, keywords: list[str]) -> dict:
+    """Helper to build a minimal KeywordBasedPageType dict (full-weight)."""
+    d = _make_page_type_dict(name, keywords)
+    d["estimated_page_count"] = 5
+    return d
+
+
+class TestCategoryLightResultValidator:
+    """Tests for CategoryLightResult pre-validation filter."""
+
+    def test_empty_group_filtered_out(self):
+        """Groups with empty keywords list are removed."""
+        result = CategoryLightResult(**{
+            "tier_4_category_groups": [
+                {
+                    "category_name": "Good Group",
+                    "keywords": [{"keyword_name": "seo tools"}],
+                    "strategy_recommendation": "Target SEO.",
+                },
+                {
+                    "category_name": "Empty Group",
+                    "keywords": [],
+                    "strategy_recommendation": "Nothing here.",
+                },
+            ],
+            "category_strategy_notes": "Some notes.",
+        })
+        assert result.tier_4_category_groups is not None
+        assert len(result.tier_4_category_groups) == 1
+        assert result.tier_4_category_groups[0].category_name == "Good Group"
+
+    def test_all_empty_groups_become_none(self):
+        """When all groups have empty keywords, field becomes None."""
+        result = CategoryLightResult(**{
+            "tier_4_category_groups": [
+                {
+                    "category_name": "Empty A",
+                    "keywords": [],
+                    "strategy_recommendation": "Nothing.",
+                },
+                {
+                    "category_name": "Empty B",
+                    "keywords": [],
+                    "strategy_recommendation": "Also nothing.",
+                },
+            ],
+        })
+        assert result.tier_4_category_groups is None
+
+    def test_missing_keywords_key_filtered(self):
+        """Groups missing the keywords key entirely are filtered out."""
+        result = CategoryLightResult(**{
+            "tier_4_category_groups": [
+                {
+                    "category_name": "No Keywords Key",
+                    "strategy_recommendation": "Oops.",
+                },
+            ],
+        })
+        assert result.tier_4_category_groups is None
+
+    def test_valid_groups_unchanged(self):
+        """Valid groups pass through without modification."""
+        result = CategoryLightResult(**{
+            "tier_4_category_groups": [
+                {
+                    "category_name": "Group A",
+                    "keywords": [{"keyword_name": "kw1"}],
+                    "strategy_recommendation": "Strategy A.",
+                },
+                {
+                    "category_name": "Group B",
+                    "keywords": [{"keyword_name": "kw2"}],
+                    "strategy_recommendation": "Strategy B.",
+                },
+            ],
+        })
+        assert result.tier_4_category_groups is not None
+        assert len(result.tier_4_category_groups) == 2
+
+    def test_none_input_unchanged(self):
+        """None tier_4_category_groups stays None."""
+        result = CategoryLightResult(**{
+            "tier_4_category_groups": None,
+        })
+        assert result.tier_4_category_groups is None
+
+
+class TestContentStrategyResultLightValidator:
+    """Tests for ContentStrategyResultLight pre-validation filter."""
+
+    def test_page_type_with_empty_keywords_filtered(self):
+        """Page types with empty example_keywords are removed."""
+        result = ContentStrategyResultLight(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_page_type_dict("Good Type", ["kw1", "kw2"]),
+                _make_page_type_dict("Bad Type", []),
+            ],
+        })
+        assert result.keyword_based_page_types is not None
+        assert len(result.keyword_based_page_types) == 1
+        assert result.keyword_based_page_types[0].page_type_name == "Good Type"
+
+    def test_page_type_with_single_keyword_filtered(self):
+        """Page types with only 1 keyword (< min_length=2) are filtered."""
+        result = ContentStrategyResultLight(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_page_type_dict("Okay", ["kw1", "kw2", "kw3"]),
+                _make_page_type_dict("Too Few", ["only_one"]),
+            ],
+        })
+        assert result.keyword_based_page_types is not None
+        assert len(result.keyword_based_page_types) == 1
+
+    def test_all_invalid_become_none(self):
+        """When all page types have < 2 keywords, field becomes None."""
+        result = ContentStrategyResultLight(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_page_type_dict("Empty", []),
+                _make_page_type_dict("Single", ["one"]),
+            ],
+        })
+        assert result.keyword_based_page_types is None
+
+    def test_valid_page_types_unchanged(self):
+        """Valid page types pass through without modification."""
+        result = ContentStrategyResultLight(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_page_type_dict("Type A", ["kw1", "kw2"]),
+                _make_page_type_dict("Type B", ["kw3", "kw4", "kw5"]),
+            ],
+        })
+        assert result.keyword_based_page_types is not None
+        assert len(result.keyword_based_page_types) == 2
+
+    def test_none_page_types_unchanged(self):
+        """None keyword_based_page_types stays None."""
+        result = ContentStrategyResultLight(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": None,
+        })
+        assert result.keyword_based_page_types is None
+
+
+class TestContentStrategyResultValidator:
+    """Tests for ContentStrategyResult pre-validation filter (full-weight model)."""
+
+    def test_page_type_with_empty_keywords_filtered(self):
+        """Page types with empty example_keywords are removed."""
+        result = ContentStrategyResult(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_full_page_type_dict("Good A", ["kw1", "kw2"]),
+                _make_full_page_type_dict("Good B", ["kw3", "kw4"]),
+                _make_full_page_type_dict("Bad", []),
+            ],
+        })
+        assert result.keyword_based_page_types is not None
+        assert len(result.keyword_based_page_types) == 2
+
+    def test_single_valid_becomes_none_due_to_min_length(self):
+        """Field becomes None when < 2 valid page types remain (field min_length=2)."""
+        result = ContentStrategyResult(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_full_page_type_dict("Only One", ["kw1", "kw2"]),
+                _make_full_page_type_dict("Bad", []),
+            ],
+        })
+        # Only 1 valid item remains, but field requires min_length=2, so set to None
+        assert result.keyword_based_page_types is None
+
+    def test_all_invalid_become_none(self):
+        """When all page types are invalid, field becomes None."""
+        result = ContentStrategyResult(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_full_page_type_dict("Empty", []),
+                _make_full_page_type_dict("Single", ["one"]),
+            ],
+        })
+        assert result.keyword_based_page_types is None
+
+    def test_valid_page_types_unchanged(self):
+        """Valid page types with >= 2 items pass through unchanged."""
+        result = ContentStrategyResult(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": [
+                _make_full_page_type_dict("Type A", ["kw1", "kw2"]),
+                _make_full_page_type_dict("Type B", ["kw3", "kw4", "kw5"]),
+                _make_full_page_type_dict("Type C", ["kw6", "kw7"]),
+            ],
+        })
+        assert result.keyword_based_page_types is not None
+        assert len(result.keyword_based_page_types) == 3
+
+    def test_none_page_types_unchanged(self):
+        """None keyword_based_page_types stays None."""
+        result = ContentStrategyResult(**{
+            "content_strategy": _CONTENT_STRATEGY_TEXT,
+            "technical_seo_recommendations": _TECH_SEO_TEXT,
+            "keyword_based_page_types": None,
+        })
+        assert result.keyword_based_page_types is None
