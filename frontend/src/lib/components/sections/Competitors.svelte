@@ -6,7 +6,6 @@
     ExternalLink,
     Sparkles,
     Layers,
-    AlertTriangle,
     TrendingUp,
     Target,
     ChevronDown,
@@ -20,7 +19,6 @@
   } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import {
-    getThreatVariant,
     parseIntensity,
     getDifferentiationConfig,
     getCompetitorTypeVariant,
@@ -50,12 +48,66 @@
     selectedSolutionName,
   }: Props = $props();
 
-  // Expandable sections state
-  let showProfiles = $state(false);
-  let expandedCompetitor: number | null = $state(null);
+  // Merged competitor type
+  interface MergedCompetitor {
+    name: string;
+    type?: string;
+    solutions: string[];
+    profile: CompetitorProfile | null;
+    isSelected: boolean;
+  }
 
-  function toggleCompetitor(index: number) {
-    expandedCompetitor = expandedCompetitor === index ? null : index;
+  const mergedCompetitors = $derived.by(() => {
+    if (!landscapeMatrix?.competitor_overlap) {
+      // Fallback: no overlap data (older reports) — show profiles only
+      return {
+        selected: profiles.map((p) => ({
+          name: p.name,
+          type: p.competitor_type,
+          solutions: [],
+          profile: p,
+          isSelected: true,
+        })) as MergedCompetitor[],
+        alternative: [] as MergedCompetitor[],
+      };
+    }
+
+    const selectedSet = new Set(
+      (landscapeMatrix.selected_solution_competitors || []).map((n) =>
+        n.trim().toLowerCase(),
+      ),
+    );
+
+    const selected: MergedCompetitor[] = [];
+    const alternative: MergedCompetitor[] = [];
+
+    for (const overlap of landscapeMatrix.competitor_overlap) {
+      const normalized = overlap.competitor_name.trim().toLowerCase();
+      const profile =
+        profiles.find((p) => p.name.trim().toLowerCase() === normalized) ??
+        null;
+      const isSelected = selectedSet.has(normalized);
+
+      const merged: MergedCompetitor = {
+        name: overlap.competitor_name,
+        type: profile?.competitor_type ?? overlap.competitor_type,
+        solutions: overlap.solutions_competed,
+        profile,
+        isSelected,
+      };
+
+      if (isSelected) selected.push(merged);
+      else alternative.push(merged);
+    }
+
+    return { selected, alternative };
+  });
+
+  let expandedName: string | null = $state(null);
+
+  function toggleExpand(name: string, hasProfile: boolean) {
+    if (!hasProfile) return;
+    expandedName = expandedName === name ? null : name;
   }
 
   // Build feature matrix from competitor profiles
@@ -115,6 +167,11 @@
       (l) => l.solution_name === selectedSolutionName,
     );
   });
+
+  // Total merged competitor count
+  const totalCompetitors = $derived(
+    mergedCompetitors.selected.length + mergedCompetitors.alternative.length,
+  );
 </script>
 
 <Section
@@ -220,48 +277,164 @@
     </ExpandableSection>
   {/if}
 
-  <!-- Expandable: Competitive Landscape -->
-  {#if landscapeMatrix?.competitor_overlap && landscapeMatrix.competitor_overlap.length > 0}
+  <!-- Expandable: Competitive Landscape (Merged) -->
+  {#if totalCompetitors > 0}
     <ExpandableSection
       title="Competitive Landscape"
       icon={Layers}
-      count={landscapeMatrix.competitor_overlap.length}
+      count={totalCompetitors}
     >
-      <div class="overlap-grid">
-        {#each landscapeMatrix.competitor_overlap as overlap}
-          <div class="overlap-card">
-            <div class="overlap-header">
-              <span class="overlap-name">{overlap.competitor_name}</span>
-              <div class="overlap-badges">
-                {#if overlap.competitor_type}
-                  <Badge
-                    variant={overlap.competitor_type === "direct"
-                      ? "error"
-                      : "warning"}
-                    size="sm"
-                  >
-                    {overlap.competitor_type}
-                  </Badge>
-                {/if}
-                {#if overlap.threat_level}
-                  <Badge
-                    variant={getThreatVariant(overlap.threat_level)}
-                    size="sm"
-                  >
-                    <AlertTriangle class="badge-icon" />
-                    {overlap.threat_level}
-                  </Badge>
+      <div class="competitors-list">
+        <!-- Selected Solution Competitors -->
+        {#each mergedCompetitors.selected as comp (comp.name)}
+          {@const isExpanded = expandedName === comp.name}
+          <div
+            class="competitor-card"
+            class:expanded={isExpanded}
+          >
+            <button
+              class="competitor-header"
+              onclick={() => toggleExpand(comp.name, !!comp.profile)}
+              type="button"
+            >
+              <div class="competitor-info">
+                <div class="competitor-name-row">
+                  <span class="competitor-name">{comp.name}</span>
+                  <div class="competitor-badges">
+                    {#if comp.type}
+                      <Badge
+                        variant={getCompetitorTypeVariant(comp.type)}
+                        size="sm"
+                      >
+                        {comp.type}
+                      </Badge>
+                    {/if}
+                  </div>
+                </div>
+                {#if comp.profile?.description}
+                  <p class="competitor-description">{comp.profile.description}</p>
                 {/if}
               </div>
-            </div>
-            <div class="overlap-solutions">
-              <span class="solutions-label">Competes with:</span>
-              <div class="solutions-list">
-                {#each overlap.solutions_competed as solution}
-                  <Badge variant="muted" size="sm">{solution}</Badge>
-                {/each}
+              <div class="competitor-actions">
+                {#if comp.profile?.url}
+                  <a
+                    href={comp.profile.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="competitor-link"
+                    onclick={(e) => e.stopPropagation()}
+                  >
+                    <ExternalLink class="link-icon" />
+                  </a>
+                {/if}
+                {#if comp.profile}
+                  <ChevronDown
+                    class="competitor-chevron {isExpanded ? 'expanded' : ''}"
+                  />
+                {/if}
+              </div>
+            </button>
+
+            {#if comp.solutions.length > 0}
+              <div class="competitor-solutions">
+                <span class="solutions-label">Competes with:</span>
+                <div class="solutions-list">
+                  {#each comp.solutions as solution}
+                    <Badge variant="muted" size="sm">{solution}</Badge>
+                  {/each}
+                </div>
+              </div>
+            {/if}
+
+            {#if isExpanded && comp.profile}
+              <div class="competitor-details">
+                <div class="details-grid">
+                  {#if comp.profile.key_features && comp.profile.key_features.length > 0}
+                    <div class="detail-section">
+                      <h5 class="detail-label">Key Features</h5>
+                      <ul class="feature-list">
+                        {#each comp.profile.key_features as feature}
+                          <li class="feature-item">
+                            <CheckCircle class="feature-icon" />
+                            {feature}
+                          </li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+
+                  {#if comp.profile.pricing_model}
+                    <div class="detail-section">
+                      <h5 class="detail-label">Pricing Model</h5>
+                      <p class="pricing-text">{comp.profile.pricing_model}</p>
+                    </div>
+                  {/if}
+
+                  {#if comp.profile.strengths && comp.profile.strengths.length > 0}
+                    <div class="detail-section">
+                      <h5 class="detail-label success">Strengths</h5>
+                      <ul class="swot-list">
+                        {#each comp.profile.strengths as strength}
+                          <li class="swot-item success">+ {strength}</li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+
+                  {#if comp.profile.weaknesses && comp.profile.weaknesses.length > 0}
+                    <div class="detail-section">
+                      <h5 class="detail-label error">Weaknesses</h5>
+                      <ul class="swot-list">
+                        {#each comp.profile.weaknesses as weakness}
+                          <li class="swot-item error">- {weakness}</li>
+                        {/each}
+                      </ul>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/each}
+
+        <!-- Group Separator -->
+        {#if mergedCompetitors.alternative.length > 0}
+          <div class="group-separator">
+            <span>FROM ALTERNATIVE SOLUTIONS</span>
+          </div>
+        {/if}
+
+        <!-- Alternative Solution Competitors -->
+        {#each mergedCompetitors.alternative as comp (comp.name)}
+          <div class="competitor-card competitor-card--simple">
+            <div class="competitor-header competitor-header--static">
+              <div class="competitor-info">
+                <div class="competitor-name-row">
+                  <span class="competitor-name">{comp.name}</span>
+                  <div class="competitor-badges">
+                    {#if comp.type}
+                      <Badge
+                        variant={getCompetitorTypeVariant(comp.type)}
+                        size="sm"
+                      >
+                        {comp.type}
+                      </Badge>
+                    {/if}
+                  </div>
+                </div>
               </div>
             </div>
+
+            {#if comp.solutions.length > 0}
+              <div class="competitor-solutions">
+                <span class="solutions-label">Competes with:</span>
+                <div class="solutions-list">
+                  {#each comp.solutions as solution}
+                    <Badge variant="muted" size="sm">{solution}</Badge>
+                  {/each}
+                </div>
+              </div>
+            {/if}
           </div>
         {/each}
       </div>
@@ -282,7 +455,7 @@
             <tr>
               <th class="feature-header">Feature Category</th>
               {#each profiles.slice(0, 4) as competitor}
-                <th class="competitor-header">{competitor.name.slice(0, 12)}</th
+                <th class="competitor-col-header">{competitor.name.slice(0, 12)}</th
                 >
               {/each}
             </tr>
@@ -321,7 +494,7 @@
             <tr>
               <th class="feature-header">Feature</th>
               {#each profiles.slice(0, 4) as competitor}
-                <th class="competitor-header">{competitor.name.slice(0, 12)}</th
+                <th class="competitor-col-header">{competitor.name.slice(0, 12)}</th
                 >
               {/each}
             </tr>
@@ -346,109 +519,6 @@
       </div>
     </ExpandableSection>
   {/if}
-
-  <!-- Expandable: Competitor Profiles -->
-  <ExpandableSection
-    title="Competitor Profiles"
-    icon={Users}
-    count={profiles.length}
-  >
-    <div class="profiles-list">
-      {#each profiles as competitor, index}
-        <div class="profile-card" class:expanded={expandedCompetitor === index}>
-          <button
-            class="profile-header"
-            onclick={() => toggleCompetitor(index)}
-            type="button"
-          >
-            <div class="profile-info">
-              <div class="profile-name-row">
-                <span class="profile-name">{competitor.name}</span>
-                <Badge
-                  variant={getCompetitorTypeVariant(competitor.competitor_type)}
-                  size="sm"
-                >
-                  {competitor.competitor_type}
-                </Badge>
-              </div>
-              <p class="profile-description">{competitor.description}</p>
-            </div>
-            <div class="profile-actions">
-              {#if competitor.url}
-                <a
-                  href={competitor.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="profile-link"
-                  onclick={(e) => e.stopPropagation()}
-                >
-                  <ExternalLink class="link-icon" />
-                </a>
-              {/if}
-              <ChevronDown
-                class="profile-chevron {expandedCompetitor === index
-                  ? 'expanded'
-                  : ''}"
-              />
-            </div>
-          </button>
-
-          {#if expandedCompetitor === index}
-            <div class="profile-details">
-              <div class="details-grid">
-                <!-- Key Features -->
-                {#if competitor.key_features && competitor.key_features.length > 0}
-                  <div class="detail-section">
-                    <h5 class="detail-label">Key Features</h5>
-                    <ul class="feature-list">
-                      {#each competitor.key_features as feature}
-                        <li class="feature-item">
-                          <CheckCircle class="feature-icon" />
-                          {feature}
-                        </li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-
-                <!-- Pricing -->
-                {#if competitor.pricing_model}
-                  <div class="detail-section">
-                    <h5 class="detail-label">Pricing Model</h5>
-                    <p class="pricing-text">{competitor.pricing_model}</p>
-                  </div>
-                {/if}
-
-                <!-- Strengths -->
-                {#if competitor.strengths && competitor.strengths.length > 0}
-                  <div class="detail-section">
-                    <h5 class="detail-label success">Strengths</h5>
-                    <ul class="swot-list">
-                      {#each competitor.strengths as strength}
-                        <li class="swot-item success">+ {strength}</li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-
-                <!-- Weaknesses -->
-                {#if competitor.weaknesses && competitor.weaknesses.length > 0}
-                  <div class="detail-section">
-                    <h5 class="detail-label error">Weaknesses</h5>
-                    <ul class="swot-list">
-                      {#each competitor.weaknesses as weakness}
-                        <li class="swot-item error">- {weakness}</li>
-                      {/each}
-                    </ul>
-                  </div>
-                {/if}
-              </div>
-            </div>
-          {/if}
-        </div>
-      {/each}
-    </div>
-  </ExpandableSection>
 
   <!-- Expandable: Strategic Recommendations -->
   {#if analysis?.strategic_recommendations}
@@ -557,37 +627,71 @@
     line-height: 1.5;
   }
 
-  /* Overlap Grid */
-  .overlap-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.75rem;
+  /* Competitors List (Merged) */
+  .competitors-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.625rem;
   }
 
-  .overlap-card {
-    padding: 1rem;
+  .competitor-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
+    overflow: hidden;
+    transition: border-color 0.15s ease;
   }
 
-  .overlap-header {
+  .competitor-card:hover {
+    border-color: var(--color-border-hover);
+  }
+
+  .competitor-card.expanded {
+    border-color: var(--color-accent);
+  }
+
+  .competitor-card--simple {
+    opacity: 0.85;
+  }
+
+  .competitor-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    width: 100%;
+    padding: 1rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .competitor-header--static {
+    cursor: default;
+  }
+
+  .competitor-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .competitor-name-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: 0.625rem;
+    margin-bottom: 0.25rem;
     flex-wrap: wrap;
   }
 
-  .overlap-name {
+  .competitor-name {
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;
     color: var(--color-text-primary);
   }
 
-  .overlap-badges {
+  .competitor-badges {
     display: flex;
     gap: 0.375rem;
   }
@@ -598,10 +702,59 @@
     margin-right: 0.125rem;
   }
 
-  .overlap-solutions {
+  .competitor-description {
+    font-size: 0.8125rem;
+    color: var(--color-text-muted);
+    line-height: 1.5;
+    margin: 0;
+  }
+
+  .competitor-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    flex-shrink: 0;
+  }
+
+  .competitor-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    color: var(--color-text-muted);
+    border-radius: 0.25rem;
+    transition:
+      color 0.15s ease,
+      background 0.15s ease;
+  }
+
+  .competitor-link:hover {
+    color: var(--color-accent);
+    background: rgba(229, 90, 40, 0.1);
+  }
+
+  :global(.link-icon) {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  :global(.competitor-chevron) {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease;
+  }
+
+  :global(.competitor-chevron.expanded) {
+    transform: rotate(180deg);
+  }
+
+  .competitor-solutions {
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
+    padding: 0 1rem 0.75rem;
   }
 
   .solutions-label {
@@ -619,178 +772,34 @@
     gap: 0.375rem;
   }
 
-  /* Feature Table */
-  .table-container {
-    overflow-x: auto;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+  /* Group Separator */
+  .group-separator {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0;
   }
 
-  .feature-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.875rem;
+  .group-separator::before,
+  .group-separator::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
   }
 
-  .feature-table th,
-  .feature-table td {
-    padding: 0.625rem 0.875rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .feature-header {
-    text-align: left;
-    font-family: var(--font-display);
-    font-weight: 600;
-    color: var(--color-text-primary);
-    background: var(--color-bg-surface);
-  }
-
-  .competitor-header {
-    text-align: center;
+  .group-separator span {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    background: var(--color-bg-surface);
+    font-size: 0.5625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 
-  .feature-name {
-    color: var(--color-text-primary);
-    font-size: 0.8125rem;
-  }
-
-  .feature-check {
-    text-align: center;
-  }
-
-  :global(.check-yes) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: var(--color-success);
-  }
-
-  :global(.check-no) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: var(--color-text-muted);
-    opacity: 0.25;
-  }
-
-  .feature-table tbody tr:last-child td {
-    border-bottom: none;
-  }
-
-  .feature-table tbody tr:hover {
-    background: var(--color-bg-surface);
-  }
-
-  /* Profiles List */
-  .profiles-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-  }
-
-  .profile-card {
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    overflow: hidden;
-    transition: border-color 0.15s ease;
-  }
-
-  .profile-card:hover {
-    border-color: var(--color-border-hover);
-  }
-
-  .profile-card.expanded {
-    border-color: var(--color-accent);
-  }
-
-  .profile-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-    width: 100%;
-    padding: 1rem;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .profile-info {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .profile-name-row {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    margin-bottom: 0.25rem;
-  }
-
-  .profile-name {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-
-  .profile-description {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-    line-height: 1.5;
-    margin: 0;
-  }
-
-  .profile-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    flex-shrink: 0;
-  }
-
-  .profile-link {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 1.75rem;
-    height: 1.75rem;
-    color: var(--color-text-muted);
-    border-radius: 0.25rem;
-    transition:
-      color 0.15s ease,
-      background 0.15s ease;
-  }
-
-  .profile-link:hover {
-    color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
-  }
-
-  :global(.link-icon) {
-    width: 0.875rem;
-    height: 0.875rem;
-  }
-
-  :global(.profile-chevron) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: var(--color-text-muted);
-    transition: transform 0.2s ease;
-  }
-
-  :global(.profile-chevron.expanded) {
-    transform: rotate(180deg);
-  }
-
-  /* Profile Details */
-  .profile-details {
+  /* Competitor Details (Expandable) */
+  .competitor-details {
     padding: 0 1rem 1rem;
     border-top: 1px solid var(--color-border);
   }
@@ -888,6 +897,73 @@
     color: var(--color-error);
   }
 
+  /* Feature Table */
+  .table-container {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+  }
+
+  .feature-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+  }
+
+  .feature-table th,
+  .feature-table td {
+    padding: 0.625rem 0.875rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .feature-header {
+    text-align: left;
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    background: var(--color-bg-surface);
+  }
+
+  .competitor-col-header {
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: var(--color-bg-surface);
+    white-space: nowrap;
+  }
+
+  .feature-name {
+    color: var(--color-text-primary);
+    font-size: 0.8125rem;
+  }
+
+  .feature-check {
+    text-align: center;
+  }
+
+  :global(.check-yes) {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-success);
+  }
+
+  :global(.check-no) {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--color-text-muted);
+    opacity: 0.25;
+  }
+
+  .feature-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .feature-table tbody tr:hover {
+    background: var(--color-bg-surface);
+  }
+
   /* Recommendations Content */
   .recommendations-content {
     font-size: 0.9375rem;
@@ -914,22 +990,18 @@
 
   /* Responsive */
   @media (max-width: 768px) {
-    .overlap-grid {
-      grid-template-columns: 1fr;
-    }
-
     .details-grid {
       grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 480px) {
-    .profile-header {
+    .competitor-header {
       flex-direction: column;
       gap: 0.5rem;
     }
 
-    .profile-actions {
+    .competitor-actions {
       align-self: flex-end;
     }
 

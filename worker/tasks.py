@@ -412,29 +412,8 @@ def _run_phase2_continuation(
     )
 
     if state.solution_selection is not None:
-        selected_set = set(selected_solutions)
-
-        # Filter all_solution_scores to only user-selected solutions
-        # (all solutions guaranteed to have entries after Phase 1 backfill)
-        if state.solution_selection.all_solution_scores:
-            state.solution_selection.all_solution_scores = [
-                s for s in state.solution_selection.all_solution_scores
-                if getattr(s, 'solution_name', '') in selected_set
-            ]
-
-        # Pick highest-scored as primary
-        scores = state.solution_selection.all_solution_scores
-        if scores:
-            best = max(scores, key=lambda s: getattr(s, 'composite_score', 0))
-            state.solution_selection.selected_solution_name = best.solution_name
-        else:
-            state.solution_selection.selected_solution_name = selected_solution
-
-        # Runner-ups = other selected solutions (not primary)
-        primary = state.solution_selection.selected_solution_name
-        state.solution_selection.runner_up_solutions = [
-            n for n in selected_solutions if n != primary
-        ]
+        state.solution_selection.selected_solution_name = selected_solution
+        state.solution_selection.runner_up_solutions = [n for n in selected_solutions if n != selected_solution]
         state.solution_selection.selection_rationale = rationale_text
     else:
         # No prior selection — build minimal SolutionSelection
@@ -446,8 +425,32 @@ def _run_phase2_continuation(
             runner_up_solutions=[n for n in selected_solutions[1:]],
         )
 
+    # Validate selected solution exists in merged ideas
+    if state.idea_generation and state.idea_generation.solution_ideas:
+        names = {s.solution_name for s in state.idea_generation.solution_ideas}
+        if selected_solution not in names:
+            logger.error(f"Selected solution '{selected_solution}' not found in solution_ideas. Available: {names}")
+
+    # Compute all_solution_scores from Task 3 fields, then filter to selected solutions
+    from nicheiq.utils.score_helpers import compute_solution_scores
+    if state.idea_generation and state.idea_generation.solution_ideas:
+        all_scores = compute_solution_scores(state.idea_generation.solution_ideas)
+        # Keep only selected solutions' scores (stages 7-8 use top N from this list)
+        selected_set = set(selected_solutions)
+        state.solution_selection.all_solution_scores = [
+            s for s in all_scores if s.solution_name in selected_set
+        ]
+        # Re-rank filtered list
+        for i, s in enumerate(
+            sorted(state.solution_selection.all_solution_scores, key=lambda x: x.composite_score, reverse=True), 1
+        ):
+            s.rank = i
+
     # Store user selections for downstream keyword validation guard
     state._user_selected_solutions = set(selected_solutions)
+
+    # Save scoring checkpoint so _execute_remaining_stages sees it
+    flow.checkpoint_mgr.save_stage("stage_5_6_selection", state.solution_selection)
 
     # No bulk replay here — in the interactive flow the frontend already has
     # Phase 1 stages as green from the live run.  Phase 2 skipped stages are
@@ -662,11 +665,11 @@ def run_regenerate_ideas(
             job_id=job_id,
         )
 
-        # Execute pipeline (will generate new ideas)
+        # Execute pipeline with skip_selection=True (no Task 4 needed for regeneration)
         # The crew doesn't have a built-in exclusion mechanism,
         # so we'll filter out existing names from the results
-        result = crew.execute_pipeline()
-        idea_gen = result[0]  # IdeaGenerationResult
+        result = crew.execute_pipeline(skip_selection=True)
+        idea_gen = result[0]  # IdeaGenerationResult (result[1] is None)
 
         if not idea_gen or not hasattr(idea_gen, "solution_ideas"):
             raise RuntimeError("Regeneration did not produce solution ideas")

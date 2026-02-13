@@ -724,6 +724,13 @@ export interface AudienceMapping {
 	early_adopter_tactics?: string;
 }
 
+export interface InfluencerTopPost {
+	title: string;
+	subreddit: string;
+	score: number;
+	url: string;
+}
+
 export interface Influencer {
 	name: string;
 	platform: string;
@@ -732,6 +739,8 @@ export interface Influencer {
 	engagement_level?: string;
 	outreach_priority?: string;
 	content_focus?: string;
+	top_subreddits?: string[];
+	top_posts?: InfluencerTopPost[];
 }
 
 export interface AudienceSegment {

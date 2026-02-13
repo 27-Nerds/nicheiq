@@ -16,6 +16,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.research_state import TrafficMonetizationResult
+from ..utils.validation.crew_guardrails import validate_traffic_monetization
 from ..utils.crew_helpers import (
     collect_all_tiered_keywords,
     compute_ad_revenue_estimate,
@@ -87,6 +88,8 @@ class TrafficMonetizationCrew:
             config=self.tasks_config["traffic_monetization_analysis"],
             agent=self.traffic_monetization_analyst(),
             output_pydantic=TrafficMonetizationResult,
+            guardrail=validate_traffic_monetization,
+            guardrail_max_retries=2,
         )
 
     @crew

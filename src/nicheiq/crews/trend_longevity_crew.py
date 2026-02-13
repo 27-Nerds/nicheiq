@@ -23,6 +23,7 @@ from ..models.research_state import TrendLongevityResult, TrendNarrativeOutput
 from ..models.social_content import SocialContentCollection
 from ..utils.llm_service import build_llm_kwargs
 from ..utils.token_monitor import ContentTokenMonitor
+from ..utils.validation.crew_guardrails import validate_trend_narrative
 from ..utils.trend_scoring import compute_deterministic_signals, compute_timing
 
 
@@ -81,6 +82,8 @@ class TrendLongevityCrew:
             config=self.tasks_config["trend_longevity_analysis"],
             agent=self.trend_analyst(),
             output_pydantic=TrendNarrativeOutput,
+            guardrail=validate_trend_narrative,
+            guardrail_max_retries=2,
         )
 
     @crew

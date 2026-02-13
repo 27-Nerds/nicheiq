@@ -2409,6 +2409,8 @@ It differentiates through {diff_text}.
             # Use selection criteria scores only (None = "N/A" in frontend)
             market_fit_score = score_map.get('market_fit')
             competitive_advantage_score = score_map.get('competitive_advantage')
+            if competitive_advantage_score is None:
+                competitive_advantage_score = score_map.get('differentiation_potential')
             technical_feasibility_score = score_map.get('technical_feasibility')
 
             # SEO score: use canonical resolution (RC2 fix: unified SEO score path)

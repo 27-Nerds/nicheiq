@@ -21,6 +21,7 @@ from .pricing_pre_compute import (
     format_audience_budget_sensitivity,
     format_solution_rank_context,
 )
+from .influencer_pre_compute import compute_influencer_profiles
 from .traffic_pre_compute import (
     collect_all_tiered_keywords,
     compute_ad_revenue_estimate,
@@ -58,4 +59,5 @@ __all__ = [
     "compute_total_revenue_estimate",
     "compute_traffic_projection",
     "match_niche_to_cpm",
+    "compute_influencer_profiles",
 ]

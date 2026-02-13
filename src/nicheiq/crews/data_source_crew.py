@@ -19,7 +19,10 @@ from ..models.data_source import (
 )
 from ..models.seo_strategy import SEOStrategyReport
 from ..models.solution_idea import SolutionIdea
-from ..utils.validation.crew_guardrails import validate_data_source_evaluation
+from ..utils.validation.crew_guardrails import (
+    validate_data_implementation_plan,
+    validate_data_source_evaluation,
+)
 
 
 @CrewBase
@@ -140,6 +143,8 @@ class DataSourceResearchCrew:
             agent=self.data_quality_analyst(),
             context=[self.discover_data_sources_task(), self.evaluate_data_sources_task()],
             output_pydantic=DataImplementationPlan,
+            guardrail=validate_data_implementation_plan,
+            guardrail_max_retries=2,
         )
 
     @crew

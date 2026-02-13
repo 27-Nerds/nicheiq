@@ -829,9 +829,8 @@ class TrafficMonetizationResult(BaseModel):
         ..., description="Estimated monthly ad revenue range (e.g., '$150 - $800')"
     )
     recommended_ad_networks: list[str] = Field(
-        ...,
-        min_length=1,
-        description="Recommended ad networks based on traffic tier (e.g., ['Google AdSense', 'Mediavine', 'Ezoic'], minimum 1)"
+        default_factory=list,
+        description="Recommended ad networks based on traffic tier (e.g., ['Google AdSense', 'Mediavine', 'Ezoic'])"
     )
 
     # Affiliate Revenue Estimates
@@ -845,7 +844,8 @@ class TrafficMonetizationResult(BaseModel):
         ..., description="Estimated monthly affiliate revenue (e.g., '$200 - $500')"
     )
     recommended_affiliate_programs: list[str] = Field(
-        ..., min_length=1, description="Recommended affiliate programs for this niche (minimum 1)"
+        default_factory=list,
+        description="Recommended affiliate programs for this niche"
     )
 
     # Premium/Sponsored Options (B2B)
@@ -934,6 +934,15 @@ class AudienceSegment(BaseModel):
     influencers_followed: Optional[list[str]] = Field(default=None, description="Key influencers or communities they follow")
 
 
+
+class InfluencerTopPost(BaseModel):
+    """A top post or comment by an influencer."""
+
+    title: str = Field(..., description="Post title or truncated comment body")
+    subreddit: str = Field(..., description="Subreddit where posted")
+    score: int = Field(..., description="Post/comment score")
+    url: str = Field(..., description="URL to original post")
+
 class InfluencerProfile(BaseModel):
     """Influencer or community leader in the niche."""
 
@@ -946,6 +955,8 @@ class InfluencerProfile(BaseModel):
     content_focus: str = Field(..., description="Primary content focus/topics")
     engagement_level: str = Field(..., description="'High', 'Medium', 'Low' based on discussion activity")
     outreach_priority: str = Field(..., description="'High', 'Medium', 'Low' for partnership/outreach")
+    top_subreddits: list[str] = Field(default_factory=list, description="Top 3 subreddits by activity")
+    top_posts: list[InfluencerTopPost] = Field(default_factory=list, description="Top 3 posts/comments by score")
 
 
 class AudienceMappingResult(BaseModel):

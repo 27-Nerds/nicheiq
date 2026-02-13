@@ -58,6 +58,7 @@ from ..utils.validation import (
     validate_content_strategy_output,
     validate_geographic_tier_output,
     validate_implementation_plan_output,
+    validate_keyword_summary,
     validate_strategic_tier_output,
 )
 # Removed: validate_implementation_guide_light_output (Task 5 deleted)
@@ -1093,6 +1094,8 @@ class SEOStrategyCrew:
                 self.analyze_category_tier_task(),  # Task 1c
             ],
             output_pydantic=KeywordSummaryResult,
+            guardrail=validate_keyword_summary,
+            guardrail_max_retries=2,
         )
 
     # ========================================
@@ -1246,6 +1249,8 @@ class SEOStrategyCrew:
                 self.analyze_category_tier_parallel_task(),    # Task 1d (async)
             ],
             output_pydantic=KeywordSummaryResult,
+            guardrail=validate_keyword_summary,
+            guardrail_max_retries=2,
             # async_execution=False (default) - waits for all async tasks
         )
 

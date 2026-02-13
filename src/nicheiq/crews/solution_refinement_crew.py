@@ -12,6 +12,7 @@ from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
 from ..models.solution_idea import SolutionIdea
 from ..models.solution_refinement import SolutionRefinement
+from ..utils.validation.crew_guardrails import validate_solution_refinement
 
 
 @CrewBase
@@ -65,6 +66,8 @@ class SolutionRefinementCrew:
             config=self.tasks_config["refine_solution_strategy"],
             agent=self.strategic_advisor(),
             output_pydantic=SolutionRefinement,
+            guardrail=validate_solution_refinement,
+            guardrail_max_retries=2,
         )
 
     @crew

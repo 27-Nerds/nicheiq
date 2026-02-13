@@ -1201,11 +1201,13 @@ RULES:
             elif "stage_4_audience_mapping" in completed_stages:
                 logger.info("Skipping Stage 4 (Audience Mapping) - already completed")
 
-            # Stage 2: Unified Solution Pipeline
+            # Stage 5: Unified Solution Pipeline
             if "stage_5_6_selection" not in completed_stages:
                 if self._validate_stage_prerequisites(5):
+                    # Interactive Phase 1 → skip Task 4 (user selects solutions instead)
+                    skip = stop_after_phase is not None
                     logger.info("Executing Unified Solution Pipeline (Stage 5)...")
-                    self.stage_5_unified_solution_pipeline()
+                    self.stage_5_unified_solution_pipeline(skip_selection=skip)
                     # Refresh completed_stages so subsequent stages see Stage 5 checkpoint
                     completed_stages = self.checkpoint_mgr.get_completed_stages()
                 else:
@@ -2246,7 +2248,7 @@ Return a valid JSON object with this structure:
         logger.info(f"  Recommended Channels: {', '.join(audience_result.recommended_channels[:3])}")
 
     @listen(stage_4_audience_mapping)
-    def stage_5_unified_solution_pipeline(self):
+    def stage_5_unified_solution_pipeline(self, skip_selection: bool = False):
         """
         Stage 7: Unified Solution Pipeline (CrewAI Best Practice)
 
@@ -2255,6 +2257,7 @@ Return a valid JSON object with this structure:
         - Task 7.2: Diversity Filtering (filter to 5-7 unique)
         - Task 7.3: Solution Refinement (expand to full specs)
         - Task 7.4: Solution Selection (strategic scoring and selection)
+          Skipped when skip_selection=True (interactive mode).
 
         Competitive analysis is run on-demand per-solution in Stage 7.5.
         """
@@ -2303,12 +2306,12 @@ Return a valid JSON object with this structure:
                 job_id=self.state.job_id,
             )
 
-            # Execute complete pipeline (4 tasks in sequence with context chaining)
-            logger.info("Executing unified solution pipeline (4-task flow)...")
+            # Execute complete pipeline
+            logger.info("Executing unified solution pipeline...")
             (
                 refined_solutions,
                 solution_selection,
-            ) = unified_crew.execute_pipeline()
+            ) = unified_crew.execute_pipeline(skip_selection=skip_selection)
 
             # Collect Knowledge objects for cleanup
             if getattr(unified_crew, '_crew_knowledge', None):
@@ -2325,138 +2328,113 @@ Return a valid JSON object with this structure:
             # Save results to state
             self.state.idea_generation = refined_solutions
             self.state.solution_selection = solution_selection
-            # competitive_analysis is now populated on-demand per-solution (stage 7.5)
 
-            # DEFENSIVE: Validate solution selection - detect error strings
-            # The LLM may return "Insufficient evidence for strategic selection" if context chain fails
-            INVALID_SELECTION_PATTERNS = [
-                "insufficient evidence",
-                "unable to select",
-                "cannot determine",
-                "no clear winner",
-            ]
-            selected_name = self.state.solution_selection.selected_solution_name or ""
+            if solution_selection is not None:
+                # DEFENSIVE: Validate solution selection - detect error strings
+                # The LLM may return "Insufficient evidence for strategic selection" if context chain fails
+                INVALID_SELECTION_PATTERNS = [
+                    "insufficient evidence",
+                    "unable to select",
+                    "cannot determine",
+                    "no clear winner",
+                ]
+                selected_name = self.state.solution_selection.selected_solution_name or ""
 
-            if any(pattern in selected_name.lower() for pattern in INVALID_SELECTION_PATTERNS):
-                logger.warning(
-                    f"⚠️ Solution selection returned error string: '{selected_name}'. "
-                    f"Triggering fallback selection..."
-                )
-
-                # Fallback: Select highest market_fit_score from idea_generation
-                if self.state.idea_generation and self.state.idea_generation.solution_ideas:
-                    sorted_ideas = sorted(
-                        self.state.idea_generation.solution_ideas,
-                        key=lambda s: getattr(s, 'market_fit_score', 0) or 0,
-                        reverse=True
-                    )
-                    fallback_solution = sorted_ideas[0]
-                    fallback_name = fallback_solution.solution_name
-                    fallback_score = getattr(fallback_solution, 'market_fit_score', 'N/A')
-
+                if any(pattern in selected_name.lower() for pattern in INVALID_SELECTION_PATTERNS):
                     logger.warning(
-                        f"✓ Fallback selected: '{fallback_name}' "
-                        f"(market_fit_score: {fallback_score})"
+                        f"⚠️ Solution selection returned error string: '{selected_name}'. "
+                        f"Triggering fallback selection..."
                     )
 
-                    # Update selection state
-                    self.state.solution_selection.selected_solution_name = fallback_name
-                    original_rationale = self.state.solution_selection.selection_rationale or ""
-                    self.state.solution_selection.selection_rationale = (
-                        f"[AUTO-FALLBACK] LLM selection failed with '{selected_name}'. "
-                        f"Auto-selected highest market_fit_score ({fallback_score}). "
-                        f"Original response: {original_rationale[:200]}..."
-                    )
-
-                    # Update recommended_focus for fallback solution
-                    self.state.solution_selection.recommended_focus = (
-                        self._build_recommended_focus(
-                            solution=fallback_solution,
-                            keyword_validation=None,
+                    # Fallback: Select highest market_fit_score from idea_generation
+                    if self.state.idea_generation and self.state.idea_generation.solution_ideas:
+                        sorted_ideas = sorted(
+                            self.state.idea_generation.solution_ideas,
+                            key=lambda s: getattr(s, 'market_fit_score', 0) or 0,
+                            reverse=True
                         )
-                    )
+                        fallback_solution = sorted_ideas[0]
+                        fallback_name = fallback_solution.solution_name
+                        fallback_score = getattr(fallback_solution, 'market_fit_score', 'N/A')
 
-                    # Rebuild selection_criteria_scores for fallback solution
-                    fallback_scores_obj = None
-                    if self.state.solution_selection.all_solution_scores:
-                        fallback_scores_obj = next(
-                            (s for s in self.state.solution_selection.all_solution_scores
-                             if s.solution_name.strip() == fallback_name.strip()),
-                            None
+                        logger.warning(
+                            f"✓ Fallback selected: '{fallback_name}' "
+                            f"(market_fit_score: {fallback_score})"
                         )
-                    if fallback_scores_obj:
-                        self.state.solution_selection.selection_criteria_scores = (
-                            self._build_selection_criteria_from_scores(
-                                fallback_scores_obj,
-                                justification_prefix="[AUTO-FALLBACK] Scores from all_solution_scores.",
+
+                        # Update selection state
+                        self.state.solution_selection.selected_solution_name = fallback_name
+                        original_rationale = self.state.solution_selection.selection_rationale or ""
+                        self.state.solution_selection.selection_rationale = (
+                            f"[AUTO-FALLBACK] LLM selection failed with '{selected_name}'. "
+                            f"Auto-selected highest market_fit_score ({fallback_score}). "
+                            f"Original response: {original_rationale[:200]}..."
+                        )
+
+                        # Update recommended_focus for fallback solution
+                        self.state.solution_selection.recommended_focus = (
+                            self._build_recommended_focus(
+                                solution=fallback_solution,
+                                keyword_validation=None,
                             )
                         )
+
+                        # Rebuild selection_criteria_scores for fallback solution
+                        fallback_scores_obj = None
+                        if self.state.solution_selection.all_solution_scores:
+                            fallback_scores_obj = next(
+                                (s for s in self.state.solution_selection.all_solution_scores
+                                 if s.solution_name.strip() == fallback_name.strip()),
+                                None
+                            )
+                        if fallback_scores_obj:
+                            self.state.solution_selection.selection_criteria_scores = (
+                                self._build_selection_criteria_from_scores(
+                                    fallback_scores_obj,
+                                    justification_prefix="[AUTO-FALLBACK] Scores from all_solution_scores.",
+                                )
+                            )
+                        else:
+                            self.state.solution_selection.selection_criteria_scores = (
+                                self._build_selection_criteria_from_solution_idea(
+                                    fallback_solution,
+                                    justification_prefix="[AUTO-FALLBACK] Scores from SolutionIdea fields.",
+                                )
+                            )
+
+                        # Re-save checkpoint with fallback mutations
+                        self.checkpoint_mgr.save_stage(
+                            "stage_5_6_selection",
+                            self.state.solution_selection.model_dump(),
+                        )
+
+                        # Track fallback for visibility
+                        if not hasattr(self.state, 'fallback_stages'):
+                            self.state.fallback_stages = []
+                        self.state.fallback_stages.append(7.4)
                     else:
-                        self.state.solution_selection.selection_criteria_scores = (
-                            self._build_selection_criteria_from_solution_idea(
-                                fallback_solution,
-                                justification_prefix="[AUTO-FALLBACK] Scores from SolutionIdea fields.",
-                            )
+                        logger.error(
+                            "⚠️ Fallback failed - no solutions available in idea_generation. "
+                            "Pipeline will proceed with invalid selection name."
                         )
 
-                    # Re-save checkpoint with fallback mutations
-                    self.checkpoint_mgr.save_stage(
-                        "stage_5_6_selection",
-                        self.state.solution_selection.model_dump(),
-                    )
-
-                    # Track fallback for visibility
-                    if not hasattr(self.state, 'fallback_stages'):
-                        self.state.fallback_stages = []
-                    self.state.fallback_stages.append(7.4)
-                else:
-                    logger.error(
-                        "⚠️ Fallback failed - no solutions available in idea_generation. "
-                        "Pipeline will proceed with invalid selection name."
+                # Backfill all_solution_scores for solutions the LLM didn't score
+                # Uses utility to ensure consistent field mapping
+                if (self.state.idea_generation
+                        and self.state.idea_generation.solution_ideas):
+                    from nicheiq.utils.score_helpers import backfill_solution_scores
+                    self.state.solution_selection.all_solution_scores = backfill_solution_scores(
+                        self.state.solution_selection.all_solution_scores,
+                        self.state.idea_generation.solution_ideas,
                     )
 
             # Log results
             logger.info("[OK] Solution Pipeline Complete:")
             logger.info(f"  - Generated {len(refined_solutions.solution_ideas)} solutions")
-            logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
-
-            # Backfill all_solution_scores for solutions the LLM didn't score
-            # Ensures all solutions have scores for the selection UI and Phase 2 filtering
-            if (self.state.solution_selection
-                    and self.state.idea_generation
-                    and self.state.idea_generation.solution_ideas):
-                scored_names = {
-                    s.solution_name
-                    for s in (self.state.solution_selection.all_solution_scores or [])
-                }
-                if self.state.solution_selection.all_solution_scores is None:
-                    self.state.solution_selection.all_solution_scores = []
-
-                for idea in self.state.idea_generation.solution_ideas:
-                    if idea.solution_name not in scored_names:
-                        from nicheiq.models.solution_selection import SolutionScores
-                        raw_mf = getattr(idea, 'market_fit_score', None)
-                        mf = raw_mf if raw_mf is not None else 0.5
-                        raw_tf = getattr(idea, 'technical_feasibility_score', None)
-                        tf = raw_tf if raw_tf is not None else 0.5
-                        self.state.solution_selection.all_solution_scores.append(
-                            SolutionScores(
-                                solution_name=idea.solution_name,
-                                market_fit_score=mf,
-                                technical_feasibility_score=tf,
-                                competitive_advantage_score=0.5,
-                                seo_growth_potential_score=0.5,
-                                composite_score=round((mf + tf + 0.5 + 0.5) / 4, 3),
-                                rank=0,
-                            )
-                        )
-                        logger.info(f"[Stage 7] Backfilled scores for '{idea.solution_name}'")
-
-                # Reassign ranks by composite_score
-                all_scores = self.state.solution_selection.all_solution_scores
-                all_scores.sort(key=lambda s: s.composite_score, reverse=True)
-                for i, s in enumerate(all_scores, 1):
-                    s.rank = i
+            if solution_selection:
+                logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
+            else:
+                logger.info("  - Selection: skipped (interactive mode)")
 
             # Update stage (continue to keyword validation)
             self.state.current_stage = 5.7

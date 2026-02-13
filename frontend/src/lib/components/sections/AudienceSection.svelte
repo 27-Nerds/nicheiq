@@ -10,6 +10,8 @@
     DollarSign,
     Sparkles,
     Globe,
+    ChevronRight,
+    ExternalLink,
   } from "lucide-svelte";
   import type { AudienceMapping } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
@@ -40,6 +42,9 @@
   const totalSegments = $derived(data.audience_segments?.length ?? 0);
   const totalInfluencers = $derived(data.key_influencers?.length ?? 0);
   const totalCommunities = $derived(data.community_hubs?.length ?? 0);
+
+  // Track which influencer cards have expanded top posts
+  let expandedPosts: Record<number, boolean> = $state({});
 </script>
 
 <Section
@@ -155,8 +160,8 @@
       count={data.key_influencers.length}
       variant="warning"
     >
-      <CardGrid minWidth={200} gap="sm">
-        {#each data.key_influencers as influencer}
+      <CardGrid minWidth={240} gap="sm">
+        {#each data.key_influencers as influencer, i}
           <div class="influencer-card">
             <div class="influencer-top">
               <span class="influencer-name">{influencer.name}</span>
@@ -176,11 +181,50 @@
             <div class="influencer-meta">
               <span class="influencer-platform">{influencer.platform}</span>
               {#if influencer.follower_estimate}
-                <span class="influencer-followers"
-                  >{influencer.follower_estimate} followers</span
-                >
+                <span class="influencer-followers">{influencer.follower_estimate}</span>
               {/if}
             </div>
+            {#if influencer.content_focus}
+              <p class="influencer-focus">{influencer.content_focus}</p>
+            {/if}
+            {#if influencer.top_subreddits && influencer.top_subreddits.length > 0}
+              <div class="influencer-subs">
+                {#each influencer.top_subreddits as sub}
+                  <span class="influencer-sub-tag">{sub}</span>
+                {/each}
+              </div>
+            {/if}
+            {#if influencer.top_posts && influencer.top_posts.length > 0}
+              <button
+                class="influencer-posts-toggle"
+                onclick={() => { expandedPosts[i] = !expandedPosts[i]; }}
+              >
+                <ChevronRight
+                  class="toggle-chevron {expandedPosts[i] ? 'expanded' : ''}"
+                />
+                Top posts ({influencer.top_posts.length})
+              </button>
+              {#if expandedPosts[i]}
+                <ul class="influencer-posts-list">
+                  {#each influencer.top_posts as post}
+                    <li class="influencer-post-item">
+                      <span class="influencer-post-title">{post.title}</span>
+                      <span class="influencer-post-meta">
+                        (r/{post.subreddit}, {post.score} pts)
+                      </span>
+                      <a
+                        href={post.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="influencer-post-link"
+                      >
+                        <ExternalLink class="post-link-icon" />
+                      </a>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {/if}
           </div>
         {/each}
       </CardGrid>
@@ -445,6 +489,7 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    margin-bottom: 0.375rem;
   }
 
   .influencer-platform {
@@ -457,6 +502,108 @@
     font-family: var(--font-mono);
     font-size: 0.625rem;
     color: #a1a1aa;
+  }
+
+  .influencer-focus {
+    font-size: 0.75rem;
+    color: #71717a;
+    line-height: 1.45;
+    margin: 0 0 0.375rem 0;
+  }
+
+  .influencer-subs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-bottom: 0.375rem;
+  }
+
+  .influencer-sub-tag {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 9999px;
+    color: #a1a1aa;
+  }
+
+  .influencer-posts-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    background: none;
+    border: none;
+    padding: 0.125rem 0;
+    font-size: 0.6875rem;
+    font-family: var(--font-mono);
+    color: #a1a1aa;
+    cursor: pointer;
+    transition: color 0.15s ease;
+  }
+
+  .influencer-posts-toggle:hover {
+    color: #e55a28;
+  }
+
+  :global(.toggle-chevron) {
+    width: 0.75rem;
+    height: 0.75rem;
+    transition: transform 0.15s ease;
+  }
+
+  :global(.toggle-chevron.expanded) {
+    transform: rotate(90deg);
+  }
+
+  .influencer-posts-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.25rem 0 0 0;
+  }
+
+  .influencer-post-item {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+    font-size: 0.6875rem;
+    padding: 0.1875rem 0;
+    color: #71717a;
+  }
+
+  .influencer-post-item::before {
+    content: "\00B7";
+    color: #e55a28;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .influencer-post-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+
+  .influencer-post-meta {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    color: #a1a1aa;
+    white-space: nowrap;
+  }
+
+  .influencer-post-link {
+    flex-shrink: 0;
+    color: #a1a1aa;
+    transition: color 0.15s ease;
+  }
+
+  .influencer-post-link:hover {
+    color: #e55a28;
+  }
+
+  :global(.post-link-icon) {
+    width: 0.625rem;
+    height: 0.625rem;
   }
 
   /* Messaging Box */

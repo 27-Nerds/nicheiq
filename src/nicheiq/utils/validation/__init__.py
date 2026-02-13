@@ -10,14 +10,22 @@ from .crew_guardrails import (
     validate_competitive_enhancements,
     validate_content_categorization,
     validate_content_strategy_output,
+    validate_data_implementation_plan,
     validate_data_source_evaluation,
     validate_diversity,
     validate_filtered_concepts,
     validate_geographic_tier_output,
     validate_implementation_plan_output,
+    validate_keyword_summary,
+    validate_pricing_strategy,
     validate_raw_concepts,
+    validate_site_structure,
+    validate_solution_refinement,
     validate_solution_selection,
     validate_strategic_tier_output,
+    validate_traffic_monetization,
+    validate_trend_narrative,
+    validate_user_flows,
 )
 # Removed: validate_implementation_guide_output, validate_implementation_guide_light_output (Task 5 deleted)
 from .keyword_validator import KeywordRelevanceValidator
@@ -56,5 +64,13 @@ __all__ = [
     # SEO strategy guardrails (Tasks 2-3)
     "validate_content_strategy_output",
     "validate_implementation_plan_output",
-    # Removed: validate_implementation_guide_output, validate_implementation_guide_light_output (Task 5 deleted)
+    # Crew guardrails (medium/high-priority crews)
+    "validate_data_implementation_plan",
+    "validate_keyword_summary",
+    "validate_pricing_strategy",
+    "validate_site_structure",
+    "validate_solution_refinement",
+    "validate_traffic_monetization",
+    "validate_trend_narrative",
+    "validate_user_flows",
 ]

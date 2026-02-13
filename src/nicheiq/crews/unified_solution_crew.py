@@ -470,23 +470,29 @@ class UnifiedSolutionCrew:
 
     # ========== EXECUTION ==========
 
-    def execute_pipeline(self) -> tuple[
+    def execute_pipeline(self, skip_selection: bool = False) -> tuple[
         IdeaGenerationResult,
-        SolutionSelection,
+        SolutionSelection | None,
     ]:
         """
-        Execute complete solution pipeline using divergent-convergent architecture (4 tasks).
+        Execute complete solution pipeline using divergent-convergent architecture.
 
         Architecture:
         1. Divergent Exploration - Generate 8-12 raw concepts with forced ideation
         2. Diversity Filtering - Filter to 5-7 unique concepts
         3. Solution Refinement - Expand to 3-5 full specifications
-        4. Solution Selection - Select best solution
+        4. Solution Selection - Select best solution (skipped when skip_selection=True)
 
         Competitive analysis is run on-demand per-solution (not in pipeline).
 
+        Args:
+            skip_selection: If True, skip Task 4 (LLM selection/scoring).
+                Used in interactive mode where the user selects solutions
+                and scores are computed from Task 3 fields.
+
         Returns:
-            Tuple of (refined_solutions, solution_selection)
+            Tuple of (refined_solutions, solution_selection).
+            solution_selection is None when skip_selection=True.
         """
         logger.info("Starting Unified Solution Pipeline (Divergent-Convergent Architecture)...")
 
@@ -503,7 +509,7 @@ class UnifiedSolutionCrew:
                     selection_criteria_scores=[],
                     runner_up_solutions=[],
                     recommended_focus=""
-                ),
+                ) if not skip_selection else None,
             )
 
         try:
@@ -564,8 +570,14 @@ class UnifiedSolutionCrew:
                 logger.info(f"Passing audience intelligence: {len(self.audience_mapping.common_vocabulary or [])} vocabulary terms, {len(self.audience_mapping.audience_segments or [])} segments")
 
             # Execute crew with divergent-convergent pipeline
-            logger.info("Executing Pipeline: Divergent Exploration → Diversity Filtering → Solution Refinement → Selection...")
+            task_count = "3-task" if skip_selection else "4-task"
+            logger.info(f"Executing Pipeline: Divergent Exploration → Diversity Filtering → Solution Refinement{'' if skip_selection else ' → Selection'} ({task_count} flow)...")
             self._last_crew = self.crew()  # Store for usage_metrics access
+
+            # When skipping selection, trim to first 3 tasks (remove Task 4)
+            if skip_selection:
+                self._last_crew.tasks = self._last_crew.tasks[:3]
+
             crew_output = self._last_crew.kickoff(inputs={
                 "analysis_summary": self.pain_point_analysis.analysis_summary,
                 "high_priority_count": len(high_priority),
@@ -584,19 +596,12 @@ class UnifiedSolutionCrew:
                 **audience_context,
             })
 
-            # Extract final result (Task 4 output - SolutionSelection)
-            solution_selection = crew_output.pydantic
-            if solution_selection is None:
-                raise ValueError(
-                    "Task 4 (Solution Selection) returned None pydantic output. "
-                    "Check task configuration and agent prompt."
-                )
-
             # Access intermediate task outputs (CrewAI provides access via crew_output.tasks_outputs)
             task_outputs = crew_output.tasks_output if hasattr(crew_output, 'tasks_output') else []
-            if len(task_outputs) < 4:
+            min_expected = 3 if skip_selection else 4
+            if len(task_outputs) < min_expected:
                 raise ValueError(
-                    f"Expected 4 task outputs, got {len(task_outputs)}. "
+                    f"Expected {min_expected} task outputs, got {len(task_outputs)}. "
                     "Pipeline may have failed mid-execution."
                 )
 
@@ -631,6 +636,16 @@ class UnifiedSolutionCrew:
                         )
                         solution.novelty_score = 0.45
 
+            # Extract Task 4 (selection) if not skipped
+            solution_selection = None
+            if not skip_selection:
+                solution_selection = crew_output.pydantic
+                if solution_selection is None:
+                    raise ValueError(
+                        "Task 4 (Solution Selection) returned None pydantic output. "
+                        "Check task configuration and agent prompt."
+                    )
+
             # Save task-level checkpoints for resume capability
             if self.checkpoint_mgr:
                 if raw_concepts:
@@ -658,7 +673,10 @@ class UnifiedSolutionCrew:
             logger.info(f"  - Filtered concepts: {len(filtered_concepts.concepts) if filtered_concepts else 0}")
             logger.info(f"  - Removed concepts: {removed_count}")
             logger.info(f"  - Final solutions: {len(refined_solutions.solution_ideas)}")
-            logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
+            if solution_selection:
+                logger.info(f"  - Selected: {solution_selection.selected_solution_name}")
+            else:
+                logger.info("  - Selection: skipped (interactive mode)")
 
             return (refined_solutions, solution_selection)
 
@@ -681,7 +699,7 @@ class UnifiedSolutionCrew:
                         selection_criteria_scores=[],
                         runner_up_solutions=[],
                         recommended_focus=""
-                    ),
+                    ) if not skip_selection else None,
                 )
             logger.error(f"Unified pipeline failed: {e}")
             raise

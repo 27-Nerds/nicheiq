@@ -27,6 +27,9 @@ audience_mapping_analysis:
     **Discussion Quality:**
     {discussion_quality_summary}
 
+    **PRE-COMPUTED INFLUENCER DATA:**
+    {pre_computed_influencers}
+
     **Subreddit Distribution:**
     {subreddit_distribution}
 
@@ -83,16 +86,11 @@ audience_mapping_analysis:
     - Avoid generic segments like "small business owners" - be specific
 
     ### 2. Influencer & Community Mapping
-    - Identify 5-10 key influencers, thought leaders, or community hubs:
-      - Use ACTUAL usernames, subreddit names, Twitter accounts mentioned in discussions
-      - Platform (Reddit, Twitter, YouTube, blog, podcast)
-      - Follower estimate (if available from context)
-      - Relevance score (0-1) based on how often they're mentioned/engaged
-      - Content focus (what topics they cover)
-      - Engagement level (High/Medium/Low - based on discussion activity)
-      - Outreach priority (High/Medium/Low for partnership potential)
-
-    - List 5-10 community hubs (subreddits, Discord servers, forums, Slack groups mentioned)
+    - The key_influencers list has been pre-computed from engagement data (see above).
+    - For EACH pre-computed influencer, write a specific content_focus (1-2 sentences)
+      describing what topics they discuss, based on their actual posts/comments.
+    - Keep the exact names, platforms, and scores as provided — only add content_focus.
+    - Still identify 5-10 community hubs (subreddits, Discord servers, forums, Slack groups)
 
     ### 3. Vocabulary & Messaging Analysis
     - Extract 10-15 terms/phrases that the audience ACTUALLY uses (from discussions)

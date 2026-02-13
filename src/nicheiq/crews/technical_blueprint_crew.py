@@ -15,6 +15,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.technical_blueprint import SiteStructure, UserFlowsSection
 from ..utils.llm_service import build_llm_kwargs
+from ..utils.validation.crew_guardrails import validate_site_structure, validate_user_flows
 
 
 @CrewBase
@@ -83,6 +84,8 @@ class TechnicalBlueprintCrew:
             config=self.tasks_config["site_structure_task"],
             agent=self.product_architect(),
             output_pydantic=SiteStructure,
+            guardrail=validate_site_structure,
+            guardrail_max_retries=2,
         )
 
     @task
@@ -98,6 +101,8 @@ class TechnicalBlueprintCrew:
             agent=self.ux_designer(),
             output_pydantic=UserFlowsSection,
             context=[self.site_structure_task()],  # Uses site structure for page references
+            guardrail=validate_user_flows,
+            guardrail_max_retries=2,
         )
 
     @crew

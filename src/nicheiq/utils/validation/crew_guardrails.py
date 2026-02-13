@@ -17,15 +17,21 @@ from typing import Any
 from loguru import logger
 
 from ...models.competitor import CompetitiveAnalysisResult
-from ...models.data_source import SourceEvaluationReport
+from ...models.data_source import DataImplementationPlan, SourceEvaluationReport
 from ...models.landing_page import AnimatedHTMLResult, HTMLPageResult, QAReviewResult
 from ...models.pain_point import ContentCategorizationReport, QuoteEnrichmentResult
-from ...models.research_state import AudienceMappingResult
+from ...models.research_state import (
+    AudienceMappingResult,
+    PricingStrategyResult,
+    TrafficMonetizationResult,
+    TrendNarrativeOutput,
+)
 from ...models.seo_strategy import (
     CategoryLightResult,
     ContentStrategyResultLight,
     GeographicLightResult,
     ImplementationPlanResult,
+    KeywordSummaryResult,
     StrategicLightResult,
 )
 from ...models.solution_idea import (
@@ -34,7 +40,9 @@ from ...models.solution_idea import (
     IdeaGenerationResult,
     RawConceptList,
 )
+from ...models.solution_refinement import SolutionRefinement
 from ...models.solution_selection import SolutionSelection
+from ...models.technical_blueprint import SiteStructure, UserFlowsSection
 from ..parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 
 
@@ -1631,4 +1639,274 @@ def validate_solution_selection(task_output) -> tuple[bool, Any]:
         return (False, "recommended_focus is required.")
 
     logger.info(f"✓ Solution selection guardrail passed: '{result.selected_solution_name}'")
+    return (True, task_output.raw)
+
+
+def validate_traffic_monetization(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for traffic_monetization_analysis_task.
+
+    Validates:
+    1. JSON parses into TrafficMonetizationResult
+    2. solution_name present
+    3. Key revenue fields non-empty
+    4. At least 1 recommended_ad_networks entry
+    5. At least 1 recommended_affiliate_programs entry
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, TrafficMonetizationResult, "Traffic monetization"
+    )
+    if error:
+        return (False, error)
+
+    if not result.solution_name or not result.solution_name.strip():
+        return (False, "solution_name is required.")
+
+    if not result.estimated_monthly_revenue_range or not result.estimated_monthly_revenue_range.strip():
+        return (False, "estimated_monthly_revenue_range is required.")
+
+    if not result.recommended_ad_networks:
+        return (False, "recommended_ad_networks must contain at least 1 entry (e.g. 'Google AdSense').")
+
+    if not result.recommended_affiliate_programs:
+        return (False, "recommended_affiliate_programs must contain at least 1 entry.")
+
+    logger.info(f"✓ Traffic monetization guardrail passed: '{result.solution_name}'")
+    return (True, task_output.raw)
+
+
+def validate_pricing_strategy(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for pricing_strategy_analysis_task (Stage 7).
+
+    Validates:
+    1. JSON parses into PricingStrategyResult
+    2. solution_name present and non-empty
+    3. pricing_rationale >= 50 chars
+    4. estimated_arpu present and non-empty
+    5. estimated_ltv present and non-empty
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, PricingStrategyResult, "Pricing strategy"
+    )
+    if error:
+        return (False, error)
+
+    if not result.solution_name or not result.solution_name.strip():
+        return (False, "solution_name is required.")
+
+    if len(result.pricing_rationale) < 50:
+        return (
+            False,
+            f"pricing_rationale is only {len(result.pricing_rationale)} chars, need >= 50. "
+            "Provide a detailed rationale explaining why this pricing strategy was chosen.",
+        )
+
+    if not result.estimated_arpu or not result.estimated_arpu.strip():
+        return (False, "estimated_arpu is required (e.g., '$32/month').")
+
+    if not result.estimated_ltv or not result.estimated_ltv.strip():
+        return (False, "estimated_ltv is required (e.g., '$384 - $960').")
+
+    logger.info(f"✓ Pricing strategy guardrail passed: '{result.solution_name}'")
+    return (True, task_output.raw)
+
+
+def validate_solution_refinement(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for refine_solution_strategy_task (Stage 10).
+
+    Validates:
+    1. JSON parses into SolutionRefinement
+    2. geographic_priorities >= 1 entry
+    3. feature_priorities >= 1 entry
+    4. strategic_insights >= 3 entries
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, SolutionRefinement, "Solution refinement"
+    )
+    if error:
+        return (False, error)
+
+    if not result.geographic_priorities:
+        return (False, "geographic_priorities must contain at least 1 entry.")
+
+    if not result.feature_priorities:
+        return (False, "feature_priorities must contain at least 1 entry.")
+
+    if len(result.strategic_insights) < 3:
+        return (
+            False,
+            f"strategic_insights has only {len(result.strategic_insights)} entries, need >= 3. "
+            "Provide at least 3 actionable insights from keyword analysis.",
+        )
+
+    logger.info(f"✓ Solution refinement guardrail passed: {len(result.strategic_insights)} insights")
+    return (True, task_output.raw)
+
+
+def validate_trend_narrative(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for trend_longevity_analysis_task (Stage 11).
+
+    Validates:
+    1. JSON parses into TrendNarrativeOutput
+    2. longevity_rationale >= 50 chars
+    3. community_growth_indicators >= 3 entries
+    4. trend_reversal_risks >= 3 entries
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, TrendNarrativeOutput, "Trend narrative"
+    )
+    if error:
+        return (False, error)
+
+    if len(result.longevity_rationale) < 50:
+        return (
+            False,
+            f"longevity_rationale is only {len(result.longevity_rationale)} chars, need >= 50. "
+            "Provide 2-3 sentences explaining the longevity verdict with specific trend data.",
+        )
+
+    if len(result.community_growth_indicators) < 3:
+        return (
+            False,
+            f"community_growth_indicators has only {len(result.community_growth_indicators)} entries, need >= 3. "
+            "Provide 3-5 signals of community growth or decline.",
+        )
+
+    if len(result.trend_reversal_risks) < 3:
+        return (
+            False,
+            f"trend_reversal_risks has only {len(result.trend_reversal_risks)} entries, need >= 3. "
+            "Provide 3-5 factors that could reverse positive trends.",
+        )
+
+    logger.info(f"✓ Trend narrative guardrail passed: verdict='{result.longevity_verdict}'")
+    return (True, task_output.raw)
+
+
+def validate_site_structure(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for site_structure_task (Stage 10.5, task 1).
+
+    Validates:
+    1. JSON parses into SiteStructure
+    2. overview present and non-empty
+    3. sections >= 2 entries
+    4. mvp_page_count >= 1
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, SiteStructure, "Site structure"
+    )
+    if error:
+        return (False, error)
+
+    if not result.overview or not result.overview.strip():
+        return (False, "overview is required (1-2 sentence architecture philosophy).")
+
+    if len(result.sections) < 2:
+        return (
+            False,
+            f"sections has only {len(result.sections)} entries, need >= 2. "
+            "Provide at least 2 logical site sections with pages.",
+        )
+
+    if result.mvp_page_count < 1:
+        return (False, "mvp_page_count must be >= 1.")
+
+    logger.info(f"✓ Site structure guardrail passed: {len(result.sections)} sections, {result.mvp_page_count} MVP pages")
+    return (True, task_output.raw)
+
+
+def validate_user_flows(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for user_flows_task (Stage 10.5, task 2).
+
+    Validates:
+    1. JSON parses into UserFlowsSection
+    2. flows >= 1 entry
+    3. Each flow has steps >= 3
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, UserFlowsSection, "User flows"
+    )
+    if error:
+        return (False, error)
+
+    if not result.flows:
+        return (False, "flows must contain at least 1 user journey flow.")
+
+    for i, flow in enumerate(result.flows):
+        if len(flow.steps) < 3:
+            return (
+                False,
+                f"Flow '{flow.flow_name}' (index {i}) has only {len(flow.steps)} steps, need >= 3. "
+                "Each user flow must have at least 3 sequential steps.",
+            )
+
+    logger.info(f"✓ User flows guardrail passed: {len(result.flows)} flows")
+    return (True, task_output.raw)
+
+
+def validate_data_implementation_plan(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for create_data_roadmap_task (Stage 13, task 3).
+
+    Validates:
+    1. JSON parses into DataImplementationPlan
+    2. implementation_phases >= 1 entry
+    3. estimated_monthly_cost present and non-empty
+    4. implementation_roadmap >= 50 chars
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, DataImplementationPlan, "Data implementation plan"
+    )
+    if error:
+        return (False, error)
+
+    if not result.implementation_phases:
+        return (False, "implementation_phases must contain at least 1 entry.")
+
+    if not result.estimated_monthly_cost or not result.estimated_monthly_cost.strip():
+        return (False, "estimated_monthly_cost is required (e.g., '$250-500/month').")
+
+    if len(result.implementation_roadmap) < 50:
+        return (
+            False,
+            f"implementation_roadmap is only {len(result.implementation_roadmap)} chars, need >= 50. "
+            "Provide a detailed phased approach for data integration (2-3 paragraphs).",
+        )
+
+    logger.info(f"✓ Data implementation plan guardrail passed: {len(result.implementation_phases)} phases")
+    return (True, task_output.raw)
+
+
+def validate_keyword_summary(task_output) -> tuple[bool, Any]:
+    """
+    Guardrail for synthesize_keyword_summary_task / synthesize_keyword_summary_parallel_task (Stage 6).
+
+    Validates:
+    1. JSON parses into KeywordSummaryResult
+    2. key_findings >= 1 entry
+    3. competitive_positioning present and >= 50 chars
+    """
+    result, error = _parse_pydantic_from_task_output(
+        task_output, KeywordSummaryResult, "Keyword summary"
+    )
+    if error:
+        return (False, error)
+
+    if not result.key_findings:
+        return (False, "key_findings must contain at least 1 entry.")
+
+    if not result.competitive_positioning or len(result.competitive_positioning) < 50:
+        length = len(result.competitive_positioning) if result.competitive_positioning else 0
+        return (
+            False,
+            f"competitive_positioning is only {length} chars, need >= 50. "
+            "Provide keyword gaps to exploit and unique positioning angles (markdown, 2-4 sections).",
+        )
+
+    logger.info(f"✓ Keyword summary guardrail passed: {len(result.key_findings)} findings")
     return (True, task_output.raw)

@@ -17,6 +17,7 @@ from ..config.settings import settings
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult
 from ..models.social_content import RedditPost, TwitterThread
+from ..utils.crew_helpers.influencer_pre_compute import compute_influencer_profiles
 from ..utils.validation.crew_guardrails import validate_audience_mapping
 
 
@@ -348,6 +349,24 @@ class AudienceMappingCrew:
         logger.info(f"  Analyzing {total_discussions} social discussions...")
         logger.info(f"  Knowledge sources: {len(self.knowledge_sources)} source(s) ready for semantic search")
 
+        # Pre-compute influencer metrics from raw social data
+        reddit_client = None
+        try:
+            import praw
+            reddit_client = praw.Reddit(
+                client_id=settings.reddit_client_id,
+                client_secret=settings.reddit_client_secret,
+                user_agent=settings.reddit_user_agent,
+                check_for_async=False,
+            )
+        except Exception as e:
+            logger.warning(f"  Could not create PRAW client for influencer enrichment: {e}")
+
+        influencer_data = compute_influencer_profiles(
+            self.reddit_posts, self.twitter_threads, reddit_client=reddit_client
+        )
+        logger.info(f"  Pre-computed {len(influencer_data['profiles'])} influencer profiles")
+
         # Format pain points summary for task input
         pain_points_summary = self._format_pain_points(pain_point_analysis)
 
@@ -383,6 +402,7 @@ class AudienceMappingCrew:
             "subreddit_distribution": subreddit_summary if subreddits else "No Reddit data",
             "pain_points_summary": pain_points_summary,
             "discussion_quality_summary": discussion_quality_summary,
+            "pre_computed_influencers": influencer_data["influencer_names_formatted"],
         }
 
         try:
@@ -393,6 +413,12 @@ class AudienceMappingCrew:
 
             if result and result.pydantic:
                 audience_result = result.pydantic
+
+                # Authoritative post-merge: replace LLM influencer metrics with pre-computed data
+                audience_result = self._merge_influencer_data(
+                    audience_result, influencer_data["profiles"]
+                )
+
                 logger.info("[Stage 6.5] Audience Mapping Complete")
                 logger.info(f"  Audience Segments: {len(audience_result.audience_segments)}")
                 logger.info(f"  Primary Target: {audience_result.primary_target_segment}")
@@ -430,6 +456,72 @@ class AudienceMappingCrew:
             summary.append(f"- {title} (Severity: {severity:.2f})")
 
         return "\n".join(summary)
+
+    def _merge_influencer_data(
+        self,
+        audience_result: AudienceMappingResult,
+        pre_computed: list[dict],
+    ) -> AudienceMappingResult:
+        """
+        Authoritative merge: pre-computed metrics replace LLM values.
+
+        LLM only contributes ``content_focus``. If fewer than 5 pre-computed
+        profiles exist, we keep the LLM's original list entirely.
+        """
+        from ..models.research_state import InfluencerProfile, InfluencerTopPost
+
+        if len(pre_computed) < 5:
+            logger.info("  Fewer than 5 pre-computed influencers; keeping LLM list as-is")
+            return audience_result
+
+        # Build lookup from LLM influencers: normalized name -> content_focus
+        def _normalize(name: str) -> str:
+            return name.lower().lstrip("u/").lstrip("@").strip()
+
+        llm_focus: dict[str, str] = {}
+        for inf in audience_result.key_influencers:
+            llm_focus[_normalize(inf.name)] = inf.content_focus
+
+        # Check overlap
+        pre_names = {_normalize(p["name"]) for p in pre_computed}
+        overlap = pre_names & set(llm_focus.keys())
+        if len(overlap) < len(pre_computed) * 0.5:
+            logger.warning(
+                f"  Low LLM/pre-computed overlap: {len(overlap)}/{len(pre_computed)} "
+                f"({len(overlap)/len(pre_computed)*100:.0f}%) — consider prompt tuning"
+            )
+
+        # Build final list from pre-computed, pulling content_focus from LLM where matched
+        merged = []
+        for p in pre_computed:
+            norm = _normalize(p["name"])
+            content_focus = llm_focus.get(norm, p["content_focus"])
+
+            top_posts = [
+                InfluencerTopPost(
+                    title=tp["title"],
+                    subreddit=tp["subreddit"],
+                    score=tp["score"],
+                    url=tp["url"],
+                )
+                for tp in p.get("top_posts", [])
+            ]
+
+            merged.append(InfluencerProfile(
+                name=p["name"],
+                platform=p["platform"],
+                relevance_score=p["relevance_score"],
+                engagement_level=p["engagement_level"],
+                outreach_priority=p["outreach_priority"],
+                follower_estimate=p["follower_estimate"],
+                content_focus=content_focus,
+                top_subreddits=p.get("top_subreddits", []),
+                top_posts=top_posts,
+            ))
+
+        audience_result.key_influencers = merged
+        logger.info(f"  Merged {len(merged)} authoritative influencer profiles")
+        return audience_result
 
     @property
     def usage_metrics(self) -> dict | None:

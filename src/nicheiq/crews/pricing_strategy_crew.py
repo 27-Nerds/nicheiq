@@ -14,6 +14,7 @@ from loguru import logger
 
 from ..config.settings import settings
 from ..utils.llm_service import build_llm_kwargs
+from ..utils.validation.crew_guardrails import validate_pricing_strategy
 from ..models.competitor import find_landscape_for_solution
 from ..models.research_state import PricingStrategyResult
 from ..utils.crew_helpers import (
@@ -79,6 +80,8 @@ class PricingStrategyCrew:
             config=self.tasks_config["pricing_strategy_analysis"],
             agent=self.pricing_analyst(),
             output_pydantic=PricingStrategyResult,
+            guardrail=validate_pricing_strategy,
+            guardrail_max_retries=2,
         )
 
     @crew
