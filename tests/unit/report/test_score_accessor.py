@@ -2,7 +2,7 @@
 Unit tests for ScoreAccessor fallback logic.
 
 Tests score extraction with various missing data scenarios,
-verifying that defaults are used appropriately and warnings are logged.
+verifying that None is returned for missing scores (no silent defaults).
 """
 
 from unittest.mock import MagicMock
@@ -13,18 +13,16 @@ from nicheiq.report.utils.score_accessor import ScoreAccessor
 
 
 class TestScoreAccessorFallbacks:
-    """Test ScoreAccessor default fallback behavior."""
+    """Test ScoreAccessor fallback behavior with Optional returns."""
 
     def test_get_market_fit_from_solution_scores(self):
         """Test market_fit extracted from SolutionScores."""
-        # Mock solution selection with scores
         solution_selection = MagicMock()
         solution_score = MagicMock()
         solution_score.solution_name = "TestSolution"
         solution_score.market_fit_score = 0.85
         solution_selection.all_solution_scores = [solution_score]
 
-        # Mock solution
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = None
@@ -32,7 +30,6 @@ class TestScoreAccessorFallbacks:
         accessor = ScoreAccessor(solution_selection)
         score = accessor.get_market_fit(solution)
 
-        # Should use SolutionScores value
         assert score == 0.85
 
     def test_get_market_fit_fallback_to_solution_field(self):
@@ -46,11 +43,10 @@ class TestScoreAccessorFallbacks:
         accessor = ScoreAccessor(solution_selection)
         score = accessor.get_market_fit(solution)
 
-        # Should use SolutionIdea field
         assert score == 0.72
 
-    def test_get_market_fit_uses_default(self):
-        """Test market_fit uses default when all sources missing."""
+    def test_get_market_fit_returns_none_when_all_missing(self):
+        """Test market_fit returns None when all sources missing."""
         solution_selection = None
 
         solution = MagicMock()
@@ -58,16 +54,30 @@ class TestScoreAccessorFallbacks:
         solution.market_fit_score = None
 
         accessor = ScoreAccessor(solution_selection)
-        score = accessor.get_market_fit(solution, default=0.5)
+        score = accessor.get_market_fit(solution)
 
-        # Should use default
-        assert score == 0.5
+        assert score is None
 
-        # Note: Logging verification would require loguru sink setup
-        # For now, we just verify the default value is returned
+    def test_get_competitive_advantage_from_solution_scores(self):
+        """Test competitive_advantage from SolutionScores."""
+        solution_selection = MagicMock()
+        solution_score = MagicMock()
+        solution_score.solution_name = "TestSolution"
+        solution_score.competitive_advantage_score = 0.73
+        solution_selection.all_solution_scores = [solution_score]
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.market_fit_score = 0.80
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_competitive_advantage(solution)
+
+        assert score == 0.73
 
     def test_get_competitive_advantage_uses_market_fit_proxy(self):
         """Test competitive_advantage falls back to market_fit as proxy."""
+        # When no SolutionScores found, falls back to market_fit proxy
         solution_selection = None
 
         solution = MagicMock()
@@ -80,7 +90,37 @@ class TestScoreAccessorFallbacks:
         # Should use market_fit as proxy
         assert score == 0.80
 
-        # Note: Logging verification would require loguru sink setup
+    def test_get_competitive_advantage_uses_market_fit_proxy_when_ca_none(self):
+        """Test competitive_advantage falls back to market_fit when CA score is None."""
+        solution_selection = MagicMock()
+        solution_score = MagicMock(spec=['solution_name', 'competitive_advantage_score', 'market_fit_score'])
+        solution_score.solution_name = "TestSolution"
+        solution_score.competitive_advantage_score = None
+        solution_score.market_fit_score = 0.85
+        solution_selection.all_solution_scores = [solution_score]
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.market_fit_score = 0.80
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_competitive_advantage(solution)
+
+        # Should use market_fit as proxy (solution field, not SolutionScores)
+        assert score == 0.85
+
+    def test_get_competitive_advantage_returns_none_when_all_missing(self):
+        """Test competitive_advantage returns None when market_fit also None."""
+        solution_selection = None
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.market_fit_score = None
+
+        accessor = ScoreAccessor(solution_selection)
+        score = accessor.get_competitive_advantage(solution)
+
+        assert score is None
 
     def test_get_technical_feasibility_from_solution(self):
         """Test technical_feasibility from SolutionIdea field."""
@@ -95,8 +135,8 @@ class TestScoreAccessorFallbacks:
 
         assert score == 0.78
 
-    def test_get_technical_feasibility_uses_default(self):
-        """Test technical_feasibility uses default when missing."""
+    def test_get_technical_feasibility_returns_none_when_missing(self):
+        """Test technical_feasibility returns None when missing."""
         solution_selection = None
 
         solution = MagicMock()
@@ -104,9 +144,9 @@ class TestScoreAccessorFallbacks:
         solution.technical_feasibility_score = None
 
         accessor = ScoreAccessor(solution_selection)
-        score = accessor.get_technical_feasibility(solution, default=0.6)
+        score = accessor.get_technical_feasibility(solution)
 
-        assert score == 0.6
+        assert score is None
 
     def test_get_seo_growth_from_solution_scores(self):
         """Test seo_growth from SolutionScores."""
@@ -153,6 +193,19 @@ class TestScoreAccessorFallbacks:
         # Average of 0.80 (market_fit) and 0.80 (competitive_adv proxy)
         assert confidence == 0.80
 
+    def test_get_confidence_score_returns_none_when_scores_missing(self):
+        """Test confidence score returns None when underlying scores are None."""
+        solution_selection = None
+
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.market_fit_score = None
+
+        accessor = ScoreAccessor(solution_selection)
+        confidence = accessor.get_confidence_score(solution)
+
+        assert confidence is None
+
     def test_get_all_scores_returns_dict(self):
         """Test get_all_scores returns complete dict."""
         solution_selection = None
@@ -176,20 +229,24 @@ class TestScoreAccessorFallbacks:
         assert scores["technical_feasibility"] == 0.75
         assert scores["seo_growth"] == 0.70
 
-    def test_custom_default_values(self):
-        """Test custom default values are respected."""
+    def test_get_all_scores_returns_none_values(self):
+        """Test get_all_scores includes None for missing scores."""
         solution_selection = None
 
         solution = MagicMock()
         solution.solution_name = "TestSolution"
         solution.market_fit_score = None
+        solution.technical_feasibility_score = None
+        solution.seo_scalability_score = None
+        solution.seo_scalability_score_refined = None
 
         accessor = ScoreAccessor(solution_selection)
+        scores = accessor.get_all_scores(solution)
 
-        # Test different custom defaults
-        assert accessor.get_market_fit(solution, default=0.3) == 0.3
-        assert accessor.get_market_fit(solution, default=0.7) == 0.7
-        assert accessor.get_market_fit(solution, default=0.0) == 0.0
+        assert scores["market_fit"] is None
+        assert scores["competitive_advantage"] is None
+        assert scores["technical_feasibility"] is None
+        assert scores["seo_growth"] is None
 
     def test_get_scores_not_found(self):
         """Test get_scores when solution name not in all_solution_scores."""
@@ -202,10 +259,7 @@ class TestScoreAccessorFallbacks:
         accessor = ScoreAccessor(solution_selection)
         scores = accessor.get_scores("TestSolution")
 
-        # Should return None
         assert scores is None
-
-        # Note: Logging verification would require loguru sink setup
 
     def test_no_solution_selection(self):
         """Test accessor works with None solution_selection."""
@@ -240,7 +294,7 @@ class TestSeoScoreCanonical:
         assert score == 0.84
 
     def test_uses_selection_when_no_refined(self):
-        """Fall back to selection criteria when refined is None."""
+        """Fall back to all_solution_scores when refined is None."""
         solution_selection = MagicMock()
         solution_score = MagicMock()
         solution_score.solution_name = "TestSolution"
@@ -269,8 +323,8 @@ class TestSeoScoreCanonical:
         score = accessor.get_seo_score_canonical(solution)
         assert score == 0.70
 
-    def test_uses_default_when_all_missing(self):
-        """Return default when all sources are None."""
+    def test_returns_none_when_all_missing(self):
+        """Return None when all sources are missing."""
         solution_selection = None
 
         solution = MagicMock()
@@ -280,7 +334,7 @@ class TestSeoScoreCanonical:
 
         accessor = ScoreAccessor(solution_selection)
         score = accessor.get_seo_score_canonical(solution)
-        assert score == 0.5
+        assert score is None
 
     def test_zero_is_valid_not_falsy(self):
         """0.0 should be returned as valid, not treated as falsy."""
@@ -292,17 +346,6 @@ class TestSeoScoreCanonical:
         accessor = ScoreAccessor(None)
         score = accessor.get_seo_score_canonical(solution)
         assert score == 0.0
-
-    def test_custom_default(self):
-        """Custom default value should be respected."""
-        solution = MagicMock()
-        solution.solution_name = "TestSolution"
-        solution.seo_scalability_score_refined = None
-        solution.seo_scalability_score = None
-
-        accessor = ScoreAccessor(None)
-        score = accessor.get_seo_score_canonical(solution, default=0.3)
-        assert score == 0.3
 
     def test_works_with_none_solution_selection(self):
         """Should work when ScoreAccessor has None solution_selection but refined is set."""
@@ -319,8 +362,8 @@ class TestSeoScoreCanonical:
 class TestScoreAccessorEdgeCases:
     """Test edge cases and None handling."""
 
-    def test_none_scores_use_defaults(self):
-        """Test that None scores consistently use defaults."""
+    def test_none_scores_return_none(self):
+        """Test that None scores consistently return None."""
         solution_selection = None
 
         solution = MagicMock()
@@ -328,14 +371,14 @@ class TestScoreAccessorEdgeCases:
         solution.market_fit_score = None
         solution.technical_feasibility_score = None
         solution.seo_scalability_score = None
+        solution.seo_scalability_score_refined = None
 
         accessor = ScoreAccessor(solution_selection)
 
-        # All should use default 0.5
-        assert accessor.get_market_fit(solution) == 0.5
-        assert accessor.get_competitive_advantage(solution) == 0.5
-        assert accessor.get_technical_feasibility(solution) == 0.5
-        assert accessor.get_seo_growth(solution) == 0.5
+        assert accessor.get_market_fit(solution) is None
+        assert accessor.get_competitive_advantage(solution) is None
+        assert accessor.get_technical_feasibility(solution) is None
+        assert accessor.get_seo_growth(solution) is None
 
     def test_zero_scores_are_valid(self):
         """Test that 0.0 scores are treated as valid (not None)."""
@@ -348,7 +391,7 @@ class TestScoreAccessorEdgeCases:
 
         accessor = ScoreAccessor(solution_selection)
 
-        # 0.0 is valid, should not use default
+        # 0.0 is valid, should not return None
         assert accessor.get_market_fit(solution) == 0.0
         assert accessor.get_technical_feasibility(solution) == 0.0
 
@@ -366,6 +409,51 @@ class TestScoreAccessorEdgeCases:
 
         # Should fall back to solution field
         assert score == 0.75
+
+
+class TestSoloDevFeasibility:
+    """Test get_solo_dev_feasibility method."""
+
+    def test_returns_float_from_solution(self):
+        """Test solo_dev_feasibility returns float from solution."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.solo_dev_feasibility = 0.85
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_solo_dev_feasibility(solution)
+        assert score == 0.85
+
+    def test_returns_none_when_missing(self):
+        """Test solo_dev_feasibility returns None when not set."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.solo_dev_feasibility = None
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_solo_dev_feasibility(solution)
+        assert score is None
+
+    def test_converts_int_to_float(self):
+        """Test solo_dev_feasibility converts int to float."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.solo_dev_feasibility = 1
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_solo_dev_feasibility(solution)
+        assert score == 1.0
+        assert isinstance(score, float)
+
+    def test_returns_none_for_string(self):
+        """Test solo_dev_feasibility returns None for non-numeric values."""
+        solution = MagicMock()
+        solution.solution_name = "TestSolution"
+        solution.solo_dev_feasibility = "high"
+
+        accessor = ScoreAccessor(None)
+        score = accessor.get_solo_dev_feasibility(solution)
+        assert score is None
 
 
 class TestConfidenceScoreQualityAdjustment:
@@ -416,3 +504,10 @@ class TestConfidenceScoreQualityAdjustment:
         )
         # base 0.80 * 0.90 = 0.72
         assert score == pytest.approx(0.80 * 0.90)
+
+    def test_get_confidence_score_returns_none_when_scores_missing(self):
+        """Confidence returns None when market_fit is None."""
+        solution = self._make_solution(None)
+        accessor = ScoreAccessor(None)
+        score = accessor.get_confidence_score(solution)
+        assert score is None

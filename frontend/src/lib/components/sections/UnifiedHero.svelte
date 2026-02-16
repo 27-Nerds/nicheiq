@@ -305,7 +305,7 @@
   });
 
   const soloDevTooltip = $derived.by(() => {
-    const score = report.selected_solution_details?.solo_dev_feasibility;
+    const score = metrics?.solo_dev_feasibility;
     if (score == null) return "Solo dev feasibility — no data available";
     const pct = Math.round(score * 100);
     return `Solo Dev: ${pct}%\nSuitability for a single developer to build and launch.`;
@@ -832,11 +832,11 @@
         <!-- Solo Dev Feasibility -->
         <div class="metric-cell" style="--cell-delay: 0.25s">
           <ProgressRing
-            value={report.selected_solution_details?.solo_dev_feasibility ?? 0}
+            value={metrics?.solo_dev_feasibility ?? 0}
             size={52}
             strokeWidth={4}
             color={getScoreColor(
-              report.selected_solution_details?.solo_dev_feasibility,
+              metrics?.solo_dev_feasibility,
             )}
             showValue={true}
             showTooltip={true}
@@ -847,11 +847,11 @@
           <span class="metric-label">Solo Dev</span>
           <span
             class="metric-verdict {getScoreColor(
-              report.selected_solution_details?.solo_dev_feasibility,
+              metrics?.solo_dev_feasibility,
             )}-text"
           >
             {getScoreLabel(
-              report.selected_solution_details?.solo_dev_feasibility,
+              metrics?.solo_dev_feasibility,
             )}
           </span>
         </div>

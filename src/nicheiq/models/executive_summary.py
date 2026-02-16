@@ -151,6 +151,12 @@ class KeyMetrics(BaseModel):
         le=1.0,
         description="SEO growth potential score from selection criteria (0-1 scale). None = N/A"
     )
+    solo_dev_feasibility: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description="Solo developer feasibility score (0-1 scale). None = N/A"
+    )
 
 class ExecutiveDashboard(BaseModel):
     """
@@ -181,10 +187,11 @@ class ExecutiveDashboard(BaseModel):
         description="Top-line metrics for opportunity assessment"
     )
 
-    confidence_score: float = Field(
+    confidence_score: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=1.0,
-        description="Average of market fit, competitive advantage, technical feasibility, and SEO scores (0-1)"
+        description="Average of market fit, competitive advantage, technical feasibility, and SEO scores (0-1). None if scores unavailable."
     )
 
     research_depth_label: str = Field(

@@ -149,8 +149,8 @@ class TestScoreAccessorConfidenceScore:
         expected = (0.9 + 0.9) / 2
         assert result == expected, f"Expected {expected}, got {result}"
 
-    def test_with_none_values_uses_defaults(self):
-        """Test confidence score with all None values uses defaults."""
+    def test_with_none_values_returns_none(self):
+        """Test confidence score with all None values returns None."""
         accessor = ScoreAccessor(None)
 
         solution = Mock()
@@ -159,9 +159,8 @@ class TestScoreAccessorConfidenceScore:
 
         result = accessor.get_confidence_score(solution)
 
-        # Should use default 0.5 for both scores
-        expected = (0.5 + 0.5) / 2
-        assert result == 0.5, f"Expected 0.5 with defaults, got {result}"
+        # Should return None when underlying scores are None
+        assert result is None, f"Expected None with missing scores, got {result}"
 
     def test_with_boundary_values_min(self):
         """Test confidence score with minimum boundary values (0.0, 0.0)."""

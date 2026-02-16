@@ -12,7 +12,7 @@ export interface Report {
 	selected_solution_name: string;
 	selection_rationale: string;
 	// runner_up_solutions removed - extract names from alternative_solutions instead
-	selection_criteria_scores?: SelectionCriteriaScore[];
+	// selection_criteria_scores removed - ScoreAccessor is single source of truth
 	recommended_focus?: string;
 	selected_solution_details?: SolutionDetails;
 	solution_user_journey?: string;
@@ -168,7 +168,7 @@ export interface ExecutiveDashboard {
 	go_no_go_verdict: GoNoGoVerdict;
 	core_pain_point: CorePainPoint;
 	key_metrics: KeyMetrics;
-	confidence_score: number;
+	confidence_score: number | null;
 	research_depth_label?: string;
 	// niche_description removed - use root report.niche instead
 }
@@ -215,6 +215,7 @@ export interface KeyMetrics {
 	competitive_advantage_score?: number | null;
 	technical_feasibility_score?: number | null;
 	seo_potential_score?: number | null;
+	solo_dev_feasibility?: number | null;
 }
 
 export interface BudgetAllocation {
@@ -641,12 +642,7 @@ export interface DataQualitySummary {
 
 // RunnerUpSolution interface removed - use alternative_solutions instead
 
-// Selection criteria score - array format matching Python backend
-export interface SelectionCriteriaScore {
-	criterion: string;
-	score: number;
-	justification: string;
-}
+// SelectionCriteriaScore removed - ScoreAccessor is single source of truth
 
 export interface SolutionDetails {
 	// Basic info

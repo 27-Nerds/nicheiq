@@ -28,7 +28,7 @@ from .solution_idea import (
     SolutionSEORefinement,
 )
 from .solution_refinement import SolutionRefinement
-from .solution_selection import SelectionCriteriaScore, SolutionSelection
+from .solution_selection import SolutionSelection
 from .technical_blueprint import SiteStructure, UserFlowsSection
 
 
@@ -447,10 +447,7 @@ class FinalReport(BaseModel):
     selected_solution_name: str = Field(..., description="Name of the selected solution to focus on")
     selection_rationale: str = Field(..., description="Why this solution was selected over alternatives")
     # runner_up_solutions removed - use alternative_solutions instead
-    selection_criteria_scores: Optional[list[SelectionCriteriaScore]] = Field(
-        default=None,
-        description="Breakdown of selection criteria scores (0-1 scale): market_fit, technical_feasibility, competitive_advantage, keyword_opportunity, data_requirements"
-    )
+    # selection_criteria_scores removed - ScoreAccessor is single source of truth
     recommended_focus: Optional[str] = Field(
         default=None,
         description="Strategic focus recommendation for the selected solution (e.g., geographic expansion, segment targeting, niche dominance)"

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onDestroy } from "svelte";
   import { page } from "$app/stores";
   import {
     subscribeToProgress,
@@ -106,6 +106,67 @@
     );
   }
 
+  async function loadJob(id: string) {
+    // Reset all state for the new job
+    unsubscribeSSE?.();
+    job = null;
+    loading = true;
+    error = "";
+    cancelling = false;
+    cancelError = "";
+    isResuming = false;
+    resumeError = "";
+    showTechnicalDetails = false;
+    generatingLanding = false;
+    landingError = "";
+    localSolutions = null;
+    hasPlayedReveal = false;
+    showReveal = false;
+    reportSummary = null;
+    summaryFetched = false;
+    summaryLoading = false;
+
+    try {
+      const res = await fetch(`/api/jobs/${id}`);
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Job not found");
+      }
+      job = await res.json();
+    } catch (e) {
+      error = e instanceof Error ? e.message : "Failed to load job";
+    } finally {
+      loading = false;
+    }
+
+    if (job?.status === 'COMPLETED' && id) {
+      hasPlayedReveal = true;
+      showReveal = true;
+      const asset = (job.assets ?? []).find(a => a.type === 'REPORT_JSON');
+      if (asset && !summaryFetched) {
+        summaryFetched = true;
+        summaryLoading = true;
+        try { reportSummary = await getReportSummary(id); }
+        catch { /* fallback to simple card */ }
+        finally { summaryLoading = false; }
+      }
+    }
+
+    if (
+      job && id &&
+      ["AWAITING_SELECTION", "REGENERATING"].includes(job.status)
+    ) {
+      try {
+        const solData = await getSolutions(id);
+        if (!localSolutions) { localSolutions = solData.solutionIdeas; }
+      } catch {
+        if (!localSolutions) { localSolutions = job.solutionIdeas ?? null; }
+      }
+    }
+
+    if (job && shouldKeepSSEOpen(job)) { connectSSE(); }
+  }
+
   async function resumeJob() {
     if (!job || isResuming) return;
     isResuming = true;
@@ -169,47 +230,11 @@
     }
   }
 
-  onMount(async () => {
-    try {
-      const res = await fetch(`/api/jobs/${jobId}`);
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Job not found");
-      }
-      job = await res.json();
-    } catch (e) {
-      error = e instanceof Error ? e.message : "Failed to load job";
-    } finally {
-      loading = false;
+  // Re-load whenever jobId changes (handles same-route navigation e.g. /jobs/old → /jobs/new)
+  $effect(() => {
+    if (jobId) {
+      loadJob(jobId);
     }
-
-    // For already-completed jobs (direct nav / bookmark): show teaser immediately, no delay
-    if (job?.status === 'COMPLETED' && jobId) {
-      hasPlayedReveal = true;
-      showReveal = true;
-      const asset = (job.assets ?? []).find(a => a.type === 'REPORT_JSON');
-      if (asset && !summaryFetched) {
-        summaryFetched = true;
-        summaryLoading = true;
-        try { reportSummary = await getReportSummary(jobId); }
-        catch { /* fallback to simple card */ }
-        finally { summaryLoading = false; }
-      }
-    }
-
-    if (
-      job && jobId &&
-      ["AWAITING_SELECTION", "REGENERATING"].includes(job.status)
-    ) {
-      try {
-        const solData = await getSolutions(jobId);
-        if (!localSolutions) { localSolutions = solData.solutionIdeas; }
-      } catch {
-        if (!localSolutions) { localSolutions = job.solutionIdeas ?? null; }
-      }
-    }
-
-    if (job && shouldKeepSSEOpen(job)) { connectSSE(); }
   });
 
   onDestroy(() => { unsubscribeSSE?.(); });

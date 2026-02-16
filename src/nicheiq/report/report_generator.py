@@ -353,7 +353,6 @@ class ReportGenerator:
         selected_solution_name = self.accessor.get_selected_solution_name()
         selection_rationale = self.accessor.get_selection_rationale()
         # runner_up_solutions removed - use alternative_solutions instead
-        selection_criteria_scores = self.accessor.get_selection_criteria_scores()
         recommended_focus = self.accessor.get_recommended_focus()
 
         # Find selected solution details using fuzzy match helper
@@ -373,31 +372,11 @@ class ReportGenerator:
                 keyword_enrichment=self.state.solution_refinement,
                 seo_enrichment=getattr(self.state, 'seo_enrichment', None)
             )
-            # Align selection_criteria_scores SEO entry with canonical score.
-            # selection_criteria_scores is built at Stage 5 with raw seo_growth_potential,
-            # but Stage 12 may refine it. Update to match canonical resolution.
-            # NOTE: This mutates the shared list from state_accessors — the mutation
-            # propagates to all consumers that read via accessor (e.g. _compute_key_metrics).
-            if selection_criteria_scores:
-                canonical_seo = self.score_accessor.get_seo_score_canonical(
-                    selected_solution_details
-                )
-                for score_entry in selection_criteria_scores:
-                    if (
-                        score_entry.criterion == "seo_growth_potential"
-                        and abs(score_entry.score - canonical_seo) > 1e-6
-                    ):
-                        logger.info(
-                            f"[Report] Aligning selection_criteria SEO score: "
-                            f"{score_entry.score:.4f} -> {canonical_seo:.4f} (canonical)"
-                        )
-                        score_entry.score = canonical_seo
-            # Sync scores with selection criteria (Stage 5) - NO FALLBACKS
+            # Sync scores via ScoreAccessor (single source of truth)
             # This ensures selected_solution_details shows the same final scores
-            # as selection_criteria_scores and executive_dashboard.key_metrics
-            selected_solution_details = self._sync_solution_with_selection_scores(
-                selected_solution_details,
-                selection_criteria_scores
+            # as executive_dashboard.key_metrics
+            selected_solution_details = self._sync_solution_scores(
+                selected_solution_details
             )
 
         # Generate template-based sections using ReportTemplates
@@ -713,7 +692,7 @@ class ReportGenerator:
             selected_solution_name=selected_solution_name,
             selection_rationale=selection_rationale,
             # runner_up_solutions removed - use alternative_solutions
-            selection_criteria_scores=selection_criteria_scores,
+            # selection_criteria_scores removed - ScoreAccessor is single source of truth
             recommended_focus=recommended_focus,
 
             # Detailed solution description
@@ -934,19 +913,17 @@ class ReportGenerator:
 
         return enriched
 
-    def _sync_solution_with_selection_scores(
+    def _sync_solution_scores(
         self,
         solution: "SolutionIdea",
-        selection_criteria_scores: list
     ) -> "SolutionIdea":
         """
-        Sync solution scores and fields with final values from various stages.
+        Sync solution scores and fields with final values via ScoreAccessor.
 
-        Score Priority (NO FALLBACKS - uses single authoritative source):
-        - market_fit_score: selection_criteria_scores (Stage 5)
-        - technical_feasibility_score: selection_criteria_scores (Stage 5)
-        - seo_scalability_score: seo_scalability_score_refined (Stage 12) if available,
-                                 otherwise selection_criteria_scores (Stage 5)
+        Score Source: ScoreAccessor (single source of truth)
+        - market_fit_score: ScoreAccessor.get_market_fit()
+        - technical_feasibility_score: ScoreAccessor.get_technical_feasibility()
+        - seo_scalability_score: ScoreAccessor.get_seo_score_canonical()
 
         Field Sync (Refined → Baseline):
         - estimated_cac_organic: from estimated_cac_organic_refined (Stage 12)
@@ -959,27 +936,14 @@ class ReportGenerator:
 
         Args:
             solution: SolutionIdea to update (after _merge_solution_enrichments)
-            selection_criteria_scores: List of SelectionCriteriaScore from Stage 5
 
         Returns:
             SolutionIdea with scores and fields synced from authoritative sources
         """
-        # Build score map from selection criteria (Stage 5)
-        score_map = {}
-        if selection_criteria_scores:
-            score_map = {s.criterion: s.score for s in selection_criteria_scores}
-
-        # Sync scores - NO FALLBACKS, None = "N/A" in frontend
-        solution.market_fit_score = score_map.get('market_fit')
-        solution.technical_feasibility_score = score_map.get('technical_feasibility')
-
-        # SEO score: prefer refined (Stage 12), fall back to selection criteria (Stage 5)
-        seo_refined = getattr(solution, 'seo_scalability_score_refined', None)
-        if seo_refined is not None:
-            solution.seo_scalability_score = seo_refined
-            logger.info(f"[Report] Using refined SEO score: {seo_refined:.2f}")
-        else:
-            solution.seo_scalability_score = score_map.get('seo_growth_potential')
+        # Sync scores via ScoreAccessor (returns None when no data)
+        solution.market_fit_score = self.score_accessor.get_market_fit(solution)
+        solution.technical_feasibility_score = self.score_accessor.get_technical_feasibility(solution)
+        solution.seo_scalability_score = self.score_accessor.get_seo_score_canonical(solution)
 
         # Sync refined CAC to baseline (so frontend only needs one field)
         cac_refined = getattr(solution, 'estimated_cac_organic_refined', None)
@@ -1528,14 +1492,14 @@ class ReportGenerator:
         # If no selected scores available, use lower absolute thresholds as fallback
         if selected_scores is None:
             conditions = []
-            mf = runner_up_scores.get("market_fit", 0.5)
-            sg = runner_up_scores.get("seo_growth", 0.5)
-            tf = runner_up_scores.get("technical_feasibility", 0.5)
-            if mf > 0.65:
+            mf = runner_up_scores.get("market_fit")
+            sg = runner_up_scores.get("seo_growth")
+            tf = runner_up_scores.get("technical_feasibility")
+            if mf is not None and mf > 0.65:
                 conditions.append(f"market fit score ({mf:.2f}) suggests strong demand")
-            if sg > 0.60:
+            if sg is not None and sg > 0.60:
                 conditions.append(f"SEO growth potential ({sg:.2f}) indicates viable organic channel")
-            if tf > 0.65:
+            if tf is not None and tf > 0.65:
                 conditions.append(f"technical feasibility ({tf:.2f}) enables faster time-to-market")
             if conditions:
                 return prefix + "; ".join(conditions) + "."
@@ -1544,11 +1508,12 @@ class ReportGenerator:
                 f"Scores not yet compared against selected solution."
             )
 
-        # Check if all scores are defaults (0.5) — data not yet validated
+        # Check if all scores are defaults (0.5) or None — data not yet validated
+        check_keys = ("market_fit", "seo_growth", "technical_feasibility", "competitive_advantage")
         all_default = all(
-            abs(runner_up_scores.get(k, 0.5) - 0.5) < 0.01
-            and abs(selected_scores.get(k, 0.5) - 0.5) < 0.01
-            for k in ("market_fit", "seo_growth", "technical_feasibility", "competitive_advantage")
+            (runner_up_scores.get(k) is None or abs(runner_up_scores.get(k) - 0.5) < 0.01)
+            and (selected_scores.get(k) is None or abs(selected_scores.get(k) - 0.5) < 0.01)
+            for k in check_keys
         )
         if all_default:
             differentiator_note = f" Key differentiator: {key_differentiator}." if key_differentiator else ""
@@ -1570,8 +1535,10 @@ class ReportGenerator:
         moderate_gaps = []     # -0.15 <= delta < -0.05
 
         for key, label in dimension_labels.items():
-            ru_val = runner_up_scores.get(key, 0.5)
-            sel_val = selected_scores.get(key, 0.5)
+            ru_val = runner_up_scores.get(key)
+            sel_val = selected_scores.get(key)
+            if ru_val is None or sel_val is None:
+                continue  # skip dimension with missing data
             delta = ru_val - sel_val
 
             if delta > 0.05:
@@ -1630,8 +1597,10 @@ class ReportGenerator:
         best_dim = None
         best_delta = -float("inf")
         for key, label in dimension_labels.items():
-            ru_val = runner_up_scores.get(key, 0.5)
-            sel_val = selected_scores.get(key, 0.5)
+            ru_val = runner_up_scores.get(key)
+            sel_val = selected_scores.get(key)
+            if ru_val is None or sel_val is None:
+                continue  # skip dimension with missing data
             delta = ru_val - sel_val
             if delta > best_delta:
                 best_delta = delta
@@ -2304,13 +2273,15 @@ It differentiates through {diff_text}.
                 narrative_rationale=narrative.verdict_rationale if narrative else None
             )
 
-            # Compute confidence score as 4-score average (matches verdict formula)
-            confidence_score = (
-                self.score_accessor.get_market_fit(selected_solution) +
-                self.score_accessor.get_competitive_advantage(selected_solution) +
-                self.score_accessor.get_technical_feasibility(selected_solution) +
-                self.score_accessor.get_seo_score_canonical(selected_solution)
-            ) / 4
+            # Compute confidence score as average of available scores
+            _scores = [
+                self.score_accessor.get_market_fit(selected_solution),
+                self.score_accessor.get_competitive_advantage(selected_solution),
+                self.score_accessor.get_technical_feasibility(selected_solution),
+                self.score_accessor.get_seo_score_canonical(selected_solution),
+            ]
+            _valid_scores = [s for s in _scores if s is not None]
+            confidence_score = sum(_valid_scores) / len(_valid_scores) if _valid_scores else None
 
             # Compute research depth label from pain point quality tier
             pp_tier = getattr(self.state, 'pain_point_quality_tier', None) or "BRONZE"
@@ -2329,7 +2300,7 @@ It differentiates through {diff_text}.
                 # niche_description removed - use root report.niche
             )
 
-            logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, opportunity score {confidence_score:.2f}")
+            logger.info(f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, opportunity score {confidence_score:.2f}" if confidence_score is not None else f"[OK] Executive dashboard generated: {go_no_go_verdict.verdict} verdict, opportunity score N/A")
             return executive_dashboard
 
         except Exception as e:
@@ -2398,27 +2369,19 @@ It differentiates through {diff_text}.
                 social_evidence_threads += len(self.state.social_content.reddit_posts)
                 social_evidence_threads += len(self.state.social_content.twitter_threads)
 
-            # Extract score fields from selection criteria (Stage 5 final scores)
-            # NO FALLBACKS - use only final selection criteria scores, None if missing
-            selection_criteria_scores = self.accessor.get_selection_criteria_scores()
-            score_map = {}
-            if selection_criteria_scores:
-                for score_entry in selection_criteria_scores:
-                    score_map[score_entry.criterion] = score_entry.score
-
-            # Use selection criteria scores only (None = "N/A" in frontend)
-            market_fit_score = score_map.get('market_fit')
-            competitive_advantage_score = score_map.get('competitive_advantage')
-            if competitive_advantage_score is None:
-                competitive_advantage_score = score_map.get('differentiation_potential')
-            technical_feasibility_score = score_map.get('technical_feasibility')
-
-            # SEO score: use canonical resolution (RC2 fix: unified SEO score path)
-            # This ensures KeyMetrics shows the same SEO score as all other sections
+            # Extract score fields via ScoreAccessor (single source of truth)
             if enriched_solution:
+                market_fit_score = self.score_accessor.get_market_fit(enriched_solution)
+                competitive_advantage_score = self.score_accessor.get_competitive_advantage(enriched_solution)
+                technical_feasibility_score = self.score_accessor.get_technical_feasibility(enriched_solution)
                 seo_potential_score = self.score_accessor.get_seo_score_canonical(enriched_solution)
+                solo_dev_feasibility = self.score_accessor.get_solo_dev_feasibility(enriched_solution)
             else:
-                seo_potential_score = score_map.get('seo_growth_potential')
+                market_fit_score = None
+                competitive_advantage_score = None
+                technical_feasibility_score = None
+                seo_potential_score = None
+                solo_dev_feasibility = None
 
             return KeyMetrics(
                 total_keyword_search_volume=total_keyword_search_volume,
@@ -2436,7 +2399,8 @@ It differentiates through {diff_text}.
                 market_fit_score=market_fit_score,
                 competitive_advantage_score=competitive_advantage_score,
                 technical_feasibility_score=technical_feasibility_score,
-                seo_potential_score=seo_potential_score
+                seo_potential_score=seo_potential_score,
+                solo_dev_feasibility=solo_dev_feasibility,
             )
 
         except Exception as e:
@@ -2713,13 +2677,23 @@ It differentiates through {diff_text}.
         tech_feasibility = self.score_accessor.get_technical_feasibility(solution)
         seo_potential = self.score_accessor.get_seo_score_canonical(solution)
 
-        # Validate scores are not None before calculations (Phase 1.2: None/NaN validation)
+        # Validate scores are not None before calculations
         scores = [market_fit, competitive_adv, tech_feasibility, seo_potential]
         if any(score is None for score in scores):
             logger.warning(
-                f"[Verdict Calculation] One or more scores are None - using ScoreAccessor defaults. "
+                f"[Verdict Calculation] One or more scores are None - insufficient data. "
                 f"Scores: market_fit={market_fit}, competitive_adv={competitive_adv}, "
                 f"tech_feasibility={tech_feasibility}, seo_potential={seo_potential}"
+            )
+            return GoNoGoVerdict(
+                verdict="Conditional",
+                rationale=narrative_rationale or (
+                    "Insufficient score data to compute a definitive verdict. "
+                    "Some pipeline stages may not have produced scores. "
+                    "Review pipeline output quality before making a final decision."
+                ),
+                risk_level="High",
+                primary_concern="Missing score data — review pipeline output quality",
             )
 
         # Compute verdict
@@ -3410,12 +3384,14 @@ It differentiates through {diff_text}.
                 return None
 
             # Compute overall opportunity score using ScoreAccessor
-            overall_score = (
-                self.score_accessor.get_market_fit(selected_solution) +
-                self.score_accessor.get_competitive_advantage(selected_solution) +
-                self.score_accessor.get_technical_feasibility(selected_solution) +
-                self.score_accessor.get_seo_score_canonical(selected_solution)
-            ) / 4
+            _opp_scores = [
+                self.score_accessor.get_market_fit(selected_solution),
+                self.score_accessor.get_competitive_advantage(selected_solution),
+                self.score_accessor.get_technical_feasibility(selected_solution),
+                self.score_accessor.get_seo_score_canonical(selected_solution),
+            ]
+            _valid_opp = [s for s in _opp_scores if s is not None]
+            overall_score = sum(_valid_opp) / len(_valid_opp) if _valid_opp else 0.5
 
             # Market size from primary search volume (SEO strategy report)
             market_size_category = "Small"

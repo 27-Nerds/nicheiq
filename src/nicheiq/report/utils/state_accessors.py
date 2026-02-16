@@ -252,17 +252,6 @@ class StateAccessor:
             return self.state.solution_selection.runner_up_solutions
         return []
 
-    def get_selection_criteria_scores(self) -> list:
-        """
-        Get selection criteria scores.
-
-        Returns:
-            List of selection criteria objects or empty list
-        """
-        if self.state.solution_selection:
-            return self.state.solution_selection.selection_criteria_scores
-        return []
-
     def get_recommended_focus(self) -> str:
         """
         Get recommended focus area.

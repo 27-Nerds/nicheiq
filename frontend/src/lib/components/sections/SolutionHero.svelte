@@ -25,7 +25,6 @@
   import type {
     SolutionDetails,
     ExecutiveDashboard,
-    SelectionCriteriaScore,
     BudgetEstimate,
     PricingStrategy,
   } from "$lib/types/report";
@@ -50,7 +49,6 @@
     solution: SolutionDetails;
     dashboard: ExecutiveDashboard;
     selectionRationale: string;
-    scores?: SelectionCriteriaScore[];
     budgetEstimate?: BudgetEstimate | string | null;
     pricingStrategy?: PricingStrategy | null;
   }
@@ -59,7 +57,6 @@
     solution,
     dashboard,
     selectionRationale,
-    scores,
     budgetEstimate,
     pricingStrategy,
   }: Props = $props();

@@ -62,7 +62,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 | `go_no_go_verdict` | `object` | Strategic recommendation |
 | `core_pain_point` | `object` | The #1 pain point driving this opportunity |
 | `key_metrics` | `object` | Top-line opportunity metrics |
-| `confidence_score` | `number` (0-1) | Overall confidence in opportunity |
+| `confidence_score` | `number \| null` (0-1) | Overall confidence in opportunity. Null if scores unavailable. |
 
 #### `recommended_solution_snapshot`
 
@@ -139,7 +139,8 @@ The executive dashboard provides a quick go/no-go decision framework.
   "market_fit_score": 0.88,
   "competitive_advantage_score": 0.7,
   "technical_feasibility_score": 0.72,
-  "seo_potential_score": 0.78
+  "seo_potential_score": 0.78,
+  "solo_dev_feasibility": 0.85
 }
 ```
 
@@ -157,10 +158,11 @@ The executive dashboard provides a quick go/no-go decision framework.
 | `avg_pain_point_severity` | `number` (0-1) | Average severity |
 | `avg_willingness_to_pay` | `number` (0-1) | Average WTP |
 | `social_evidence_threads` | `number` | Reddit/Twitter threads analyzed |
-| `market_fit_score` | `number` (0-1) | Market fit score |
-| `competitive_advantage_score` | `number` (0-1) | Competitive advantage |
-| `technical_feasibility_score` | `number` (0-1) | Technical feasibility |
-| `seo_potential_score` | `number` (0-1) | SEO growth potential |
+| `market_fit_score` | `number \| null` (0-1) | Market fit score |
+| `competitive_advantage_score` | `number \| null` (0-1) | Competitive advantage |
+| `technical_feasibility_score` | `number \| null` (0-1) | Technical feasibility |
+| `seo_potential_score` | `number \| null` (0-1) | SEO growth potential |
+| `solo_dev_feasibility` | `number \| null` (0-1) | Solo developer feasibility |
 
 ---
 
@@ -374,7 +376,6 @@ Actionable GTM strategy for immediate execution.
 |-------|------|-------------|
 | `selected_solution_name` | `string` | Name of selected solution |
 | `selection_rationale` | `string` | Why selected over alternatives |
-| `selection_criteria_scores` | `array` | Scoring breakdown |
 | `recommended_focus` | `string` | Strategic focus recommendation |
 | `selected_solution_details` | `object` | Complete solution details (35 keys) |
 | `solution_user_journey` | `string` | Step-by-step user workflow |
@@ -383,15 +384,8 @@ Actionable GTM strategy for immediate execution.
 | `site_structure` | `object` | LLM-generated site architecture (Stage 10.5) |
 | `user_flows` | `object` | LLM-generated user journeys (Stage 10.5) |
 
-### `selection_criteria_scores[0]`
-
-```json
-{
-  "criterion": "market_fit",
-  "score": 0.88,
-  "justification": "string"
-}
-```
+> **Note:** `selection_criteria_scores` was removed in favor of ScoreAccessor as single source of truth.
+> All diagnostic scores are now served via `key_metrics` in the executive dashboard.
 
 ### `selected_solution_details` (35 keys)
 
@@ -1528,8 +1522,7 @@ Array of 7 recommended next steps.
 | 9 | `data_quality_summary` | `object` |
 | 10 | `selected_solution_name` | `string` |
 | 11 | `selection_rationale` | `string` |
-| 12 | `selection_criteria_scores` | `array` |
-| 13 | `recommended_focus` | `string` |
+| 12 | `recommended_focus` | `string` |
 | 14 | `selected_solution_details` | `object` |
 | 15 | `solution_user_journey` | `string` |
 | 16 | `solution_implementation_overview` | `string` |
