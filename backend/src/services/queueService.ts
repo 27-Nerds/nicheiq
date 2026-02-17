@@ -30,7 +30,6 @@ export async function enqueueJob(
   userId?: string,
   allowedProjectTypes?: string[],
   resume: boolean = false,
-  generateLandingPage: boolean = false,
   jobMode?: string
 ): Promise<void> {
   const jobData = JSON.stringify({
@@ -39,7 +38,6 @@ export async function enqueueJob(
     user_id: userId,
     allowed_project_types: allowedProjectTypes,
     resume,
-    generate_landing_page: generateLandingPage,
     job_mode: jobMode || null,
     created_at: new Date().toISOString(),
   });
@@ -77,7 +75,6 @@ export async function enqueuePhase2Job(
   checkpointPath: string,
   selectedSolutions: string[],
   selectionRationale?: string,
-  generateLandingPage: boolean = false
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -85,7 +82,6 @@ export async function enqueuePhase2Job(
     selected_solutions: selectedSolutions,
     selected_solution: selectedSolutions[0],  // backward compat for in-flight workers
     selection_rationale: selectionRationale || '',
-    generate_landing_page: generateLandingPage,
     task_type: 'research_phase2',
     created_at: new Date().toISOString(),
   });

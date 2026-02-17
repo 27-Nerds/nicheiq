@@ -183,12 +183,6 @@ def refine_programmatic_opportunity(
         posts_per_cluster = 4  # Average pillar + 3 supporting posts
         page_count += len(seo_report.topic_clusters) * posts_per_cluster
 
-    # Keyword-based page types
-    if hasattr(seo_report, 'keyword_based_page_types') and seo_report.keyword_based_page_types:
-        for page_type in seo_report.keyword_based_page_types:
-            if hasattr(page_type, 'estimated_page_count'):
-                page_count += page_type.estimated_page_count
-
     # Build refined assessment
     refined = f"""**Refined Assessment (Based on Keyword Research):**
 

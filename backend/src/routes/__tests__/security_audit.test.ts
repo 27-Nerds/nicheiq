@@ -49,12 +49,13 @@ vi.mock('../../services/jobService.js', () => ({
   getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
 }));
 
-const mockCreateJobWithCreditDeduction = vi.fn();
-const mockRefundCreditsForJob = vi.fn();
+const mockCreateJobAndChargeDiscovery = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
-  createJobWithCreditDeduction: (...args: any[]) => mockCreateJobWithCreditDeduction(...args),
-  refundCreditsForJob: (...args: any[]) => mockRefundCreditsForJob(...args),
+  createJobAndChargeDiscovery: (...args: any[]) => mockCreateJobAndChargeDiscovery(...args),
+  refundForStage: vi.fn(),
+  chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 5 }),
+  getStageCost: vi.fn().mockResolvedValue(5),
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     currentBalance: number;
     required: number;
@@ -358,7 +359,7 @@ describe('Security Audit: Jobs API', () => {
     });
 
     it('POST / uses req.user.id, not body userId', async () => {
-      mockCreateJobWithCreditDeduction.mockResolvedValue({
+      mockCreateJobAndChargeDiscovery.mockResolvedValue({
         job: { id: 'new-job-id' },
         transaction: {},
       });
@@ -374,13 +375,11 @@ describe('Security Audit: Jobs API', () => {
         });
 
       expect(res.status).toBe(201);
-      // createJobWithCreditDeduction should receive the authenticated user's ID
-      expect(mockCreateJobWithCreditDeduction).toHaveBeenCalledWith(
+      // createJobAndChargeDiscovery should receive the authenticated user's ID
+      expect(mockCreateJobAndChargeDiscovery).toHaveBeenCalledWith(
         'user-123', // from auth, not from body
         expect.any(String),
-        1,
         undefined,
-        false, // generateLandingPage defaults to false
         'interactive' // jobMode
       );
     });
@@ -494,7 +493,7 @@ describe('Security Audit: Jobs API', () => {
       });
 
       it('valid minimum-length niche → 201', async () => {
-        mockCreateJobWithCreditDeduction.mockResolvedValue({
+        mockCreateJobAndChargeDiscovery.mockResolvedValue({
           job: { id: 'new-job-id' },
           transaction: {},
         });
@@ -509,7 +508,7 @@ describe('Security Audit: Jobs API', () => {
       });
 
       it('extra fields are stripped by Zod', async () => {
-        mockCreateJobWithCreditDeduction.mockResolvedValue({
+        mockCreateJobAndChargeDiscovery.mockResolvedValue({
           job: { id: 'new-job-id' },
           transaction: {},
         });
@@ -524,8 +523,8 @@ describe('Security Audit: Jobs API', () => {
             malicious: '<script>alert(1)</script>',
           });
         expect(res.status).toBe(201);
-        // The malicious field should not reach createJobWithCreditDeduction
-        const callArgs = mockCreateJobWithCreditDeduction.mock.calls[0];
+        // The malicious field should not reach createJobAndChargeDiscovery
+        const callArgs = mockCreateJobAndChargeDiscovery.mock.calls[0];
         expect(callArgs[1]).toBe('A valid niche that passes validation');
       });
 
@@ -543,7 +542,7 @@ describe('Security Audit: Jobs API', () => {
       });
 
       it('allowedProjectTypes with valid enum values accepted', async () => {
-        mockCreateJobWithCreditDeduction.mockResolvedValue({
+        mockCreateJobAndChargeDiscovery.mockResolvedValue({
           job: { id: 'new-job-id' },
           transaction: {},
         });

@@ -1095,7 +1095,7 @@ Overall market validation conclusion.
   "target_keyword_cluster": "Tier 1 Quick Wins",
   "example_keywords": ["gpt-4 vs claude", "llm comparison"],
   "primary_intent": "commercial",
-  "estimated_page_count": 100,
+
   "priority": "P0",
   "required_schema": ["Product", "FAQPage"],
   "seo_optimization_notes": "Use side-by-side comparison format with pricing tables"
@@ -1109,7 +1109,7 @@ Overall market validation conclusion.
 | `target_keyword_cluster` | `string` | Which tier/cluster this targets |
 | `example_keywords` | `array[string]` | 2-5 example keywords |
 | `primary_intent` | `string` | commercial, informational, navigational, transactional |
-| `estimated_page_count` | `number` | Number of pages needed |
+
 | `priority` | `string` | P0 (Tier 1), P1 (Tier 2), P2 (Tier 3-4) |
 | `required_schema` | `array[string] \| null` | Schema.org types |
 | `seo_optimization_notes` | `string` | SEO guidance for these pages |

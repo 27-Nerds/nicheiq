@@ -13,23 +13,32 @@ export const load: LayoutServerLoad = async (event) => {
     throw redirect(302, `/login?returnTo=${returnTo}`);
   }
 
-  // Fetch user's credit balance for header display
+  // Fetch user's credit balance and stage costs for header display
   let creditBalance = 0;
-  try {
-    const response = await fetch(`${BACKEND_URL}/api/billing/balance`, {
-      headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-        'X-User-ID': session.user.id,
-      },
-    });
+  let stageCosts = { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 };
 
-    if (response.ok) {
-      const data = await response.json();
+  const headers = {
+    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
+    'X-User-ID': session.user.id,
+  };
+
+  try {
+    const [balanceRes, costsRes] = await Promise.all([
+      fetch(`${BACKEND_URL}/api/billing/balance`, { headers }),
+      fetch(`${BACKEND_URL}/api/billing/stage-costs`, { headers }),
+    ]);
+
+    if (balanceRes.ok) {
+      const data = await balanceRes.json();
       creditBalance = data.balance ?? 0;
     }
+    if (costsRes.ok) {
+      const data = await costsRes.json();
+      stageCosts = { ...stageCosts, ...data };
+    }
   } catch (error) {
-    console.error('Failed to fetch credit balance:', error);
+    console.error('Failed to fetch credit data:', error);
   }
 
-  return { session, creditBalance };
+  return { session, creditBalance, stageCosts };
 };

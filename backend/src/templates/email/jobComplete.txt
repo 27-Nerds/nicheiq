@@ -3,11 +3,11 @@ Your NicheIQ Research is Ready!
 Great news! Your market research for "{{NICHE}}" has been completed.
 
 What's included:
-- Comprehensive market research report (JSON)
+- Comprehensive market research report
 - Pain point analysis from real user discussions
 - Solution recommendations with competitive analysis
 - SEO strategy with validated keywords
-- Ready-to-use landing page (HTML)
+- Optional: Generate a ready-to-use landing page from your dashboard
 
 View Your Results: {{STATUS_URL}}
 

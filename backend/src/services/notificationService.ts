@@ -1,5 +1,6 @@
 import { prisma } from './db.js';
-import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail } from './emailService.js';
+import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail } from './emailService.js';
+import type { PhaseContextForEmail } from './emailService.js';
 
 export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError' | 'solutionsReady';
 
@@ -91,6 +92,7 @@ interface ErrorDetails {
  * @param niche - The job's niche
  * @param errorMessage - Raw error message (fallback)
  * @param errorDetails - Optional translated error details with user-friendly message
+ * @param phaseContext - Optional phase context for stage-aware error messaging
  */
 export async function notifyJobError(
   userId: string | null | undefined,
@@ -98,13 +100,14 @@ export async function notifyJobError(
   jobId: string,
   niche: string,
   errorMessage: string,
-  errorDetails?: ErrorDetails | null
+  errorDetails?: ErrorDetails | null,
+  phaseContext?: PhaseContextForEmail | null
 ): Promise<void> {
   if (!(await shouldNotifyUser(userId, 'jobError'))) {
     console.log(`[Notification] Skipping failure email for job ${jobId} - disabled by preference`);
     return;
   }
-  await sendFailureEmail(email, jobId, niche, errorMessage, errorDetails);
+  await sendFailureEmail(email, jobId, niche, errorMessage, errorDetails, phaseContext);
 }
 
 /**
@@ -122,6 +125,41 @@ export async function notifySolutionsReady(
     return;
   }
   await sendSolutionsReadyEmail(email, jobId, niche, solutionCount);
+}
+
+/**
+ * Send Phase 2 start email if user preferences allow
+ */
+export async function notifyPhase2Start(
+  userId: string | null | undefined,
+  email: string,
+  jobId: string,
+  niche: string,
+  selectedSolutions: string[]
+): Promise<void> {
+  if (!(await shouldNotifyUser(userId, 'jobStart'))) {
+    console.log(`[Notification] Skipping phase 2 start email for job ${jobId} - disabled by preference`);
+    return;
+  }
+  await sendPhase2StartEmail(email, jobId, niche, selectedSolutions);
+}
+
+/**
+ * Send regeneration complete email if user preferences allow
+ */
+export async function notifyRegenerationComplete(
+  userId: string | null | undefined,
+  email: string,
+  jobId: string,
+  niche: string,
+  newSolutionCount: number,
+  totalSolutionCount: number
+): Promise<void> {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady'))) {
+    console.log(`[Notification] Skipping regeneration-complete email for job ${jobId} - disabled by preference`);
+    return;
+  }
+  await sendRegenerationCompleteEmail(email, jobId, niche, newSolutionCount, totalSolutionCount);
 }
 
 /**

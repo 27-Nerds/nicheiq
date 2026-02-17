@@ -13,6 +13,7 @@
     stagesTotal: number;
     defaultOpen?: boolean;
     icon?: ComponentType;
+    creditCost?: number;
     heroStrip?: Snippet;
     children: Snippet;
   }
@@ -24,6 +25,7 @@
     stagesTotal,
     defaultOpen = false,
     icon,
+    creditCost,
     heroStrip,
     children,
   }: Props = $props();
@@ -58,6 +60,7 @@
     {icon}
     count={stagesCompleted > 0 ? stagesCompleted : null}
     countSuffix="/ {stagesTotal}"
+    {creditCost}
     {heroStrip}
   >
     {@render children()}

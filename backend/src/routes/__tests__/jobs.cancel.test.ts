@@ -27,10 +27,10 @@ vi.mock('../../services/jobService.js', () => ({
   getJobAsset: vi.fn(),
 }));
 
-const mockRefundCreditsForJob = vi.fn();
+const mockRefundForStage = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
-  createJobWithCreditDeduction: vi.fn(),
+  createJobAndChargeDiscovery: vi.fn(),
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     currentBalance: number;
     required: number;
@@ -40,7 +40,9 @@ vi.mock('../../services/creditService.js', () => ({
       this.required = required;
     }
   },
-  refundCreditsForJob: (...args: any[]) => mockRefundCreditsForJob(...args),
+  refundForStage: (...args: any[]) => mockRefundForStage(...args),
+  chargeForStageInTx: vi.fn(),
+  getStageCost: vi.fn().mockResolvedValue(5),
 }));
 
 vi.mock('../../services/queueService.js', () => ({
@@ -96,7 +98,7 @@ beforeEach(async () => {
 
   mockJobUpdate.mockResolvedValue({ id: 'job-1', status: 'CANCELLED' });
   mockUpdateMany.mockResolvedValue({ count: 1 });
-  mockRefundCreditsForJob.mockResolvedValue({ id: 'refund-1' });
+  mockRefundForStage.mockResolvedValue({ id: 'refund-1', amount: 5 });
 
   app = express();
   app.use(express.json());
@@ -190,7 +192,7 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Cannot cancel job after solution selection');
-    expect(mockRefundCreditsForJob).not.toHaveBeenCalled();
+    expect(mockRefundForStage).not.toHaveBeenCalled();
     expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
@@ -203,7 +205,7 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Cannot cancel job after solution selection');
-    expect(mockRefundCreditsForJob).not.toHaveBeenCalled();
+    expect(mockRefundForStage).not.toHaveBeenCalled();
     expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 
@@ -216,7 +218,7 @@ describe('POST /api/jobs/:jobId/cancel - post-selection statuses are rejected', 
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('Cannot cancel job after solution selection');
-    expect(mockRefundCreditsForJob).not.toHaveBeenCalled();
+    expect(mockRefundForStage).not.toHaveBeenCalled();
     expect(mockUpdateMany).not.toHaveBeenCalled();
   });
 });

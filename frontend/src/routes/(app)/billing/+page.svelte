@@ -478,9 +478,9 @@
           2
         </div>
         <div>
-          <p class="font-medium text-text-primary text-sm">Start Research</p>
+          <p class="font-medium text-text-primary text-sm">Use Credits</p>
           <p class="text-xs text-text-muted mt-1">
-            Each research job costs 1 credit
+            Credits are charged per stage: discovery, deep research, ideas, and landing pages
           </p>
         </div>
       </div>
@@ -493,7 +493,7 @@
         <div>
           <p class="font-medium text-text-primary text-sm">Auto-Refund</p>
           <p class="text-xs text-text-muted mt-1">
-            Failed jobs are automatically refunded
+            Failed stages are automatically refunded
           </p>
         </div>
       </div>

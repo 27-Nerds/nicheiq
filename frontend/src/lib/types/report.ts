@@ -465,7 +465,7 @@ export interface PageType {
 	target_keyword_cluster: string;
 	example_keywords: string[];
 	primary_intent: string;
-	estimated_page_count: number;
+
 	priority: number;
 	required_schema?: string[];
 	seo_optimization_notes?: string;

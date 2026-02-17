@@ -9,12 +9,20 @@ const mockJobFindFirst = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockJobUpdateMany = vi.fn();
 const mockTransaction = vi.fn();
+const mockCreditTransactionFindFirst = vi.fn();
+const mockUserCreditsFindUnique = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
   prisma: {
     job: {
       findFirst: (...args: any[]) => mockJobFindFirst(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
+    },
+    creditTransaction: {
+      findFirst: (...args: any[]) => mockCreditTransactionFindFirst(...args),
+    },
+    userCredits: {
+      findUnique: (...args: any[]) => mockUserCreditsFindUnique(...args),
     },
     $transaction: (...args: any[]) => mockTransaction(...args),
   },
@@ -33,7 +41,7 @@ vi.mock('../../services/queueService.js', () => ({
 }));
 
 vi.mock('../../services/creditService.js', () => ({
-  createJobWithCreditDeduction: vi.fn(),
+  createJobAndChargeDiscovery: vi.fn(),
   InsufficientCreditsError: class extends Error {
     currentBalance: number;
     required: number;
@@ -43,7 +51,9 @@ vi.mock('../../services/creditService.js', () => ({
       this.required = r;
     }
   },
-  refundCreditsForJob: vi.fn(),
+  refundForStage: vi.fn(),
+  chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 15 }),
+  getStageCost: vi.fn().mockResolvedValue(5),
 }));
 
 vi.mock('../../services/jobService.js', () => ({
@@ -116,7 +126,7 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
     selectedSolutions: [],
     phase1CheckpointPath: '/cp/path',
     solutionIdeas: [{ name: 'Sol1' }, { name: 'Sol2' }],
-    generateLandingPage: true,
+    niche: 'test niche',
     ...overrides,
   });
 
@@ -135,24 +145,6 @@ describe('POST /api/jobs/:jobId/select-solution', () => {
       '/cp/path',
       ['Sol1'],
       undefined,
-      true
-    );
-  });
-
-  it('passes generateLandingPage flag to enqueuePhase2Job', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob({ generateLandingPage: false }));
-
-    await request(app)
-      .post(`/api/jobs/${jobId}/select-solution`)
-      .set(authHeaders)
-      .send({ solutionNames: ['Sol1'] });
-
-    expect(mockEnqueuePhase2Job).toHaveBeenCalledWith(
-      jobId,
-      '/cp/path',
-      ['Sol1'],
-      undefined,
-      false
     );
   });
 
@@ -374,6 +366,24 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
 
     expect(response.status).toBe(409);
   });
+
+  it('refunds credits and reverts job when enqueue fails', async () => {
+    const { refundForStage } = await import('../../services/creditService.js');
+    mockJobFindFirst.mockResolvedValue(makeJob());
+    mockEnqueueRegenerateJob.mockRejectedValue(new Error('Redis unavailable'));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/regenerate-ideas`)
+      .set(authHeaders)
+      .send({});
+
+    expect(response.status).toBe(500);
+    expect(refundForStage).toHaveBeenCalledWith(jobId, 'regenerate_ideas');
+    expect(mockJobUpdate).toHaveBeenCalledWith({
+      where: { id: jobId },
+      data: { status: 'AWAITING_SELECTION', ideasRegeneratedAt: null, queuedAt: null },
+    });
+  });
 });
 
 describe('GET /api/jobs/:jobId/solutions', () => {
@@ -444,5 +454,113 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       .set(authHeaders);
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('POST /api/jobs/:jobId/resume', () => {
+  it('creates JOB_DEDUCTION with resume_ stage prefix instead of deleting refund', async () => {
+    // Job is FAILED with a refund transaction
+    mockJobFindFirst.mockResolvedValue({
+      id: jobId,
+      userId: 'user-123',
+      status: 'FAILED',
+      niche: 'test niche',
+    });
+
+    mockCreditTransactionFindFirst.mockResolvedValue({
+      id: 'refund-tx-1',
+      amount: 5,
+      stage: 'discovery',
+    });
+
+    mockUserCreditsFindUnique.mockResolvedValue({
+      userId: 'user-123',
+      balance: 10,
+    });
+
+    // Transaction mock: execute callback with tx that has userCredits + creditTransaction
+    const mockTxUserCreditsFind = vi.fn().mockResolvedValue({ userId: 'user-123', balance: 10 });
+    const mockTxUserCreditsUpdate = vi.fn().mockResolvedValue({ userId: 'user-123', balance: 5 });
+    const mockTxCreditTransactionCreate = vi.fn().mockResolvedValue({});
+    const mockTxCreditTransactionDelete = vi.fn();
+
+    mockTransaction.mockImplementation(async (callback: any) => {
+      const tx = {
+        userCredits: {
+          findUnique: mockTxUserCreditsFind,
+          update: mockTxUserCreditsUpdate,
+        },
+        creditTransaction: {
+          create: mockTxCreditTransactionCreate,
+          delete: mockTxCreditTransactionDelete,
+        },
+        job: { updateMany: mockJobUpdateMany },
+      };
+      return callback(tx);
+    });
+
+    mockJobUpdate.mockResolvedValue({});
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/resume`)
+      .set(authHeaders)
+      .send({});
+
+    expect(response.status).toBe(200);
+
+    // Should NOT delete the refund transaction
+    expect(mockTxCreditTransactionDelete).not.toHaveBeenCalled();
+
+    // Should create a new JOB_DEDUCTION with resume_ prefix
+    expect(mockTxCreditTransactionCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'user-123',
+        type: 'JOB_DEDUCTION',
+        amount: -5,
+        balanceBefore: 10,
+        balanceAfter: 5,
+        relatedJobId: jobId,
+        stage: 'resume_discovery',
+        description: 'Resume: re-charge discovery',
+      }),
+    });
+
+    // Should decrement balance
+    expect(mockTxUserCreditsUpdate).toHaveBeenCalledWith({
+      where: { userId: 'user-123' },
+      data: {
+        balance: { decrement: 5 },
+        totalUsed: { increment: 5 },
+      },
+    });
+  });
+
+  it('returns 402 when balance insufficient for resume re-charge', async () => {
+    mockJobFindFirst.mockResolvedValue({
+      id: jobId,
+      userId: 'user-123',
+      status: 'FAILED',
+      niche: 'test niche',
+    });
+
+    mockCreditTransactionFindFirst.mockResolvedValue({
+      id: 'refund-tx-1',
+      amount: 5,
+      stage: 'discovery',
+    });
+
+    // Balance is too low
+    mockUserCreditsFindUnique.mockResolvedValue({
+      userId: 'user-123',
+      balance: 3,
+    });
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/resume`)
+      .set(authHeaders)
+      .send({});
+
+    expect(response.status).toBe(402);
+    expect(response.body.code).toBe('INSUFFICIENT_CREDITS');
   });
 });

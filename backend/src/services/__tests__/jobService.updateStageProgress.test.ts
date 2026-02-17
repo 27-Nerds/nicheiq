@@ -26,7 +26,8 @@ vi.mock('../db.js', () => ({
 }));
 
 vi.mock('./creditService.js', () => ({
-  refundCreditsForJob: vi.fn(),
+  refundForStage: vi.fn(),
+  determineFailedStage: vi.fn(),
 }));
 
 import { updateStageProgress } from '../jobService.js';

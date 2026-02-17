@@ -1,12 +1,13 @@
 <script lang="ts">
   import { portal } from "$lib/actions/portal";
-  import { X, Loader2, AlertCircle } from "lucide-svelte";
+  import { X, Loader2, AlertCircle, Coins } from "lucide-svelte";
 
   interface Props {
     open: boolean;
     solutionNames: string[];
     loading?: boolean;
     error?: string;
+    creditCost?: number;
     onConfirm: (rationale: string) => void;
     onCancel: () => void;
   }
@@ -16,6 +17,7 @@
     solutionNames,
     loading = false,
     error: errorMessage = "",
+    creditCost = 0,
     onConfirm,
     onCancel,
   }: Props = $props();
@@ -204,6 +206,11 @@
             Submitting...
           {:else}
             Run Deep Analysis
+            {#if creditCost > 0}
+              <span class="inline-flex items-center gap-1 text-xs opacity-80">
+                <Coins class="w-3 h-3" />{creditCost}
+              </span>
+            {/if}
           {/if}
         </button>
       </div>

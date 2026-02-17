@@ -345,6 +345,15 @@ export async function updatePackage(id: string, data: {
 // App Settings
 // ============================================
 
+function integerValidator(min: number, max: number) {
+  return (value: string): string | null => {
+    const num = parseInt(value, 10);
+    if (isNaN(num) || num < min || num > max)
+      return `Must be an integer between ${min} and ${max}`;
+    return null;
+  };
+}
+
 const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   sample_report_url: (value) => {
     if (!/^\/shared\/[A-Za-z0-9_-]{1,100}$/.test(value)) {
@@ -352,6 +361,10 @@ const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
     }
     return null;
   },
+  token_cost_discovery: integerValidator(0, 100),
+  token_cost_deep_research: integerValidator(0, 100),
+  token_cost_landing_page: integerValidator(0, 100),
+  token_cost_regenerate_ideas: integerValidator(0, 100),
 };
 
 /**

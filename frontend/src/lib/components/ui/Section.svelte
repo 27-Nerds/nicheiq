@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { ChevronDown } from "lucide-svelte";
+  import { ChevronDown, Coins } from "lucide-svelte";
   import Badge from "./Badge.svelte";
   import type { ComponentType, Snippet } from "svelte";
 
@@ -17,6 +17,9 @@
     // Count badge
     count?: number | null;
     countSuffix?: string;
+
+    // Credit cost badge (shown in expandable header)
+    creditCost?: number;
 
     // Section mode
     mode?: "static" | "expandable";
@@ -50,6 +53,7 @@
     icon: Icon,
     count = null,
     countSuffix,
+    creditCost,
     mode = "static",
     defaultOpen = false,
     variant = "default",
@@ -111,6 +115,11 @@
           <Badge variant={badgeVariants[variant]} size="sm"
             >{count}{#if countSuffix}&nbsp;{countSuffix}{/if}</Badge
           >
+        {/if}
+        {#if creditCost && creditCost > 0}
+          <span class="credit-cost-badge" aria-label="{creditCost} credits">
+            <Coins class="credit-cost-icon" />{creditCost}
+          </span>
         {/if}
       </div>
       <ChevronDown class="chevron-icon {expanded ? 'expanded' : ''}" />
@@ -441,5 +450,22 @@
 
   .section-container.expandable > .hero-strip-container {
     padding-top: 0;
+  }
+
+  /* ============================================
+	   Credit Cost Badge
+	   ============================================ */
+  .credit-cost-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    opacity: 0.7;
+  }
+
+  :global(.credit-cost-icon) {
+    width: 0.875rem;
+    height: 0.875rem;
   }
 </style>

@@ -1,0 +1,11 @@
+Your New NicheIQ Solution Ideas Are Ready!
+
+New solution ideas for "{{NICHE}}" have been generated!
+
+{{NEW_SOLUTION_COUNT}} new ideas have been added. You now have {{TOTAL_SOLUTION_COUNT}} solutions to choose from.
+
+Review the expanded list and select your preferred solution to continue with deep research.
+
+Review Solutions: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

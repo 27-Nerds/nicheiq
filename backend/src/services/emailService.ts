@@ -164,6 +164,14 @@ interface ErrorDetails {
 }
 
 /**
+ * Phase context for stage-aware error emails
+ */
+export interface PhaseContextForEmail {
+  phaseLabel: string;
+  guidance: string;
+}
+
+/**
  * Send job failure notification email
  *
  * @param to - Recipient email
@@ -171,17 +179,25 @@ interface ErrorDetails {
  * @param niche - The job's niche
  * @param errorMessage - Raw error message (fallback)
  * @param errorDetails - Optional translated error details with user-friendly message
+ * @param phaseContext - Optional phase context to enrich error messaging
  */
 export async function sendFailureEmail(
   to: string,
   jobId: string,
   niche: string,
   errorMessage: string,
-  errorDetails?: ErrorDetails | null
+  errorDetails?: ErrorDetails | null,
+  phaseContext?: PhaseContextForEmail | null
 ): Promise<void> {
   // Use friendly message if available, otherwise fall back to raw error
-  const displayMessage = errorDetails?.userMessage || errorMessage;
-  const guidance = errorDetails?.actionableGuidance || 'You can try submitting your research request again. If the problem persists, please contact support.';
+  let displayMessage = errorDetails?.userMessage || errorMessage;
+  let guidance = errorDetails?.actionableGuidance || 'You can try submitting your research request again. If the problem persists, please contact support.';
+
+  // Enrich with phase context if provided
+  if (phaseContext) {
+    displayMessage = `${phaseContext.phaseLabel}: ${displayMessage}`;
+    guidance = `${guidance} ${phaseContext.guidance}`;
+  }
 
   const vars = {
     JOB_ID: jobId,
@@ -226,6 +242,62 @@ export async function sendSolutionsReadyEmail(
     console.log(`Solutions ready email sent to ${to} for job ${jobId}`);
   } catch (error) {
     console.error('Failed to send solutions ready email:', error);
+  }
+}
+
+/**
+ * Send Phase 2 (deep research) start notification email
+ */
+export async function sendPhase2StartEmail(
+  to: string,
+  jobId: string,
+  niche: string,
+  selectedSolutions: string[]
+): Promise<void> {
+  const vars = {
+    JOB_ID: jobId,
+    NICHE: truncateNiche(niche),
+    STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+    SELECTED_SOLUTIONS: selectedSolutions.join(', '),
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('phase2Start.html'), vars);
+    const text = renderTemplate(loadTemplate('phase2Start.txt'), vars);
+
+    await sendEmail(to, 'Your NicheIQ Deep Research Has Begun!', text, html);
+    console.log(`Phase 2 start email sent to ${to} for job ${jobId}`);
+  } catch (error) {
+    console.error('Failed to send phase 2 start email:', error);
+  }
+}
+
+/**
+ * Send regeneration complete notification email
+ */
+export async function sendRegenerationCompleteEmail(
+  to: string,
+  jobId: string,
+  niche: string,
+  newSolutionCount: number,
+  totalSolutionCount: number
+): Promise<void> {
+  const vars = {
+    JOB_ID: jobId,
+    NICHE: truncateNiche(niche),
+    STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+    NEW_SOLUTION_COUNT: String(newSolutionCount),
+    TOTAL_SOLUTION_COUNT: String(totalSolutionCount),
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('regenerationComplete.html'), vars);
+    const text = renderTemplate(loadTemplate('regenerationComplete.txt'), vars);
+
+    await sendEmail(to, 'Your New NicheIQ Solution Ideas Are Ready!', text, html);
+    console.log(`Regeneration complete email sent to ${to} for job ${jobId}`);
+  } catch (error) {
+    console.error('Failed to send regeneration complete email:', error);
   }
 }
 

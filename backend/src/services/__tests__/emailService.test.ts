@@ -28,8 +28,12 @@ vi.mock('fs', () => ({
     if (path.includes('jobStart.txt')) return '{{NICHE}} started - {{JOB_ID}}';
     if (path.includes('jobComplete.html')) return '<html>{{NICHE}} complete - {{JOB_ID}}</html>';
     if (path.includes('jobComplete.txt')) return '{{NICHE}} complete - {{JOB_ID}}';
-    if (path.includes('jobError.html')) return '<html>{{NICHE}} error: {{ERROR_MESSAGE}}</html>';
-    if (path.includes('jobError.txt')) return '{{NICHE}} error: {{ERROR_MESSAGE}}';
+    if (path.includes('jobError.html')) return '<html>{{NICHE}} error: {{ERROR_MESSAGE}} guidance: {{GUIDANCE}}</html>';
+    if (path.includes('jobError.txt')) return '{{NICHE}} error: {{ERROR_MESSAGE}} guidance: {{GUIDANCE}}';
+    if (path.includes('phase2Start.html')) return '<html>{{NICHE}} phase2 - {{SELECTED_SOLUTIONS}} - {{JOB_ID}}</html>';
+    if (path.includes('phase2Start.txt')) return '{{NICHE}} phase2 - {{SELECTED_SOLUTIONS}} - {{JOB_ID}}';
+    if (path.includes('regenerationComplete.html')) return '<html>{{NICHE}} regen - {{NEW_SOLUTION_COUNT}} new of {{TOTAL_SOLUTION_COUNT}} - {{JOB_ID}}</html>';
+    if (path.includes('regenerationComplete.txt')) return '{{NICHE}} regen - {{NEW_SOLUTION_COUNT}} new of {{TOTAL_SOLUTION_COUNT}} - {{JOB_ID}}';
     return '';
   }),
 }));
@@ -190,6 +194,91 @@ describe('emailService', () => {
       await sendFailureEmail('user@example.com', 'job-123', 'Test Niche', 'Error');
 
       expect(mockSgSend).toHaveBeenCalled();
+    });
+  });
+
+  describe('phase 2 start email', () => {
+    beforeEach(() => {
+      process.env.EMAIL_PROVIDER = 'smtp';
+      process.env.SMTP_HOST = 'smtp.test.com';
+      process.env.FROM_EMAIL = 'noreply@test.com';
+    });
+
+    it('sends with correct subject and renders solution names', async () => {
+      const { sendPhase2StartEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendPhase2StartEmail('user@example.com', 'job-123', 'Test Niche', ['SaaS Dashboard', 'Analytics Tool']);
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          subject: 'Your NicheIQ Deep Research Has Begun!',
+          html: expect.stringContaining('SaaS Dashboard, Analytics Tool'),
+        })
+      );
+    });
+  });
+
+  describe('regeneration complete email', () => {
+    beforeEach(() => {
+      process.env.EMAIL_PROVIDER = 'smtp';
+      process.env.SMTP_HOST = 'smtp.test.com';
+      process.env.FROM_EMAIL = 'noreply@test.com';
+    });
+
+    it('sends with correct subject and renders counts', async () => {
+      const { sendRegenerationCompleteEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendRegenerationCompleteEmail('user@example.com', 'job-123', 'Test Niche', 3, 8);
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'user@example.com',
+          subject: 'Your New NicheIQ Solution Ideas Are Ready!',
+          html: expect.stringContaining('3'),
+          text: expect.stringContaining('8'),
+        })
+      );
+    });
+  });
+
+  describe('failure email with phaseContext', () => {
+    beforeEach(() => {
+      process.env.EMAIL_PROVIDER = 'smtp';
+      process.env.SMTP_HOST = 'smtp.test.com';
+      process.env.FROM_EMAIL = 'noreply@test.com';
+    });
+
+    it('prepends phase label and appends guidance when phaseContext is provided', async () => {
+      const { sendFailureEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendFailureEmail('user@example.com', 'job-123', 'Test Niche', 'Worker crashed', null, {
+        phaseLabel: 'During Deep Research Phase',
+        guidance: 'Your checkpoint is saved.',
+      });
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.stringContaining('During Deep Research Phase: Worker crashed'),
+          text: expect.stringContaining('Your checkpoint is saved.'),
+        })
+      );
+    });
+
+    it('sends normally when phaseContext is null', async () => {
+      const { sendFailureEmail } = await import('../emailService.js');
+      mockSendMail.mockResolvedValue({});
+
+      await sendFailureEmail('user@example.com', 'job-123', 'Test Niche', 'Something broke', null, null);
+
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: expect.stringContaining('Something broke'),
+        })
+      );
     });
   });
 

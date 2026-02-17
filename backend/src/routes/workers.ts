@@ -17,8 +17,9 @@ import {
   markWorkerShutdown,
 } from '../services/heartbeatService.js';
 import { failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
+import { refundForStage } from '../services/creditService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
-import { notifySolutionsReady } from '../services/notificationService.js';
+import { notifySolutionsReady, notifyPhase2Start, notifyRegenerationComplete } from '../services/notificationService.js';
 import {
   IdeasReadySchema,
   RegenerationCompleteSchema,
@@ -30,6 +31,7 @@ import { requireInternalService } from '../middleware/auth.js';
 import { StageStatus } from '@prisma/client';
 import { PIPELINE_STAGES } from '../types/job.js';
 import { buildErrorDetails } from '../utils/errorTranslator.js';
+import { getPhaseContext } from '../utils/phaseContext.js';
 
 export const workersRouter = Router();
 
@@ -126,7 +128,7 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
 
       const job = await prisma.job.findUnique({
         where: { id: data.job_id },
-        select: { status: true, niche: true, userId: true },
+        select: { status: true, niche: true, userId: true, currentStage: true, selectedSolutions: true },
       });
 
       if (job && job.status === JobStatus.RUNNING) {
@@ -163,14 +165,15 @@ workersRouter.post('/shutdown', async (req: Request, res: Response) => {
           console.error('[Workers] Broadcast failed but DB updated:', broadcastErr);
         }
 
-        // Send failure notification with user-friendly details
+        // Send failure notification with user-friendly details and phase context
         if (job.userId) {
           const user = await prisma.user.findUnique({
             where: { id: job.userId },
             select: { email: true },
           });
           if (user?.email) {
-            notifyJobError(job.userId, user.email, data.job_id, job.niche, errorMessage, translatedErrorDetails).catch(emailError => {
+            const phaseCtx = getPhaseContext(job.currentStage, job.selectedSolutions);
+            notifyJobError(job.userId, user.email, data.job_id, job.niche, errorMessage, translatedErrorDetails, phaseCtx).catch(emailError => {
               console.error(`[Workers] Failed to send failure notification for job ${data.job_id}:`, emailError);
             });
           }
@@ -265,9 +268,16 @@ workersRouter.post('/job-started', async (req: Request, res: Response) => {
       });
 
       if (job?.user?.email) {
-        notifyJobStart(job.userId, job.user.email, data.job_id, job.niche).catch(err => {
-          console.error('Failed to send job start notification:', err);
-        });
+        if (isPhase2 && existingJob?.selectedSolutions?.length) {
+          notifyPhase2Start(job.userId, job.user.email, data.job_id, job.niche, existingJob.selectedSolutions).catch(err => {
+            console.error('Failed to send phase 2 start notification:', err);
+          });
+        } else if (!isRegenerate) {
+          notifyJobStart(job.userId, job.user.email, data.job_id, job.niche).catch(err => {
+            console.error('Failed to send job start notification:', err);
+          });
+        }
+        // Regeneration start: no email (user just triggered it from UI)
       }
 
       console.log(`[Workers] Job ${data.job_id} started by worker ${data.worker_id}`);
@@ -433,8 +443,15 @@ workersRouter.post('/job-failed', async (req: Request, res: Response) => {
     let jobStatus: string;
 
     if (isLandingPageFailure) {
-      // Landing page failure only - don't fail the entire job, no credit refund
+      // Landing page failure only - don't fail the entire job, refund landing page credit
       console.log(`[Workers] Landing page failure for job ${data.job_id} - completing job without landing page`);
+
+      // Refund landing page credits
+      try {
+        await refundForStage(data.job_id, 'landing_page');
+      } catch (refundErr) {
+        console.error(`[Workers] Failed to refund landing page credits for job ${data.job_id}:`, refundErr);
+      }
 
       await prisma.job.update({
         where: { id: data.job_id },
@@ -627,24 +644,31 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
       // Check if this is a landing-page-only failure
       const reportAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
       if (data.stage === 15 && reportAsset) {
-        // Landing page failure - don't fail the entire job
+        // Landing page failure - don't fail the entire job, refund landing page credit
         const { prisma: db } = await import('../services/db.js');
         await db.job.update({
           where: { id: data.job_id },
           data: { landingPageStatus: 'FAILED' },
         });
+        // Refund landing page credits
+        try {
+          await refundForStage(data.job_id, 'landing_page');
+        } catch (refundErr) {
+          console.error(`[Workers] Failed to refund landing page credits for job ${data.job_id}:`, refundErr);
+        }
         // Complete the job if not already completed
         await completeJob(data.job_id, reportAsset.filePath);
         console.log(`[Workers] Landing page failed for job ${data.job_id} but job completed`);
       } else {
         await failJob(data.job_id, data.error, data.stage);
 
-        // Send failure notification
+        // Send failure notification with phase context
         const failedJob = await getJob(data.job_id);
         if (failedJob) {
           const email = await getCurrentEmailForJob(failedJob);
           if (email) {
-            notifyJobError(failedJob.userId, email, data.job_id, failedJob.niche, data.error).catch(err => {
+            const phaseCtx = getPhaseContext(data.stage, failedJob.selectedSolutions);
+            notifyJobError(failedJob.userId, email, data.job_id, failedJob.niche, data.error, null, phaseCtx).catch(err => {
               console.error('Failed to send failure notification:', err);
             });
           }
@@ -779,7 +803,7 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
         status: { in: [JobStatus.REGENERATING, JobStatus.QUEUED] },
         ideasRegeneratedAt: { not: null },  // Guard: only regen-queued, not initial queued
       },
-      select: { solutionIdeas: true },
+      select: { solutionIdeas: true, userId: true, niche: true },
     });
 
     if (!job) {
@@ -815,6 +839,16 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
       status: 'completed',
     });
 
+    // Send regeneration-complete notification
+    if (job.userId) {
+      const user = await prisma.user.findUnique({ where: { id: job.userId }, select: { email: true } });
+      if (user?.email) {
+        notifyRegenerationComplete(job.userId, user.email, data.job_id, job.niche, data.solutions.length, mergedSolutions.length).catch(err => {
+          console.error('Failed to send regeneration-complete notification:', err);
+        });
+      }
+    }
+
     console.log(`[Workers] Regeneration complete for job ${data.job_id}: ${data.solutions.length} new solutions`);
     res.json({ status: 'ok' });
   } catch (error) {
@@ -830,13 +864,20 @@ workersRouter.post('/regeneration-complete', async (req: Request, res: Response)
 /**
  * POST /api/workers/regeneration-failed
  * Worker reports that idea regeneration failed. Reverts REGENERATING → AWAITING_SELECTION
- * so the user can see existing solutions and retry. Does NOT refund credits.
+ * so the user can see existing solutions and retry. Refunds regeneration credits.
  */
 workersRouter.post('/regeneration-failed', async (req: Request, res: Response) => {
   try {
     const data = RegenerationFailedSchema.parse(req.body);
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
+
+    // Refund regeneration credits
+    try {
+      await refundForStage(data.job_id, 'regenerate_ideas');
+    } catch (refundErr) {
+      console.error(`[Workers] Failed to refund regeneration credits for job ${data.job_id}:`, refundErr);
+    }
 
     // Atomic revert: REGENERATING/QUEUED → AWAITING_SELECTION, reset ideasRegeneratedAt
     const result = await prisma.job.updateMany({

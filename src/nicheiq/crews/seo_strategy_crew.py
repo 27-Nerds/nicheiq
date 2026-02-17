@@ -424,49 +424,23 @@ def _hydrate_topic_cluster(
 def _hydrate_page_type(
     light: KeywordBasedPageTypeLight,
     lookup: dict[str, dict],
-    tier_counts: dict[str, int]
 ) -> KeywordBasedPageType:
     """
-    Hydrate lightweight page type with estimated page count from tier data.
+    Hydrate lightweight page type to full model.
 
     Args:
         light: Lightweight page type from LLM
         lookup: Keyword -> stats lookup dict
-        tier_counts: Dict with tier counts (tier_0, tier_1, tier_2, geographic, category)
 
     Returns:
-        Full KeywordBasedPageType with calculated page count
+        Full KeywordBasedPageType
     """
-    # Estimate page count based on target tier/cluster
-    tier_name = light.target_keyword_cluster.lower()
-
-    # Match tier patterns to determine page count
-    if 'tier 0' in tier_name or 'premium' in tier_name:
-        count = max(tier_counts.get('tier_0', 3), 3)
-    elif 'tier 1' in tier_name or 'quick win' in tier_name:
-        count = max(tier_counts.get('tier_1', 5), 5)
-    elif 'tier 2' in tier_name or 'strategic' in tier_name:
-        count = max(tier_counts.get('tier_2', 8), 8)
-    elif 'geographic' in tier_name or 'location' in tier_name:
-        count = max(tier_counts.get('geographic', 10), 10)
-    elif 'category' in tier_name or 'tier 4' in tier_name:
-        count = max(tier_counts.get('category', 20), 10)
-    else:
-        # Fallback: estimate from example keywords
-        count = max(len(light.example_keywords) * 3, 5)
-
-    logger.debug(
-        f"Hydrated page type '{light.page_type_name}': "
-        f"estimated_page_count={count} (target: {light.target_keyword_cluster})"
-    )
-
     return KeywordBasedPageType(
         page_type_name=light.page_type_name,
         url_pattern=light.url_pattern,
         target_keyword_cluster=light.target_keyword_cluster,
         example_keywords=light.example_keywords,
         primary_intent=light.primary_intent,
-        estimated_page_count=count,  # Python-calculated
         priority=light.priority,
         required_schema=light.required_schema,
         seo_optimization_notes=light.seo_optimization_notes,
@@ -476,7 +450,6 @@ def _hydrate_page_type(
 def _hydrate_content_strategy(
     light: ContentStrategyResultLight,
     lookup: dict[str, dict],
-    tier_counts: dict[str, int]
 ) -> ContentStrategyResult:
     """
     Hydrate lightweight Task 2 output with numeric data from CSV.
@@ -484,10 +457,9 @@ def _hydrate_content_strategy(
     Args:
         light: Lightweight content strategy from LLM
         lookup: Keyword -> stats lookup dict
-        tier_counts: Dict with tier counts for page estimation
 
     Returns:
-        Full ContentStrategyResult with calculated volumes and page counts
+        Full ContentStrategyResult with calculated volumes
     """
     # Hydrate topic clusters
     hydrated_clusters = None
@@ -504,18 +476,12 @@ def _hydrate_content_strategy(
     hydrated_page_types = None
     if light.keyword_based_page_types:
         hydrated_page_types = [
-            _hydrate_page_type(pt, lookup, tier_counts)
+            _hydrate_page_type(pt, lookup)
             for pt in light.keyword_based_page_types
         ]
         logger.info(
-            f"✅ Hydrated {len(hydrated_page_types)} page types with page counts"
+            f"✅ Hydrated {len(hydrated_page_types)} page types"
         )
-
-    # Calculate total pages from hydrated page types (for logging only)
-    total_pages = 0
-    if hydrated_page_types:
-        total_pages = sum(pt.estimated_page_count for pt in hydrated_page_types)
-        logger.debug(f"Total estimated pages from keyword-based page types: {total_pages}")
 
     # keyword_driven_site_architecture removed - never rendered, overlaps with keyword_based_page_types
 
@@ -2623,22 +2589,8 @@ class SEOStrategyCrew:
             lookup = _build_keyword_lookup(enriched_keywords)
             logger.info(f"✅ Built keyword lookup with {len(lookup)} entries for Task 2 hydration")
 
-            # Calculate tier counts for page type estimation
-            tier_counts = {
-                'tier_0': len(task_1a_output.tier_0_keywords or []),
-                'tier_1': len(task_1a_output.tier_1_keywords or []),
-                'tier_2': len(task_1a_output.tier_2_keywords or []),
-                'geographic': sum(
-                    len(g.keywords) for g in (task_1b_output.tier_3_geographic_groups or [])
-                ),
-                'category': sum(
-                    len(g.keywords) for g in (task_1c_output.tier_4_category_groups or [])
-                ),
-            }
-            logger.debug(f"Tier counts for Task 2 hydration: {tier_counts}")
-
             # Hydrate Task 2 lightweight output to full ContentStrategyResult
-            task_2_output = _hydrate_content_strategy(task_2_light, lookup, tier_counts)
+            task_2_output = _hydrate_content_strategy(task_2_light, lookup)
             logger.info(
                 f"✅ Task 2 hydrated: {len(task_2_output.topic_clusters or [])} topic clusters, "
                 f"{len(task_2_output.keyword_based_page_types or [])} page types"
@@ -3311,18 +3263,8 @@ class SEOStrategyCrew:
             # ========================================
 
             # Note: lookup was already built earlier in parallel flow (line ~2303)
-            # Calculate tier counts from hydrated keyword analysis
-            tier_counts = {
-                'tier_0': tier0_selected,
-                'tier_1': tier1_selected,
-                'tier_2': tier2_selected,
-                'geographic': tier_3_kw_count,
-                'category': tier_4_kw_count,
-            }
-            logger.debug(f"Tier counts for Task 2 hydration: {tier_counts}")
-
             # Hydrate Task 2 lightweight output to full ContentStrategyResult
-            task_2_output = _hydrate_content_strategy(task_2_light, lookup, tier_counts)
+            task_2_output = _hydrate_content_strategy(task_2_light, lookup)
             logger.info(
                 f"✅ Task 2 hydrated: {len(task_2_output.topic_clusters or [])} topic clusters, "
                 f"{len(task_2_output.keyword_based_page_types or [])} page types"

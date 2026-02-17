@@ -359,19 +359,13 @@ class TestRefineProgrammaticOpportunity:
         assert "12 content pieces" in result["assessment"]
         assert "3 topic clusters" in result["assessment"]
 
-    def test_page_count_with_keyword_based_page_types(self):
-        """Test page count includes keyword-based page type estimates."""
-        mock_page_type_1 = MagicMock()
-        mock_page_type_1.estimated_page_count = 25
-
-        mock_page_type_2 = MagicMock()
-        mock_page_type_2.estimated_page_count = 30
-
+    def test_page_count_ignores_keyword_based_page_types(self):
+        """Test page count does not include keyword-based page types (no estimated_page_count)."""
         mock_seo_report = MagicMock()
         mock_seo_report.tier_3_geographic_groups = None
         mock_seo_report.tier_4_category_groups = None
         mock_seo_report.topic_clusters = None
-        mock_seo_report.keyword_based_page_types = [mock_page_type_1, mock_page_type_2]
+        mock_seo_report.keyword_based_page_types = [MagicMock(), MagicMock()]
 
         result = refine_programmatic_opportunity(
             original_assessment="Original",
@@ -379,19 +373,16 @@ class TestRefineProgrammaticOpportunity:
             tier1_count=10
         )
 
-        # 10 tier1 + 25 + 30 = 65
-        assert result["page_count"] == 65
+        # Only tier1 count contributes
+        assert result["page_count"] == 10
 
     def test_comprehensive_page_count(self):
         """Test page count with all sources combined."""
-        mock_page_type = MagicMock()
-        mock_page_type.estimated_page_count = 20
-
         mock_seo_report = MagicMock()
         mock_seo_report.tier_3_geographic_groups = [MagicMock(), MagicMock()]  # 2
         mock_seo_report.tier_4_category_groups = [MagicMock()]  # 1
         mock_seo_report.topic_clusters = [MagicMock(), MagicMock()]  # 2 * 4 = 8
-        mock_seo_report.keyword_based_page_types = [mock_page_type]  # 20
+        mock_seo_report.keyword_based_page_types = [MagicMock()]
 
         result = refine_programmatic_opportunity(
             original_assessment="Original assessment",
@@ -399,8 +390,8 @@ class TestRefineProgrammaticOpportunity:
             tier1_count=15
         )
 
-        # 15 + 2 + 1 + 8 + 20 = 46
-        assert result["page_count"] == 46
+        # 15 + 2 + 1 + 8 = 26 (keyword_based_page_types no longer contributes)
+        assert result["page_count"] == 26
 
     def test_assessment_includes_original(self):
         """Test that refined assessment includes original assessment."""

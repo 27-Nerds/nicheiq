@@ -31,7 +31,6 @@ def run_research_job(
     user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None,
     resume: bool = False,
-    generate_landing_page: bool = True,
 ) -> dict:
     """
     Main RQ task - runs the complete research pipeline + landing page generation.
@@ -61,8 +60,6 @@ def run_research_job(
     try:
         # Import here to avoid loading heavy dependencies until needed
         from nicheiq.flows.research_flow import ResearchFlow
-        from nicheiq.crews.landing_page_crew import LandingPageCrew
-        from nicheiq.models.research_state import FinalReport
 
         # Create progress callback for real-time updates
         progress_callback = create_progress_callback(job_id)
@@ -106,56 +103,13 @@ def run_research_job(
         # Notify backend that the report is ready (triggers email notification)
         publish_report_ready(job_id, str(job_report_path))
 
-        landing_path = None
-
-        if generate_landing_page:
-            # Generate landing page (isolated - errors don't crash the job)
-            try:
-                logger.info(f"[Worker] Generating landing page for job {job_id}")
-                progress_callback(11, "Landing Page Generation", "running")
-
-                # Load report for landing page generation
-                report = FinalReport(**report_data)
-
-                # Generate landing page
-                crew = LandingPageCrew()
-                result = crew.generate(report, page_mode="coming_soon")
-
-                # Handle None result (guardrail failure)
-                if result is None:
-                    logger.warning(f"[Worker] Landing page generation returned None for job {job_id}")
-                    progress_callback(11, "Landing Page Generation", "completed")
-                else:
-                    # Save landing page
-                    job_landing_path = output_dir / "landing_page.html"
-                    job_landing_path.write_text(result.html_output)
-                    landing_path = str(job_landing_path)
-                    progress_callback(11, "Landing Page Generation", "completed")
-                    logger.info(f"[Worker] Landing page generated for job {job_id}: {landing_path}")
-
-            except Exception as landing_err:
-                # Import here to avoid circular imports
-                from .heartbeat import JobCancelledException
-                # Re-raise cancellation - it's not a landing page error
-                if isinstance(landing_err, JobCancelledException):
-                    raise
-                logger.error(f"[Worker] Landing page generation failed for job {job_id}: {landing_err}")
-                # Mark stage 11 as failed but don't crash the job
-                try:
-                    progress_callback(11, "Landing Page Generation", "failed")
-                except Exception:
-                    pass
-        else:
-            logger.info(f"[Worker] Skipping landing page generation for job {job_id} (not requested)")
-
-        # Publish completion (always - landing page failure doesn't prevent this)
-        publish_job_completed(job_id, str(job_report_path), landing_path)
+        # Publish completion (landing pages are on-demand only)
+        publish_job_completed(job_id, str(job_report_path), None)
 
         return {
             "status": "completed",
             "job_id": job_id,
             "report_path": str(job_report_path),
-            "landing_path": landing_path,
         }
 
     except Exception as e:
@@ -230,7 +184,7 @@ def run_landing_page_only(
 
         # Create progress callback
         progress_callback = create_progress_callback(job_id)
-        progress_callback(11, "Landing Page Generation", "running")
+        progress_callback(15, "Landing Page Generation", "running")
 
         # Generate landing page
         crew = LandingPageCrew()
@@ -239,7 +193,7 @@ def run_landing_page_only(
         # Handle None result (guardrail failure)
         if result is None:
             logger.warning(f"[Worker] Landing page generation returned None for job {job_id}")
-            progress_callback(11, "Landing Page Generation", "completed")
+            progress_callback(15, "Landing Page Generation", "completed")
             # Complete without landing_path - backend will just mark landingPageStatus=COMPLETED
             publish_job_completed(job_id, report_path, None)
             return {
@@ -253,7 +207,7 @@ def run_landing_page_only(
         landing_path = output_dir / "landing_page.html"
         landing_path.write_text(result.html_output)
 
-        progress_callback(11, "Landing Page Generation", "completed")
+        progress_callback(15, "Landing Page Generation", "completed")
 
         # Publish completion with landing_path
         publish_job_completed(job_id, report_path, str(landing_path))
@@ -266,8 +220,8 @@ def run_landing_page_only(
 
     except Exception as e:
         logger.error(f"[Worker] Landing page generation failed for job {job_id}: {e}")
-        # Attach stage 11 (Landing Page Generation) to exception for queue_consumer
-        e.failed_stage = 11  # type: ignore
+        # Attach stage 15 (Landing Page Generation) to exception for queue_consumer
+        e.failed_stage = 15  # type: ignore
         # Re-raise - queue_consumer handles all failure notification via notify_job_failed()
         raise
 
@@ -293,7 +247,6 @@ def run_interactive_research(
     niche: str,
     user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None,
-    generate_landing_page: bool = True,
     resume: bool = False,
 ) -> dict:
     """
@@ -316,8 +269,6 @@ def run_interactive_research(
     flow = None
     try:
         from nicheiq.flows.research_flow import ResearchFlow
-        from nicheiq.crews.landing_page_crew import LandingPageCrew
-        from nicheiq.models.research_state import FinalReport
 
         progress_callback = create_progress_callback(job_id)
 
@@ -389,14 +340,13 @@ def run_interactive_research(
 
 
 def _run_phase2_continuation(
-    flow, job_id, selected_solutions, selection_rationale, output_dir, progress_callback, generate_landing_page
+    flow, job_id, selected_solutions, selection_rationale, output_dir, progress_callback
 ) -> dict:
     """
     Continue from Phase 1 to Phase 2 with the selected solution(s).
     Runs stages 8.55→10 and optionally stage 11 (landing page).
     """
     from nicheiq.models.research_state import FinalReport
-    from nicheiq.crews.landing_page_crew import LandingPageCrew
 
     logger.info(f"[Worker] Running Phase 2 for job {job_id} with solutions: {selected_solutions}")
 
@@ -505,35 +455,13 @@ def _run_phase2_continuation(
     final_winner = state.solution_selection.selected_solution_name if state.solution_selection else selected_solution
     publish_report_ready(job_id, str(job_report_path), winner_name=final_winner)
 
-    landing_path = None
-    if generate_landing_page:
-        try:
-            progress_callback(11, "Landing Page Generation", "running")
-            report = FinalReport(**report_data)
-            crew = LandingPageCrew()
-            result = crew.generate(report, page_mode="coming_soon")
-            if result is not None:
-                job_landing_path = output_dir / "landing_page.html"
-                job_landing_path.write_text(result.html_output)
-                landing_path = str(job_landing_path)
-            progress_callback(11, "Landing Page Generation", "completed")
-        except Exception as landing_err:
-            from .heartbeat import JobCancelledException
-            if isinstance(landing_err, JobCancelledException):
-                raise
-            logger.error(f"[Worker] Landing page failed for job {job_id}: {landing_err}")
-            try:
-                progress_callback(11, "Landing Page Generation", "failed")
-            except Exception:
-                pass
-
-    publish_job_completed(job_id, str(job_report_path), landing_path)
+    # Publish completion (landing pages are on-demand only)
+    publish_job_completed(job_id, str(job_report_path), None)
 
     return {
         "status": "completed",
         "job_id": job_id,
         "report_path": str(job_report_path),
-        "landing_path": landing_path,
     }
 
 
@@ -543,7 +471,6 @@ def run_research_phase2(
     selected_solutions: list[str] = None,
     selected_solution: str = "",
     selection_rationale: str = "",
-    generate_landing_page: bool = True,
 ) -> dict:
     """
     Phase 2 task: runs deep investigation for user-selected solution(s).
@@ -585,7 +512,7 @@ def run_research_phase2(
 
         return _run_phase2_continuation(
             flow, job_id, solutions, selection_rationale,
-            output_dir, progress_callback, generate_landing_page
+            output_dir, progress_callback
         )
 
     except Exception as e:

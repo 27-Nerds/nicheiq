@@ -24,7 +24,7 @@
   <title>NicheIQ - AI-Powered Market Research for SaaS Founders</title>
   <meta
     name="description"
-    content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict."
+    content="Two-phase AI research: discover pain points and solution ideas, then choose which to validate with competitive analysis, SEO strategy, and go/no-go verdict."
   />
   <meta
     property="og:title"
@@ -32,7 +32,7 @@
   />
   <meta
     property="og:description"
-    content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict."
+    content="Two-phase AI research: discover pain points and solution ideas, then choose which to validate with competitive analysis, SEO strategy, and go/no-go verdict."
   />
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary" />
@@ -42,7 +42,7 @@
   />
   <meta
     name="twitter:description"
-    content="Discover SaaS opportunities in 45 minutes with AI-powered market research. Get real pain points, market sizing, SEO strategy, and a clear go/no-go verdict."
+    content="Two-phase AI research: discover pain points and solution ideas, then choose which to validate with competitive analysis, SEO strategy, and go/no-go verdict."
   />
 </svelte:head>
 

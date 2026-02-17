@@ -268,13 +268,13 @@
       return {
         summary: "Quality check failed",
         suggestion:
-          "The research didn't meet quality standards. Your credit was refunded.",
+          "The research didn't meet quality standards. Your credits were refunded.",
       };
     }
     if (error.includes("requires") && error.includes("stage")) {
       return {
         summary: "Pipeline error",
-        suggestion: "An internal error occurred. Your credit was refunded.",
+        suggestion: "An internal error occurred. Your credits were refunded.",
       };
     }
     if (error.includes("dataforseo")) {
@@ -301,7 +301,7 @@
       return {
         summary: "Configuration issue",
         suggestion:
-          "This is on our end. Your credit was refunded automatically.",
+          "This is on our end. Your credits were refunded automatically.",
       };
     }
     if (
@@ -612,7 +612,7 @@
         </div>
         <!-- Actions -->
         <div class="flex items-center gap-2">
-          <SubmitButton onclick={handleResume} disabled={isResuming} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" title="Resume from last checkpoint (no credit charge)" class="btn-primary flex items-center gap-2" />
+          <SubmitButton onclick={handleResume} disabled={isResuming} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" title="Resume from last checkpoint (refunded credits will be re-charged)" class="btn-primary flex items-center gap-2" />
         </div>
       </div>
     {/if}

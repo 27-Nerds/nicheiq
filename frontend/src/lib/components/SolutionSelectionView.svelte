@@ -9,11 +9,22 @@
   import SolutionCard from "./SolutionCard.svelte";
   import SolutionDetail from "./SolutionDetail.svelte";
   import SelectSolutionModal from "./SelectSolutionModal.svelte";
+  import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import type { SolutionPreview } from "$lib/types/job";
-  import { selectSolution, regenerateIdeas } from "$lib/api";
+  import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
+  import { invalidateAll } from "$app/navigation";
+  import { tick } from "svelte";
+  import { Coins } from "lucide-svelte";
 
   const MAX_SELECTIONS = 3;
+
+  interface StageCosts {
+    discovery: number;
+    deep_research: number;
+    landing_page: number;
+    regenerate_ideas: number;
+  }
 
   interface Props {
     jobId: string;
@@ -22,6 +33,8 @@
     selectedSolutions?: string[] | null;
     isRegenerating?: boolean;
     canRegenerate?: boolean;
+    stageCosts?: StageCosts;
+    creditBalance?: number;
     onSelectionComplete?: () => void;
     onRegenerateStart?: () => void;
   }
@@ -33,6 +46,8 @@
     selectedSolutions = null,
     isRegenerating = false,
     canRegenerate = true,
+    stageCosts = { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 },
+    creditBalance = 0,
     onSelectionComplete,
     onRegenerateStart,
   }: Props = $props();
@@ -117,6 +132,23 @@
   const selectionCount = $derived(selectedNames.size);
   const canSubmit = $derived(selectionCount > 0 && !alreadySubmitted);
 
+  // Advisory credit checks — UI hints only, backend 402 is authoritative
+  const canAffordDeepResearch = $derived(creditBalance >= stageCosts.deep_research);
+  const canAffordRegenerate = $derived(creditBalance >= stageCosts.regenerate_ideas);
+  const canAffordBoth = $derived(creditBalance >= stageCosts.deep_research + stageCosts.regenerate_ideas);
+  const balanceAfterDeep = $derived(creditBalance - stageCosts.deep_research);
+  const canAffordLandingAfterDeep = $derived(balanceAfterDeep >= stageCosts.landing_page);
+
+  // Regen confirmation state
+  let regenConfirmPending = $state(false);
+
+  // Reset confirmation if external state changes make it irrelevant
+  $effect(() => {
+    if (regenConfirmPending && (isRegenerating || canAffordBoth || !canAffordRegenerate)) {
+      regenConfirmPending = false;
+    }
+  });
+
   // Dynamic header narrative based on selection count
   const headerNarrative = $derived.by(() => {
     if (alreadySubmitted) return { title: `Solution${submittedNames.size > 1 ? 's' : ''} Selected`, subtitle: '' };
@@ -171,8 +203,13 @@
       modalOpen = false;
       onSelectionComplete?.();
     } catch (e) {
-      selectError =
-        e instanceof Error ? e.message : "Failed to select solution";
+      if (e instanceof ApiError && e.status === 402) {
+        selectError = `Insufficient credits for deep research (need ${stageCosts.deep_research})`;
+        await invalidateAll();
+      } else {
+        selectError =
+          e instanceof Error ? e.message : "Failed to select solution";
+      }
     } finally {
       selectLoading = false;
     }
@@ -183,6 +220,25 @@
     selectError = "";
   }
 
+  async function handleRegenerateClick() {
+    if (!canAffordBoth && canAffordDeepResearch && canAffordRegenerate) {
+      regenConfirmPending = true;
+      await tick();
+      document.getElementById('regen-confirm-cancel')?.focus();
+    } else {
+      handleRegenerate();
+    }
+  }
+
+  function handleRegenConfirm() {
+    regenConfirmPending = false;
+    handleRegenerate();
+  }
+
+  function handleRegenCancel() {
+    regenConfirmPending = false;
+  }
+
   async function handleRegenerate() {
     if (regenerating) return;
     regenerating = true;
@@ -191,16 +247,51 @@
     try {
       await regenerateIdeas(jobId);
       onRegenerateStart?.();
+      invalidateAll();
       // Keep regenerating=true — SSE will set isRegenerating, then new cards arrive and button disappears
     } catch (e) {
-      regenerateError =
-        e instanceof Error ? e.message : "Failed to regenerate ideas";
+      if (e instanceof ApiError && e.status === 402) {
+        regenerateError = `Insufficient credits (need ${stageCosts.regenerate_ideas})`;
+        await invalidateAll();
+      } else {
+        regenerateError =
+          e instanceof Error ? e.message : "Failed to regenerate ideas";
+      }
       regenerating = false;
     }
   }
 </script>
 
 <div class="space-y-6">
+  <!-- Credit warning banners -->
+  {#if !alreadySubmitted && !isRegenerating}
+    {#if !canAffordDeepResearch}
+      <AlertBanner
+        variant="error"
+        title="Insufficient credits for deep analysis"
+        id="credit-warning-banner"
+      >
+        {#snippet children()}
+          <p class="text-sm text-text-muted mt-1">
+            Deep analysis requires {stageCosts.deep_research} credits (you have {creditBalance}).
+            <a href="/billing" class="text-accent hover:text-accent-hover font-medium">Add credits to continue &rarr;</a>
+          </p>
+        {/snippet}
+      </AlertBanner>
+    {:else if !canAffordBoth && canRegenerate}
+      <AlertBanner
+        variant="warning"
+        title="Budget check"
+      >
+        {#snippet children()}
+          <p class="text-sm text-text-muted mt-1">
+            {creditBalance} credits remaining. Deep analysis ({stageCosts.deep_research}) or new ideas ({stageCosts.regenerate_ideas}) &mdash; pick one.
+          </p>
+        {/snippet}
+      </AlertBanner>
+    {/if}
+  {/if}
+
   <!-- Header -->
   <div class="card p-3">
     <div class="flex items-start gap-3">
@@ -251,7 +342,8 @@
           {/if}
           <button
             onclick={handleSubmitClick}
-            disabled={!canSubmit || selectLoading}
+            disabled={!canSubmit || selectLoading || !canAffordDeepResearch}
+            aria-describedby={!canAffordDeepResearch ? 'credit-warning-banner' : undefined}
             class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {#if selectLoading}
@@ -259,9 +351,16 @@
               Submitting...
             {:else}
               Run Deep Analysis
-              <ArrowRight class="w-4 h-4" />
+              {#if stageCosts.deep_research > 0}
+                <span class="inline-flex items-center gap-1 text-xs opacity-80">
+                  <Coins class="w-3 h-3" />{stageCosts.deep_research}
+                </span>
+              {/if}
             {/if}
           </button>
+          {#if canAffordDeepResearch && !canAffordLandingAfterDeep && selectionCount > 0}
+            <p class="text-xs text-text-muted mt-1">This uses all your remaining credits. Landing page ({stageCosts.landing_page} credits) will need more.</p>
+          {/if}
         </div>
       {/if}
     </div>
@@ -310,27 +409,66 @@
     <!-- Generate More card (last grid cell) -->
     {#if !alreadySubmitted && (canRegenerate || regenerating || isRegenerating)}
       <AnimateOnScroll animation="fade-up" delay={100 + Math.floor(solutions.length / 3) * 150} duration={500} once={true}>
-        <button
-          onclick={handleRegenerate}
-          disabled={regenerating || isRegenerating}
-          class="generate-more-card h-full w-full"
-          class:is-loading={regenerating || isRegenerating}
-          aria-label="Generate more solution ideas"
-        >
-          {#if regenerating || isRegenerating}
-            <div class="p-2.5 rounded-xl bg-accent/10">
-              <Loader2 class="w-5 h-5 text-accent animate-spin motion-reduce:animate-none" />
+        {#if regenConfirmPending}
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="generate-more-card h-full w-full !cursor-default"
+            onkeydown={(e) => { if (e.key === 'Escape') handleRegenCancel(); }}
+          >
+            <div class="w-full p-3 rounded-lg bg-warning/10 border border-warning/20">
+              <p class="text-sm text-text-primary font-medium">Heads up</p>
+              <p class="text-xs text-text-muted mt-1">
+                Generating ideas costs {stageCosts.regenerate_ideas} credits. You'll have {creditBalance - stageCosts.regenerate_ideas} left &mdash; not enough for deep analysis ({stageCosts.deep_research}). Continue?
+              </p>
+              <div class="flex items-center gap-2 mt-3">
+                <button
+                  onclick={handleRegenConfirm}
+                  disabled={regenerating || isRegenerating}
+                  class="btn-primary px-3 py-1.5 text-xs font-medium rounded-md"
+                >
+                  Generate Anyway
+                </button>
+                <button
+                  id="regen-confirm-cancel"
+                  onclick={handleRegenCancel}
+                  class="btn-secondary px-3 py-1.5 text-xs font-medium rounded-md"
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
-            <span class="text-sm font-medium text-text-secondary mt-2.5">Exploring new angles...</span>
-            <span class="text-xs text-text-muted mt-0.5">This may take a moment</span>
-          {:else}
-            <div class="p-2.5 rounded-xl bg-accent/10 group-icon">
-              <Sparkles class="w-5 h-5 text-accent" />
-            </div>
-            <span class="text-sm font-semibold text-text-primary mt-2.5">Generate More Ideas</span>
-            <span class="text-xs text-text-muted mt-0.5">One-time boost</span>
-          {/if}
-        </button>
+          </div>
+        {:else}
+          <button
+            onclick={handleRegenerateClick}
+            disabled={regenerating || isRegenerating || !canAffordRegenerate}
+            class="generate-more-card h-full w-full"
+            class:is-loading={regenerating || isRegenerating}
+            aria-label="Generate more solution ideas"
+          >
+            {#if regenerating || isRegenerating}
+              <div class="p-2.5 rounded-xl bg-accent/10">
+                <Loader2 class="w-5 h-5 text-accent animate-spin motion-reduce:animate-none" />
+              </div>
+              <span class="text-sm font-medium text-text-secondary mt-2.5">Exploring new angles...</span>
+              <span class="text-xs text-text-muted mt-0.5">This may take a moment</span>
+            {:else if !canAffordRegenerate}
+              <div class="p-2.5 rounded-xl bg-bg-surface">
+                <Sparkles class="w-5 h-5 text-text-muted" />
+              </div>
+              <span class="text-sm font-medium text-text-muted mt-2.5">Generate More Ideas</span>
+              <span class="text-xs text-text-muted mt-0.5 inline-flex items-center gap-1"><Coins class="w-3 h-3" />{stageCosts.regenerate_ideas} credits &mdash; insufficient balance</span>
+            {:else}
+              <div class="p-2.5 rounded-xl bg-accent/10 group-icon">
+                <Sparkles class="w-5 h-5 text-accent" />
+              </div>
+              <span class="text-sm font-semibold text-text-primary mt-2.5">Generate More Ideas</span>
+              {#if stageCosts.regenerate_ideas > 0}
+                <span class="text-xs text-text-muted mt-0.5 inline-flex items-center gap-1"><Coins class="w-3 h-3" />{stageCosts.regenerate_ideas} credits</span>
+              {/if}
+            {/if}
+          </button>
+        {/if}
       </AnimateOnScroll>
     {/if}
 
@@ -374,6 +512,7 @@
   solutionNames={Array.from(selectedNames)}
   loading={selectLoading}
   error={selectError}
+  creditCost={stageCosts.deep_research}
   onConfirm={handleConfirmSelection}
   onCancel={handleCancelModal}
 />

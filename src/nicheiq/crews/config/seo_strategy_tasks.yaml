@@ -1299,7 +1299,7 @@ develop_content_technical_strategy:
       - priority: str (P0/P1/P2)
       - required_schema: Optional[List[str]]
       - seo_optimization_notes: str
-      NOTE: Do NOT include estimated_page_count - Python will calculate
+
 
     - url_hierarchy_diagram: Optional[str] (ASCII/markdown site hierarchy)
     - section_keyword_mapping: Optional[str] (markdown mapping sections to clusters)

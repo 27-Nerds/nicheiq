@@ -1,7 +1,7 @@
 import { prisma } from './db.js';
 import { JobStatus, StageStatus, AssetType, Prisma } from '@prisma/client';
 import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
-import { refundCreditsForJob } from './creditService.js';
+import { determineFailedStage, refundForStage } from './creditService.js';
 
 /**
  * Create a new research job
@@ -342,11 +342,14 @@ export async function failJob(
     },
   });
 
-  // Auto-refund the credit for failed jobs
+  // Auto-refund the failed stage's credits
   try {
-    const refund = await refundCreditsForJob(jobId, 1);
-    if (refund) {
-      console.log(`[JobService] Auto-refunded 1 credit for failed job ${jobId}`);
+    const failedStage = determineFailedStage(errorStage, existingJob.status);
+    if (failedStage) {
+      const refund = await refundForStage(jobId, failedStage);
+      if (refund) {
+        console.log(`[JobService] Auto-refunded ${Math.abs(refund.amount)} credits for failed job ${jobId} stage ${failedStage}`);
+      }
     }
   } catch (refundError) {
     // Log but don't fail the failJob operation

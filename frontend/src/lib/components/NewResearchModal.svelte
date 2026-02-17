@@ -44,9 +44,10 @@
     }
   });
 
-  // Get credit balance from page data
+  // Get credit balance and stage costs from page data
   const creditBalance = $derived(($page.data.creditBalance as number) ?? 0);
-  const hasCredits = $derived(creditBalance > 0);
+  const stageCosts = $derived(($page.data.stageCosts as { discovery: number; deep_research: number; landing_page: number; regenerate_ideas: number }) ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 });
+  const hasCredits = $derived(creditBalance >= stageCosts.discovery);
 
   const PROJECT_TYPES = [
     { value: "saas", label: "SaaS" },
@@ -60,7 +61,6 @@
   let selectedProjectTypes = $state<string[]>(
     PROJECT_TYPES.map((t) => t.value),
   );
-  let generateLandingPage = $state(false);
   let loading = $state(false);
   let error = $state("");
   let isInsufficientCredits = $state(false);
@@ -95,7 +95,6 @@
           ...(selectedProjectTypes.length > 0 && {
             allowedProjectTypes: selectedProjectTypes,
           }),
-          generateLandingPage,
         }),
       });
 
@@ -117,7 +116,6 @@
       open = false;
       niche = "";
       selectedProjectTypes = PROJECT_TYPES.map((t) => t.value);
-      generateLandingPage = false;
       // Navigate to job page (invalidateAll refreshes credit balance in header)
       goto(`/jobs/${data.id}`, { invalidateAll: true });
     } catch (err) {
@@ -259,7 +257,9 @@
               {creditBalance === 1 ? "credit" : "credits"} available
             </span>
           </div>
-          <span class="text-xs text-text-muted">1 credit per research</span>
+          {#if stageCosts.discovery > 0}
+            <span class="text-xs text-text-muted">{stageCosts.discovery} credits for discovery</span>
+          {/if}
         </div>
 
         {#if !hasCredits}
@@ -272,7 +272,7 @@
                 No credits available
               </p>
               <p class="text-xs text-text-muted mt-1">
-                You need at least 1 credit to start a new research.
+                You need at least {stageCosts.discovery} credits to start a new research.
               </p>
               <a
                 href="/billing"
@@ -391,28 +391,6 @@
             </div>
           </div>
 
-          <!-- Section 3: Landing Page Option -->
-          <div class="pt-3 border-t border-border/50">
-            <label
-              class="flex items-center justify-between p-3 rounded-lg bg-bg-elevated/50 border border-border/50 cursor-pointer hover:bg-bg-elevated transition-colors"
-            >
-              <div>
-                <span class="text-sm font-medium text-text-primary"
-                  >Generate landing page</span
-                >
-                <p class="text-xs text-text-muted">
-                  Creates a ready-to-use landing page for your top solution. You
-                  can generate it later too.
-                </p>
-              </div>
-              <input
-                type="checkbox"
-                bind:checked={generateLandingPage}
-                disabled={loading}
-                class="toggle"
-              />
-            </label>
-          </div>
         {/if}
 
         {#if error}
@@ -435,8 +413,7 @@
 
         {#if hasCredits}
           <p class="text-xs text-text-muted text-center">
-            Research takes ~45 min. We'll dig deep and email you when it's
-            ready.
+            Phase 1 finds pain points and solution ideas (~15 min). You pick which to pursue, then Phase 2 validates with competitive analysis, SEO, and market sizing (~20 min).
           </p>
           <SubmitButton loading={loading} loadingText="Starting..." icon={ArrowRight} iconPosition="end" label="Start Research" disabled={!niche.trim()} class="btn-primary w-full justify-center" />
         {:else}
@@ -447,44 +424,3 @@
   </div>
 {/if}
 
-<style>
-  .toggle {
-    appearance: none;
-    width: 44px;
-    height: 24px;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    position: relative;
-    flex-shrink: 0;
-  }
-
-  .toggle::after {
-    content: "";
-    position: absolute;
-    width: 18px;
-    height: 18px;
-    background: var(--color-text-muted);
-    border-radius: 50%;
-    top: 2px;
-    left: 2px;
-    transition: all 0.2s ease;
-  }
-
-  .toggle:checked {
-    background: var(--color-accent);
-    border-color: var(--color-accent);
-  }
-
-  .toggle:checked::after {
-    background: white;
-    left: 22px;
-  }
-
-  .toggle:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-</style>

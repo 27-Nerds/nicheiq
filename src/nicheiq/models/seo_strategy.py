@@ -325,13 +325,10 @@ class KeywordBasedPageType(BaseModel):
         ..., description="Which keyword tier/cluster this page type targets (e.g., 'Tier 1 quick wins', 'Geographic group: Spanish markets')"
     )
     example_keywords: list[str] = Field(
-        ..., min_length=2, max_length=5, description="2-5 example target keywords this page type addresses"
+        ..., min_length=2, description="Example target keywords this page type addresses"
     )
     primary_intent: str = Field(
         ..., description="Primary search intent: 'commercial', 'informational', 'navigational', 'transactional'"
-    )
-    estimated_page_count: int = Field(
-        ..., description="Number of pages needed based on keyword volume (e.g., 12 cities = 12 pages)"
     )
     priority: str = Field(
         ..., description="Launch priority based on keyword opportunity: 'P0' (Tier 1 keywords), 'P1' (Tier 2), 'P2' (Tier 3-4)"
@@ -786,10 +783,9 @@ class TopicClusterLight(BaseModel):
 
 class KeywordBasedPageTypeLight(BaseModel):
     """
-    Lightweight page type - Python hydrates page count.
+    Lightweight page type for LLM output.
 
     LLM outputs only strategic content (page type definitions, schema types).
-    Python calculates estimated_page_count based on keyword tier/cluster data.
     """
 
     model_config = ConfigDict(extra='ignore')
@@ -804,7 +800,7 @@ class KeywordBasedPageTypeLight(BaseModel):
         ..., description="Which keyword tier/cluster this page type targets"
     )
     example_keywords: list[str] = Field(
-        ..., min_length=2, max_length=5, description="2-5 example target keywords"
+        ..., min_length=2, description="Example target keywords"
     )
     primary_intent: str = Field(
         ..., description="Primary search intent: 'commercial', 'informational', 'navigational', 'transactional'"

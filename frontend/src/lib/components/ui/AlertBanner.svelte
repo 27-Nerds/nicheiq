@@ -13,6 +13,7 @@
     onDismiss?: () => void;
     children?: Snippet;
     class?: string;
+    id?: string;
   }
 
   let {
@@ -24,6 +25,7 @@
     onDismiss,
     children,
     class: className = "",
+    id,
   }: Props = $props();
 
   const variantMap: Record<AlertVariant, { bg: string; border: string; iconClass: string; defaultIcon: ComponentType }> = {
@@ -57,7 +59,7 @@
   const Icon = $derived(icon ?? config.defaultIcon);
 </script>
 
-<div class="p-4 rounded-lg {config.bg} border {config.border} {className}">
+<div {id} class="p-4 rounded-lg {config.bg} border {config.border} {className}" role={variant === 'error' ? 'alert' : 'status'}>
   <div class="flex items-center justify-between">
     <div class="flex items-start gap-3">
       <Icon class="w-5 h-5 {config.iconClass} shrink-0 mt-0.5" />

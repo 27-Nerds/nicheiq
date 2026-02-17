@@ -341,9 +341,7 @@ def _make_page_type_dict(name: str, keywords: list[str]) -> dict:
 
 def _make_full_page_type_dict(name: str, keywords: list[str]) -> dict:
     """Helper to build a minimal KeywordBasedPageType dict (full-weight)."""
-    d = _make_page_type_dict(name, keywords)
-    d["estimated_page_count"] = 5
-    return d
+    return _make_page_type_dict(name, keywords)
 
 
 class TestCategoryLightResultValidator:

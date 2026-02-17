@@ -7,6 +7,7 @@ import {
   redeemPromoCode,
   PromoCodeError,
   RateLimitError,
+  getStageCost,
 } from '../services/creditService.js';
 import { getPackages, getPackageById, createCheckoutSession } from '../services/stripeService.js';
 
@@ -60,6 +61,7 @@ billingRouter.get('/transactions', requireInternalAuth, async (req: Authenticate
         balanceBefore: tx.balanceBefore,
         balanceAfter: tx.balanceAfter,
         description: tx.description,
+        stage: tx.stage,
         relatedJobId: tx.relatedJobId,
         createdAt: tx.createdAt.toISOString(),
       })),
@@ -222,5 +224,25 @@ billingRouter.post('/checkout', requireInternalAuth, async (req: AuthenticatedRe
       error: 'Failed to create checkout session',
       code: 'CHECKOUT_FAILED',
     });
+  }
+});
+
+/**
+ * GET /api/billing/stage-costs
+ * Get current token costs for each stage
+ */
+billingRouter.get('/stage-costs', requireInternalAuth, async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const [discovery, deep_research, landing_page, regenerate_ideas] = await Promise.all([
+      getStageCost('discovery'),
+      getStageCost('deep_research'),
+      getStageCost('landing_page'),
+      getStageCost('regenerate_ideas'),
+    ]);
+
+    res.json({ discovery, deep_research, landing_page, regenerate_ideas });
+  } catch (error) {
+    console.error('Failed to get stage costs:', error);
+    res.status(500).json({ error: 'Failed to get stage costs' });
   }
 });

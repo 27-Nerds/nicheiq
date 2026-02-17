@@ -11,6 +11,7 @@ const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
 const mockUpdateMany = vi.fn();
 const mockJobProgressCreate = vi.fn();
+const mockJobProgressDeleteMany = vi.fn();
 const mockPrismaTransaction = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
@@ -23,6 +24,7 @@ vi.mock('../../services/db.js', () => ({
     jobProgress: {
       updateMany: (...args: any[]) => mockUpdateMany(...args),
       create: (...args: any[]) => mockJobProgressCreate(...args),
+      deleteMany: (...args: any[]) => mockJobProgressDeleteMany(...args),
     },
     $transaction: (...args: any[]) => mockPrismaTransaction(...args),
   },
@@ -38,17 +40,19 @@ vi.mock('../../services/jobService.js', () => ({
   getJobAsset: (...args: any[]) => mockGetJobAsset(...args),
 }));
 
-const mockCreateJobWithCreditDeduction = vi.fn();
-const mockRefundCreditsForJob = vi.fn();
+const mockChargeForStageInTx = vi.fn();
 
 vi.mock('../../services/creditService.js', () => ({
-  createJobWithCreditDeduction: (...args: any[]) => mockCreateJobWithCreditDeduction(...args),
-  refundCreditsForJob: (...args: any[]) => mockRefundCreditsForJob(...args),
+  createJobAndChargeDiscovery: vi.fn(),
+  refundForStage: vi.fn(),
+  chargeForStageInTx: (...args: any[]) => mockChargeForStageInTx(...args),
+  getStageCost: vi.fn().mockResolvedValue(5),
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
     currentBalance: number;
     required: number;
     constructor(currentBalance: number, required: number) {
       super(`Insufficient credits: have ${currentBalance}, need ${required}`);
+      this.name = 'InsufficientCreditsError';
       this.currentBalance = currentBalance;
       this.required = required;
     }
@@ -166,6 +170,7 @@ beforeEach(async () => {
   mockGetQueueLength.mockResolvedValue(0);
   mockGetQueueStats.mockResolvedValue({ position: 1, aheadCount: 0, totalQueued: 1 });
   mockEnqueueLandingPageJob.mockResolvedValue(undefined);
+  mockChargeForStageInTx.mockResolvedValue({ cost: 5 });
 });
 
 // ============================================
@@ -191,6 +196,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     const job = {
       id: JOB_ID,
       userId: USER_ID,
+      niche: 'test niche',
       status: JobStatus.COMPLETED,
       landingPageStatus: null,
       assets: [{ assetType: 'REPORT_JSON', filePath: 'outputs/job-1/report.json' }],
@@ -381,5 +387,54 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
       .post(`/api/jobs/${JOB_ID}/generate-landing`);
 
     expect(res.status).toBe(401);
+  });
+
+  it('refunds credits and reverts job when enqueue fails', async () => {
+    const { refundForStage } = await import('../../services/creditService.js');
+    const job = {
+      id: JOB_ID,
+      userId: USER_ID,
+      niche: 'test niche',
+      status: JobStatus.COMPLETED,
+      landingPageStatus: null,
+      assets: [{ assetType: 'REPORT_JSON', filePath: 'outputs/job-1/report.json' }],
+      progress: [],
+    };
+
+    setupTransaction(job);
+    mockGetJobAsset.mockResolvedValue({ filePath: 'outputs/job-1/report.json' });
+    mockEnqueueLandingPageJob.mockRejectedValue(new Error('Redis unavailable'));
+
+    // Set up compensating transaction mock
+    const mockCompTx = {
+      job: { update: vi.fn().mockResolvedValue({}) },
+      jobProgress: { deleteMany: vi.fn().mockResolvedValue({}) },
+    };
+    // After the first transaction (charge), the second $transaction call is the compensating one
+    const originalImpl = mockPrismaTransaction.getMockImplementation();
+    let callCount = 0;
+    mockPrismaTransaction.mockImplementation(async (cb: any) => {
+      callCount++;
+      if (callCount === 1) {
+        // First call: the charge transaction (from setupTransaction)
+        return originalImpl!(cb);
+      }
+      // Second call: the compensating transaction
+      return cb(mockCompTx);
+    });
+
+    const res = await request(app)
+      .post(`/api/jobs/${JOB_ID}/generate-landing`)
+      .set(validUserHeaders);
+
+    expect(res.status).toBe(500);
+    expect(refundForStage).toHaveBeenCalledWith(JOB_ID, 'landing_page');
+    expect(mockCompTx.job.update).toHaveBeenCalledWith({
+      where: { id: JOB_ID },
+      data: { landingPageStatus: null, generateLandingPage: false, totalStages: { decrement: 1 } },
+    });
+    expect(mockCompTx.jobProgress.deleteMany).toHaveBeenCalledWith({
+      where: { jobId: JOB_ID, stageNumber: 15 },
+    });
   });
 });

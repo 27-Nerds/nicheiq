@@ -2,7 +2,12 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
 import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueRegenerateJob, getQueueStats, getQueueLength } from '../services/queueService.js';
-import { createJobWithCreditDeduction, InsufficientCreditsError, refundCreditsForJob } from '../services/creditService.js';
+import {
+  createJobAndChargeDiscovery,
+  InsufficientCreditsError,
+  refundForStage,
+  chargeForStageInTx,
+} from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema, SelectSolutionSchema } from '../types/job.js';
 import { JobStatus, AssetType, CreditTransactionType, StageStatus } from '@prisma/client';
@@ -34,22 +39,16 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
     // Use authenticated user's ID
     const userId = req.user!.id;
 
-    // Create job with credit deduction in atomic transaction
-    // This prevents race conditions and ensures credits are deducted BEFORE job creation
-    const { job } = await createJobWithCreditDeduction(
+    // Create job + charge discovery cost in atomic transaction
+    const { job } = await createJobAndChargeDiscovery(
       userId,
       input.niche,
-      1, // Credit cost per job
       input.allowedProjectTypes,
-      input.generateLandingPage,
-      // TODO: jobMode is hardcoded to 'interactive' during feature rollout.
-      // All new jobs use the interactive flow. Add jobMode to CreateJobSchema
-      // when we need to support both auto and interactive modes.
       'interactive'
     );
 
-    // Enqueue job for Python worker (email retrieved from DB when needed for notifications)
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, input.generateLandingPage ?? false, 'interactive');
+    // Enqueue job for Python worker
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, 'interactive');
 
     // Update status to QUEUED and set queuedAt timestamp
     await prisma.job.update({
@@ -335,6 +334,13 @@ jobsRouter.delete('/:jobId', requireInternalAuth, validateJobId, async (req: Aut
 
     await updateJobStatus(jobId, JobStatus.CANCELLED);
 
+    // Refund discovery credit
+    try {
+      await refundForStage(jobId, 'discovery');
+    } catch (refundError) {
+      console.error(`[Jobs] Failed to refund credit for DELETE-cancelled job ${jobId}:`, refundError);
+    }
+
     res.json({ message: 'Job cancelled' });
   } catch (error) {
     console.error('Failed to cancel job:', error);
@@ -391,13 +397,13 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
       },
     });
 
-    // Refund credit to user using the credit service
+    // Refund discovery credit to user
     let creditRefunded = 0;
     try {
-      const refund = await refundCreditsForJob(jobId, 1);
+      const refund = await refundForStage(jobId, 'discovery');
       if (refund) {
-        creditRefunded = 1;
-        console.log(`[Jobs] Job ${jobId} cancelled by user ${userId}, credit refunded`);
+        creditRefunded = Math.abs(refund.amount);
+        console.log(`[Jobs] Job ${jobId} cancelled by user ${userId}, ${creditRefunded} credits refunded`);
       }
     } catch (refundError) {
       // Log but don't fail the cancellation
@@ -450,42 +456,54 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
         relatedJobId: jobId,
         type: CreditTransactionType.REFUND,
       },
+      orderBy: { createdAt: 'desc' },
     });
 
     if (refundTransaction) {
-      // Job was refunded, need to charge a credit to resume
+      // Job was refunded, need to re-charge to resume
+      const refundAmount = Math.abs(refundTransaction.amount);
       const credits = await prisma.userCredits.findUnique({
         where: { userId },
       });
 
-      if (!credits || credits.balance < 1) {
+      if (!credits || credits.balance < refundAmount) {
         res.status(402).json({
           error: 'Insufficient credits to resume job',
           code: 'INSUFFICIENT_CREDITS',
           balance: credits?.balance ?? 0,
-          required: 1,
+          required: refundAmount,
         });
         return;
       }
 
-      // Reverse the refund: delete transaction AND deduct from balance (atomic)
+      // Create a new JOB_DEDUCTION to re-charge (preserves full audit trail)
       await prisma.$transaction(async (tx) => {
-        // 1. Delete the refund transaction record
-        await tx.creditTransaction.delete({
-          where: { id: refundTransaction.id },
-        });
+        const credits = await tx.userCredits.findUnique({ where: { userId } });
+        if (!credits) throw new Error('Credits record not found');
 
-        // 2. Deduct credit from user's balance (reverses the refund amount)
-        await tx.userCredits.update({
+        const updatedCredits = await tx.userCredits.update({
           where: { userId },
           data: {
-            balance: { decrement: 1 },      // Take back the refunded credit
-            totalUsed: { increment: 1 },    // Restore usage count
+            balance: { decrement: refundAmount },
+            totalUsed: { increment: refundAmount },
+          },
+        });
+
+        await tx.creditTransaction.create({
+          data: {
+            userId,
+            type: CreditTransactionType.JOB_DEDUCTION,
+            amount: -refundAmount,
+            balanceBefore: credits.balance,
+            balanceAfter: updatedCredits.balance,
+            relatedJobId: jobId,
+            stage: `resume_${refundTransaction.stage}`,
+            description: `Resume: re-charge ${refundTransaction.stage}`,
           },
         });
       });
 
-      console.log(`[Jobs] Refund reversed for resuming job ${jobId} (balance decremented)`);
+      console.log(`[Jobs] Re-charged ${refundAmount} credits for resuming job ${jobId} (audit trail preserved)`);
     }
 
     // Reset job status to QUEUED
@@ -507,7 +525,6 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
         job.phase1CheckpointPath,
         selectedSolutions,
         job.selectionRationale || undefined,
-        job.generateLandingPage
       );
     } else {
       // Re-enqueue with resume flag
@@ -517,12 +534,11 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
         userId,
         job.allowedProjectTypes as string[] | undefined,
         true, // resume = true
-        job.generateLandingPage,
         job.jobMode || undefined
       );
     }
 
-    const creditCharged = refundTransaction ? 1 : 0;
+    const creditCharged = refundTransaction ? Math.abs(refundTransaction.amount) : 0;
     console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}${creditCharged ? ' (credit charged)' : ''}`);
 
     res.json({
@@ -539,8 +555,7 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
 
 /**
  * POST /api/jobs/:jobId/generate-landing
- * Generate a landing page for a completed job that skipped landing page generation.
- * No additional credit cost - user already paid for the research.
+ * Generate a landing page for a completed job (on-demand, charged separately).
  */
 jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimiter, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
   try {
@@ -575,6 +590,9 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
         throw new Error('Report not found');
       }
 
+      // Charge for landing page generation
+      await chargeForStageInTx(tx, userId, jobId, 'landing_page', job.niche);
+
       // Create stage 15 progress entry
       await tx.jobProgress.create({
         data: { jobId, stageNumber: 15, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
@@ -598,11 +616,33 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
       return;
     }
 
-    // Enqueue landing page generation
-    await enqueueLandingPageJob(jobId, reportAsset.filePath);
+    // Enqueue landing page generation — compensating refund on failure
+    try {
+      await enqueueLandingPageJob(jobId, reportAsset.filePath);
+    } catch (enqueueError) {
+      console.error(`[Jobs] Failed to enqueue landing page for job ${jobId}, compensating:`, enqueueError);
+      await refundForStage(jobId, 'landing_page');
+      await prisma.$transaction(async (tx) => {
+        await tx.job.update({
+          where: { id: jobId },
+          data: { landingPageStatus: null, generateLandingPage: false, totalStages: { decrement: 1 } },
+        });
+        await tx.jobProgress.deleteMany({ where: { jobId, stageNumber: 15 } });
+      });
+      throw enqueueError;
+    }
 
     res.json({ status: 'ok' });
   } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      res.status(402).json({
+        error: 'Insufficient credits for landing page generation',
+        code: 'INSUFFICIENT_CREDITS',
+        balance: error.currentBalance,
+        required: error.required,
+      });
+      return;
+    }
     if (error instanceof Error) {
       if (error.message === 'Job not found') {
         res.status(404).json({ error: error.message });
@@ -693,7 +733,7 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
         selectedSolutions: true,
         phase1CheckpointPath: true,
         solutionIdeas: true,
-        generateLandingPage: true,
+        niche: true,
       },
     });
 
@@ -733,6 +773,9 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
     }
 
     await prisma.$transaction(async (tx) => {
+      // Charge for deep research inside the transaction
+      await chargeForStageInTx(tx, userId, jobId, 'deep_research', job!.niche);
+
       // Atomically update status
       const result = await tx.job.updateMany({
         where: {
@@ -753,20 +796,43 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       }
     });
 
-    // Enqueue phase 2 outside transaction
-    await enqueuePhase2Job(
-      jobId,
-      job.phase1CheckpointPath,
-      input.solutionNames,
-      input.rationale,
-      job.generateLandingPage
-    );
+    // Enqueue phase 2 outside transaction - compensating refund on failure
+    try {
+      await enqueuePhase2Job(
+        jobId,
+        job.phase1CheckpointPath,
+        input.solutionNames,
+        input.rationale,
+      );
+    } catch (enqueueError) {
+      // Compensate: refund deep_research charge and revert job status
+      console.error(`[Jobs] Failed to enqueue phase 2 for job ${jobId}, compensating:`, enqueueError);
+      await refundForStage(jobId, 'deep_research');
+      await prisma.job.update({
+        where: { id: jobId },
+        data: {
+          status: JobStatus.AWAITING_SELECTION,
+          selectedSolutions: [],
+          selectionRationale: null,
+        },
+      });
+      throw enqueueError;
+    }
 
     res.json({
       status: 'phase2_queued',
       message: 'Solution selected. Deep investigation is now queued.',
     });
   } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      res.status(402).json({
+        error: 'Insufficient credits for deep research',
+        code: 'INSUFFICIENT_CREDITS',
+        balance: error.currentBalance,
+        required: error.required,
+      });
+      return;
+    }
     if (error instanceof Error && error.message === 'CONFLICT') {
       res.status(409).json({ error: 'Solution already selected by another request' });
       return;
@@ -826,8 +892,11 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       (s: any) => s.name || s.solution_name
     );
 
-    // Atomically update status
+    // Atomically update status + charge for regeneration
     await prisma.$transaction(async (tx) => {
+      // Charge for regeneration inside the transaction
+      await chargeForStageInTx(tx, userId, jobId, 'regenerate_ideas', job!.niche);
+
       const result = await tx.job.updateMany({
         where: {
           id: jobId,
@@ -847,14 +916,33 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       }
     });
 
-    // Enqueue regeneration
-    await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche);
+    // Enqueue regeneration — compensating refund on failure
+    try {
+      await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche);
+    } catch (enqueueError) {
+      console.error(`[Jobs] Failed to enqueue regeneration for job ${jobId}, compensating:`, enqueueError);
+      await refundForStage(jobId, 'regenerate_ideas');
+      await prisma.job.update({
+        where: { id: jobId },
+        data: { status: JobStatus.AWAITING_SELECTION, ideasRegeneratedAt: null, queuedAt: null },
+      });
+      throw enqueueError;
+    }
 
     res.json({
       status: 'queued',
       message: 'Generating new solution ideas. Existing ideas will be preserved.',
     });
   } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      res.status(402).json({
+        error: 'Insufficient credits to regenerate ideas',
+        code: 'INSUFFICIENT_CREDITS',
+        balance: error.currentBalance,
+        required: error.required,
+      });
+      return;
+    }
     if (error instanceof Error && error.message === 'CONFLICT') {
       res.status(409).json({ error: 'Regeneration already in progress or completed' });
       return;

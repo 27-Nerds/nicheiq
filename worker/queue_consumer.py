@@ -138,7 +138,6 @@ def process_job(job_data: dict) -> None:
                 checkpoint_path=job_data["checkpoint_path"],
                 selected_solutions=job_data.get("selected_solutions") or [job_data.get("selected_solution", "")],
                 selection_rationale=job_data.get("selection_rationale", ""),
-                generate_landing_page=job_data.get("generate_landing_page", True),
             )
         elif task_type == TASK_TYPE_REGENERATE_IDEAS:
             from .tasks import run_regenerate_ideas
@@ -155,7 +154,6 @@ def process_job(job_data: dict) -> None:
             user_id = job_data.get("user_id")
             allowed_project_types = job_data.get("allowed_project_types")
             resume = job_data.get("resume", False)
-            generate_landing_page = job_data.get("generate_landing_page", True)
             job_mode = job_data.get("job_mode")
 
             logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume}, mode={job_mode})")
@@ -168,7 +166,6 @@ def process_job(job_data: dict) -> None:
                     niche=niche,
                     user_id=user_id,
                     allowed_project_types=allowed_project_types,
-                    generate_landing_page=generate_landing_page,
                     resume=resume,
                 )
             else:
@@ -180,7 +177,6 @@ def process_job(job_data: dict) -> None:
                     user_id=user_id,
                     allowed_project_types=allowed_project_types,
                     resume=resume,
-                    generate_landing_page=generate_landing_page,
                 )
 
         logger.info(f"Job {job_id} completed: {result}")

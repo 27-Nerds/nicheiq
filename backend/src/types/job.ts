@@ -20,7 +20,6 @@ export const CreateJobSchema = z.object({
       'Niche description contains invalid characters. Use letters, numbers, spaces, and common punctuation only.'
     ),
   allowedProjectTypes: z.array(z.enum(VALID_PROJECT_TYPES)).min(1).max(5).optional(),
-  generateLandingPage: z.boolean().optional().default(false),
 });
 
 export type CreateJobInput = z.infer<typeof CreateJobSchema>;
@@ -67,6 +66,11 @@ export const PIPELINE_STAGES = [
 ] as const;
 
 export const TOTAL_STAGES = 16;
+
+/** Highest stage number in Phase 1 (Discovery). Derived from PIPELINE_STAGES. */
+export const DISCOVERY_PHASE_MAX_STAGE = Math.max(
+  ...PIPELINE_STAGES.filter(s => s.phase === 1).map(s => s.number)
+); // = 5
 
 // Interactive job flow schemas
 export const SelectSolutionSchema = z.object({

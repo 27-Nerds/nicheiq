@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { shouldNotifyUser, notifyJobStart, notifyJobComplete, notifyJobError, notifySolutionsReady, notifySelectionReminder } from '../notificationService.js';
+import { shouldNotifyUser, notifyJobStart, notifyJobComplete, notifyJobError, notifySolutionsReady, notifySelectionReminder, notifyPhase2Start, notifyRegenerationComplete } from '../notificationService.js';
 
 // Mock prisma
 vi.mock('../db.js', () => ({
@@ -17,10 +17,12 @@ vi.mock('../emailService.js', () => ({
   sendFailureEmail: vi.fn(),
   sendSolutionsReadyEmail: vi.fn(),
   sendSelectionReminderEmail: vi.fn(),
+  sendPhase2StartEmail: vi.fn(),
+  sendRegenerationCompleteEmail: vi.fn(),
 }));
 
 import { prisma } from '../db.js';
-import { sendJobStartEmail, sendCompletionEmail, sendFailureEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail } from '../emailService.js';
+import { sendJobStartEmail, sendCompletionEmail, sendFailureEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail } from '../emailService.js';
 
 describe('notificationService', () => {
   beforeEach(() => {
@@ -163,7 +165,7 @@ describe('notificationService', () => {
 
       await notifyJobError('user-123', 'test@example.com', 'job-456', 'test niche', 'Something went wrong');
 
-      expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Something went wrong', undefined);
+      expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Something went wrong', undefined, undefined);
     });
 
     it('skips email when emailOnJobError is false', async () => {
@@ -236,6 +238,83 @@ describe('notificationService', () => {
       });
       await notifySelectionReminder('user-123', 'test@example.com', 'job-456', 'test niche', 5);
       expect(sendSelectionReminderEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('notifyPhase2Start', () => {
+    it('sends email when emailOnJobStart is enabled', async () => {
+      vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+      await notifyPhase2Start('user-123', 'test@example.com', 'job-456', 'test niche', ['SaaS Tool']);
+
+      expect(sendPhase2StartEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', ['SaaS Tool']);
+    });
+
+    it('skips when emailOnJobStart is false', async () => {
+      vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue({
+        id: 'pref-1', userId: 'user-123',
+        emailEnabled: true, emailOnJobStart: false, emailOnJobComplete: true,
+        emailOnJobError: true, emailOnSolutionsReady: true,
+        createdAt: new Date(), updatedAt: new Date(),
+      });
+
+      await notifyPhase2Start('user-123', 'test@example.com', 'job-456', 'test niche', ['SaaS Tool']);
+
+      expect(sendPhase2StartEmail).not.toHaveBeenCalled();
+    });
+
+    it('skips when userId is null', async () => {
+      await notifyPhase2Start(null, 'test@example.com', 'job-456', 'test niche', ['SaaS Tool']);
+
+      expect(sendPhase2StartEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('notifyRegenerationComplete', () => {
+    it('sends email when emailOnSolutionsReady is enabled', async () => {
+      vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+      await notifyRegenerationComplete('user-123', 'test@example.com', 'job-456', 'test niche', 3, 8);
+
+      expect(sendRegenerationCompleteEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 3, 8);
+    });
+
+    it('skips when emailOnSolutionsReady is false', async () => {
+      vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue({
+        id: 'pref-1', userId: 'user-123',
+        emailEnabled: true, emailOnJobStart: true, emailOnJobComplete: true,
+        emailOnJobError: true, emailOnSolutionsReady: false,
+        createdAt: new Date(), updatedAt: new Date(),
+      });
+
+      await notifyRegenerationComplete('user-123', 'test@example.com', 'job-456', 'test niche', 3, 8);
+
+      expect(sendRegenerationCompleteEmail).not.toHaveBeenCalled();
+    });
+
+    it('skips when userId is null', async () => {
+      await notifyRegenerationComplete(null, 'test@example.com', 'job-456', 'test niche', 3, 8);
+
+      expect(sendRegenerationCompleteEmail).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('notifyJobError with phaseContext', () => {
+    it('passes phaseContext through to sendFailureEmail', async () => {
+      vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+      const phaseCtx = { phaseLabel: 'During Deep Research Phase', guidance: 'Resume from checkpoint.' };
+      await notifyJobError('user-123', 'test@example.com', 'job-456', 'test niche', 'Worker crashed', null, phaseCtx);
+
+      expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Worker crashed', null, phaseCtx);
+    });
+
+    it('passes undefined phaseContext when not provided', async () => {
+      vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+      await notifyJobError('user-123', 'test@example.com', 'job-456', 'test niche', 'Error');
+
+      expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Error', undefined, undefined);
     });
   });
 });

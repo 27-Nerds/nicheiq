@@ -1,0 +1,13 @@
+Your NicheIQ Deep Research Has Begun!
+
+Deep research for "{{NICHE}}" has begun based on your selected solution(s):
+
+{{SELECTED_SOLUTIONS}}
+
+Our AI agents are now running competitive analysis, SEO & keyword strategy, pricing validation, market sizing, and more for your chosen solution.
+
+This phase typically takes about 20 minutes. We'll email you when the full report is ready!
+
+Track Progress: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

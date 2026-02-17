@@ -930,9 +930,9 @@ RULES:
             ctx = self.state.niche_context
             return {
                 "type": "niche_validation",
-                "niche_description": ctx.niche_description[:500],
+                "niche_description": ctx.niche_description,
                 "market_segments": ctx.market_segments[:5],
-                "industry_boundaries": ctx.industry_boundaries[:150],
+                "industry_boundaries": ctx.industry_boundaries,
             }
         elif stage == 2 and self.state.social_content:
             sc = self.state.social_content

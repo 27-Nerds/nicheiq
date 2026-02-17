@@ -459,7 +459,7 @@
         </p>
         <Button onclick={() => ($showNewResearchModal = true)} icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
         <p class="text-xs text-text-muted mt-4">
-          Average research takes ~45 minutes to complete
+          Two-phase AI research with your input at the gate. ~35 minutes total.
         </p>
       </div>
     </div>

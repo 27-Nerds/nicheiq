@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { page } from "$app/stores";
+  import { invalidateAll } from "$app/navigation";
   import {
     subscribeToProgress,
     isTerminalStatus,
@@ -16,14 +17,13 @@
     CheckCircle,
     X,
     FileText,
-    ExternalLink,
-    Minus,
     ArrowRight,
     Activity,
     RotateCw,
     Globe,
     Search,
     Zap,
+    Sparkles,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
@@ -35,6 +35,7 @@
   import PhaseResultsCard from "$lib/components/PhaseResultsCard.svelte";
   import PhaseSection from "$lib/components/job/PhaseSection.svelte";
   import StageRow from "$lib/components/job/StageRow.svelte";
+  import DeliverableRow from "$lib/components/job/DeliverableRow.svelte";
   import JourneyTrack from "$lib/components/job/JourneyTrack.svelte";
   import CumulativeStats from "$lib/components/job/CumulativeStats.svelte";
   import { PHASES, PARALLEL_STAGE_GROUPS, getNarrativeText, CELEBRATION_TIERS } from "$lib/components/job/phaseConfig";
@@ -177,6 +178,7 @@
         const data = await res.json();
         throw new Error(data.error || "Failed to resume job");
       }
+      const data = await res.json();
       const updatedProgress = (job.progress ?? []).map((stage) =>
         stage.status === "FAILED" || stage.status === "RUNNING"
           ? { ...stage, status: "PENDING" as const }
@@ -184,6 +186,7 @@
       );
       job = { ...job, status: "QUEUED", errorMessage: null, progress: updatedProgress };
       connectSSE();
+      if (data.creditCharged) invalidateAll();
     } catch (e) {
       resumeError = e instanceof Error ? e.message : "Failed to resume job";
     } finally {
@@ -199,8 +202,14 @@
       const res = await fetch(`/api/jobs/${jobId}/generate-landing`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
+        if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
+          landingError = `Insufficient credits for landing page (need ${($page.data.stageCosts as any)?.landing_page ?? 5})`;
+          await invalidateAll();
+          return;
+        }
         throw new Error(data.error || "Failed to generate landing page");
       }
+      invalidateAll();
       const updatedRes = await fetch(`/api/jobs/${jobId}`);
       if (updatedRes.ok) { job = await updatedRes.json(); }
       connectSSE();
@@ -261,10 +270,15 @@
     }
   }
 
-  function handleSelectionComplete() {
-    fetch(`/api/jobs/${jobId}`)
-      .then((res) => res.json())
-      .then((data) => { job = data; connectSSE(); });
+  async function handleSelectionComplete() {
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`);
+      if (res.ok) { job = await res.json(); }
+      connectSSE();
+    } catch (e) {
+      console.warn('Failed to refresh job after selection:', e);
+    }
+    invalidateAll();
   }
 
   function formatDuration(seconds: number | null): string {
@@ -387,8 +401,14 @@
     return 'locked';
   }
 
+  // During regeneration, keep Discovery collapsed — stage 5 re-runs
+  // but the user should stay focused on the solution proposals list.
   const discoveryStatus = $derived<PhaseStatus>(
-    job ? computePhaseStatus(discoveryStages, 'discovery', job.status) : 'pending'
+    job
+      ? (job.status === 'REGENERATING' || isRegenQueued)
+        ? 'completed'
+        : computePhaseStatus(discoveryStages, 'discovery', job.status)
+      : 'pending'
   );
 
   const analysisStatus = $derived<PhaseStatus>(
@@ -443,8 +463,21 @@
   const showLpRow = $derived(
     !!landingAsset ||
     (job?.progress ?? []).some((s) => s.stageNumber === 15) ||
-    (job?.status === "COMPLETED" && !!reportAsset)
+    (job?.status === "COMPLETED" && !!reportAsset) ||
+    analysisStatus === 'active'
   );
+
+  const lpStatus = $derived<'pending' | 'running' | 'completed' | 'failed' | 'locked'>(
+    landingAsset ? 'completed'
+    : job?.landingPageStatus === 'RUNNING' || job?.landingPageStatus === 'QUEUED' ? 'running'
+    : job?.landingPageStatus === 'FAILED' ? 'failed'
+    : job?.status === 'COMPLETED' && reportAsset ? 'pending'
+    : 'locked'
+  );
+
+  // Advisory credit check for landing page
+  const landingStageCost = $derived(($page.data.stageCosts as any)?.landing_page ?? 5);
+  const canAffordLanding = $derived(($page.data.creditBalance as number ?? 0) >= landingStageCost);
 
   $effect(() => {
     if (isCompleted && !hasPlayedReveal) {
@@ -696,7 +729,7 @@
             </div>
             <div class="flex-1">
               <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
-              <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credit has been refunded.</p>
+              <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credits have been refunded.</p>
               <button
                 onclick={() => ($showNewResearchModal = true)}
                 class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors"
@@ -749,7 +782,7 @@
               {/if}
               <div class="mt-4 flex items-center gap-2">
                 <CheckCircle class="w-4 h-4 text-success" />
-                <span class="text-sm text-success">Credit refunded automatically</span>
+                <span class="text-sm text-success">Credits refunded automatically</span>
               </div>
             </div>
           </div>
@@ -808,7 +841,7 @@
           <div class="flex items-center justify-between">
             <div>
               <h3 class="text-sm font-medium text-text-primary">Resume from Checkpoint</h3>
-              <p class="mt-1 text-sm text-text-muted">Continue where you left off. Your refund will be reversed (1 credit).</p>
+              <p class="mt-1 text-sm text-text-muted">Continue where you left off. The refunded credits will be re-charged.</p>
             </div>
             <SubmitButton onclick={resumeJob} loading={isResuming} loadingText="Resuming..." icon={RotateCw} keepIconOnLoad label="Resume" class="btn-primary flex items-center gap-2" />
           </div>
@@ -858,6 +891,8 @@
                   selectedSolutions={job.selectedSolutions}
                   isRegenerating={job.status === "REGENERATING" || isRegenQueued}
                   canRegenerate={job.canRegenerate ?? false}
+                  stageCosts={$page.data.stageCosts}
+                  creditBalance={$page.data.creditBalance}
                   onSelectionComplete={handleSelectionComplete}
                   onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
                 />
@@ -901,81 +936,44 @@
             stagesCompleted={analysisStages.filter((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED').length}
             stagesTotal={analysisStages.length || PHASES[1].stageNumbers.length}
             defaultOpen={analysisStatus === 'active'}
+            creditCost={analysisStatus === 'locked' || analysisStatus === 'pending'
+              ? ($page.data.stageCosts as any)?.deep_research ?? 0
+              : 0}
           >
             <div class="stage-list">
               {#each analysisStages as stage, i (stage.stageNumber)}
                 <StageRow
                   {stage}
                   narrativeText={getNarrativeText(stage.stageNumber, stage.status, stageArtifacts[stage.stageNumber])}
-                  isLast={i === analysisStages.length - 1 && !showLpRow}
+                  isLast={i === analysisStages.length - 1}
                   celebrationTier={CELEBRATION_TIERS[stage.stageNumber] ?? 1}
                 />
               {/each}
-
-              {#if showLpRow}
-                {@const lpDisabled = job.generateLandingPage === false && !landingAsset}
-                {@const lpRunning = job.landingPageStatus === "RUNNING" || job.landingPageStatus === "QUEUED"}
-                {@const lpFailed = job.landingPageStatus === "FAILED" && !landingAsset}
-                <div
-                  class="stage-row-lp"
-                  class:is-completed={!!landingAsset}
-                  class:is-running={lpRunning}
-                  class:is-failed={lpFailed}
-                  class:is-skipped={lpDisabled}
-                >
-                  <!-- Dot -->
-                  <div class="dot-lp"
-                    class:dot-completed={!!landingAsset}
-                    class:dot-running={lpRunning}
-                    class:dot-failed={lpFailed}
-                    class:dot-skipped={lpDisabled && !landingAsset}
-                    class:dot-pending={!landingAsset && !lpRunning && !lpFailed && !lpDisabled}
-                  >
-                    {#if lpDisabled && !landingAsset}
-                      <Minus class="dot-icon dot-icon-muted" />
-                    {/if}
-                  </div>
-
-                  <!-- Label -->
-                  <span class="stage-name-lp"
-                    class:text-primary={!!landingAsset}
-                    class:text-info={lpRunning}
-                    class:text-secondary={!landingAsset && !lpRunning}
-                  >Landing Page</span>
-
-                  <!-- Actions -->
-                  <div class="lp-actions">
-                    {#if landingAsset}
-                      <a href={landingAsset.url} target="_blank" rel="noopener noreferrer" class="lp-link">
-                        <ExternalLink class="lp-link-icon" />
-                        View
-                      </a>
-                      <a href="{landingAsset.url}?download=true" class="lp-link" download>
-                        Download
-                      </a>
-                    {:else if lpRunning || generatingLanding}
-                      <span class="lp-generating">
-                        <Loader2 class="lp-spinner" />
-                        Generating...
-                      </span>
-                    {:else if lpFailed}
-                      <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Retrying..." icon={RotateCw} label="Retry" class="btn-secondary btn-sm" />
-                    {:else if lpDisabled}
-                      <span class="lp-skipped">Skipped</span>
-                      <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate" class="btn-secondary btn-sm" />
-                    {:else}
-                      <SubmitButton onclick={generateLanding} loading={generatingLanding} loadingText="Generating..." icon={Globe} label="Generate" class="btn-secondary btn-sm" />
-                    {/if}
-                  </div>
-                </div>
-                {#if landingError}
-                  <p class="lp-error">{landingError}</p>
-                {/if}
-              {/if}
             </div>
 
           </PhaseSection>
       </div>
+
+      <!-- Extras -->
+      {#if showLpRow && job}
+        <div class="mt-4 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in" style="animation-delay: 300ms;">
+          <div class="flex items-center gap-2 mb-3">
+            <Sparkles class="w-4 h-4 text-accent" />
+            <span class="text-sm font-semibold text-text-primary">Extras</span>
+          </div>
+          <DeliverableRow
+            label="Landing Page"
+            icon={Globe}
+            status={lpStatus}
+            creditCost={landingStageCost}
+            canAfford={canAffordLanding}
+            asset={landingAsset}
+            generating={generatingLanding}
+            error={landingError}
+            onGenerate={generateLanding}
+          />
+        </div>
+      {/if}
 
       <!-- Meta Info -->
       <div class="mt-6 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in" style="animation-delay: 350ms;">
@@ -1043,122 +1041,6 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
-  }
-
-  /* ===== Landing Page Row (inside stage-list) ===== */
-  .stage-row-lp {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.625rem;
-    padding: 0.5rem 0.25rem;
-    position: relative;
-    border-radius: 0.375rem;
-    transition: background 0.15s ease;
-  }
-
-  .stage-row-lp.is-running {
-    background: rgba(59, 130, 246, 0.04);
-  }
-
-  .dot-lp {
-    width: 0.75rem;
-    height: 0.75rem;
-    margin-top: 0.1875rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    flex-shrink: 0;
-    position: relative;
-    z-index: 1;
-  }
-
-  .dot-lp.dot-completed {
-    background: rgba(34, 197, 94, 0.45);
-    border: 1px solid rgba(34, 197, 94, 0.55);
-  }
-  .dot-lp.dot-running {
-    background: rgba(59, 130, 246, 0.45);
-    border: 1px solid rgba(59, 130, 246, 0.55);
-  }
-  .dot-lp.dot-failed {
-    background: rgba(239, 68, 68, 0.45);
-    border: 1px solid rgba(239, 68, 68, 0.55);
-  }
-  .dot-lp.dot-skipped {
-    width: 0.875rem;
-    height: 0.875rem;
-    margin-top: 0.125rem;
-    margin-left: -0.0625rem;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-  }
-  .dot-lp.dot-pending {
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-  }
-
-  .stage-name-lp {
-    font-size: 0.875rem;
-    font-weight: 500;
-    line-height: 1.3;
-  }
-
-  .text-info { color: var(--color-info); }
-  .text-primary { color: var(--color-text-primary); }
-  .text-secondary { color: var(--color-text-secondary); }
-
-  .lp-actions {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-shrink: 0;
-  }
-
-  .lp-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-accent);
-    text-decoration: none;
-    transition: opacity 0.15s ease;
-  }
-  .lp-link:hover {
-    opacity: 0.8;
-  }
-
-  :global(.lp-link-icon) {
-    width: 0.75rem;
-    height: 0.75rem;
-  }
-
-  .lp-generating {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.375rem;
-    font-size: 0.8125rem;
-    color: var(--color-info);
-  }
-
-  :global(.lp-spinner) {
-    width: 0.875rem;
-    height: 0.875rem;
-    animation: spin 1s linear infinite;
-  }
-
-  .lp-skipped {
-    font-size: 0.8125rem;
-    color: var(--color-text-muted);
-  }
-
-  .lp-error {
-    margin-top: 0.25rem;
-    margin-left: calc(1.375rem + 0.625rem + 0.25rem);
-    font-size: 0.8125rem;
-    color: var(--color-error);
   }
 
   /* ===== Report-Ready Reveal ===== */

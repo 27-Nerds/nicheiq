@@ -11,6 +11,7 @@ import { prisma } from './db.js';
 import { JobStatus } from '@prisma/client';
 import { failJob } from './jobService.js';
 import { notifyJobError } from './notificationService.js';
+import { getPhaseContext } from '../utils/phaseContext.js';
 
 // Configuration
 const STALE_THRESHOLD_MS = 90 * 1000; // 90 seconds - detect stale jobs within this window
@@ -125,6 +126,8 @@ async function findStaleJobs(): Promise<Array<{
   userId: string | null;
   lastHeartbeat: Date | null;
   startedAt: Date | null;
+  currentStage: number | null;
+  selectedSolutions: string[];
   exceededMaxRuntime: boolean;
 }>> {
   const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
@@ -169,6 +172,8 @@ async function findStaleJobs(): Promise<Array<{
       userId: true,
       lastHeartbeat: true,
       startedAt: true,
+      currentStage: true,
+      selectedSolutions: true,
     },
   });
 
@@ -186,17 +191,20 @@ async function markJobFailed(job: {
   id: string;
   niche: string;
   userId: string | null;
+  currentStage: number | null;
+  selectedSolutions: string[];
 }, reason: string): Promise<void> {
   console.log(`[Heartbeat] Job ${job.id} failed: ${reason}`);
 
   // Use failJob which handles credit refunds
   await failJob(job.id, reason);
 
-  // Send failure notification
+  // Send failure notification with phase context
   const email = await getUserEmail(job.userId);
   if (email) {
     try {
-      await notifyJobError(job.userId, email, job.id, job.niche, reason);
+      const phaseCtx = getPhaseContext(job.currentStage, job.selectedSolutions);
+      await notifyJobError(job.userId, email, job.id, job.niche, reason, null, phaseCtx);
     } catch (emailError) {
       console.error(`[Heartbeat] Failed to send failure notification for job ${job.id}:`, emailError);
     }
