@@ -19,7 +19,7 @@ import {
 import { failJob, updateStageProgress, completeJob, getJob, addJobAsset, getJobAsset } from '../services/jobService.js';
 import { refundForStage } from '../services/creditService.js';
 import { broadcastProgress } from '../services/progressBroadcastService.js';
-import { notifySolutionsReady, notifyPhase2Start, notifyRegenerationComplete } from '../services/notificationService.js';
+import { notifySolutionsReady, notifyPhase2Start, notifyRegenerationComplete, notifyLandingPageReady } from '../services/notificationService.js';
 import {
   IdeasReadySchema,
   RegenerationCompleteSchema,
@@ -603,16 +603,52 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
     if (data.stage === 15) {
       const { prisma: db } = await import('../services/db.js');
       if (data.status === 'running') {
-        await db.job.update({
-          where: { id: data.job_id },
-          data: { landingPageStatus: 'RUNNING' },
+        // CAS: only transition QUEUED → RUNNING, also reset heartbeat so monitor
+        // doesn't immediately flag this as stale from an old pipeline heartbeat
+        await db.job.updateMany({
+          where: {
+            id: data.job_id,
+            OR: [
+              { landingPageStatus: 'QUEUED' },
+              { landingPageStatus: null },
+            ],
+          },
+          data: {
+            landingPageStatus: 'RUNNING',
+            lastHeartbeat: new Date(),
+          },
         });
-      } else if (data.status === 'completed' && !data.landing_path) {
-        // Stage 15 completed without landing_path means guardrail failure (None result)
-        await db.job.update({
-          where: { id: data.job_id },
+      } else if (data.status === 'completed') {
+        // Record asset unconditionally — the file exists on disk regardless of status race
+        if (data.landing_path) {
+          await import('../services/jobService.js').then(m =>
+            m.addJobAsset(data.job_id, AssetType.LANDING_PAGE, data.landing_path!)
+          );
+        }
+
+        // CAS: only transition RUNNING/QUEUED → COMPLETED
+        const lpResult = await db.job.updateMany({
+          where: {
+            id: data.job_id,
+            landingPageStatus: { in: ['RUNNING', 'QUEUED'] },
+          },
           data: { landingPageStatus: 'COMPLETED' },
         });
+
+        if (lpResult.count > 0) {
+          // Notify user landing page is ready
+          const lpJob = await getJob(data.job_id);
+          if (lpJob) {
+            const email = await getCurrentEmailForJob(lpJob);
+            if (email) {
+              notifyLandingPageReady(lpJob.userId, email, data.job_id, lpJob.niche).catch(err => {
+                console.error('Failed to send landing page notification:', err);
+              });
+            }
+          }
+        } else {
+          console.warn(`[Workers] LP status for job ${data.job_id} already changed, skipping completion`);
+        }
       }
     }
 
@@ -626,17 +662,6 @@ workersRouter.post('/progress', async (req: Request, res: Response) => {
 
       // Skip email notification here - already sent by /report-ready endpoint
       console.log(`[Workers] Job ${data.job_id} completed - report: ${data.report_path}`);
-    }
-
-    // 2b. Handle landing page completion (landing_path without report_path = landing-only task)
-    if (data.status === 'completed' && data.landing_path && !data.report_path) {
-      const { prisma: db } = await import('../services/db.js');
-      await import('../services/jobService.js').then(m => m.addJobAsset(data.job_id, AssetType.LANDING_PAGE, data.landing_path!));
-      await db.job.update({
-        where: { id: data.job_id },
-        data: { landingPageStatus: 'COMPLETED' },
-      });
-      console.log(`[Workers] Landing page completed for job ${data.job_id}: ${data.landing_path}`);
     }
 
     // 3. Handle job failure

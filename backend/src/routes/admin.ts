@@ -244,7 +244,7 @@ adminRouter.patch('/packages/:id', async (req: AuthenticatedRequest, res: Respon
 // ============================================
 
 const UpdateSettingSchema = z.object({
-  value: z.string().max(2000),
+  value: z.coerce.string().max(2000),
 });
 
 adminRouter.get('/settings/:key', async (req: AuthenticatedRequest, res: Response) => {

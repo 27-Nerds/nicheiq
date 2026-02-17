@@ -8,10 +8,12 @@
  */
 
 import { prisma } from './db.js';
-import { JobStatus } from '@prisma/client';
+import { JobStatus, StageStatus } from '@prisma/client';
 import { failJob } from './jobService.js';
 import { notifyJobError } from './notificationService.js';
 import { getPhaseContext } from '../utils/phaseContext.js';
+import { refundForStage } from './creditService.js';
+import { broadcastProgress } from './progressBroadcastService.js';
 
 // Configuration
 const STALE_THRESHOLD_MS = 90 * 1000; // 90 seconds - detect stale jobs within this window
@@ -185,6 +187,53 @@ async function findStaleJobs(): Promise<Array<{
 }
 
 /**
+ * Find landing page jobs that are stuck in RUNNING/QUEUED with no active worker.
+ * These are invisible to the main stale-job check because the parent job stays COMPLETED.
+ */
+async function findStaleLandingPageJobs(): Promise<Array<{
+  id: string;
+  niche: string;
+  userId: string | null;
+  landingPageStatus: string | null;
+}>> {
+  const staleThreshold = new Date(Date.now() - STALE_THRESHOLD_MS);
+  const maxRuntimeThreshold = new Date(Date.now() - MAX_RUNTIME_MS);
+
+  return prisma.job.findMany({
+    where: {
+      OR: [
+        // Worker crash: LP RUNNING, heartbeat stale (main job COMPLETED)
+        {
+          status: JobStatus.COMPLETED,
+          landingPageStatus: 'RUNNING',
+          OR: [
+            { lastHeartbeat: { lt: staleThreshold } },
+            { lastHeartbeat: null, updatedAt: { lt: staleThreshold } },
+          ],
+        },
+        // Stuck in queue: LP QUEUED beyond max runtime
+        {
+          status: JobStatus.COMPLETED,
+          landingPageStatus: 'QUEUED',
+          updatedAt: { lt: maxRuntimeThreshold },
+        },
+        // Orphan cleanup: main job FAILED/CANCELLED while LP in progress
+        {
+          status: { in: [JobStatus.FAILED, JobStatus.CANCELLED] },
+          landingPageStatus: { in: ['RUNNING', 'QUEUED'] },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      niche: true,
+      userId: true,
+      landingPageStatus: true,
+    },
+  });
+}
+
+/**
  * Mark a job as failed due to stale heartbeat (worker crash)
  */
 async function markJobFailed(job: {
@@ -258,6 +307,84 @@ export async function checkAndRecoverStaleJobs(): Promise<{
 }
 
 /**
+ * Check for stale landing page jobs and mark them as failed.
+ * Uses atomic CAS to prevent race conditions with worker completion.
+ */
+export async function checkStaleLandingPageJobs(): Promise<{ recovered: number }> {
+  const stats = { recovered: 0 };
+
+  try {
+    const staleJobs = await findStaleLandingPageJobs();
+    if (staleJobs.length === 0) return stats;
+
+    console.log(`[Heartbeat] Found ${staleJobs.length} stale landing page job(s)`);
+
+    for (const job of staleJobs) {
+      try {
+        const reason = job.landingPageStatus === 'RUNNING'
+          ? 'Worker stopped responding during landing page generation'
+          : job.landingPageStatus === 'QUEUED'
+            ? 'Landing page generation timed out waiting for a worker'
+            : 'Landing page orphaned after job failure';
+
+        // Atomic CAS: only fail if LP status hasn't changed since query
+        const result = await prisma.job.updateMany({
+          where: {
+            id: job.id,
+            landingPageStatus: job.landingPageStatus,
+          },
+          data: { landingPageStatus: 'FAILED' },
+        });
+
+        if (result.count === 0) {
+          console.log(`[Heartbeat] LP job ${job.id} status already changed, skipping`);
+          continue;
+        }
+
+        console.warn(`[Heartbeat] Recovered stale LP job ${job.id}: ${reason}`);
+
+        // Update stage 15 progress (may be PENDING or RUNNING)
+        await prisma.jobProgress.updateMany({
+          where: {
+            jobId: job.id,
+            stageNumber: 15,
+            status: { in: [StageStatus.RUNNING, StageStatus.PENDING] },
+          },
+          data: { status: StageStatus.FAILED, errorMessage: reason },
+        });
+
+        // Refund credits (idempotent — unique constraint prevents double refund)
+        try {
+          await refundForStage(job.id, 'landing_page');
+        } catch (refundErr) {
+          console.error(`[Heartbeat] Failed to refund LP credits for ${job.id}:`, refundErr);
+        }
+
+        // Broadcast so frontend SSE picks up the FAILED state
+        broadcastProgress(job.id, {
+          stage: 15,
+          name: 'Landing Page Generation',
+          status: 'failed',
+          error: reason,
+        });
+
+        stats.recovered++;
+      } catch (jobError) {
+        console.error(`[Heartbeat] Error recovering stale LP job ${job.id}:`, jobError);
+      }
+    }
+
+    if (stats.recovered > 0) {
+      console.log(`[Heartbeat] LP recovery complete: ${stats.recovered} recovered`);
+    }
+  } catch (error) {
+    console.error('[Heartbeat] Error checking stale landing page jobs:', error);
+  }
+
+  return stats;
+}
+
+/**
  * Startup check - log stale jobs when backend starts
  * Does NOT take action - lets periodic heartbeat monitor handle recovery
  * This avoids marking jobs as failed before workers have a chance to resume
@@ -274,6 +401,15 @@ export async function performStartupRecovery(): Promise<void> {
       }
     } else {
       console.log('[Heartbeat] No stale jobs found');
+    }
+
+    // Log stale LP jobs (same passive approach — periodic monitor will recover them)
+    const staleLpJobs = await findStaleLandingPageJobs();
+    if (staleLpJobs.length > 0) {
+      console.log(`[Heartbeat] Found ${staleLpJobs.length} potentially stale LP job(s) - will be handled by periodic monitor`);
+      for (const job of staleLpJobs) {
+        console.log(`[Heartbeat]   - LP Job ${job.id} (${job.landingPageStatus}): ${job.niche.substring(0, 50)}...`);
+      }
     }
 
     // Clean up stale worker records (safe - doesn't affect jobs)
@@ -324,6 +460,7 @@ export function startHeartbeatMonitor(): void {
   // Start periodic checking
   checkInterval = setInterval(async () => {
     await checkAndRecoverStaleJobs();
+    await checkStaleLandingPageJobs();
   }, CHECK_INTERVAL_MS);
 }
 

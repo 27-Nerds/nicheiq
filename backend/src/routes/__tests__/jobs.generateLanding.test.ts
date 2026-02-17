@@ -186,6 +186,7 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
       },
       jobProgress: {
         create: vi.fn().mockResolvedValue({}),
+        upsert: vi.fn().mockResolvedValue({}),
       },
     };
     mockPrismaTransaction.mockImplementation(async (cb: any) => cb(mockTx));
@@ -213,13 +214,18 @@ describe('POST /api/jobs/:jobId/generate-landing', () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok' });
 
-    // Transaction should have created stage 11 progress
-    expect(mockTx.jobProgress.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
+    // Transaction should have upserted stage 15 progress (supports retry after monitor failure)
+    expect(mockTx.jobProgress.upsert).toHaveBeenCalledWith({
+      where: { jobId_stageNumber: { jobId: JOB_ID, stageNumber: 15 } },
+      create: expect.objectContaining({
         jobId: JOB_ID,
         stageNumber: 15,
         stageName: 'Landing Page Generation',
         status: 'PENDING',
+      }),
+      update: expect.objectContaining({
+        status: 'PENDING',
+        errorMessage: null,
       }),
     });
 

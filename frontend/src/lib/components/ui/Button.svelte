@@ -29,7 +29,7 @@
 </script>
 
 {#if href}
-  <a {href} class={className} {target} {rel} {title}>
+  <a {href} class={className} {target} {rel} {title} {onclick}>
     {#if Icon && iconPosition === "start"}<Icon class="w-4 h-4" />{/if}
     {label}
     {#if Icon && iconPosition === "end"}<Icon class="w-4 h-4" />{/if}

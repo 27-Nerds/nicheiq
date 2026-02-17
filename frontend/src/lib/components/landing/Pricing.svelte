@@ -10,6 +10,7 @@
     Clock,
     ArrowRight,
     FileText,
+    Gift,
   } from "lucide-svelte";
 
   interface Props {
@@ -91,6 +92,11 @@
           No subscriptions. No hidden fees. Buy report bundles and use them
           whenever you need.
         </p>
+        <p
+          class="animate-fade-in delay-300 text-sm sm:text-base text-text-secondary mt-3 max-w-2xl mx-auto"
+        >
+          Every package includes 1 FREE Discovery (up to 10 ideas). Don't worry about your first try.
+        </p>
       </div>
 
       <!-- Pricing Tiers Grid -->
@@ -126,8 +132,8 @@
                 >
               </div>
               <p class="text-text-secondary text-sm sm:text-base">
-                {tier.reports}
-                {tier.reports === 1 ? "report" : "reports"}
+                <span class="text-text-muted">~</span>{tier.reports}
+                {tier.reports === 1 ? "report" : "reports"}<sup class="text-accent text-[10px] ml-0.5 relative -top-1">*</sup>
               </p>
               {#if tier.reports > 1}
                 <p class="text-text-muted text-xs mt-1">
@@ -138,6 +144,11 @@
 
             <!-- CTA -->
             <div class="p-6 sm:p-8">
+              <div class="flex items-center justify-center gap-1.5 text-xs font-semibold text-accent bg-accent/[0.06] border border-accent/20 rounded-full px-3 py-1.5 mb-3">
+                <Gift class="w-3.5 h-3.5 flex-shrink-0" />
+                <span>+1 FREE Discovery</span>
+                <span class="text-text-muted font-normal">(up to 10 ideas)</span>
+              </div>
               {#if session?.user}
                 <a
                   href="/dashboard"
@@ -164,6 +175,9 @@
           </div>
         {/each}
       </div>
+      <p class="text-xs text-text-muted/70 text-center mt-6">
+        *Credit-based system — estimated report count, use however works best for you
+      </p>
 
       <!-- What's Included Section -->
       <div class="animate-fade-in delay-400 mt-12 sm:mt-16 max-w-3xl mx-auto">

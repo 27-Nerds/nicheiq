@@ -19,6 +19,64 @@
   let newStripePriceId = $state("");
   let newSortOrder = $state(0);
 
+  // Edit state
+  let editingId: string | null = $state(null);
+  let saving = $state(false);
+  let editError = $state("");
+  let editName = $state("");
+  let editDescription = $state("");
+  let editCredits = $state(0);
+  let editPriceInCents = $state(0);
+  let editSortOrder = $state(0);
+
+  $effect(() => {
+    if (editingId && data.packagesData) {
+      const pkg = data.packagesData.packages.find((p: { id: string }) => p.id === editingId);
+      if (pkg) {
+        editName = pkg.name;
+        editDescription = pkg.description ?? "";
+        editCredits = pkg.credits;
+        editPriceInCents = pkg.priceInCents;
+        editSortOrder = pkg.sortOrder;
+      }
+    }
+  });
+
+  function startEdit(id: string) {
+    editError = "";
+    editingId = editingId === id ? null : id;
+  }
+
+  async function handleEdit() {
+    if (!editingId) return;
+    saving = true;
+    editError = "";
+    try {
+      const res = await fetch(`/api/admin/packages/${editingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName,
+          description: editDescription || undefined,
+          credits: editCredits,
+          priceInCents: editPriceInCents,
+          sortOrder: editSortOrder,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        editError = err.error || "Failed to update package";
+        return;
+      }
+      editingId = null;
+      await invalidateAll();
+    } catch {
+      editError = "Network error";
+    } finally {
+      saving = false;
+    }
+  }
+
   function formatPrice(cents: number): string {
     return `$${(cents / 100).toFixed(2)}`;
   }
@@ -234,7 +292,7 @@
           </thead>
           <tbody>
             {#each data.packagesData.packages as pkg}
-              <tr class="border-b border-border/50">
+              <tr class="border-b border-border/50 {editingId === pkg.id ? 'bg-bg-elevated/30' : ''}">
                 <td class="py-3 px-4 font-medium text-text-primary"
                   >{pkg.name}</td
                 >
@@ -266,6 +324,12 @@
                 <td class="py-3 px-4 text-right">
                   <div class="flex gap-1 justify-end">
                     <button
+                      class="text-xs px-2 py-1 rounded border transition-colors {editingId === pkg.id ? 'border-accent bg-accent/10 text-accent' : 'border-border hover:bg-bg-elevated text-text-secondary'}"
+                      onclick={() => startEdit(pkg.id)}
+                    >
+                      {editingId === pkg.id ? "Close" : "Edit"}
+                    </button>
+                    <button
                       class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
                       onclick={() =>
                         toggleField(pkg.id, "isActive", pkg.isActive)}
@@ -282,6 +346,112 @@
                   </div>
                 </td>
               </tr>
+              {#if editingId === pkg.id}
+                <tr class="border-b border-border/50">
+                  <td colspan="8" class="p-0">
+                    <div class="bg-bg-surface border-t border-accent/20 p-5">
+                      <h4 class="text-sm font-semibold text-text-primary mb-3">Edit Package</h4>
+                      {#if editError}
+                        <div class="text-sm text-error mb-3 p-2 bg-error/10 rounded-lg">
+                          {editError}
+                        </div>
+                      {/if}
+                      <form
+                        onsubmit={(e) => {
+                          e.preventDefault();
+                          handleEdit();
+                        }}
+                        class="grid grid-cols-1 sm:grid-cols-2 gap-4"
+                      >
+                        <div>
+                          <label
+                            for="edit-name"
+                            class="block text-sm font-medium text-text-secondary mb-1"
+                            >Name</label
+                          >
+                          <input
+                            id="edit-name"
+                            type="text"
+                            bind:value={editName}
+                            required
+                            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            for="edit-credits"
+                            class="block text-sm font-medium text-text-secondary mb-1"
+                            >Credits</label
+                          >
+                          <input
+                            id="edit-credits"
+                            type="number"
+                            bind:value={editCredits}
+                            required
+                            min="1"
+                            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            for="edit-price"
+                            class="block text-sm font-medium text-text-secondary mb-1"
+                            >Price (cents)</label
+                          >
+                          <input
+                            id="edit-price"
+                            type="number"
+                            bind:value={editPriceInCents}
+                            required
+                            min="1"
+                            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+                          />
+                          <p class="text-xs text-text-muted mt-1">
+                            {formatPrice(editPriceInCents)}
+                          </p>
+                        </div>
+                        <div>
+                          <label
+                            for="edit-sort"
+                            class="block text-sm font-medium text-text-secondary mb-1"
+                            >Sort Order</label
+                          >
+                          <input
+                            id="edit-sort"
+                            type="number"
+                            bind:value={editSortOrder}
+                            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <label
+                            for="edit-desc"
+                            class="block text-sm font-medium text-text-secondary mb-1"
+                            >Description (optional)</label
+                          >
+                          <input
+                            id="edit-desc"
+                            type="text"
+                            bind:value={editDescription}
+                            class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent"
+                          />
+                        </div>
+                        <div>
+                          <span class="block text-sm font-medium text-text-secondary mb-1"
+                            >Stripe Price ID</span
+                          >
+                          <p class="px-3 py-2 text-sm font-mono text-text-muted">{pkg.stripePriceId}</p>
+                          <p class="text-xs text-text-muted mt-1">Cannot be changed after creation</p>
+                        </div>
+                        <div class="sm:col-span-2 flex gap-3">
+                          <SubmitButton loading={saving} loadingText="Saving..." label="Save Changes" class="btn-primary" />
+                          <Button onclick={() => (editingId = null)} label="Cancel" class="btn-secondary" />
+                        </div>
+                      </form>
+                    </div>
+                  </td>
+                </tr>
+              {/if}
             {/each}
           </tbody>
         </table>

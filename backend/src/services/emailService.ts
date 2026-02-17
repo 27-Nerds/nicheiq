@@ -156,6 +156,31 @@ export async function sendCompletionEmail(
 }
 
 /**
+ * Send landing page ready notification email
+ */
+export async function sendLandingPageReadyEmail(
+  to: string,
+  jobId: string,
+  niche: string
+): Promise<void> {
+  const vars = {
+    JOB_ID: jobId,
+    NICHE: truncateNiche(niche),
+    STATUS_URL: `${CONFIG.baseUrl}/jobs/${jobId}`,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('landingPageReady.html'), vars);
+    const text = renderTemplate(loadTemplate('landingPageReady.txt'), vars);
+
+    await sendEmail(to, 'Your NicheIQ Landing Page is Ready!', text, html);
+    console.log(`Landing page email sent to ${to} for job ${jobId}`);
+  } catch (error) {
+    console.error('Failed to send landing page email:', error);
+  }
+}
+
+/**
  * Error details interface for user-friendly error messages
  */
 interface ErrorDetails {

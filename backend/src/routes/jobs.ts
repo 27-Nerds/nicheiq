@@ -593,9 +593,11 @@ jobsRouter.post('/:jobId/generate-landing', requireInternalAuth, jobCreationLimi
       // Charge for landing page generation
       await chargeForStageInTx(tx, userId, jobId, 'landing_page', job.niche);
 
-      // Create stage 15 progress entry
-      await tx.jobProgress.create({
-        data: { jobId, stageNumber: 15, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
+      // Create or reset stage 15 progress entry (upsert handles retry after monitor-triggered failure)
+      await tx.jobProgress.upsert({
+        where: { jobId_stageNumber: { jobId, stageNumber: 15 } },
+        create: { jobId, stageNumber: 15, stageName: 'Landing Page Generation', status: StageStatus.PENDING },
+        update: { status: StageStatus.PENDING, errorMessage: null, startedAt: null, completedAt: null },
       });
 
       // Update job

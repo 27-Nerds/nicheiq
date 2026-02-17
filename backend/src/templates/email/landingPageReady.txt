@@ -1,0 +1,12 @@
+Your NicheIQ Landing Page is Ready!
+
+Great news! The landing page for "{{NICHE}}" has been generated and is ready to view.
+
+What's included:
+- Responsive HTML landing page
+- SEO-optimized copy based on your research
+- Ready to deploy to your hosting provider
+
+View Landing Page: {{STATUS_URL}}
+
+Job ID: {{JOB_ID}}

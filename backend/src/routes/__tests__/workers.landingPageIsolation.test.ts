@@ -8,6 +8,7 @@ import request from 'supertest';
 const mockUpdateMany = vi.fn();
 const mockJobFindUnique = vi.fn();
 const mockJobUpdate = vi.fn();
+const mockJobUpdateMany = vi.fn();
 const mockUserFindUnique = vi.fn();
 
 vi.mock('../../services/db.js', () => ({
@@ -16,6 +17,7 @@ vi.mock('../../services/db.js', () => ({
     job: {
       findUnique: (...args: any[]) => mockJobFindUnique(...args),
       update: (...args: any[]) => mockJobUpdate(...args),
+      updateMany: (...args: any[]) => mockJobUpdateMany(...args),
     },
     user: { findUnique: (...args: any[]) => mockUserFindUnique(...args) },
   },
@@ -57,6 +59,10 @@ vi.mock('../../services/notificationService.js', () => ({
   notifyJobStart: vi.fn(),
   notifyJobComplete: vi.fn(),
   notifyJobError: vi.fn().mockResolvedValue(undefined),
+  notifySolutionsReady: vi.fn().mockResolvedValue(undefined),
+  notifyPhase2Start: vi.fn().mockResolvedValue(undefined),
+  notifyRegenerationComplete: vi.fn().mockResolvedValue(undefined),
+  notifyLandingPageReady: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../utils/errorTranslator.js', () => ({
@@ -100,6 +106,7 @@ beforeEach(async () => {
   mockCompleteJob.mockResolvedValue({ id: JOB_ID, status: 'COMPLETED' });
   mockUpdateMany.mockResolvedValue({ count: 1 });
   mockJobUpdate.mockResolvedValue({ id: JOB_ID });
+  mockJobUpdateMany.mockResolvedValue({ count: 1 });
   mockJobFindUnique.mockResolvedValue({ status: 'RUNNING' });
   mockUpdateStageProgress.mockResolvedValue({});
 
@@ -259,7 +266,7 @@ describe('POST /api/workers/progress — landing page isolation', () => {
     expect(mockCompleteJob).not.toHaveBeenCalled();
   });
 
-  it('stage=15, status=running → sets landingPageStatus=RUNNING', async () => {
+  it('stage=15, status=running → sets landingPageStatus=RUNNING via CAS updateMany', async () => {
     const runningPayload = {
       worker_id: 'worker-1',
       job_id: JOB_ID,
@@ -273,15 +280,14 @@ describe('POST /api/workers/progress — landing page isolation', () => {
       .send(runningPayload);
 
     expect(res.status).toBe(200);
-    expect(mockJobUpdate).toHaveBeenCalledWith(
+    expect(mockJobUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: JOB_ID },
-        data: { landingPageStatus: 'RUNNING' },
+        data: expect.objectContaining({ landingPageStatus: 'RUNNING' }),
       })
     );
   });
 
-  it('stage=15, status=completed + landing_path (no report_path) → adds landing asset, sets COMPLETED', async () => {
+  it('stage=15, status=completed + landing_path (no report_path) → adds landing asset, sets COMPLETED via CAS', async () => {
     const completedPayload = {
       worker_id: 'worker-1',
       job_id: JOB_ID,
@@ -291,6 +297,9 @@ describe('POST /api/workers/progress — landing page isolation', () => {
       landing_path: 'outputs/job-1/landing.html',
     };
 
+    mockGetJob.mockResolvedValue({ userId: 'user-1', niche: 'test' });
+    mockUserFindUnique.mockResolvedValue({ email: 'test@test.com' });
+
     const res = await request(app)
       .post('/api/workers/progress')
       .send(completedPayload);
@@ -298,10 +307,9 @@ describe('POST /api/workers/progress — landing page isolation', () => {
     expect(res.status).toBe(200);
     // Should add the landing page asset
     expect(mockAddJobAsset).toHaveBeenCalledWith(JOB_ID, 'LANDING_PAGE', completedPayload.landing_path);
-    // Should set landingPageStatus to COMPLETED
-    expect(mockJobUpdate).toHaveBeenCalledWith(
+    // Should set landingPageStatus to COMPLETED via CAS updateMany
+    expect(mockJobUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: JOB_ID },
         data: { landingPageStatus: 'COMPLETED' },
       })
     );

@@ -203,7 +203,9 @@
                 <div
                   class="flex items-center justify-between p-3 rounded-lg bg-accent/5 border border-accent/20"
                 >
-                  <span class="text-accent font-semibold text-sm">NicheIQ</span>
+                  <div class="flex items-center gap-1.5">
+                    <img src="/niche-logo-beta.svg" alt="NicheIQ" class="h-4" />
+                  </div>
                   {#if isIcon(feature.nicheiq)}
                     {#if feature.nicheiq === "check"}
                       <Check class="w-5 h-5 text-success" />
@@ -223,7 +225,10 @@
                 <div
                   class="flex items-center justify-between p-3 rounded-lg bg-bg-surface"
                 >
-                  <span class="text-text-muted text-sm">Perplexity</span>
+                  <div class="flex items-center gap-1.5">
+                    <img src="/icons/perplexity.svg" alt="Perplexity" class="w-4 h-4 rounded" />
+                    <span class="text-text-muted text-sm">Perplexity</span>
+                  </div>
                   {#if isIcon(feature.perplexity)}
                     {#if feature.perplexity === "check"}
                       <Check class="w-5 h-5 text-success" />
@@ -243,7 +248,10 @@
                 <div
                   class="flex items-center justify-between p-3 rounded-lg bg-bg-surface"
                 >
-                  <span class="text-text-muted text-sm">Grok</span>
+                  <div class="flex items-center gap-1.5">
+                    <img src="/icons/grok.svg" alt="Grok" class="w-4 h-4 rounded" />
+                    <span class="text-text-muted text-sm">Grok</span>
+                  </div>
                   {#if isIcon(feature.grok)}
                     {#if feature.grok === "check"}
                       <Check class="w-5 h-5 text-success" />
@@ -261,7 +269,9 @@
                 <div
                   class="flex items-center justify-between p-3 rounded-lg bg-bg-surface"
                 >
-                  <span class="text-text-muted text-sm">PainOnSocial</span>
+                  <div class="flex items-center gap-1.5">
+                    <img src="/icons/painonsocial.png" alt="PainOnSocial" class="h-3.5" />
+                  </div>
                   {#if isIcon(feature.painonsocial)}
                     {#if feature.painonsocial === "check"}
                       <Check class="w-5 h-5 text-success" />
@@ -290,48 +300,68 @@
             <tr>
               <th class="text-left w-1/5"></th>
               <th class="text-center w-1/5 nicheiq-col">
-                <div class="inline-block">
-                  <span class="badge mb-2 animate-pulse-glow">Recommended</span>
-                  <div class="flex items-center justify-center gap-2">
-                    <div class="tool-logo tool-logo-nicheiq">N</div>
-                    <div class="font-display font-bold text-lg text-accent">
-                      NicheIQ
-                    </div>
+                <div class="flex flex-col items-center gap-1.5">
+                  <span
+                    class="text-[10px] font-mono uppercase tracking-widest text-accent font-semibold animate-pulse-glow"
+                    >Recommended</span
+                  >
+                  <div class="h-8 flex items-center justify-center">
+                    <img
+                      src="/niche-logo-beta.svg"
+                      alt="NicheIQ"
+                      class="h-6"
+                    />
                   </div>
-                  <div class="api-badge api-badge-success mt-2">
-                    Verified Data
-                  </div>
+                  <div class="api-badge api-badge-success">Verified Data</div>
                 </div>
               </th>
               <th class="text-center w-1/5">
-                <div class="flex items-center justify-center gap-2 mb-1">
-                  <div class="tool-logo">P</div>
-                  <div class="font-display font-semibold text-text-muted">
-                    Perplexity
+                <div class="flex flex-col items-center gap-1.5">
+                  <div class="h-8 flex items-center justify-center">
+                    <img
+                      src="/icons/perplexity.svg"
+                      alt=""
+                      class="w-7 h-7 rounded-lg"
+                    />
                   </div>
+                  <span
+                    class="font-display font-semibold text-sm text-text-muted normal-case tracking-normal"
+                    >Perplexity</span
+                  >
+                  <div class="api-badge api-badge-muted">Web Search</div>
                 </div>
-                <div class="text-xs text-text-muted/70 mb-2">Deep Research</div>
-                <div class="api-badge api-badge-muted">Web Search</div>
               </th>
               <th class="text-center w-1/5">
-                <div class="flex items-center justify-center gap-2 mb-1">
-                  <div class="tool-logo">G</div>
-                  <div class="font-display font-semibold text-text-muted">
-                    Grok
+                <div class="flex flex-col items-center gap-1.5">
+                  <div class="h-8 flex items-center justify-center">
+                    <img
+                      src="/icons/grok.svg"
+                      alt=""
+                      class="w-7 h-7 rounded-lg"
+                    />
                   </div>
+                  <span
+                    class="font-display font-semibold text-sm text-text-muted normal-case tracking-normal"
+                    >Grok</span
+                  >
+                  <div class="api-badge api-badge-muted">X/Twitter</div>
                 </div>
-                <div class="text-xs text-text-muted/70 mb-2">DeepSearch</div>
-                <div class="api-badge api-badge-muted">X/Twitter Focus</div>
               </th>
               <th class="text-center w-1/5">
-                <div class="flex items-center justify-center gap-2 mb-1">
-                  <div class="tool-logo">P</div>
-                  <div class="font-display font-semibold text-text-muted">
-                    PainOnSocial
+                <div class="flex flex-col items-center gap-1.5">
+                  <div class="h-8 flex items-center justify-center">
+                    <img
+                      src="/icons/painonsocial.png"
+                      alt="PainOnSocial"
+                      class="h-[18px] w-auto object-contain"
+                    />
                   </div>
+                  <span
+                    class="font-display font-semibold text-sm text-text-muted normal-case tracking-normal"
+                    >PainOnSocial</span
+                  >
+                  <div class="api-badge api-badge-warning">Reddit Only</div>
                 </div>
-                <div class="text-xs text-text-muted/70 mb-2">Reddit Focus</div>
-                <div class="api-badge api-badge-warning">Reddit Only</div>
               </th>
             </tr>
           </thead>

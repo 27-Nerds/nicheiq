@@ -956,22 +956,38 @@
 
       <!-- Extras -->
       {#if showLpRow && job}
-        <div class="mt-4 p-4 rounded-lg bg-bg-surface border border-border animate-fade-slide-in" style="animation-delay: 300ms;">
-          <div class="flex items-center gap-2 mb-3">
-            <Sparkles class="w-4 h-4 text-accent" />
-            <span class="text-sm font-semibold text-text-primary">Extras</span>
+        <div class="extras-card animate-fade-slide-in" style="animation-delay: 300ms;">
+          <div class="extras-header">
+            <div class="extras-header-left">
+              <div class="extras-icon-box">
+                <Sparkles class="extras-icon" />
+              </div>
+              <div class="extras-title-group">
+                <span class="extras-title">Extras</span>
+                <span class="extras-subtitle">Add-on deliverables for your research</span>
+              </div>
+            </div>
+            {#if lpStatus === 'completed'}
+              <span class="extras-ready-badge">
+                <CheckCircle class="extras-ready-icon" />
+                Ready
+              </span>
+            {/if}
           </div>
-          <DeliverableRow
-            label="Landing Page"
-            icon={Globe}
-            status={lpStatus}
-            creditCost={landingStageCost}
-            canAfford={canAffordLanding}
-            asset={landingAsset}
-            generating={generatingLanding}
-            error={landingError}
-            onGenerate={generateLanding}
-          />
+          <div class="extras-divider"></div>
+          <div class="extras-content">
+            <DeliverableRow
+              label="Landing Page"
+              icon={Globe}
+              status={lpStatus}
+              creditCost={landingStageCost}
+              canAfford={canAffordLanding}
+              asset={landingAsset}
+              generating={generatingLanding}
+              error={landingError}
+              onGenerate={generateLanding}
+            />
+          </div>
         </div>
       {/if}
 
@@ -1361,5 +1377,91 @@
       flex-direction: column;
       align-items: center;
     }
+  }
+
+  /* ── Extras card ── */
+  .extras-card {
+    margin-top: 1rem;
+    padding: 0;
+    border-radius: 0.75rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    overflow: hidden;
+  }
+
+  .extras-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.875rem 1rem;
+  }
+
+  .extras-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+
+  .extras-icon-box {
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.5rem;
+    background: rgba(229, 90, 40, 0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  :global(.extras-icon) {
+    width: 0.875rem;
+    height: 0.875rem;
+    color: var(--color-accent);
+  }
+
+  .extras-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.0625rem;
+  }
+
+  .extras-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    line-height: 1.2;
+  }
+
+  .extras-subtitle {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    line-height: 1.3;
+  }
+
+  .extras-ready-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-success);
+    background: rgba(34, 197, 94, 0.1);
+    padding: 0.1875rem 0.5rem;
+    border-radius: 9999px;
+  }
+
+  :global(.extras-ready-icon) {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .extras-divider {
+    height: 1px;
+    background: var(--color-border);
+    margin: 0 1rem;
+  }
+
+  .extras-content {
+    padding: 0.75rem 1rem;
   }
 </style>

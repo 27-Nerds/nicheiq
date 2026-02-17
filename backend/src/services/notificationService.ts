@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail } from './emailService.js';
+import { sendCompletionEmail, sendFailureEmail, sendJobStartEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail, sendLandingPageReadyEmail } from './emailService.js';
 import type { PhaseContextForEmail } from './emailService.js';
 
 export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError' | 'solutionsReady';
@@ -177,4 +177,21 @@ export async function notifySelectionReminder(
     return;
   }
   await sendSelectionReminderEmail(email, jobId, niche, solutionCount);
+}
+
+/**
+ * Send landing page ready email if user preferences allow.
+ * Reuses the jobComplete preference — no schema migration needed.
+ */
+export async function notifyLandingPageReady(
+  userId: string | null | undefined,
+  email: string,
+  jobId: string,
+  niche: string
+): Promise<void> {
+  if (!(await shouldNotifyUser(userId, 'jobComplete'))) {
+    console.log(`[Notification] Skipping landing page email for job ${jobId} - disabled by preference`);
+    return;
+  }
+  await sendLandingPageReadyEmail(email, jobId, niche);
 }
