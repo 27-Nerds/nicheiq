@@ -108,6 +108,10 @@ function buildProviders() {
 
 // Get auth secret with validation
 function getAuthSecret(): string {
+  if (building) {
+    return 'build-placeholder';
+  }
+
   const secret = env.AUTH_SECRET;
 
   if (!secret) {
