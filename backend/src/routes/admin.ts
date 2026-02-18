@@ -1,14 +1,78 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { UserRole } from '@prisma/client';
 import archiver from 'archiver';
 import path from 'path';
-import { requireInternalAdmin, AuthenticatedRequest } from '../middleware/auth.js';
+import { requireInternalAdmin, requireInternalService, AuthenticatedRequest } from '../middleware/auth.js';
 import * as adminService from '../services/adminService.js';
+import { addCredits } from '../services/creditService.js';
+import { CreditTransactionType } from '@prisma/client';
+import { prisma } from '../services/db.js';
 
 export const adminRouter = Router();
 
-// All admin routes require internal admin auth
+// ============================================
+// Internal: Grant Registration Credits (OAuth flow)
+// Protected by requireInternalService (service-to-service), not requireInternalAdmin.
+// Must be registered BEFORE the router-level requireInternalAdmin middleware.
+// ============================================
+
+const GrantRegistrationCreditsSchema = z.object({
+  userId: z.string().min(1),
+});
+
+adminRouter.post('/internal/grant-registration-credits', requireInternalService as any, async (req: Request, res: Response) => {
+  try {
+    const input = GrantRegistrationCreditsSchema.parse(req.body);
+
+    // Verify user exists and was created recently (within 5 minutes)
+    const user = await prisma.user.findUnique({
+      where: { id: input.userId },
+      select: { id: true, createdAt: true },
+    });
+
+    if (!user) {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+
+    const ageMs = Date.now() - user.createdAt.getTime();
+    if (ageMs > 5 * 60 * 1000) {
+      res.status(400).json({ error: 'User account too old for registration credits' });
+      return;
+    }
+
+    // Check if registration bonus already granted (idempotency)
+    const existingBonus = await prisma.creditTransaction.findFirst({
+      where: { userId: input.userId, description: 'Registration bonus' },
+    });
+    if (existingBonus) {
+      res.json({ skipped: true, message: 'Registration bonus already granted' });
+      return;
+    }
+
+    // Check if registration credits are configured
+    const creditsAmount = await adminService.getRegistrationCredits();
+    if (creditsAmount <= 0) {
+      res.json({ skipped: true, message: 'Registration credits not configured' });
+      return;
+    }
+
+    const result = await addCredits(
+      input.userId,
+      creditsAmount,
+      'Registration bonus',
+      CreditTransactionType.ADMIN_ADJUSTMENT,
+    );
+
+    res.json({ granted: true, amount: creditsAmount, balance: result.credits.balance });
+  } catch (error) {
+    console.error('Failed to grant registration credits:', error);
+    res.status(500).json({ error: 'Failed to grant registration credits' });
+  }
+});
+
+// All remaining admin routes require internal admin auth
 adminRouter.use(requireInternalAdmin);
 
 // ============================================
@@ -167,6 +231,39 @@ adminRouter.patch('/users/:userId/role', async (req: AuthenticatedRequest, res: 
     }
     console.error('Failed to update user role:', error);
     res.status(500).json({ error: 'Failed to update user role' });
+  }
+});
+
+// ============================================
+// Add Credits to User
+// ============================================
+
+const AddCreditsSchema = z.object({
+  amount: z.number().int().positive().max(10000),
+  description: z.string().min(1).max(500),
+});
+
+adminRouter.post('/users/:userId/credits', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = AddCreditsSchema.parse(req.body);
+    const result = await adminService.addCreditsToUser(
+      req.params.userId,
+      input.amount,
+      input.description,
+      req.user!.id,
+    );
+    res.json(result);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if (error instanceof Error && error.message === 'User not found') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    console.error('Failed to add credits:', error);
+    res.status(500).json({ error: 'Failed to add credits' });
   }
 });
 

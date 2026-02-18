@@ -1,6 +1,6 @@
 <script lang="ts">
   import Badge from "$lib/components/ui/Badge.svelte";
-  import { Search } from "lucide-svelte";
+  import { Search, Check, AlertCircle } from "lucide-svelte";
   import { goto, invalidateAll } from "$app/navigation";
   import { page as pageStore } from "$app/stores";
 
@@ -12,6 +12,66 @@
     searchInput = initialSearch;
   });
   let updatingRole = $state<string | null>(null);
+
+  // Credit modal state
+  let creditModal = $state<{ userId: string; email: string } | null>(null);
+  let creditAmount = $state("");
+  let creditDescription = $state("");
+  let addingCredits = $state(false);
+  let creditFeedback = $state<{ type: "success" | "error"; message: string } | null>(null);
+
+  function openCreditModal(userId: string, email: string) {
+    creditModal = { userId, email };
+    creditAmount = "";
+    creditDescription = "";
+    creditFeedback = null;
+  }
+
+  function closeCreditModal() {
+    creditModal = null;
+    creditAmount = "";
+    creditDescription = "";
+    creditFeedback = null;
+  }
+
+  async function handleAddCredits() {
+    if (!creditModal) return;
+    const amount = parseInt(creditAmount, 10);
+    if (!amount || amount < 1 || amount > 10000) {
+      creditFeedback = { type: "error", message: "Amount must be between 1 and 10,000" };
+      return;
+    }
+    if (!creditDescription.trim()) {
+      creditFeedback = { type: "error", message: "Description is required" };
+      return;
+    }
+
+    addingCredits = true;
+    creditFeedback = null;
+
+    try {
+      const res = await fetch(`/api/admin/users/${creditModal.userId}/credits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, description: creditDescription.trim() }),
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        creditFeedback = { type: "error", message: result.error || "Failed to add credits" };
+        return;
+      }
+
+      creditFeedback = { type: "success", message: `Added ${amount} credits. New balance: ${result.balance}` };
+      await invalidateAll();
+      setTimeout(closeCreditModal, 1500);
+    } catch {
+      creditFeedback = { type: "error", message: "Network error" };
+    } finally {
+      addingCredits = false;
+    }
+  }
 
   function formatDate(dateStr: string): string {
     return new Date(dateStr).toLocaleDateString("en-US", {
@@ -134,17 +194,25 @@
                   >{formatDate(user.createdAt)}</td
                 >
                 <td class="py-3 px-4 text-right">
-                  <button
-                    class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary disabled:opacity-50"
-                    onclick={() => toggleRole(user.id, user.role)}
-                    disabled={updatingRole === user.id}
-                  >
-                    {updatingRole === user.id
-                      ? "..."
-                      : user.role === "ADMIN"
-                        ? "Demote"
-                        : "Promote"}
-                  </button>
+                  <div class="flex items-center justify-end gap-1.5">
+                    <button
+                      class="text-xs px-2 py-1 rounded border border-accent/40 hover:bg-accent/10 transition-colors text-accent disabled:opacity-50"
+                      onclick={() => openCreditModal(user.id, user.email)}
+                    >
+                      + Credits
+                    </button>
+                    <button
+                      class="text-xs px-2 py-1 rounded border border-border hover:bg-bg-elevated transition-colors text-text-secondary disabled:opacity-50"
+                      onclick={() => toggleRole(user.id, user.role)}
+                      disabled={updatingRole === user.id}
+                    >
+                      {updatingRole === user.id
+                        ? "..."
+                        : user.role === "ADMIN"
+                          ? "Demote"
+                          : "Promote"}
+                    </button>
+                  </div>
                 </td>
               </tr>
             {/each}
@@ -194,3 +262,72 @@
     </div>
   {/if}
 </div>
+
+<!-- Add Credits Modal -->
+{#if creditModal}
+  <div
+    class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+    role="dialog"
+    aria-modal="true"
+    tabindex="-1"
+    onclick={(e) => { if (e.target === e.currentTarget) closeCreditModal(); }}
+    onkeydown={(e) => { if (e.key === 'Escape') closeCreditModal(); }}
+  >
+    <div class="bg-bg-surface border border-border rounded-xl p-6 w-full max-w-md shadow-xl">
+      <h3 class="text-lg font-semibold text-text-primary mb-1">Add Credits</h3>
+      <p class="text-sm text-text-muted mb-4">Grant credits to {creditModal.email}</p>
+
+      {#if creditFeedback}
+        <div class="flex items-center gap-2 text-sm mb-4 p-2.5 rounded-lg {creditFeedback.type === 'success' ? 'bg-success/10 text-success' : 'bg-error/10 text-error'}">
+          {#if creditFeedback.type === "success"}
+            <Check class="w-4 h-4 shrink-0" />
+          {:else}
+            <AlertCircle class="w-4 h-4 shrink-0" />
+          {/if}
+          {creditFeedback.message}
+        </div>
+      {/if}
+
+      <form onsubmit={(e) => { e.preventDefault(); handleAddCredits(); }}>
+        <label for="credit-amount" class="block text-sm font-medium text-text-secondary mb-1">Amount</label>
+        <input
+          id="credit-amount"
+          type="number"
+          min="1"
+          max="10000"
+          bind:value={creditAmount}
+          placeholder="e.g. 50"
+          class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent mb-3"
+        />
+
+        <label for="credit-description" class="block text-sm font-medium text-text-secondary mb-1">Description</label>
+        <input
+          id="credit-description"
+          type="text"
+          maxlength="500"
+          bind:value={creditDescription}
+          placeholder="e.g. Beta tester bonus"
+          class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent mb-4"
+        />
+
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="px-4 py-2 text-sm rounded-lg border border-border hover:bg-bg-elevated transition-colors text-text-secondary"
+            onclick={closeCreditModal}
+            disabled={addingCredits}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="px-4 py-2 text-sm rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors disabled:opacity-50"
+            disabled={addingCredits}
+          >
+            {addingCredits ? "Adding..." : "Add Credits"}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+{/if}

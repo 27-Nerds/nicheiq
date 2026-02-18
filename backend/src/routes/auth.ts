@@ -2,7 +2,10 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../services/db.js';
+import { CreditTransactionType } from '@prisma/client';
 import { authLimiter } from '../middleware/rateLimit.js';
+import { addCredits } from '../services/creditService.js';
+import { getRegistrationCredits } from '../services/adminService.js';
 
 export const authRouter = Router();
 
@@ -64,6 +67,22 @@ authRouter.post('/register', async (req: Request, res: Response) => {
         createdAt: true,
       },
     });
+
+    // Grant registration credits (fire-and-forget, don't block registration)
+    try {
+      const regCredits = await getRegistrationCredits();
+      if (regCredits > 0) {
+        // Idempotency: check if registration bonus already exists
+        const existing = await prisma.creditTransaction.findFirst({
+          where: { userId: user.id, description: 'Registration bonus' },
+        });
+        if (!existing) {
+          await addCredits(user.id, regCredits, 'Registration bonus', CreditTransactionType.ADMIN_ADJUSTMENT);
+        }
+      }
+    } catch (creditError) {
+      console.error('Failed to grant registration credits (non-blocking):', creditError);
+    }
 
     res.status(201).json({
       id: user.id,

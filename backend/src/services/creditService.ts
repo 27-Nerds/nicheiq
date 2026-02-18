@@ -551,6 +551,10 @@ export async function addCredits(
   description: string,
   type: CreditTransactionType = CreditTransactionType.PURCHASE
 ): Promise<{ credits: UserCredits; transaction: CreditTransaction }> {
+  if (amount <= 0) {
+    throw new Error(`addCredits requires a positive amount, got ${amount}`);
+  }
+
   return prisma.$transaction(async (tx) => {
     // Get or create credits
     let credits = await tx.userCredits.findUnique({

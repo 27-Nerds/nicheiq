@@ -40,8 +40,28 @@ vi.mock('../../services/adminService.js', async (importOriginal) => {
     getAppSetting: (...args: any[]) => mockGetAppSetting(...args),
     setAppSetting: (...args: any[]) => mockSetAppSetting(...args),
     deleteAppSetting: (...args: any[]) => mockDeleteAppSetting(...args),
+    getRegistrationCredits: (...args: any[]) => mockGetRegistrationCredits(...args),
+    addCreditsToUser: vi.fn(),
   };
 });
+
+// Mock creditService (used by internal grant-registration-credits endpoint)
+const mockAddCredits = vi.fn();
+vi.mock('../../services/creditService.js', () => ({
+  addCredits: (...args: any[]) => mockAddCredits(...args),
+}));
+
+// Mock prisma (used by internal grant-registration-credits endpoint)
+const mockPrisma = {
+  user: { findUnique: vi.fn() },
+  creditTransaction: { findFirst: vi.fn() },
+};
+vi.mock('../../services/db.js', () => ({
+  prisma: mockPrisma,
+}));
+
+// Mock getRegistrationCredits (added to adminService mock above via ...actual spread)
+const mockGetRegistrationCredits = vi.fn();
 
 // Mock auth middleware
 vi.mock('../../middleware/auth.js', () => ({
@@ -62,6 +82,13 @@ vi.mock('../../middleware/auth.js', () => ({
     next();
   },
   AuthenticatedRequest: {},
+  requireInternalService: (req: any, _res: any, next: any) => {
+    const serviceSecret = req.headers['x-internal-service'];
+    if (serviceSecret !== 'test-secret') {
+      return _res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+  },
 }));
 
 // ============================================

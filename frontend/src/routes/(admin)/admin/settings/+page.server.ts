@@ -20,8 +20,9 @@ export const load: PageServerLoad = async ({ parent }) => {
   };
 
   try {
-    const [sampleReportRes, ...tokenCostResponses] = await Promise.all([
+    const [sampleReportRes, registrationCreditsRes, ...tokenCostResponses] = await Promise.all([
       fetch(`${BACKEND_URL}/api/admin/settings/sample_report_url`, { headers }),
+      fetch(`${BACKEND_URL}/api/admin/settings/registration_credits`, { headers }),
       ...TOKEN_COST_KEYS.map((key) =>
         fetch(`${BACKEND_URL}/api/admin/settings/${key}`, { headers }),
       ),
@@ -29,6 +30,10 @@ export const load: PageServerLoad = async ({ parent }) => {
 
     const sampleReportUrl = sampleReportRes.ok
       ? (await sampleReportRes.json()).value
+      : null;
+
+    const registrationCredits = registrationCreditsRes.ok
+      ? (await registrationCreditsRes.json()).value
       : null;
 
     const tokenCosts: Record<string, string | null> = {};
@@ -39,10 +44,10 @@ export const load: PageServerLoad = async ({ parent }) => {
         : null;
     }
 
-    return { sampleReportUrl, tokenCosts };
+    return { sampleReportUrl, registrationCredits, tokenCosts };
   } catch (error) {
     console.error('Failed to fetch settings:', error);
   }
 
-  return { sampleReportUrl: null, tokenCosts: {} };
+  return { sampleReportUrl: null, registrationCredits: null, tokenCosts: {} };
 };

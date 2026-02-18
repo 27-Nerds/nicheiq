@@ -2,6 +2,7 @@
   import { Check, AlertCircle } from "lucide-svelte";
   import { invalidateAll } from "$app/navigation";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import SettingsNumberRow from "$lib/components/ui/SettingsNumberRow.svelte";
 
   let { data } = $props();
 
@@ -86,78 +87,6 @@
     { key: "token_cost_regenerate_ideas", label: "Generate More Ideas", default: 2 },
     { key: "token_cost_landing_page", label: "Landing Page", default: 5 },
   ] as const;
-
-  let tokenValues = $state<Record<string, string>>({});
-  let tokenSaving = $state<Record<string, boolean>>({});
-  let tokenFeedback = $state<Record<string, { type: "success" | "error"; message: string } | null>>({});
-
-  // Initialize values from server data
-  $effect(() => {
-    const costs = data.tokenCosts ?? {};
-    for (const field of COST_FIELDS) {
-      if (tokenValues[field.key] === undefined) {
-        tokenValues[field.key] = costs[field.key] ?? String(field.default);
-      }
-    }
-  });
-
-  async function saveTokenCost(key: string) {
-    tokenSaving[key] = true;
-    tokenFeedback[key] = null;
-
-    try {
-      const res = await fetch(`/api/admin/settings/${key}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: tokenValues[key] }),
-      });
-
-      const result = await res.json();
-
-      if (!res.ok) {
-        tokenFeedback[key] = {
-          type: "error",
-          message: result.error || "Failed to save",
-        };
-        return;
-      }
-
-      tokenFeedback[key] = { type: "success", message: "Saved" };
-      await invalidateAll();
-    } catch {
-      tokenFeedback[key] = { type: "error", message: "Network error" };
-    } finally {
-      tokenSaving[key] = false;
-    }
-  }
-
-  async function resetTokenCost(key: string, defaultVal: number) {
-    tokenSaving[key] = true;
-    tokenFeedback[key] = null;
-
-    try {
-      const res = await fetch(`/api/admin/settings/${key}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        const result = await res.json();
-        tokenFeedback[key] = {
-          type: "error",
-          message: result.error || "Failed to reset",
-        };
-        return;
-      }
-
-      tokenValues[key] = String(defaultVal);
-      tokenFeedback[key] = { type: "success", message: "Reset to default" };
-      await invalidateAll();
-    } catch {
-      tokenFeedback[key] = { type: "error", message: "Network error" };
-    } finally {
-      tokenSaving[key] = false;
-    }
-  }
 </script>
 
 <svelte:head>
@@ -236,52 +165,30 @@
 
     <div class="space-y-4">
       {#each COST_FIELDS as field}
-        <div>
-          <div class="flex items-center justify-between gap-3">
-            <label
-              for={field.key}
-              class="text-sm font-medium text-text-secondary"
-            >
-              {field.label}
-              <span class="text-xs text-text-muted font-normal">(default: {field.default})</span>
-            </label>
-            <div class="flex items-center gap-2">
-              <input
-                id={field.key}
-                type="number"
-                min="0"
-                max="100"
-                bind:value={tokenValues[field.key]}
-                class="w-20 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm text-center focus:outline-none focus:border-accent"
-              />
-              <SubmitButton
-                onclick={() => saveTokenCost(field.key)}
-                loading={tokenSaving[field.key] ?? false}
-                loadingText="..."
-                label="Save"
-                class="btn-primary btn-sm"
-              />
-              <SubmitButton
-                onclick={() => resetTokenCost(field.key, field.default)}
-                loading={tokenSaving[field.key] ?? false}
-                loadingText="..."
-                label="Reset"
-                type="button"
-                class="btn-secondary btn-sm"
-              />
-            </div>
-          </div>
-          {#if tokenFeedback[field.key]}
-            <p
-              class="text-xs mt-1 {tokenFeedback[field.key]?.type === 'success'
-                ? 'text-success'
-                : 'text-error'}"
-            >
-              {tokenFeedback[field.key]?.message}
-            </p>
-          {/if}
-        </div>
+        <SettingsNumberRow
+          key={field.key}
+          label={field.label}
+          defaultValue={field.default}
+          max={100}
+          value={data.tokenCosts?.[field.key] ?? null}
+        />
       {/each}
     </div>
+  </div>
+
+  <!-- Registration Credits -->
+  <div class="bg-bg-surface border border-border rounded-xl p-5">
+    <h3 class="text-lg font-semibold text-text-primary mb-1">Registration Credits</h3>
+    <p class="text-sm text-text-muted mb-4">
+      Number of credits automatically granted to new users upon registration. Set to 0 to disable.
+    </p>
+
+    <SettingsNumberRow
+      key="registration_credits"
+      label="Credits per new user"
+      defaultValue={0}
+      max={1000}
+      value={data.registrationCredits}
+    />
   </div>
 </div>

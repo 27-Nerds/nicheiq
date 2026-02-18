@@ -136,6 +136,24 @@ export const { handle, signIn, signOut } = SvelteKitAuth({
   pages: {
     signIn: '/login',
   },
+  events: {
+    async createUser({ user }) {
+      // Grant registration credits for OAuth users (fire-and-forget)
+      if (!user.id) return;
+      try {
+        await fetch(`${BACKEND_URL}/api/admin/internal/grant-registration-credits`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
+          },
+          body: JSON.stringify({ userId: user.id }),
+        });
+      } catch (error) {
+        console.error('Failed to grant registration credits for OAuth user:', error);
+      }
+    },
+  },
   callbacks: {
     async jwt({ token, user }) {
       // On sign in, add user info to token

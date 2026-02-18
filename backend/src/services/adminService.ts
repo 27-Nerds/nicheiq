@@ -1,8 +1,9 @@
 import { prisma } from './db.js';
-import { UserRole } from '@prisma/client';
+import { UserRole, CreditTransactionType } from '@prisma/client';
 import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { resolveAssetPath } from '../utils/assetPath.js';
+import { addCredits } from './creditService.js';
 
 /**
  * Get dashboard statistics
@@ -365,6 +366,7 @@ const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   token_cost_deep_research: integerValidator(0, 100),
   token_cost_landing_page: integerValidator(0, 100),
   token_cost_regenerate_ideas: integerValidator(0, 100),
+  registration_credits: integerValidator(0, 1000),
 };
 
 /**
@@ -412,6 +414,46 @@ export async function setAppSetting(key: string, value: string, updatedBy?: stri
 export async function deleteAppSetting(key: string): Promise<void> {
   if (!isValidSettingsKey(key)) throw new Error('Invalid settings key');
   await prisma.appSettings.deleteMany({ where: { key } });
+}
+
+/**
+ * Get the configured registration credits amount (default 0)
+ */
+export async function getRegistrationCredits(): Promise<number> {
+  const setting = await prisma.appSettings.findUnique({
+    where: { key: 'registration_credits' },
+  });
+  if (setting?.value != null) {
+    const parsed = parseInt(setting.value, 10);
+    if (!isNaN(parsed) && parsed >= 0) return parsed;
+  }
+  return 0;
+}
+
+/**
+ * Add credits to a user (admin action with audit trail)
+ */
+export async function addCreditsToUser(
+  userId: string,
+  amount: number,
+  description: string,
+  adminUserId: string,
+): Promise<{ balance: number; transaction: { id: string; amount: number } }> {
+  // Verify user exists
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  if (!user) throw new Error('User not found');
+
+  // Look up admin email for audit trail
+  const admin = await prisma.user.findUnique({ where: { id: adminUserId }, select: { email: true } });
+  const adminEmail = admin?.email || 'unknown';
+  const auditDescription = `Admin (${adminEmail}): ${description}`;
+
+  const result = await addCredits(userId, amount, auditDescription, CreditTransactionType.ADMIN_ADJUSTMENT);
+
+  return {
+    balance: result.credits.balance,
+    transaction: { id: result.transaction.id, amount: result.transaction.amount },
+  };
 }
 
 /**
