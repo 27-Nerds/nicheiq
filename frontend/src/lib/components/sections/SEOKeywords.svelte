@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    TrendingUp,
     Search,
     Zap,
     FileText,
@@ -14,6 +13,7 @@
     Table,
     Lightbulb,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { SEOStrategy, SEOAnalytics } from "$lib/types/report";
   import {
     formatNumber,
@@ -182,7 +182,7 @@
 <Section
   id="seo"
   class="report-section"
-  icon={TrendingUp}
+  icon={SECTION_MAP['seo'].icon}
   title="SEO Strategy & Keywords"
   subtitle="Keyword opportunities and content roadmap"
   headerSize="lg"

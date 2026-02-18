@@ -445,15 +445,17 @@
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-12">
-        <span class="section-label animate-fade-in">Inside the Report</span>
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">01</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">Inside the Report</span>
+        </div>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          What You <span class="text-gradient italic">Actually Get</span>
+          What You <span class="text-accent italic">Actually Get</span>
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
-        ></div>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
@@ -532,7 +534,7 @@
             <span
               class="text-xs text-text-muted font-mono ml-2 hidden sm:inline"
             >
-              report — content-repurposing-tool.pdf
+              report — content-repurposing-tool
             </span>
           </div>
           {#if hasSampleReport}

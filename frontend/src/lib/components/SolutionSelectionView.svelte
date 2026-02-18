@@ -11,20 +11,14 @@
   import SelectSolutionModal from "./SelectSolutionModal.svelte";
   import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
-  import type { SolutionPreview } from "$lib/types/job";
+  import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
+  import type { SolutionPreview, StageCosts } from "$lib/types/job";
   import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
   import { invalidateAll } from "$app/navigation";
   import { tick } from "svelte";
   import { Coins } from "lucide-svelte";
 
   const MAX_SELECTIONS = 3;
-
-  interface StageCosts {
-    discovery: number;
-    deep_research: number;
-    landing_page: number;
-    regenerate_ideas: number;
-  }
 
   interface Props {
     jobId: string;
@@ -46,7 +40,7 @@
     selectedSolutions = null,
     isRegenerating = false,
     canRegenerate = true,
-    stageCosts = { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 },
+    stageCosts = { ...DEFAULT_STAGE_COSTS },
     creditBalance = 0,
     onSelectionComplete,
     onRegenerateStart,

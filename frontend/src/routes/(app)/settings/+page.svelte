@@ -449,7 +449,7 @@
     </div>
   </div>
 
-  <div class="my-8"><div class="gradient-divider"></div></div>
+  <div class="my-8 h-px bg-border"></div>
 </div>
 
 <style>

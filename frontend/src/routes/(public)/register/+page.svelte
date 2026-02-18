@@ -1,11 +1,14 @@
 <script lang="ts">
   import { signIn } from "@auth/sveltekit/client";
   import { goto } from "$app/navigation";
+  import { page } from "$app/stores";
   import { Mail, Lock, User, AlertCircle } from "lucide-svelte";
   import AuthPageLayout from "$lib/components/ui/AuthPageLayout.svelte";
   import OAuthButtons from "$lib/components/ui/OAuthButtons.svelte";
   import FormField from "$lib/components/ui/FormField.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+
+  const availableProviders = $derived($page.data.availableProviders);
 
   let name = $state("");
   let email = $state("");
@@ -75,7 +78,7 @@
   title="Create your account"
   subtitle="Start discovering SaaS opportunities today"
 >
-  <OAuthButtons onOAuthLogin={handleOAuthLogin} mode="register" />
+  <OAuthButtons onOAuthLogin={handleOAuthLogin} mode="register" {availableProviders} />
 
   <form onsubmit={handleRegister} class="space-y-4">
     {#if error}

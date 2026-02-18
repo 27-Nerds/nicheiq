@@ -4,13 +4,14 @@
     CheckCircle,
     XCircle,
     ExternalLink,
-    Sparkles,
+    Crosshair,
     Layers,
     TrendingUp,
     Target,
     ChevronDown,
     BarChart3,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
     CompetitorProfile,
     CompetitiveAnalysis,
@@ -177,7 +178,7 @@
 <Section
   id="competitors"
   class="report-section"
-  icon={Users}
+  icon={SECTION_MAP['competitors'].icon}
   title="Competitive Analysis"
   subtitle="Market landscape and positioning"
   headerSize="lg"
@@ -262,7 +263,7 @@
   {#if selectedLandscape?.market_gaps && selectedLandscape.market_gaps.length > 0}
     <ExpandableSection
       title="Market Gaps & Opportunities"
-      icon={Sparkles}
+      icon={Crosshair}
       count={selectedLandscape.market_gaps.length}
       variant="success"
     >

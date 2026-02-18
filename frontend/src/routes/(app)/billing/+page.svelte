@@ -11,13 +11,16 @@
     RefreshCw,
     Loader2,
     History,
-    Sparkles,
+    Wrench,
     CreditCard,
     ShoppingCart,
-    Zap,
+    Star,
   } from "lucide-svelte";
   import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
   import InlineFeedback from "$lib/components/ui/InlineFeedback.svelte";
+  import { CORE_STAGES, ADDON_STAGES } from "$lib/config/billable-stages";
+  import { DEFAULT_STAGE_COSTS, computeFullResearchCost } from "$lib/types/job";
+  import type { StageCosts } from "$lib/types/job";
   import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import FeatureCard from "$lib/components/ui/FeatureCard.svelte";
@@ -53,6 +56,8 @@
   const packages = $derived(data.packages as TokenPackage[]);
   const success = $derived(data.success as boolean);
   const canceled = $derived(data.canceled as boolean);
+  const stageCosts = $derived((data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS);
+  const fullResearchCost = $derived(computeFullResearchCost(stageCosts));
 
   // Promo code state
   let promoCode = $state("");
@@ -119,7 +124,7 @@
       case "REFUND":
         return { icon: ArrowUpRight, class: "text-accent bg-accent/10" };
       case "ADMIN_ADJUSTMENT":
-        return { icon: Sparkles, class: "text-secondary bg-secondary/10" };
+        return { icon: Wrench, class: "text-secondary bg-secondary/10" };
       default:
         return { icon: Clock, class: "text-text-muted bg-bg-elevated" };
     }
@@ -315,7 +320,7 @@
                 <span
                   class="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full flex items-center gap-1"
                 >
-                  <Zap class="w-3 h-3" />
+                  <Star class="w-3 h-3" />
                   Most Popular
                 </span>
               </div>
@@ -336,7 +341,7 @@
               </div>
 
               <div
-                class="flex items-center justify-center gap-2 text-sm text-text-muted mb-4"
+                class="flex items-center justify-center gap-2 text-sm text-text-muted mb-1"
               >
                 <Coins class="w-4 h-4 text-accent" />
                 <span class="font-semibold text-text-primary"
@@ -345,11 +350,81 @@
                 <span>credits</span>
               </div>
 
+              {#if fullResearchCost > 0}
+                <p class="text-xs text-text-muted mb-4">
+                  ~{Math.floor(pkg.credits / fullResearchCost)} full research runs<a
+                    href="#credit-costs"
+                    class="text-accent"
+                    aria-label="See credit cost breakdown"
+                  >*</a>
+                </p>
+              {:else}
+                <div class="mb-4"></div>
+              {/if}
+
               <SubmitButton onclick={() => startCheckout(pkg.id)} disabled={checkoutLoading !== null} loading={checkoutLoading === pkg.id} loadingText="Processing..." icon={ShoppingCart} label="Buy Now" class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full" />
             </div>
           </div>
         {/each}
       </div>
+
+      {#if fullResearchCost > 0}
+        <div id="credit-costs" class="card mt-4 py-3 px-4 border-l-2 border-l-accent/30">
+          <p class="text-xs uppercase tracking-wider text-accent/60 font-mono mb-2">* Credit costs per stage</p>
+
+          <!-- Core stages: horizontal row -->
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+            {#each CORE_STAGES as stage}
+              {@const cost = stageCosts[stage.key]}
+              {@const Icon = stage.icon}
+              <span class="inline-flex items-center gap-1.5">
+                <Icon class="w-3.5 h-3.5 text-accent/70" />
+                <span class="text-text-secondary">{stage.label}</span>
+                {#if cost === 0}
+                  <span class="badge-sm badge-success inline-flex items-center gap-0.5">
+                    <CheckCircle class="w-2.5 h-2.5" /> Free
+                  </span>
+                {:else}
+                  <span class="font-mono font-bold text-text-primary">{cost}</span>
+                  <span class="text-text-muted text-xs">cr</span>
+                {/if}
+              </span>
+            {/each}
+          </div>
+
+          <!-- Summary row -->
+          <div class="border-t border-accent/15 mt-2 pt-2 flex items-center justify-between">
+            <span class="text-sm text-text-secondary flex items-center gap-1.5">
+              <Coins class="w-3.5 h-3.5 text-accent" />
+              Full research
+            </span>
+            <span class="font-mono text-sm font-bold text-accent">{fullResearchCost} credits</span>
+          </div>
+
+          <!-- Add-ons -->
+          <div class="border-t border-border/10 mt-2 pt-2">
+            <span class="text-xs text-text-muted/50 font-mono">Add-ons</span>
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs mt-1">
+              {#each ADDON_STAGES as stage}
+                {@const cost = stageCosts[stage.key]}
+                {@const Icon = stage.icon}
+                <span class="inline-flex items-center gap-1">
+                  <Icon class="w-3 h-3 text-secondary/60" />
+                  <span class="text-text-muted">{stage.label}</span>
+                  {#if cost === 0}
+                    <span class="badge-sm badge-success inline-flex items-center gap-0.5 text-xs">
+                      <CheckCircle class="w-2.5 h-2.5" /> Free
+                    </span>
+                  {:else}
+                    <span class="font-mono font-semibold text-text-secondary">{cost}</span>
+                    <span class="text-text-muted/70">cr</span>
+                  {/if}
+                </span>
+              {/each}
+            </div>
+          </div>
+        </div>
+      {/if}
     </div>
   {/if}
 
@@ -450,7 +525,7 @@
     </div>
   </div>
 
-  <div class="my-8"><div class="gradient-divider"></div></div>
+  <div class="my-8 h-px bg-border"></div>
 
   <!-- How It Works -->
   <div class="card bg-bg-elevated/50">
@@ -480,7 +555,7 @@
         <div>
           <p class="font-medium text-text-primary text-sm">Use Credits</p>
           <p class="text-xs text-text-muted mt-1">
-            Credits are charged per stage: discovery, deep research, ideas, and landing pages
+            Credits are deducted when each research step runs
           </p>
         </div>
       </div>

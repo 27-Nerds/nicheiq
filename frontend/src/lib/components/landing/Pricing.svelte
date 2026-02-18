@@ -74,26 +74,28 @@
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->
-      <div class="text-center mb-10 sm:mb-16">
-        <span class="section-label animate-fade-in">Pricing</span>
+      <div class="mb-10 sm:mb-16">
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">07</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">Pricing</span>
+        </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
+          class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6 text-center"
         >
-          Simple Pricing. <span class="text-gradient italic"
+          Simple Pricing. <span class="text-accent italic"
             >Full Research.</span
           >
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full mx-auto animate-fade-in delay-200"
-        ></div>
         <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl mx-auto"
+          class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl mx-auto text-center"
         >
           No subscriptions. No hidden fees. Buy report bundles and use them
           whenever you need.
         </p>
         <p
-          class="animate-fade-in delay-300 text-sm sm:text-base text-text-secondary mt-3 max-w-2xl mx-auto"
+          class="animate-fade-in delay-300 text-sm sm:text-base text-text-secondary mt-3 max-w-2xl mx-auto text-center"
         >
           Every package includes 1 FREE Discovery (up to 10 ideas). Don't worry about your first try.
         </p>
@@ -105,7 +107,7 @@
       >
         {#each tiers as tier}
           <div
-            class="relative bg-bg-elevated border rounded-xl overflow-hidden shadow-lg transition-transform hover:scale-[1.02] {tier.popular
+            class="relative bg-bg-elevated border rounded-xl overflow-hidden transition-transform hover:scale-[1.02] {tier.popular
               ? 'border-accent md:-translate-y-2'
               : 'border-border'}"
           >
@@ -189,11 +191,7 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           {#each features as feature}
             <div class="flex items-start gap-3">
-              <div
-                class="flex-shrink-0 w-5 h-5 rounded-full bg-success/10 border border-success/50 flex items-center justify-center mt-0.5"
-              >
-                <Check class="w-3 h-3 text-success" />
-              </div>
+              <span class="text-accent text-sm mt-0.5 flex-shrink-0">→</span>
               <span class="text-text-secondary text-sm sm:text-base"
                 >{feature.text}</span
               >

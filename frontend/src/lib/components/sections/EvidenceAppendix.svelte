@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    FileText,
     ExternalLink,
     MessageCircle,
     ThumbsUp,
@@ -15,6 +14,7 @@
     Layers,
     Clock,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
     EvidenceAppendix,
     RedditThread,
@@ -155,7 +155,7 @@
 <Section
   id="evidence-appendix"
   class="report-section"
-  icon={FileText}
+  icon={SECTION_MAP['evidence-appendix'].icon}
   title="Evidence Appendix"
   subtitle="Supporting research data and sources"
   headerSize="lg"

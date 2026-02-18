@@ -3,7 +3,6 @@
   import {
     Hero,
     HowItWorks,
-    AboutMaker,
     SampleReport,
     WhoItsFor,
     BusinessIntelligence,
@@ -48,9 +47,8 @@
 
 <main class="overflow-hidden">
   <Hero {session} hasSampleReport={data.hasSampleReport} />
-  <HowItWorks />
-  <AboutMaker />
   <SampleReport hasSampleReport={data.hasSampleReport} />
+  <HowItWorks />
   <WhoItsFor />
   <BusinessIntelligence />
   <ComparisonTable />

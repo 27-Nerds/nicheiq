@@ -7,7 +7,8 @@
     TrendingDown,
     Users,
     Search,
-    Lightbulb,
+    Crosshair,
+    Compass,
     Globe,
     Layers,
     Calculator,
@@ -15,7 +16,7 @@
     Clock,
     Minus,
     Quote,
-    Sparkles,
+    Rocket,
     Shield,
     HelpCircle,
     ArrowDown,
@@ -620,7 +621,7 @@
           <!-- Solution approach callout -->
           {#if heroPainSolutionApproach}
             <div class="solution-approach-callout">
-              <Lightbulb class="callout-icon" />
+              <Crosshair class="callout-icon" />
               <p class="callout-text">{heroPainSolutionApproach}</p>
             </div>
           {/if}
@@ -688,7 +689,7 @@
       {#if solution}
         <div class="solution-teaser">
           <div class="teaser-header">
-            <Sparkles class="teaser-icon" />
+            <Rocket class="teaser-icon" />
             <span class="teaser-badge">RECOMMENDED SOLUTION</span>
           </div>
           <h3 class="teaser-name">{solution.name}</h3>
@@ -989,7 +990,7 @@
     {#if hasStrategicInsights}
       <ExpandableSection
         title="Strategic Rationale"
-        icon={Lightbulb}
+        icon={Compass}
         count={refinementHighlights?.top_strategic_insights?.length ?? 0}
         countSuffix="insights"
       >
@@ -1288,16 +1289,6 @@
     overflow: hidden;
   }
 
-  /* Noise texture overlay */
-  .hero-zone::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-    opacity: 0.03;
-    pointer-events: none;
-  }
-
   .hero-zone > * {
     position: relative;
     z-index: 1;
@@ -1324,8 +1315,6 @@
     text-align: center;
     padding: var(--space-6) var(--space-8);
     background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
     border-radius: var(--radius-xl);
     border: 2px solid rgba(255, 255, 255, 0.1);
   }
@@ -1495,8 +1484,6 @@
     align-items: center;
     padding: var(--space-2) 0.875rem;
     background: rgba(255, 255, 255, 0.08);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.12);
     border-radius: var(--radius-md);
     min-width: 80px;
@@ -1875,10 +1862,6 @@
     color: white;
   }
 
-  .pain-cta:hover :global(.cta-arrow) {
-    animation: bounce-down 0.6s ease infinite;
-  }
-
   /* =========================
 	   SOLUTION TEASER (in content zone)
 	   ========================= */
@@ -1964,20 +1947,6 @@
     transition: transform 0.2s ease;
   }
 
-  .teaser-cta:hover :global(.cta-arrow) {
-    animation: bounce-down 0.6s ease infinite;
-  }
-
-  @keyframes bounce-down {
-    0%,
-    100% {
-      transform: translateY(0);
-    }
-    50% {
-      transform: translateY(3px);
-    }
-  }
-
   /* Value proposition - explains WHY this solution */
   .teaser-value-prop {
     font-size: 0.8125rem;
@@ -2024,11 +1993,7 @@
 	   METRICS PANEL - Diagnostic Instrument Panel
 	   ========================= */
   .metrics-panel {
-    background: linear-gradient(
-      180deg,
-      var(--color-bg-elevated) 0%,
-      var(--color-bg-surface) 100%
-    );
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
     box-shadow: none;
@@ -2203,32 +2168,17 @@
   }
 
   .verdict-rationale-zone.verdict-go {
-    background: linear-gradient(
-      90deg,
-      var(--color-success-subtle) 0%,
-      transparent 50%,
-      var(--color-success-subtle) 100%
-    );
+    background: var(--color-success-subtle);
     border: 1px solid var(--color-border-success);
   }
 
   .verdict-rationale-zone.verdict-conditional {
-    background: linear-gradient(
-      90deg,
-      var(--color-secondary-subtle) 0%,
-      transparent 50%,
-      var(--color-secondary-subtle) 100%
-    );
+    background: var(--color-secondary-subtle);
     border: 1px solid rgba(99, 102, 241, 0.2);
   }
 
   .verdict-rationale-zone.verdict-nogo {
-    background: linear-gradient(
-      90deg,
-      var(--color-error-subtle) 0%,
-      transparent 50%,
-      var(--color-error-subtle) 100%
-    );
+    background: var(--color-error-subtle);
     border: 1px solid var(--color-border-error);
   }
 

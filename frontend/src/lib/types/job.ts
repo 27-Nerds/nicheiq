@@ -108,6 +108,28 @@ export interface StopReasonDetails {
   recommendation?: string;
 }
 
+// -- Billable stage types (single source of truth) --
+
+export type BillableStageName = 'discovery' | 'deep_research' | 'landing_page' | 'regenerate_ideas';
+
+export interface StageCosts {
+  discovery: number;
+  deep_research: number;
+  landing_page: number;
+  regenerate_ideas: number;
+}
+
+export const DEFAULT_STAGE_COSTS: StageCosts = {
+  discovery: 5,
+  deep_research: 15,
+  landing_page: 5,
+  regenerate_ideas: 2,
+};
+
+export function computeFullResearchCost(costs: StageCosts): number {
+  return costs.discovery + costs.deep_research;
+}
+
 export interface Job {
   id: string;
   email?: string;

@@ -1,28 +1,7 @@
 <script lang="ts">
-  import {
-    BarChart3,
-    Sparkles,
-    Target,
-    Search,
-    Users,
-    DollarSign,
-    Briefcase,
-    Code,
-    TrendingUp,
-    Lightbulb,
-    UserCheck,
-    MessageSquare,
-    Database,
-    ClipboardList,
-    Coins,
-  } from "lucide-svelte";
+  import { REPORT_SECTIONS } from "$lib/config/report-sections";
+  import type { ReportSectionInfo } from "$lib/config/report-sections";
   import type { Report } from "$lib/types/report";
-
-  interface Section {
-    id: string;
-    label: string;
-    icon: typeof BarChart3;
-  }
 
   interface Props {
     report?: Report | null;
@@ -30,28 +9,7 @@
 
   let { report = null }: Props = $props();
 
-  // Sections ordered by UX-optimized decision workflow (16 sections total)
-  const allSections: Section[] = [
-    // PHASE 1: DECISION (Go/No-Go verdict)
-    { id: "unified-hero", label: "Executive", icon: BarChart3 },
-    { id: "solution", label: "Solution", icon: Sparkles },
-    // PHASE 2: VALIDATE (Is the opportunity real?)
-    { id: "pain-analysis", label: "Pain Points", icon: Target },
-    { id: "market-sizing", label: "Market", icon: DollarSign },
-    { id: "monetization", label: "Monetization", icon: Coins },
-    { id: "trends", label: "Trends", icon: TrendingUp },
-    { id: "competitors", label: "Competitors", icon: Users },
-    // PHASE 3: EXECUTE (How to launch & build)
-    { id: "audience", label: "Audience", icon: UserCheck },
-    { id: "content-insights", label: "Content", icon: MessageSquare },
-    { id: "gtm-playbook", label: "GTM", icon: Briefcase },
-    { id: "seo", label: "SEO", icon: Search },
-    { id: "technical", label: "Technical", icon: Code },
-    { id: "data-infrastructure", label: "Data", icon: Database },
-    // PHASE 4: REFERENCE (Appendix)
-    { id: "alternatives", label: "Alternatives", icon: Lightbulb },
-    { id: "evidence-appendix", label: "Evidence", icon: ClipboardList },
-  ];
+  const allSections: ReportSectionInfo[] = REPORT_SECTIONS;
 
   // Filter sections based on report data availability
   const sections = $derived.by(() => {

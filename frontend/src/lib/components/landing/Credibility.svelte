@@ -64,22 +64,23 @@
 </script>
 
 <section id="credibility" class="section-alt">
-  <div class="max-w-4xl mx-auto px-6 lg:px-12">
+  <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Header -->
       <div class="mb-12">
-        <span class="section-label animate-fade-in">Source-Backed Research</span
-        >
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">06</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">Source-Backed Research</span>
+        </div>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          Every Claim Links to <span class="text-gradient italic"
+          Every Claim Links to <span class="text-accent italic"
             >Its Source.</span
           >
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
-        ></div>
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
         >
@@ -110,18 +111,18 @@
       <div class="max-w-3xl mx-auto space-y-3 mb-6">
         {#each threadCards as thread, i}
           <div
-            class="p-5 bg-bg-elevated border border-border border-l-4 border-l-success rounded-r-xl"
+            class="p-5 bg-bg-elevated border border-border border-l-4 border-l-accent rounded-r-xl"
             style="animation: fadeIn 0.5s ease-out both; animation-delay: {400 +
               i * 100}ms"
           >
             <div class="flex items-center gap-4">
               <div
-                class="flex-shrink-0 w-10 h-10 rounded-lg bg-success/10 border border-success/30 flex items-center justify-center"
+                class="flex-shrink-0 w-10 h-10 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center"
               >
-                <MessageSquare class="w-5 h-5 text-success" />
+                <MessageSquare class="w-5 h-5 text-accent" />
               </div>
               <div class="flex-1 min-w-0">
-                <span class="text-xs font-semibold text-success"
+                <span class="text-xs font-semibold text-accent"
                   >{thread.community}</span
                 >
                 <h4 class="font-medium text-text-primary truncate">
@@ -143,11 +144,11 @@
 
         <!-- Quote Card -->
         <div
-          class="p-4 bg-bg-surface border-l-4 border-l-success rounded-r-xl mt-3"
+          class="p-4 bg-bg-surface border-l-4 border-l-accent rounded-r-xl mt-3"
           style="animation: fadeIn 0.5s ease-out both; animation-delay: 550ms"
         >
           <div class="flex items-start gap-3">
-            <Quote class="w-4 h-4 text-success flex-shrink-0 mt-1" />
+            <Quote class="w-4 h-4 text-accent flex-shrink-0 mt-1" />
             <div>
               <p class="text-sm text-text-secondary italic leading-relaxed">
                 "{quoteCard.quote}"
@@ -201,9 +202,9 @@
         <!-- Part B: Built for Founder Trust -->
         <div class="bg-bg-surface border border-border rounded-xl p-6">
           <div
-            class="w-12 h-12 rounded-xl bg-warning/10 border border-warning/30 flex items-center justify-center mb-4"
+            class="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center mb-4"
           >
-            <AlertTriangle class="w-6 h-6 text-warning" />
+            <AlertTriangle class="w-6 h-6 text-accent" />
           </div>
           <h3
             class="font-display font-semibold text-lg text-text-primary mb-2"
@@ -215,9 +216,53 @@
             how strong the evidence is — and where the gaps are.
           </p>
           <div class="flex flex-wrap gap-2">
-            <span class="badge badge-success">Quality: HIGH</span>
+            <span class="badge">Quality: HIGH</span>
             <span class="badge">Confidence: 82%</span>
             <span class="badge badge-muted">3 caveats disclosed</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- About the Maker -->
+      <div
+        class="mt-14 sm:mt-16"
+        style="animation: fadeIn 0.5s ease-out both; animation-delay: 750ms"
+      >
+        <div
+          class="flex flex-col md:flex-row items-start gap-6 sm:gap-8 md:gap-12 bg-bg-elevated border border-border rounded-xl p-6 sm:p-8"
+        >
+          <div class="flex-shrink-0">
+            <div
+              class="w-20 sm:w-24 h-20 sm:h-24 rounded-full bg-accent/10 border-2 border-accent/30 flex items-center justify-center"
+            >
+              <span
+                class="text-accent font-display font-bold text-2xl sm:text-3xl"
+                >M</span
+              >
+            </div>
+          </div>
+          <div class="flex-1">
+            <h3
+              class="font-display text-xl sm:text-2xl font-bold text-text-primary mb-4"
+            >
+              Hi, I'm the solo dev behind NicheIQ
+            </h3>
+            <div
+              class="space-y-3 text-text-secondary leading-relaxed text-sm sm:text-base"
+            >
+              <p>
+                I built NicheIQ because I was tired of the same problem every
+                indie hacker faces: spending weeks researching a market, only to
+                discover the data was either made up by ChatGPT or required
+                expensive tools to verify.
+              </p>
+              <p>
+                NicheIQ runs the same research process I used to do
+                manually—except it takes 45 minutes instead of 3 weeks. Every
+                claim links to a real source. Every data point is verifiable. No
+                hallucinations, no guessing.
+              </p>
+            </div>
           </div>
         </div>
       </div>

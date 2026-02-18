@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    Database,
     Server,
     DollarSign,
     AlertTriangle,
@@ -17,6 +16,7 @@
     Globe,
     ChevronRight,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
     DataSourceResearchFull,
     DataRoadmapPhase,
@@ -179,7 +179,7 @@
 <Section
   id="data-infrastructure"
   class="report-section"
-  icon={Database}
+  icon={SECTION_MAP['data-infrastructure'].icon}
   title="Data Infrastructure Roadmap"
   subtitle="Data sources, integrations, and implementation phases"
   headerSize="lg"
@@ -688,11 +688,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(
-      135deg,
-      rgba(34, 197, 94, 0.2),
-      rgba(34, 197, 94, 0.05)
-    );
+    background: rgba(34, 197, 94, 0.12);
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 12px;
   }
@@ -788,29 +784,17 @@
   }
 
   .cost-tier-card--mvp {
-    background: linear-gradient(
-      180deg,
-      rgba(34, 197, 94, 0.08) 0%,
-      transparent 100%
-    );
+    background: rgba(34, 197, 94, 0.06);
     border-color: rgba(34, 197, 94, 0.3);
   }
 
   .cost-tier-card--growth {
-    background: linear-gradient(
-      180deg,
-      rgba(59, 130, 246, 0.08) 0%,
-      transparent 100%
-    );
+    background: rgba(59, 130, 246, 0.06);
     border-color: rgba(59, 130, 246, 0.3);
   }
 
   .cost-tier-card--scale {
-    background: linear-gradient(
-      180deg,
-      rgba(168, 85, 247, 0.08) 0%,
-      transparent 100%
-    );
+    background: rgba(168, 85, 247, 0.06);
     border-color: rgba(168, 85, 247, 0.3);
   }
 
@@ -1359,13 +1343,13 @@
   .quality-bar {
     height: 100%;
     width: var(--bar-fill, 50%);
-    background: linear-gradient(90deg, #22c55e, #4ade80);
+    background: #22c55e;
     border-radius: 3px;
     transition: width 0.5s ease;
   }
 
   .quality-bar--inverse {
-    background: linear-gradient(90deg, #22c55e, #4ade80);
+    background: #22c55e;
   }
 
   .quality-value {

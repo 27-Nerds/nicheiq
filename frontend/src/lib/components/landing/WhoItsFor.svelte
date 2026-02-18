@@ -49,7 +49,7 @@
       title: "Serial Builders",
       tagline: "Explore more niches, faster",
       accentGradient:
-        "linear-gradient(to right, var(--color-secondary), var(--color-secondary-light))",
+        "linear-gradient(to right, var(--color-accent-light), var(--color-accent))",
       description:
         "You explore multiple niches per month. The faster you find a winner, the sooner you ship. NicheIQ turns niche exploration from a weeks-long grind into an afternoon sprint.",
       before: "Explore one niche for weeks, hope you picked right",
@@ -65,7 +65,7 @@
       title: "Data-Driven Teams",
       tagline: "Gut feelings don't impress stakeholders",
       accentGradient:
-        "linear-gradient(to right, rgba(34, 197, 94, 0.8), rgba(34, 197, 94, 0.5))",
+        "linear-gradient(to right, var(--color-accent-dark), var(--color-accent-light))",
       description:
         "You need proof before you pivot. Every insight needs a source. Walk into meetings with market data, competitive landscape, and a clear verdict — not opinions.",
       before: "Pitch niche ideas with hunches, debate for weeks",
@@ -90,16 +90,18 @@
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-12 sm:mb-16">
-        <span class="section-label animate-fade-in">Who It's For</span>
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">03</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">Who It's For</span>
+        </div>
         <h2
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
           Stop Guessing.
-          <span class="text-gradient-animated italic">Start Shipping.</span>
+          <span class="text-accent">Start Shipping.</span>
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
-        ></div>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
@@ -122,12 +124,8 @@
             <!-- Card content -->
             <div class="relative flex flex-col flex-1 p-6 sm:p-8">
               <!-- Icon + Title + Tagline -->
-              <div class="flex items-start gap-4 mb-4">
-                <div
-                  class="w-12 sm:w-14 h-12 sm:h-14 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0"
-                >
-                  <persona.icon class="w-6 sm:w-7 h-6 sm:h-7 text-accent" />
-                </div>
+              <div class="flex items-start gap-3 mb-4">
+                <persona.icon class="w-5 h-5 text-accent flex-shrink-0 mt-1" />
                 <div>
                   <h3
                     class="font-display font-semibold text-lg sm:text-xl text-text-primary"
@@ -151,7 +149,7 @@
                 <div
                   class="flex items-start gap-2.5 px-3.5 py-2.5 bg-bg-surface"
                 >
-                  <X class="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
+                  <X class="w-4 h-4 text-text-muted/50 flex-shrink-0 mt-0.5" />
                   <span
                     class="font-mono text-[10px] uppercase tracking-widest text-text-muted flex-shrink-0 mt-0.5"
                     >Before</span
@@ -173,11 +171,11 @@
 
                 <!-- After -->
                 <div
-                  class="flex items-start gap-2.5 px-3.5 py-2.5 border-l-2 border-success/30 bg-gradient-to-r from-success/[0.06] via-accent/[0.04] to-transparent"
+                  class="flex items-start gap-2.5 px-3.5 py-2.5 border-l-2 border-accent/30 bg-gradient-to-r from-accent/[0.06] via-accent/[0.03] to-transparent"
                 >
-                  <Check class="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                  <Check class="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
                   <span
-                    class="font-mono text-[10px] uppercase tracking-widest text-success flex-shrink-0 mt-0.5"
+                    class="font-mono text-[10px] uppercase tracking-widest text-accent flex-shrink-0 mt-0.5"
                     >After</span
                   >
                   <span class="text-sm text-text-primary font-semibold"
@@ -190,11 +188,7 @@
               <ul class="space-y-2.5 flex-1">
                 {#each persona.benefits as benefit}
                   <li class="flex items-start gap-2.5 text-sm">
-                    <div
-                      class="flex-shrink-0 w-5 h-5 rounded-full bg-success/10 border border-success/50 flex items-center justify-center mt-0.5"
-                    >
-                      <Check class="w-3 h-3 text-success" />
-                    </div>
+                    <span class="text-accent text-sm mt-0.5 flex-shrink-0">→</span>
                     <span class="text-text-muted text-sm leading-relaxed"
                       >{benefit}</span
                     >

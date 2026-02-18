@@ -65,7 +65,7 @@
           {#if session?.user}
             <a
               href="/dashboard"
-              class="btn-primary btn-shimmer w-full sm:w-auto px-8 py-4 text-base"
+              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
             >
               Go to Dashboard
               <ArrowRight class="w-5 h-5" />
@@ -73,7 +73,7 @@
           {:else}
             <a
               href="/register"
-              class="btn-primary btn-shimmer w-full sm:w-auto px-8 py-4 text-base"
+              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
             >
               Start My Report
               <ArrowRight class="w-5 h-5" />

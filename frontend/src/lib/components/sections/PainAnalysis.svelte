@@ -1,7 +1,6 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import {
-    Target,
     MessageSquare,
     TrendingUp,
     ChevronDown,
@@ -10,9 +9,11 @@
     DollarSign,
     ArrowRight,
     CheckCircle,
-    Sparkles,
+    Compass,
     Users,
+    Flame,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
     DetailedPainPoint,
     PainPointAnalytics,
@@ -119,7 +120,7 @@
 <Section
   id="pain-analysis"
   class="report-section"
-  icon={Target}
+  icon={SECTION_MAP['pain-analysis'].icon}
   title="Pain Point Analysis"
   subtitle="User frustrations and monetization signals"
   headerSize="lg"
@@ -149,7 +150,7 @@
       aria-selected={activeTab === "analysis"}
       tabindex={activeTab === "analysis" ? 0 : -1}
     >
-      <Target class="w-4 h-4" />
+      <Flame class="w-4 h-4" />
       <span>Full Analysis</span>
     </button>
   </div>
@@ -227,7 +228,7 @@
       <AnimateOnScroll animation="fade-up">
         <div class="journey-intro">
           <div class="journey-intro-icon">
-            <Sparkles class="w-5 h-5 text-accent" />
+            <Compass class="w-5 h-5 text-accent" />
           </div>
           <p class="journey-intro-text">
             Through extensive research across social platforms, we identified
@@ -667,38 +668,22 @@
   }
 
   .analytics-card-featured {
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(229, 90, 40, 0.06);
     border-color: rgba(229, 90, 40, 0.3);
   }
 
   .analytics-card-highlight {
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(229, 90, 40, 0.06);
     border-color: rgba(229, 90, 40, 0.3);
   }
 
   .analytics-card-error {
-    background: linear-gradient(
-      135deg,
-      rgba(239, 68, 68, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(239, 68, 68, 0.06);
     border-color: rgba(239, 68, 68, 0.3);
   }
 
   .analytics-card-warning {
-    background: linear-gradient(
-      135deg,
-      rgba(245, 158, 11, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(245, 158, 11, 0.06);
     border-color: rgba(245, 158, 11, 0.3);
   }
 
@@ -734,11 +719,7 @@
 
   /* Journey Tab Styles */
   .journey-intro {
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(229, 90, 40, 0.06);
     border: 1px solid rgba(229, 90, 40, 0.2);
     border-radius: 1rem;
     padding: 1.5rem;
@@ -795,20 +776,12 @@
 
   .pain-card-severity-high {
     border-left: 3px solid var(--color-error);
-    background: linear-gradient(
-      135deg,
-      rgba(239, 68, 68, 0.05) 0%,
-      transparent 50%
-    );
+    background: rgba(239, 68, 68, 0.04);
   }
 
   .pain-card-severity-medium {
     border-left: 3px solid var(--color-warning);
-    background: linear-gradient(
-      135deg,
-      rgba(245, 158, 11, 0.05) 0%,
-      transparent 50%
-    );
+    background: rgba(245, 158, 11, 0.04);
   }
 
   .pain-header-enhanced {
@@ -886,11 +859,7 @@
   .flow-line {
     flex: 1;
     height: 2px;
-    background: linear-gradient(
-      90deg,
-      var(--color-border),
-      var(--color-accent)
-    );
+    background: var(--color-accent);
   }
 
   .flow-arrow-circle {
@@ -906,11 +875,7 @@
   }
 
   .solution-card-enhanced {
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(229, 90, 40, 0.06);
     border: 1px solid rgba(229, 90, 40, 0.2);
     border-left: 3px solid var(--color-success);
     border-radius: 0.75rem;
@@ -1069,20 +1034,12 @@
 
   .pain-point-card-enhanced.opportunity-high {
     border-left: 3px solid var(--color-success);
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.03) 0%,
-      transparent 30%
-    );
+    background: rgba(229, 90, 40, 0.03);
   }
 
   .pain-point-card-enhanced.opportunity-medium {
     border-left: 3px solid var(--color-warning);
-    background: linear-gradient(
-      135deg,
-      rgba(245, 158, 11, 0.03) 0%,
-      transparent 30%
-    );
+    background: rgba(245, 158, 11, 0.03);
   }
 
   .pain-point-header {
@@ -1297,11 +1254,7 @@
     .flow-line {
       width: 2px;
       height: 1.5rem;
-      background: linear-gradient(
-        180deg,
-        var(--color-border),
-        var(--color-accent)
-      );
+      background: var(--color-accent);
     }
 
     .pain-point-header {

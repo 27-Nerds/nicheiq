@@ -19,7 +19,7 @@
 	text-transform: uppercase;
 	color: var(--color-accent-dark);
 	background-color: var(--color-accent-subtle);
-	border: 1px solid rgba(229, 90, 40, 0.2);
+	border: 1px solid rgba(240, 96, 48, 0.2);
 	border-radius: var(--radius-md);
 }
 
@@ -74,7 +74,6 @@
 
 .card:hover {
 	border-color: var(--color-border-emphasis);
-	box-shadow: var(--shadow-md);
 }
 
 .card-surface {
@@ -109,54 +108,7 @@
 
 .card-interactive:hover {
 	border-color: var(--color-border-emphasis);
-	transform: translateY(-2px);
-	box-shadow: var(--shadow-md);
-}
-
-.card-interactive-glow {
-	position: relative;
-	transition: all var(--duration-normal) ease;
-}
-
-.card-interactive-glow::before {
-	display: none;
-}
-
-.card-interactive-glow:hover {
-	transform: translateY(-2px);
-	box-shadow: var(--shadow-lg);
-	border-color: rgba(229, 90, 40, 0.2);
-}
-
-.card-interactive-glow-success:hover {
-	box-shadow: var(--shadow-lg);
-	border-color: rgba(229, 90, 40, 0.25);
-}
-
-/* Glass card effect */
-.card-glass {
-	background: rgba(255, 255, 255, 0.9);
-	backdrop-filter: blur(8px);
-	-webkit-backdrop-filter: blur(8px);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius-xl);
-	box-shadow: var(--shadow-md);
-}
-
-.card-glass-subtle {
-	background: rgba(255, 255, 255, 0.95);
-	backdrop-filter: blur(4px);
-	-webkit-backdrop-filter: blur(4px);
-	border: 1px solid var(--color-border);
-	border-radius: var(--radius-lg);
-}
-
-/* Highlight box */
-.highlight-box {
-	background: linear-gradient(135deg, var(--color-accent-subtle) 0%, transparent 60%);
-	border: 1px solid rgba(229, 90, 40, 0.15);
-	border-radius: var(--radius-lg);
-	padding: var(--space-6);
+	transform: translateY(-1px);
 }
 
 /* ========================================
@@ -182,7 +134,7 @@
 
 .btn-primary:hover {
 	background: var(--color-accent-hover);
-	box-shadow: var(--shadow-md);
+	transform: translateY(-1px);
 }
 
 .btn-primary:active {
@@ -210,6 +162,7 @@
 	border-color: var(--color-accent);
 	color: var(--color-accent);
 	background: var(--color-bg-surface);
+	transform: translateY(-1px);
 }
 
 .btn-secondary:active {
@@ -250,25 +203,6 @@
 .btn-lg {
 	padding: var(--space-3) var(--space-6);
 	font-size: var(--text-md);
-}
-
-/* Button shimmer effect */
-.btn-shimmer {
-	position: relative;
-	overflow: hidden;
-}
-
-.btn-shimmer::after {
-	content: '';
-	position: absolute;
-	inset: 0;
-	background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-	transform: translateX(-100%);
-	transition: transform var(--duration-slowest) ease;
-}
-
-.btn-shimmer:hover::after {
-	transform: translateX(100%);
 }
 
 /* ========================================
@@ -608,7 +542,7 @@
 .verdict-go {
 	color: var(--color-success);
 	background-color: var(--color-accent-glow);
-	border: 2px solid rgba(229, 90, 40, 0.4);
+	border: 2px solid rgba(240, 96, 48, 0.4);
 	padding: var(--space-2) var(--space-6);
 	font-family: var(--font-display);
 	font-weight: var(--font-bold);
@@ -633,8 +567,8 @@
 }
 
 .verdict-banner-go {
-	background: linear-gradient(135deg, rgba(229, 90, 40, 0.15) 0%, rgba(229, 90, 40, 0.05) 100%);
-	border: 1px solid rgba(229, 90, 40, 0.3);
+	background: linear-gradient(135deg, rgba(240, 96, 48, 0.15) 0%, rgba(240, 96, 48, 0.05) 100%);
+	border: 1px solid rgba(240, 96, 48, 0.3);
 }
 
 .verdict-banner-no-go {
@@ -667,8 +601,8 @@
 }
 
 .verdict-icon-go {
-	background: rgba(229, 90, 40, 0.15);
-	border: 1px solid rgba(229, 90, 40, 0.4);
+	background: rgba(240, 96, 48, 0.15);
+	border: 1px solid rgba(240, 96, 48, 0.4);
 	color: var(--color-success);
 }
 
@@ -753,7 +687,7 @@
 	height: 2.75rem;
 	border-radius: var(--radius-lg);
 	background: var(--color-accent-subtle);
-	border: 1px solid rgba(229, 90, 40, 0.2);
+	border: 1px solid rgba(240, 96, 48, 0.2);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -762,7 +696,7 @@
 
 .icon-container-success {
 	background: var(--color-accent-subtle);
-	border-color: rgba(229, 90, 40, 0.2);
+	border-color: rgba(240, 96, 48, 0.2);
 }
 
 .icon-container-error {
@@ -818,8 +752,8 @@
 }
 
 .pricing-tier-recommended {
-	background: linear-gradient(135deg, var(--color-accent-subtle) 0%, rgba(229, 90, 40, 0.02) 100%);
-	border: 2px solid rgba(229, 90, 40, 0.3);
+	background: rgba(240, 96, 48, 0.06);
+	border: 2px solid rgba(240, 96, 48, 0.3);
 	box-shadow: var(--shadow-md);
 	position: relative;
 }
@@ -839,8 +773,8 @@
 }
 
 .pricing-tier-pro {
-	background: linear-gradient(135deg, var(--color-accent-subtle) 0%, transparent 60%);
-	border-color: rgba(229, 90, 40, 0.3);
+	background: rgba(240, 96, 48, 0.04);
+	border-color: rgba(240, 96, 48, 0.3);
 }
 
 /* ========================================
@@ -986,8 +920,8 @@
 }
 
 .opportunity-badge-high {
-	background: rgba(229, 90, 40, 0.15);
-	border: 1px solid rgba(229, 90, 40, 0.3);
+	background: rgba(240, 96, 48, 0.15);
+	border: 1px solid rgba(240, 96, 48, 0.3);
 	color: var(--color-success);
 }
 

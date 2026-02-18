@@ -6,7 +6,7 @@
     Users,
     Megaphone,
     TrendingUp,
-    Zap,
+    Layers,
     AlertCircle,
     Calculator,
     CircleDollarSign,
@@ -15,6 +15,7 @@
     FileText,
     Database,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { PricingStrategy, TrafficMonetization } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -96,7 +97,7 @@
 <Section
   id="monetization"
   class="report-section"
-  icon={DollarSign}
+  icon={SECTION_MAP['monetization'].icon}
   title="Monetization Strategy"
   subtitle="Pricing model and revenue projections"
   headerSize="lg"
@@ -567,7 +568,7 @@
 
     <!-- 4. GROWTH STORY -->
     {#if trafficData.revenue_growth_note}
-      <ExpandableSection title="Why These Numbers Are the Floor" icon={TrendingUp} defaultOpen={true}>
+      <ExpandableSection title="Why These Numbers Are the Floor" icon={Layers} defaultOpen={true}>
         <InsightCard variant="muted">
           <p class="text-sm text-muted-foreground whitespace-pre-line">{trafficData.revenue_growth_note}</p>
         </InsightCard>
@@ -849,13 +850,9 @@
 
 <style>
   .section-divider {
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--color-border),
-      transparent
-    );
+    height: 0;
+    background: none;
+    border-top: 1px solid var(--color-border);
   }
 
   .pricing-tier {
@@ -873,11 +870,7 @@
 
   .pricing-tier-recommended {
     border-color: var(--color-accent);
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.08) 0%,
-      transparent 60%
-    );
+    background: rgba(229, 90, 40, 0.06);
     position: relative;
   }
 
@@ -899,11 +892,7 @@
 
   .pricing-tier-pro {
     border-color: var(--color-success);
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.05) 0%,
-      transparent 60%
-    );
+    background: rgba(229, 90, 40, 0.04);
   }
 
   /* Unit Economics metric styles */

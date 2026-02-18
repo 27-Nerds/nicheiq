@@ -1,6 +1,6 @@
 /* ========================================
    NicheIQ Color System
-   Unified Light Theme with Orange (#E55A28) Accent
+   Unified Light Theme with Orange (#F06030) Accent
    ======================================== */
 
 :root {
@@ -26,13 +26,13 @@
 	   Primary Accent - Warm Orange
 	   Brand color used for CTAs, links, highlights
 	   ======================================== */
-	--color-accent: #E55A28;
-	--color-accent-hover: #CC4E22;
-	--color-accent-light: #F07850;
-	--color-accent-dark: #B84420;
-	--color-accent-subtle: rgba(229, 90, 40, 0.08);
-	--color-accent-glow: rgba(229, 90, 40, 0.15);
-	--color-accent-glow-strong: rgba(229, 90, 40, 0.3);
+	--color-accent: #F06030;
+	--color-accent-hover: #D9562A;
+	--color-accent-light: #F48060;
+	--color-accent-dark: #C04D20;
+	--color-accent-subtle: rgba(240, 96, 48, 0.08);
+	--color-accent-glow: rgba(240, 96, 48, 0.15);
+	--color-accent-glow-strong: rgba(240, 96, 48, 0.3);
 
 	/* ========================================
 	   Secondary - Indigo
@@ -73,7 +73,7 @@
 	   ======================================== */
 	--color-border: rgba(0, 0, 0, 0.07);
 	--color-border-emphasis: rgba(0, 0, 0, 0.12);
-	--color-border-accent: rgba(229, 90, 40, 0.3);
+	--color-border-accent: rgba(240, 96, 48, 0.3);
 	--color-border-success: rgba(34, 197, 94, 0.3);
 	--color-border-warning: rgba(245, 158, 11, 0.2);
 	--color-border-error: rgba(239, 68, 68, 0.2);
@@ -94,7 +94,7 @@
 	   Data Visualization Colors
 	   Consistent palette for charts/graphs
 	   ======================================== */
-	--viz-cat-1: #E55A28;    /* Primary accent */
+	--viz-cat-1: #F06030;    /* Primary accent */
 	--viz-cat-2: #6366F1;    /* Secondary/Indigo */
 	--viz-cat-3: #F59E0B;    /* Warning/Amber */
 	--viz-cat-4: #8B5CF6;    /* Purple */
@@ -105,9 +105,9 @@
 	   Tier Colors
 	   Used for keyword tiers, priority levels
 	   ======================================== */
-	--tier-0-color: #E55A28;
-	--tier-0-bg: rgba(229, 90, 40, 0.1);
-	--tier-0-border: rgba(229, 90, 40, 0.3);
+	--tier-0-color: #F06030;
+	--tier-0-bg: rgba(240, 96, 48, 0.1);
+	--tier-0-border: rgba(240, 96, 48, 0.3);
 
 	--tier-1-color: #3B82F6;
 	--tier-1-bg: rgba(59, 130, 246, 0.1);
@@ -137,16 +137,9 @@
 	   Funnel Stage Colors
 	   TAM/SAM/SOM visualization
 	   ======================================== */
-	--funnel-tam: rgba(229, 90, 40, 0.1);
+	--funnel-tam: rgba(240, 96, 48, 0.1);
 	--funnel-sam: rgba(99, 102, 241, 0.1);
 	--funnel-som: rgba(245, 158, 11, 0.1);
 	--funnel-target: rgba(139, 92, 246, 0.1);
 
-	/* ========================================
-	   Landing Page Specific Colors
-	   Extended palette for landing pages
-	   ======================================== */
-	--color-landing-copper: #C87533;
-	--color-landing-copper-light: #E8A066;
-	--color-landing-sand: #F5F2ED;
 }

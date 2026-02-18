@@ -1,16 +1,16 @@
 <script lang="ts">
   import {
-    Sparkles,
-    Zap,
+    Rocket,
+    Trophy,
+    Puzzle,
+    Workflow,
     Target,
     Layers,
     CheckCircle,
     Clock,
     Globe,
-    Rocket,
     DollarSign,
     Users,
-    Lightbulb,
     Search,
     FileText,
     Wallet,
@@ -22,6 +22,7 @@
     Code,
     User,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
     SolutionDetails,
     ExecutiveDashboard,
@@ -201,7 +202,7 @@
 <Section
   id="solution"
   class="report-section"
-  icon={Rocket}
+  icon={SECTION_MAP['solution'].icon}
   title="Recommended Solution"
   subtitle="AI-validated product opportunity"
   headerSize="lg"
@@ -218,8 +219,8 @@
           <Badge variant="default">{snapshot.project_type}</Badge>
         {/if}
       </div>
-      <div class="hero-sparkle">
-        <Sparkles class="sparkle-icon" />
+      <div class="hero-icon">
+        <Rocket class="hero-icon-svg" />
       </div>
     </div>
 
@@ -264,7 +265,6 @@
                 {/if}
               </span>
             </div>
-            <div class="param-glow"></div>
           </div>
         {/if}
 
@@ -279,7 +279,6 @@
               >
               <span class="param-label">SEO Pages Y1</span>
             </div>
-            <div class="param-glow"></div>
           </div>
         {/if}
 
@@ -302,7 +301,6 @@
                 <Tooltip content={getTermTooltip("CAC")} position="top" />
               </span>
             </div>
-            <div class="param-glow"></div>
           </div>
         {/if}
 
@@ -321,7 +319,6 @@
                 />
               </span>
             </div>
-            <div class="param-glow"></div>
           </div>
         {/if}
       </CardGrid>
@@ -333,7 +330,7 @@
     <InsightCard variant="accent" border="left" padding="md" class="how-it-works-card">
       {#snippet header()}
         <div class="how-it-works-header">
-          <Settings class="how-it-works-icon" />
+          <Workflow class="how-it-works-icon" />
           <span class="how-it-works-title">HOW IT WORKS</span>
         </div>
       {/snippet}
@@ -352,7 +349,7 @@
       {#snippet header()}
         <div class="innovation-header">
           <div class="innovation-label">
-            <Lightbulb class="innovation-icon" />
+            <Puzzle class="innovation-icon" />
             <span>INNOVATION</span>
           </div>
           <div class="innovation-score">
@@ -467,7 +464,7 @@
   {#if solution.differentiation_factors && solution.differentiation_factors.length > 0}
     <div class="advantages-card">
       <div class="advantages-header">
-        <Zap class="advantages-icon" />
+        <Trophy class="advantages-icon" />
         <span class="advantages-title">Competitive Advantages</span>
         <Badge variant="success" size="sm"
           >{solution.differentiation_factors.length}</Badge
@@ -607,22 +604,18 @@
     flex-wrap: wrap;
   }
 
-  .hero-sparkle {
+  .hero-icon {
     display: flex;
     align-items: center;
     justify-content: center;
     width: 2.5rem;
     height: 2.5rem;
-    background: linear-gradient(
-      135deg,
-      rgba(229, 90, 40, 0.15) 0%,
-      rgba(229, 90, 40, 0.06) 100%
-    );
+    background: rgba(229, 90, 40, 0.1);
     border: 1px solid rgba(229, 90, 40, 0.3);
     border-radius: 0.5rem;
   }
 
-  :global(.sparkle-icon) {
+  :global(.hero-icon-svg) {
     width: 1.25rem;
     height: 1.25rem;
     color: #e55a28;
@@ -658,25 +651,13 @@
 	   LAUNCH PARAMETERS STRIP
 	   ========================= */
   .launch-params {
-    background: linear-gradient(180deg, #fafafa 0%, #f4f4f5 100%);
+    background: var(--color-bg-surface);
     border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 0.75rem;
     padding: 1rem 1.25rem 1.25rem;
     margin-bottom: 1rem;
     position: relative;
     overflow: hidden;
-  }
-
-  /* Subtle grid pattern overlay */
-  .launch-params::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: linear-gradient(rgba(0, 0, 0, 0.02) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(0, 0, 0, 0.02) 1px, transparent 1px);
-    background-size: 20px 20px;
-    pointer-events: none;
-    opacity: 0.5;
   }
 
   .launch-params-header {
@@ -701,11 +682,7 @@
   .launch-params-line {
     flex: 1;
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      rgba(0, 0, 0, 0.08) 0%,
-      transparent 100%
-    );
+    background: var(--color-border);
   }
 
   :global(.launch-params-grid) {
@@ -740,10 +717,6 @@
 
   .param-card:hover {
     transform: translateY(-2px);
-  }
-
-  .param-card:hover .param-glow {
-    opacity: 1;
   }
 
   /* Semantic color variants */
@@ -826,32 +799,11 @@
     gap: 0.25rem;
   }
 
-  /* Accent glow on hover */
-  .param-glow {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 3px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--param-color, #e55a28),
-      transparent
-    );
-    opacity: 0;
-    transition: opacity 0.25s ease;
-  }
-
   /* =========================
 	   ADVANTAGES CARD
 	   ========================= */
   .advantages-card {
-    background: linear-gradient(
-      135deg,
-      rgba(34, 197, 94, 0.05) 0%,
-      transparent 50%
-    );
+    background: rgba(34, 197, 94, 0.04);
     border: 1px solid rgba(34, 197, 94, 0.15);
     border-radius: 0.75rem;
     padding: 1.125rem;

@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    Users,
     UserCheck,
     MessageSquare,
     Hash,
@@ -8,11 +7,12 @@
     Target,
     Briefcase,
     DollarSign,
-    Sparkles,
+    Radar,
     Globe,
     ChevronRight,
     ExternalLink,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { AudienceMapping } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -50,7 +50,7 @@
 <Section
   id="audience"
   class="report-section"
-  icon={Users}
+  icon={SECTION_MAP['audience'].icon}
   title="Audience Intelligence"
   subtitle="Target segments and engagement strategy"
   headerSize="lg"
@@ -270,7 +270,7 @@
   {#if data.early_adopter_tactics}
     <ExpandableSection
       title="Early Adopter Tactics"
-      icon={Sparkles}
+      icon={Radar}
       variant="success"
     >
       <div class="tactics-content">

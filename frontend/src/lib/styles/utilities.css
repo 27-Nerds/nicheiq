@@ -7,14 +7,6 @@
    Text Utilities
    ======================================== */
 
-.text-gradient {
-	background: linear-gradient(135deg, var(--color-accent) 0%, var(--color-accent-dark) 100%);
-	-webkit-background-clip: text;
-	-webkit-text-fill-color: transparent;
-	background-clip: text;
-	padding-right: 0.15em;
-}
-
 .text-gradient-animated {
 	background: linear-gradient(135deg, var(--color-accent-light) 0%, var(--color-accent) 50%, var(--color-accent-dark) 100%);
 	background-size: 200% 200%;
@@ -30,18 +22,48 @@
 	50% { background-position: 100% 50%; }
 }
 
+/* Section header - counter bar + counter + dot + label */
+.section-header-meta {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	margin-bottom: var(--space-4);
+}
+
+.section-header-bar {
+	width: 2px;
+	height: 1rem;
+	background: var(--color-accent);
+	border-radius: 1px;
+	flex-shrink: 0;
+}
+
+.section-counter {
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	color: rgba(0, 0, 0, 0.16);
+	white-space: nowrap;
+}
+
+.section-counter-active {
+	color: var(--color-accent);
+	font-weight: 600;
+}
+
+.section-header-dot {
+	font-family: var(--font-mono);
+	font-size: var(--text-xs);
+	color: rgba(0, 0, 0, 0.16);
+}
+
 /* Section label - mono uppercase small */
 .section-label {
 	font-family: var(--font-mono);
-	font-size: var(--text-sm);
+	font-size: var(--text-xs);
 	font-weight: var(--font-medium);
 	letter-spacing: var(--tracking-widest);
 	text-transform: uppercase;
-	color: var(--color-accent-dark);
-	padding: var(--space-2) var(--space-4);
-	background: var(--color-accent-subtle);
-	border: 1px solid rgba(229, 90, 40, 0.2);
-	display: inline-block;
+	color: rgba(0, 0, 0, 0.32);
 }
 
 /* Small caps label */
@@ -114,31 +136,6 @@
 .interactive-lift:hover {
 	transform: translateY(-2px);
 	box-shadow: var(--shadow-md);
-}
-
-/* ========================================
-   Glow Effects
-   ======================================== */
-
-.glow-accent {
-	box-shadow: var(--shadow-glow);
-}
-
-.glow-accent-lg {
-	box-shadow: var(--shadow-glow-lg);
-}
-
-.pulse-glow {
-	animation: pulse-glow 2s ease-in-out infinite;
-}
-
-@keyframes pulse-glow {
-	0%, 100% {
-		box-shadow: none;
-	}
-	50% {
-		box-shadow: none;
-	}
 }
 
 /* ========================================
@@ -268,30 +265,6 @@
 	opacity: 0;
 }
 
-/* Float animation */
-@keyframes float {
-	0%, 100% { transform: translateY(0); }
-	50% { transform: translateY(-10px); }
-}
-
-.animate-float {
-	animation: float 6s ease-in-out infinite;
-}
-
-/* Pulse glow animation */
-@keyframes pulseGlow {
-	0%, 100% {
-		box-shadow: none;
-	}
-	50% {
-		box-shadow: none;
-	}
-}
-
-.animate-pulse-glow {
-	animation: pulseGlow 3s ease-in-out infinite;
-}
-
 /* ========================================
    Status Border Colors
    ======================================== */
@@ -354,52 +327,23 @@
 
 button:focus-visible,
 a:focus-visible {
-	box-shadow: 0 0 0 3px rgba(229, 90, 40, 0.25);
+	box-shadow: 0 0 0 3px rgba(240, 96, 48, 0.25);
 }
 
 /* ========================================
    Background Utilities
    ======================================== */
 
-.bg-mesh {
-	background: var(--color-bg-base);
-}
-
-.bg-mesh-subtle {
-	background: var(--color-bg-base);
-}
-
 /* Radial gradient backgrounds for landing */
 .bg-radial-amber {
 	background:
-		radial-gradient(ellipse 70% 50% at 65% 15%, rgba(229, 90, 40, 0.09) 0%, transparent 65%),
+		radial-gradient(ellipse 70% 50% at 65% 15%, rgba(240, 96, 48, 0.09) 0%, transparent 65%),
 		radial-gradient(ellipse 50% 40% at 20% 60%, rgba(99, 102, 241, 0.03) 0%, transparent 60%),
 		radial-gradient(ellipse 90% 40% at 50% 100%, var(--color-bg-surface) 0%, transparent 50%);
 }
 
 .bg-radial-amber-bottom {
-	background: radial-gradient(ellipse 100% 60% at 50% 130%, rgba(229, 90, 40, 0.06) 0%, transparent 70%);
-}
-
-/* Noise overlay - disabled for cleaner light theme */
-.noise-overlay {
-	position: relative;
-}
-
-.noise-overlay::before {
-	display: none;
-}
-
-.noise-overlay > * {
-	position: relative;
-	z-index: 1;
-}
-
-/* Section divider gradient */
-.section-divider {
-	height: 1px;
-	background: linear-gradient(90deg, transparent, var(--color-border-emphasis), transparent);
-	margin: var(--space-12) 0;
+	background: radial-gradient(ellipse 100% 60% at 50% 130%, rgba(240, 96, 48, 0.06) 0%, transparent 70%);
 }
 
 /* Divider with gradient */

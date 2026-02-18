@@ -16,6 +16,7 @@ declare global {
     }
     interface PageData {
       session: Session | null;
+      availableProviders?: { google: boolean; github: boolean };
     }
     // interface PageState {}
     // interface Platform {}

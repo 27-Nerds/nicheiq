@@ -6,10 +6,10 @@
     AlertTriangle,
     Timer,
     Target,
-    Zap,
+    Compass,
     BarChart3,
-    DollarSign,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { MarketSizing } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -76,7 +76,7 @@
 <Section
   id="market-sizing"
   class="report-section"
-  icon={DollarSign}
+  icon={SECTION_MAP['market-sizing'].icon}
   title="Market Sizing"
   subtitle="TAM/SAM/SOM analysis and growth opportunity"
   headerSize="lg"
@@ -164,7 +164,7 @@
         <SectionLabel
           text="Recommended Entry Strategy"
           variant="accent"
-          icon={Zap}
+          icon={Compass}
         />
       {/snippet}
       <p class="strategy-text">{data.recommended_entry_strategy}</p>

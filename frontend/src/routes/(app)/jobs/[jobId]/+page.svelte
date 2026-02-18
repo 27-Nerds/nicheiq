@@ -16,14 +16,10 @@
     Clock,
     CheckCircle,
     X,
-    FileText,
     ArrowRight,
-    Activity,
+    Telescope,
     RotateCw,
-    Globe,
-    Search,
-    Zap,
-    Sparkles,
+    Package,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
@@ -41,6 +37,7 @@
   import { PHASES, PARALLEL_STAGE_GROUPS, getNarrativeText, CELEBRATION_TIERS } from "$lib/components/job/phaseConfig";
   import type { PhaseStatus } from "$lib/components/job/phaseConfig";
   import { computeCumulativeStats } from "$lib/components/job/artifactParsers";
+  import { STAGE_MAP, REPORT_ICON } from "$lib/config/billable-stages";
   import { getSolutions } from "$lib/api";
 
   let job = $state<Job | null>(null);
@@ -527,7 +524,7 @@
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-4">
             <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
-              <Activity class="w-5 h-5 text-accent" />
+              <Telescope class="w-5 h-5 text-accent" />
             </div>
             <div>
               <h1 class="text-2xl font-bold text-text-primary">Research Progress</h1>
@@ -541,7 +538,7 @@
               <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
             {/if}
             {#if isCompleted && reportAsset}
-              <Button href="/jobs/{job.id}/report" icon={FileText} label="View Report" class="btn-primary btn-sm" />
+              <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
             {/if}
             <Badge variant={getStatusVariant(isRegenQueued ? "REGENERATING" : job.status)}>
               {#if ["RUNNING", "RUNNING_PHASE2", "REGENERATING"].includes(job.status) || isRegenQueued}
@@ -672,7 +669,7 @@
                 </div>
 
                 <div class="teaser-cta">
-                  <Button href="/jobs/{job.id}/report" icon={FileText} label="View Full Report" class="btn-primary reveal-btn" />
+                  <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Full Report" class="btn-primary reveal-btn" />
                 </div>
               </div>
             </div>
@@ -681,16 +678,13 @@
           <!-- Fallback: simple card while summary not available -->
           <div class="reveal-container">
             <div class="reveal-check">
-              <svg class="checkmark-svg" viewBox="0 0 52 52">
-                <circle class="checkmark-circle" cx="26" cy="26" r="24" fill="none" />
-                <path class="checkmark-path" fill="none" d="M14.1 27.2l7.1 7.2 16.7-16.8" />
-              </svg>
+              <CheckCircle class="w-12 h-12 text-success" />
             </div>
             <h2 class="reveal-title">Your Research Report is Ready</h2>
             {#if cumulativeStats.some((s) => s.value != null)}
               <div class="reveal-stats">
                 {#each cumulativeStats.filter((s) => s.value != null) as stat, i}
-                  <div class="reveal-stat" style="animation-delay: {800 + i * 200}ms">
+                  <div class="reveal-stat">
                     <span class="reveal-stat-value">{stat.value?.toLocaleString()}</span>
                     <span class="reveal-stat-label">{stat.label}</span>
                   </div>
@@ -698,7 +692,7 @@
               </div>
             {/if}
             <div class="reveal-cta">
-              <Button href="/jobs/{job.id}/report" icon={FileText} label="View Full Report" class="btn-primary reveal-btn" />
+              <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Full Report" class="btn-primary reveal-btn" />
             </div>
           </div>
         {/if}
@@ -856,7 +850,7 @@
           <!-- Phase 1: Discovery -->
           <PhaseSection
             title="Discovery"
-            icon={Search}
+            icon={PHASES[0].icon}
             status={discoveryStatus}
             stagesCompleted={discoveryStages.filter((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED').length}
             stagesTotal={discoveryStages.length || PHASES[0].stageNumbers.length}
@@ -907,9 +901,10 @@
                 />
               </div>
             {:else if gateStatus === 'locked'}
+              {@const GateIcon = PHASES[1].icon}
               <div class="gate-locked mb-3">
                 <div class="gate-locked-inner">
-                  <Zap class="w-4 h-4 text-text-muted" />
+                  <GateIcon class="w-4 h-4 text-text-muted" />
                   <span class="text-sm text-text-muted">Solution selection unlocks after discovery</span>
                 </div>
               </div>
@@ -931,7 +926,7 @@
           <!-- Phase 2: Deep Analysis -->
           <PhaseSection
             title="Deep Analysis"
-            icon={Zap}
+            icon={PHASES[1].icon}
             status={analysisStatus}
             stagesCompleted={analysisStages.filter((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED').length}
             stagesTotal={analysisStages.length || PHASES[1].stageNumbers.length}
@@ -960,7 +955,7 @@
           <div class="extras-header">
             <div class="extras-header-left">
               <div class="extras-icon-box">
-                <Sparkles class="extras-icon" />
+                <Package class="extras-icon" />
               </div>
               <div class="extras-title-group">
                 <span class="extras-title">Extras</span>
@@ -978,7 +973,7 @@
           <div class="extras-content">
             <DeliverableRow
               label="Landing Page"
-              icon={Globe}
+              icon={STAGE_MAP.landing_page.icon}
               status={lpStatus}
               creditCost={landingStageCost}
               canAfford={canAffordLanding}
@@ -1071,7 +1066,6 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 0.75rem;
     animation: reveal-fade-in 500ms ease-out;
-    background-image: linear-gradient(135deg, rgba(34, 197, 94, 0.04) 0%, transparent 40%);
   }
 
   @keyframes reveal-fade-in {
@@ -1083,40 +1077,12 @@
     margin-bottom: 1.25rem;
   }
 
-  .checkmark-svg {
-    width: 3.5rem;
-    height: 3.5rem;
-  }
-
-  .checkmark-circle {
-    stroke: var(--color-success);
-    stroke-width: 2;
-    stroke-dasharray: 166;
-    stroke-dashoffset: 166;
-    animation: stroke-draw 600ms cubic-bezier(0.65, 0, 0.45, 1) forwards;
-  }
-
-  .checkmark-path {
-    stroke: var(--color-success);
-    stroke-width: 3;
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-dasharray: 48;
-    stroke-dashoffset: 48;
-    animation: stroke-draw 400ms cubic-bezier(0.65, 0, 0.45, 1) 400ms forwards;
-  }
-
-  @keyframes stroke-draw {
-    100% { stroke-dashoffset: 0; }
-  }
-
   .reveal-title {
     font-family: var(--font-display);
     font-size: 1.5rem;
     font-weight: 700;
     color: var(--color-text-primary);
     margin-bottom: 1.25rem;
-    animation: reveal-fade-in 400ms ease-out 600ms both;
   }
 
   .reveal-stats {
@@ -1132,7 +1098,6 @@
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
-    animation: reveal-fade-in 400ms ease-out both;
   }
 
   .reveal-stat-value {
@@ -1150,28 +1115,9 @@
     letter-spacing: 0.04em;
   }
 
-  .reveal-cta {
-    animation: reveal-fade-in 400ms ease-out 1200ms both;
-  }
-
-  :global(.reveal-btn) {
-    box-shadow: 0 0 20px rgba(229, 90, 40, 0.2);
-    animation: cta-glow 2s ease-in-out 1600ms 2;
-  }
-
-  @keyframes cta-glow {
-    0%, 100% { box-shadow: 0 0 20px rgba(229, 90, 40, 0.2); }
-    50% { box-shadow: 0 0 30px rgba(229, 90, 40, 0.4); }
-  }
 
   @media (prefers-reduced-motion: reduce) {
     .reveal-container { animation: none; }
-    .reveal-title { animation: none; }
-    .reveal-stat { animation: none; }
-    .reveal-cta { animation: none; }
-    .checkmark-circle { animation: none; stroke-dashoffset: 0; }
-    .checkmark-path { animation: none; stroke-dashoffset: 0; }
-    :global(.reveal-btn) { animation: none; }
     .teaser-card { animation: none; }
   }
 

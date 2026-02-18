@@ -168,6 +168,14 @@ export const { handle, signIn, signOut } = SvelteKitAuth({
   },
 });
 
+/** Returns which OAuth providers have valid credentials configured. */
+export function getAvailableProviders() {
+  return {
+    google: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET),
+    github: !!(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET),
+  };
+}
+
 // Type augmentation for session
 declare module '@auth/core/types' {
   interface Session {

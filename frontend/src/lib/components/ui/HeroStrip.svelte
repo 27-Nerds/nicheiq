@@ -41,21 +41,6 @@
     overflow: hidden;
   }
 
-  /* Subtle dot grid pattern background */
-  .hero-strip::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background-image: radial-gradient(
-      circle,
-      var(--color-border) 1px,
-      transparent 1px
-    );
-    background-size: 16px 16px;
-    opacity: 0.3;
-    pointer-events: none;
-  }
-
   .hero-strip--compact {
     padding: 0.875rem 1rem;
     gap: 0.875rem;
@@ -67,11 +52,7 @@
     display: flex;
     align-items: center;
     padding: 0.875rem 1.25rem;
-    background: linear-gradient(
-      135deg,
-      var(--color-bg-surface) 0%,
-      var(--color-bg-elevated) 100%
-    );
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 0.75rem;
     position: relative;

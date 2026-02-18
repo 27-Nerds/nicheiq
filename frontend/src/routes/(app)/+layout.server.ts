@@ -1,6 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
 import { env } from '$env/dynamic/private';
+import { DEFAULT_STAGE_COSTS } from '$lib/types/job';
+import type { StageCosts } from '$lib/types/job';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
@@ -15,7 +17,7 @@ export const load: LayoutServerLoad = async (event) => {
 
   // Fetch user's credit balance and stage costs for header display
   let creditBalance = 0;
-  let stageCosts = { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 };
+  let stageCosts: StageCosts = { ...DEFAULT_STAGE_COSTS };
 
   const headers = {
     'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',

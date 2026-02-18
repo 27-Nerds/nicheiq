@@ -10,11 +10,11 @@
     Search,
     ChevronDown,
     ChevronUp,
-    Sparkles,
+    Telescope,
     X,
-    FolderOpen,
-    ShieldCheck,
-    RefreshCw,
+    Library,
+    Trophy,
+    FlaskConical,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
   import JobCard from "$lib/components/ui/JobCard.svelte";
@@ -357,12 +357,12 @@
   <!-- Pro tip banner (show when no active jobs and has completed jobs, unless dismissed) -->
   {#if jobs.length > 0 && inProgressCount === 0 && completedCount > 0 && !tipDismissed}
     <div
-      class="mb-6 p-4 rounded-lg bg-gradient-to-r from-accent/5 via-secondary/5 to-accent/5 border border-accent/10 animate-fade-slide-in"
+      class="mb-6 p-4 rounded-lg bg-accent/5 border border-accent/10 animate-fade-slide-in"
     >
       <div class="flex items-center justify-between gap-3">
         <div class="flex items-center gap-3">
           <div class="p-2 rounded-lg bg-accent/10">
-            <Sparkles class="w-4 h-4 text-accent" />
+            <Telescope class="w-4 h-4 text-accent" />
           </div>
           <p class="text-sm text-text-secondary">
             <span class="font-medium text-text-primary"
@@ -384,9 +384,9 @@
 
   <!-- Stats Overview -->
   <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-    <StatCard icon={FolderOpen} value={jobs.length} label="Total Research" color="accent" />
-    <StatCard icon={ShieldCheck} value={completedCount} label="Completed" color="success" />
-    <StatCard icon={RefreshCw} value={inProgressCount} label="In Progress" color="warning" />
+    <StatCard icon={Library} value={jobs.length} label="Total Research" color="accent" />
+    <StatCard icon={Trophy} value={completedCount} label="Completed" color="success" />
+    <StatCard icon={FlaskConical} value={inProgressCount} label="In Progress" color="warning" />
   </div>
 
   <!-- Search bar (only show when there are jobs) -->
@@ -434,24 +434,15 @@
   <!-- Job List -->
   {#if jobs.length === 0}
     <div
-      class="relative overflow-hidden rounded-xl border border-border bg-gradient-to-br from-bg-surface via-bg-elevated to-accent/5 text-center py-16 px-6"
+      class="rounded-xl border border-border bg-bg-elevated text-center py-16 px-6"
     >
-      <!-- Decorative elements -->
-      <div
-        class="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"
-      ></div>
-      <div
-        class="absolute bottom-0 left-0 w-48 h-48 bg-secondary/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2"
-      ></div>
-
-      <div class="relative">
         <div
-          class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br from-accent/20 to-accent/5 border border-accent/20 flex items-center justify-center shadow-lg animate-float"
+          class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-accent/10 border border-accent/20 flex items-center justify-center"
         >
           <Search class="w-10 h-10 text-accent" />
         </div>
         <h2 class="text-2xl font-bold text-text-primary mb-3">
-          Ready to discover your next opportunity?
+          No research yet
         </h2>
         <p class="text-text-secondary mb-8 max-w-lg mx-auto leading-relaxed">
           NicheIQ analyzes Reddit discussions, identifies pain points, and
@@ -461,7 +452,6 @@
         <p class="text-xs text-text-muted mt-4">
           Two-phase AI research with your input at the gate. ~35 minutes total.
         </p>
-      </div>
     </div>
   {:else}
     <!-- No search results -->
@@ -496,7 +486,7 @@
         <!-- Completed Jobs Section -->
         {#if filteredCompletedJobs.length > 0}
           {#if filteredActiveJobs.length > 0}
-            <div class="my-6"><div class="gradient-divider"></div></div>
+            <div class="my-6 h-px bg-border"></div>
           {/if}
           <div class="space-y-4">
             <CategoryBar title="Completed" color="success" count={filteredCompletedJobs.length} margin="mb-0" />
@@ -533,7 +523,7 @@
         <!-- Failed Jobs Section -->
         {#if filteredFailedJobs.length > 0}
           {#if filteredActiveJobs.length > 0 || filteredCompletedJobs.length > 0}
-            <div class="my-6"><div class="gradient-divider"></div></div>
+            <div class="my-6 h-px bg-border"></div>
           {/if}
           <div class="space-y-4">
             <CategoryBar title="Failed" color="error" count={filteredFailedJobs.length} margin="mb-0">

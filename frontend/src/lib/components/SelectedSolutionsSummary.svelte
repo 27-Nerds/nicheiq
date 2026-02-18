@@ -4,7 +4,7 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import SolutionDetail from "./SolutionDetail.svelte";
-  import { Target, Clock } from "lucide-svelte";
+  import { ListChecks, Clock } from "lucide-svelte";
   import type { SolutionPreview } from "$lib/types/job";
 
   interface Props {
@@ -61,7 +61,7 @@
 
 {#if selectedSolutions.length > 0}
   {#if isCollapsible}
-    <ExpandableSection title="Your Selections ({selectedSolutions.length})" icon={Target} variant="accent">
+    <ExpandableSection title="Your Selections ({selectedSolutions.length})" icon={ListChecks} variant="accent">
       {@render summaryContent()}
     </ExpandableSection>
   {:else}
@@ -69,7 +69,7 @@
       {#snippet header()}
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <Target class="w-4 h-4 text-accent" />
+            <ListChecks class="w-4 h-4 text-accent" />
             <span class="font-display font-semibold text-sm text-text-primary">
               {selectedSolutions.length === 1 ? "Your Selection" : `Your Selections (${selectedSolutions.length})`}
             </span>

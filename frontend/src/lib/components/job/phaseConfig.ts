@@ -3,6 +3,9 @@
  * and celebration tier configuration.
  */
 
+import type { ComponentType } from 'svelte';
+import { STAGE_MAP } from '$lib/config/billable-stages';
+
 export type PhaseId = 'discovery' | 'analysis';
 export type PhaseStatus = 'locked' | 'pending' | 'active' | 'completed' | 'failed';
 export type CelebrationTier = 1 | 2 | 3;
@@ -16,6 +19,7 @@ export interface NarrativeTemplate {
 export interface PhaseDefinition {
   id: PhaseId;
   label: string;
+  icon: ComponentType;
   description: string;
   stageNumbers: number[];
   artifactStages: number[];
@@ -26,6 +30,7 @@ export const PHASES: PhaseDefinition[] = [
   {
     id: 'discovery',
     label: 'Discovery',
+    icon: STAGE_MAP.discovery.icon,
     description: 'Scanning social discussions and extracting market signals',
     stageNumbers: [1, 2, 3, 4, 5],
     artifactStages: [1, 2, 3, 4],
@@ -83,6 +88,7 @@ export const PHASES: PhaseDefinition[] = [
   {
     id: 'analysis',
     label: 'Deep Analysis',
+    icon: STAGE_MAP.deep_research.icon,
     description: 'Validating demand, pricing, and market opportunity',
     stageNumbers: [5.5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
     artifactStages: [6, 7, 9, 11],

@@ -8,10 +8,12 @@
     AlertCircle,
     Coins,
     Sparkles,
-    Wand2,
+    PenLine,
   } from "lucide-svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
+  import type { StageCosts } from "$lib/types/job";
 
   const MAX_NICHE_LENGTH = 500;
 
@@ -46,7 +48,7 @@
 
   // Get credit balance and stage costs from page data
   const creditBalance = $derived(($page.data.creditBalance as number) ?? 0);
-  const stageCosts = $derived(($page.data.stageCosts as { discovery: number; deep_research: number; landing_page: number; regenerate_ideas: number }) ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 });
+  const stageCosts = $derived(($page.data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS);
   const hasCredits = $derived(creditBalance >= stageCosts.discovery);
 
   const PROJECT_TYPES = [
@@ -349,7 +351,7 @@
                   <Loader2 class="w-3.5 h-3.5 animate-spin" />
                   Refining...
                 {:else}
-                  <Wand2 class="w-3.5 h-3.5 text-accent" />
+                  <PenLine class="w-3.5 h-3.5 text-accent" />
                   Refine my input
                 {/if}
               </button>

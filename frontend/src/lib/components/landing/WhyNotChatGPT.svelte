@@ -80,7 +80,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          What AI Research Tools <span class="text-gradient italic">Miss</span>
+          What AI Research Tools <span class="text-accent italic">Miss</span>
         </h2>
         <div
           class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"

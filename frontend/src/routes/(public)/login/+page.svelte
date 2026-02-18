@@ -7,6 +7,8 @@
   import FormField from "$lib/components/ui/FormField.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
+  const availableProviders = $derived($page.data.availableProviders);
+
   let email = $state("");
   let password = $state("");
   let loading = $state(false);
@@ -54,7 +56,7 @@
   title="Welcome back"
   subtitle="Sign in to your account to continue"
 >
-  <OAuthButtons onOAuthLogin={handleOAuthLogin} mode="login" />
+  <OAuthButtons onOAuthLogin={handleOAuthLogin} mode="login" {availableProviders} />
 
   <form onsubmit={handleCredentialsLogin} class="space-y-4">
     {#if error}

@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    Code,
     Database,
     Clock,
     Server,
@@ -9,7 +8,7 @@
     Globe,
     User,
     Cpu,
-    Zap,
+    ListChecks,
     HardDrive,
     LayoutGrid,
     Route,
@@ -20,6 +19,7 @@
     ChevronUp,
     FileText,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type {
     SolutionDetails,
     SiteStructure,
@@ -111,7 +111,7 @@
 <Section
   id="technical"
   class="report-section"
-  icon={Code}
+  icon={SECTION_MAP['technical'].icon}
   title="Technical Blueprint"
   subtitle="Implementation approach and architecture"
   headerSize="lg"
@@ -488,7 +488,7 @@
   {#if solution.keyword_feature_priorities && solution.keyword_feature_priorities.length > 0}
     <AnimateOnScroll animation="fade-up" delay={600}>
       <div class="priorities-section">
-        <SubsectionHeader title="Feature Development Priorities" icon={Zap} />
+        <SubsectionHeader title="Feature Development Priorities" icon={ListChecks} />
         <div class="timeline">
           {#each solution.keyword_feature_priorities as priority, i}
             <div class="timeline-item" style="animation-delay: {i * 100}ms">
@@ -605,11 +605,7 @@
     top: 0.5rem;
     bottom: 0.5rem;
     width: 2px;
-    background: linear-gradient(
-      180deg,
-      var(--color-accent) 0%,
-      var(--color-border) 100%
-    );
+    background: var(--color-accent);
   }
 
   .timeline-styled :global(li) {

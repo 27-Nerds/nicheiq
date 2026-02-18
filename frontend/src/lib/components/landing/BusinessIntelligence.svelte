@@ -36,7 +36,7 @@
     },
     {
       icon: Tag,
-      color: "secondary" as const,
+      color: "accent" as const,
       question: "What should I charge?",
       narrative:
         "Pricing tiers, unit economics, and willingness-to-pay scores — matched to one of eight monetization models based on what your market says it'll pay.",
@@ -49,7 +49,7 @@
     },
     {
       icon: Scale,
-      color: "success" as const,
+      color: "accent" as const,
       question: "Should I build this?",
       narrative:
         "Clear Go, No-Go, or Conditional verdict backed by a confidence score, risk assessment, and trend analysis.",
@@ -68,17 +68,19 @@
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-16">
-        <span class="section-label animate-fade-in">The Numbers</span>
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">04</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">The Numbers</span>
+        </div>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          Real Numbers. <span class="text-gradient-animated italic"
+          Real Numbers. <span class="italic"
             >Not Vibes.</span
           >
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
-        ></div>
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
         >
@@ -96,7 +98,7 @@
           >
             <!-- Metric Callout (first on mobile, right on desktop) -->
             <div class="order-1 md:order-2">
-              {#if block.color === "accent"}
+              {#if block.question === "How big is this opportunity?"}
                 <!-- Block 1: Funnel Bars -->
                 <div
                   class="border-l-4 border-accent bg-bg-elevated rounded-r-xl p-5 sm:p-6"
@@ -112,7 +114,7 @@
                         class="flex-1 h-3 rounded-full bg-bg-surface overflow-hidden"
                       >
                         <div
-                          class="h-full w-full rounded-full bg-gradient-to-r from-accent to-accent-hover"
+                          class="h-full w-full rounded-full bg-accent"
                         ></div>
                       </div>
                       <span class="font-mono text-sm font-semibold text-accent"
@@ -127,10 +129,10 @@
                         class="flex-1 h-3 rounded-full bg-bg-surface overflow-hidden"
                       >
                         <div
-                          class="h-full w-[55%] rounded-full bg-gradient-to-r from-accent to-accent-hover"
+                          class="h-full w-[55%] rounded-full bg-secondary"
                         ></div>
                       </div>
-                      <span class="font-mono text-sm font-semibold text-accent"
+                      <span class="font-mono text-sm font-semibold text-secondary"
                         >$630M</span
                       >
                     </div>
@@ -142,31 +144,31 @@
                         class="flex-1 h-3 rounded-full bg-bg-surface overflow-hidden"
                       >
                         <div
-                          class="h-full w-[30%] rounded-full bg-gradient-to-r from-accent to-accent-hover"
+                          class="h-full w-[30%] rounded-full bg-warning"
                         ></div>
                       </div>
-                      <span class="font-mono text-sm font-semibold text-accent"
+                      <span class="font-mono text-sm font-semibold text-warning"
                         >$12M</span
                       >
                     </div>
                   </div>
                 </div>
-              {:else if block.color === "secondary"}
+              {:else if block.question === "What should I charge?"}
                 <!-- Block 2: Tier Pills -->
                 <div
-                  class="border-l-4 border-secondary bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                  class="border-l-4 border-accent/70 bg-bg-elevated rounded-r-xl p-5 sm:p-6"
                 >
                   <div class="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
                     <span
-                      class="px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/30 font-mono text-sm font-semibold text-secondary"
+                      class="px-3 py-1.5 rounded-lg bg-accent/10 border border-accent/30 font-mono text-sm font-semibold text-accent"
                       >Starter $19/mo</span
                     >
                     <span
-                      class="px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/30 font-mono text-sm font-semibold text-secondary"
+                      class="px-3 py-1.5 rounded-lg bg-bg-surface border border-border font-mono text-sm text-text-secondary"
                       >Pro $49/mo</span
                     >
                     <span
-                      class="px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/30 font-mono text-sm font-semibold text-secondary"
+                      class="px-3 py-1.5 rounded-lg bg-bg-surface border border-border font-mono text-sm text-text-secondary"
                       >Enterprise $149/mo</span
                     >
                   </div>
@@ -193,11 +195,11 @@
               {:else}
                 <!-- Block 3: Verdict Badge -->
                 <div
-                  class="border-l-4 border-success bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                  class="border-l-4 border-accent bg-bg-elevated rounded-r-xl p-5 sm:p-6"
                 >
                   <div class="flex flex-wrap items-center gap-3 mb-3">
                     <span
-                      class="px-4 py-2 rounded-lg bg-success/10 border border-success/30 font-display text-lg font-bold text-success"
+                      class="px-4 py-2 rounded-lg bg-success/15 border border-success/40 font-display text-lg font-bold text-success"
                       >GO</span
                     >
                     <div class="flex items-center gap-2">
@@ -213,16 +215,16 @@
                         aria-label="Confidence score"
                       >
                         <div
-                          class="h-full w-[72%] rounded-full bg-success"
+                          class="h-full w-[72%] rounded-full bg-accent"
                         ></div>
                       </div>
-                      <span class="font-mono text-sm font-semibold text-success"
+                      <span class="font-mono text-sm font-semibold text-accent"
                         >72%</span
                       >
                     </div>
                   </div>
                   <div class="flex gap-3 font-mono text-sm">
-                    <span class="text-warning">Risk: Medium</span>
+                    <span class="text-text-muted">Risk: Medium</span>
                     <span class="text-success">Trend: Growing ↑</span>
                   </div>
                 </div>
@@ -233,20 +235,9 @@
             <div class="order-2 md:order-1">
               <div class="flex items-start gap-3 mb-3">
                 <div
-                  class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
-                    {block.color === 'accent'
-                    ? 'bg-accent/10 border border-accent/30'
-                    : block.color === 'secondary'
-                      ? 'bg-secondary/10 border border-secondary/30'
-                      : 'bg-success/10 border border-success/30'}"
+                  class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center bg-accent/10 border border-accent/30"
                 >
-                  <block.icon
-                    class="w-5 h-5 {block.color === 'accent'
-                      ? 'text-accent'
-                      : block.color === 'secondary'
-                        ? 'text-secondary'
-                        : 'text-success'}"
-                  />
+                  <block.icon class="w-5 h-5 text-accent" />
                 </div>
                 <h3
                   class="font-display text-lg sm:text-xl font-semibold text-text-primary pt-1.5"
@@ -263,11 +254,7 @@
                 {#each block.points as point}
                   <div class="flex items-start gap-2.5">
                     <CheckCircle2
-                      class="w-4 h-4 shrink-0 mt-0.5 {block.color === 'accent'
-                        ? 'text-accent'
-                        : block.color === 'secondary'
-                          ? 'text-secondary'
-                          : 'text-success'}"
+                      class="w-4 h-4 shrink-0 mt-0.5 text-accent"
                     />
                     <span class="text-sm text-text-muted">{point}</span>
                   </div>
@@ -275,12 +262,7 @@
               </div>
 
               <span
-                class="inline-flex items-center gap-2 text-xs font-semibold {block.color ===
-                'accent'
-                  ? 'text-accent'
-                  : block.color === 'secondary'
-                    ? 'text-secondary'
-                    : 'text-success'}"
+                class="inline-flex items-center gap-2 text-xs font-semibold text-accent"
               >
                 <CheckCircle2 class="w-3.5 h-3.5" />
                 {block.highlight}

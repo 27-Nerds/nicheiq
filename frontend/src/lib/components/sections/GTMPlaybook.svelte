@@ -1,12 +1,11 @@
 <script lang="ts">
   import {
-    Rocket,
     User,
     MessageSquare,
     Calendar,
     Target,
     Zap,
-    Lightbulb,
+    ListChecks,
     CheckCircle,
     ArrowRight,
     DollarSign,
@@ -16,11 +15,11 @@
     ChevronRight,
     Clock,
     TrendingUp,
-    Sparkles,
     Play,
     BarChart3,
     PieChart,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { GoToMarketBlueprint, BudgetEstimate } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -128,7 +127,7 @@
 <Section
   id="gtm-playbook"
   class="report-section"
-  icon={Rocket}
+  icon={SECTION_MAP['gtm-playbook'].icon}
   title="Go-to-Market Playbook"
   subtitle="Launch strategy and customer acquisition"
   headerSize="lg"
@@ -597,7 +596,7 @@
     {#if nextSteps && (steps.length > 0 || typeof nextSteps === "string")}
       <ExpandableSection
         title="Implementation Checklist"
-        icon={Lightbulb}
+        icon={ListChecks}
         count={steps.length}
         countSuffix="steps"
         variant="accent"
@@ -1305,19 +1304,19 @@
   }
 
   .allocation-fill.content {
-    background: linear-gradient(90deg, #8b5cf6, #a78bfa);
+    background: #8b5cf6;
   }
 
   .allocation-fill.paid {
-    background: linear-gradient(90deg, #ef4444, #f87171);
+    background: #ef4444;
   }
 
   .allocation-fill.tools {
-    background: linear-gradient(90deg, #3b82f6, #60a5fa);
+    background: #3b82f6;
   }
 
   .allocation-fill.community {
-    background: linear-gradient(90deg, #22c55e, #4ade80);
+    background: #22c55e;
   }
 
   .allocation-amount {

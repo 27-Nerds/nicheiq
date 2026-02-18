@@ -28,7 +28,7 @@
 
   const variantClasses = {
     primary:
-      "bg-accent text-white hover:bg-accent-hover shadow-md hover:shadow-lg active:translate-y-px",
+      "bg-accent text-white hover:bg-accent-hover active:translate-y-px",
     secondary:
       "bg-transparent border border-border-emphasis text-text-primary hover:border-accent hover:text-accent",
     ghost: "bg-transparent text-text-secondary hover:text-accent",

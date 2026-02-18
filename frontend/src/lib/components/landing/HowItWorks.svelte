@@ -236,20 +236,22 @@
   {@html `<script type="application/ld+json">${JSON.stringify(howToSchema)}</script>`}
 </svelte:head>
 
-<section id="how-it-works" class="section">
+<section id="how-it-works" class="section-alt">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-10 sm:mb-16">
-        <span class="section-label animate-fade-in">The Process</span>
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">02</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">The Process</span>
+        </div>
         <h2
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
-          How It <span class="text-gradient italic">Works</span>
+          How It <span class="text-accent italic">Works</span>
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
-        ></div>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >

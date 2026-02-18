@@ -1,6 +1,5 @@
 <script lang="ts">
   import {
-    MessageSquare,
     Users,
     BarChart3,
     Quote,
@@ -8,6 +7,7 @@
     Shield,
     Hash,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { ContentCategorization } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -59,7 +59,7 @@
 <Section
   id="content-insights"
   class="report-section"
-  icon={MessageSquare}
+  icon={SECTION_MAP['content-insights'].icon}
   title="Content & Competitive Insights"
   subtitle="Discussion analysis and market intelligence"
   headerSize="lg"

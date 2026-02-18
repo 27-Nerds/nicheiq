@@ -1,15 +1,14 @@
 <script lang="ts">
   import {
-    Lightbulb,
     Target,
-    Zap,
+    Layers,
     Clock,
     DollarSign,
     Users,
-    Shield,
     TrendingUp,
     Code,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { AlternativeSolution } from "$lib/types/report";
   import { renderMarkdown, formatScorePercent } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -38,7 +37,7 @@
 <Section
   id="alternatives"
   class="report-section"
-  icon={Lightbulb}
+  icon={SECTION_MAP['alternatives'].icon}
   title="Alternative Solutions"
   subtitle="{data.length} options analyzed as pivot considerations"
   headerSize="lg"
@@ -201,7 +200,7 @@
             {#if solution.core_features && solution.core_features.length > 0}
               <div class="card-surface">
                 <div class="flex items-center gap-2 mb-2">
-                  <Zap class="w-4 h-4 text-accent" />
+                  <Layers class="w-4 h-4 text-accent" />
                   <span class="text-sm font-medium text-text-primary"
                     >Core Features</span
                   >
@@ -243,7 +242,7 @@
             {#if solution.top_competitors && solution.top_competitors.length > 0}
               <div class="card-surface">
                 <div class="flex items-center gap-2 mb-2">
-                  <Shield class="w-4 h-4 text-warning" />
+                  <Users class="w-4 h-4 text-warning" />
                   <span class="text-sm font-medium text-text-primary"
                     >Top Competitors</span
                   >

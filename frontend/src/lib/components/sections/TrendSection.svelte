@@ -6,11 +6,10 @@
     Clock,
     AlertTriangle,
     Calendar,
-    Activity,
     ChevronRight,
     BarChart3,
-    Zap,
   } from "lucide-svelte";
+  import { SECTION_MAP } from "$lib/config/report-sections";
   import type { TrendLongevity } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -79,7 +78,7 @@
 <Section
   id="trends"
   class="report-section"
-  icon={Activity}
+  icon={SECTION_MAP['trends'].icon}
   title="Market Trends & Longevity"
   subtitle="Trend analysis and market timing"
   headerSize="lg"
@@ -229,7 +228,7 @@
   {#if data.community_growth_indicators && data.community_growth_indicators.length > 0}
     <ExpandableSection
       title="Growth Indicators"
-      icon={Zap}
+      icon={TrendingUp}
       count={data.community_growth_indicators.length}
       variant="success"
     >

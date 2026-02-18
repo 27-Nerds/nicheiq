@@ -151,20 +151,22 @@
   }
 </script>
 
-<section id="comparison" class="section-alt">
+<section id="comparison" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-16">
-        <span class="section-label animate-fade-in">The Comparison</span>
+        <div class="section-header-meta animate-fade-in">
+          <div class="section-header-bar"></div>
+          <span class="section-counter">[ <span class="section-counter-active">05</span> / 07 ]</span>
+          <span class="section-header-dot">·</span>
+          <span class="section-label">The Comparison</span>
+        </div>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          How NicheIQ <span class="text-gradient italic">Compares</span>
+          How NicheIQ <span class="text-accent italic">Compares</span>
         </h2>
-        <div
-          class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
-        ></div>
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
         >

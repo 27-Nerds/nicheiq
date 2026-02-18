@@ -30,7 +30,7 @@
     </div>
 
     <div
-      class="bg-bg-surface border border-border rounded-xl p-8 shadow-lg border-l-4 border-l-accent animate-fade-slide-in"
+      class="bg-bg-surface border border-border rounded-xl p-8 animate-fade-slide-in"
     >
       {@render children()}
     </div>

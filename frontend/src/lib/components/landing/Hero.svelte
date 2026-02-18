@@ -108,11 +108,6 @@
           >
         </h1>
 
-        <!-- Accent line -->
-        <div
-          class="animate-fade-in delay-200 w-16 sm:w-24 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full mx-auto mb-6 sm:mb-8"
-        ></div>
-
         <p
           class="animate-fade-in delay-300 text-lg sm:text-xl text-text-secondary leading-relaxed mb-3 sm:mb-4 max-w-xl mx-auto"
         >
@@ -158,7 +153,7 @@
 
         <!-- Terminal Animation - Mobile optimized with responsive height -->
         <div
-          class="animate-fade-in delay-400 bg-bg-elevated border border-border-emphasis rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm max-w-2xl mx-auto mb-8 sm:mb-10 text-left shadow-lg"
+          class="animate-fade-in delay-400 bg-bg-elevated border border-accent/15 rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm max-w-2xl mx-auto mb-8 sm:mb-10 text-left"
         >
           <!-- Terminal Header -->
           <div
@@ -204,7 +199,7 @@
           class="animate-fade-in delay-500 flex flex-wrap justify-center gap-3 sm:gap-4"
         >
           <div
-            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent hover:shadow-md transition-shadow"
+            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent"
           >
             <span
               class="block text-2xl sm:text-3xl font-display font-bold text-accent tracking-tight"
@@ -218,10 +213,10 @@
             >
           </div>
           <div
-            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-success hover:shadow-md transition-shadow"
+            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent/70"
           >
             <span
-              class="block text-2xl sm:text-3xl font-display font-bold text-success tracking-tight"
+              class="block text-2xl sm:text-3xl font-display font-bold text-text-primary tracking-tight"
             >
               {Math.round($painPointCount)}<span
                 class="text-lg sm:text-xl font-semibold">+</span
@@ -232,10 +227,10 @@
             >
           </div>
           <div
-            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-secondary hover:shadow-md transition-shadow"
+            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent/40"
           >
             <span
-              class="block text-2xl sm:text-3xl font-display font-bold text-secondary tracking-tight"
+              class="block text-2xl sm:text-3xl font-display font-bold text-text-primary tracking-tight"
             >
               {Math.round($verifyCount)}<span
                 class="text-lg sm:text-xl font-semibold">%</span
