@@ -443,10 +443,7 @@ export async function addCreditsToUser(
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
   if (!user) throw new Error('User not found');
 
-  // Look up admin email for audit trail
-  const admin = await prisma.user.findUnique({ where: { id: adminUserId }, select: { email: true } });
-  const adminEmail = admin?.email || 'unknown';
-  const auditDescription = `Admin (${adminEmail}): ${description}`;
+  const auditDescription = `Admin: ${description}`;
 
   const result = await addCredits(userId, amount, auditDescription, CreditTransactionType.ADMIN_ADJUSTMENT);
 
