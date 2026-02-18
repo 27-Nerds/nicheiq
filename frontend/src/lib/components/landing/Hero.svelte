@@ -81,15 +81,9 @@
 </script>
 
 <section class="relative min-h-screen flex items-center overflow-hidden">
-  <!-- Ambient background effects -->
+  <!-- Ambient background -->
   <div class="absolute inset-0 bg-bg-base"></div>
   <div class="absolute inset-0 bg-radial-amber"></div>
-
-  <!-- Subtle grid pattern -->
-  <div
-    class="absolute inset-0 opacity-[0.02]"
-    style="background-image: linear-gradient(rgba(255,255,255,0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.1) 1px, transparent 1px); background-size: 60px 60px;"
-  ></div>
 
   <div
     class="relative z-10 w-full max-w-5xl mx-auto px-6 lg:px-12 py-20 sm:py-24 lg:py-32"

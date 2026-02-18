@@ -2,14 +2,14 @@
   import { onMount } from "svelte";
   import {
     Check,
-    Shield,
-    Target,
+    ShieldCheck,
+    Waypoints,
     TrendingUp,
-    Users,
+    Eye,
     BarChart3,
     Clock,
     ArrowRight,
-    FileText,
+    MessageSquare,
     Gift,
   } from "lucide-svelte";
 
@@ -59,13 +59,13 @@
   ];
 
   const features = [
-    { icon: Target, text: "16-stage research pipeline" },
-    { icon: FileText, text: "5+ validated pain points with sources" },
+    { icon: Waypoints, text: "16-stage research pipeline" },
+    { icon: MessageSquare, text: "5+ validated pain points with sources" },
     { icon: TrendingUp, text: "100+ keywords with live search volumes" },
-    { icon: Users, text: "Competitive landscape analysis" },
+    { icon: Eye, text: "Competitive landscape analysis" },
     { icon: BarChart3, text: "Complete SEO strategy" },
     { icon: Clock, text: "GTM blueprint with 30-day playbook" },
-    { icon: Shield, text: "Zero hallucination guarantee" },
+    { icon: ShieldCheck, text: "Zero hallucination guarantee" },
     { icon: Check, text: "Ready-to-launch landing page (optional)" },
   ];
 </script>
@@ -205,7 +205,7 @@
         <div
           class="mt-8 sm:mt-10 p-4 rounded-lg bg-success/5 border border-success/30 flex items-center gap-3 max-w-md mx-auto"
         >
-          <Shield class="w-8 h-8 text-success flex-shrink-0" />
+          <ShieldCheck class="w-8 h-8 text-success flex-shrink-0" />
           <div>
             <h4 class="font-semibold text-success text-sm">
               Zero-Risk Guarantee

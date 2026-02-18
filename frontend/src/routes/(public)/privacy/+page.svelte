@@ -212,9 +212,9 @@
         <p>
           If you have questions about this policy, contact us at
           <a
-            href="mailto:hello@nicheiq.com"
+            href="mailto:hello@nicheiq.dev"
             class="text-accent hover:text-accent-light underline"
-            >hello@nicheiq.com</a
+            >hello@nicheiq.dev</a
           >.
         </p>
       </section>

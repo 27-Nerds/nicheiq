@@ -26,7 +26,7 @@
 
   const companyLinks = [
     { name: "About the Maker", href: "#about-maker" },
-    { name: "Contact", href: "mailto:hello@nicheiq.com" },
+    { name: "Contact", href: "mailto:hello@nicheiq.dev" },
     { name: "Privacy", href: "/privacy" },
   ];
 </script>

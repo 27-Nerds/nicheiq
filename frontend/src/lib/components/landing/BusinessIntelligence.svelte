@@ -1,14 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import {
-    PieChart,
-    DollarSign,
-    Shield,
-    CheckCircle2,
-    TrendingUp,
-    Search,
-    Users,
-  } from "lucide-svelte";
+  import { PieChart, Tag, Scale, CheckCircle2 } from "lucide-svelte";
 
   let isVisible = $state(false);
 
@@ -28,45 +20,45 @@
     return () => observer.disconnect();
   });
 
-  const features = [
+  const blocks = [
     {
       icon: PieChart,
-      title: "Market Sizing",
+      color: "accent" as const,
       question: "How big is this opportunity?",
-      description:
-        "Know the opportunity size before you build—with real numbers, not guesses.",
+      narrative:
+        "Total addressable market narrowed to a year-one target — sized from keyword demand, competition levels, and pain point frequency. Know the opportunity before you commit.",
       points: [
-        { icon: Search, text: "Calculated from real keyword search volumes" },
-        { icon: TrendingUp, text: "Industry growth rate analysis" },
-        { icon: CheckCircle2, text: "TAM → SAM → SOM breakdown" },
+        "TAM → SAM → SOM funnel with your year-one slice",
+        "Monthly search volume aggregated across your niche",
+        "Growth drivers identified — confidence level noted",
       ],
-      highlight: "Data-driven, not AI estimates",
+      highlight: "Sized from actual keyword demand",
     },
     {
-      icon: DollarSign,
-      title: "Pricing Strategy",
+      icon: Tag,
+      color: "secondary" as const,
       question: "What should I charge?",
-      description:
-        "Get validated pricing tiers based on what the market actually pays.",
+      narrative:
+        "Pricing tiers, unit economics, and willingness-to-pay scores — matched to one of eight monetization models based on what your market says it'll pay.",
       points: [
-        { icon: Users, text: "Competitor pricing analysis" },
-        { icon: Search, text: "WTP signals from customer discussions" },
-        { icon: CheckCircle2, text: "Recommended tier structure" },
+        "Tiered pricing when the model fits — or alternative monetization paths",
+        "Revenue projections: average revenue per user, lifetime value, payback ratio",
+        "Eight models covered — freemium, subscription, usage-based, and more",
       ],
-      highlight: "Based on real market data",
+      highlight: "Matched to community willingness-to-pay signals",
     },
     {
-      icon: Shield,
-      title: "Risk Assessment",
+      icon: Scale,
+      color: "success" as const,
       question: "Should I build this?",
-      description:
-        "Clear go/no-go verdict with confidence scores so you can decide with data.",
+      narrative:
+        "Clear Go, No-Go, or Conditional verdict backed by a confidence score, risk assessment, and trend analysis.",
       points: [
-        { icon: CheckCircle2, text: "GO / NO-GO / CONDITIONAL verdict" },
-        { icon: TrendingUp, text: "Confidence score with key factors" },
-        { icon: Search, text: "Key risks and mitigations identified" },
+        "Verdict with rationale",
+        "Confidence from market fit, competition, feasibility, and SEO",
+        "Trend momentum and longevity",
       ],
-      highlight: "Clear decision framework",
+      highlight: "Multi-factor risk assessment",
     },
   ];
 </script>
@@ -76,11 +68,13 @@
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-16">
-        <span class="section-label animate-fade-in">Beyond Keywords</span>
+        <span class="section-label animate-fade-in">The Numbers</span>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          The Numbers That <span class="text-gradient italic">Matter</span>
+          Real Numbers. <span class="text-gradient-animated italic"
+            >Not Vibes.</span
+          >
         </h2>
         <div
           class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
@@ -88,60 +82,208 @@
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
         >
-          Beyond pain points and keywords—get the business intelligence you need
-          to make confident decisions.
+          Beyond pain points and keywords — the business data you need to
+          decide, not debate.
         </p>
       </div>
 
-      <!-- Feature Cards Grid -->
-      <div
-        class="animate-fade-in delay-300 grid grid-cols-1 lg:grid-cols-3 gap-6"
-      >
-        {#each features as feature, i}
+      <!-- Data Blocks -->
+      <div class="space-y-10 sm:space-y-14">
+        {#each blocks as block, i}
           <div
-            class="p-6 lg:p-8 rounded-xl bg-bg-elevated border border-border hover:border-border-emphasis transition-all duration-200"
+            class="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8"
+            style="animation-delay: {300 + i * 200}ms"
           >
-            <!-- Icon & Title -->
-            <div class="flex items-start gap-4 mb-4">
-              <div
-                class="flex-shrink-0 w-12 h-12 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center"
-              >
-                <feature.icon class="w-6 h-6 text-accent" />
-              </div>
-              <div>
-                <h3
-                  class="font-display font-semibold text-xl text-text-primary mb-1"
+            <!-- Metric Callout (first on mobile, right on desktop) -->
+            <div class="order-1 md:order-2">
+              {#if block.color === "accent"}
+                <!-- Block 1: Funnel Bars -->
+                <div
+                  class="border-l-4 border-accent bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                  role="img"
+                  aria-label="Market funnel: TAM $2.4B, SAM $630M, SOM $12M"
                 >
-                  {feature.title}
-                </h3>
-                <p class="text-accent text-sm font-medium italic">
-                  "{feature.question}"
-                </p>
-              </div>
-            </div>
-
-            <!-- Description -->
-            <p class="text-text-secondary text-sm leading-relaxed mb-5">
-              {feature.description}
-            </p>
-
-            <!-- Feature Points -->
-            <div class="space-y-3 mb-5">
-              {#each feature.points as point}
-                <div class="flex items-center gap-3">
-                  <point.icon class="w-4 h-4 text-accent shrink-0" />
-                  <span class="text-sm text-text-muted">{point.text}</span>
+                  <div class="space-y-2.5">
+                    <div class="flex items-center gap-3">
+                      <span class="font-mono text-xs text-text-muted w-8"
+                        >TAM</span
+                      >
+                      <div
+                        class="flex-1 h-3 rounded-full bg-bg-surface overflow-hidden"
+                      >
+                        <div
+                          class="h-full w-full rounded-full bg-gradient-to-r from-accent to-accent-hover"
+                        ></div>
+                      </div>
+                      <span class="font-mono text-sm font-semibold text-accent"
+                        >$2.4B</span
+                      >
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span class="font-mono text-xs text-text-muted w-8"
+                        >SAM</span
+                      >
+                      <div
+                        class="flex-1 h-3 rounded-full bg-bg-surface overflow-hidden"
+                      >
+                        <div
+                          class="h-full w-[55%] rounded-full bg-gradient-to-r from-accent to-accent-hover"
+                        ></div>
+                      </div>
+                      <span class="font-mono text-sm font-semibold text-accent"
+                        >$630M</span
+                      >
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span class="font-mono text-xs text-text-muted w-8"
+                        >SOM</span
+                      >
+                      <div
+                        class="flex-1 h-3 rounded-full bg-bg-surface overflow-hidden"
+                      >
+                        <div
+                          class="h-full w-[30%] rounded-full bg-gradient-to-r from-accent to-accent-hover"
+                        ></div>
+                      </div>
+                      <span class="font-mono text-sm font-semibold text-accent"
+                        >$12M</span
+                      >
+                    </div>
+                  </div>
                 </div>
-              {/each}
+              {:else if block.color === "secondary"}
+                <!-- Block 2: Tier Pills -->
+                <div
+                  class="border-l-4 border-secondary bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                >
+                  <div class="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
+                    <span
+                      class="px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/30 font-mono text-sm font-semibold text-secondary"
+                      >Starter $19/mo</span
+                    >
+                    <span
+                      class="px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/30 font-mono text-sm font-semibold text-secondary"
+                      >Pro $49/mo</span
+                    >
+                    <span
+                      class="px-3 py-1.5 rounded-lg bg-secondary/10 border border-secondary/30 font-mono text-sm font-semibold text-secondary"
+                      >Enterprise $149/mo</span
+                    >
+                  </div>
+                  <div
+                    class="flex flex-wrap gap-x-4 gap-y-1 font-mono text-sm text-text-muted"
+                  >
+                    <span
+                      >ARPU <span class="text-text-secondary font-semibold"
+                        >$32/mo</span
+                      ></span
+                    >
+                    <span
+                      >LTV <span class="text-text-secondary font-semibold"
+                        >$384–960</span
+                      ></span
+                    >
+                    <span
+                      >Demand <span class="text-text-secondary font-semibold"
+                        >0.58</span
+                      ></span
+                    >
+                  </div>
+                </div>
+              {:else}
+                <!-- Block 3: Verdict Badge -->
+                <div
+                  class="border-l-4 border-success bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                >
+                  <div class="flex flex-wrap items-center gap-3 mb-3">
+                    <span
+                      class="px-4 py-2 rounded-lg bg-success/10 border border-success/30 font-display text-lg font-bold text-success"
+                      >GO</span
+                    >
+                    <div class="flex items-center gap-2">
+                      <span class="font-mono text-xs text-text-muted"
+                        >Confidence</span
+                      >
+                      <div
+                        class="w-20 h-2 rounded-full bg-bg-surface overflow-hidden"
+                        role="progressbar"
+                        aria-valuenow={72}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-label="Confidence score"
+                      >
+                        <div
+                          class="h-full w-[72%] rounded-full bg-success"
+                        ></div>
+                      </div>
+                      <span class="font-mono text-sm font-semibold text-success"
+                        >72%</span
+                      >
+                    </div>
+                  </div>
+                  <div class="flex gap-3 font-mono text-sm">
+                    <span class="text-warning">Risk: Medium</span>
+                    <span class="text-success">Trend: Growing ↑</span>
+                  </div>
+                </div>
+              {/if}
             </div>
 
-            <!-- Highlight -->
-            <div class="pt-4 border-t border-border">
+            <!-- Narrative (second on mobile, left on desktop) -->
+            <div class="order-2 md:order-1">
+              <div class="flex items-start gap-3 mb-3">
+                <div
+                  class="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center
+                    {block.color === 'accent'
+                    ? 'bg-accent/10 border border-accent/30'
+                    : block.color === 'secondary'
+                      ? 'bg-secondary/10 border border-secondary/30'
+                      : 'bg-success/10 border border-success/30'}"
+                >
+                  <block.icon
+                    class="w-5 h-5 {block.color === 'accent'
+                      ? 'text-accent'
+                      : block.color === 'secondary'
+                        ? 'text-secondary'
+                        : 'text-success'}"
+                  />
+                </div>
+                <h3
+                  class="font-display text-lg sm:text-xl font-semibold text-text-primary pt-1.5"
+                >
+                  {block.question}
+                </h3>
+              </div>
+
+              <p class="text-text-secondary text-sm leading-relaxed mb-4">
+                {block.narrative}
+              </p>
+
+              <div class="space-y-2 mb-4">
+                {#each block.points as point}
+                  <div class="flex items-start gap-2.5">
+                    <CheckCircle2
+                      class="w-4 h-4 shrink-0 mt-0.5 {block.color === 'accent'
+                        ? 'text-accent'
+                        : block.color === 'secondary'
+                          ? 'text-secondary'
+                          : 'text-success'}"
+                    />
+                    <span class="text-sm text-text-muted">{point}</span>
+                  </div>
+                {/each}
+              </div>
+
               <span
-                class="inline-flex items-center gap-2 text-xs font-semibold text-accent"
+                class="inline-flex items-center gap-2 text-xs font-semibold {block.color ===
+                'accent'
+                  ? 'text-accent'
+                  : block.color === 'secondary'
+                    ? 'text-secondary'
+                    : 'text-success'}"
               >
                 <CheckCircle2 class="w-3.5 h-3.5" />
-                {feature.highlight}
+                {block.highlight}
               </span>
             </div>
           </div>
@@ -152,8 +294,8 @@
       <div class="animate-fade-in delay-500 text-center mt-12">
         <div class="divider max-w-xs mx-auto"></div>
         <p class="text-text-muted italic text-lg mt-8">
-          "Every metric is mathematically derived from real-world data, not
-          generated or guessed by AI."
+          Built on search volume data and community signals — not surveys, gut
+          feelings, or guesswork.
         </p>
       </div>
     {/if}

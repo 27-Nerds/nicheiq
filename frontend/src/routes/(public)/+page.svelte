@@ -57,6 +57,6 @@
   <Credibility />
   <Pricing {session} />
   <FAQ />
-  <FinalCTA {session} />
+  <FinalCTA {session} hasSampleReport={data.hasSampleReport} />
   <Footer hasSampleReport={data.hasSampleReport} />
 </main>

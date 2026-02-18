@@ -1,6 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { User, Rocket, Users, Check, X } from "lucide-svelte";
+  import {
+    Compass,
+    Zap,
+    BarChart3,
+    ArrowRight,
+    Check,
+    X,
+  } from "lucide-svelte";
 
   let isVisible = $state(false);
 
@@ -22,60 +29,73 @@
 
   const personas = [
     {
-      icon: User,
-      title: "Solo Founders",
-      tagline: "Stop building the wrong thing",
+      icon: Compass,
+      title: "Opportunity Hunters",
+      tagline: "Find what people will actually pay for",
+      accentGradient:
+        "linear-gradient(to right, var(--color-accent), var(--color-accent-hover))",
       description:
-        "Stop wasting months on ideas nobody wants. Get market proof in 45 minutes—then build with confidence.",
+        "You know your niche but not what to build. NicheIQ scans thousands of real discussions to surface pain points and solution ideas — so you start with proof, not guesses.",
+      before: "Scrolling Reddit for weeks, hoping to spot a gap",
+      after: "5–10 data-backed ideas in 45 minutes",
       benefits: [
-        "Know your market size (TAM/SAM/SOM)",
-        "Get data-backed pricing recommendations",
-        "Clear go/no-go verdict with confidence score",
+        "Discover pain points people are already begging someone to solve",
+        "See willingness-to-pay scores before you commit",
+        "Get a full blueprint for the idea you pick",
       ],
     },
     {
-      icon: Rocket,
-      title: "Indie Hackers",
-      tagline: "Find proven niches fast",
+      icon: Zap,
+      title: "Serial Builders",
+      tagline: "Explore more niches, faster",
+      accentGradient:
+        "linear-gradient(to right, var(--color-secondary), var(--color-secondary-light))",
       description:
-        "Test 5 ideas in an afternoon instead of committing 6 months to one. Find the winners fast.",
+        "You explore multiple niches per month. The faster you find a winner, the sooner you ship. NicheIQ turns niche exploration from a weeks-long grind into an afternoon sprint.",
+      before: "Explore one niche for weeks, hope you picked right",
+      after: "Scan 5 niches in one afternoon, chase the best signal",
       benefits: [
-        "Analyze 1,000+ posts in minutes",
-        "See WTP (willingness-to-pay) scores",
-        "Know exactly what to charge from day one",
+        "Explore 5 niches in a single afternoon",
+        "See which pain points have real demand — not just noise",
+        "Skip the manual keyword and competitor research entirely",
       ],
     },
     {
-      icon: Users,
-      title: "Product Teams",
-      tagline: "Data-driven ideation",
+      icon: BarChart3,
+      title: "Data-Driven Teams",
+      tagline: "Gut feelings don't impress stakeholders",
+      accentGradient:
+        "linear-gradient(to right, rgba(34, 197, 94, 0.8), rgba(34, 197, 94, 0.5))",
       description:
-        "Walk into stakeholder meetings with proof, not guesses. Every insight links to its source.",
+        "You need proof before you pivot. Every insight needs a source. Walk into meetings with market data, competitive landscape, and a clear verdict — not opinions.",
+      before: "Pitch niche ideas with hunches, debate for weeks",
+      after: "Present market proof, get buy-in, ship faster",
       benefits: [
-        "Market sizing for stakeholder buy-in",
-        "Risk assessment with confidence scores",
-        "GTM blueprint with 30-day playbook",
+        "Market sizing you can defend in a board meeting",
+        "Competitive landscape + demand signals in one report",
+        "30-day GTM blueprint — no guessing on launch",
       ],
     },
   ];
 
   const antiPersonas = [
-    "Enterprise teams needing custom qualitative research",
-    "Agencies wanting white-label reports",
-    "Researchers studying non-English markets",
+    "Qualitative interviews or custom user research (we use public data)",
+    "White-label or agency reselling",
+    "Non-English markets",
   ];
 </script>
 
 <section id="who-its-for" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
-      <!-- Section Header - Mobile optimized -->
-      <div class="mb-10 sm:mb-16">
+      <!-- Section Header -->
+      <div class="mb-12 sm:mb-16">
         <span class="section-label animate-fade-in">Who It's For</span>
         <h2
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
-          Built for <span class="text-gradient italic">Builders Who Ship</span>
+          Stop Guessing.
+          <span class="text-gradient-animated italic">Start Shipping.</span>
         </h2>
         <div
           class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
@@ -83,76 +103,129 @@
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
-          For makers who'd rather research in 45 minutes than guess for 6
-          months.
+          Give us a niche. We'll find what's worth building in it.
         </p>
       </div>
 
-      <!-- Persona Cards - Mobile optimized -->
+      <!-- Persona Cards -->
       <div
         class="animate-fade-in delay-300 grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-8 mb-10 sm:mb-16"
       >
         {#each personas as persona, i}
           <div
-            class="group p-6 sm:p-8 bg-bg-elevated border border-border rounded-xl hover:border-border-accent transition-all hover:shadow-glow"
-            style="animation-delay: {300 + i * 100}ms"
+            class="relative flex flex-col bg-bg-elevated border border-border rounded-xl overflow-hidden"
+            style="animation-delay: {300 + i * 120}ms"
           >
-            <!-- Icon -->
-            <div
-              class="w-12 sm:w-14 h-12 sm:h-14 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center mb-4 sm:mb-6 group-hover:bg-accent/20 transition-colors"
-            >
-              <persona.icon class="w-6 sm:w-7 h-6 sm:h-7 text-accent" />
-            </div>
+            <!-- Top accent gradient bar -->
+            <div class="h-1.5" style="background: {persona.accentGradient}"></div>
 
-            <!-- Content -->
-            <h3
-              class="font-display font-semibold text-lg sm:text-xl text-text-primary mb-1.5 sm:mb-2"
-            >
-              {persona.title}
-            </h3>
-            <p class="text-accent text-xs sm:text-sm font-medium mb-3 sm:mb-4">
-              {persona.tagline}
-            </p>
-            <p class="text-text-secondary text-sm leading-relaxed mb-4 sm:mb-6">
-              {persona.description}
-            </p>
+            <!-- Card content -->
+            <div class="relative flex flex-col flex-1 p-6 sm:p-8">
+              <!-- Icon + Title + Tagline -->
+              <div class="flex items-start gap-4 mb-4">
+                <div
+                  class="w-12 sm:w-14 h-12 sm:h-14 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center flex-shrink-0"
+                >
+                  <persona.icon class="w-6 sm:w-7 h-6 sm:h-7 text-accent" />
+                </div>
+                <div>
+                  <h3
+                    class="font-display font-semibold text-lg sm:text-xl text-text-primary"
+                  >
+                    {persona.title}
+                  </h3>
+                  <p class="text-accent text-xs sm:text-sm font-medium mt-0.5">
+                    {persona.tagline}
+                  </p>
+                </div>
+              </div>
 
-            <!-- Benefits -->
-            <ul class="space-y-2.5 sm:space-y-3">
-              {#each persona.benefits as benefit}
-                <li class="flex items-start gap-2.5 sm:gap-3 text-sm">
+              <!-- Description -->
+              <p class="text-text-secondary text-sm leading-relaxed mb-5">
+                {persona.description}
+              </p>
+
+              <!-- Before/After transformation strip -->
+              <div class="rounded-lg border border-border overflow-hidden mb-5">
+                <!-- Before -->
+                <div
+                  class="flex items-start gap-2.5 px-3.5 py-2.5 bg-bg-surface"
+                >
+                  <X class="w-4 h-4 text-error flex-shrink-0 mt-0.5" />
+                  <span
+                    class="font-mono text-[10px] uppercase tracking-widest text-text-muted flex-shrink-0 mt-0.5"
+                    >Before</span
+                  >
+                  <span class="text-sm text-text-muted line-through"
+                    >{persona.before}</span
+                  >
+                </div>
+
+                <!-- Pulsing arrow divider -->
+                <div class="flex items-center justify-center py-1.5 relative">
+                  <div class="absolute inset-x-0 top-1/2 h-px bg-border"></div>
                   <div
-                    class="flex-shrink-0 w-4 sm:w-5 h-4 sm:h-5 rounded-full bg-success/10 border border-success/50 flex items-center justify-center mt-0.5"
+                    class="arrow-pulse relative z-10 w-7 h-7 rounded-full bg-accent/10 border border-accent/30 flex items-center justify-center"
                   >
-                    <Check class="w-2.5 sm:w-3 h-2.5 sm:h-3 text-success" />
+                    <ArrowRight class="w-3.5 h-3.5 text-accent" />
                   </div>
-                  <span class="text-text-muted text-xs sm:text-sm"
-                    >{benefit}</span
+                </div>
+
+                <!-- After -->
+                <div
+                  class="flex items-start gap-2.5 px-3.5 py-2.5 border-l-2 border-success/30 bg-gradient-to-r from-success/[0.06] via-accent/[0.04] to-transparent"
+                >
+                  <Check class="w-4 h-4 text-success flex-shrink-0 mt-0.5" />
+                  <span
+                    class="font-mono text-[10px] uppercase tracking-widest text-success flex-shrink-0 mt-0.5"
+                    >After</span
                   >
-                </li>
-              {/each}
-            </ul>
+                  <span class="text-sm text-text-primary font-semibold"
+                    >{persona.after}</span
+                  >
+                </div>
+              </div>
+
+              <!-- Benefits -->
+              <ul class="space-y-2.5 flex-1">
+                {#each persona.benefits as benefit}
+                  <li class="flex items-start gap-2.5 text-sm">
+                    <div
+                      class="flex-shrink-0 w-5 h-5 rounded-full bg-success/10 border border-success/50 flex items-center justify-center mt-0.5"
+                    >
+                      <Check class="w-3 h-3 text-success" />
+                    </div>
+                    <span class="text-text-muted text-sm leading-relaxed"
+                      >{benefit}</span
+                    >
+                  </li>
+                {/each}
+              </ul>
+
+            </div>
           </div>
         {/each}
       </div>
 
-      <!-- Anti-Persona Section - Mobile optimized -->
+      <!-- Anti-Persona Section -->
       <div class="animate-fade-in delay-500 max-w-2xl mx-auto">
         <div class="p-5 sm:p-6 bg-bg-surface border border-border rounded-xl">
           <h4
             class="font-display font-semibold text-text-primary mb-3 sm:mb-4 text-center text-sm sm:text-base"
           >
-            Not the right fit for everyone
+            We're not for everyone
           </h4>
           <p
             class="text-text-muted text-xs sm:text-sm text-center mb-3 sm:mb-4"
           >
-            NicheIQ is specialized for fast SaaS market research. For these use
-            cases, consider alternatives:
+            NicheIQ is built for fast SaaS niche research. These use cases need
+            different tools:
           </p>
           <ul class="space-y-2">
             {#each antiPersonas as antiPersona}
-              <li class="flex items-center gap-2.5 sm:gap-3 text-xs sm:text-sm">
+              <li
+                class="flex items-center gap-2.5 sm:gap-3 text-xs sm:text-sm"
+              >
                 <X
                   class="w-3.5 sm:w-4 h-3.5 sm:h-4 text-text-muted flex-shrink-0"
                 />
@@ -165,3 +238,21 @@
     {/if}
   </div>
 </section>
+
+<style>
+  .arrow-pulse {
+    animation: arrow-pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes arrow-pulse {
+    0%,
+    100% {
+      opacity: 0.7;
+      transform: scale(0.9);
+    }
+    50% {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+  }
+</style>

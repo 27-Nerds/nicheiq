@@ -46,7 +46,7 @@
     {
       question: "Can I get a refund?",
       answer:
-        "<p>Yes. If your report doesn't deliver, you get a full refund — the research credit will be returned to your account. If you have any other questions, please email hello@nicheiq.com within 7 days. If a research is interrupted due to a technical issue, you'll see a Resume option and the process will continue from where it stopped. One completed report uses one research credit and includes a full niche research and a ready-to-launch landing page (optional).</p>",
+        "<p>Yes. If your report doesn't deliver, you get a full refund — the research credit will be returned to your account. If you have any other questions, please email hello@nicheiq.dev within 7 days. If a research is interrupted due to a technical issue, you'll see a Resume option and the process will continue from where it stopped. One completed report uses one research credit and includes a full niche research and a ready-to-launch landing page (optional).</p>",
     },
     {
       question: "What if my niche is too specialized?",
@@ -114,7 +114,7 @@
         <p class="text-text-muted">
           Still have questions?
           <a
-            href="mailto:hello@nicheiq.com"
+            href="mailto:hello@nicheiq.dev"
             class="text-accent hover:text-accent-hover hover:underline font-medium transition-colors"
           >
             Contact us

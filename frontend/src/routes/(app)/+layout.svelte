@@ -168,7 +168,7 @@
         <p>NicheIQ - AI-Powered Market Research</p>
         <div class="flex items-center gap-4">
           <a
-            href="mailto:support@nicheiq.com"
+            href="mailto:hello@nicheiq.dev"
             class="hover:text-accent transition-colors">Support</a
           >
           <span class="text-border-emphasis">·</span>

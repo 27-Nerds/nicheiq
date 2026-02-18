@@ -1,25 +1,22 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
-  import {
-    FileText,
-    ExternalLink,
-    ArrowUp,
-    MessageSquare,
-    TrendingUp,
-    Target,
-    CheckCircle2,
-    XCircle,
-    PieChart,
-    DollarSign,
-    Shield,
-    Users,
-    Sparkles,
-    BadgeCheck,
-    Key,
-    Link2,
-    Ban,
-  } from "lucide-svelte";
+  import { FileText } from "lucide-svelte";
+  import PainAnalysis from "$lib/components/sections/PainAnalysis.svelte";
+  import SEOKeywords from "$lib/components/sections/SEOKeywords.svelte";
+  import Competitors from "$lib/components/sections/Competitors.svelte";
+  import MarketSizingSection from "$lib/components/sections/MarketSizing.svelte";
+  import type {
+    DetailedPainPoint,
+    PainPointAnalytics,
+    SolutionDetails,
+    SEOStrategy,
+    SEOAnalytics,
+    CompetitorProfile,
+    CompetitiveAnalysis,
+    CompetitiveAnalytics,
+    MarketSizing as MarketSizingType,
+  } from "$lib/types/report";
 
   interface Props {
     hasSampleReport?: boolean;
@@ -29,8 +26,19 @@
 
   let isVisible = $state(false);
   let activeTab = $state<
-    "pain_points" | "seo_keywords" | "competitors" | "business_intel"
+    "pain_points" | "seo_keywords" | "competitors" | "market_size"
   >("pain_points");
+
+  const tabs = [
+    { id: "pain_points", label: "Pain Points" },
+    { id: "seo_keywords", label: "Keywords" },
+    { id: "competitors", label: "Competitors" },
+    { id: "market_size", label: "Market Size" },
+  ] as const;
+
+  const activeTabLabel = $derived(
+    tabs.find((t) => t.id === activeTab)?.label ?? "",
+  );
 
   onMount(() => {
     const observer = new IntersectionObserver(
@@ -48,126 +56,387 @@
     return () => observer.disconnect();
   });
 
-  const tabs = [
-    { id: "pain_points", label: "Pain Points", icon: Target },
-    { id: "seo_keywords", label: "SEO Keywords", icon: TrendingUp },
-    { id: "competitors", label: "Competitors", icon: Users },
-    { id: "business_intel", label: "Business Intel", icon: PieChart },
-  ] as const;
+  // --- Mock data ---
 
-  const samplePainPoints = [
+  const mockPainPoints: DetailedPainPoint[] = [
     {
       title: "Manual content repurposing consuming 3-5 hours daily",
-      severity: 0.85,
-      wtp: 0.78,
-      mentions: 47,
-      source: "r/marketing/xyz789",
-      upvotes: 143,
-      date: "Mar 15, 2024",
+      description:
+        "Creators and marketers spend hours manually reformatting content for different platforms. Copy-pasting, resizing images, rewriting captions — it's repetitive and error-prone.",
+      mention_count: 47,
+      severity_score: 0.85,
+      willingness_to_pay: 0.78,
+      opportunity_level: "high",
+      representative_quotes: [
+        "I spend 3 hours every day just reformatting my YouTube content for Twitter, LinkedIn, and Instagram. It's mind-numbing.",
+        "Would happily pay $50/mo to automate this — I'm losing productive hours every week.",
+      ],
+      source_platforms: ["Reddit", "Twitter"],
+      categories: ["Productivity", "Content Creation"],
+      source_post_ids: ["r_marketing_xyz789"],
+      affected_segments: ["Solo creators", "Marketing teams"],
+      solution_approach:
+        "Automated multi-platform content adaptation with brand voice preservation",
     },
     {
       title: "Inconsistent brand voice across platforms",
-      severity: 0.72,
-      wtp: 0.65,
-      mentions: 34,
-      source: "r/SaaS/abc123",
-      upvotes: 89,
-      date: "Mar 12, 2024",
+      description:
+        "When repurposing manually, tone and messaging drift between platforms. LinkedIn gets too casual, Twitter gets too formal.",
+      mention_count: 34,
+      severity_score: 0.72,
+      willingness_to_pay: 0.65,
+      opportunity_level: "high",
+      representative_quotes: [
+        "Our brand sounds completely different on every platform. It's embarrassing when someone follows us everywhere.",
+      ],
+      source_platforms: ["Reddit"],
+      categories: ["Brand", "Content Creation"],
+      source_post_ids: ["r_saas_abc123"],
+      affected_segments: ["Marketing teams", "Agencies"],
+      solution_approach:
+        "Brand voice profiles with per-platform adaptation rules",
     },
     {
       title: "Analytics scattered across 5+ tools",
-      severity: 0.68,
-      wtp: 0.71,
-      mentions: 28,
-      source: "r/startups/def456",
-      upvotes: 67,
-      date: "Mar 10, 2024",
+      description:
+        "No single view of how repurposed content performs across platforms. Checking 5 dashboards daily to understand what's working.",
+      mention_count: 28,
+      severity_score: 0.68,
+      willingness_to_pay: 0.71,
+      opportunity_level: "medium",
+      representative_quotes: [
+        "I have Buffer, Hootsuite analytics, native Twitter analytics, LinkedIn stats — it's insane. Just give me one dashboard.",
+      ],
+      source_platforms: ["Reddit", "Twitter"],
+      categories: ["Analytics", "Productivity"],
+      source_post_ids: ["r_startups_def456"],
+      affected_segments: ["Solo creators", "Small teams"],
+      solution_approach:
+        "Unified cross-platform content performance dashboard",
     },
   ];
 
-  const sampleKeywords = [
+  const mockPainAnalytics: PainPointAnalytics = {
+    total_pain_points: 5,
+    high_severity_count: 3,
+    quadrant_distribution: {
+      high_severity_high_wtp: 2,
+      high_severity_low_wtp: 1,
+      low_severity_high_wtp: 1,
+      low_severity_low_wtp: 1,
+    },
+  };
+
+  const mockSolution: SolutionDetails = {
+    solution_name: "ContentFlow",
+    description:
+      "Content repurposing platform that transforms long-form content into platform-optimized posts while maintaining brand voice.",
+    value_proposition:
+      "Turn one piece of content into 10+ platform-ready posts in minutes, not hours.",
+    core_features: [
+      "Auto-format for 6+ platforms",
+      "Brand voice matching",
+      "Batch processing",
+      "Analytics dashboard",
+    ],
+  };
+
+  const mockSEOStrategy: SEOStrategy = {
+    total_keywords_analyzed: 156,
+    total_monthly_volume: 89400,
+    key_findings: [
+      "156 keyword opportunities identified across 5 tiers.",
+      "23 quick wins with low competition and decent volume.",
+      "Strong commercial intent cluster around 'content repurposing tool' variations.",
+    ],
+    tier_0_keywords: [
+      {
+        keyword: "content repurposing tool",
+        search_volume: 2400,
+        competition: "0.85",
+        opportunity_score: 82,
+        keyword_difficulty: 72,
+        intent: "Commercial",
+        strategy: "Target with homepage + comparison pages",
+      },
+      {
+        keyword: "ai content automation",
+        search_volume: 1800,
+        competition: "0.76",
+        opportunity_score: 75,
+        keyword_difficulty: 65,
+        intent: "Commercial",
+      },
+    ],
+    tier_0_strategy:
+      "Target on homepage and key landing pages. These are your money keywords.",
+    tier_1_keywords: [
+      {
+        keyword: "repurpose video content",
+        search_volume: 1200,
+        competition: "0.38",
+        opportunity_score: 88,
+        keyword_difficulty: 32,
+        intent: "Informational",
+      },
+      {
+        keyword: "content automation software",
+        search_volume: 980,
+        competition: "0.51",
+        opportunity_score: 71,
+        keyword_difficulty: 45,
+        intent: "Commercial",
+      },
+      {
+        keyword: "social media content from blog",
+        search_volume: 720,
+        competition: "0.42",
+        opportunity_score: 79,
+        keyword_difficulty: 38,
+        intent: "Informational",
+      },
+    ],
+    tier_1_quick_win_strategy:
+      "Low-hanging fruit. Create dedicated blog posts for each within the first month.",
+    tier_2_keywords: [
+      {
+        keyword: "how to repurpose podcast episodes",
+        search_volume: 480,
+        competition: "0.29",
+        opportunity_score: 84,
+        keyword_difficulty: 25,
+        intent: "Informational",
+      },
+      {
+        keyword: "content calendar automation",
+        search_volume: 390,
+        competition: "0.55",
+        opportunity_score: 62,
+        keyword_difficulty: 48,
+        intent: "Commercial",
+      },
+    ],
+    tier_2_strategy:
+      "Medium-term content targets. Build supporting content that links back to Tier 0 pages.",
+    content_strategy:
+      "Pillar page strategy: Create 3 pillar pages around content repurposing, automation, and multi-platform publishing.",
+    competitive_positioning:
+      "Position as the affordable, creator-first alternative to enterprise tools like Sprout Social.",
+  };
+
+  const mockSEOAnalytics: SEOAnalytics = {
+    total_keywords: 156,
+    total_search_volume: 89400,
+    avg_competition: 0.52,
+    keyword_diversity_score: 0.73,
+    high_volume_keywords: 23,
+    tier0_count: 5,
+    tier1_count: 23,
+    tier2_count: 42,
+    tier3_count: 48,
+    tier4_count: 38,
+  };
+
+  const mockCompetitorProfiles: CompetitorProfile[] = [
     {
-      keyword: "content repurposing tool",
-      volume: 2400,
-      difficulty: 0.42,
-      tier: "Quick Win",
+      name: "OpusClip",
+      url: "https://opus.pro",
+      competitor_type: "DIRECT",
+      description:
+        "Video repurposing tool focused on short-form content creation",
+      key_features: [
+        "Auto-captions",
+        "AI scene detection",
+        "Multi-platform export",
+        "Virality score",
+      ],
+      pricing_model: "$15-69/mo SaaS subscription",
+      strengths: [
+        "Strong AI clip selection",
+        "Good social integrations",
+        "Growing user base",
+      ],
+      weaknesses: [
+        "Video-only (no text/audio)",
+        "Limited brand customization",
+        "No B-roll library",
+      ],
     },
     {
-      keyword: "ai content automation",
-      volume: 1800,
-      difficulty: 0.56,
-      tier: "High Value",
+      name: "Descript",
+      url: "https://descript.com",
+      competitor_type: "DIRECT",
+      description:
+        "All-in-one video/audio editor with transcription and repurposing features",
+      key_features: [
+        "Timeline editor",
+        "Auto-captions",
+        "Transcription",
+        "Screen recording",
+      ],
+      pricing_model: "$24-33/mo SaaS subscription",
+      strengths: [
+        "Powerful editor",
+        "Good transcription",
+        "Established brand",
+      ],
+      weaknesses: [
+        "Steep learning curve",
+        "Expensive for basic repurposing",
+        "No brand voice matching",
+      ],
     },
     {
-      keyword: "social media scheduler",
-      volume: 5400,
-      difficulty: 0.68,
-      tier: "Premium",
-    },
-    {
-      keyword: "repurpose video content",
-      volume: 1200,
-      difficulty: 0.38,
-      tier: "Quick Win",
-    },
-    {
-      keyword: "content automation software",
-      volume: 980,
-      difficulty: 0.51,
-      tier: "High Value",
+      name: "Buffer",
+      url: "https://buffer.com",
+      competitor_type: "PARTIAL",
+      description: "Social media scheduling and analytics platform",
+      key_features: [
+        "Multi-platform scheduling",
+        "Analytics",
+        "Team collaboration",
+        "Content calendar",
+      ],
+      pricing_model: "$6-120/mo SaaS subscription",
+      strengths: ["Simple UX", "Wide platform support", "Affordable"],
+      weaknesses: [
+        "No content transformation",
+        "Basic analytics",
+        "No AI features",
+      ],
     },
   ];
 
-  const competitorFeatures = [
-    {
-      feature: "Auto-Captions",
-      opusclip: true,
-      descript: true,
-      yourmvp: true,
-      gap: false,
-    },
-    {
-      feature: "Timeline Editor",
-      opusclip: false,
-      descript: true,
-      yourmvp: false,
-      gap: false,
-    },
-    {
-      feature: "Multi-Platform Export",
-      opusclip: true,
-      descript: true,
-      yourmvp: true,
-      gap: false,
-    },
-    {
-      feature: "AI Scene Detection",
-      opusclip: true,
-      descript: false,
-      yourmvp: true,
-      gap: false,
-    },
-    {
-      feature: "Contextual B-Roll",
-      opusclip: false,
-      descript: false,
-      yourmvp: true,
-      gap: true,
-    },
-    {
-      feature: "Brand Voice Matching",
-      opusclip: false,
-      descript: false,
-      yourmvp: true,
-      gap: true,
-    },
-  ];
+  const mockCompetitiveAnalysis: CompetitiveAnalysis = {
+    solution_landscapes: [
+      {
+        solution_name: "ContentFlow",
+        competitors: ["OpusClip", "Descript", "Buffer"],
+        market_gaps: [
+          "Contextual B-Roll generation",
+          "Brand voice matching across platforms",
+          "Unified analytics dashboard",
+        ],
+        differentiation_opportunities: [
+          "Multi-format (not just video)",
+          "Brand voice preservation",
+          "One-click publishing",
+        ],
+        competitive_intensity: "Medium",
+        recommended_positioning:
+          "Position as the all-in-one repurposing platform for creators who publish across 5+ channels.",
+        pricing_insights:
+          "Competitors price $15-69/mo. Sweet spot at $29-79/mo with a free tier.",
+      },
+    ],
+    strategic_recommendations:
+      "Focus on the multi-format gap. Most competitors specialize in video-only. Text-to-social and audio-to-social are underserved.",
+    top_opportunities: [
+      "Underserved text-to-social segment",
+      "No strong player in brand voice matching",
+    ],
+  };
 
-  const keywordStats = {
-    totalKeywords: 156,
-    avgVolume: 2340,
-    quickWins: 23,
-    highValue: 18,
+  const mockCompetitiveAnalytics: CompetitiveAnalytics = {
+    competitor_count: 5,
+    market_saturation_score: 0.55,
+    differentiation_strength: "Strong",
+    market_gaps_identified: 3,
+    avg_competitor_features: 8,
+    feature_comparison: {
+      feature_groups: [
+        {
+          group_name: "Auto-Captions",
+          description: "Automatic subtitle generation",
+          competitors_with_feature: ["OpusClip", "Descript"],
+          original_features: [],
+        },
+        {
+          group_name: "Multi-Platform Export",
+          description: "Export optimized for each platform",
+          competitors_with_feature: ["OpusClip", "Descript", "Buffer"],
+          original_features: [],
+        },
+        {
+          group_name: "AI Scene Detection",
+          description: "Intelligent content segmentation",
+          competitors_with_feature: ["OpusClip"],
+          original_features: [],
+        },
+        {
+          group_name: "Brand Voice Matching",
+          description: "Maintain consistent voice across platforms",
+          competitors_with_feature: [],
+          original_features: [],
+        },
+        {
+          group_name: "Contextual B-Roll",
+          description: "Auto-suggest relevant B-roll footage",
+          competitors_with_feature: [],
+          original_features: [],
+        },
+      ],
+      total_unique_groups: 8,
+      avg_features_per_competitor: 8,
+    },
+  };
+
+  const mockMarketSizing: MarketSizingType = {
+    market_viability_verdict: "Strong",
+    market_growth_rate: "18% YoY",
+    market_saturation_level: "Low",
+    market_timing_assessment: "Growth",
+    total_addressable_market: "$2.4B",
+    serviceable_available_market: "$340M",
+    serviceable_obtainable_market_y1: "$8.5M",
+    serviceable_obtainable_market_y3: "$42M",
+    keyword_demand_signal: "High",
+    pain_point_frequency: "Very High",
+    competitor_market_presence: "Moderate",
+    primary_methodology:
+      "Bottom-up keyword demand + top-down market reports",
+    recommended_entry_strategy:
+      "Start with solo creators doing $0-5K/mo in content revenue. Freemium with $29/mo Pro tier.",
+    methodology_explanation:
+      "Combined search volume analysis with social discussion frequency and competitor revenue estimates.",
+    data_sources_used: [
+      "Reddit discussions",
+      "Google Trends",
+      "SEMrush keyword data",
+      "Competitor pricing pages",
+    ],
+    viability_rationale:
+      "Strong demand signals from 89+ discussions, growing search volume, and clear competitive gaps support market entry.",
+    growth_drivers: [
+      "Creator economy growing 20%+ annually",
+      "Reducing barrier to entry",
+      "Multi-platform publishing becoming standard",
+    ],
+    risk_factors: [
+      "Enterprise players may enter",
+      "Commoditization risk",
+      "Platform API dependency",
+    ],
+    segment_sizing: [
+      {
+        segment_name: "Solo Creators",
+        tam_estimate: "$800M",
+        sam_estimate: "$120M",
+        som_estimate: "$5M",
+        confidence_level: "High",
+        sizing_methodology:
+          "Reddit discussion frequency + creator platform data",
+      },
+      {
+        segment_name: "Marketing Teams (SMB)",
+        tam_estimate: "$1.6B",
+        sam_estimate: "$220M",
+        som_estimate: "$3.5M",
+        confidence_level: "Medium",
+        sizing_methodology:
+          "LinkedIn job postings + SaaS market reports",
+      },
+    ],
   };
 </script>
 
@@ -176,11 +445,11 @@
     {#if isVisible}
       <!-- Section Header -->
       <div class="mb-12">
-        <span class="section-label animate-fade-in">Sample Report</span>
+        <span class="section-label animate-fade-in">Inside the Report</span>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          This Is Your <span class="text-gradient italic">Actual Report</span>
+          What You <span class="text-gradient italic">Actually Get</span>
         </h2>
         <div
           class="w-16 h-1 bg-gradient-to-r from-accent to-accent-hover rounded-full animate-fade-in delay-200"
@@ -188,502 +457,186 @@
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
-          A real example of a Business Blueprint generated by NicheIQ.
+          See the exact research that tells you whether an idea is worth
+          building.
         </p>
         <p
           class="animate-fade-in delay-300 text-sm sm:text-base text-text-muted mt-4 sm:mt-5 max-w-2xl"
         >
-          Below is a section from a market research report for a content
-          repurposing idea — showing validated pain points, demand signals, and
-          why this niche is worth building.
+          This is a real report for a content repurposing tool. Pain points,
+          keywords, competitors, and the final verdict — all from one run.
         </p>
       </div>
 
-      <!-- Tab Navigation -->
+      <!-- Hero Stat Strip -->
       <div
-        class="animate-fade-in delay-300 flex flex-wrap justify-center gap-2 mb-8"
+        class="animate-fade-in delay-300 flex justify-center gap-6 sm:gap-10 mb-8 text-center"
+      >
+        <div>
+          <div class="text-2xl font-display font-bold text-accent">156</div>
+          <div class="text-xs text-text-muted">Keywords</div>
+        </div>
+        <div>
+          <div class="text-2xl font-display font-bold text-text-primary">
+            5+
+          </div>
+          <div class="text-xs text-text-muted">Pain Points</div>
+        </div>
+        <div>
+          <div class="text-2xl font-display font-bold text-text-primary">
+            $2.4B
+          </div>
+          <div class="text-xs text-text-muted">TAM</div>
+        </div>
+        <div>
+          <div class="text-2xl font-display font-bold text-success">GO</div>
+          <div class="text-xs text-text-muted">Verdict</div>
+        </div>
+      </div>
+
+      <!-- Pill Tab Navigation -->
+      <div
+        class="animate-fade-in delay-300 flex justify-center gap-1 mb-8
+               bg-bg-elevated border border-border rounded-lg p-1 max-w-fit mx-auto"
       >
         {#each tabs as tab}
-          {@const Icon = tab.icon}
           <button
             onclick={() => (activeTab = tab.id)}
-            class="px-4 py-2.5 rounded-lg font-body font-medium text-sm transition-all duration-200 flex items-center gap-2
-						{activeTab === tab.id
-              ? 'bg-accent/10 text-accent border border-accent/50'
-              : 'bg-bg-surface text-text-muted hover:text-text-primary border border-border hover:border-border-emphasis'}"
+            class="px-3 sm:px-4 py-2.5 rounded-md text-sm font-medium transition-all
+              {activeTab === tab.id
+              ? 'bg-accent/10 text-accent shadow-sm'
+              : 'text-text-muted hover:text-text-secondary'}"
           >
-            <Icon class="w-4 h-4" />
             {tab.label}
           </button>
         {/each}
       </div>
 
-      <!-- Tab Content -->
-      <div class="animate-fade-in delay-400 max-w-4xl mx-auto">
-        {#if activeTab === "pain_points"}
-          <div in:fade={{ duration: 200 }}>
-            <div
-              class="bg-bg-elevated border border-border rounded-xl p-6 sm:p-8"
-            >
+      <!-- Report Window Frame -->
+      <div
+        class="animate-fade-in delay-400 max-w-5xl mx-auto rounded-xl border border-border
+               overflow-hidden shadow-sm"
+      >
+        <!-- Toolbar strip -->
+        <div
+          class="flex items-center justify-between px-4 py-2.5 bg-bg-surface border-b border-border"
+        >
+          <div class="flex items-center gap-2">
+            <div class="flex gap-1.5">
               <div
-                class="flex items-center gap-3 mb-6 pb-4 border-b border-border"
-              >
-                <div
-                  class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center"
-                >
-                  <Target class="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h3 class="font-display font-semibold text-text-primary">
-                    Pain Points We Found
-                  </h3>
-                  <p class="text-sm text-text-muted">
-                    Extracted from 89 social discussions
-                  </p>
-                </div>
-              </div>
-
-              <div class="space-y-4">
-                {#each samplePainPoints as point, i}
-                  <div
-                    class="p-4 rounded-lg bg-bg-surface border border-border"
-                  >
-                    <div class="flex items-start justify-between gap-4 mb-3">
-                      <h5 class="font-medium text-text-primary">
-                        {point.title}
-                      </h5>
-                      <span class="badge badge-success text-xs shrink-0"
-                        >#{i + 1}</span
-                      >
-                    </div>
-
-                    <div
-                      class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3 text-sm"
-                    >
-                      <div>
-                        <span class="text-xs text-text-muted block"
-                          >Severity</span
-                        >
-                        <span class="font-mono text-accent font-semibold"
-                          >{point.severity}</span
-                        >
-                      </div>
-                      <div>
-                        <span class="text-xs text-text-muted block"
-                          >WTP Score</span
-                        >
-                        <span class="font-mono text-accent-light font-semibold"
-                          >{point.wtp}</span
-                        >
-                      </div>
-                      <div>
-                        <span class="text-xs text-text-muted block"
-                          >Mentions</span
-                        >
-                        <span class="font-mono text-text-primary font-semibold"
-                          >{point.mentions}</span
-                        >
-                      </div>
-                      <div>
-                        <span class="text-xs text-text-muted block">Source</span
-                        >
-                        <span
-                          class="text-accent text-sm flex items-center gap-1 cursor-pointer hover:underline"
-                        >
-                          {point.source}
-                          <ExternalLink class="w-3 h-3" />
-                        </span>
-                      </div>
-                    </div>
-
-                    <div
-                      class="flex items-center gap-4 text-xs text-text-muted"
-                    >
-                      <span class="flex items-center gap-1">
-                        <ArrowUp class="w-3 h-3" />
-                        {point.upvotes} upvotes
-                      </span>
-                      <span class="flex items-center gap-1">
-                        <MessageSquare class="w-3 h-3" />
-                        {point.date}
-                      </span>
-                    </div>
-                  </div>
-                {/each}
-              </div>
-
-              <!-- Core Insight -->
-              <div
-                class="mt-6 p-4 rounded-lg bg-accent/5 border border-accent/20"
-              >
-                <p class="text-sm text-text-secondary">
-                  <span class="font-semibold text-accent">Core Insight:</span> 47
-                  mentions of time-consuming manual work with 0.78 willingness-to-pay
-                  score suggests strong demand for automation.
-                </p>
-              </div>
+                class="w-2.5 h-2.5 rounded-full bg-border-emphasis"
+              ></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-border"></div>
+              <div class="w-2.5 h-2.5 rounded-full bg-border"></div>
             </div>
-          </div>
-        {:else if activeTab === "seo_keywords"}
-          <div in:fade={{ duration: 200 }}>
-            <div
-              class="bg-bg-elevated border border-border rounded-xl p-6 sm:p-8"
+            <span
+              class="text-xs text-text-muted font-mono ml-2 hidden sm:inline"
             >
-              <div
-                class="flex items-center gap-3 mb-6 pb-4 border-b border-border"
-              >
-                <div
-                  class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center"
-                >
-                  <TrendingUp class="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h3 class="font-display font-semibold text-text-primary">
-                    SEO Keyword Opportunities
-                  </h3>
-                  <p class="text-sm text-text-muted">
-                    Live search data validation
-                  </p>
-                </div>
-              </div>
-
-              <!-- Stats Summary -->
-              <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-                <div
-                  class="text-center p-3 rounded-lg bg-bg-surface border border-border"
-                >
-                  <span
-                    class="block text-2xl font-display font-bold text-accent"
-                    >{keywordStats.totalKeywords}</span
-                  >
-                  <span class="text-xs text-text-muted">Keywords Found</span>
-                </div>
-                <div
-                  class="text-center p-3 rounded-lg bg-bg-surface border border-border"
-                >
-                  <span
-                    class="block text-2xl font-display font-bold text-text-primary"
-                    >{keywordStats.avgVolume.toLocaleString()}</span
-                  >
-                  <span class="text-xs text-text-muted">Avg Volume</span>
-                </div>
-                <div
-                  class="text-center p-3 rounded-lg bg-bg-surface border border-border"
-                >
-                  <span
-                    class="block text-2xl font-display font-bold text-success"
-                    >{keywordStats.quickWins}</span
-                  >
-                  <span class="text-xs text-text-muted">Quick Wins</span>
-                </div>
-                <div
-                  class="text-center p-3 rounded-lg bg-bg-surface border border-border"
-                >
-                  <span
-                    class="block text-2xl font-display font-bold text-warning"
-                    >{keywordStats.highValue}</span
-                  >
-                  <span class="text-xs text-text-muted">High Value</span>
-                </div>
-              </div>
-
-              <div class="overflow-x-auto">
-                <table class="dark-table w-full text-sm">
-                  <thead>
-                    <tr>
-                      <th class="text-left py-3">Keyword</th>
-                      <th class="text-right py-3">Volume</th>
-                      <th class="text-right py-3">Difficulty</th>
-                      <th class="text-right py-3">Tier</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each sampleKeywords as kw}
-                      <tr>
-                        <td class="py-3 font-mono text-text-primary"
-                          >{kw.keyword}</td
-                        >
-                        <td class="py-3 text-right text-text-secondary"
-                          >{kw.volume.toLocaleString()}/mo</td
-                        >
-                        <td class="py-3 text-right">
-                          <span
-                            class="font-mono {kw.difficulty < 0.5
-                              ? 'text-success'
-                              : kw.difficulty < 0.65
-                                ? 'text-warning'
-                                : 'text-error'}"
-                          >
-                            {kw.difficulty}
-                          </span>
-                        </td>
-                        <td class="py-3 text-right">
-                          <span
-                            class="badge {kw.tier === 'Quick Win'
-                              ? 'badge-success'
-                              : kw.tier === 'Premium'
-                                ? 'text-warning border-warning'
-                                : ''}"
-                          >
-                            {kw.tier}
-                          </span>
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-
-              <p class="text-xs text-text-muted mt-4 text-center">
-                Showing 5 of 156 validated keywords. Full report includes all
-                tiers with content strategy.
-              </p>
-            </div>
+              report — content-repurposing-tool.pdf
+            </span>
           </div>
-        {:else if activeTab === "competitors"}
-          <div in:fade={{ duration: 200 }}>
-            <div
-              class="bg-bg-elevated border border-border rounded-xl p-6 sm:p-8"
-            >
-              <div
-                class="flex items-center gap-3 mb-6 pb-4 border-b border-border"
-              >
-                <div
-                  class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center"
-                >
-                  <Users class="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h3 class="font-display font-semibold text-text-primary">
-                    Competitive Analysis
-                  </h3>
-                  <p class="text-sm text-text-muted">
-                    Feature gaps identified in your niche
-                  </p>
-                </div>
-              </div>
-
-              <!-- Feature Matrix -->
-              <div class="overflow-x-auto">
-                <table class="dark-table w-full text-sm">
-                  <thead>
-                    <tr>
-                      <th class="text-left py-3">Feature</th>
-                      <th class="text-center py-3">OpusClip</th>
-                      <th class="text-center py-3">Descript</th>
-                      <th class="text-center py-3">Your MVP</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {#each competitorFeatures as row}
-                      <tr class={row.gap ? "bg-success/5" : ""}>
-                        <td class="py-3 text-text-primary">
-                          {row.feature}
-                          {#if row.gap}
-                            <span
-                              class="ml-2 text-xs px-1.5 py-0.5 rounded bg-success/20 text-success font-semibold"
-                              >GAP!</span
-                            >
-                          {/if}
-                        </td>
-                        <td class="py-3 text-center">
-                          {#if row.opusclip}
-                            <CheckCircle2
-                              class="w-4 h-4 text-success mx-auto"
-                            />
-                          {:else}
-                            <XCircle
-                              class="w-4 h-4 text-text-muted/50 mx-auto"
-                            />
-                          {/if}
-                        </td>
-                        <td class="py-3 text-center">
-                          {#if row.descript}
-                            <CheckCircle2
-                              class="w-4 h-4 text-success mx-auto"
-                            />
-                          {:else}
-                            <XCircle
-                              class="w-4 h-4 text-text-muted/50 mx-auto"
-                            />
-                          {/if}
-                        </td>
-                        <td class="py-3 text-center">
-                          {#if row.yourmvp}
-                            <CheckCircle2 class="w-4 h-4 text-accent mx-auto" />
-                          {:else}
-                            <XCircle
-                              class="w-4 h-4 text-text-muted/50 mx-auto"
-                            />
-                          {/if}
-                        </td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-
-              <!-- Gap Summary -->
-              <div
-                class="mt-6 p-4 rounded-lg bg-success/5 border border-success/20"
-              >
-                <div class="flex items-start gap-3">
-                  <Sparkles class="w-5 h-5 text-success shrink-0 mt-0.5" />
-                  <div>
-                    <p class="font-semibold text-success text-sm mb-1">
-                      Market Gaps Identified
-                    </p>
-                    <p class="text-sm text-text-secondary">
-                      <strong>Contextual B-Roll</strong> and
-                      <strong>Brand Voice Matching</strong> are unserved by existing
-                      competitors. These represent differentiation opportunities
-                      with validated pain point demand.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        {:else if activeTab === "business_intel"}
-          <div in:fade={{ duration: 200 }}>
-            <div
-              class="bg-bg-elevated border border-border rounded-xl p-6 sm:p-8"
-            >
-              <div
-                class="flex items-center gap-3 mb-6 pb-4 border-b border-border"
-              >
-                <div
-                  class="w-10 h-10 rounded-lg bg-accent/10 border border-accent/30 flex items-center justify-center"
-                >
-                  <PieChart class="w-5 h-5 text-accent" />
-                </div>
-                <div>
-                  <h3 class="font-display font-semibold text-text-primary">
-                    Business Intelligence
-                  </h3>
-                  <p class="text-sm text-text-muted">
-                    Market sizing, pricing & risk assessment
-                  </p>
-                </div>
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <!-- Market Sizing -->
-                <div class="p-4 rounded-lg bg-bg-surface border border-border">
-                  <div class="flex items-center gap-2 mb-3">
-                    <PieChart class="w-4 h-4 text-accent" />
-                    <span
-                      class="font-display font-semibold text-text-primary text-sm"
-                      >Market Sizing</span
-                    >
-                  </div>
-                  <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">TAM</span>
-                      <span class="font-mono text-text-primary">$2.4B</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">SAM</span>
-                      <span class="font-mono text-text-primary">$340M</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">SOM (Year 1)</span>
-                      <span class="font-mono text-accent">$8.5M</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Pricing Strategy -->
-                <div class="p-4 rounded-lg bg-bg-surface border border-border">
-                  <div class="flex items-center gap-2 mb-3">
-                    <DollarSign class="w-4 h-4 text-accent" />
-                    <span
-                      class="font-display font-semibold text-text-primary text-sm"
-                      >Pricing Strategy</span
-                    >
-                  </div>
-                  <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">Starter</span>
-                      <span class="font-mono text-text-primary">$29/mo</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">Pro</span>
-                      <span class="font-mono text-text-primary">$79/mo</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">Business</span>
-                      <span class="font-mono text-accent">$199/mo</span>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Risk Assessment -->
-                <div
-                  class="p-4 rounded-lg bg-bg-surface border border-success/30"
-                >
-                  <div class="flex items-center gap-2 mb-3">
-                    <Shield class="w-4 h-4 text-success" />
-                    <span
-                      class="font-display font-semibold text-text-primary text-sm"
-                      >Risk Assessment</span
-                    >
-                  </div>
-                  <div class="space-y-2">
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">Verdict</span>
-                      <span class="font-mono font-bold text-success">GO</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">Confidence</span>
-                      <span class="font-mono text-text-primary">87%</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                      <span class="text-text-muted">Risk Level</span>
-                      <span class="font-mono text-warning">Medium</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Verdict Summary -->
-              <div class="p-5 rounded-lg bg-success/5 border border-success/30">
-                <div class="flex items-center gap-3 mb-3">
-                  <div
-                    class="w-12 h-12 rounded-full bg-success/20 border border-success/50 flex items-center justify-center"
-                  >
-                    <CheckCircle2 class="w-6 h-6 text-success" />
-                  </div>
-                  <div>
-                    <p class="font-display font-bold text-success text-lg">
-                      VERDICT: GO
-                    </p>
-                    <p class="text-sm text-text-muted">87% confidence score</p>
-                  </div>
-                </div>
-                <p class="text-sm text-text-secondary">
-                  Strong pain point validation (0.85 severity), accessible
-                  market gaps, and favorable competitive landscape support
-                  moving forward with MVP development.
-                </p>
-              </div>
-            </div>
-          </div>
-        {/if}
-
-        <!-- CTA -->
-        {#if hasSampleReport}
-          <div class="mt-8 text-center">
+          {#if hasSampleReport}
             <a
               href="/sample-report"
-              class="btn-secondary inline-flex items-center gap-2"
+              class="text-xs text-accent hover:underline hidden sm:inline"
             >
-              <FileText class="w-4 h-4" />
-              View Sample Report
+              Open full report &rarr;
             </a>
+          {/if}
+        </div>
+
+        <!-- Constrained content area -->
+        <div
+          class="relative bg-bg-elevated min-h-[800px] sm:min-h-[1000px]"
+        >
+          <div
+            class="report-preview max-h-[800px] sm:max-h-[1000px] overflow-hidden"
+          >
+            {#key activeTab}
+              <div in:fade={{ duration: 200 }}>
+                {#if activeTab === "pain_points"}
+                  <PainAnalysis
+                    painPoints={mockPainPoints}
+                    analytics={mockPainAnalytics}
+                    solution={mockSolution}
+                  />
+                {:else if activeTab === "seo_keywords"}
+                  <SEOKeywords
+                    strategy={mockSEOStrategy}
+                    analytics={mockSEOAnalytics}
+                  />
+                {:else if activeTab === "competitors"}
+                  <Competitors
+                    profiles={mockCompetitorProfiles}
+                    analysis={mockCompetitiveAnalysis}
+                    analytics={mockCompetitiveAnalytics}
+                    selectedSolutionName="ContentFlow"
+                  />
+                {:else if activeTab === "market_size"}
+                  <MarketSizingSection data={mockMarketSizing} />
+                {/if}
+              </div>
+            {/key}
           </div>
-        {/if}
+
+          <!-- Fade overlay -->
+          <div class="report-fade-overlay"></div>
+        </div>
       </div>
+
+      <!-- Preview hint -->
+      <p class="text-xs text-text-muted text-center mt-4">
+        Previewing <span class="font-semibold">{activeTabLabel}</span> &middot;
+        1 of 10+ report sections
+      </p>
+
+      <!-- CTA -->
+      {#if hasSampleReport}
+        <div class="mt-8 text-center">
+          <a
+            href="/sample-report"
+            class="btn-primary inline-flex items-center gap-2 px-6 py-3"
+          >
+            <FileText class="w-4 h-4" />
+            See the Full Report
+          </a>
+          <p class="text-xs text-text-muted mt-3">
+            All 10+ sections — pain points, keywords, competitors, pricing,
+            verdict, and more
+          </p>
+        </div>
+      {/if}
     {/if}
   </div>
 </section>
+
+<style>
+  /* Force all AnimateOnScroll elements visible inside preview.
+     IntersectionObserver won't fire for elements clipped by overflow-hidden,
+     so we override the opacity/transform the same way prefers-reduced-motion does. */
+  .report-preview :global(.animate-fade-up),
+  .report-preview :global(.animate-fade-in-triggered),
+  .report-preview :global(.animate-scale-in),
+  .report-preview :global(.animate-slide-left),
+  .report-preview :global(.animate-slide-right) {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  /* Fade overlay — uses CSS variable so it matches bg-elevated exactly */
+  .report-fade-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 8rem;
+    background: linear-gradient(
+      to top,
+      var(--color-bg-elevated) 0%,
+      var(--color-bg-elevated) 10%,
+      transparent 100%
+    );
+    pointer-events: none;
+    z-index: 10;
+  }
+</style>

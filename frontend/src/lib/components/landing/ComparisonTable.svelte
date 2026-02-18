@@ -10,13 +10,15 @@
     Database,
     Link,
     Search,
-    Users,
+    Eye,
     FileText,
     ChevronDown,
-    PieChart,
-    Shield,
+    Layers,
+    Scale,
     TrendingUp,
-    Rocket,
+    PanelTop,
+    Tag,
+    MessageSquare,
   } from "lucide-svelte";
 
   let isVisible = $state(false);
@@ -112,7 +114,7 @@
     },
     {
       name: "Competitive Analysis",
-      icon: Users,
+      icon: Eye,
       nicheiq: "check",
       perplexity: "partial",
       grok: "partial",
@@ -120,7 +122,7 @@
     },
     {
       name: "Market Sizing (TAM/SAM/SOM)",
-      icon: PieChart,
+      icon: Layers,
       nicheiq: "check",
       perplexity: "cross",
       grok: "cross",
@@ -128,7 +130,7 @@
     },
     {
       name: "Pricing Strategy",
-      icon: DollarSign,
+      icon: Tag,
       nicheiq: "check",
       perplexity: "cross",
       grok: "cross",
@@ -136,7 +138,7 @@
     },
     {
       name: "Risk Assessment",
-      icon: Shield,
+      icon: Scale,
       nicheiq: "Go/No-Go",
       perplexity: "cross",
       grok: "cross",
@@ -461,39 +463,35 @@
         class="animate-fade-in delay-500 mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
       >
         <div class="differentiator-callout">
-          <Database class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Direct Access</strong> — Real community data</span>
+          <MessageSquare class="w-5 h-5 text-accent flex-shrink-0" />
+          <span><strong>Verified Pain Points</strong> — Every pain point traced to a discussion thread you can check before you commit.</span>
         </div>
         <div class="differentiator-callout">
-          <PieChart class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Market Sizing</strong> — TAM/SAM/SOM included</span>
+          <Layers class="w-5 h-5 text-accent flex-shrink-0" />
+          <span><strong>Market Sizing Built In</strong> — Know your total market and year-one target before you write a line of code.</span>
         </div>
         <div class="differentiator-callout">
-          <DollarSign class="w-5 h-5 text-accent flex-shrink-0" />
-          <span
-            ><strong>Pricing Strategy</strong> — Validated recommendations</span
-          >
+          <Tag class="w-5 h-5 text-accent flex-shrink-0" />
+          <span><strong>Pricing Backed by Demand</strong> — See what customers say they'll pay — sourced from community discussions, not guesswork.</span>
         </div>
         <div class="differentiator-callout">
           <TrendingUp class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>SEO Strategy</strong> — 100+ keywords validated</span>
+          <span><strong>Validated Search Volumes</strong> — Every keyword comes with actual monthly search volume and difficulty score.</span>
         </div>
         <div class="differentiator-callout">
-          <Shield class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Risk Assessment</strong> — Go/No-Go verdict</span>
+          <Scale class="w-5 h-5 text-accent flex-shrink-0" />
+          <span><strong>Go / No-Go Verdict</strong> — Know whether to build, pivot, or walk away — with the risk factors laid out.</span>
         </div>
         <div class="differentiator-callout">
-          <Rocket class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Landing Page</strong> — Ready-to-deploy website</span>
+          <PanelTop class="w-5 h-5 text-accent flex-shrink-0" />
+          <span><strong>Launch-Ready Landing Page</strong> — Full HTML landing page — copy, design, and CTAs — ready to start testing.</span>
         </div>
       </div>
 
       <!-- Bottom Note -->
       <div class="animate-fade-in delay-600 mt-10 text-center">
         <p class="text-text-muted text-sm italic">
-          Only NicheIQ combines market sizing + pricing strategy + risk
-          assessment with verified social data in one complete research
-          pipeline.
+          Everything in the table above ships in a single report — full niche validation for one price.
         </p>
       </div>
     {/if}

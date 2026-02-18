@@ -3,26 +3,34 @@
   import { slide } from "svelte/transition";
   import {
     Search,
-    Target,
+    Radar,
+    Waypoints,
     MessageSquare,
     Lightbulb,
-    TrendingUp,
+    Gem,
     BarChart3,
     FileText,
+    ScrollText,
+    Eye,
     ChevronDown,
-    MousePointer,
+    ChevronRight,
     Clock,
-    Download,
-    Cpu,
     Users,
     DollarSign,
     PieChart,
-    Layout,
+
   } from "lucide-svelte";
 
   let isVisible = $state(false);
   let showStages = $state(false);
-  let expandedStage = $state<number | null>(null);
+  let expandedStages = $state<Set<number>>(new Set());
+
+  function toggleStage(id: number) {
+    const next = new Set(expandedStages);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    expandedStages = next;
+  }
 
   onMount(() => {
     const observer = new IntersectionObserver(
@@ -40,151 +48,198 @@
     return () => observer.disconnect();
   });
 
-  // Simple user steps - how to GET your report
-  const userSteps = [
+  const steps = [
     {
-      number: "1",
-      icon: MousePointer,
-      title: "Enter Your Niche",
-      time: "30 seconds",
+      icon: Radar,
+      title: "Discover Pain Points & Ideas",
+      time: "~15 min",
       description:
-        "Pick any niche you're curious about—we'll tell you if it's worth pursuing",
+        "We scan Reddit, Twitter, and online communities to discover validated pain points people will actually pay to solve. You get 5–10 solution concepts backed by real discussions — not AI guesses.",
+      cardClass: "",
+      dashed: false,
+      timePill: false,
     },
     {
-      number: "2",
-      icon: Cpu,
-      title: "We Run 16 Stages of Research",
-      time: "~45 minutes",
+      icon: Gem,
+      title: "Pick Your Opportunity",
+      time: "Your call",
       description:
-        "NicheIQ searches social communities, discovers keywords, and analyzes your market",
+        "Review the pain points and solution concepts we found. Pick the one that excites you — or let us recommend the strongest signal. Your direction, your choice.",
+      cardClass: "",
+      dashed: true,
+      timePill: true,
     },
     {
-      number: "3",
-      icon: Download,
-      title: "Get Personal Business Blueprint",
-      time: "Instant download",
+      icon: ScrollText,
+      title: "Get Your Business Blueprint",
+      time: "~30 min",
       description:
-        "Get discovered pain points, solution concepts, 100+ SEO keywords, and a clear GO or NO-GO verdict. Everything you need to move fast.",
-    },
-    {
-      number: "4",
-      icon: Layout,
-      title: "Ready-to-Launch Landing Page",
-      time: "Ready to use",
-      description:
-        "You receive a fully built landing page that you can launch immediately to capture interest, leads, and potential orders",
+        "Full competitive analysis, 100+ ranked SEO keywords, market sizing, and pricing strategy. Plus a clear GO or NO-GO verdict and a ready-to-launch landing page to start capturing leads immediately.",
+      cardClass: "",
+      dashed: false,
+      timePill: false,
     },
   ];
 
-  // Detailed stages - how the report is CREATED
-  const stages = [
+  const phases = [
     {
-      id: 1,
-      name: "Niche Analysis",
-      icon: Target,
-      metric: "3-7 segments defined",
-      description:
-        "Your niche idea gets refined into a precise market definition with specific customer segments.",
-      details:
-        'AI structures your input into clear market boundaries, target segments (e.g., "Small e-commerce businesses with 10-50 employees"), and scope definitions.',
+      number: 1,
+      label: "DISCOVERY",
+      tagline: "Find Proof",
+      stages: [
+        {
+          id: 1,
+          name: "Niche Analysis",
+          icon: Waypoints,
+          metric: "3–7 segments defined",
+          description:
+            "Tighten your focus before we search. Wasted effort starts here.",
+          details:
+            'Your niche gets broken into clear market boundaries, target segments (e.g., "Small e-commerce businesses with 10-50 employees"), and scope definitions — so nothing gets researched that shouldn\'t be.',
+        },
+        {
+          id: 2,
+          name: "Search & Discover",
+          icon: Search,
+          metric: "89+ discussions found",
+          description:
+            "Find the conversations that prove demand exists (or doesn't).",
+          details:
+            "Direct access to communities, discussions, and engagement data. 3-layer filtering: relevance validation, engagement quality, deduplication.",
+        },
+        {
+          id: 3,
+          name: "Pain Point Analysis",
+          icon: MessageSquare,
+          metric: "5+ pain points ranked",
+          description:
+            "Rank which problems people will actually pay to solve, and how much.",
+          details:
+            "Discussions get categorized, pain points extracted with evidence, and scored by severity and willingness-to-pay. Every insight is traceable to specific posts.",
+        },
+      ],
     },
     {
-      id: 2,
-      name: "Search & Discover",
-      icon: Search,
-      metric: "89+ discussions found",
-      description:
-        "Autonomously searches social media and online communities for real discussions about your niche.",
-      details:
-        "Direct access to communities, discussions, and engagement data. 3-layer filtering: relevance validation, engagement quality, deduplication.",
+      number: 2,
+      label: "ANALYSIS",
+      tagline: "Understand the Opportunity",
+      stages: [
+        {
+          id: 4,
+          name: "Audience Mapping",
+          icon: Users,
+          metric: "3–5 personas",
+          description:
+            "Know exactly who you're building for — not a generic startup cliché.",
+          details:
+            "Maps your target audience: who they are, where they hang out online, what triggers purchasing decisions, and how to reach them effectively.",
+        },
+        {
+          id: 5,
+          name: "Solution Development",
+          icon: Lightbulb,
+          metric: "3+ solutions generated",
+          description:
+            "Get 3+ fully-baked solution concepts before you pick one to build.",
+          details:
+            "Each concept gets ideated, researched against competitors, analyzed for market fit, and refined. Solutions are scored across feasibility, demand, and differentiation.",
+        },
+        {
+          id: 6,
+          name: "Competitive Analysis",
+          icon: Eye,
+          metric: "Competitors + gaps mapped",
+          description:
+            "Find where you can actually win instead of entering a crowded market.",
+          details:
+            "Identifies direct, partial, and indirect competitors. Analyzes pricing strategies, feature gaps, and differentiation opportunities.",
+        },
+      ],
     },
     {
-      id: 3,
-      name: "Pain Point Analysis",
-      icon: MessageSquare,
-      metric: "5+ pain points extracted",
-      description:
-        "Extracts and scores pain points from real discussions with severity and willingness-to-pay metrics.",
-      details:
-        "Specialized AI agents categorize discussions, extract pain points with evidence, and score them. Every insight traceable to specific posts.",
-    },
-    {
-      id: 4,
-      name: "Audience Mapping",
-      icon: Users,
-      metric: "Detailed buyer personas",
-      description:
-        "Creates detailed ideal customer profiles with demographics, pain triggers, and buying behavior.",
-      details:
-        "AI maps your target audience: who they are, where they hang out online, what triggers purchasing decisions, and how to reach them effectively.",
-    },
-    {
-      id: 5,
-      name: "Solution Development",
-      icon: Lightbulb,
-      metric: "3+ solutions generated",
-      description:
-        "Generates multiple solution concepts with competitive analysis and market gap identification.",
-      details:
-        "Multi-agent collaboration: Solution Ideator, Competitive Researcher, Market Analyst, Solution Refiner. Each solution scored across key dimensions.",
-    },
-    {
-      id: 6,
-      name: "Competitive Analysis",
-      icon: Search,
-      metric: "Market gaps identified",
-      description:
-        "Maps the competitive landscape to find positioning opportunities and underserved needs.",
-      details:
-        "Identifies direct, partial, and indirect competitors. Analyzes pricing strategies, feature gaps, and differentiation opportunities.",
-    },
-    {
-      id: 7,
-      name: "Pricing Strategy",
-      icon: DollarSign,
-      metric: "Validated pricing tiers",
-      description:
-        "Recommends pricing based on competitor analysis and willingness-to-pay signals.",
-      details:
-        "Analyzes competitor pricing, maps customer willingness-to-pay from discussions, and recommends pricing tiers with positioning rationale.",
-    },
-    {
-      id: 8,
-      name: "Market Sizing",
-      icon: PieChart,
-      metric: "TAM/SAM/SOM calculated",
-      description:
-        "Calculates total market opportunity with real keyword demand data.",
-      details:
-        "Estimates Total Addressable Market (TAM), Serviceable Addressable Market (SAM), and Serviceable Obtainable Market (SOM) using keyword volumes and market data.",
-    },
-    {
-      id: 9,
-      name: "SEO Strategy",
-      icon: BarChart3,
-      metric: "100+ keywords tiered",
-      description:
-        "Comprehensive keyword research with strategic tiering and content planning.",
-      details:
-        "Iterative expansion from seed keywords. Tier 0 (Premium), Tier 1 (Quick Wins), Tier 2 (Growth) classification. Full content strategy included.",
-    },
-    {
-      id: 10,
-      name: "Final Report & Landing Page",
-      icon: FileText,
-      metric: "Go/No-Go verdict",
-      description:
-        "A complete business blueprint with a clear GO / NO-GO decision, risk assessment, and a ready-to-launch landing page to test real demand, collect signups, or pre-orders immediately.",
-      details:
-        "Hybrid Python + LLM generation: 80% programmatic data (0% hallucination), 20% strategic synthesis. Clear go/no-go recommendation with confidence score.",
+      number: 3,
+      label: "VALIDATION",
+      tagline: "Get Your Business Case",
+      stages: [
+        {
+          id: 7,
+          name: "Pricing Strategy",
+          icon: DollarSign,
+          metric: "Validated pricing tiers",
+          description:
+            "Price to win, grounded in real willingness-to-pay signals, not guesswork.",
+          details:
+            "Analyzes competitor pricing, maps customer willingness-to-pay from discussions, and recommends pricing tiers with positioning rationale.",
+        },
+        {
+          id: 8,
+          name: "Market Sizing",
+          icon: PieChart,
+          metric: "TAM/SAM/SOM calculated",
+          description:
+            "Get TAM/SAM/SOM grounded in search volume, not marketing fluff.",
+          details:
+            "Estimates Total Addressable Market (TAM), Serviceable Addressable Market (SAM), and Serviceable Obtainable Market (SOM) using keyword volumes and market data.",
+        },
+        {
+          id: 9,
+          name: "SEO Strategy",
+          icon: BarChart3,
+          metric: "100+ keywords tiered",
+          description:
+            "100+ keywords mapped so you know your month-1 content roadmap and search potential.",
+          details:
+            "Iterative expansion from seed keywords. Tier 0 (Premium), Tier 1 (Quick Wins), Tier 2 (Growth) classification. Full content strategy included.",
+        },
+        {
+          id: 10,
+          name: "Final Report & Landing Page",
+          icon: FileText,
+          metric: "Go/No-Go verdict",
+          description:
+            "Your thesis: Should you build this? If yes, here's your landing page.",
+          details:
+            "80% of the report is hard data — no hallucination possible. The remaining 20% is strategic synthesis. You get a clear go/no-go recommendation with a confidence score.",
+        },
+      ],
     },
   ];
+
+  const howToSchema = {
+    "@context": "https://schema.org",
+    "@type": "HowTo",
+    name: "How to Validate Your SaaS Idea in 45 Minutes",
+    description:
+      "3-stage process to discover pain points and get a GO/NO-GO verdict",
+    totalTime: "PT45M",
+    step: [
+      {
+        "@type": "HowToStep",
+        name: "Discover Pain Points & Ideas",
+        text: "We scan Reddit, Twitter, and online communities to discover validated pain points. You get 5-10 solution concepts backed by real discussions.",
+      },
+      {
+        "@type": "HowToStep",
+        name: "Pick Your Opportunity",
+        text: "Review the pain points and solution concepts. Pick the one that excites you or let us recommend the strongest signal.",
+      },
+      {
+        "@type": "HowToStep",
+        name: "Get Your Business Blueprint",
+        text: "Full competitive analysis, 100+ ranked SEO keywords, market sizing, pricing strategy, GO/NO-GO verdict, and a ready-to-launch landing page.",
+      },
+    ],
+  };
 </script>
+
+<svelte:head>
+  {@html `<script type="application/ld+json">${JSON.stringify(howToSchema)}</script>`}
+</svelte:head>
 
 <section id="how-it-works" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
-      <!-- Section Header - Mobile optimized -->
+      <!-- Section Header -->
       <div class="mb-10 sm:mb-16">
         <span class="section-label animate-fade-in">The Process</span>
         <h2
@@ -198,52 +253,162 @@
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
-          Pick your niche. Get your verdict in 45 minutes. Start building.
-        </p>
-        <p
-          class="animate-fade-in delay-300 text-sm sm:text-base text-text-muted mt-4 sm:mt-5 max-w-2xl"
-        >
-          The system scans thousands of Reddit & Twitter discussions to find
-          validated pain points that people will actually pay for — and turns
-          them into solutions for your next business.
+          3 stages. 45 minutes. A GO or NO-GO verdict you can trust.
         </p>
       </div>
 
-      <!-- Steps Grid - Mobile optimized -->
-      <div
-        class="animate-fade-in delay-300 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-10 sm:mb-16"
+      <!-- Desktop: Horizontal flexbox track (md+) -->
+      <ol
+        class="hidden md:flex animate-fade-in delay-300 mb-10 sm:mb-16"
       >
-        {#each userSteps as step}
-          <div
-            class="relative p-5 sm:p-6 bg-bg-elevated border border-border rounded-xl hover:border-border-accent transition-all group"
-          >
+        {#each steps as step, i}
+          <!-- Step column -->
+          <li class="flex-1 flex flex-col items-center">
+            <!-- Circle -->
             <div
-              class="absolute -top-3 sm:-top-4 left-4 sm:left-6 bg-accent text-bg-base px-3 sm:px-4 py-0.5 sm:py-1 rounded-full text-xs sm:text-sm font-bold"
+              class="w-12 h-12 rounded-full border-2 border-accent bg-bg-elevated
+                     flex items-center justify-center font-display text-lg font-bold text-accent
+                     animate-fade-in {i === 0
+                ? 'delay-100'
+                : i === 1
+                  ? 'delay-300'
+                  : 'delay-500'}"
             >
-              Step {step.number}
+              {i + 1}
             </div>
+            <!-- Vertical stub -->
+            <div class="w-0.5 h-6 bg-border" aria-hidden="true"></div>
+            <!-- Card -->
             <div
-              class="w-10 sm:w-12 h-10 sm:h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center mb-3 sm:mb-4 group-hover:bg-accent/20 transition-colors"
+              class="flex flex-col flex-1 rounded-xl border bg-bg-elevated p-6 text-center w-full
+                     {step.dashed
+                ? 'border-dashed border-accent/40'
+                : 'border-border'}
+                     {step.cardClass}
+                     animate-fade-in {i === 0
+                ? 'delay-200'
+                : i === 1
+                  ? 'delay-[400ms]'
+                  : 'delay-[600ms]'}"
             >
-              <step.icon class="w-5 sm:w-6 h-5 sm:h-6 text-accent" />
-            </div>
-            <h3
-              class="font-display font-semibold text-lg sm:text-xl text-text-primary mb-2"
-            >
-              {step.title}
-            </h3>
-            <div class="flex items-center gap-2 mb-2 sm:mb-3">
-              <Clock class="w-3.5 sm:w-4 h-3.5 sm:h-4 text-text-muted" />
-              <span class="text-xs sm:text-sm text-accent font-medium"
-                >{step.time}</span
+              <!-- Icon -->
+              <div
+                class="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30
+                       flex items-center justify-center mx-auto mb-4"
               >
+                <step.icon class="w-6 h-6 text-accent" />
+              </div>
+              <!-- Title -->
+              <h3
+                class="font-display font-semibold text-xl text-text-primary mb-2"
+              >
+                {step.title}
+              </h3>
+              <!-- Description -->
+              <p
+                class="text-text-secondary leading-relaxed text-sm mb-4 flex-1"
+              >
+                {step.description}
+              </p>
+              <!-- Time badge pinned to bottom -->
+              {#if step.timePill}
+                <div class="mt-auto pt-2">
+                  <span
+                    class="inline-flex px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-widest
+                           bg-accent/10 text-accent border border-accent/20 font-medium"
+                  >
+                    {step.time}
+                  </span>
+                </div>
+              {:else}
+                <div
+                  class="mt-auto pt-2 flex items-center justify-center gap-1.5"
+                >
+                  <Clock class="w-3.5 h-3.5 text-text-muted" />
+                  <span class="text-sm text-accent font-medium"
+                    >{step.time}</span
+                  >
+                </div>
+              {/if}
             </div>
-            <p class="text-text-secondary leading-relaxed text-sm sm:text-base">
-              {step.description}
-            </p>
-          </div>
+          </li>
+
+          <!-- Connector (not after last step) -->
+          {#if i < steps.length - 1}
+            <div
+              class="flex items-center self-start h-12 shrink-0 w-12 lg:w-20"
+              aria-hidden="true"
+            >
+              <div class="flex-1 h-0.5 bg-accent/30"></div>
+              <ChevronRight class="w-4 h-4 text-accent/50 -ml-1" />
+            </div>
+          {/if}
         {/each}
-      </div>
+      </ol>
+
+      <!-- Mobile: Vertical timeline (<md) -->
+      <ol class="md:hidden flex flex-col animate-fade-in delay-300 mb-10">
+        {#each steps as step, i}
+          <li class="flex gap-4">
+            <!-- Timeline column -->
+            <div class="flex flex-col items-center">
+              <div
+                class="w-10 h-10 rounded-full border-2 border-accent bg-bg-elevated
+                       flex items-center justify-center font-display text-base font-bold text-accent
+                       shrink-0"
+              >
+                {i + 1}
+              </div>
+              {#if i < steps.length - 1}
+                <div class="flex-1 w-0.5 bg-border my-2"></div>
+              {/if}
+            </div>
+            <!-- Card -->
+            <div
+              class="flex-1 pb-8 flex flex-col rounded-xl border bg-bg-elevated p-5 mb-2
+                     {step.dashed
+                ? 'border-dashed border-accent/40'
+                : 'border-border'}"
+            >
+              <!-- Icon -->
+              <div
+                class="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30
+                       flex items-center justify-center mb-3"
+              >
+                <step.icon class="w-5 h-5 text-accent" />
+              </div>
+              <!-- Title -->
+              <h3
+                class="font-display font-semibold text-lg text-text-primary mb-1.5"
+              >
+                {step.title}
+              </h3>
+              <!-- Time -->
+              {#if step.timePill}
+                <div class="mb-2">
+                  <span
+                    class="inline-flex px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-widest
+                           bg-accent/10 text-accent border border-accent/20 font-medium"
+                  >
+                    {step.time}
+                  </span>
+                </div>
+              {:else}
+                <div class="flex items-center gap-1.5 mb-2">
+                  <Clock class="w-3.5 h-3.5 text-text-muted" />
+                  <span class="text-xs text-accent font-medium"
+                    >{step.time}</span
+                  >
+                </div>
+              {/if}
+              <!-- Description -->
+              <p class="text-text-secondary leading-relaxed text-sm">
+                {step.description}
+              </p>
+            </div>
+          </li>
+        {/each}
+      </ol>
 
       <!-- Expandable: Under the Hood Section -->
       <div class="animate-fade-in delay-500">
@@ -252,7 +417,7 @@
           class="w-full flex items-center justify-center gap-3 py-3 sm:py-4 text-text-secondary hover:text-accent transition-colors group"
         >
           <span class="font-medium text-sm sm:text-base"
-            >See why our research is different</span
+            >Peek inside the pipeline</span
           >
           <ChevronDown
             class="w-4 sm:w-5 h-4 sm:h-5 transition-transform duration-300
@@ -267,108 +432,115 @@
               <h3
                 class="font-display text-xl sm:text-2xl font-semibold text-text-primary mb-2"
               >
-                16-Stage Autonomous Pipeline
+                How we turn discussions into decisions
               </h3>
               <p class="text-text-muted text-xs sm:text-sm">
-                Each stage is built with validation and quality checks
+                Each stage isolates a specific signal so you can trust the verdict.
               </p>
             </div>
 
-            <!-- Timeline of Stages - Mobile optimized -->
-            <div class="relative">
-              <!-- Vertical Line with glow - hidden on mobile -->
-              <div
-                class="hidden lg:block absolute left-8 top-0 bottom-0 w-px bg-gradient-to-b from-accent/50 via-border-emphasis to-border"
-              ></div>
-
-              <!-- Stages -->
-              <div class="space-y-0">
-                {#each stages as stage, i}
-                  <div class="relative">
-                    <!-- Stage Number (Desktop only) -->
-                    <div
-                      class="hidden lg:flex absolute left-0 top-6 w-16 h-16 items-center justify-center"
+            <!-- Phases -->
+            <div class="space-y-8 sm:space-y-10">
+              {#each phases as phase}
+                <div>
+                  <!-- Phase Header -->
+                  <div class="flex items-center gap-3 mb-5">
+                    <span
+                      class="w-7 h-7 rounded-full bg-accent/15 border border-accent/30
+                             flex items-center justify-center shrink-0
+                             text-accent font-display text-sm font-bold
+"
                     >
-                      <span
-                        class="font-display text-4xl font-bold text-text-muted/30"
-                        >{stage.id}</span
-                      >
+                      {phase.number}
+                    </span>
+                    <div class="shrink-0">
+                      <span class="text-xs font-semibold uppercase tracking-wider text-accent">
+                        {phase.label}
+                      </span>
+                      <span class="text-text-muted text-xs ml-1.5">&mdash; {phase.tagline}</span>
                     </div>
+                    <div
+                      class="flex-1 h-px bg-gradient-to-r from-border to-transparent hidden sm:block"
+                      aria-hidden="true"
+                    ></div>
+                  </div>
 
-                    <!-- Card -->
-                    <div class="lg:ml-24 border-b border-border">
-                      <button
-                        onclick={() =>
-                          (expandedStage = expandedStage === i ? null : i)}
-                        class="w-full text-left py-4 sm:py-6 group"
-                      >
-                        <div class="flex items-start gap-3 sm:gap-5">
-                          <!-- Icon -->
-                          <div
-                            class="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 rounded-lg border flex items-center justify-center transition-all
-														{expandedStage === i
-                              ? 'border-border-accent bg-accent/10'
-                              : 'border-border bg-bg-elevated group-hover:border-border-emphasis'}"
-                          >
-                            <stage.icon
-                              class="w-4 sm:w-5 h-4 sm:h-5 {expandedStage === i
-                                ? 'text-accent'
-                                : 'text-text-muted'}"
-                            />
-                          </div>
-
-                          <!-- Content -->
-                          <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 sm:gap-4 mb-1">
-                              <span
-                                class="lg:hidden text-[10px] sm:text-xs font-mono text-text-muted"
-                                >Stage {stage.id}</span
-                              >
-                              <span
-                                class="text-[10px] sm:text-xs text-accent font-semibold uppercase tracking-wider"
-                              >
-                                {stage.metric}
-                              </span>
+                  <!-- Stages in this phase -->
+                  <div class="border-t border-border">
+                    {#each phase.stages as stage}
+                      <div class="border-b border-border">
+                        <button
+                          onclick={() => toggleStage(stage.id)}
+                          class="w-full text-left py-4 sm:py-5 hover:bg-accent/[0.03] transition-colors duration-200 group"
+                        >
+                          <div class="flex items-start gap-3 sm:gap-4">
+                            <!-- Icon -->
+                            <div
+                              class="flex-shrink-0 w-9 sm:w-10 h-9 sm:h-10 rounded-lg border
+                                     flex items-center justify-center transition-all duration-200
+                                     {expandedStages.has(stage.id)
+                                ? 'border-border-accent bg-accent/10 scale-105'
+                                : 'border-border bg-bg-elevated group-hover:border-border-emphasis'}"
+                            >
+                              <stage.icon
+                                class="w-4 sm:w-5 h-4 sm:h-5 transition-colors duration-200
+                                  {expandedStages.has(stage.id) ? 'text-accent' : 'text-text-muted group-hover:text-text-secondary'}"
+                              />
                             </div>
 
-                            <h4
-                              class="font-display font-semibold text-base sm:text-lg text-text-primary mb-1 group-hover:text-accent transition-colors"
-                            >
-                              {stage.name}
-                            </h4>
+                            <!-- Content -->
+                            <div class="flex-1 min-w-0">
+                              <div class="flex items-center gap-2 sm:gap-4 mb-1">
+                                <span class="text-[11px] font-mono text-text-muted/70 tabular-nums">
+                                  {String(stage.id).padStart(2, '0')}
+                                </span>
+                                <span
+                                  class="text-[10px] sm:text-xs text-accent font-semibold uppercase tracking-wider"
+                                >
+                                  {stage.metric}
+                                </span>
+                              </div>
 
+                              <h4
+                                class="font-display font-semibold text-base sm:text-lg text-text-primary mb-1
+                                       group-hover:text-accent transition-colors"
+                              >
+                                {stage.name}
+                              </h4>
+
+                              <p class="text-text-secondary text-sm leading-relaxed">
+                                {stage.description}
+                              </p>
+                            </div>
+
+                            <!-- Expand Icon -->
+                            <ChevronDown
+                              class="flex-shrink-0 w-4 h-4 text-text-muted transition-transform duration-300
+                              {expandedStages.has(stage.id) ? 'rotate-180 text-accent' : ''}"
+                            />
+                          </div>
+                        </button>
+
+                        <!-- Expanded Details -->
+                        {#if expandedStages.has(stage.id)}
+                          <div
+                            transition:slide={{ duration: 300 }}
+                            class="pb-4 sm:pb-5 pl-12 sm:pl-14"
+                          >
                             <p
-                              class="text-text-secondary text-xs sm:text-sm leading-relaxed"
+                              class="text-text-secondary text-sm leading-relaxed
+                                     bg-bg-surface border-l-2 border-l-accent/20 border border-border
+                                     p-3 sm:p-4 rounded-lg"
                             >
-                              {stage.description}
+                              {stage.details}
                             </p>
                           </div>
-
-                          <!-- Expand Icon -->
-                          <ChevronDown
-                            class="flex-shrink-0 w-4 h-4 text-text-muted transition-transform duration-300
-														{expandedStage === i ? 'rotate-180 text-accent' : ''}"
-                          />
-                        </div>
-                      </button>
-
-                      <!-- Expanded Details -->
-                      {#if expandedStage === i}
-                        <div
-                          transition:slide={{ duration: 300 }}
-                          class="pb-4 sm:pb-6 lg:ml-15"
-                        >
-                          <p
-                            class="text-text-muted leading-relaxed font-mono text-[11px] sm:text-xs bg-bg-surface border border-border p-3 sm:p-4 rounded-lg"
-                          >
-                            {stage.details}
-                          </p>
-                        </div>
-                      {/if}
-                    </div>
+                        {/if}
+                      </div>
+                    {/each}
                   </div>
-                {/each}
-              </div>
+                </div>
+              {/each}
             </div>
           </div>
         {/if}
