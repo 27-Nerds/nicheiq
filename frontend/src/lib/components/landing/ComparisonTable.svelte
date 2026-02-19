@@ -165,7 +165,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          How NicheIQ <span class="text-accent italic">Compares</span>
+          How NicheIQ <span class="text-accent">Compares</span>
         </h2>
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"

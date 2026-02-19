@@ -250,7 +250,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
-          How It <span class="text-accent italic">Works</span>
+          How It <span class="text-accent">Works</span>
         </h2>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"

@@ -77,7 +77,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          Real Numbers. <span class="italic"
+          Real Numbers. <span class="text-accent"
             >Not Vibes.</span
           >
         </h2>

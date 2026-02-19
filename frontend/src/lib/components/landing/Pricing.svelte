@@ -84,7 +84,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6 text-center"
         >
-          Simple Pricing. <span class="text-accent italic"
+          Simple Pricing. <span class="text-accent"
             >Full Research.</span
           >
         </h2>

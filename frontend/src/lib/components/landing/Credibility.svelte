@@ -77,7 +77,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          Every Claim Links to <span class="text-accent italic"
+          Every Claim Links to <span class="text-accent"
             >Its Source.</span
           >
         </h2>

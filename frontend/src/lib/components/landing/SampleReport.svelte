@@ -454,7 +454,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
-          What You <span class="text-accent italic">Actually Get</span>
+          What You <span class="text-accent">Actually Get</span>
         </h2>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"

@@ -385,8 +385,7 @@
                     <CheckCircle class="w-2.5 h-2.5" /> Free
                   </span>
                 {:else}
-                  <span class="font-mono font-bold text-text-primary">{cost}</span>
-                  <span class="text-text-muted text-xs">cr</span>
+                  <span class="font-mono font-bold text-text-primary">{cost}<span class="text-text-muted text-xs font-normal">cr</span></span>
                 {/if}
               </span>
             {/each}
@@ -416,8 +415,7 @@
                       <CheckCircle class="w-2.5 h-2.5" /> Free
                     </span>
                   {:else}
-                    <span class="font-mono font-semibold text-text-secondary">{cost}</span>
-                    <span class="text-text-muted/70">cr</span>
+                    <span class="font-mono font-semibold text-text-secondary">{cost}<span class="text-text-muted/70 font-normal">cr</span></span>
                   {/if}
                 </span>
               {/each}
