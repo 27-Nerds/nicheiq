@@ -13,6 +13,25 @@ export function renderMarkdown(content: string | undefined | null): string {
 	return marked.parse(content, { async: false }) as string;
 }
 
+/** Strip markdown syntax from raw text, returning clean plain text. */
+export function stripMarkdown(content: string | undefined | null): string {
+	if (!content) return '';
+	return content
+		.replace(/^#{1,6}\s+/gm, '')          // header prefixes: ### Title
+		.replace(/\*\*(.+?)\*\*/g, '$1')      // bold: **text**
+		.replace(/__(.+?)__/g, '$1')           // bold alt: __text__
+		.replace(/\*(.+?)\*/g, '$1')           // italic: *text*
+		.replace(/_(.+?)_/g, '$1')             // italic alt: _text_
+		.replace(/~~(.+?)~~/g, '$1')           // strikethrough: ~~text~~
+		.replace(/`([^`]+)`/g, '$1')           // inline code: `code`
+		.replace(/^\s*[-*+]\s+/gm, '')         // unordered list markers
+		.replace(/^\s*\d+\.\s+/gm, '')         // ordered list markers
+		.replace(/^\s*>\s?/gm, '')             // blockquote markers
+		.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // links: [text](url) → text
+		.replace(/  +/g, ' ')                  // collapse multiple spaces
+		.trim();
+}
+
 export function renderTechnicalContent(content: string | undefined | null): string {
 	if (!content) return '';
 

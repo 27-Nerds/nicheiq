@@ -18,12 +18,14 @@
   let creditAmount = $state("");
   let creditDescription = $state("");
   let addingCredits = $state(false);
+  let sendNotification = $state(false);
   let creditFeedback = $state<{ type: "success" | "error"; message: string } | null>(null);
 
   function openCreditModal(userId: string, email: string) {
     creditModal = { userId, email };
     creditAmount = "";
     creditDescription = "";
+    sendNotification = false;
     creditFeedback = null;
   }
 
@@ -31,6 +33,7 @@
     creditModal = null;
     creditAmount = "";
     creditDescription = "";
+    sendNotification = false;
     creditFeedback = null;
   }
 
@@ -53,7 +56,7 @@
       const res = await fetch(`/api/admin/users/${creditModal.userId}/credits`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, description: creditDescription.trim() }),
+        body: JSON.stringify({ amount, description: creditDescription.trim(), sendNotification }),
       });
 
       const result = await res.json();
@@ -63,7 +66,8 @@
         return;
       }
 
-      creditFeedback = { type: "success", message: `Added ${amount} credits. New balance: ${result.balance}` };
+      const emailNote = sendNotification ? " Notification email sent." : "";
+      creditFeedback = { type: "success", message: `Added ${amount} credits. New balance: ${result.balance}.${emailNote}` };
       await invalidateAll();
       setTimeout(closeCreditModal, 1500);
     } catch {
@@ -307,8 +311,13 @@
           maxlength="500"
           bind:value={creditDescription}
           placeholder="e.g. Beta tester bonus"
-          class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent mb-4"
+          class="w-full px-3 py-2 bg-bg-elevated border border-border rounded-lg text-text-primary text-sm focus:outline-none focus:border-accent mb-3"
         />
+
+        <label class="flex items-center gap-2 cursor-pointer mb-4">
+          <input type="checkbox" bind:checked={sendNotification} class="w-4 h-4 rounded border-border text-accent focus:ring-accent" />
+          <span class="text-sm text-text-secondary">Notify user by email</span>
+        </label>
 
         <div class="flex justify-end gap-2">
           <button

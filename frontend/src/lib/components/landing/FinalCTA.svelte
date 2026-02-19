@@ -1,13 +1,16 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ArrowRight, Check, ScrollText } from "lucide-svelte";
+  import { ArrowRight, Check } from "lucide-svelte";
+  import type { CtaConfig } from "$lib/types/cta";
+  import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
   interface Props {
     session?: { user?: { name?: string | null; email?: string | null } } | null;
     hasSampleReport?: boolean;
+    ctaTexts?: Record<string, CtaConfig | null>;
   }
 
-  let { session = null, hasSampleReport = false }: Props = $props();
+  let { session = null, hasSampleReport = false, ctaTexts }: Props = $props();
 
   let isVisible = $state(false);
 
@@ -71,20 +74,22 @@
               <ArrowRight class="w-5 h-5" />
             </a>
           {:else}
-            <a
-              href="/register"
-              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
-            >
-              Start My Report
-              <ArrowRight class="w-5 h-5" />
-            </a>
-            {#if hasSampleReport}
+            {#if ctaTexts?.cta_final_primary?.visible !== false}
               <a
-                href="/sample-report"
+                href={ctaTexts?.cta_final_primary?.url ?? "/register"}
+                class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
+              >
+                {ctaTexts?.cta_final_primary?.text ?? "Start My Report"}
+                <CtaIcon name={ctaTexts?.cta_final_primary?.icon} />
+              </a>
+            {/if}
+            {#if hasSampleReport && ctaTexts?.cta_final_secondary?.visible !== false}
+              <a
+                href={ctaTexts?.cta_final_secondary?.url ?? "/sample-report"}
                 class="btn-secondary w-full sm:w-auto px-6 py-4 text-base"
               >
-                <ScrollText class="w-5 h-5" />
-                See a Sample Report
+                {ctaTexts?.cta_final_secondary?.text ?? "See a Sample Report"}
+                <CtaIcon name={ctaTexts?.cta_final_secondary?.icon} />
               </a>
             {/if}
           {/if}

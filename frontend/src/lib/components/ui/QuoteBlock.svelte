@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stripMarkdown } from "$lib/utils/format";
+
   interface Props {
     text: string;
     variant?: "default" | "card" | "enhanced";
@@ -12,11 +14,13 @@
     class: className = "",
     style,
   }: Props = $props();
+
+  const cleanText = $derived(stripMarkdown(text));
 </script>
 
 <blockquote class="quote-block quote-block--{variant} {className}" {style}>
   <span class="quote-mark">"</span>
-  <p class="quote-text">{text}</p>
+  <p class="quote-text">{cleanText}</p>
 </blockquote>
 
 <style>

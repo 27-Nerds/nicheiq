@@ -1,9 +1,12 @@
 <script lang="ts">
   import { page } from "$app/stores";
+  import type { CtaConfig } from "$lib/types/cta";
+  import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
-  let { children } = $props();
+  let { data, children } = $props();
 
   const session = $derived($page.data.session);
+  const ctaHeader: CtaConfig | null = $derived(data.ctaTexts?.cta_header ?? null);
 </script>
 
 <div class="min-h-screen flex flex-col bg-bg-base">
@@ -30,7 +33,12 @@
             >
               Sign In
             </a>
-            <a href="/register" class="btn-primary"> Get Started </a>
+            {#if ctaHeader?.visible !== false}
+              <a href={ctaHeader?.url ?? "/register"} class="btn-primary">
+                {ctaHeader?.text ?? "Get Started"}
+                <CtaIcon name={ctaHeader?.icon} />
+              </a>
+            {/if}
           {/if}
         </nav>
       </div>

@@ -4,6 +4,7 @@ import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { resolveAssetPath } from '../utils/assetPath.js';
 import { addCredits } from './creditService.js';
+import { sendCreditBonusEmail } from './emailService.js';
 
 /**
  * Get dashboard statistics
@@ -355,6 +356,46 @@ function integerValidator(min: number, max: number) {
   };
 }
 
+function ctaJsonValidator(opts?: { requireCountPlaceholder?: boolean }) {
+  return (value: string): string | null => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return 'Value must be valid JSON';
+    }
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return 'Value must be a JSON object';
+    }
+    const obj = parsed as Record<string, unknown>;
+    if (typeof obj.text !== 'string' || obj.text.length === 0) {
+      return 'text must be a non-empty string';
+    }
+    if (obj.text.length > 60) {
+      return 'text must be at most 60 characters';
+    }
+    if (typeof obj.visible !== 'boolean') {
+      return 'visible must be a boolean';
+    }
+    if (typeof obj.url !== 'string' || obj.url.length === 0) {
+      return 'url must be a non-empty string';
+    }
+    if (!obj.url.startsWith('/') && !obj.url.startsWith('#')) {
+      return 'url must start with / or #';
+    }
+    if (opts?.requireCountPlaceholder && !obj.text.includes('{count}')) {
+      return 'text must contain {count} placeholder';
+    }
+    if (obj.icon !== undefined) {
+      const validIcons = ['none', 'arrow-right', 'scroll-text', 'file-text', 'sparkles', 'external-link'];
+      if (typeof obj.icon !== 'string' || !validIcons.includes(obj.icon)) {
+        return 'icon must be one of: ' + validIcons.join(', ');
+      }
+    }
+    return null;
+  };
+}
+
 const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   sample_report_url: (value) => {
     if (!/^\/shared\/[A-Za-z0-9_-]{1,100}$/.test(value)) {
@@ -367,6 +408,14 @@ const SETTINGS_VALIDATORS: Record<string, (value: string) => string | null> = {
   token_cost_landing_page: integerValidator(0, 100),
   token_cost_regenerate_ideas: integerValidator(0, 100),
   registration_credits: integerValidator(0, 1000),
+  cta_header: ctaJsonValidator(),
+  cta_hero_primary: ctaJsonValidator(),
+  cta_hero_secondary: ctaJsonValidator(),
+  cta_pricing_button: ctaJsonValidator({ requireCountPlaceholder: true }),
+  cta_final_primary: ctaJsonValidator(),
+  cta_final_secondary: ctaJsonValidator(),
+  cta_sample_button: ctaJsonValidator(),
+  cta_view_sample_link: ctaJsonValidator(),
 };
 
 /**
@@ -417,6 +466,16 @@ export async function deleteAppSetting(key: string): Promise<void> {
 }
 
 /**
+ * Get all app settings whose key starts with the given prefix
+ */
+export async function getAppSettingsByPrefix(prefix: string): Promise<Record<string, string>> {
+  const settings = await prisma.appSettings.findMany({
+    where: { key: { startsWith: prefix } },
+  });
+  return Object.fromEntries(settings.map(s => [s.key, s.value]));
+}
+
+/**
  * Get the configured registration credits amount (default 0)
  */
 export async function getRegistrationCredits(): Promise<number> {
@@ -437,15 +496,24 @@ export async function addCreditsToUser(
   userId: string,
   amount: number,
   description: string,
-  adminUserId: string,
+  _adminUserId: string,
+  sendNotification: boolean = false,
 ): Promise<{ balance: number; transaction: { id: string; amount: number } }> {
   // Verify user exists
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true } });
   if (!user) throw new Error('User not found');
 
   const auditDescription = `Admin: ${description}`;
 
   const result = await addCredits(userId, amount, auditDescription, CreditTransactionType.ADMIN_ADJUSTMENT);
+
+  // Bypass notificationService: this is an admin-initiated transactional email,
+  // not a job-lifecycle notification subject to user preferences.
+  if (sendNotification && user.email) {
+    await sendCreditBonusEmail(user.email, amount, description, result.credits.balance);
+  } else if (sendNotification && !user.email) {
+    console.warn('Credit notification requested but user has no email, userId:', userId);
+  }
 
   return {
     balance: result.credits.balance,

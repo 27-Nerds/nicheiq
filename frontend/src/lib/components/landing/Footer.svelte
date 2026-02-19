@@ -1,9 +1,13 @@
 <script lang="ts">
+  import type { CtaConfig } from "$lib/types/cta";
+  import { openCookiePreferences } from "$lib/utils/cookies";
+
   interface Props {
     hasSampleReport?: boolean;
+    ctaTexts?: Record<string, CtaConfig | null>;
   }
 
-  let { hasSampleReport = false }: Props = $props();
+  let { hasSampleReport = false, ctaTexts }: Props = $props();
 
   const currentYear = new Date().getFullYear();
 
@@ -14,15 +18,16 @@
   ];
 
   let productLinks = $derived(
-    hasSampleReport
+    hasSampleReport && ctaTexts?.cta_view_sample_link?.visible !== false
       ? [
           ...baseProductLinks,
-          { name: "View Sample Report", href: "/sample-report" },
+          {
+            name: ctaTexts?.cta_view_sample_link?.text ?? "View Sample Report",
+            href: ctaTexts?.cta_view_sample_link?.url ?? "/sample-report",
+          },
         ]
       : baseProductLinks,
   );
-
-  import { openCookiePreferences } from "$lib/utils/cookies";
 
   const companyLinks = [
     { name: "About the Maker", href: "#about-maker" },

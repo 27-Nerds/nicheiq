@@ -241,6 +241,7 @@ adminRouter.patch('/users/:userId/role', async (req: AuthenticatedRequest, res: 
 const AddCreditsSchema = z.object({
   amount: z.number().int().positive().max(10000),
   description: z.string().min(1).max(500),
+  sendNotification: z.boolean().optional().default(false),
 });
 
 adminRouter.post('/users/:userId/credits', async (req: AuthenticatedRequest, res: Response) => {
@@ -251,6 +252,7 @@ adminRouter.post('/users/:userId/credits', async (req: AuthenticatedRequest, res
       input.amount,
       input.description,
       req.user!.id,
+      input.sendNotification,
     );
     res.json(result);
   } catch (error) {

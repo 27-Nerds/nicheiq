@@ -46,15 +46,15 @@
 </svelte:head>
 
 <main class="overflow-hidden">
-  <Hero {session} hasSampleReport={data.hasSampleReport} />
-  <SampleReport hasSampleReport={data.hasSampleReport} />
+  <Hero {session} hasSampleReport={data.hasSampleReport} ctaTexts={data.ctaTexts} />
+  <SampleReport hasSampleReport={data.hasSampleReport} ctaTexts={data.ctaTexts} />
   <HowItWorks />
   <WhoItsFor />
   <BusinessIntelligence />
   <ComparisonTable />
   <Credibility />
-  <Pricing {session} />
+  <Pricing {session} ctaTexts={data.ctaTexts} />
   <FAQ />
-  <FinalCTA {session} hasSampleReport={data.hasSampleReport} />
-  <Footer hasSampleReport={data.hasSampleReport} />
+  <FinalCTA {session} hasSampleReport={data.hasSampleReport} ctaTexts={data.ctaTexts} />
+  <Footer hasSampleReport={data.hasSampleReport} ctaTexts={data.ctaTexts} />
 </main>

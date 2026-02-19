@@ -13,11 +13,15 @@
     Gift,
   } from "lucide-svelte";
 
+  import type { CtaConfig } from "$lib/types/cta";
+  import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
+
   interface Props {
     session?: { user?: { name?: string | null; email?: string | null } } | null;
+    ctaTexts?: Record<string, CtaConfig | null>;
   }
 
-  let { session = null }: Props = $props();
+  let { session = null, ctaTexts }: Props = $props();
 
   let isVisible = $state(false);
 
@@ -161,16 +165,19 @@
                   Go to Dashboard
                   <ArrowRight class="w-4 h-4" />
                 </a>
-              {:else}
+              {:else if ctaTexts?.cta_pricing_button?.visible !== false}
+                {@const pricingCta = ctaTexts?.cta_pricing_button}
+                {@const pricingText = pricingCta?.text
+                  ? pricingCta.text.replace('{count}', String(tier.reports)).replace('(s)', tier.reports === 1 ? '' : 's')
+                  : `Get ${tier.reports} ${tier.reports === 1 ? "Report" : "Reports"}`}
                 <a
-                  href="/register"
+                  href={pricingCta?.url ?? "/register"}
                   class="w-full text-sm sm:text-base py-3 text-center {tier.popular
                     ? 'btn-primary'
                     : 'btn-secondary'}"
                 >
-                  Get {tier.reports}
-                  {tier.reports === 1 ? "Report" : "Reports"}
-                  <ArrowRight class="w-4 h-4" />
+                  {pricingText}
+                  <CtaIcon name={pricingCta?.icon} class="w-4 h-4" />
                 </a>
               {/if}
             </div>

@@ -354,6 +354,33 @@ export async function sendSelectionReminderEmail(
 }
 
 /**
+ * Send credit bonus notification email
+ */
+export async function sendCreditBonusEmail(
+  to: string,
+  amount: number,
+  reason: string,
+  newBalance: number
+): Promise<void> {
+  const vars = {
+    AMOUNT: String(amount),
+    REASON: reason,
+    NEW_BALANCE: String(newBalance),
+    DASHBOARD_URL: `${CONFIG.baseUrl}/dashboard`,
+  };
+
+  try {
+    const html = renderTemplate(loadTemplate('creditBonus.html'), vars);
+    const text = renderTemplate(loadTemplate('creditBonus.txt'), vars);
+
+    await sendEmail(to, "You've Received NicheIQ Credits!", text, html);
+    console.log(`Credit bonus email sent to ${to} for ${amount} credits`);
+  } catch (error) {
+    console.error('Failed to send credit bonus email:', error);
+  }
+}
+
+/**
  * Test email configuration
  */
 export async function verifyEmailConfig(): Promise<boolean> {

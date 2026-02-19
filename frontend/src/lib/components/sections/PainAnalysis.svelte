@@ -776,12 +776,12 @@
 
   .pain-card-severity-high {
     border-left: 3px solid var(--color-error);
-    background: rgba(239, 68, 68, 0.04);
+    background: var(--color-bg-surface);
   }
 
   .pain-card-severity-medium {
     border-left: 3px solid var(--color-warning);
-    background: rgba(245, 158, 11, 0.04);
+    background: var(--color-bg-surface);
   }
 
   .pain-header-enhanced {
@@ -823,7 +823,7 @@
 
   .pain-title {
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: 0.9375rem;
     font-weight: 600;
     color: var(--color-text-primary);
     margin-bottom: 0.5rem;
@@ -875,8 +875,8 @@
   }
 
   .solution-card-enhanced {
-    background: rgba(229, 90, 40, 0.06);
-    border: 1px solid rgba(229, 90, 40, 0.2);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-success);
     border-radius: 0.75rem;
     padding: 1.25rem;
@@ -884,7 +884,7 @@
   }
 
   .solution-card-enhanced:hover {
-    border-color: rgba(229, 90, 40, 0.4);
+    border-color: var(--color-border-emphasis);
   }
 
   .solution-header {
@@ -1034,12 +1034,12 @@
 
   .pain-point-card-enhanced.opportunity-high {
     border-left: 3px solid var(--color-success);
-    background: rgba(229, 90, 40, 0.03);
+    background: var(--color-bg-surface);
   }
 
   .pain-point-card-enhanced.opportunity-medium {
     border-left: 3px solid var(--color-warning);
-    background: rgba(245, 158, 11, 0.03);
+    background: var(--color-bg-surface);
   }
 
   .pain-point-header {

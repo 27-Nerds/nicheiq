@@ -31,6 +31,7 @@
     formatNumber,
     formatScorePercent,
     renderMarkdown,
+    stripMarkdown,
   } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
@@ -633,7 +634,7 @@
                 <blockquote class="pain-quote">
                   <Quote class="quote-icon" />
                   <div>
-                    <p>{qs.quote}</p>
+                    <p>{stripMarkdown(qs.quote)}</p>
                     <span class="pain-quote-attribution">
                       {qs.subreddit} &middot; &#9650;{qs.score}
                     </span>
@@ -646,7 +647,7 @@
               {#each fallbackQuotes as q}
                 <blockquote class="pain-quote">
                   <Quote class="quote-icon" />
-                  <p>{q}</p>
+                  <p>{stripMarkdown(q)}</p>
                 </blockquote>
               {/each}
             </div>
@@ -654,7 +655,7 @@
             <div class="pain-quotes-section">
               <blockquote class="pain-quote">
                 <Quote class="quote-icon" />
-                <p>{corePain.representative_quote}</p>
+                <p>{stripMarkdown(corePain.representative_quote)}</p>
               </blockquote>
             </div>
           {/if}

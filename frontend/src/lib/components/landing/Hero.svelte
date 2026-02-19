@@ -1,23 +1,19 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { tweened } from "svelte/motion";
-  import { cubicOut } from "svelte/easing";
   import { ArrowRight, Sparkles } from "lucide-svelte";
   import { page } from "$app/stores";
+  import type { CtaConfig } from "$lib/types/cta";
+  import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
   interface Props {
     session?: { user?: { name?: string | null; email?: string | null } } | null;
     hasSampleReport?: boolean;
+    ctaTexts?: Record<string, CtaConfig | null>;
   }
 
-  let { session = null, hasSampleReport = false }: Props = $props();
+  let { session = null, hasSampleReport = false, ctaTexts }: Props = $props();
 
   let isVisible = $state(false);
-
-  // Animated counters
-  const minuteCount = tweened(0, { duration: 2000, easing: cubicOut });
-  const painPointCount = tweened(0, { duration: 2000, easing: cubicOut });
-  const verifyCount = tweened(0, { duration: 2000, easing: cubicOut });
 
   // Terminal animation
   const terminalLines = [
@@ -62,15 +58,6 @@
 
       return () => clearInterval(interval);
     }, 800);
-  });
-
-  // Trigger counting when visible
-  $effect(() => {
-    if (isVisible) {
-      minuteCount.set(45);
-      painPointCount.set(5);
-      verifyCount.set(100);
-    }
   });
 
   function scrollToHowItWorks() {
@@ -135,25 +122,39 @@
               <ArrowRight class="w-5 h-5" />
             </a>
           {:else}
-            <a
-              href="/register"
-              class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
-            >
-              Get Started
-              <ArrowRight class="w-5 h-5" />
-            </a>
-            <button
-              onclick={scrollToHowItWorks}
-              class="btn-secondary w-full sm:w-auto px-8 py-4 text-base"
-            >
-              See How It Works
-            </button>
+            {@const heroPrimary = ctaTexts?.cta_hero_primary}
+            {@const heroSecondary = ctaTexts?.cta_hero_secondary}
+            {@const secondaryUrl = heroSecondary?.url ?? "#how-it-works"}
+            {#if heroPrimary?.visible !== false}
+              <a
+                href={heroPrimary?.url ?? "/register"}
+                class="btn-primary w-full sm:w-auto px-8 py-4 text-base"
+              >
+                {heroPrimary?.text ?? "Get Started"}
+                <CtaIcon name={heroPrimary?.icon} />
+              </a>
+            {/if}
+            {#if heroSecondary?.visible !== false}
+              <a
+                href={secondaryUrl}
+                onclick={(e) => {
+                  if (secondaryUrl.startsWith('#')) {
+                    e.preventDefault();
+                    document.getElementById(secondaryUrl.slice(1))?.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }}
+                class="btn-secondary w-full sm:w-auto px-8 py-4 text-base"
+              >
+                {heroSecondary?.text ?? "See How It Works"}
+                <CtaIcon name={heroSecondary?.icon} />
+              </a>
+            {/if}
           {/if}
         </div>
 
-        <!-- Terminal Animation - Mobile optimized with responsive height -->
+        <!-- Terminal Animation - Full container width, aligned with hero text -->
         <div
-          class="animate-fade-in delay-400 bg-bg-elevated border border-accent/15 rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm max-w-2xl mx-auto mb-8 sm:mb-10 text-left"
+          class="animate-fade-in delay-400 bg-bg-elevated border border-accent/15 rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm mb-8 sm:mb-10 text-left w-full"
         >
           <!-- Terminal Header -->
           <div
@@ -175,7 +176,7 @@
           </div>
           <!-- Terminal Content - responsive height -->
           <div
-            class="space-y-1 sm:space-y-1.5 h-[180px] sm:h-[220px] overflow-y-auto"
+            class="space-y-1 sm:space-y-1.5 min-h-[180px] sm:min-h-[220px]"
           >
             {#each terminalLines.slice(0, visibleLineCount) as line, i}
               <div
@@ -194,61 +195,15 @@
           </div>
         </div>
 
-        <!-- Stats Row with Animated Numbers - Mobile optimized with tighter gap -->
-        <div
-          class="animate-fade-in delay-500 flex flex-wrap justify-center gap-3 sm:gap-4"
-        >
-          <div
-            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent"
-          >
-            <span
-              class="block text-2xl sm:text-3xl font-display font-bold text-accent tracking-tight"
-            >
-              {Math.round($minuteCount)}<span
-                class="text-lg sm:text-xl font-semibold ml-0.5">min</span
-              >
-            </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block"
-              >To your verdict</span
-            >
-          </div>
-          <div
-            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent/70"
-          >
-            <span
-              class="block text-2xl sm:text-3xl font-display font-bold text-text-primary tracking-tight"
-            >
-              {Math.round($painPointCount)}<span
-                class="text-lg sm:text-xl font-semibold">+</span
-              >
-            </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block"
-              >Pain points found</span
-            >
-          </div>
-          <div
-            class="stat-card px-4 sm:px-6 py-3 sm:py-4 border-l-2 border-l-accent/40"
-          >
-            <span
-              class="block text-2xl sm:text-3xl font-display font-bold text-text-primary tracking-tight"
-            >
-              {Math.round($verifyCount)}<span
-                class="text-lg sm:text-xl font-semibold">%</span
-              >
-            </span>
-            <span class="small-caps text-[10px] sm:text-xs mt-1 block"
-              >Claims verifiable</span
-            >
-          </div>
-        </div>
 
         <!-- View Sample Report Link -->
-        {#if hasSampleReport}
+        {#if hasSampleReport && ctaTexts?.cta_view_sample_link?.visible !== false}
           <a
-            href="/sample-report"
-            class="animate-fade-in delay-600 mt-6 sm:mt-8 text-text-muted hover:text-accent transition-colors text-sm underline underline-offset-4"
+            href={ctaTexts?.cta_view_sample_link?.url ?? "/sample-report"}
+            class="animate-fade-in delay-600 mt-6 sm:mt-8 text-text-muted hover:text-accent transition-colors text-sm underline underline-offset-4 inline-flex items-center gap-1.5"
           >
-            View Sample Report
+            {ctaTexts?.cta_view_sample_link?.text ?? "View Sample Report"}
+            <CtaIcon name={ctaTexts?.cta_view_sample_link?.icon} class="w-4 h-4" />
           </a>
         {/if}
       </div>

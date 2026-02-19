@@ -1,0 +1,13 @@
+You've Got Credits!
+
+Good news — {{AMOUNT}} credits have just been added to your NicheIQ account.
+
+Credits Added: +{{AMOUNT}}
+Reason: {{REASON}}
+Your New Balance: {{NEW_BALANCE}} credits
+
+Use your credits to run market research and discover validated SaaS opportunities.
+
+Go to Dashboard: {{DASHBOARD_URL}}
+
+This email was sent by NicheIQ

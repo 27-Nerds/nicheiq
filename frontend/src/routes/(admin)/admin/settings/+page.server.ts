@@ -10,6 +10,17 @@ const TOKEN_COST_KEYS = [
   'token_cost_regenerate_ideas',
 ] as const;
 
+const CTA_KEYS = [
+  'cta_header',
+  'cta_hero_primary',
+  'cta_hero_secondary',
+  'cta_pricing_button',
+  'cta_final_primary',
+  'cta_final_secondary',
+  'cta_sample_button',
+  'cta_view_sample_link',
+] as const;
+
 export const load: PageServerLoad = async ({ parent }) => {
   const { session } = await parent();
 
@@ -20,10 +31,13 @@ export const load: PageServerLoad = async ({ parent }) => {
   };
 
   try {
-    const [sampleReportRes, registrationCreditsRes, ...tokenCostResponses] = await Promise.all([
+    const [sampleReportRes, registrationCreditsRes, ...responses] = await Promise.all([
       fetch(`${BACKEND_URL}/api/admin/settings/sample_report_url`, { headers }),
       fetch(`${BACKEND_URL}/api/admin/settings/registration_credits`, { headers }),
       ...TOKEN_COST_KEYS.map((key) =>
+        fetch(`${BACKEND_URL}/api/admin/settings/${key}`, { headers }),
+      ),
+      ...CTA_KEYS.map((key) =>
         fetch(`${BACKEND_URL}/api/admin/settings/${key}`, { headers }),
       ),
     ]);
@@ -36,6 +50,9 @@ export const load: PageServerLoad = async ({ parent }) => {
       ? (await registrationCreditsRes.json()).value
       : null;
 
+    const tokenCostResponses = responses.slice(0, TOKEN_COST_KEYS.length);
+    const ctaResponses = responses.slice(TOKEN_COST_KEYS.length);
+
     const tokenCosts: Record<string, string | null> = {};
     for (let i = 0; i < TOKEN_COST_KEYS.length; i++) {
       const res = tokenCostResponses[i];
@@ -44,10 +61,18 @@ export const load: PageServerLoad = async ({ parent }) => {
         : null;
     }
 
-    return { sampleReportUrl, registrationCredits, tokenCosts };
+    const ctaTexts: Record<string, string | null> = {};
+    for (let i = 0; i < CTA_KEYS.length; i++) {
+      const res = ctaResponses[i];
+      ctaTexts[CTA_KEYS[i]] = res.ok
+        ? (await res.json()).value
+        : null;
+    }
+
+    return { sampleReportUrl, registrationCredits, tokenCosts, ctaTexts };
   } catch (error) {
     console.error('Failed to fetch settings:', error);
   }
 
-  return { sampleReportUrl: null, registrationCredits: null, tokenCosts: {} };
+  return { sampleReportUrl: null, registrationCredits: null, tokenCosts: {}, ctaTexts: {} };
 };

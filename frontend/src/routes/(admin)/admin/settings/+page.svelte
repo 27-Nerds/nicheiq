@@ -3,6 +3,7 @@
   import { invalidateAll } from "$app/navigation";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SettingsNumberRow from "$lib/components/ui/SettingsNumberRow.svelte";
+  import SettingsCtaRow from "$lib/components/ui/SettingsCtaRow.svelte";
 
   let { data } = $props();
 
@@ -86,6 +87,53 @@
     { key: "token_cost_deep_research", label: "Deep Research", default: 15 },
     { key: "token_cost_regenerate_ideas", label: "Generate More Ideas", default: 2 },
     { key: "token_cost_landing_page", label: "Landing Page", default: 5 },
+  ] as const;
+
+  const CTA_SECTIONS = [
+    {
+      section: "Navigation Bar",
+      description: "Top sticky header — visible on all public pages",
+      fields: [
+        { key: "cta_header", label: "Header Button", defaultText: "Get Started", defaultUrl: "/register", defaultIcon: "none" as const },
+      ],
+    },
+    {
+      section: "Hero Section",
+      description: "First thing visitors see — main headline area",
+      fields: [
+        { key: "cta_hero_primary", label: "Primary Button", defaultText: "Get Started", defaultUrl: "/register", defaultIcon: "none" as const },
+        { key: "cta_hero_secondary", label: "Secondary Button", defaultText: "See How It Works", defaultUrl: "#how-it-works", defaultIcon: "none" as const },
+      ],
+    },
+    {
+      section: "Sample Report Preview",
+      description: "Interactive report preview with tabs",
+      fields: [
+        { key: "cta_sample_button", label: "View Full Report Button", defaultText: "See the Full Report", defaultUrl: "/sample-report", defaultIcon: "none" as const },
+      ],
+    },
+    {
+      section: "Pricing Section",
+      description: "Pricing tiers — button appears on each tier card",
+      fields: [
+        { key: "cta_pricing_button", label: "Tier Button", defaultText: "Get {count} Report(s)", defaultUrl: "/register", defaultIcon: "none" as const },
+      ],
+    },
+    {
+      section: "Final Call-to-Action",
+      description: "Bottom conversion section — last CTA before footer",
+      fields: [
+        { key: "cta_final_primary", label: "Primary Button", defaultText: "Start My Report", defaultUrl: "/register", defaultIcon: "none" as const },
+        { key: "cta_final_secondary", label: "Secondary Button", defaultText: "See a Sample Report", defaultUrl: "/sample-report", defaultIcon: "none" as const },
+      ],
+    },
+    {
+      section: "Footer & Links",
+      description: "Footer product links + hero 'View Sample' link",
+      fields: [
+        { key: "cta_view_sample_link", label: "Sample Report Link", defaultText: "View Sample Report", defaultUrl: "/sample-report", defaultIcon: "none" as const },
+      ],
+    },
   ] as const;
 </script>
 
@@ -190,5 +238,34 @@
       max={1000}
       value={data.registrationCredits}
     />
+  </div>
+
+  <!-- Landing Page CTAs -->
+  <div class="bg-bg-surface border border-border rounded-xl p-5">
+    <h3 class="text-lg font-semibold text-text-primary mb-1">Landing Page CTAs</h3>
+    <p class="text-sm text-text-muted mb-6">
+      Customize button text, link destinations, and visibility for all call-to-action elements on the public landing page.
+    </p>
+
+    <div class="space-y-6">
+      {#each CTA_SECTIONS as group}
+        <div>
+          <h4 class="text-sm font-semibold text-text-primary mb-0.5">{group.section}</h4>
+          <p class="text-xs text-text-muted mb-3">{group.description}</p>
+          <div class="space-y-4 pl-3 border-l-2 border-border">
+            {#each group.fields as field}
+              <SettingsCtaRow
+                key={field.key}
+                label={field.label}
+                defaultText={field.defaultText}
+                defaultUrl={field.defaultUrl}
+                defaultIcon={field.defaultIcon}
+                value={data.ctaTexts?.[field.key] ?? null}
+              />
+            {/each}
+          </div>
+        </div>
+      {/each}
+    </div>
   </div>
 </div>

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { fade } from "svelte/transition";
-  import { FileText } from "lucide-svelte";
   import PainAnalysis from "$lib/components/sections/PainAnalysis.svelte";
   import SEOKeywords from "$lib/components/sections/SEOKeywords.svelte";
   import Competitors from "$lib/components/sections/Competitors.svelte";
@@ -17,12 +16,15 @@
     CompetitiveAnalytics,
     MarketSizing as MarketSizingType,
   } from "$lib/types/report";
+  import type { CtaConfig } from "$lib/types/cta";
+  import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
   interface Props {
     hasSampleReport?: boolean;
+    ctaTexts?: Record<string, CtaConfig | null>;
   }
 
-  let { hasSampleReport = false }: Props = $props();
+  let { hasSampleReport = false, ctaTexts }: Props = $props();
 
   let isVisible = $state(false);
   let activeTab = $state<
@@ -521,26 +523,26 @@
       >
         <!-- Toolbar strip -->
         <div
-          class="flex items-center justify-between px-4 py-2.5 bg-bg-surface border-b border-border"
+          class="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2.5 bg-bg-surface border-b border-border"
         >
-          <div class="flex items-center gap-2">
-            <div class="flex gap-1.5">
-              <div
-                class="w-2.5 h-2.5 rounded-full bg-border-emphasis"
-              ></div>
-              <div class="w-2.5 h-2.5 rounded-full bg-border"></div>
-              <div class="w-2.5 h-2.5 rounded-full bg-border"></div>
-            </div>
-            <span
-              class="text-xs text-text-muted font-mono ml-2 hidden sm:inline"
-            >
-              report — content-repurposing-tool
-            </span>
-          </div>
+          <div
+            class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#FF5F57]"
+          ></div>
+          <div
+            class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#FEBC2E]"
+          ></div>
+          <div
+            class="w-2.5 sm:w-3 h-2.5 sm:h-3 rounded-full bg-[#28C840]"
+          ></div>
+          <span
+            class="ml-auto text-[10px] sm:text-xs text-text-muted font-mono font-medium tracking-wide"
+            >report — content-repurposing-tool</span
+          >
           {#if hasSampleReport}
+            <span class="text-border mx-1 hidden sm:inline">|</span>
             <a
               href="/sample-report"
-              class="text-xs text-accent hover:underline hidden sm:inline"
+              class="text-[10px] sm:text-xs text-accent hover:underline hidden sm:inline"
             >
               Open full report &rarr;
             </a>
@@ -593,14 +595,15 @@
       </p>
 
       <!-- CTA -->
-      {#if hasSampleReport}
+      {@const sampleCta = ctaTexts?.cta_sample_button}
+      {#if hasSampleReport && sampleCta?.visible !== false}
         <div class="mt-8 text-center">
           <a
-            href="/sample-report"
+            href={sampleCta?.url ?? "/sample-report"}
             class="btn-primary inline-flex items-center gap-2 px-6 py-3"
           >
-            <FileText class="w-4 h-4" />
-            See the Full Report
+            {sampleCta?.text ?? "See the Full Report"}
+            <CtaIcon name={sampleCta?.icon} class="w-4 h-4" />
           </a>
           <p class="text-xs text-text-muted mt-3">
             All 10+ sections — pain points, keywords, competitors, pricing,
