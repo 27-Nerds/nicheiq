@@ -58,9 +58,11 @@ rvp = (volume in rising keywords) / (total keyword volume) * 100
 ```
 
 A keyword is classified "rising" when its recent 3-month search volume
-average exceeds its older 3-month average by >10% (symmetric ±10%
-thresholds; ±5-15% is normal keyword noise), with a noise floor of
-50 searches/month.
+average exceeds its older 3-month average by >20% (symmetric ±20%
+thresholds). Google Keyword Planner uses bucketed volumes where adjacent
+bucket jumps are 22-40%, so ±20% filters single-bucket noise while
+preserving genuine multi-bucket shifts. A noise floor of 50 searches/month
+is applied (both averages < 50 → stable regardless of percentage).
 
 ## Momentum Score
 
@@ -175,7 +177,7 @@ Python provides a suggestion; the LLM confirms or overrides.
 
 | Condition | Suggestion |
 |----------|-----------|
-| > 60% declining keywords (by count) | Risky |
+| > 70% declining keywords (by count) | Risky |
 | > 50% evergreen + momentum not Declining | Sustainable |
 | Else | Undetermined |
 
@@ -190,10 +192,14 @@ Computed after the LLM provides `longevity_verdict`:
 
 | Condition | Recommendation |
 |----------|---------------|
-| Risky verdict | Monitor & Wait |
 | Fad verdict | Missed Window |
-| Growing + score >= 0.7 | Enter Now |
+| Risky + Declining | Missed Window |
+| Risky + score < 0.5 | Monitor & Wait |
+| Risky (catch-all) | Monitor & Wait |
+| Growing + score >= 0.6 | Enter Now |
 | Declining + score < 0.4 | Missed Window |
+| Growing + score >= 0.5 | Enter Now |
+| Stable + score >= 0.6 | Enter Now |
 | Everything else | Monitor & Wait |
 
 ## Real-World Methodology Grounding

@@ -111,7 +111,7 @@ class ScoreThresholds(BaseModel):
 
     # Go/No-Go Verdict Thresholds
     verdict_go_avg_score: float = Field(
-        default=0.75,
+        default=0.72,
         ge=0.0,
         le=1.0,
         description="Minimum average score (all 4 dimensions) for Go verdict",
@@ -407,8 +407,8 @@ class VerdictValidator:
                 f"Fad longevity verdict"
             )
 
-        # Rule 3: Declining trend → Go→Conditional only
-        elif self.thresholds.trend_declining_downgrades_go and is_declining:
+        # Rule 3: Declining trend → Go→Conditional only if momentum confirms weakness
+        elif self.thresholds.trend_declining_downgrades_go and is_declining and momentum_score < 0.35:
             if verdict == "Go":
                 verdict = "Conditional"
                 trend_context = (
@@ -416,14 +416,30 @@ class VerdictValidator:
                     f"Declining market trend (momentum={momentum_score:.2f})"
                 )
 
-        # Rule 4: Risky longevity → Go→Conditional only
-        elif self.thresholds.trend_risky_downgrades_go and is_risky:
+        # Rule 4: Risky longevity → Go→Conditional only if momentum confirms weakness
+        # (must come before Rule 3b so Declining+Risky+borderline-momentum is caught)
+        elif self.thresholds.trend_risky_downgrades_go and is_risky and momentum_score < 0.50:
             if verdict == "Go":
                 verdict = "Conditional"
                 trend_context = (
                     f"Downgraded from Go/{original_risk} to Conditional/{risk_level}: "
                     f"Risky longevity verdict ({market_maturity} market)"
                 )
+
+        # Rule 3b: Barely-Declining — informational only, no downgrade
+        # (only reached if momentum >= 0.35 AND not Risky with momentum < 0.50)
+        elif self.thresholds.trend_declining_downgrades_go and is_declining:
+            trend_context = (
+                f"Note: Declining direction but momentum ({momentum_score:.2f}) "
+                f"near Stable boundary — no verdict downgrade"
+            )
+
+        # Rule 4b: Risky longevity but moderate+ momentum — informational only
+        elif self.thresholds.trend_risky_downgrades_go and is_risky:
+            trend_context = (
+                f"Note: Risky longevity ({market_maturity} market) but momentum "
+                f"({momentum_score:.2f}) above downgrade threshold"
+            )
 
         # Rule 5: Monitor & Wait → raise risk one level (additive, independent of 1-4)
         if (

@@ -504,9 +504,9 @@ class TrendLongevityCrew:
                 # Low-volume noise floor
                 if recent_3_avg < 50 and older_3_avg < 50:
                     trend_arrow = "→ Stable"
-                elif trend_pct > 10:
+                elif trend_pct > 20:
                     trend_arrow = "↑ Rising"
-                elif trend_pct < -10:
+                elif trend_pct < -20:
                     trend_arrow = "↓ Declining"
                 else:
                     trend_arrow = "→ Stable"

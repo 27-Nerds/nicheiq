@@ -29,7 +29,7 @@ class TestScoreThresholds:
         assert thresholds.market_validation_moderate_pain_points == 5
 
         # Verdict thresholds
-        assert thresholds.verdict_go_avg_score == 0.75
+        assert thresholds.verdict_go_avg_score == 0.72
         assert thresholds.verdict_go_min_individual_score == 0.60
         assert thresholds.verdict_conditional_avg_score == 0.55
         assert thresholds.verdict_conditional_min_individual_score == 0.50
@@ -366,13 +366,14 @@ class TestTrendDowngradeRules:
         assert r == "High"
 
     def test_rule3_declining_downgrades_go_only(self):
-        """Rule 3: Declining trend downgrades Go→Conditional."""
+        """Rule 3: Declining trend + low momentum downgrades Go→Conditional."""
         validator = VerdictValidator()
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
                 verdict="Go",
                 risk_level="Low",
                 trend_direction="Declining",
+                momentum_score=0.30,  # below 0.35 guard
                 timing_recommendation="Enter Now",  # not Missed Window, so rule 1 doesn't fire
                 longevity_verdict="Sustainable",  # not Fad, so rule 2 doesn't fire
             )
@@ -389,21 +390,23 @@ class TestTrendDowngradeRules:
                 verdict="Conditional",
                 risk_level="Medium",
                 trend_direction="Declining",
+                momentum_score=0.30,  # below 0.35 guard so Rule 3 fires
                 timing_recommendation="Enter Now",
                 longevity_verdict="Sustainable",
             )
         )
         assert v == "Conditional"
-        assert tc is None  # no change made
+        assert tc is None  # Rule 3 entered but inner if verdict=="Go" is False
 
     def test_rule4_risky_downgrades_go_only(self):
-        """Rule 4: Risky longevity downgrades Go→Conditional."""
+        """Rule 4: Risky longevity + low momentum downgrades Go→Conditional."""
         validator = VerdictValidator()
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
                 verdict="Go",
                 risk_level="Low",
                 trend_direction="Stable",  # not Declining, so rule 1/3 don't fire
+                momentum_score=0.40,  # below 0.50 guard
                 longevity_verdict="Risky",
             )
         )
@@ -419,11 +422,12 @@ class TestTrendDowngradeRules:
                 verdict="Conditional",
                 risk_level="Medium",
                 trend_direction="Stable",
+                momentum_score=0.40,  # below 0.50 guard so Rule 4 fires
                 longevity_verdict="Risky",
             )
         )
         assert v == "Conditional"
-        assert tc is None
+        assert tc is None  # Rule 4 entered but inner if verdict=="Go" is False
 
     def test_rule5_monitor_wait_disabled_by_default_low(self):
         """Rule 5 disabled by default: Monitor & Wait does NOT raise risk Low→Medium."""
@@ -469,12 +473,13 @@ class TestTrendDowngradeRules:
     def test_rule5_additive_with_rule3_disabled_by_default(self):
         """Rule 5 disabled by default: Declining + Monitor & Wait only fires Rule 3, not Rule 5."""
         validator = VerdictValidator()
-        # Rule 3 fires (declining but not missed window), Rule 5 disabled so risk stays Low
+        # Rule 3 fires (declining + momentum < 0.35), Rule 5 disabled so risk stays Low
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(
                 verdict="Go",
                 risk_level="Low",
                 trend_direction="Declining",
+                momentum_score=0.30,  # below 0.35 guard
                 timing_recommendation="Monitor & Wait",
                 longevity_verdict="Sustainable",
             )
@@ -534,14 +539,56 @@ class TestNoDowngradeScenarios:
         assert r == "Low"
         assert tc is None
 
-    def test_growing_enter_now_risky_still_downgrades(self):
-        """Growing + Enter Now + Risky → Rule 4 fires."""
+    def test_growing_risky_high_momentum_no_downgrade(self):
+        """Growing + Risky + high momentum (0.8 >= 0.50) → Rule 4 skipped, Go preserved."""
         validator = VerdictValidator()
         v, r, pc, tc = validator.apply_trend_downgrade(
             **self._base_kwargs(longevity_verdict="Risky")
         )
+        assert v == "Go"
+        assert tc is not None  # informational note from Rule 4b
+        assert "Note" in tc
+
+    def test_risky_low_momentum_downgrades(self):
+        """Risky + low momentum (0.40 < 0.50) → Rule 4 fires, Go→Conditional."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                longevity_verdict="Risky",
+                momentum_score=0.40,
+            )
+        )
         assert v == "Conditional"
         assert tc is not None
+        assert "Risky" in tc
+
+    def test_declining_borderline_momentum_no_downgrade(self):
+        """Declining + borderline momentum (0.38 >= 0.35) + Sustainable → Rules 3/4 skipped."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                trend_direction="Declining",
+                momentum_score=0.38,
+                longevity_verdict="Sustainable",
+            )
+        )
+        assert v == "Go"
+        assert tc is not None  # informational note from Rule 3b
+        assert "Note" in tc
+
+    def test_declining_borderline_risky_still_downgrades(self):
+        """Declining + borderline momentum (0.38) + Risky → Rule 3 skipped, Rule 4 fires."""
+        validator = VerdictValidator()
+        v, r, pc, tc = validator.apply_trend_downgrade(
+            **self._base_kwargs(
+                trend_direction="Declining",
+                momentum_score=0.38,
+                longevity_verdict="Risky",
+            )
+        )
+        assert v == "Conditional"
+        assert tc is not None
+        assert "Risky" in tc
 
     @pytest.mark.parametrize(
         "verdict,risk",

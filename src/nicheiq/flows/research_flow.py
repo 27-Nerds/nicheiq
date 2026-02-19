@@ -568,13 +568,15 @@ RULES:
         else:
             trend_pct = 0
 
-        # Trend direction thresholds (symmetric ±10% thresholds; ±5-15% is normal keyword noise)
+        # Trend direction thresholds (symmetric ±20% thresholds)
+        # Google Keyword Planner uses bucketed volumes where adjacent bucket jumps
+        # are 22-40%, so ±20% filters single-bucket noise while preserving genuine shifts.
         # Low-volume noise floor: if both averages < 50, classify as stable
         if recent_avg < 50 and older_avg < 50:
             trend_direction = "stable"
-        elif trend_pct > 10:
+        elif trend_pct > 20:
             trend_direction = "rising"
-        elif trend_pct < -10:
+        elif trend_pct < -20:
             trend_direction = "declining"
         else:
             trend_direction = "stable"

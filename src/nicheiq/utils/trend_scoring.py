@@ -58,7 +58,7 @@ SEASONAL_STRONG_THRESHOLD = 0.50
 SEASONAL_MILD_THRESHOLD = 0.30
 
 # longevity verdict thresholds
-DECLINING_RATIO_RISKY = 0.60
+DECLINING_RATIO_RISKY = 0.70
 EVERGREEN_PCT_SUSTAINABLE = 0.50
 
 # Discussion recency buckets (days)
@@ -358,14 +358,29 @@ def compute_timing(
     Returns:
         "Enter Now", "Monitor & Wait", or "Missed Window"
     """
-    if longevity_verdict == "Risky":
-        return "Monitor & Wait"
+    # Fad is always terminal
     if longevity_verdict == "Fad":
         return "Missed Window"
-    if trend_direction == "Growing" and momentum_score >= 0.7:
+    # Risky + Declining = worst combination
+    if longevity_verdict == "Risky" and trend_direction == "Declining":
+        return "Missed Window"
+    # Risky + low momentum = wait
+    if longevity_verdict == "Risky" and momentum_score < 0.5:
+        return "Monitor & Wait"
+    # Risky catch-all: even with decent momentum, Risky means wait
+    if longevity_verdict == "Risky":
+        return "Monitor & Wait"
+    # Non-risky: Growing with good momentum = enter
+    if trend_direction == "Growing" and momentum_score >= 0.6:
         return "Enter Now"
+    # Non-risky: Declining with weak momentum = missed window
     if trend_direction == "Declining" and momentum_score < 0.4:
         return "Missed Window"
+    # Non-risky: Growing or strong stable = enter
+    if trend_direction == "Growing" and momentum_score >= 0.5:
+        return "Enter Now"
+    if trend_direction == "Stable" and momentum_score >= 0.6:
+        return "Enter Now"
     return "Monitor & Wait"
 
 

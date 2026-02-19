@@ -173,44 +173,45 @@ class TestCrossFunctionConsistency:
 # ===================================================================
 
 class TestClassificationThresholds:
-    """Symmetric ±10% thresholds for rising/declining classification.
-    Normal keyword noise is ±5-15%, so ±10% prevents false classifications."""
+    """Symmetric ±20% thresholds for rising/declining classification.
+    Google Keyword Planner uses bucketed volumes where adjacent bucket jumps
+    are 22-40%, so ±20% filters single-bucket noise while preserving genuine shifts."""
 
-    def test_9pct_rise_is_stable(self, flow):
-        """A 9% rise should be 'stable' (below the 10% rising threshold)."""
-        # old avg = 100, recent avg = 109 → +9%
-        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 109, 109, 109]
+    def test_19pct_rise_is_stable(self, flow):
+        """A 19% rise should be 'stable' (below the 20% rising threshold)."""
+        # old avg = 100, recent avg = 119 → +19%
+        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 119, 119, 119]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "stable"
 
-    def test_11pct_rise_is_rising(self, flow):
-        """An 11% rise should be 'rising' (above the 10% threshold)."""
-        # old avg = 100, recent avg = 111 → +11%
-        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 111, 111, 111]
+    def test_21pct_rise_is_rising(self, flow):
+        """A 21% rise should be 'rising' (above the 20% threshold)."""
+        # old avg = 100, recent avg = 121 → +21%
+        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 121, 121, 121]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "rising"
 
-    def test_9pct_decline_is_stable(self, flow):
-        """A 9% decline should be 'stable' (inside the -10% threshold)."""
-        # old avg = 200, recent avg = 182 → -9%
-        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 182, 182, 182]
+    def test_19pct_decline_is_stable(self, flow):
+        """A 19% decline should be 'stable' (inside the -20% threshold)."""
+        # old avg = 200, recent avg = 162 → -19%
+        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 162, 162, 162]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "stable"
 
-    def test_11pct_decline_is_declining(self, flow):
-        """An 11% decline should be 'declining' (beyond the -10% threshold)."""
-        # old avg = 200, recent avg = 178 → -11%
-        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 178, 178, 178]
+    def test_21pct_decline_is_declining(self, flow):
+        """A 21% decline should be 'declining' (beyond the -20% threshold)."""
+        # old avg = 200, recent avg = 158 → -21%
+        volumes = [200, 200, 200, 200, 200, 200, 200, 200, 200, 158, 158, 158]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "declining"
 
     def test_symmetry_prevents_false_declining(self, flow):
-        """A -9% change should be 'stable' under symmetric ±10% thresholds."""
-        # old avg = 100, recent avg = 91 → -9%
-        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 91, 91, 91]
+        """A -19% change should be 'stable' under symmetric ±20% thresholds."""
+        # old avg = 100, recent avg = 81 → -19%
+        volumes = [100, 100, 100, 100, 100, 100, 100, 100, 100, 81, 81, 81]
         result = flow._calculate_trend_metrics(_make_monthly(volumes))
         assert result["trend_direction"] == "stable", (
-            "A -9% change should be stable under symmetric ±10% thresholds"
+            "A -19% change should be stable under symmetric ±20% thresholds"
         )
 
 
@@ -699,8 +700,14 @@ class TestLongevityVerdictSuggestion:
         assert result["suggested_longevity_verdict"] == "Risky"
 
     def test_verdict_risky_moderate_decline(self):
-        """>60% declining + low rising -> Risky."""
+        """62% declining is below new 70% threshold -> Undetermined."""
         enriched = _make_enriched(rising=10, stable=28, declining=62)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Undetermined"
+
+    def test_verdict_risky_above_new_threshold(self):
+        """>70% declining -> Risky."""
+        enriched = _make_enriched(rising=5, stable=24, declining=71)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["suggested_longevity_verdict"] == "Risky"
 
@@ -729,7 +736,7 @@ class TestTiming:
         assert compute_timing("Growing", "Sustainable", 0.75) == "Enter Now"
 
     def test_timing_risky_override(self):
-        """Risky verdict → always Monitor & Wait regardless of momentum."""
+        """Risky verdict → Monitor & Wait (catch-all) regardless of momentum."""
         assert compute_timing("Growing", "Risky", 0.80) == "Monitor & Wait"
 
     def test_timing_fad_override(self):
@@ -740,9 +747,25 @@ class TestTiming:
         """Declining + low momentum → Missed Window."""
         assert compute_timing("Declining", "Sustainable", 0.30) == "Missed Window"
 
-    def test_timing_monitor_moderate(self):
-        """Growing but momentum < 0.7 → Monitor & Wait."""
-        assert compute_timing("Growing", "Sustainable", 0.65) == "Monitor & Wait"
+    def test_timing_growing_moderate_momentum_enter_now(self):
+        """Growing + momentum >= 0.6 → Enter Now."""
+        assert compute_timing("Growing", "Sustainable", 0.65) == "Enter Now"
+
+    def test_timing_risky_declining_missed_window(self):
+        """Risky + Declining → Missed Window (strongest negative signal)."""
+        assert compute_timing("Declining", "Risky", 0.30) == "Missed Window"
+
+    def test_timing_stable_high_momentum_enter_now(self):
+        """Stable + Sustainable + momentum >= 0.6 → Enter Now."""
+        assert compute_timing("Stable", "Sustainable", 0.65) == "Enter Now"
+
+    def test_timing_growing_low_momentum_enter_now(self):
+        """Growing + momentum >= 0.5 but < 0.6 → Enter Now."""
+        assert compute_timing("Growing", "Sustainable", 0.55) == "Enter Now"
+
+    def test_timing_stable_moderate_momentum_monitor(self):
+        """Stable + momentum < 0.6 → Monitor & Wait."""
+        assert compute_timing("Stable", "Sustainable", 0.55) == "Monitor & Wait"
 
 
 # ===================================================================
@@ -892,16 +915,22 @@ class TestBoundaryConditions:
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["seasonal_pattern"] == "Strong Seasonal"
 
-    # ── longevity verdict boundary ──
-    def test_verdict_boundary_at_60(self):
-        """Exactly 60% declining is not >60%, should be Undetermined."""
-        enriched = _make_enriched(rising=20, stable=20, declining=60, evergreen_count=5)
+    # ── longevity verdict boundary (DECLINING_RATIO_RISKY = 0.70) ──
+    def test_verdict_boundary_at_69(self):
+        """69% declining is not >70%, should be Undetermined."""
+        enriched = _make_enriched(rising=11, stable=20, declining=69, evergreen_count=5)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["suggested_longevity_verdict"] == "Undetermined"
 
-    def test_verdict_boundary_at_61(self):
-        """61% declining -> Risky."""
-        enriched = _make_enriched(rising=19, stable=20, declining=61, evergreen_count=5)
+    def test_verdict_boundary_at_70(self):
+        """Exactly 70% declining is not >70%, should be Undetermined."""
+        enriched = _make_enriched(rising=10, stable=20, declining=70, evergreen_count=5)
+        result = compute_deterministic_signals(None, None, None, enriched)
+        assert result["suggested_longevity_verdict"] == "Undetermined"
+
+    def test_verdict_boundary_at_71(self):
+        """71% declining -> Risky."""
+        enriched = _make_enriched(rising=9, stable=20, declining=71, evergreen_count=5)
         result = compute_deterministic_signals(None, None, None, enriched)
         assert result["suggested_longevity_verdict"] == "Risky"
 

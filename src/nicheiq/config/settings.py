@@ -548,7 +548,7 @@ class Settings(BaseSettings):
 
     # Go/No-Go Verdict Thresholds
     verdict_go_avg_score: float = Field(
-        default=0.75,
+        default=0.72,
         ge=0.0,
         le=1.0,
         description="Minimum average score (all 4 scores) for Go verdict"

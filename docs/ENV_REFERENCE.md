@@ -1091,8 +1091,8 @@ These control the automated go/no-go decision in the executive dashboard:
 
 ```bash
 # Minimum average score (all 4 dimensions) for "Go" verdict
-VERDICT_GO_AVG_SCORE=0.75
-# Default: 0.75 (range: 0.0-1.0)
+VERDICT_GO_AVG_SCORE=0.72
+# Default: 0.72 (range: 0.0-1.0)
 # All scores: market_fit, competitive_advantage, technical_feasibility, seo_potential
 
 # Minimum individual score for "Go" verdict
@@ -1157,7 +1157,7 @@ SCORE_ACCESSOR_DEFAULT_FALLBACK=0.5
 
 **When to adjust these settings:**
 - **Market validation**: Adjust volume thresholds based on niche size (B2B vs B2C)
-- **Verdict thresholds**: More conservative (0.80+) for high-risk markets, less conservative (0.65) for exploratory research
+- **Verdict thresholds**: More conservative (0.80+) for high-risk markets, less conservative (0.65) for exploratory research (default: 0.72)
 - **Competitive thresholds**: Adjust based on industry norms (SaaS vs physical products)
 - **Default fallback**: Set to 0.0 for conservative estimates, 0.7 for optimistic
 
