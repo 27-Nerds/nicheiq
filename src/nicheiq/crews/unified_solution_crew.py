@@ -497,19 +497,9 @@ class UnifiedSolutionCrew:
         logger.info("Starting Unified Solution Pipeline (Divergent-Convergent Architecture)...")
 
         if not self.pain_point_analysis.pain_points:
-            logger.warning("No pain points provided - cannot generate solutions")
-            return (
-                IdeaGenerationResult(
-                    solution_ideas=[],
-                    recommended_solution=None,
-                ),
-                SolutionSelection(
-                    selected_solution_name="",
-                    selection_rationale="No solutions generated",
-                    selection_criteria_scores=[],
-                    runner_up_solutions=[],
-                    recommended_focus=""
-                ) if not skip_selection else None,
+            raise ValueError(
+                "No pain points provided - cannot generate solutions. "
+                "Ensure Stage 3 (Pain Point Analysis) produced results before running Stage 5."
             )
 
         try:
@@ -681,26 +671,6 @@ class UnifiedSolutionCrew:
             return (refined_solutions, solution_selection)
 
         except Exception as e:
-            error_msg = str(e)
-            # Check if this is a guardrail validation failure
-            if "guardrail validation" in error_msg.lower():
-                logger.warning(
-                    f"Unified solution pipeline failed guardrail validation: {error_msg[:200]}. "
-                    "Returning empty results for quality gate evaluation."
-                )
-                return (
-                    IdeaGenerationResult(
-                        solution_ideas=[],
-                        recommended_solution=None,
-                    ),
-                    SolutionSelection(
-                        selected_solution_name="",
-                        selection_rationale="Guardrail validation failed",
-                        selection_criteria_scores=[],
-                        runner_up_solutions=[],
-                        recommended_focus=""
-                    ) if not skip_selection else None,
-                )
             logger.error(f"Unified pipeline failed: {e}")
             raise
 

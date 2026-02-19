@@ -106,35 +106,40 @@ def validate_diversity(
         # Get allowed project types
         allowed_types = allowed_project_types or []
 
-        # Rule 1: If multiple types allowed, require at least 2 different types
+        # Rule 1: If multiple types allowed, check type diversity (advisory only —
+        # allowing a type doesn't mean the niche suits it; the LLM may
+        # legitimately generate solutions of one type for a niche that
+        # doesn't lend itself to others)
         if len(allowed_types) >= 2:
             used_types = set(idea.project_type for idea in ideas if idea.project_type)
             if len(used_types) < 2:
-                return (
-                    False,
-                    f"Diversity violation: Need 2+ different project types, got only: {used_types}. "
-                    f"Generate solutions with different architectures (e.g., directory + aggregator, not just directories).",
+                logger.warning(
+                    f"Low project type diversity: {len(allowed_types)} types allowed "
+                    f"but only {used_types} used. "
+                    f"Proceeding — pairwise similarity check will catch true duplicates."
                 )
-            logger.info(f"✓ Project type diversity check passed: {used_types}")
+            else:
+                logger.info(f"✓ Project type diversity check passed: {used_types}")
 
         # Rule 2: If single type allowed, require diversity WITHIN that type
         elif len(allowed_types) == 1:
-            # Check data sources diversity
+            # Check data sources diversity (advisory only — single-type niches
+            # naturally share data sources; the pairwise similarity check in
+            # Rule 3 catches genuinely duplicate solutions)
             data_sources_list = [set(idea.data_sources or []) for idea in ideas]
             unique_sources = len(
                 set(tuple(sorted(ds)) for ds in data_sources_list if ds)
             )
-            # At least 50% should have different data sources
             if unique_sources < len(ideas) * 0.5:
-                return (
-                    False,
-                    f"Diversity violation within {allowed_types[0]}: "
-                    f"Solutions too similar - need different data sources or mechanisms. "
-                    f"Only {unique_sources}/{len(ideas)} have unique data sources.",
+                logger.warning(
+                    f"Low data source diversity within {allowed_types[0]}: "
+                    f"Only {unique_sources}/{len(ideas)} have unique data sources. "
+                    f"Proceeding — pairwise similarity check will catch true duplicates."
                 )
-            logger.info(
-                f"✓ Within-type diversity check passed: {unique_sources} unique data source combinations"
-            )
+            else:
+                logger.info(
+                    f"✓ Within-type diversity check passed: {unique_sources} unique data source combinations"
+                )
 
         # Rule 3: Always check for duplicate value propositions
         for i, idea_a in enumerate(ideas):
@@ -159,22 +164,29 @@ def detect_similarity(idea_a, idea_b) -> bool:
     """
     Detect if two solution ideas are too similar.
 
-    Checks:
+    Uses a multi-signal approach: at least 2 of 3 signals must fire to
+    flag a pair as "too similar". This prevents false positives where
+    solutions share data sources but have genuinely different value
+    propositions and target audiences (common in single-type niches).
+
+    Signals:
     1. Same data sources = likely similar mechanism
     2. Value proposition keyword overlap > 60%
     3. Identical target personas
 
     Returns:
-        bool: True if ideas are too similar
+        bool: True if ideas are too similar (2+ signals detected)
     """
-    # Check 1: Same data sources = likely similar mechanism
+    similarity_signals = 0
+
+    # Signal 1: Same data sources = likely similar mechanism
     sources_a = set(idea_a.data_sources or [])
     sources_b = set(idea_b.data_sources or [])
     if sources_a and sources_b and sources_a == sources_b:
-        logger.debug(f"Similarity detected: Same data sources ({sources_a})")
-        return True
+        logger.debug(f"Similarity signal: Same data sources ({sources_a})")
+        similarity_signals += 1
 
-    # Check 2: Value proposition keyword overlap
+    # Signal 2: Value proposition keyword overlap
     if idea_a.value_proposition and idea_b.value_proposition:
         # Remove common stop words for better comparison
         stop_words = {
@@ -237,15 +249,22 @@ def detect_similarity(idea_a, idea_b) -> bool:
             overlap = len(vp_a & vp_b) / min(len(vp_a), len(vp_b))
             if overlap > 0.6:  # >60% overlap in value prop
                 logger.debug(
-                    f"Similarity detected: {overlap:.0%} value proposition overlap"
+                    f"Similarity signal: {overlap:.0%} value proposition overlap"
                 )
-                return True
+                similarity_signals += 1
 
-    # Check 3: Same target personas (exact match = likely duplicate)
+    # Signal 3: Same target personas (exact match = likely duplicate)
     if idea_a.target_personas and idea_b.target_personas:
         if set(idea_a.target_personas) == set(idea_b.target_personas):
-            logger.debug("Similarity detected: Identical target personas")
-            return True
+            logger.debug("Similarity signal: Identical target personas")
+            similarity_signals += 1
+
+    if similarity_signals >= 2:
+        logger.debug(
+            f"Similarity detected between '{idea_a.solution_name}' and "
+            f"'{idea_b.solution_name}': {similarity_signals}/3 signals"
+        )
+        return True
 
     return False
 
