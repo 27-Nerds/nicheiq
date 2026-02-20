@@ -468,7 +468,7 @@
           class="animate-fade-in delay-300 text-sm sm:text-base text-text-muted mt-4 sm:mt-5 max-w-2xl"
         >
           This is a real report for a content repurposing tool. Pain points,
-          keywords, competitors, and the final verdict — all from one run.
+          keywords, competitors, and the final verdict, all from a single run.
         </p>
       </div>
 
@@ -606,8 +606,7 @@
             <CtaIcon name={sampleCta?.icon} class="w-4 h-4" />
           </a>
           <p class="text-xs text-text-muted mt-3">
-            All 10+ sections — pain points, keywords, competitors, pricing,
-            verdict, and more
+            All 10+ sections included
           </p>
         </div>
       {/if}

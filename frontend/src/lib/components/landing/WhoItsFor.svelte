@@ -35,11 +35,11 @@
       accentGradient:
         "linear-gradient(to right, var(--color-accent), var(--color-accent-hover))",
       description:
-        "You know your niche but not what to build. NicheIQ scans thousands of real discussions to surface pain points and solution ideas — so you start with proof, not guesses.",
+        "You know your niche but not what to build. NicheIQ scans thousands of real discussions to surface pain points and solution ideas, so you start with proof instead of hunches.",
       before: "Scrolling Reddit for weeks, hoping to spot a gap",
       after: "5–10 data-backed ideas in 45 minutes",
       benefits: [
-        "Discover pain points people are already begging someone to solve",
+        "Find pain points people are already asking someone to solve",
         "See willingness-to-pay scores before you commit",
         "Get a full blueprint for the idea you pick",
       ],
@@ -51,7 +51,7 @@
       accentGradient:
         "linear-gradient(to right, var(--color-accent-light), var(--color-accent))",
       description:
-        "You explore multiple niches per month. The faster you find a winner, the sooner you ship. NicheIQ turns niche exploration from a weeks-long grind into an afternoon sprint.",
+        "You explore multiple niches per month. The faster you find a winner, the sooner you ship. NicheIQ compresses weeks of research into an afternoon.",
       before: "Explore one niche for weeks, hope you picked right",
       after: "Scan 5 niches in one afternoon, chase the best signal",
       benefits: [
@@ -67,13 +67,13 @@
       accentGradient:
         "linear-gradient(to right, var(--color-accent-dark), var(--color-accent-light))",
       description:
-        "You need proof before you pivot. Every insight needs a source. Walk into meetings with market data, competitive landscape, and a clear verdict — not opinions.",
+        "You need proof before you pivot. Your stakeholders need sources. Walk into meetings with market data, a competitive landscape, and a clear verdict instead of opinions.",
       before: "Pitch niche ideas with hunches, debate for weeks",
       after: "Present market proof, get buy-in, ship faster",
       benefits: [
         "Market sizing you can defend in a board meeting",
         "Competitive landscape + demand signals in one report",
-        "30-day GTM blueprint — no guessing on launch",
+        "30-day GTM blueprint so you know what to do on day one",
       ],
     },
   ];
@@ -99,8 +99,7 @@
         <h2
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
-          Stop Guessing.
-          <span class="text-accent">Start Shipping.</span>
+          Built for People Who <span class="text-accent">Actually Ship.</span>
         </h2>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"

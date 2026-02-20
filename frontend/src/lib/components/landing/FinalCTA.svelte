@@ -57,8 +57,7 @@
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-muted mb-8 sm:mb-10 max-w-lg mx-auto"
         >
-          Pick a niche. Get the report &mdash; pain points, keywords,
-          competitors, and a go/no-go verdict. From $19.
+          Pick a niche. Get the full report with a go/no-go verdict. From $19.
         </p>
 
         <!-- Dual CTA buttons -->

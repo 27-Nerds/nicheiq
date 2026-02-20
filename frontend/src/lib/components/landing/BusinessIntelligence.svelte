@@ -26,11 +26,10 @@
       color: "accent" as const,
       question: "How big is this opportunity?",
       narrative:
-        "Total addressable market narrowed to a year-one target — sized from keyword demand, competition levels, and pain point frequency. Know the opportunity before you commit.",
+        "Your total addressable market, narrowed to a realistic year-one target. We size it using keyword demand, how competitive the space is, and how often the pain point comes up.",
       points: [
         "TAM → SAM → SOM funnel with your year-one slice",
         "Monthly search volume aggregated across your niche",
-        "Growth drivers identified — confidence level noted",
       ],
       highlight: "Sized from actual keyword demand",
     },
@@ -39,11 +38,12 @@
       color: "accent" as const,
       question: "What should I charge?",
       narrative:
-        "Pricing tiers, unit economics, and willingness-to-pay scores — matched to one of eight monetization models based on what your market says it'll pay.",
+        "Pricing tiers, unit economics, and willingness-to-pay scores. We match these to one of eight monetization models based on what people in your market say they'd actually pay.",
       points: [
-        "Tiered pricing when the model fits — or alternative monetization paths",
-        "Revenue projections: average revenue per user, lifetime value, payback ratio",
-        "Eight models covered — freemium, subscription, usage-based, and more",
+        "Tiered pricing or alternative monetization paths",
+        "Revenue projections: ARPU, lifetime value, payback ratio",
+        "Eight monetization models covered",
+        "Willingness-to-pay signals from real discussions",
       ],
       highlight: "Matched to community willingness-to-pay signals",
     },
@@ -84,8 +84,7 @@
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
         >
-          Beyond pain points and keywords — the business data you need to
-          decide, not debate.
+          The business data behind the decision. Market sizing, pricing, and a clear verdict.
         </p>
       </div>
 
@@ -276,8 +275,7 @@
       <div class="animate-fade-in delay-500 text-center mt-12">
         <div class="divider max-w-xs mx-auto"></div>
         <p class="text-text-muted italic text-lg mt-8">
-          Built on search volume data and community signals — not surveys, gut
-          feelings, or guesswork.
+          Built on search volume data and community signals. No surveys. No gut feelings.
         </p>
       </div>
     {/if}

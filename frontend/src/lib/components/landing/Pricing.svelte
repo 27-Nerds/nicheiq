@@ -64,12 +64,12 @@
 
   const features = [
     { icon: Waypoints, text: "16-stage research pipeline" },
-    { icon: MessageSquare, text: "5+ validated pain points with sources" },
+    { icon: MessageSquare, text: "5+ pain points with sources" },
     { icon: TrendingUp, text: "100+ keywords with live search volumes" },
     { icon: Eye, text: "Competitive landscape analysis" },
     { icon: BarChart3, text: "Complete SEO strategy" },
     { icon: Clock, text: "GTM blueprint with 30-day playbook" },
-    { icon: ShieldCheck, text: "Zero hallucination guarantee" },
+    { icon: ShieldCheck, text: "80% hard data, 20% AI synthesis" },
     { icon: Check, text: "Ready-to-launch landing page (optional)" },
   ];
 </script>
@@ -89,14 +89,13 @@
           class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6 text-center"
         >
           Simple Pricing. <span class="text-accent"
-            >Full Research.</span
+            >Full Report.</span
           >
         </h2>
         <p
           class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl mx-auto text-center"
         >
-          No subscriptions. No hidden fees. Buy report bundles and use them
-          whenever you need.
+          Buy report bundles, use them whenever. No subscription required.
         </p>
         <p
           class="animate-fade-in delay-300 text-sm sm:text-base text-text-secondary mt-3 max-w-2xl mx-auto text-center"

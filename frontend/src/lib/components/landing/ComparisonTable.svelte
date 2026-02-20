@@ -466,27 +466,27 @@
       >
         <div class="differentiator-callout">
           <MessageSquare class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Verified Pain Points</strong> — Every pain point traced to a discussion thread you can check before you commit.</span>
+          <span><strong>Verified Pain Points:</strong> Each pain point links to a discussion thread you can check yourself.</span>
         </div>
         <div class="differentiator-callout">
           <Layers class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Market Sizing Built In</strong> — Know your total market and year-one target before you write a line of code.</span>
+          <span><strong>Market Sizing Built In:</strong> Know your total market and year-one target before you write a line of code.</span>
         </div>
         <div class="differentiator-callout">
           <Tag class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Pricing Backed by Demand</strong> — See what customers say they'll pay — sourced from community discussions, not guesswork.</span>
+          <span><strong>Pricing Backed by Demand:</strong> See what customers say they'll pay, sourced directly from community discussions.</span>
         </div>
         <div class="differentiator-callout">
           <TrendingUp class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Validated Search Volumes</strong> — Every keyword comes with actual monthly search volume and difficulty score.</span>
+          <span><strong>Real Search Volumes:</strong> Keywords include actual monthly search volume and difficulty score.</span>
         </div>
         <div class="differentiator-callout">
           <Scale class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Go / No-Go Verdict</strong> — Know whether to build, pivot, or walk away — with the risk factors laid out.</span>
+          <span><strong>Go / No-Go Verdict:</strong> A clear build-or-walk-away call, with the risk factors behind it.</span>
         </div>
         <div class="differentiator-callout">
           <PanelTop class="w-5 h-5 text-accent flex-shrink-0" />
-          <span><strong>Launch-Ready Landing Page</strong> — Full HTML landing page — copy, design, and CTAs — ready to start testing.</span>
+          <span><strong>Launch-Ready Landing Page:</strong> A complete HTML landing page you can deploy and start testing right away.</span>
         </div>
       </div>
 

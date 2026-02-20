@@ -50,8 +50,7 @@
           <img src="/niche-logo-beta.svg" alt="NicheIQ" class="h-8" />
         </a>
         <p class="text-xs sm:text-sm text-text-muted leading-relaxed mb-4">
-          Built by a solo founder for solo founders. Validated data, verified
-          sources, zero hallucination.
+          Built by a solo founder for solo founders. Real data, real sources, and you can check every one.
         </p>
       </div>
 

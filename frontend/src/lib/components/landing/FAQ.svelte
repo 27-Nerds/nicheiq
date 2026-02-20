@@ -26,7 +26,7 @@
     {
       question: "Can I trust the numbers? Or is this AI hallucinating?",
       answer:
-        "<p>No hallucinations. 80% of your report is real data from APIs—keyword volumes, source discussions, engagement metrics. Every pain point links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly (zero hallucination) and only 20% LLM synthesis. The data comes from APIs, not AI imagination.</p>",
+        "<p>Short answer: no. 80% of your report is hard data pulled from APIs—keyword volumes, source discussions, engagement metrics. Every pain point links to a specific Reddit post with post ID, upvote count, and timestamp. Click through and verify it yourself. The hybrid architecture uses 80% programmatic data assembly and 20% LLM synthesis. The data comes from APIs. AI only handles synthesis.</p>",
     },
     {
       question: "Can't I just use ChatGPT, Perplexity, or Grok?",

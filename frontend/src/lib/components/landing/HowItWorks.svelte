@@ -54,7 +54,7 @@
       title: "Discover Pain Points & Ideas",
       time: "~15 min",
       description:
-        "We scan Reddit, Twitter, and online communities to discover validated pain points people will actually pay to solve. You get 5–10 solution concepts backed by real discussions — not AI guesses.",
+        "We scan Reddit, Twitter, and online communities to find pain points people will actually pay to solve. You get 5–10 solution concepts, each backed by real discussions you can verify.",
       cardClass: "",
       dashed: false,
       timePill: false,
@@ -64,7 +64,7 @@
       title: "Pick Your Opportunity",
       time: "Your call",
       description:
-        "Review the pain points and solution concepts we found. Pick the one that excites you — or let us recommend the strongest signal. Your direction, your choice.",
+        "Review the pain points and solution concepts we found. Pick the one that excites you, or let us recommend the strongest signal.",
       cardClass: "",
       dashed: true,
       timePill: true,
@@ -74,7 +74,7 @@
       title: "Get Your Business Blueprint",
       time: "~30 min",
       description:
-        "Full competitive analysis, 100+ ranked SEO keywords, market sizing, and pricing strategy. Plus a clear GO or NO-GO verdict and a ready-to-launch landing page to start capturing leads immediately.",
+        "Competitive analysis, 100+ ranked SEO keywords, market sizing, and pricing strategy. You also get a clear GO or NO-GO verdict and an optional landing page to start capturing leads.",
       cardClass: "",
       dashed: false,
       timePill: false,
@@ -130,7 +130,7 @@
           icon: Users,
           metric: "3–5 personas",
           description:
-            "Know exactly who you're building for — not a generic startup cliché.",
+            "Know exactly who you're building for, down to where they hang out and what triggers a purchase.",
           details:
             "Maps your target audience: who they are, where they hang out online, what triggers purchasing decisions, and how to reach them effectively.",
         },
@@ -167,7 +167,7 @@
           icon: DollarSign,
           metric: "Validated pricing tiers",
           description:
-            "Price to win, grounded in real willingness-to-pay signals, not guesswork.",
+            "Pricing grounded in what people say they'd pay, pulled from actual discussions.",
           details:
             "Analyzes competitor pricing, maps customer willingness-to-pay from discussions, and recommends pricing tiers with positioning rationale.",
         },
@@ -177,7 +177,7 @@
           icon: PieChart,
           metric: "TAM/SAM/SOM calculated",
           description:
-            "Get TAM/SAM/SOM grounded in search volume, not marketing fluff.",
+            "TAM/SAM/SOM calculated from search volume and community data.",
           details:
             "Estimates Total Addressable Market (TAM), Serviceable Addressable Market (SAM), and Serviceable Obtainable Market (SOM) using keyword volumes and market data.",
         },

@@ -84,8 +84,7 @@
         <p
           class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
         >
-          Every pain point, every keyword, every competitor — traced to a source
-          you can check yourself before you commit.
+          Pain points link to Reddit threads. Keywords come with real search volumes. You can verify any claim before you act on it.
         </p>
       </div>
 
@@ -102,8 +101,8 @@
           {/each}
         </div>
         <p class="text-sm text-text-muted text-center mt-4">
-          Sourced from forums, social platforms, search data, and web results —
-          all verifiable.
+          Sourced from forums, social platforms, search data, and web results.
+          All verifiable.
         </p>
       </div>
 
@@ -189,7 +188,7 @@
           <h3
             class="font-display font-semibold text-lg text-text-primary mb-2"
           >
-            Everything Traces Back to Data.
+            Where the Data Actually Comes From
           </h3>
           <p class="text-sm text-text-secondary leading-relaxed">
             Keyword volumes, market sizing, competitor profiles, and the full
@@ -209,7 +208,7 @@
           <h3
             class="font-display font-semibold text-lg text-text-primary mb-2"
           >
-            Built for Founder Trust
+            You Shouldn't Have to Take Our Word for It
           </h3>
           <p class="text-sm text-text-secondary leading-relaxed mb-4">
             Every report includes a data quality assessment so you know exactly
@@ -258,9 +257,7 @@
               </p>
               <p>
                 NicheIQ runs the same research process I used to do
-                manually—except it takes 45 minutes instead of 3 weeks. Every
-                claim links to a real source. Every data point is verifiable. No
-                hallucinations, no guessing.
+                manually, except it takes 45 minutes instead of 3 weeks. Claims link to real sources. Data points are verifiable. If something looks off, you can click through and check.
               </p>
             </div>
           </div>
