@@ -21,7 +21,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=50000,
             tier1_count=15,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
 
         assert "score" in result
@@ -41,7 +41,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=40000,  # 80% of 50000 baseline for directory
             tier1_count=10,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
         assert result_low["metadata"]["volume_multiplier"] == 0.8
 
@@ -51,7 +51,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=75000,  # 150% of 50000 baseline
             tier1_count=10,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
         # Volume ratio = 75000/50000 = 1.5
         # But it's capped at settings.seo_refinement_max_volume_boost (default 1.2)
@@ -66,7 +66,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=30000,
             tier1_count=10,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
         assert result_10["metadata"]["tier1_multiplier"] == 1.10
 
@@ -76,7 +76,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=30000,
             tier1_count=25,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
         assert result_25["metadata"]["tier1_multiplier"] == 1.20
 
@@ -94,7 +94,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=30000,
             tier1_count=3,
-            tier1_keywords=mock_keywords
+            all_tiered_keywords=mock_keywords
         )
 
         # Average competition = (30 + 25 + 45) / 3 = 33.33
@@ -115,7 +115,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=30000,
             tier1_count=3,
-            tier1_keywords=mock_keywords
+            all_tiered_keywords=mock_keywords
         )
 
         # Only one valid keyword parsed
@@ -130,7 +130,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=100000,  # Very high volume
             tier1_count=20,  # High tier1 count
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
 
         assert result["score"] <= 1.0
@@ -142,7 +142,7 @@ class TestRefineScalabilityScore:
             project_type="unknown_type",
             total_volume=30000,
             tier1_count=10,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
 
         assert result["metadata"]["baseline_volume"] == 30000
@@ -155,7 +155,7 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=50000,
             tier1_count=10,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
 
         # Should not crash and return valid result
@@ -168,10 +168,140 @@ class TestRefineScalabilityScore:
             project_type="directory",
             total_volume=30000,
             tier1_count=0,
-            tier1_keywords=[]
+            all_tiered_keywords=[]
         )
 
         assert result["metadata"]["competition_modifier"] == 0.5
+
+    def test_zero_base_with_strong_keyword_evidence(self):
+        """Test that keyword evidence floor rescues a false-zero LLM baseline (bug case)."""
+        # Simulate the real bug case: aggregator with 3M+ volume, 184 keywords, base=0.0
+        mock_keywords = [MagicMock(competition="LOW (5)")] * 169  # Tier 0
+        mock_keywords.append(MagicMock(competition="HIGH (100)"))  # 1 Tier 1
+        mock_keywords.extend([MagicMock(competition="LOW (10)")] * 8)  # Tier 2
+
+        result = refine_scalability_score(
+            base_score=0.0,
+            project_type="aggregator",
+            total_volume=3_000_000,
+            tier1_count=1,
+            all_tiered_keywords=mock_keywords,
+            total_keyword_count=184,
+        )
+
+        # Floor should rescue from 0.0
+        assert result["score"] > 0.0
+        assert result["score"] <= 0.35  # Capped by max_keyword_evidence
+        assert result["metadata"]["floor_applied"] is True
+        assert result["metadata"]["floor_reason"] == "keyword_evidence_override"
+
+    def test_competition_from_all_tiers(self):
+        """Test competition modifier reflects all-tier average, not just Tier 1."""
+        # 5 Tier 0 at LOW(10), 2 Tier 1 at HIGH(80), 3 Tier 2 at MEDIUM(50)
+        mock_keywords = (
+            [MagicMock(competition="LOW (10)")] * 5 +
+            [MagicMock(competition="HIGH (80)")] * 2 +
+            [MagicMock(competition="MEDIUM (50)")] * 3
+        )
+
+        result = refine_scalability_score(
+            base_score=0.7,
+            project_type="directory",
+            total_volume=30000,
+            tier1_count=2,
+            all_tiered_keywords=mock_keywords,
+            total_keyword_count=10,
+        )
+
+        # avg = (5*10 + 2*80 + 3*50) / 10 = (50+160+150)/10 = 36.0
+        # modifier = 1.0 - 0.36 = 0.64
+        assert result["metadata"]["competition_modifier"] == pytest.approx(0.64, abs=0.01)
+        assert result["metadata"]["keywords_used_for_competition"] == 10
+
+    def test_competition_modifier_floored(self):
+        """Test competition modifier is floored at minimum when all keywords are max competition."""
+        mock_keywords = [MagicMock(competition="HIGH (100)")] * 10
+
+        result = refine_scalability_score(
+            base_score=0.7,
+            project_type="directory",
+            total_volume=30000,
+            tier1_count=5,
+            all_tiered_keywords=mock_keywords,
+            total_keyword_count=10,
+        )
+
+        # raw = 1.0 - 1.0 = 0.0, floored to 0.2
+        assert result["metadata"]["competition_modifier"] == 0.2
+        assert result["metadata"]["min_competition_modifier_applied"] is True
+        assert result["score"] > 0.0
+
+    def test_normal_case_floor_not_applied(self):
+        """Test that floor is not applied when multiplicative score is healthy."""
+        mock_keywords = [MagicMock(competition="LOW (30)")] * 15
+
+        result = refine_scalability_score(
+            base_score=0.7,
+            project_type="directory",
+            total_volume=50000,
+            tier1_count=15,
+            all_tiered_keywords=mock_keywords,
+            total_keyword_count=50,
+        )
+
+        assert result["metadata"]["floor_applied"] is False
+        assert result["score"] > 0.0
+
+    def test_zero_base_zero_data_stays_zero(self):
+        """Test that zero base with zero keyword data stays at 0.0."""
+        result = refine_scalability_score(
+            base_score=0.0,
+            project_type="directory",
+            total_volume=0,
+            tier1_count=0,
+            all_tiered_keywords=[],
+            total_keyword_count=0,
+        )
+
+        assert result["score"] == 0.0
+
+    def test_keyword_breadth_signal(self):
+        """Test that keyword breadth contributes to evidence floor."""
+        result = refine_scalability_score(
+            base_score=0.0,
+            project_type="directory",
+            total_volume=10000,
+            tier1_count=0,
+            all_tiered_keywords=[],
+            total_keyword_count=100,
+        )
+
+        # volume_signal = min(0.15, (10000/50000)*0.01) = min(0.15, 0.002) = 0.002
+        # tier1_signal = 0
+        # breadth_signal = min(0.10, 100 * 0.001) = 0.10
+        # floor = 0.002 + 0 + 0.10 = 0.102
+        assert result["metadata"]["keyword_breadth_signal"] == 0.1
+        assert result["score"] > 0.0
+        assert result["metadata"]["floor_applied"] is True
+
+    def test_backward_compat_tier1_only(self):
+        """Test backward compatibility: same Tier 1 keywords produce same competition result."""
+        mock_keywords = [
+            MagicMock(competition="LOW (30)"),
+            MagicMock(competition="LOW (25)"),
+            MagicMock(competition="MEDIUM (45)"),
+        ]
+
+        result = refine_scalability_score(
+            base_score=0.7,
+            project_type="directory",
+            total_volume=30000,
+            tier1_count=3,
+            all_tiered_keywords=mock_keywords,
+        )
+
+        # Same as original test_competition_modifier_from_keywords
+        assert result["metadata"]["competition_modifier"] == pytest.approx(0.667, abs=0.01)
 
 
 class TestRefineCAC:

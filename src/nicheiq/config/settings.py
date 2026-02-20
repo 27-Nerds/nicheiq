@@ -266,6 +266,18 @@ class Settings(BaseSettings):
         default=0.7,
         description="Minimum volume discount for CAC calculations (default 0.7 = 30% max discount)"
     )
+    seo_refinement_min_competition_modifier: float = Field(
+        default=0.2, ge=0.0, le=1.0,
+        description="Minimum competition modifier floor. Even highly competitive keywords allow some SEO value through long-tail variants."
+    )
+    seo_refinement_keyword_evidence_enabled: bool = Field(
+        default=True,
+        description="Enable keyword-evidence floor: when real keyword data shows SEO opportunity, prevent a false-zero LLM baseline from killing the score"
+    )
+    seo_refinement_max_keyword_evidence: float = Field(
+        default=0.35, ge=0.0, le=1.0,
+        description="Maximum keyword evidence floor. Rescue mechanism cap, not a replacement for LLM assessment."
+    )
 
     # Keyword Enrichment Settings (Stage 6 Iterative)
     keyword_enrichment_target_count: int = Field(

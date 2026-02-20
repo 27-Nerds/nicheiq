@@ -1437,6 +1437,10 @@ class ReportGenerator:
                 rationale_parts.append(f"Tier1 bonus: {metadata['tier1_multiplier']:.2f}x")
             if metadata.get('competition_modifier'):
                 rationale_parts.append(f"Competition factor: {metadata['competition_modifier']:.2f}")
+            if metadata.get('floor_applied'):
+                rationale_parts.append(f"Keyword evidence floor: {metadata['keyword_evidence_floor']:.2f}")
+            if metadata.get('min_competition_modifier_applied'):
+                rationale_parts.append(f"Competition modifier floored (raw: {metadata.get('raw_competition_modifier', 'N/A')})")
 
             rationale = " | ".join(rationale_parts) if rationale_parts else None
 
@@ -1448,6 +1452,9 @@ class ReportGenerator:
                 tier1_multiplier=metadata.get('tier1_multiplier'),
                 estimated_year1_pages=metadata.get('estimated_year1_pages'),
                 calculation_rationale=rationale,
+                keyword_evidence_floor=metadata.get('keyword_evidence_floor'),
+                floor_applied=metadata.get('floor_applied'),
+                floor_reason=metadata.get('floor_reason'),
             )
         except Exception as e:
             logger.warning(f"Failed to generate SEO calculation transparency: {e}")

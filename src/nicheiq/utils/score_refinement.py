@@ -15,7 +15,8 @@ def refine_scalability_score(
     project_type: str | None,
     total_volume: int,
     tier1_count: int,
-    tier1_keywords: list[Any]
+    all_tiered_keywords: list[Any],
+    total_keyword_count: int = 0,
 ) -> dict[str, Any]:
     """
     Refine SEO scalability score based on keyword data.
@@ -25,7 +26,8 @@ def refine_scalability_score(
         project_type: Project type (directory, aggregator, saas, etc.)
         total_volume: Total monthly search volume
         tier1_count: Number of Tier 1 (quick win) keywords
-        tier1_keywords: List of TieredKeyword objects for Tier 1
+        all_tiered_keywords: List of TieredKeyword objects across Tier 0+1+2
+        total_keyword_count: Total keywords across all tiers
 
     Returns:
         dict with 'score' (float) and 'metadata' (dict)
@@ -42,33 +44,65 @@ def refine_scalability_score(
     tier1_boost = min(settings.seo_refinement_max_tier1_boost, tier1_count * 0.01)
     tier1_multiplier = 1.0 + tier1_boost
 
-    # Calculate competition modifier from Tier 1 keywords
-    if tier1_keywords:
+    # Calculate competition modifier from ALL tiered keywords (Tier 0 + 1 + 2)
+    if all_tiered_keywords:
         competition_scores = []
-        for kw in tier1_keywords:
-            # Parse competition string like "LOW (30)" or "MEDIUM (53)"
-            comp_str = kw.competition
+        for kw in all_tiered_keywords:
+            comp_str = getattr(kw, 'competition', '')
             if '(' in comp_str:
                 try:
                     comp_value = int(comp_str.split('(')[1].replace(')', ''))
-                    competition_scores.append(comp_value / 100.0)  # Normalize to 0-1
+                    competition_scores.append(comp_value / 100.0)
                 except (ValueError, IndexError):
                     pass
 
         avg_competition = sum(competition_scores) / len(competition_scores) if competition_scores else 0.5
-        competition_modifier = 1.0 - avg_competition  # Lower competition = higher score
+        raw_competition_modifier = 1.0 - avg_competition
+        competition_modifier = max(settings.seo_refinement_min_competition_modifier, raw_competition_modifier)
     else:
-        competition_modifier = 0.5  # Neutral if no data
+        competition_modifier = 0.5
+        raw_competition_modifier = 0.5
 
-    # Calculate refined score
-    refined_score = base_score * volume_multiplier * tier1_multiplier * competition_modifier
-    refined_score = min(1.0, refined_score)  # Cap at 1.0
+    min_competition_modifier_applied = (
+        all_tiered_keywords
+        and raw_competition_modifier < settings.seo_refinement_min_competition_modifier
+    )
+
+    # Calculate multiplicative score (existing formula)
+    multiplicative_score = base_score * volume_multiplier * tier1_multiplier * competition_modifier
+    multiplicative_score = min(1.0, multiplicative_score)
+
+    # Calculate keyword evidence floor (rescue mechanism for false-zero baselines)
+    keyword_evidence_floor = 0.0
+    floor_applied = False
+    if settings.seo_refinement_keyword_evidence_enabled and baseline_volume > 0:
+        volume_signal = min(0.15, (total_volume / baseline_volume) * 0.01)
+        tier1_signal = min(0.10, tier1_count * 0.02)
+        keyword_breadth_signal = min(0.10, total_keyword_count * 0.001)
+        keyword_evidence_floor = min(
+            settings.seo_refinement_max_keyword_evidence,
+            volume_signal + tier1_signal + keyword_breadth_signal
+        )
+
+    # Apply: use whichever is higher
+    if keyword_evidence_floor > multiplicative_score:
+        refined_score = keyword_evidence_floor
+        floor_applied = True
+    else:
+        refined_score = multiplicative_score
 
     metadata = {
         'baseline_volume': baseline_volume,
         'volume_multiplier': round(volume_multiplier, 3),
         'tier1_multiplier': round(tier1_multiplier, 3),
         'competition_modifier': round(competition_modifier, 3),
+        'raw_competition_modifier': round(raw_competition_modifier, 3),
+        'min_competition_modifier_applied': bool(min_competition_modifier_applied),
+        'keywords_used_for_competition': len(all_tiered_keywords),
+        'keyword_evidence_floor': round(keyword_evidence_floor, 3),
+        'floor_applied': floor_applied,
+        'floor_reason': 'keyword_evidence_override' if floor_applied else None,
+        'keyword_breadth_signal': round(min(0.10, total_keyword_count * 0.001), 3),
         'change': round(refined_score - base_score, 3)
     }
 

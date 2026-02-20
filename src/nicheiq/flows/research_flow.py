@@ -5011,9 +5011,16 @@ Return a valid JSON object with this structure:
         tier1_keywords = seo_report.tier_1_keywords if seo_report.tier_1_keywords else []
         tier1_count = len(tier1_keywords)
 
+        # Collect ALL tiered keywords for competition calculation
+        all_tiered_keywords = []
+        for tier_attr in ['tier_0_keywords', 'tier_1_keywords', 'tier_2_keywords']:
+            tier_kws = getattr(seo_report, tier_attr, None) or []
+            all_tiered_keywords.extend(tier_kws)
+        total_keyword_count = getattr(seo_report, 'total_keywords_analyzed', 0) or 0
+
         logger.info(
             f"  Keyword data: {total_monthly_volume:,} monthly volume, "
-            f"{tier1_count} Tier 1 keywords"
+            f"{tier1_count} Tier 1 keywords, {len(all_tiered_keywords)} total tiered keywords"
         )
 
         try:
@@ -5023,7 +5030,8 @@ Return a valid JSON object with this structure:
                 project_type=selected_solution.project_type,
                 total_volume=total_monthly_volume,
                 tier1_count=tier1_count,
-                tier1_keywords=tier1_keywords
+                all_tiered_keywords=all_tiered_keywords,
+                total_keyword_count=total_keyword_count,
             )
 
             # 2. REFINE CAC ORGANIC
@@ -5068,7 +5076,11 @@ Return a valid JSON object with this structure:
                     base_cac=cac_meta.get('base_cac'),
                     difficulty_multiplier=cac_meta.get('difficulty_multiplier'),
                     volume_discount=cac_meta.get('volume_discount'),
-                    estimated_year1_pages=cac_meta.get('estimated_year1_pages')
+                    estimated_year1_pages=cac_meta.get('estimated_year1_pages'),
+                    keyword_evidence_floor=scalability_meta.get('keyword_evidence_floor'),
+                    floor_applied=scalability_meta.get('floor_applied'),
+                    floor_reason=scalability_meta.get('floor_reason'),
+                    min_competition_modifier_applied=scalability_meta.get('min_competition_modifier_applied'),
                 )
             )
 

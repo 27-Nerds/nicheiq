@@ -37,6 +37,18 @@ class SEORefinementMetadata(BaseModel):
     estimated_year1_pages: Optional[int] = Field(
         default=None, description="Estimated number of pages in first year"
     )
+    keyword_evidence_floor: Optional[float] = Field(
+        default=None, description="Keyword evidence floor value used as rescue mechanism"
+    )
+    floor_applied: Optional[bool] = Field(
+        default=None, description="Whether keyword evidence floor overrode multiplicative score"
+    )
+    floor_reason: Optional[str] = Field(
+        default=None, description="Why floor was applied (e.g. 'keyword_evidence_override')"
+    )
+    min_competition_modifier_applied: Optional[bool] = Field(
+        default=None, description="Whether competition modifier was floored to minimum"
+    )
 
 class SolutionSEORefinement(BaseModel):
     """
