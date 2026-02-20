@@ -522,6 +522,118 @@ export async function addCreditsToUser(
 }
 
 /**
+ * List all shares (report + discovery) with pagination
+ */
+export async function listShares(page: number, limit: number) {
+  const safeLimit = Math.min(limit, 100);
+  const skip = (page - 1) * safeLimit;
+
+  const [reportShares, discoveryShares] = await Promise.all([
+    prisma.reportShare.findMany({
+      take: 1000,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        job: {
+          select: {
+            niche: true,
+            user: { select: { email: true } },
+          },
+        },
+      },
+    }),
+    prisma.discoveryShare.findMany({
+      take: 1000,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        job: {
+          select: {
+            niche: true,
+            user: { select: { email: true } },
+          },
+        },
+        _count: { select: { votes: true } },
+      },
+    }),
+  ]);
+
+  const unified = [
+    ...reportShares.map((s) => ({
+      id: s.id,
+      type: 'report' as const,
+      shareToken: s.shareToken,
+      jobId: s.jobId,
+      niche: s.job.niche,
+      userEmail: s.job.user?.email ?? null,
+      isActive: s.isActive,
+      allowIndexing: s.allowIndexing,
+      viewCount: s.viewCount,
+      voteCount: 0,
+      createdAt: s.createdAt,
+    })),
+    ...discoveryShares.map((s) => ({
+      id: s.id,
+      type: 'discovery' as const,
+      shareToken: s.shareToken,
+      jobId: s.jobId,
+      niche: s.job.niche,
+      userEmail: s.job.user?.email ?? null,
+      isActive: s.isActive,
+      allowIndexing: s.allowIndexing,
+      viewCount: s.viewCount,
+      voteCount: s._count.votes,
+      createdAt: s.createdAt,
+    })),
+  ];
+
+  unified.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  const total = unified.length;
+  const shares = unified.slice(skip, skip + safeLimit);
+
+  return {
+    shares,
+    total,
+    page,
+    totalPages: Math.ceil(total / safeLimit),
+  };
+}
+
+/**
+ * Update a share (auto-detects type by ID)
+ */
+export async function updateShare(
+  id: string,
+  data: { isActive?: boolean; allowIndexing?: boolean },
+) {
+  // If deactivating, force allowIndexing off
+  const updateData = { ...data };
+  if (updateData.isActive === false) {
+    updateData.allowIndexing = false;
+  }
+
+  // Auto-detect share type
+  const reportShare = await prisma.reportShare.findUnique({ where: { id } });
+  if (reportShare) {
+    const updated = await prisma.reportShare.update({
+      where: { id },
+      data: updateData,
+    });
+    return { ...updated, type: 'report' as const };
+  }
+
+  const discoveryShare = await prisma.discoveryShare.findUnique({ where: { id } });
+  if (discoveryShare) {
+    const updated = await prisma.discoveryShare.update({
+      where: { id },
+      data: updateData,
+    });
+    return { ...updated, type: 'discovery' as const };
+  }
+
+  return null;
+}
+
+/**
  * Convert niche string to slug matching Python's checkpoint_manager.py logic
  */
 function nicheToSlug(niche: string): string {

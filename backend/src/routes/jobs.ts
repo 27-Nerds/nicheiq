@@ -821,6 +821,12 @@ jobsRouter.post('/:jobId/select-solution', requireInternalAuth, validateJobId, a
       throw enqueueError;
     }
 
+    // Auto-deactivate discovery share after successful enqueue (fire-and-forget)
+    prisma.discoveryShare.updateMany({
+      where: { jobId, isActive: true },
+      data: { isActive: false },
+    }).catch(err => console.error('Failed to deactivate discovery share:', err));
+
     res.json({
       status: 'phase2_queued',
       message: 'Solution selected. Deep investigation is now queued.',

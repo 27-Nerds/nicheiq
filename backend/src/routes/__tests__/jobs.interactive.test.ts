@@ -25,6 +25,9 @@ vi.mock('../../services/db.js', () => ({
       findUnique: (...args: any[]) => mockUserCreditsFindUnique(...args),
     },
     $transaction: (...args: any[]) => mockTransaction(...args),
+    discoveryShare: {
+      updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
   },
 }));
 

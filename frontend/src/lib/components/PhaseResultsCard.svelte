@@ -15,6 +15,8 @@
     BarChart3,
     Target,
   } from "lucide-svelte";
+  import { formatCount, formatVolume, tierVariant } from "$lib/utils/format-numbers";
+  import { normalizePainPoint } from "$lib/utils/pain-point";
 
   interface Props {
     phase: "discovery" | "analysis";
@@ -40,27 +42,6 @@
   const pricingArtifact = $derived(artifacts[7]);
   const marketArtifact = $derived(artifacts[9]);
   const trendArtifact = $derived(artifacts[11]);
-
-  function formatVolume(vol: number): string {
-    if (vol >= 1_000_000) return `${(vol / 1_000_000).toFixed(1)}M`;
-    if (vol >= 1_000) return `${(vol / 1_000).toFixed(1)}K`;
-    return String(vol);
-  }
-
-  function formatCount(n: number): string {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return String(n);
-  }
-
-  function tierVariant(tier: string | null | undefined): "success" | "warning" | "error" | "accent" | "default" {
-    if (!tier) return "default";
-    const t = tier.toUpperCase();
-    if (t === "EXCELLENT" || t === "PLATINUM" || t === "GOLD") return "success";
-    if (t === "GOOD" || t === "SILVER") return "accent";
-    if (t === "MINIMAL" || t === "BRONZE") return "warning";
-    return "default";
-  }
 </script>
 
 {#if phase === "discovery"}
@@ -105,7 +86,8 @@
       {#if painArtifact?.top}
         <div class="space-y-1.5">
           <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Top Pain Points</span>
-          {#each painArtifact.top as point}
+          {#each painArtifact.top as rawPoint}
+            {@const point = normalizePainPoint(rawPoint)}
             <div class="flex items-center gap-2 text-sm">
               <Badge variant={point.severity > 0.7 ? "error" : "warning"} size="sm">
                 {(point.severity * 10).toFixed(0)}/10

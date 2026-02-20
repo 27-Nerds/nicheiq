@@ -7,6 +7,7 @@
     data: {
       report: Report | null;
       shareToken: string;
+      allowIndexing: boolean;
     };
   }
 
@@ -24,8 +25,10 @@
   {:else}
     <title>Report Unavailable - NicheIQ</title>
   {/if}
-  <meta name="robots" content="noindex, nofollow" />
-  <meta name="googlebot" content="noindex, nofollow" />
+  {#if !data.allowIndexing}
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="googlebot" content="noindex, nofollow" />
+  {/if}
 </svelte:head>
 
 {#if !report}

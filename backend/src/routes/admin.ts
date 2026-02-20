@@ -404,6 +404,52 @@ adminRouter.delete('/settings/:key', async (req: AuthenticatedRequest, res: Resp
 });
 
 // ============================================
+// Shared Links
+// ============================================
+
+const UpdateShareSchema = z.object({
+  isActive: z.boolean().optional(),
+  allowIndexing: z.boolean().optional(),
+}).refine((data) => data.isActive !== undefined || data.allowIndexing !== undefined, {
+  message: 'At least one field (isActive or allowIndexing) must be provided',
+});
+
+adminRouter.get('/shares', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const result = await adminService.listShares(page, limit);
+    res.json(result);
+  } catch (error) {
+    console.error('Failed to list shares:', error);
+    res.status(500).json({ error: 'Failed to list shares' });
+  }
+});
+
+adminRouter.patch('/shares/:id', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = UpdateShareSchema.parse(req.body);
+    const share = await adminService.updateShare(req.params.id, input);
+    if (!share) {
+      res.status(404).json({ error: 'Share not found' });
+      return;
+    }
+    res.json(share);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if ((error as any)?.code === 'P2025') {
+      res.status(404).json({ error: 'Share not found' });
+      return;
+    }
+    console.error('Failed to update share:', error);
+    res.status(500).json({ error: 'Failed to update share' });
+  }
+});
+
+// ============================================
 // Job Debug Downloads
 // ============================================
 

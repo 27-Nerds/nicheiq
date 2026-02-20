@@ -220,6 +220,7 @@ model Job {
   assets               JobAsset[]
   creditTransactions   CreditTransaction[]
   share                ReportShare?
+  discoveryShare       DiscoveryShare?
 
   // Indexes for common queries
   @@index([userId])
@@ -409,16 +410,51 @@ model TokenPackage {
 // ============================================
 
 model ReportShare {
-  id           String    @id @default(uuid())
-  jobId        String    @unique
-  job          Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  userId       String
-  shareToken   String    @unique
-  isActive     Boolean   @default(true)
-  viewCount    Int       @default(0)
-  lastViewedAt DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  jobId          String    @unique
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId         String
+  shareToken     String    @unique
+  isActive       Boolean   @default(true)
+  allowIndexing  Boolean   @default(false)
+  viewCount      Int       @default(0)
+  lastViewedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// ============================================
+// Discovery Sharing & Voting
+// ============================================
+
+model DiscoveryShare {
+  id             String    @id @default(uuid())
+  jobId          String    @unique
+  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId         String
+  shareToken     String    @unique
+  isActive       Boolean   @default(true)
+  allowIndexing  Boolean   @default(false)
+  viewCount      Int       @default(0)
+  lastViewedAt   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  votes          DiscoveryVote[]
+}
+
+model DiscoveryVote {
+  id            String         @id @default(uuid())
+  shareId       String
+  share         DiscoveryShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  solutionName  String         @db.VarChar(255)
+  viewerToken   String         @db.VarChar(64)
+  ipHash        String         @db.VarChar(64)
+  comment       String?        @db.VarChar(500)
+  createdAt     DateTime       @default(now())
+
+  @@unique([shareId, viewerToken])
+  @@index([shareId])
+  @@index([shareId, ipHash])
 }
 
 // ============================================

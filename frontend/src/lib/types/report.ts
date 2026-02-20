@@ -80,6 +80,9 @@ export interface Report {
 
 	// Stage timing summary (pipeline execution timing)
 	stage_timing_summary?: StageTimingSummary;
+
+	// Share indexing control (injected by backend for shared reports)
+	_shareAllowIndexing?: boolean;
 }
 
 // Stage timing summary

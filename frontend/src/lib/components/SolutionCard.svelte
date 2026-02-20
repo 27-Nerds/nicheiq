@@ -1,21 +1,26 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import {
     CheckCircle,
     Circle,
     ArrowRight,
+    Heart,
   } from "lucide-svelte";
   import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import type { SolutionPreview } from "$lib/types/job";
+  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP } from "$lib/utils/solution-utils";
 
   interface Props {
     solution: SolutionPreview;
-    onSelect: (name: string) => void;
+    onSelect?: (name: string) => void;
     onOpen: () => void;
     disabled?: boolean;
     isSelected?: boolean;
     maxReached?: boolean;
     isNew?: boolean;
+    actionSlot?: Snippet;
+    voteCount?: number;
   }
 
   let {
@@ -26,47 +31,18 @@
     isSelected = false,
     maxReached = false,
     isNew = false,
+    actionSlot,
+    voteCount = 0,
   }: Props = $props();
 
-  // Composite score for ProgressRing (0-1)
-  const compositeScore = $derived.by(() => {
-    if (solution.adjusted_composite_score != null) return solution.adjusted_composite_score;
-    const vals = [
-      solution.market_fit_score ?? 0,
-      solution.technical_feasibility_score ?? 0,
-      solution.seo_scalability_score ?? 0,
-      solution.novelty_score ?? 0,
-      solution.solo_dev_feasibility ?? 0,
-    ];
-    return vals.reduce((a, b) => a + b, 0) / vals.length;
-  });
-
-  // Superpower badge — based on highest score attribute
-  const SUPERPOWER_MAP: Record<string, { label: string; variant: "success" | "accent" | "info" | "warning" }> = {
-    market_fit_score: { label: "Market Fit", variant: "success" },
-    seo_scalability_score: { label: "SEO Power", variant: "accent" },
-    novelty_score: { label: "Innovator", variant: "info" },
-    technical_feasibility_score: { label: "Quick Build", variant: "warning" },
-    solo_dev_feasibility: { label: "Solo-Friendly", variant: "success" },
-  };
-
-  const superpower = $derived.by(() => {
-    const entries: [string, number][] = [
-      ["market_fit_score", solution.market_fit_score ?? 0],
-      ["seo_scalability_score", solution.seo_scalability_score ?? 0],
-      ["novelty_score", solution.novelty_score ?? 0],
-      ["technical_feasibility_score", solution.technical_feasibility_score ?? 0],
-      ["solo_dev_feasibility", solution.solo_dev_feasibility ?? 0],
-    ];
-    entries.sort((a, b) => b[1] - a[1]);
-    return SUPERPOWER_MAP[entries[0][0]];
-  });
+  const compositeScore = $derived(computeCompositeScore(solution));
+  const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP));
 
   // Selection pulse micro-interaction
   let justSelected = $state(false);
 
   // Card is selectable (checkbox toggle)
-  const isToggleable = $derived(!disabled && (isSelected || !maxReached));
+  const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
 
   function handleCardClick() {
     onOpen();
@@ -74,7 +50,7 @@
 
   function handleCheckboxClick(e: MouseEvent) {
     e.stopPropagation();
-    if (!isToggleable) return;
+    if (!isToggleable || !onSelect) return;
     if (!isSelected) {
       justSelected = true;
       setTimeout(() => { justSelected = false; }, 300);
@@ -90,14 +66,14 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
+<!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_tabindex -->
 <div
   class="card compact-card group p-3 relative transition-all duration-200 cursor-pointer
     {isSelected ? 'card-selected' : ''}
     {justSelected ? 'selection-pulse' : ''}
     {(disabled || maxReached) && !isSelected ? 'opacity-60 cursor-default' : ''}"
-  role="option"
-  aria-selected={isSelected}
+  role={onSelect ? "option" : "article"}
+  aria-selected={onSelect ? isSelected : undefined}
   aria-label="Solution: {solution.solution_name}"
   tabindex={0}
   onclick={handleCardClick}
@@ -111,33 +87,39 @@
 
     <!-- Content -->
     <div class="flex-1 min-w-0">
-      <!-- Title + Checkbox -->
+      <!-- Title + Checkbox / Action slot -->
       <div class="flex items-start gap-2">
-        <h3 class="flex-1 text-base font-semibold text-text-primary leading-snug">
+        <h3 class="flex-1 min-w-0 text-base font-semibold text-text-primary leading-snug break-words">
           {solution.solution_name}
           {#if isNew}
             <span class="new-badge" aria-hidden="true">New</span>
             <span class="sr-only">Newly generated solution</span>
           {/if}
         </h3>
-        <!-- Selection checkbox -->
-        <button
-          type="button"
-          class="shrink-0 w-6 h-6 p-0.5 flex items-center justify-center rounded-full transition-colors
-            {isToggleable ? 'hover:bg-accent/10' : ''}"
-          onclick={handleCheckboxClick}
-          aria-label={isSelected ? 'Deselect solution' : 'Select solution'}
-          title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
-          tabindex={-1}
-        >
-          {#if isSelected}
-            <CheckCircle class="w-5 h-5 text-accent" />
-          {:else if isToggleable}
-            <Circle class="w-5 h-5 text-text-muted" />
-          {:else}
-            <Circle class="w-5 h-5 text-text-muted/40" />
-          {/if}
-        </button>
+        {#if onSelect}
+          <!-- Selection checkbox -->
+          <button
+            type="button"
+            class="shrink-0 w-6 h-6 p-0.5 flex items-center justify-center rounded-full transition-colors
+              {isToggleable ? 'hover:bg-accent/10' : ''}"
+            onclick={handleCheckboxClick}
+            aria-label={isSelected ? 'Deselect solution' : 'Select solution'}
+            title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
+            tabindex={-1}
+          >
+            {#if isSelected}
+              <CheckCircle class="w-5 h-5 text-accent" />
+            {:else if isToggleable}
+              <Circle class="w-5 h-5 text-text-muted" />
+            {:else}
+              <Circle class="w-5 h-5 text-text-muted/40" />
+            {/if}
+          </button>
+        {:else if actionSlot}
+          <div class="shrink-0">
+            {@render actionSlot()}
+          </div>
+        {/if}
       </div>
 
       <!-- Badges row -->
@@ -146,6 +128,11 @@
         {#if solution.project_type}
           <span class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-muted">
             {solution.project_type}
+          </span>
+        {/if}
+        {#if voteCount > 0}
+          <span class="text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent flex items-center gap-1">
+            <Heart class="w-3 h-3" /> {voteCount}
           </span>
         {/if}
       </div>

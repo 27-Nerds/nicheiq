@@ -61,6 +61,9 @@ export const CONFIG = {
     secretKey: process.env.STRIPE_SECRET_KEY || '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   },
+
+  // Discovery sharing
+  ipHashSalt: process.env.IP_HASH_SALT || 'nicheiq-vote-salt',
 } as const;
 
 // Validate required config in production

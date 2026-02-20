@@ -7,6 +7,7 @@
     isTerminalStatus,
     shouldKeepSSEOpen,
     getReportSummary,
+    getDiscoveryShareStatus,
   } from "$lib/api";
   import Badge from "$lib/components/ui/Badge.svelte";
   import {
@@ -20,6 +21,7 @@
     Telescope,
     RotateCw,
     Package,
+    Share2,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
@@ -39,6 +41,7 @@
   import { computeCumulativeStats } from "$lib/components/job/artifactParsers";
   import { STAGE_MAP, REPORT_ICON } from "$lib/config/billable-stages";
   import { getSolutions } from "$lib/api";
+  import ShareDiscoveryModal from "$lib/components/ShareDiscoveryModal.svelte";
 
   let job = $state<Job | null>(null);
   let loading = $state(true);
@@ -57,6 +60,8 @@
   let reportSummary = $state<ReportSummary | null>(null);
   let summaryFetched = $state(false);
   let summaryLoading = $state(false);
+  let discoveryShareOpen = $state(false);
+  let solutionVotes = $state<Record<string, number>>({});
 
   const jobId = $derived($page.params.jobId);
 
@@ -104,6 +109,17 @@
     );
   }
 
+  async function pollVotes(id: string) {
+    try {
+      const info = await getDiscoveryShareStatus(id);
+      if (info.isShared && info.solutionVotes) {
+        solutionVotes = info.solutionVotes;
+      } else {
+        solutionVotes = {};
+      }
+    } catch {}
+  }
+
   async function loadJob(id: string) {
     // Reset all state for the new job
     unsubscribeSSE?.();
@@ -123,6 +139,7 @@
     reportSummary = null;
     summaryFetched = false;
     summaryLoading = false;
+    solutionVotes = {};
 
     try {
       const res = await fetch(`/api/jobs/${id}`);
@@ -160,6 +177,7 @@
       } catch {
         if (!localSolutions) { localSolutions = job.solutionIdeas ?? null; }
       }
+      pollVotes(id);
     }
 
     if (job && shouldKeepSSEOpen(job)) { connectSSE(); }
@@ -457,13 +475,6 @@
   const reportAsset = $derived((job?.assets ?? []).find((a) => a.type === "REPORT_JSON"));
   const landingAsset = $derived((job?.assets ?? []).find((a) => a.type === "LANDING_PAGE"));
 
-  const showLpRow = $derived(
-    !!landingAsset ||
-    (job?.progress ?? []).some((s) => s.stageNumber === 15) ||
-    (job?.status === "COMPLETED" && !!reportAsset) ||
-    analysisStatus === 'active'
-  );
-
   const lpStatus = $derived<'pending' | 'running' | 'completed' | 'failed' | 'locked'>(
     landingAsset ? 'completed'
     : job?.landingPageStatus === 'RUNNING' || job?.landingPageStatus === 'QUEUED' ? 'running'
@@ -482,6 +493,26 @@
       // Brief delay to let the last stage animate
       setTimeout(() => { showReveal = true; }, 500);
     }
+  });
+
+  // Poll vote data while AWAITING_SELECTION
+  $effect(() => {
+    if (job?.status !== 'AWAITING_SELECTION' || !jobId) return;
+    const id = jobId;
+    let interval = setInterval(() => pollVotes(id), 30_000);
+    function onVisibility() {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        pollVotes(id);
+        interval = setInterval(() => pollVotes(id), 30_000);
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   });
 
   // Fetch report summary when job transitions to completed via SSE
@@ -877,6 +908,17 @@
           <!-- Selection Gate (interactive jobs only) -->
           {#if isInteractiveJob}
             {#if job.status === "AWAITING_SELECTION" || job.status === "REGENERATING" || isRegenQueued}
+              {#if job.status === "AWAITING_SELECTION" && displaySolutions.length > 0}
+                <div class="mb-2 flex justify-end">
+                  <button
+                    onclick={() => (discoveryShareOpen = true)}
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  >
+                    <Share2 class="w-3.5 h-3.5" />
+                    Share Discovery
+                  </button>
+                </div>
+              {/if}
               <div class="mb-3 animate-fade-slide-in">
                 <SolutionSelectionView
                   jobId={jobId ?? ''}
@@ -889,6 +931,7 @@
                   creditBalance={$page.data.creditBalance}
                   onSelectionComplete={handleSelectionComplete}
                   onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
+                  {solutionVotes}
                 />
               </div>
             {:else if showSelectedSummary}
@@ -920,6 +963,16 @@
                   status={job.status}
                 />
               </div>
+            {:else if gateStatus === 'locked'}
+              {@const GateIcon = PHASES[1].icon}
+              <div class="gate-locked mb-3">
+                <div class="gate-locked-inner">
+                  <GateIcon class="w-4 h-4 text-text-muted" />
+                  <span class="text-sm text-text-muted">Solution selection unlocks after discovery</span>
+                </div>
+              </div>
+            {:else}
+              <!-- gateStatus is 'passed' but no summary data (auto-selection) — intentionally empty -->
             {/if}
           {/if}
 
@@ -950,8 +1003,8 @@
       </div>
 
       <!-- Extras -->
-      {#if showLpRow && job}
-        <div class="extras-card animate-fade-slide-in" style="animation-delay: 300ms;">
+      {#if job}
+        <div class="extras-card {lpStatus === 'locked' ? 'extras-card--locked' : ''} animate-fade-slide-in" style="animation-delay: 300ms;">
           <div class="extras-header">
             <div class="extras-header-left">
               <div class="extras-icon-box">
@@ -1002,6 +1055,10 @@
   </div>
 </div>
 
+{#if jobId}
+  <ShareDiscoveryModal bind:open={discoveryShareOpen} jobId={jobId} />
+{/if}
+
 <style>
   .page-container {
     max-width: 72rem; /* wider to accommodate two columns */
@@ -1045,7 +1102,7 @@
     border: 1px dashed var(--color-border);
     border-radius: 0.75rem;
     padding: 1rem 1.25rem;
-    opacity: 0.6;
+    opacity: 0.55;
   }
 
   .gate-locked-inner {
@@ -1333,6 +1390,15 @@
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     overflow: hidden;
+  }
+
+  .extras-card--locked {
+    border-style: dashed;
+    pointer-events: none;
+  }
+
+  .extras-card--locked .extras-header {
+    opacity: 0.55;
   }
 
   .extras-header {

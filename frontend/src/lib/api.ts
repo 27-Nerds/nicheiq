@@ -320,6 +320,86 @@ export async function regenerateShareToken(jobId: string): Promise<ShareInfo> {
 }
 
 // ============================================
+// Discovery Sharing
+// ============================================
+
+export interface DiscoveryShareInfo {
+  isShared: boolean;
+  shareToken?: string;
+  viewCount?: number;
+  voteCount?: number;
+  solutionVotes?: Record<string, number>;
+}
+
+export interface VoteSummary {
+  totalVotes: number;
+  solutionVotes: Record<string, number>;
+  viewerVote?: { solutionName: string; comment: string | null } | null;
+}
+
+export interface DiscoveryShareData {
+  shareType: 'discovery';
+  niche: string;
+  solutions: SolutionPreview[];
+  discoveryFindings: Record<string, any>;
+  voteSummary: VoteSummary;
+  allowIndexing?: boolean;
+}
+
+export async function getDiscoveryShareStatus(jobId: string): Promise<DiscoveryShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-share`);
+  return handleResponse<DiscoveryShareInfo>(response);
+}
+
+export async function enableDiscoverySharing(jobId: string): Promise<DiscoveryShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-share`, {
+    method: 'POST',
+  });
+  return handleResponse<DiscoveryShareInfo>(response);
+}
+
+export async function disableDiscoverySharing(jobId: string): Promise<DiscoveryShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-share`, {
+    method: 'DELETE',
+  });
+  return handleResponse<DiscoveryShareInfo>(response);
+}
+
+export async function regenerateDiscoveryShareToken(jobId: string): Promise<DiscoveryShareInfo> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-share/regenerate`, {
+    method: 'POST',
+  });
+  return handleResponse<DiscoveryShareInfo>(response);
+}
+
+export async function fetchSharedDiscovery(shareToken: string): Promise<DiscoveryShareData> {
+  const response = await fetch(`${API_BASE}/shared/discovery/${shareToken}`);
+  return handleResponse<DiscoveryShareData>(response);
+}
+
+export async function submitDiscoveryVote(
+  shareToken: string,
+  solutionName: string,
+  viewerToken: string,
+  comment?: string,
+): Promise<VoteSummary> {
+  const response = await fetch(`${API_BASE}/shared/discovery/${shareToken}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ solutionName, viewerToken, comment }),
+  });
+  return handleResponse<VoteSummary>(response);
+}
+
+export async function getDiscoveryVotes(shareToken: string, viewerToken?: string): Promise<VoteSummary> {
+  const url = viewerToken
+    ? `${API_BASE}/shared/discovery/${shareToken}/votes?viewerToken=${viewerToken}`
+    : `${API_BASE}/shared/discovery/${shareToken}/votes`;
+  const response = await fetch(url);
+  return handleResponse<VoteSummary>(response);
+}
+
+// ============================================
 // Notification Preferences
 // ============================================
 

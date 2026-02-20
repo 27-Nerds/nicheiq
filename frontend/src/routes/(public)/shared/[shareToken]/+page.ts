@@ -17,10 +17,12 @@ export const load: PageLoad = async ({ params, fetch }) => {
     }
 
     const report: Report = await res.json();
+    const allowIndexing = report?._shareAllowIndexing ?? false;
 
     return {
       report,
       shareToken,
+      allowIndexing,
     };
   } catch (e) {
     if (e && typeof e === 'object' && 'status' in e) {

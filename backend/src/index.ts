@@ -13,8 +13,10 @@ import { suggestRouter } from './routes/suggest.js';
 import { adminRouter } from './routes/admin.js';
 import { settingsRouter } from './routes/settings.js';
 import { sharesRouter, publicShareRouter } from './routes/shares.js';
+import { discoverySharesRouter, publicDiscoveryShareRouter } from './routes/discoveryShares.js';
 import { webhooksRouter } from './routes/webhooks.js';
 import { statsRouter } from './routes/stats.js';
+import { sitemapRouter } from './routes/sitemap.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
@@ -23,6 +25,9 @@ import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './s
 validateConfig();
 
 const app = express();
+
+// Trust first proxy (for correct req.ip behind reverse proxy)
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(cors({
@@ -51,12 +56,15 @@ app.use('/api/jobs', jobsRouter);
 app.use('/api/jobs', sharesRouter);
 app.use('/api/jobs', eventsRouter);
 app.use('/api/shared', publicShareRouter);
+app.use('/api/jobs', discoverySharesRouter);
+app.use('/api/shared/discovery', publicDiscoveryShareRouter);
 app.use('/api/billing', billingRouter);
 app.use('/api/workers', workersRouter);
 app.use('/api/suggest', suggestRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/sitemap', sitemapRouter);
 app.use('/api', healthRouter);
 
 // Error handling middleware

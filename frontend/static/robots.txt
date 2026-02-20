@@ -1,3 +1,9 @@
 User-agent: *
-Disallow: /shared/
-Disallow: /api/shared/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /dashboard/
+Disallow: /jobs/
+Disallow: /settings/
+Disallow: /billing/
+
+Sitemap: https://nicheiq.dev/sitemap.xml

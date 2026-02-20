@@ -1,4 +1,5 @@
 <script lang="ts">
+  import type { Snippet } from "svelte";
   import {
     CheckCircle,
     Circle,
@@ -7,6 +8,7 @@
     ChevronLeft,
     ChevronRight,
     X,
+    Heart,
   } from "lucide-svelte";
   import { portal } from "$lib/actions/portal";
   import Badge from "$lib/components/ui/Badge.svelte";
@@ -14,6 +16,7 @@
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import type { SolutionPreview } from "$lib/types/job";
   import { renderTechnicalContent } from "$lib/utils/format";
+  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED } from "$lib/utils/solution-utils";
 
   interface Props {
     open: boolean;
@@ -23,9 +26,11 @@
     isSelected?: boolean;
     disabled?: boolean;
     maxReached?: boolean;
-    onSelect: (name: string) => void;
+    onSelect?: (name: string) => void;
     onNavigate: (index: number) => void;
     onClose: () => void;
+    actionSlot?: Snippet;
+    voteCount?: number;
   }
 
   let {
@@ -39,6 +44,8 @@
     onSelect,
     onNavigate,
     onClose,
+    actionSlot,
+    voteCount = 0,
   }: Props = $props();
 
   let expandedSections = $state<Set<string>>(new Set());
@@ -68,18 +75,7 @@
     { label: "Solo Dev", value: solution.solo_dev_feasibility },
   ]);
 
-  // Composite score for ProgressRing (0-1)
-  const compositeScore = $derived.by(() => {
-    if (solution.adjusted_composite_score != null) return solution.adjusted_composite_score;
-    const vals = [
-      solution.market_fit_score ?? 0,
-      solution.technical_feasibility_score ?? 0,
-      solution.seo_scalability_score ?? 0,
-      solution.novelty_score ?? 0,
-      solution.solo_dev_feasibility ?? 0,
-    ];
-    return vals.reduce((a, b) => a + b, 0) / vals.length;
-  });
+  const compositeScore = $derived(computeCompositeScore(solution));
 
   // Score color (matches ProgressRing auto logic)
   const scoreColor = $derived.by(() => {
@@ -88,26 +84,7 @@
     return 'var(--color-error)';
   });
 
-  // Superpower badge
-  const SUPERPOWER_MAP: Record<string, { label: string; variant: "success" | "accent" | "info" | "warning" }> = {
-    market_fit_score: { label: "Strong Market Fit", variant: "success" },
-    seo_scalability_score: { label: "SEO Powerhouse", variant: "accent" },
-    novelty_score: { label: "Innovator", variant: "info" },
-    technical_feasibility_score: { label: "Quick to Build", variant: "warning" },
-    solo_dev_feasibility: { label: "Solo-Friendly", variant: "success" },
-  };
-
-  const superpower = $derived.by(() => {
-    const entries: [string, number][] = [
-      ["market_fit_score", solution.market_fit_score ?? 0],
-      ["seo_scalability_score", solution.seo_scalability_score ?? 0],
-      ["novelty_score", solution.novelty_score ?? 0],
-      ["technical_feasibility_score", solution.technical_feasibility_score ?? 0],
-      ["solo_dev_feasibility", solution.solo_dev_feasibility ?? 0],
-    ];
-    entries.sort((a, b) => b[1] - a[1]);
-    return SUPERPOWER_MAP[entries[0][0]];
-  });
+  const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP_DETAILED));
 
   // Dev time parsing
   const devTimeParsed = $derived.by(() => {
@@ -154,10 +131,10 @@
     expandedSections = next;
   }
 
-  const isToggleable = $derived(!disabled && (isSelected || !maxReached));
+  const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
 
   function handleSelect() {
-    if (!isToggleable) return;
+    if (!isToggleable || !onSelect) return;
     onSelect(solution.solution_name);
   }
 
@@ -236,33 +213,42 @@
                 {solution.project_type}
               </span>
             {/if}
+            {#if voteCount > 0}
+              <span class="text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent flex items-center gap-1">
+                <Heart class="w-3 h-3" /> {voteCount} vote{voteCount === 1 ? '' : 's'}
+              </span>
+            {/if}
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          <!-- Select / Deselect button -->
-          <button
-            type="button"
-            onclick={handleSelect}
-            disabled={!isToggleable}
-            title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-              {isSelected
-                ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
-                : 'bg-bg-elevated text-text-secondary border border-border hover:border-accent/40 hover:text-accent'
-              }
-              disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {#if isSelected}
-              <CheckCircle class="w-4 h-4" />
-              Selected
-            {:else if maxReached}
-              <Circle class="w-4 h-4" />
-              Limit reached
-            {:else}
-              <Circle class="w-4 h-4" />
-              Select
-            {/if}
-          </button>
+          {#if onSelect}
+            <!-- Select / Deselect button -->
+            <button
+              type="button"
+              onclick={handleSelect}
+              disabled={!isToggleable}
+              title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                {isSelected
+                  ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
+                  : 'bg-bg-elevated text-text-secondary border border-border hover:border-accent/40 hover:text-accent'
+                }
+                disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {#if isSelected}
+                <CheckCircle class="w-4 h-4" />
+                Selected
+              {:else if maxReached}
+                <Circle class="w-4 h-4" />
+                Limit reached
+              {:else}
+                <Circle class="w-4 h-4" />
+                Select
+              {/if}
+            </button>
+          {:else if actionSlot}
+            {@render actionSlot()}
+          {/if}
           <!-- Close button -->
           <button
             type="button"

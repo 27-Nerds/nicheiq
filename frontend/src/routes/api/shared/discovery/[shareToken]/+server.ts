@@ -5,10 +5,10 @@ import { env } from '$env/dynamic/private';
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
- * GET /api/shared/:shareToken - Public proxy for shared report (no auth)
+ * GET /api/shared/discovery/:shareToken - Public proxy for shared discovery (no auth)
  */
 export const GET: RequestHandler = async ({ params }) => {
-  const response = await fetch(`${BACKEND_URL}/api/shared/${params.shareToken}`);
+  const response = await fetch(`${BACKEND_URL}/api/shared/discovery/${params.shareToken}`);
 
   if (!response.ok) {
     const data = await response.json();

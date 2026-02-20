@@ -292,11 +292,14 @@ publicShareRouter.get('/:shareToken', publicShareLimiter, async (req: Request, r
       delete rawReport[field];
     }
 
-    // Set SEO prevention headers
-    res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    // Set SEO headers (conditional based on admin indexing toggle)
+    if (!share.allowIndexing) {
+      res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    }
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
 
+    rawReport._shareAllowIndexing = share.allowIndexing;
     res.json(rawReport);
 
     // Fire-and-forget view count increment

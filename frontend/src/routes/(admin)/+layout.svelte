@@ -11,6 +11,7 @@
     ArrowLeft,
     Menu,
     X,
+    Link,
   } from "lucide-svelte";
 
   let { children } = $props();
@@ -20,6 +21,7 @@
   const navItems = [
     { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
     { href: "/admin/reports", label: "Report Stats", icon: BarChart3 },
+    { href: "/admin/shares", label: "Shared Links", icon: Link },
     { href: "/admin/promo-codes", label: "Promo Codes", icon: Gift },
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/packages", label: "Packages", icon: Package },

@@ -31,6 +31,7 @@
     creditBalance?: number;
     onSelectionComplete?: () => void;
     onRegenerateStart?: () => void;
+    solutionVotes?: Record<string, number>;
   }
 
   let {
@@ -44,6 +45,7 @@
     creditBalance = 0,
     onSelectionComplete,
     onRegenerateStart,
+    solutionVotes = {},
   }: Props = $props();
 
   // Track user's multi-select choices (before confirmation)
@@ -396,6 +398,7 @@
             : selectedNames.has(solution.solution_name)}
           maxReached={!alreadySubmitted && selectionCount >= MAX_SELECTIONS}
           isNew={showNewBadges && i >= originalBatchSize}
+          voteCount={solutionVotes[solution.solution_name] ?? 0}
         />
       </AnimateOnScroll>
     {/each}
@@ -498,6 +501,7 @@
     onSelect={handleToggle}
     onNavigate={handleNavigate}
     onClose={handleCloseDetail}
+    voteCount={solutionVotes[solutions[modalIndex].solution_name] ?? 0}
   />
 {/if}
 
