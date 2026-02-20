@@ -17,6 +17,7 @@
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
   import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
+  import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
   import StatPill from "$lib/components/ui/StatPill.svelte";
   import IconListItem from "$lib/components/ui/IconListItem.svelte";
 
@@ -73,6 +74,27 @@
       ? Math.round(data.momentum_score * 100)
       : null,
   );
+
+  // HeroMetric color deriveds
+  const trendMetricColor = $derived.by(() => {
+    const d = data.trend_direction?.toLowerCase() || "";
+    if (d.includes("grow")) return "success" as const;
+    if (d.includes("declin")) return "error" as const;
+    return "warning" as const;
+  });
+
+  const confidenceColor = $derived.by(() => {
+    if (data.trend_confidence === "High") return "success" as const;
+    if (data.trend_confidence === "Medium") return "warning" as const;
+    return "error" as const;
+  });
+
+  const verdictColor = $derived.by(() => {
+    const v = data.longevity_verdict?.toLowerCase() || "";
+    if (v.includes("sustain")) return "success" as const;
+    if (v.includes("risky") || v.includes("fad")) return "error" as const;
+    return "warning" as const;
+  });
 </script>
 
 <Section
@@ -108,63 +130,17 @@
       {/if}
     {/snippet}
 
-    <!-- Trend Direction -->
     {#if data.trend_direction}
-      {@const TrendIcon = trendConfig.icon}
-      <div class="trend-metric">
-        <div class="trend-indicator" style="--trend-color: {trendConfig.color}">
-          <TrendIcon class="trend-icon" />
-        </div>
-        <div class="trend-content">
-          <span class="trend-label">Direction</span>
-          <span class="trend-value" style="color: {trendConfig.color}"
-            >{data.trend_direction}</span
-          >
-        </div>
-      </div>
+      <HeroMetric value={data.trend_direction} label="Direction" icon={trendConfig.icon} color={trendMetricColor} />
     {/if}
-
-    <!-- Trend Confidence -->
     {#if data.trend_confidence}
-      <div class="confidence-metric">
-        <span class="confidence-label">Confidence</span>
-        <Badge
-          variant={data.trend_confidence === "High"
-            ? "success"
-            : data.trend_confidence === "Medium"
-              ? "warning"
-              : "error"}
-          size="sm"
-        >
-          {data.trend_confidence}
-        </Badge>
-      </div>
+      <HeroMetric value={data.trend_confidence} label="Confidence" color={confidenceColor} />
     {/if}
-
-    <!-- Longevity Verdict -->
     {#if data.longevity_verdict}
-      <div
-        class="verdict-metric"
-        style="--verdict-color: {verdictConfig.color}"
-      >
-        <span class="verdict-label">Longevity</span>
-        <Badge variant={verdictConfig.variant} size="sm"
-          >{data.longevity_verdict}</Badge
-        >
-      </div>
+      <HeroMetric value={data.longevity_verdict} label="Longevity" color={verdictColor} />
     {/if}
-
-    <!-- Timing Recommendation -->
     {#if data.timing_recommendation}
-      <div class="timing-metric">
-        <div class="timing-indicator">
-          <Clock class="timing-icon" />
-        </div>
-        <div class="timing-content">
-          <span class="timing-label">Timing</span>
-          <span class="timing-value">{data.timing_recommendation}</span>
-        </div>
-      </div>
+      <HeroMetric value={data.timing_recommendation} label="Timing" icon={Clock} color="accent" />
     {/if}
   </HeroStrip>
 
@@ -280,129 +256,6 @@
 </Section>
 
 <style>
-  /* Trend Metric (custom for direction display in hero rail) */
-  .trend-metric {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .trend-indicator {
-    width: 2.25rem;
-    height: 2.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: color-mix(in srgb, var(--trend-color) 15%, transparent);
-    border: 2px solid var(--trend-color);
-    border-radius: 50%;
-  }
-
-  .trend-indicator :global(.trend-icon) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: var(--trend-color);
-  }
-
-  .trend-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .trend-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
-  .trend-value {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 700;
-  }
-
-  /* Confidence Metric */
-  .confidence-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .confidence-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
-  /* Verdict Metric */
-  .verdict-metric {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .verdict-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
-  /* Timing Metric (in hero strip) */
-  .timing-metric {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .timing-indicator {
-    width: 2.25rem;
-    height: 2.25rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: color-mix(in srgb, var(--color-accent) 15%, transparent);
-    border: 2px solid var(--color-accent);
-    border-radius: 50%;
-  }
-
-  .timing-indicator :global(.timing-icon) {
-    width: 1.125rem;
-    height: 1.125rem;
-    color: var(--color-accent);
-  }
-
-  .timing-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .timing-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
-  .timing-value {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: var(--color-accent);
-  }
-
   /* Stats Strip */
   .stats-strip {
     display: flex;
@@ -510,12 +363,6 @@
   }
 
   /* Responsive */
-  @media (max-width: 768px) {
-    .trend-metric {
-      padding-bottom: 0.5rem;
-    }
-  }
-
   @media (max-width: 480px) {
     .stats-strip {
       flex-direction: column;

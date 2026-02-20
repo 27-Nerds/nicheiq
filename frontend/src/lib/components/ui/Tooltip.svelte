@@ -138,7 +138,7 @@
   .tooltip-trigger:hover {
     color: var(--color-accent);
     border-color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
+    background: var(--color-accent-subtle);
   }
 
   /* Portal tooltip styles (global because they're appended to body) */

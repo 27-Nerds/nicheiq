@@ -161,6 +161,9 @@ export interface SEOCalculationTransparency {
 	tier1_multiplier?: number | null;
 	estimated_year1_pages?: number | null;
 	calculation_rationale?: string | null;
+	keyword_evidence_floor?: number | null;
+	floor_applied?: boolean | null;
+	floor_reason?: string | null;
 }
 
 export interface ExecutiveDashboard {

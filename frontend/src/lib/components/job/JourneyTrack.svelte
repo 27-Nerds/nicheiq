@@ -288,7 +288,7 @@
   @media (prefers-reduced-motion: reduce) {
     .node-active {
       animation: none;
-      box-shadow: 0 0 12px rgba(229, 90, 40, 0.2);
+
     }
     .node-active::after {
       animation: none;

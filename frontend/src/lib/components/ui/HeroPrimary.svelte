@@ -1,14 +1,16 @@
 <script lang="ts">
+  import type { ComponentType } from "svelte";
   import ProgressRing from "./ProgressRing.svelte";
 
   interface Props {
-    value: number; // 0-1 for percentage
+    value?: number; // 0-1 for percentage (optional when icon mode)
     label: string;
     sublabel?: string;
     color?: "auto" | "success" | "warning" | "error" | "accent";
     size?: number;
     strokeWidth?: number;
     showValue?: boolean;
+    icon?: ComponentType; // NEW — triggers icon mode
     class?: string;
   }
 
@@ -20,32 +22,49 @@
     size = 56,
     strokeWidth = 6,
     showValue = true,
+    icon: Icon,
     class: className = "",
   }: Props = $props();
 
   // Determine color based on value if auto
   const effectiveColor = $derived.by(() => {
     if (color !== "auto") return color;
+    if (value === undefined) return "accent";
     if (value >= 0.7) return "success";
     if (value >= 0.4) return "warning";
     return "error";
   });
 
   // Format percentage for display
-  const displayValue = $derived(Math.round(value * 100));
+  const displayValue = $derived(value !== undefined ? Math.round(value * 100) : 0);
+
+  // Icon color CSS variable
+  const iconColorVar = $derived.by(() => {
+    const c = effectiveColor;
+    if (c === "success") return "var(--color-success)";
+    if (c === "warning") return "var(--color-warning)";
+    if (c === "error") return "var(--color-error)";
+    return "var(--color-accent)";
+  });
 </script>
 
 <div class="hero-primary hero-primary--{effectiveColor} {className}">
-  <div class="hero-primary__ring">
-    <ProgressRing
-      {value}
-      {size}
-      {strokeWidth}
-      color={effectiveColor}
-      {showValue}
-      flat={true}
-    />
-  </div>
+  {#if Icon}
+    <div class="hero-primary__icon-circle" style="--icon-color: {iconColorVar}">
+      <Icon size={18} />
+    </div>
+  {:else if value !== undefined}
+    <div class="hero-primary__ring">
+      <ProgressRing
+        {value}
+        {size}
+        {strokeWidth}
+        color={effectiveColor}
+        {showValue}
+        flat={true}
+      />
+    </div>
+  {/if}
   <div class="hero-primary__content">
     <span class="hero-primary__label">{label}</span>
     {#if sublabel}
@@ -64,6 +83,19 @@
   }
 
   .hero-primary__ring {
+    flex-shrink: 0;
+  }
+
+  .hero-primary__icon-circle {
+    width: 2.5rem;
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--icon-color) 12%, transparent);
+    border: 2px solid var(--icon-color);
+    border-radius: 50%;
+    color: var(--icon-color);
     flex-shrink: 0;
   }
 

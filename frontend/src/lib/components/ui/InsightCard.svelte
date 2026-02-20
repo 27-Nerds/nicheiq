@@ -180,10 +180,10 @@
   .insight-card--accent {
     background: linear-gradient(
       135deg,
-      rgba(229, 90, 40, 0.05) 0%,
+      var(--color-accent-subtle) 0%,
       transparent 50%
     );
-    border-color: rgba(229, 90, 40, 0.15);
+    border-color: var(--color-accent-glow);
   }
 
   .insight-card--accent.insight-card--border-left {
@@ -195,7 +195,7 @@
   }
 
   .insight-card--accent.hoverable:hover {
-    border-color: rgba(229, 90, 40, 0.3);
+    border-color: var(--color-border-accent);
   }
 
   /* Info variant (purple) */
@@ -209,11 +209,11 @@
   }
 
   .insight-card--info.insight-card--border-left {
-    border-left-color: #6366f1;
+    border-left-color: var(--color-secondary);
   }
 
   .insight-card--info.insight-card--border-top {
-    border-top-color: #6366f1;
+    border-top-color: var(--color-secondary);
   }
 
   .insight-card--info.hoverable:hover {

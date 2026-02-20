@@ -29,6 +29,7 @@
   import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
+  import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
   import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
 
   interface Props {
@@ -123,15 +124,15 @@
     const name = phaseName?.toLowerCase() || "";
     if (name === "mvp")
       return {
-        bg: "rgba(34, 197, 94, 0.15)",
-        border: "#22c55e",
-        text: "#22c55e",
+        bg: "var(--color-success-subtle)",
+        border: "var(--color-success)",
+        text: "var(--color-success)",
       };
     if (name === "growth")
       return {
-        bg: "rgba(59, 130, 246, 0.15)",
-        border: "#3b82f6",
-        text: "#3b82f6",
+        bg: "var(--color-info-subtle)",
+        border: "var(--color-info)",
+        text: "var(--color-info)",
       };
     if (name === "scale")
       return {
@@ -191,15 +192,12 @@
   <!-- Hero Strip with Key Metrics -->
   <HeroStrip>
     {#snippet primary()}
-      <div class="data-hero-primary">
-        <div class="data-hero-icon-wrap">
-          <Cpu class="data-hero-icon" />
-        </div>
-        <div class="data-hero-content">
-          <span class="data-hero-value">{sourceCount}</span>
-          <span class="data-hero-label">Data Sources</span>
-        </div>
-      </div>
+      <HeroPrimary
+        icon={Cpu}
+        label="Data Sources"
+        sublabel={String(sourceCount)}
+        color="success"
+      />
     {/snippet}
     <HeroMetric
       value={phaseCount}
@@ -675,53 +673,6 @@
 </Section>
 
 <style>
-  /* Hero Primary */
-  .data-hero-primary {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .data-hero-icon-wrap {
-    width: 48px;
-    height: 48px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(34, 197, 94, 0.12);
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    border-radius: 12px;
-  }
-
-  :global(.data-hero-icon) {
-    width: 24px;
-    height: 24px;
-    color: #22c55e;
-  }
-
-  .data-hero-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .data-hero-value {
-    font-family: var(--font-display);
-    font-size: 1.75rem;
-    font-weight: 800;
-    color: #22c55e;
-    line-height: 1;
-  }
-
-  .data-hero-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
   /* Cost Tiers Section */
   .cost-tiers-section {
     background: var(--color-bg-elevated);
@@ -784,13 +735,13 @@
   }
 
   .cost-tier-card--mvp {
-    background: rgba(34, 197, 94, 0.06);
-    border-color: rgba(34, 197, 94, 0.3);
+    background: var(--color-success-subtle);
+    border-color: var(--color-border-success);
   }
 
   .cost-tier-card--growth {
-    background: rgba(59, 130, 246, 0.06);
-    border-color: rgba(59, 130, 246, 0.3);
+    background: var(--color-info-subtle);
+    border-color: var(--color-border-info);
   }
 
   .cost-tier-card--scale {
@@ -815,10 +766,10 @@
   }
 
   .cost-tier-card--mvp .cost-tier-badge {
-    color: #22c55e;
+    color: var(--color-success);
   }
   .cost-tier-card--growth .cost-tier-badge {
-    color: #3b82f6;
+    color: var(--color-info);
   }
   .cost-tier-card--scale .cost-tier-badge {
     color: #a855f7;
@@ -878,8 +829,8 @@
     gap: 0.5rem;
     margin-top: 1rem;
     padding: 0.75rem 1rem;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: var(--color-success-subtle);
+    border: 1px solid var(--color-border-success);
     border-radius: 0.5rem;
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
@@ -888,7 +839,7 @@
   :global(.unit-economics-icon) {
     width: 1rem;
     height: 1rem;
-    color: #22c55e;
+    color: var(--color-success);
     flex-shrink: 0;
   }
 
@@ -1343,13 +1294,13 @@
   .quality-bar {
     height: 100%;
     width: var(--bar-fill, 50%);
-    background: #22c55e;
+    background: var(--color-success);
     border-radius: 3px;
     transition: width 0.5s ease;
   }
 
   .quality-bar--inverse {
-    background: #22c55e;
+    background: var(--color-success);
   }
 
   .quality-value {
@@ -1371,8 +1322,8 @@
   }
 
   .cost-tag--mvp {
-    background: rgba(34, 197, 94, 0.15);
-    color: #22c55e;
+    background: var(--color-success-subtle);
+    color: var(--color-success);
   }
 
   .cost-tag--scale {
@@ -1426,15 +1377,15 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: rgba(239, 68, 68, 0.08);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: var(--color-error-subtle);
+    border: 1px solid var(--color-border-error);
     border-radius: 0.5rem;
   }
 
   :global(.risk-icon) {
     width: 1rem;
     height: 1rem;
-    color: #ef4444;
+    color: var(--color-error);
     flex-shrink: 0;
     margin-top: 0.125rem;
   }
@@ -1456,15 +1407,15 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: var(--color-success-subtle);
+    border: 1px solid var(--color-border-success);
     border-radius: 0.5rem;
   }
 
   :global(.mitigation-icon) {
     width: 1rem;
     height: 1rem;
-    color: #22c55e;
+    color: var(--color-success);
     flex-shrink: 0;
     margin-top: 0.125rem;
   }
@@ -1484,8 +1435,8 @@
 
   .narrative-content--highlight {
     padding: 1rem;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: var(--color-success-subtle);
+    border: 1px solid var(--color-border-success);
     border-radius: 0.5rem;
   }
 

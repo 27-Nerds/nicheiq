@@ -19,6 +19,7 @@
   import InsightCard from "$lib/components/ui/InsightCard.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
+  import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
   import MarketFunnel from "$lib/components/charts/MarketFunnel.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
@@ -38,14 +39,14 @@
   const getViabilityConfig = (verdict?: string) => {
     const v = verdict?.toLowerCase() || "";
     if (v === "strong")
-      return { color: "#22C55E", variant: "success" as const, label: "STRONG" };
+      return { color: "var(--color-success)", variant: "success" as const, label: "STRONG" };
     if (v === "moderate")
       return {
         color: "#EAB308",
         variant: "warning" as const,
         label: "MODERATE",
       };
-    return { color: "#EF4444", variant: "error" as const, label: "WEAK" };
+    return { color: "var(--color-error)", variant: "error" as const, label: "WEAK" };
   };
 
   // Get saturation level styling
@@ -88,18 +89,12 @@
   <!-- Hero Strip: Viability Verdict + Key Signals -->
   <HeroStrip>
     {#snippet primary()}
-      <div
-        class="verdict-hero"
-        style="--verdict-color: {viabilityConfig.color}"
-      >
-        <div class="verdict-indicator">
-          <CheckCircle class="verdict-icon" />
-        </div>
-        <div class="verdict-content">
-          <span class="verdict-label">MARKET VIABILITY</span>
-          <span class="verdict-value">{viabilityConfig.label}</span>
-        </div>
-      </div>
+      <HeroPrimary
+        icon={CheckCircle}
+        label="Market Viability"
+        sublabel={viabilityConfig.label}
+        color={viabilityConfig.variant}
+      />
     {/snippet}
     {#if data.market_growth_rate}
       <HeroMetric
@@ -325,54 +320,6 @@
 
 <style>
   /* =========================
-	   VERDICT HERO (inside HeroStrip primary)
-	   ========================= */
-  .verdict-hero {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .verdict-indicator {
-    width: 2.5rem;
-    height: 2.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: color-mix(in srgb, var(--verdict-color) 12%, transparent);
-    border: 2px solid var(--verdict-color);
-    border-radius: 50%;
-  }
-
-  :global(.verdict-icon) {
-    width: 1.25rem;
-    height: 1.25rem;
-    color: var(--verdict-color);
-  }
-
-  .verdict-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .verdict-label {
-    font-family: var(--font-mono);
-    font-size: 0.5625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    color: var(--color-text-muted);
-  }
-
-  .verdict-value {
-    font-family: var(--font-display);
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: var(--verdict-color);
-  }
-
-  /* =========================
 	   FUNNEL CARD
 	   ========================= */
   .funnel-card {
@@ -451,7 +398,7 @@
 
   .metric.highlight {
     padding: 0.375rem 0.5rem;
-    background: rgba(229, 90, 40, 0.08);
+    background: var(--color-accent-subtle);
     border-radius: 0.375rem;
   }
 
@@ -461,7 +408,7 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
@@ -475,12 +422,12 @@
   }
 
   .metric-value.accent {
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   .segment-method {
     font-size: 0.6875rem;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     line-height: 1.45;
     margin: 0;
   }
@@ -488,7 +435,7 @@
   /* Methodology Content */
   .methodology-content {
     font-size: 0.8125rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.65;
     margin-bottom: 0.875rem;
   }
@@ -516,7 +463,7 @@
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
   }
 
   .sources-tags {
@@ -531,13 +478,13 @@
     background: rgba(0, 0, 0, 0.02);
     border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 0.25rem;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
   }
 
   /* Rationale Content */
   .rationale-content {
     font-size: 0.8125rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.65;
   }
 

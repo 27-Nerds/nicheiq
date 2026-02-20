@@ -100,7 +100,7 @@
   }
 
   .item-icon--info :global(.icon) {
-    color: #6366f1;
+    color: var(--color-secondary);
   }
 
   .item-content {

@@ -20,6 +20,7 @@
   import SubsectionHeader from "$lib/components/ui/SubsectionHeader.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
+  import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
   import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
   import MetaItem from "$lib/components/ui/MetaItem.svelte";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
@@ -63,13 +64,12 @@
   <HeroStrip>
     {#snippet primary()}
       {#if data.primary_target_segment}
-        <div class="hero-primary-content">
-          <UserCheck class="hero-primary-icon" />
-          <div class="hero-primary-text">
-            <span class="hero-label">PRIMARY TARGET</span>
-            <span class="hero-value">{data.primary_target_segment}</span>
-          </div>
-        </div>
+        <HeroPrimary
+          icon={UserCheck}
+          label="Primary Target"
+          sublabel={data.primary_target_segment}
+          color="accent"
+        />
       {/if}
     {/snippet}
     <HeroMetric value={totalSegments} label="Segments" icon={Target} />
@@ -282,43 +282,6 @@
 
 <style>
   /* =========================
-	   HERO PRIMARY CONTENT (inside HeroStrip)
-	   ========================= */
-  .hero-primary-content {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  :global(.hero-primary-icon) {
-    width: 1.75rem;
-    height: 1.75rem;
-    color: var(--color-accent);
-  }
-
-  .hero-primary-text {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .hero-label {
-    font-family: var(--font-mono);
-    font-size: 0.5625rem;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-  }
-
-  .hero-value {
-    font-family: var(--font-display);
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--color-accent);
-  }
-
-  /* =========================
 	   SEGMENTS
 	   ========================= */
   .segments-section {
@@ -334,11 +297,11 @@
   }
 
   .segment-card:hover {
-    border-color: rgba(229, 90, 40, 0.3);
+    border-color: var(--color-border-accent);
   }
 
   .segment-card.primary {
-    border-left: 3px solid #e55a28;
+    border-left: 3px solid var(--color-accent);
   }
 
   .segment-top {
@@ -365,7 +328,7 @@
     font-family: var(--font-mono);
     font-size: 0.5625rem;
     font-weight: 600;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
     display: block;
@@ -391,7 +354,7 @@
     content: "•";
     position: absolute;
     left: 0;
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   /* =========================
@@ -418,14 +381,14 @@
   :global(.communities-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   .communities-label span {
     font-family: var(--font-mono);
     font-size: 0.625rem;
     font-weight: 600;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
   }
@@ -494,14 +457,14 @@
 
   .influencer-platform {
     font-size: 0.6875rem;
-    color: #e55a28;
+    color: var(--color-accent);
     font-weight: 500;
   }
 
   .influencer-followers {
     font-family: var(--font-mono);
     font-size: 0.625rem;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
   }
 
   .influencer-focus {
@@ -524,7 +487,7 @@
     background: rgba(0, 0, 0, 0.03);
     border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 9999px;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
   }
 
   .influencer-posts-toggle {
@@ -536,13 +499,13 @@
     padding: 0.125rem 0;
     font-size: 0.6875rem;
     font-family: var(--font-mono);
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     cursor: pointer;
     transition: color 0.15s ease;
   }
 
   .influencer-posts-toggle:hover {
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   :global(.toggle-chevron) {
@@ -572,7 +535,7 @@
 
   .influencer-post-item::before {
     content: "\00B7";
-    color: #e55a28;
+    color: var(--color-accent);
     font-weight: 700;
     flex-shrink: 0;
   }
@@ -587,18 +550,18 @@
   .influencer-post-meta {
     font-family: var(--font-mono);
     font-size: 0.5625rem;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     white-space: nowrap;
   }
 
   .influencer-post-link {
     flex-shrink: 0;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     transition: color 0.15s ease;
   }
 
   .influencer-post-link:hover {
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   :global(.post-link-icon) {
@@ -628,7 +591,7 @@
   :global(.box-title-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   .messaging-list {
@@ -644,7 +607,7 @@
   }
 
   .quote-mark {
-    color: #e55a28;
+    color: var(--color-accent);
     font-size: 1rem;
     line-height: 1;
     font-weight: 500;
@@ -665,10 +628,10 @@
   .vocab-tag {
     font-size: 0.6875rem;
     padding: 0.25rem 0.5rem;
-    background: rgba(229, 90, 40, 0.08);
-    border: 1px solid rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
     border-radius: 9999px;
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   /* Tactics */

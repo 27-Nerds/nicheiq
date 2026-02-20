@@ -173,13 +173,13 @@
 <style>
   .compact-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 1px 0 var(--color-accent);
+    border-bottom: 1px solid var(--color-accent);
   }
 
   /* Selected: accent tint + ring */
   .card-selected {
     background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-card));
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 20%, transparent);
+    outline: 2px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
   }
 
   /* Selection pulse micro-interaction */
@@ -188,9 +188,9 @@
   }
 
   @keyframes selectionPulse {
-    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 90, 40, 0); }
-    50% { transform: scale(1.015); box-shadow: 0 0 0 4px rgba(229, 90, 40, 0.15); }
-    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(229, 90, 40, 0); }
+    0% { transform: scale(1); }
+    50% { transform: scale(1.015); }
+    100% { transform: scale(1); }
   }
 
   .new-badge {

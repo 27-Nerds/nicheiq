@@ -281,7 +281,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(229, 90, 40, 0.1);
+    background: var(--color-accent-subtle);
     border-radius: 0.5rem;
     flex-shrink: 0;
   }
@@ -496,7 +496,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(229, 90, 40, 0.1);
+    background: var(--color-accent-subtle);
     border-radius: 0.25rem;
     font-family: var(--font-mono);
     font-size: 0.625rem;

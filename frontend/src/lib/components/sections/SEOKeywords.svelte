@@ -819,8 +819,8 @@
   }
 
   .tab-button.active {
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.5);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
     color: var(--color-accent);
   }
 
@@ -837,18 +837,18 @@
   }
 
   .tab-count.success {
-    background: rgba(34, 197, 94, 0.15);
+    background: var(--color-success-subtle);
     color: var(--color-success);
   }
 
   .tab-count.accent {
-    background: rgba(229, 90, 40, 0.15);
+    background: var(--color-accent-glow);
     color: var(--color-accent);
   }
 
   .tab-count.info {
-    background: rgba(59, 130, 246, 0.15);
-    color: var(--color-info, #3b82f6);
+    background: var(--color-info-subtle);
+    color: var(--color-info);
   }
 
   /* Keywords Table */
@@ -1274,8 +1274,8 @@
   }
 
   .preview-expand-btn:hover {
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.3);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
   }
 
   .preview-tiers {
@@ -1312,11 +1312,11 @@
   }
 
   .tier-label.info {
-    color: var(--color-info, #3b82f6);
+    color: var(--color-info);
   }
 
   .tier-label.warning {
-    color: var(--color-warning, #f59e0b);
+    color: var(--color-warning);
   }
 
   .tier-pills {
@@ -1336,14 +1336,14 @@
   }
 
   .keyword-pill.success {
-    background: rgba(34, 197, 94, 0.1);
-    border-color: rgba(34, 197, 94, 0.2);
+    background: var(--color-success-subtle);
+    border-color: var(--color-border-success);
     color: var(--color-success-dark);
   }
 
   .keyword-pill.accent {
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
     color: var(--color-accent);
   }
 
@@ -1352,15 +1352,15 @@
   }
 
   .keyword-pill.info {
-    background: rgba(59, 130, 246, 0.1);
-    border-color: rgba(59, 130, 246, 0.2);
-    color: var(--color-info, #3b82f6);
+    background: var(--color-info-subtle);
+    border-color: var(--color-border-info);
+    color: var(--color-info);
   }
 
   .keyword-pill.warning {
-    background: rgba(245, 158, 11, 0.1);
-    border-color: rgba(245, 158, 11, 0.2);
-    color: var(--color-warning, #f59e0b);
+    background: var(--color-warning-subtle);
+    border-color: var(--color-border-warning);
+    color: var(--color-warning);
   }
 
   .pill-more {
@@ -1477,8 +1477,8 @@
   }
 
   .show-more-btn:hover {
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.3);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
   }
 
   /* Responsive */

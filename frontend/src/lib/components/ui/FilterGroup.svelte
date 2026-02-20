@@ -141,8 +141,8 @@
 
   .filter-button.active {
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.4);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
   }
 
   .filter-count {
@@ -161,7 +161,7 @@
 
   .filter-button.active .filter-count {
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.2);
+    background: var(--color-border-accent);
   }
 
   @media (max-width: 640px) {

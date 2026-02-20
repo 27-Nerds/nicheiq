@@ -215,11 +215,11 @@
   }
 
   .section-accent {
-    --section-border-color: rgba(229, 90, 40, 0.3);
+    --section-border-color: var(--color-border-accent);
     --section-icon-color: var(--color-accent);
     --section-bg: linear-gradient(
       135deg,
-      rgba(229, 90, 40, 0.05) 0%,
+      var(--color-accent-subtle) 0%,
       transparent 40%
     );
   }
@@ -374,7 +374,7 @@
     width: 2.75rem;
     height: 2.75rem;
     background: var(--color-accent-subtle);
-    border: 1px solid rgba(229, 90, 40, 0.2);
+    border: 1px solid var(--color-border-accent);
     border-radius: 0.75rem;
     flex-shrink: 0;
   }

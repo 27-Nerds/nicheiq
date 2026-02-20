@@ -529,7 +529,7 @@
     border-color: var(--color-accent);
     background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, var(--color-bg-card) 60%);
     transform: translateY(-2px);
-    box-shadow: 0 0 0 1px var(--color-accent);
+    outline: 1px solid var(--color-accent);
   }
   .generate-more-card:hover:not(:disabled) :global(.group-icon) {
     background: rgba(229, 90, 40, 0.15);

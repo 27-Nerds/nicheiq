@@ -33,6 +33,9 @@
   import MetricCard from "$lib/components/ui/MetricCard.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
+  import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
+  import HeroPrimary from "$lib/components/ui/HeroPrimary.svelte";
+  import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
   import PainPointMatrix from "$lib/components/charts/PainPointMatrix.svelte";
   import FilterGroup from "$lib/components/ui/FilterGroup.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
@@ -74,6 +77,13 @@
           topPainPoints.length
       : 0,
   );
+
+  const bestOppsColor = $derived.by(() => {
+    const count = analytics.quadrant_distribution.high_severity_high_wtp;
+    if (count === 0) return "error" as const;
+    if (count <= 2) return "warning" as const;
+    return "success" as const;
+  });
 
   function toggleQuotes(index: number) {
     expandedQuotes[index] = !expandedQuotes[index];
@@ -156,70 +166,38 @@
   </div>
 
   <!-- Analytics Overview (shown in both tabs) -->
-  <AnimateOnScroll animation="fade-up">
-    <div class="analytics-grid mb-8">
-      <div class="analytics-card analytics-card-featured">
-        <div class="analytics-value text-accent">
-          {analytics.total_pain_points}
-        </div>
-        <div class="analytics-label">Total Pain Points</div>
-      </div>
-      <div class="analytics-card">
-        <div class="analytics-value text-accent">
-          {analytics.high_severity_count ??
-            (analytics as any).high_priority_count ??
-            0}
-        </div>
-        <div class="analytics-label">High Severity</div>
-      </div>
-      <div
-        class="analytics-card {analytics.quadrant_distribution
-          .high_severity_high_wtp === 0
-          ? 'analytics-card-error'
-          : analytics.quadrant_distribution.high_severity_high_wtp <= 2
-            ? 'analytics-card-warning'
-            : 'analytics-card-highlight'}"
-      >
-        <div
-          class="analytics-value {analytics.quadrant_distribution
-            .high_severity_high_wtp === 0
-            ? 'text-error'
-            : analytics.quadrant_distribution.high_severity_high_wtp <= 2
-              ? 'text-warning'
-              : 'text-success'}"
-        >
-          {analytics.quadrant_distribution.high_severity_high_wtp}
-        </div>
-        <div class="analytics-label inline-flex items-center gap-1">
-          High Sev + High WTP <Tooltip
-            content={getTermTooltip("WTP")}
-            position="top"
-          />
-        </div>
-        <div
-          class="analytics-sublabel {analytics.quadrant_distribution
-            .high_severity_high_wtp === 0
-            ? 'sublabel-error'
-            : analytics.quadrant_distribution.high_severity_high_wtp <= 2
-              ? 'sublabel-warning'
-              : ''}"
-        >
-          Best Opportunities
-        </div>
-      </div>
-      <div class="analytics-card">
-        <div class="analytics-value text-warning">
-          {analytics.quadrant_distribution.high_severity_low_wtp}
-        </div>
-        <div class="analytics-label inline-flex items-center gap-1">
-          High Sev + Low WTP <Tooltip
-            content={getTermTooltip("WTP")}
-            position="top"
-          />
-        </div>
-      </div>
-    </div>
-  </AnimateOnScroll>
+  <div class="mb-8">
+    <HeroStrip>
+      {#snippet primary()}
+        <HeroPrimary
+          icon={AlertTriangle}
+          label="Pain Points"
+          sublabel={String(analytics.total_pain_points)}
+          color="accent"
+        />
+      {/snippet}
+
+      <HeroMetric
+        value={analytics.high_severity_count ?? (analytics as any).high_priority_count ?? 0}
+        label="High Severity"
+        icon={Flame}
+        color="error"
+      />
+
+      <HeroMetric
+        value={analytics.quadrant_distribution.high_severity_high_wtp}
+        label="Best Opportunities"
+        color={bestOppsColor}
+      />
+
+      <HeroMetric
+        value={analytics.quadrant_distribution.high_severity_low_wtp}
+        label="High Sev / Low WTP"
+        color="warning"
+        icon={AlertTriangle}
+      />
+    </HeroStrip>
+  </div>
 
   <!-- JOURNEY TAB -->
   {#if activeTab === "journey"}
@@ -299,10 +277,12 @@
 
                 {#if painPoint.affected_segments && painPoint.affected_segments.length > 0}
                   <div class="pain-segments">
-                    <Users class="w-3 h-3 text-secondary shrink-0" />
-                    {#each painPoint.affected_segments.slice(0, 3) as segment}
-                      <Badge variant="info" size="sm">{segment}</Badge>
-                    {/each}
+                    <Users class="w-3 h-3 text-secondary shrink-0 mt-0.5" />
+                    <div class="pain-segments__tags">
+                      {#each painPoint.affected_segments.slice(0, 3) as segment}
+                        <Badge variant="info" size="sm">{segment}</Badge>
+                      {/each}
+                    </div>
                   </div>
                 {/if}
               </div>
@@ -536,9 +516,11 @@
               {#if point.affected_segments && point.affected_segments.length > 0}
                 <div class="pain-segments">
                   <Users class="w-3.5 h-3.5 text-secondary shrink-0 mt-0.5" />
-                  {#each point.affected_segments as segment}
-                    <Badge variant="info" size="sm">{segment}</Badge>
-                  {/each}
+                  <div class="pain-segments__tags">
+                    {#each point.affected_segments as segment}
+                      <Badge variant="info" size="sm">{segment}</Badge>
+                    {/each}
+                  </div>
                 </div>
               {/if}
 
@@ -637,90 +619,13 @@
 
   .tab-button.tab-active {
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
-  }
-
-  /* Analytics Grid */
-  .analytics-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 1rem;
-  }
-
-  @media (min-width: 768px) {
-    .analytics-grid {
-      grid-template-columns: repeat(4, 1fr);
-    }
-  }
-
-  .analytics-card {
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    text-align: center;
-    transition: all 0.3s ease;
-  }
-
-  .analytics-card:hover {
-    border-color: var(--color-border-hover);
-    transform: translateY(-2px);
-  }
-
-  .analytics-card-featured {
-    background: rgba(229, 90, 40, 0.06);
-    border-color: rgba(229, 90, 40, 0.3);
-  }
-
-  .analytics-card-highlight {
-    background: rgba(229, 90, 40, 0.06);
-    border-color: rgba(229, 90, 40, 0.3);
-  }
-
-  .analytics-card-error {
-    background: rgba(239, 68, 68, 0.06);
-    border-color: rgba(239, 68, 68, 0.3);
-  }
-
-  .analytics-card-warning {
-    background: rgba(245, 158, 11, 0.06);
-    border-color: rgba(245, 158, 11, 0.3);
-  }
-
-  .analytics-value {
-    font-family: var(--font-display);
-    font-size: 2rem;
-    font-weight: 700;
-    line-height: 1;
-    margin-bottom: 0.25rem;
-  }
-
-  .analytics-label {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--color-text-muted);
-  }
-
-  .analytics-sublabel {
-    font-size: 0.6875rem;
-    color: var(--color-success);
-    margin-top: 0.25rem;
-  }
-
-  .analytics-sublabel.sublabel-error {
-    color: var(--color-error);
-  }
-
-  .analytics-sublabel.sublabel-warning {
-    color: var(--color-warning);
+    background: var(--color-accent-subtle);
   }
 
   /* Journey Tab Styles */
   .journey-intro {
-    background: rgba(229, 90, 40, 0.06);
-    border: 1px solid rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
     border-radius: 1rem;
     padding: 1.5rem;
     margin-bottom: 2rem;
@@ -732,8 +637,8 @@
     justify-content: center;
     width: 2.5rem;
     height: 2.5rem;
-    background: rgba(229, 90, 40, 0.1);
-    border: 1px solid rgba(229, 90, 40, 0.3);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
     border-radius: 0.5rem;
     margin-bottom: 1rem;
   }
@@ -771,7 +676,7 @@
   }
 
   .pain-card-enhanced:hover {
-    border-color: rgba(239, 68, 68, 0.3);
+    border-color: var(--color-border-error);
   }
 
   .pain-card-severity-high {
@@ -1096,15 +1001,15 @@
   }
 
   .opportunity-badge-high {
-    background: rgba(229, 90, 40, 0.15);
+    background: var(--color-accent-glow);
     color: var(--color-success);
-    border: 1px solid rgba(229, 90, 40, 0.3);
+    border: 1px solid var(--color-border-accent);
   }
 
   .opportunity-badge-medium {
-    background: rgba(245, 158, 11, 0.15);
+    background: var(--color-warning-subtle);
     color: var(--color-warning);
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    border: 1px solid var(--color-border-warning);
   }
 
   .opportunity-badge-low {
@@ -1150,10 +1055,16 @@
 
   .pain-segments {
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.375rem;
+    margin-top: 0.5rem;
     margin-bottom: 0.75rem;
+  }
+
+  .pain-segments__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
   }
 
   .category-tag {

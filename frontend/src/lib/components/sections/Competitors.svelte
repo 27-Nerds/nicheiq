@@ -613,7 +613,7 @@
     justify-content: center;
     width: 1.375rem;
     height: 1.375rem;
-    background: rgba(34, 197, 94, 0.15);
+    background: var(--color-success-subtle);
     border-radius: 50%;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
@@ -732,7 +732,7 @@
 
   .competitor-link:hover {
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
+    background: var(--color-accent-subtle);
   }
 
   :global(.link-icon) {

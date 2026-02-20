@@ -168,8 +168,8 @@
 
   .sticky-nav-item.active {
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.3);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
   }
 
   .sticky-nav-label {

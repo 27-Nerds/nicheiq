@@ -651,7 +651,7 @@
   }
 
   .thread-card:hover {
-    border-color: rgba(229, 90, 40, 0.3);
+    border-color: var(--color-border-accent);
   }
 
   .thread-rank {
@@ -671,8 +671,8 @@
   }
 
   .thread-rank.top-3 {
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
     color: var(--color-accent);
   }
 
@@ -709,8 +709,8 @@
   }
 
   .thread-link:hover {
-    background: rgba(229, 90, 40, 0.1);
-    border-color: rgba(229, 90, 40, 0.3);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
   }
 
   :global(.link-icon) {

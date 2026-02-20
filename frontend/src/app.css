@@ -327,6 +327,31 @@
 	color: var(--color-text-secondary);
 }
 
+/* Narrative variant: render code/pre as prose, not monospace */
+.markdown-content.narrative pre {
+	background: none;
+	border: none;
+	padding: 0;
+	margin-bottom: var(--space-4);
+	overflow-x: visible;
+	white-space: pre-wrap;
+}
+
+.markdown-content.narrative pre code {
+	font-family: inherit;
+	font-size: inherit;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.markdown-content.narrative code {
+	font-family: inherit;
+	font-size: inherit;
+	background: none;
+	padding: 0;
+	color: inherit;
+}
+
 .markdown-content blockquote {
 	border-left: 3px solid var(--color-accent);
 	padding-left: var(--space-4);

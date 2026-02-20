@@ -610,15 +610,15 @@
     justify-content: center;
     width: 2.5rem;
     height: 2.5rem;
-    background: rgba(229, 90, 40, 0.1);
-    border: 1px solid rgba(229, 90, 40, 0.3);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
     border-radius: 0.5rem;
   }
 
   :global(.hero-icon-svg) {
     width: 1.25rem;
     height: 1.25rem;
-    color: #e55a28;
+    color: var(--color-accent);
   }
 
   .hero-title {
@@ -633,7 +633,7 @@
 
   .hero-tagline {
     font-size: 0.9375rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     font-style: italic;
     margin-bottom: 1rem;
     line-height: 1.5;
@@ -642,7 +642,7 @@
   /* Value Block - using InsightCard */
   .value-text {
     font-size: 0.875rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.6;
     margin: 0;
   }
@@ -674,7 +674,7 @@
     font-size: 0.5625rem;
     font-weight: 700;
     letter-spacing: 0.15em;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     white-space: nowrap;
   }
@@ -721,11 +721,11 @@
 
   /* Semantic color variants */
   .param-time {
-    --param-color: #f59e0b;
+    --param-color: var(--color-warning);
     --param-bg: rgba(245, 158, 11, 0.08);
   }
   .param-scale {
-    --param-color: #3b82f6;
+    --param-color: var(--color-info);
     --param-bg: rgba(59, 130, 246, 0.08);
   }
   .param-cost {
@@ -738,7 +738,7 @@
   }
 
   .param-card:hover {
-    border-color: var(--param-color, #e55a28);
+    border-color: var(--param-color, var(--color-accent));
   }
 
   .param-icon-wrap {
@@ -747,7 +747,7 @@
     justify-content: center;
     width: 2.25rem;
     height: 2.25rem;
-    background: var(--param-bg, rgba(229, 90, 40, 0.08));
+    background: var(--param-bg, var(--color-accent-subtle));
     border-radius: 0.5rem;
     flex-shrink: 0;
     transition:
@@ -757,13 +757,13 @@
 
   .param-card:hover .param-icon-wrap {
     transform: scale(1.05);
-    background: var(--param-color, #e55a28);
+    background: var(--param-color, var(--color-accent));
   }
 
   :global(.param-icon) {
     width: 1.125rem;
     height: 1.125rem;
-    color: var(--param-color, #e55a28);
+    color: var(--param-color, var(--color-accent));
     transition: color 0.25s ease;
   }
 
@@ -791,7 +791,7 @@
     font-family: var(--font-mono);
     font-size: 0.5625rem;
     font-weight: 500;
-    color: #71717a;
+    color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     display: flex;
@@ -858,7 +858,7 @@
 
   .advantage-text {
     font-size: 0.8125rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.45;
   }
 
@@ -885,7 +885,7 @@
 
   .persona-num.primary {
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.12);
+    background: var(--color-accent-glow);
   }
 
   /* =========================
@@ -1018,7 +1018,7 @@
 
   .rationale-text {
     font-size: 0.8125rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.65;
   }
 
@@ -1091,7 +1091,7 @@
   .cac-vs-paid {
     font-size: 0.6875rem;
     font-weight: 500;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     margin-left: 0.25rem;
   }
 
@@ -1118,7 +1118,7 @@
   :global(.innovation-icon) {
     width: 1rem;
     height: 1rem;
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .innovation-label span {
@@ -1126,7 +1126,7 @@
     font-size: 0.5625rem;
     font-weight: 700;
     letter-spacing: 0.15em;
-    color: #f59e0b;
+    color: var(--color-warning);
     text-transform: uppercase;
   }
 
@@ -1140,14 +1140,14 @@
     font-family: var(--font-display);
     font-size: 1.5rem;
     font-weight: 800;
-    color: #f59e0b;
+    color: var(--color-warning);
     line-height: 1;
   }
 
   .innovation-score .score-max {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
   }
 
   .innovation-breakdown {
@@ -1165,7 +1165,7 @@
 
   .innovation-facet.facet-highlight {
     background: transparent;
-    border-left: 2px solid #f59e0b;
+    border-left: 2px solid var(--color-warning);
     padding: 0.5rem 0.75rem;
     border-radius: 0 0.375rem 0.375rem 0;
   }
@@ -1175,17 +1175,17 @@
     font-size: 0.5625rem;
     font-weight: 700;
     letter-spacing: 0.12em;
-    color: #a1a1aa;
+    color: var(--color-text-muted);
     text-transform: uppercase;
   }
 
   .facet-highlight .facet-label {
-    color: #f59e0b;
+    color: var(--color-warning);
   }
 
   .facet-text {
     font-size: 0.8125rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.55;
     margin: 0;
   }
@@ -1210,7 +1210,7 @@
   :global(.discovery-icon) {
     width: 1rem;
     height: 1rem;
-    color: #6366f1;
+    color: var(--color-secondary);
   }
 
   .discovery-title {
@@ -1218,7 +1218,7 @@
     font-size: 0.5625rem;
     font-weight: 700;
     letter-spacing: 0.15em;
-    color: #6366f1;
+    color: var(--color-secondary);
     text-transform: uppercase;
   }
 

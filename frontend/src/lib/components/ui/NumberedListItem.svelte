@@ -81,7 +81,7 @@
 
   /* Variants */
   .numbered-item--accent .item-number {
-    background: rgba(229, 90, 40, 0.15);
+    background: var(--color-accent-glow);
     color: var(--color-accent);
   }
 

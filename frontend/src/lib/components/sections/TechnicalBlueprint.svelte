@@ -644,7 +644,7 @@
     font-size: 0.75rem;
     font-weight: 700;
     color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.1);
+    background: var(--color-accent-subtle);
     padding: 0.25rem 0.5rem;
     border-radius: 0.25rem;
   }
@@ -724,8 +724,8 @@
     align-items: center;
     gap: 0.75rem;
     padding: 0.75rem 1rem;
-    background: rgba(229, 90, 40, 0.05);
-    border: 1px solid rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
     border-radius: 0.5rem;
   }
 
@@ -876,8 +876,8 @@
     align-items: flex-start;
     gap: 0.75rem;
     padding: 1rem 1.25rem;
-    background: rgba(229, 90, 40, 0.05);
-    border: 1px solid rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
     border-radius: 0.5rem;
     margin-bottom: 1.25rem;
   }

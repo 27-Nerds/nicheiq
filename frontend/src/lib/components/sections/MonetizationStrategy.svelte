@@ -870,7 +870,7 @@
 
   .pricing-tier-recommended {
     border-color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.06);
+    background: var(--color-accent-subtle);
     position: relative;
   }
 
@@ -892,7 +892,7 @@
 
   .pricing-tier-pro {
     border-color: var(--color-success);
-    background: rgba(229, 90, 40, 0.04);
+    background: var(--color-accent-subtle);
   }
 
   /* Unit Economics metric styles */

@@ -122,8 +122,8 @@
   }
 
   .stat-pill--accent {
-    background: rgba(229, 90, 40, 0.08);
-    border-color: rgba(229, 90, 40, 0.2);
+    background: var(--color-accent-subtle);
+    border-color: var(--color-border-accent);
   }
 
   .stat-pill--accent .stat-value {

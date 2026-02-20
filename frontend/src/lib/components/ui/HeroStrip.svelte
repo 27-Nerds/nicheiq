@@ -75,6 +75,7 @@
 
   /* Add dividers between metrics via CSS */
   .hero-strip__rail > :global(*) {
+    flex: 1;
     position: relative;
     padding: 0 1.25rem;
   }
@@ -96,6 +97,11 @@
 
   .hero-strip__rail > :global(*:last-child) {
     padding-right: 0;
+  }
+
+  .hero-strip__rail > :global(.tooltip-wrapper) {
+    display: flex;
+    justify-content: center;
   }
 
   /* Entrance animation */

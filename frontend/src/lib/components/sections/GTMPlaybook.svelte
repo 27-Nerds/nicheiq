@@ -23,7 +23,6 @@
   import type { GoToMarketBlueprint, BudgetEstimate } from "$lib/types/report";
   import { renderMarkdown } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
-  import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import Section from "$lib/components/ui/Section.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
   import HeroStrip from "$lib/components/ui/HeroStrip.svelte";
@@ -99,7 +98,7 @@
 
   // Channel priority color
   const getChannelColor = (priority: string) => {
-    if (priority === "High") return "#22C55E";
+    if (priority === "High") return "var(--color-success)";
     if (priority === "Medium") return "#EAB308";
     return "#71717A";
   };
@@ -139,22 +138,12 @@
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
-      <div class="gtm-hero-primary">
-        <ProgressRing
-          value={Math.min(totalActions / 20, 1)}
-          size={72}
-          strokeWidth={6}
-          color="accent"
-          showValue={false}
-          glow={true}
-          thick={true}
-        />
-        <div class="gtm-hero-primary-content">
-          <span class="gtm-hero-primary-value">{totalActions}</span>
-          <span class="gtm-hero-primary-label">Actions</span>
-          <span class="gtm-hero-primary-sublabel">30-Day Plan</span>
-        </div>
-      </div>
+      <HeroPrimary
+        value={Math.min(totalActions / 20, 1)}
+        label="30-Day Plan"
+        sublabel="{totalActions} Actions"
+        color="accent"
+      />
     {/snippet}
     <HeroMetric
       value={channelCount}
@@ -626,41 +615,6 @@
 </Section>
 
 <style>
-  /* GTM Hero Primary (custom for actions display) */
-  .gtm-hero-primary {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .gtm-hero-primary-content {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-  }
-
-  .gtm-hero-primary-value {
-    font-family: var(--font-display);
-    font-size: 2rem;
-    font-weight: 800;
-    color: var(--color-accent);
-    line-height: 1;
-  }
-
-  .gtm-hero-primary-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-text-muted);
-  }
-
-  .gtm-hero-primary-sublabel {
-    font-size: 0.75rem;
-    color: var(--color-text-secondary);
-  }
-
   /* Message Hero */
   .message-hero {
     margin-bottom: 1.5rem;
@@ -702,7 +656,7 @@
     color: var(--color-text-secondary);
     line-height: 1.6;
     padding-top: 1rem;
-    border-top: 1px solid rgba(229, 90, 40, 0.15);
+    border-top: 1px solid var(--color-border-accent);
   }
 
   .budget-badge {
@@ -1168,7 +1122,7 @@
     justify-content: center;
     width: 1.5rem;
     height: 1.5rem;
-    background: rgba(34, 197, 94, 0.15);
+    background: var(--color-success-subtle);
     border-radius: 50%;
     font-size: 0.75rem;
     font-weight: 600;
@@ -1208,7 +1162,7 @@
     justify-content: center;
     width: 2rem;
     height: 2rem;
-    background: rgba(229, 90, 40, 0.15);
+    background: var(--color-accent-glow);
     border-radius: 50%;
     font-size: 0.875rem;
     font-weight: 700;
@@ -1312,7 +1266,7 @@
   }
 
   .allocation-fill.tools {
-    background: #3b82f6;
+    background: var(--color-info);
   }
 
   .allocation-fill.community {
@@ -1353,8 +1307,8 @@
     display: flex;
     align-items: flex-start;
     gap: 0.75rem;
-    background: rgba(34, 197, 94, 0.08);
-    border: 1px solid rgba(34, 197, 94, 0.2);
+    background: var(--color-success-subtle);
+    border: 1px solid var(--color-border-success);
     border-radius: 0.5rem;
     padding: 1rem;
   }
