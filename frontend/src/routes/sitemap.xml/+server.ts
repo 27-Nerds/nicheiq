@@ -33,7 +33,21 @@ export const GET: RequestHandler = async ({ url }) => {
   }
 
   const origin = url.origin;
+  const today = new Date().toISOString().split('T')[0];
+
+  // Static public pages
+  const staticPages = [
+    { path: '/', changefreq: 'weekly', priority: '1.0' },
+    { path: '/privacy', changefreq: 'monthly', priority: '0.3' },
+    { path: '/login', changefreq: 'monthly', priority: '0.4' },
+    { path: '/register', changefreq: 'monthly', priority: '0.5' },
+    { path: '/sample-report', changefreq: 'daily', priority: '0.7' },
+  ];
+
   let urls = '';
+  for (const page of staticPages) {
+    urls += `  <url>\n    <loc>${escapeXml(origin)}${page.path}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n  </url>\n`;
+  }
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/sitemap/entries`, {
