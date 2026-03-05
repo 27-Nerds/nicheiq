@@ -32,11 +32,6 @@
     ? 'border-accent ring-1 ring-accent/20'
     : 'border-border'} hover:border-border-emphasis hover:shadow-md"
 >
-  <!-- Accent strip for popular cards -->
-  {#if pkg.isPopular}
-    <div class="h-[3px] bg-gradient-to-r from-accent to-accent/60"></div>
-  {/if}
-
   <!-- Promo Badge (top-left) -->
   {#if pkg.promoBadge}
     <div
