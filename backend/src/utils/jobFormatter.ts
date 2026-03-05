@@ -67,7 +67,7 @@ export function formatJobResponse(job: JobWithRelations, options: FormatOptions 
 
   if (options.includeSolutionIdeas) {
     result.solutionIdeas = job.solutionIdeas || null;
-    result.canRegenerate = job.ideasRegeneratedAt === null;
+    result.canRegenerate = true;
     result.selectionRationale = job.selectionRationale || null;
   }
 

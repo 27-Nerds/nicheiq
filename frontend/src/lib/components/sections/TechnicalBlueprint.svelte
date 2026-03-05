@@ -36,6 +36,7 @@
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import Section from "$lib/components/ui/Section.svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { getTermTooltip } from "$lib/stores/glossary";
 
   interface Props {
@@ -59,7 +60,7 @@
   }: Props = $props();
 
   // Track expanded sections
-  let expandedSections: Set<string> = $state(new Set());
+  let expandedSections = new SvelteSet<string>();
 
   function toggleSection(sectionName: string) {
     if (expandedSections.has(sectionName)) {
@@ -67,7 +68,6 @@
     } else {
       expandedSections.add(sectionName);
     }
-    expandedSections = new Set(expandedSections);
   }
 
   // Priority badge colors

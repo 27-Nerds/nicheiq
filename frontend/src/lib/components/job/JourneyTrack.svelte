@@ -124,6 +124,8 @@
     align-items: flex-start;
     justify-content: center;
     gap: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .node-group {

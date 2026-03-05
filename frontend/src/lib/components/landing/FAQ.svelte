@@ -1,24 +1,8 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
   import { Accordion } from "./ui";
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("faq");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   // Optimized FAQs: Trust first, consolidated competitor question, common objections
   // All answers are HTML strings to support rich formatting uniformly
@@ -83,7 +67,7 @@
   ];
 </script>
 
-<section id="faq" class="section-alt">
+<section id="faq" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-3xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->

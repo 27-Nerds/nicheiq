@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { UserRole } from '@prisma/client';
+import { UserRole, Prisma } from '@prisma/client';
 import archiver from 'archiver';
 import path from 'path';
 import { requireInternalAdmin, requireInternalService, AuthenticatedRequest } from '../middleware/auth.js';
@@ -273,6 +273,26 @@ adminRouter.post('/users/:userId/credits', async (req: AuthenticatedRequest, res
 // Packages
 // ============================================
 
+const FeatureItemSchema = z.object({
+  text: z.string().min(1).max(300),
+  icon: z.enum(['check', 'plus', 'star']).default('check'),
+  highlight: z.boolean().optional(),
+});
+
+const richPricingFields = {
+  tagline: z.string().max(200).optional(),
+  includesLabel: z.string().max(200).optional(),
+  creditsInfo: z.string().max(200).optional(),
+  features: z.array(FeatureItemSchema).max(20).optional(),
+  ctaText: z.string().max(100).optional(),
+  badgeLabel: z.string().max(50).optional(),
+  promoLine: z.string().max(200).optional(),
+  promoPriceInCents: z.number().int().positive().optional(),
+  promoBadge: z.string().max(50).optional(),
+  ctaSubText: z.string().max(100).optional(),
+  ctaSubUrl: z.string().max(500).optional(),
+};
+
 const CreatePackageSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().max(500).optional(),
@@ -282,6 +302,7 @@ const CreatePackageSchema = z.object({
   isActive: z.boolean().optional(),
   isPopular: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+  ...richPricingFields,
 });
 
 const UpdatePackageSchema = z.object({
@@ -289,9 +310,21 @@ const UpdatePackageSchema = z.object({
   description: z.string().max(500).optional(),
   credits: z.number().int().positive().optional(),
   priceInCents: z.number().int().positive().optional(),
+  stripePriceId: z.string().min(1).max(255).optional(),
   isActive: z.boolean().optional(),
   isPopular: z.boolean().optional(),
   sortOrder: z.number().int().optional(),
+  tagline: z.string().max(200).nullable().optional(),
+  includesLabel: z.string().max(200).nullable().optional(),
+  creditsInfo: z.string().max(200).nullable().optional(),
+  features: z.array(FeatureItemSchema).max(20).nullable().optional(),
+  ctaText: z.string().max(100).nullable().optional(),
+  badgeLabel: z.string().max(50).nullable().optional(),
+  promoLine: z.string().max(200).nullable().optional(),
+  promoPriceInCents: z.number().int().positive().nullable().optional(),
+  promoBadge: z.string().max(50).nullable().optional(),
+  ctaSubText: z.string().max(100).nullable().optional(),
+  ctaSubUrl: z.string().max(500).nullable().optional(),
 });
 
 adminRouter.get('/packages', async (_req: AuthenticatedRequest, res: Response) => {
@@ -322,7 +355,12 @@ adminRouter.post('/packages', async (req: AuthenticatedRequest, res: Response) =
 adminRouter.patch('/packages/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const input = UpdatePackageSchema.parse(req.body);
-    const pkg = await adminService.updatePackage(req.params.id, input);
+    // Prisma requires DbNull for setting JSON columns to null
+    const data: Record<string, unknown> = { ...input };
+    if (data.features === null) {
+      data.features = Prisma.DbNull;
+    }
+    const pkg = await adminService.updatePackage(req.params.id, data as Prisma.TokenPackageUpdateInput);
     res.json(pkg);
   } catch (error) {
     if (error instanceof z.ZodError) {

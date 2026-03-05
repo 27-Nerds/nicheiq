@@ -1,5 +1,5 @@
 import { prisma } from './db.js';
-import { UserRole, CreditTransactionType } from '@prisma/client';
+import { UserRole, CreditTransactionType, Prisma } from '@prisma/client';
 import path from 'path';
 import { existsSync, readdirSync, statSync, readFileSync } from 'fs';
 import { resolveAssetPath } from '../utils/assetPath.js';
@@ -312,31 +312,14 @@ export async function listAllPackages() {
 /**
  * Create a token package
  */
-export async function createPackage(data: {
-  name: string;
-  description?: string;
-  credits: number;
-  priceInCents: number;
-  stripePriceId: string;
-  isActive?: boolean;
-  isPopular?: boolean;
-  sortOrder?: number;
-}) {
+export async function createPackage(data: Prisma.TokenPackageCreateInput) {
   return prisma.tokenPackage.create({ data });
 }
 
 /**
  * Update a token package
  */
-export async function updatePackage(id: string, data: {
-  name?: string;
-  description?: string;
-  credits?: number;
-  priceInCents?: number;
-  isActive?: boolean;
-  isPopular?: boolean;
-  sortOrder?: number;
-}) {
+export async function updatePackage(id: string, data: Prisma.TokenPackageUpdateInput) {
   return prisma.tokenPackage.update({
     where: { id },
     data,

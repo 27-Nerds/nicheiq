@@ -43,6 +43,7 @@ const voteLimiter = rateLimit({
   message: { error: 'Too many votes, please slow down' },
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { ip: false, keyGeneratorIpFallback: false },
 });
 
 const IP_HASH_SALT = CONFIG.ipHashSalt || 'nicheiq-vote-salt';

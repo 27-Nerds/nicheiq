@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invalidateAll } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import {
     Settings,
     Lock,
@@ -39,7 +39,7 @@
 
   let { data } = $props();
 
-  const session = $derived($page.data.session);
+  const session = $derived(page.data.session);
   const userId = $derived(session?.user?.id);
   const notificationPrefs = $derived(
     data.notificationPreferences as NotificationPreferences,

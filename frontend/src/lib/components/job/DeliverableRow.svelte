@@ -22,6 +22,7 @@
     asset?: { url: string } | null;
     generating?: boolean;
     error?: string;
+    isInsufficientCredits?: boolean;
     onGenerate: () => Promise<void>;
   }
 
@@ -34,6 +35,7 @@
     asset = null,
     generating = false,
     error: errorMsg = "",
+    isInsufficientCredits = false,
     onGenerate,
   }: Props = $props();
 
@@ -128,6 +130,9 @@
   <div class="dr-error-strip">
     <AlertTriangle class="dr-error-strip-icon" />
     <span>{errorMsg}</span>
+    {#if isInsufficientCredits}
+      <Button href="/billing" label="Add credits" class="btn-tertiary btn-sm dr-error-billing-link" />
+    {/if}
   </div>
 {/if}
 

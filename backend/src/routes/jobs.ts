@@ -1,12 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import { getJob, updateJobStatus, getJobAsset } from '../services/jobService.js';
-import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueRegenerateJob, getQueueStats, getQueueLength } from '../services/queueService.js';
+import { enqueueJob, enqueueLandingPageJob, enqueuePhase2Job, enqueueRegenerateJob, getQueueStats, getQueueLength, removeJobFromQueue } from '../services/queueService.js';
 import {
   createJobAndChargeDiscovery,
   InsufficientCreditsError,
   refundForStage,
   chargeForStageInTx,
+  chargeForRegenerationInTx,
+  refundForRegenerationStage,
 } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema, SelectSolutionSchema } from '../types/job.js';
@@ -387,6 +389,11 @@ jobsRouter.post('/:jobId/cancel', requireInternalAuth, validateJobId, async (req
         completedAt: new Date(),
       },
     });
+
+    // If QUEUED, also remove from Redis queue
+    if (job.status === JobStatus.QUEUED) {
+      await removeJobFromQueue(jobId);
+    }
 
     // Mark any RUNNING stages as FAILED
     await prisma.jobProgress.updateMany({
@@ -869,6 +876,7 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       select: {
         status: true,
         ideasRegeneratedAt: true,
+        regenerationCount: true,
         phase1CheckpointPath: true,
         solutionIdeas: true,
         niche: true,
@@ -885,8 +893,9 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       return;
     }
 
-    if (job.ideasRegeneratedAt !== null) {
-      res.status(400).json({ error: 'Ideas can only be regenerated once per job' });
+    const MAX_REGENERATIONS = 10;
+    if ((job.regenerationCount ?? 0) >= MAX_REGENERATIONS) {
+      res.status(400).json({ error: `Maximum regenerations (${MAX_REGENERATIONS}) reached for this job` });
       return;
     }
 
@@ -900,22 +909,26 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       (s: any) => s.name || s.solution_name
     );
 
+    const nextRegenNumber = (job.regenerationCount ?? 0) + 1;
+
     // Atomically update status + charge for regeneration
     await prisma.$transaction(async (tx) => {
-      // Charge for regeneration inside the transaction
-      await chargeForStageInTx(tx, userId, jobId, 'regenerate_ideas', job!.niche);
+      // Charge with numbered stage
+      await chargeForRegenerationInTx(tx, userId, jobId, nextRegenNumber, job!.niche);
 
+      // Optimistic lock on regenerationCount to prevent concurrent requests
       const result = await tx.job.updateMany({
         where: {
           id: jobId,
           status: JobStatus.AWAITING_SELECTION,
-          ideasRegeneratedAt: null,
+          regenerationCount: job.regenerationCount ?? 0,
         },
         data: {
           status: JobStatus.QUEUED,
           ideasRegeneratedAt: new Date(),
+          regenerationCount: nextRegenNumber,
           queuedAt: new Date(),
-          lastHeartbeat: null,        // Clear stale heartbeat from Phase 1; worker will send fresh ones
+          lastHeartbeat: null,
         },
       });
 
@@ -929,10 +942,10 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
       await enqueueRegenerateJob(jobId, job.phase1CheckpointPath, existingSolutionNames, job.niche);
     } catch (enqueueError) {
       console.error(`[Jobs] Failed to enqueue regeneration for job ${jobId}, compensating:`, enqueueError);
-      await refundForStage(jobId, 'regenerate_ideas');
+      await refundForRegenerationStage(jobId, nextRegenNumber);
       await prisma.job.update({
         where: { id: jobId },
-        data: { status: JobStatus.AWAITING_SELECTION, ideasRegeneratedAt: null, queuedAt: null },
+        data: { status: JobStatus.AWAITING_SELECTION, queuedAt: null },
       });
       throw enqueueError;
     }
@@ -953,6 +966,10 @@ jobsRouter.post('/:jobId/regenerate-ideas', requireInternalAuth, validateJobId, 
     }
     if (error instanceof Error && error.message === 'CONFLICT') {
       res.status(409).json({ error: 'Regeneration already in progress or completed' });
+      return;
+    }
+    if ((error as any)?.code === 'P2002') {
+      res.status(409).json({ error: 'Regeneration already in progress (duplicate charge)' });
       return;
     }
     console.error('Failed to regenerate ideas:', error);
@@ -990,7 +1007,7 @@ jobsRouter.get('/:jobId/solutions', requireInternalAuth, validateJobId, async (r
       selectedSolution: job.selectedSolution,
       selectedSolutions: job.selectedSolutions?.length ? job.selectedSolutions : null,
       selectionRationale: job.selectionRationale,
-      canRegenerate: job.ideasRegeneratedAt === null,
+      canRegenerate: true,
       status: job.status,
     });
   } catch (error) {

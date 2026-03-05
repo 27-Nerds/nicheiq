@@ -352,6 +352,70 @@ def notify_regeneration_failed(job_id: str, error_message: str) -> None:
         logger.error(f"[Progress] Failed to notify regeneration failed: {e}")
 
 
+def notify_catalog_pain_points_ready(job_id: str, category_id: str, pain_points: list[dict], niche: str) -> None:
+    """
+    Notify backend that catalog pain points are ready for merge/insert.
+
+    Args:
+        job_id: The job UUID
+        category_id: The catalog category UUID
+        pain_points: List of pain point dicts (from PainPoint.model_dump())
+        niche: The niche description used for generation
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "category_id": category_id,
+            "pain_points": pain_points,
+            "niche": niche,
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/catalog-pain-points-ready",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Catalog pain points ready for job {job_id} ({len(pain_points)} pain points)")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify catalog pain points ready: {e}")
+
+
+def notify_catalog_ideas_ready(job_id: str, category_id: str, ideas: list[dict], niche: str) -> None:
+    """
+    Notify backend that catalog ideas are ready for insert.
+
+    Args:
+        job_id: The job UUID
+        category_id: The catalog category UUID
+        ideas: List of idea dicts (from BaseSolutionIdea via _solution_to_preview_dict)
+        niche: The niche description used for generation
+    """
+    try:
+        payload = {
+            "worker_id": _get_worker_id(),
+            "job_id": job_id,
+            "category_id": category_id,
+            "ideas": ideas,
+            "niche": niche,
+        }
+
+        response = requests.post(
+            f"{_get_backend_url()}/api/workers/catalog-ideas-ready",
+            json=payload,
+            headers={"x-internal-service": _get_internal_secret()},
+            timeout=30,
+        )
+        response.raise_for_status()
+        logger.info(f"[Progress] Catalog ideas ready for job {job_id} ({len(ideas)} ideas)")
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"[Progress] Failed to notify catalog ideas ready: {e}")
+
+
 def notify_job_quality_gate_stop(
     job_id: str,
     reason: str,

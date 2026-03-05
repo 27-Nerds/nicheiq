@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { untrack } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import {
     MessageCircle,
     Flame,
@@ -22,20 +23,26 @@
   const hasAnyValue = $derived(stats.some((s) => s.value != null));
 
   // Track which stats have been seen to flash on first appearance
-  let seenLabels = $state<Set<string>>(new Set());
-  let flashLabels = $state<Set<string>>(new Set());
+  let seenLabels = new SvelteSet<string>();
+  let flashLabels = new SvelteSet<string>();
+  let effectTimers: ReturnType<typeof setTimeout>[] = [];
 
   $effect(() => {
-    for (const stat of stats) {
-      if (stat.value != null && !seenLabels.has(stat.label)) {
-        seenLabels = new Set([...seenLabels, stat.label]);
-        flashLabels = new Set([...flashLabels, stat.label]);
-        // Remove flash after animation
-        setTimeout(() => {
-          flashLabels = new Set([...flashLabels].filter((l) => l !== stat.label));
-        }, 600);
+    const currentStats = stats;
+    untrack(() => {
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      for (const stat of currentStats) {
+        if (stat.value != null && !seenLabels.has(stat.label)) {
+          seenLabels.add(stat.label);
+          flashLabels.add(stat.label);
+          timers.push(setTimeout(() => {
+            flashLabels.delete(stat.label);
+          }, 600));
+        }
       }
-    }
+      effectTimers = timers;
+    });
+    return () => { effectTimers.forEach(clearTimeout); };
   });
 </script>
 

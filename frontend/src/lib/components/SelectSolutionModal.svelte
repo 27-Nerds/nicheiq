@@ -8,6 +8,7 @@
     loading?: boolean;
     error?: string;
     creditCost?: number;
+    isInsufficientCredits?: boolean;
     onConfirm: (rationale: string) => void;
     onCancel: () => void;
   }
@@ -18,6 +19,7 @@
     loading = false,
     error: errorMessage = "",
     creditCost = 0,
+    isInsufficientCredits = false,
     onConfirm,
     onCancel,
   }: Props = $props();
@@ -181,6 +183,15 @@
           >
             <AlertCircle class="w-4 h-4 shrink-0" />
             <span>{errorMessage}</span>
+            {#if isInsufficientCredits}
+              <a
+                href="/billing"
+                onclick={() => (open = false)}
+                class="ml-auto text-accent hover:underline text-xs shrink-0"
+              >
+                Get credits
+              </a>
+            {/if}
           </div>
         {/if}
       </div>
@@ -196,23 +207,34 @@
         >
           Cancel
         </button>
-        <button
-          onclick={handleConfirm}
-          disabled={loading}
-          class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50"
-        >
-          {#if loading}
-            <Loader2 class="w-4 h-4 animate-spin" />
-            Submitting...
-          {:else}
-            Run Deep Analysis
-            {#if creditCost > 0}
-              <span class="inline-flex items-center gap-1 text-xs opacity-80">
-                <Coins class="w-3 h-3" />{creditCost}
-              </span>
+        {#if isInsufficientCredits}
+          <a
+            href="/billing"
+            onclick={() => (open = false)}
+            class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 no-underline"
+          >
+            <Coins class="w-4 h-4" />
+            Get Credits
+          </a>
+        {:else}
+          <button
+            onclick={handleConfirm}
+            disabled={loading}
+            class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50"
+          >
+            {#if loading}
+              <Loader2 class="w-4 h-4 animate-spin" />
+              Submitting...
+            {:else}
+              Run Deep Analysis
+              {#if creditCost > 0}
+                <span class="inline-flex items-center gap-1 text-xs opacity-80">
+                  <Coins class="w-3 h-3" />{creditCost}
+                </span>
+              {/if}
             {/if}
-          {/if}
-        </button>
+          </button>
+        {/if}
       </div>
     </div>
   </div>

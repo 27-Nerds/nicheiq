@@ -17,9 +17,9 @@
 	font-weight: var(--font-medium);
 	letter-spacing: var(--tracking-wide);
 	text-transform: uppercase;
-	color: var(--color-accent-dark);
-	background-color: var(--color-accent-subtle);
-	border: 1px solid rgba(240, 96, 48, 0.2);
+	color: var(--color-text-secondary);
+	background-color: rgba(100, 116, 139, 0.08);
+	border: 1px solid rgba(100, 116, 139, 0.2);
 	border-radius: var(--radius-md);
 }
 
@@ -27,6 +27,12 @@
 	padding: var(--space-1) var(--space-2);
 	font-size: var(--text-xs);
 	border-radius: var(--radius-sm);
+}
+
+.badge-accent {
+	color: var(--color-accent-dark);
+	background-color: var(--color-accent-subtle);
+	border-color: rgba(240, 96, 48, 0.2);
 }
 
 .badge-success {
@@ -141,6 +147,12 @@
 	transform: scale(0.98);
 }
 
+.btn-primary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	transform: none;
+}
+
 .btn-secondary {
 	display: inline-flex;
 	align-items: center;
@@ -167,6 +179,12 @@
 
 .btn-secondary:active {
 	transform: scale(0.98);
+}
+
+.btn-secondary:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+	transform: none;
 }
 
 .btn-tertiary {

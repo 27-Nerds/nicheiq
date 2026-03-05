@@ -1,52 +1,47 @@
 import type { SolutionPreview } from '$lib/types/job';
+import {
+  getSuperpower as _getSuperpower,
+  computeCompositeScore as _computeComposite,
+  SUPERPOWERS,
+  SUPERPOWERS_DETAILED,
+  SOLUTION_PREVIEW_KEYS,
+  type SuperpowerEntry,
+} from './superpower';
 
-type BadgeVariant = 'success' | 'accent' | 'info' | 'warning';
+/**
+ * Short labels keyed by snake_case field name (backward-compat re-export).
+ */
+export const SUPERPOWER_MAP: Record<string, SuperpowerEntry> = Object.fromEntries(
+  SOLUTION_PREVIEW_KEYS.map(([field, canonical]) => [field, SUPERPOWERS[canonical]]),
+);
 
-export interface SuperpowerEntry {
-  label: string;
-  variant: BadgeVariant;
-}
+/**
+ * Longer labels keyed by snake_case field name (backward-compat re-export).
+ */
+export const SUPERPOWER_MAP_DETAILED: Record<string, SuperpowerEntry> = Object.fromEntries(
+  SOLUTION_PREVIEW_KEYS.map(([field, canonical]) => [field, SUPERPOWERS_DETAILED[canonical]]),
+);
 
-/** Short labels for card context */
-export const SUPERPOWER_MAP: Record<string, SuperpowerEntry> = {
-  market_fit_score: { label: 'Market Fit', variant: 'success' },
-  seo_scalability_score: { label: 'SEO Power', variant: 'accent' },
-  novelty_score: { label: 'Innovator', variant: 'info' },
-  technical_feasibility_score: { label: 'Quick Build', variant: 'warning' },
-  solo_dev_feasibility: { label: 'Solo-Friendly', variant: 'success' },
-};
-
-/** Longer labels for modal/detail context */
-export const SUPERPOWER_MAP_DETAILED: Record<string, SuperpowerEntry> = {
-  market_fit_score: { label: 'Strong Market Fit', variant: 'success' },
-  seo_scalability_score: { label: 'SEO Powerhouse', variant: 'accent' },
-  novelty_score: { label: 'Innovator', variant: 'info' },
-  technical_feasibility_score: { label: 'Quick to Build', variant: 'warning' },
-  solo_dev_feasibility: { label: 'Solo-Friendly', variant: 'success' },
-};
-
-const SCORE_KEYS: (keyof SolutionPreview)[] = [
-  'market_fit_score',
-  'seo_scalability_score',
-  'novelty_score',
-  'technical_feasibility_score',
-  'solo_dev_feasibility',
-];
+export type { SuperpowerEntry };
 
 export function computeCompositeScore(solution: SolutionPreview): number {
   if (solution.adjusted_composite_score != null) return solution.adjusted_composite_score;
-  const vals = SCORE_KEYS.map((k) => (solution[k] as number | null | undefined) ?? 0);
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
+  return _computeComposite(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS);
 }
 
 export function getSuperpower(
   solution: SolutionPreview,
   map: Record<string, SuperpowerEntry> = SUPERPOWER_MAP,
-): SuperpowerEntry {
-  const entries: [string, number][] = SCORE_KEYS.map((k) => [
-    k as string,
-    (solution[k] as number | null | undefined) ?? 0,
-  ]);
-  entries.sort((a, b) => b[1] - a[1]);
-  return map[entries[0][0]];
+): SuperpowerEntry | null {
+  // If caller passes the old snake_case-keyed map, convert to canonical
+  const isSnakeKeyed = Object.keys(map).some((k) => k.includes('_'));
+  if (isSnakeKeyed) {
+    // Build canonical map from snake-keyed map
+    const canonicalMap: Record<string, SuperpowerEntry> = {};
+    for (const [field, canonical] of SOLUTION_PREVIEW_KEYS) {
+      if (map[field]) canonicalMap[canonical] = map[field];
+    }
+    return _getSuperpower(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS, canonicalMap);
+  }
+  return _getSuperpower(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS, map);
 }

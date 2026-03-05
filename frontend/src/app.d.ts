@@ -18,7 +18,10 @@ declare global {
       session: Session | null;
       availableProviders?: { google: boolean; github: boolean };
     }
-    // interface PageState {}
+    interface PageState {
+      openId?: string;
+      selectedId?: string;
+    }
     // interface Platform {}
   }
 }

@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
-  import { page } from "$app/stores";
+  import { untrack } from "svelte";
+  import { page } from "$app/state";
   import { invalidateAll } from "$app/navigation";
   import {
     subscribeToProgress,
@@ -23,7 +23,7 @@
     Package,
     Share2,
   } from "lucide-svelte";
-  import { showNewResearchModal } from "$lib/stores/newResearchModal";
+  import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import Button from "$lib/components/ui/Button.svelte";
@@ -54,6 +54,7 @@
   let showTechnicalDetails = $state(false);
   let generatingLanding = $state(false);
   let landingError = $state("");
+  let landingInsufficientCredits = $state(false);
   let localSolutions = $state<SolutionPreview[] | null>(null);
   let hasPlayedReveal = $state(false);
   let showReveal = $state(false);
@@ -63,7 +64,7 @@
   let discoveryShareOpen = $state(false);
   let solutionVotes = $state<Record<string, number>>({});
 
-  const jobId = $derived($page.params.jobId);
+  const jobId = $derived(page.params.jobId);
 
   const isInteractiveStatus = $derived(
     job
@@ -213,12 +214,14 @@
     if (!job || generatingLanding) return;
     generatingLanding = true;
     landingError = "";
+    landingInsufficientCredits = false;
     try {
       const res = await fetch(`/api/jobs/${jobId}/generate-landing`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
-          landingError = `Insufficient credits for landing page (need ${($page.data.stageCosts as any)?.landing_page ?? 5})`;
+          landingError = `Insufficient credits for landing page (need ${(page.data.stageCosts as any)?.landing_page ?? 5})`;
+          landingInsufficientCredits = true;
           await invalidateAll();
           return;
         }
@@ -259,9 +262,8 @@
     if (jobId) {
       loadJob(jobId);
     }
+    return () => { unsubscribeSSE?.(); };
   });
-
-  onDestroy(() => { unsubscribeSSE?.(); });
 
   function getStatusVariant(status: string): "success" | "warning" | "error" | "muted" | "info" | "accent" {
     switch (status) {
@@ -484,15 +486,16 @@
   );
 
   // Advisory credit check for landing page
-  const landingStageCost = $derived(($page.data.stageCosts as any)?.landing_page ?? 5);
-  const canAffordLanding = $derived(($page.data.creditBalance as number ?? 0) >= landingStageCost);
+  const landingStageCost = $derived((page.data.stageCosts as any)?.landing_page ?? 5);
+  const canAffordLanding = $derived((page.data.creditBalance as number ?? 0) >= landingStageCost);
 
   $effect(() => {
-    if (isCompleted && !hasPlayedReveal) {
-      hasPlayedReveal = true;
-      // Brief delay to let the last stage animate
-      setTimeout(() => { showReveal = true; }, 500);
-    }
+    if (!isCompleted) return;
+    if (untrack(() => hasPlayedReveal)) return;
+    hasPlayedReveal = true;
+    // Brief delay to let the last stage animate
+    const timer = setTimeout(() => { showReveal = true; }, 500);
+    return () => clearTimeout(timer);
   });
 
   // Poll vote data while AWAITING_SELECTION
@@ -517,14 +520,14 @@
 
   // Fetch report summary when job transitions to completed via SSE
   $effect(() => {
-    if (isCompleted && reportAsset && !summaryFetched) {
-      summaryFetched = true;
-      summaryLoading = true;
-      getReportSummary(job!.id)
-        .then(s => { reportSummary = s; })
-        .catch(() => { /* fallback to simple card */ })
-        .finally(() => { summaryLoading = false; });
-    }
+    if (!isCompleted || !reportAsset) return;
+    if (untrack(() => summaryFetched)) return;
+    summaryFetched = true;
+    summaryLoading = true;
+    getReportSummary(job!.id)
+      .then(s => { reportSummary = s; })
+      .catch(() => { /* fallback to simple card */ })
+      .finally(() => { summaryLoading = false; });
   });
 
 </script>
@@ -547,24 +550,24 @@
         </div>
         <h2 class="mt-4 text-xl font-semibold text-text-primary">Error</h2>
         <p class="mt-2 text-text-secondary">{error}</p>
-        <Button onclick={() => ($showNewResearchModal = true)} label="Start New Research" class="mt-6 btn-primary inline-block" />
+        <Button onclick={() => (showNewResearchModal.open = true)} label="Start New Research" class="mt-6 btn-primary inline-block" />
       </div>
     {:else if job}
       <!-- Header -->
       <div class="mb-8 animate-fade-slide-in">
-        <div class="flex items-center justify-between">
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-4">
             <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
               <Telescope class="w-5 h-5 text-accent" />
             </div>
             <div>
               <h1 class="text-2xl font-bold text-text-primary">Research Progress</h1>
-              <p class="mt-1 text-sm text-text-muted truncate max-w-xl" title={job.niche}>
+              <p class="mt-1 text-sm text-text-muted truncate" title={job.niche}>
                 {job.niche.length > 100 ? job.niche.substring(0, 100) + "..." : job.niche}
               </p>
             </div>
           </div>
-          <div class="flex items-center gap-3">
+          <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
             {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status) && !(job.solutionIdeas?.length)}
               <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
             {/if}
@@ -756,7 +759,7 @@
               <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
               <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credits have been refunded.</p>
               <button
-                onclick={() => ($showNewResearchModal = true)}
+                onclick={() => (showNewResearchModal.open = true)}
                 class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors"
               >
                 Start new research
@@ -781,7 +784,7 @@
               {#if job.stopReasonDetails?.metrics}
                 <div class="mt-4 p-3 rounded-lg bg-bg-surface border border-border">
                   <div class="text-xs font-medium text-text-muted uppercase tracking-wide mb-2">Quality Metrics</div>
-                  <div class="grid grid-cols-3 gap-4 text-sm">
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
                     <div>
                       <span class="text-text-muted">Pain Points:</span>
                       <span class="ml-1 font-medium text-text-primary">{job.stopReasonDetails.metrics.painPointCount ?? 0}</span>
@@ -863,7 +866,7 @@
 
       {#if job.status === "FAILED"}
         <div class="card p-6 mb-6 animate-fade-slide-in" style="animation-delay: 175ms;">
-          <div class="flex items-center justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-medium text-text-primary">Resume from Checkpoint</h3>
               <p class="mt-1 text-sm text-text-muted">Continue where you left off. The refunded credits will be re-charged.</p>
@@ -927,8 +930,8 @@
                   selectedSolutions={job.selectedSolutions}
                   isRegenerating={job.status === "REGENERATING" || isRegenQueued}
                   canRegenerate={job.canRegenerate ?? false}
-                  stageCosts={$page.data.stageCosts}
-                  creditBalance={$page.data.creditBalance}
+                  stageCosts={page.data.stageCosts}
+                  creditBalance={page.data.creditBalance}
                   onSelectionComplete={handleSelectionComplete}
                   onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
                   {solutionVotes}
@@ -985,7 +988,7 @@
             stagesTotal={analysisStages.length || PHASES[1].stageNumbers.length}
             defaultOpen={analysisStatus === 'active'}
             creditCost={analysisStatus === 'locked' || analysisStatus === 'pending'
-              ? ($page.data.stageCosts as any)?.deep_research ?? 0
+              ? (page.data.stageCosts as any)?.deep_research ?? 0
               : 0}
           >
             <div class="stage-list">
@@ -1033,6 +1036,7 @@
               asset={landingAsset}
               generating={generatingLanding}
               error={landingError}
+              isInsufficientCredits={landingInsufficientCredits}
               onGenerate={generateLanding}
             />
           </div>

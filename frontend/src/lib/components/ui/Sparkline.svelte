@@ -19,7 +19,7 @@
     class: className = "",
   }: Props = $props();
 
-  const points = $derived(() => {
+  const points = $derived.by(() => {
     if (!data || data.length === 0) return "";
     const max = Math.max(...data);
     const min = Math.min(...data);
@@ -35,7 +35,7 @@
       .join(" ");
   });
 
-  const lastPoint = $derived(() => {
+  const lastPoint = $derived.by(() => {
     if (!data || data.length === 0) return { x: 0, y: height / 2 };
     const max = Math.max(...data);
     const min = Math.min(...data);
@@ -46,7 +46,7 @@
     return { x, y };
   });
 
-  const trend = $derived(() => {
+  const trend = $derived.by(() => {
     if (!data || data.length < 2) return "neutral";
     const first = data[0];
     const last = data[data.length - 1];
@@ -55,9 +55,9 @@
     return "neutral";
   });
 
-  const trendColor = $derived(() => {
-    if (trend() === "up") return "var(--color-success)";
-    if (trend() === "down") return "var(--color-error)";
+  const trendColor = $derived.by(() => {
+    if (trend === "up") return "var(--color-success)";
+    if (trend === "down") return "var(--color-error)";
     return color;
   });
 </script>
@@ -76,7 +76,7 @@
         <stop offset="0%" style="stop-color: {color}; stop-opacity: 0.3" />
         <stop
           offset="100%"
-          style="stop-color: {trendColor()}; stop-opacity: 1"
+          style="stop-color: {trendColor}; stop-opacity: 1"
         />
       </linearGradient>
     </defs>
@@ -84,7 +84,7 @@
     <!-- Line -->
     {#if data && data.length > 0}
       <polyline
-        points={points()}
+        points={points}
         fill="none"
         stroke="url(#sparkline-gradient-{data.length})"
         stroke-width={strokeWidth}
@@ -95,10 +95,10 @@
       <!-- End dot -->
       {#if showDot}
         <circle
-          cx={lastPoint().x}
-          cy={lastPoint().y}
+          cx={lastPoint.x}
+          cy={lastPoint.y}
           r="3"
-          fill={trendColor()}
+          fill={trendColor}
           class="sparkline-dot"
         />
       {/if}

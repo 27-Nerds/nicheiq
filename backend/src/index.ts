@@ -17,6 +17,9 @@ import { discoverySharesRouter, publicDiscoveryShareRouter } from './routes/disc
 import { webhooksRouter } from './routes/webhooks.js';
 import { statsRouter } from './routes/stats.js';
 import { sitemapRouter } from './routes/sitemap.js';
+import { adminCatalogRouter } from './routes/adminCatalog.js';
+import { catalogRouter } from './routes/catalog.js';
+import { requireInternalAdmin, requireInternalAuth } from './middleware/auth.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
@@ -65,6 +68,8 @@ app.use('/api/admin', adminRouter);
 app.use('/api/settings', settingsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/sitemap', sitemapRouter);
+app.use('/api/admin/catalog', requireInternalAdmin, adminCatalogRouter);
+app.use('/api/catalog', requireInternalAuth, catalogRouter);
 app.use('/api', healthRouter);
 
 // Error handling middleware

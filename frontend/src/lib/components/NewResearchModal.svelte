@@ -1,6 +1,6 @@
 <script lang="ts">
   import { goto, invalidateAll } from "$app/navigation";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import {
     X,
     ArrowRight,
@@ -47,8 +47,8 @@
   });
 
   // Get credit balance and stage costs from page data
-  const creditBalance = $derived(($page.data.creditBalance as number) ?? 0);
-  const stageCosts = $derived(($page.data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS);
+  const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
+  const stageCosts = $derived((page.data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS);
   const hasCredits = $derived(creditBalance >= stageCosts.discovery);
 
   const PROJECT_TYPES = [

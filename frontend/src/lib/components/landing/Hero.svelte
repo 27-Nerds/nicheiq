@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { ArrowRight, Sparkles } from "lucide-svelte";
-  import { page } from "$app/stores";
   import type { CtaConfig } from "$lib/types/cta";
   import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
@@ -46,18 +45,23 @@
     isVisible = true;
 
     // Start terminal animation after initial fade-in (slower for indie vibe)
-    setTimeout(() => {
-      const interval = setInterval(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    let intervalId: ReturnType<typeof setInterval>;
+    timeoutId = setTimeout(() => {
+      intervalId = setInterval(() => {
         if (visibleLineCount < terminalLines.length) {
           visibleLineCount++;
         } else {
           terminalComplete = true;
-          clearInterval(interval);
+          clearInterval(intervalId);
         }
       }, 800);
-
-      return () => clearInterval(interval);
     }, 800);
+
+    return () => {
+      clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
   });
 
   function scrollToHowItWorks() {

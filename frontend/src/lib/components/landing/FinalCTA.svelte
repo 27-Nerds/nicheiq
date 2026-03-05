@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
   import { ArrowRight, Check } from "lucide-svelte";
   import type { CtaConfig } from "$lib/types/cta";
   import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
@@ -13,25 +13,9 @@
   let { session = null, hasSampleReport = false, ctaTexts }: Props = $props();
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("final-cta");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 </script>
 
-<section id="final-cta" class="section relative overflow-hidden">
+<section id="final-cta" class="section relative overflow-hidden" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <!-- Background: bottom-anchored warm glow -->
   <div class="absolute inset-0 bg-radial-amber-bottom"></div>
   <!-- Top gradient blending from FAQ section -->

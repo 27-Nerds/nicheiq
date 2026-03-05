@@ -58,6 +58,7 @@ show_help() {
   echo "  --down               Stop and remove containers"
   echo "  --logs               Show container logs"
   echo "  --migrate            Run database migrations only"
+  echo "  --seed-categories    Seed/update catalog categories"
   echo "  --status             Show container status"
   echo "  --restart            Restart all services"
   echo "  --help               Show this help message"
@@ -66,6 +67,7 @@ show_help() {
   echo "  ./scripts/deploy.sh                          # Deploy/update services"
   echo "  ./scripts/deploy.sh --build                  # Rebuild and deploy"
   echo "  ./scripts/deploy.sh --build --scale-workers 3 # Rebuild with 3 workers"
+  echo "  ./scripts/deploy.sh --seed-categories        # Seed catalog categories"
   echo "  ./scripts/deploy.sh --logs                   # View logs"
   echo "  ./scripts/deploy.sh --down                   # Stop services"
 }
@@ -110,6 +112,21 @@ run_migrations() {
   $DC exec -T api npx prisma migrate deploy
 
   log_success "Migrations completed"
+}
+
+seed_categories() {
+  log_info "Seeding catalog categories..."
+
+  # Ensure API container is running
+  $DC exec -T api echo "API container is running" || {
+    log_error "API container is not running. Start services first: ./scripts/deploy.sh"
+    exit 1
+  }
+
+  # Run the seed script (uses upsert, safe to re-run)
+  $DC exec -T api npx tsx prisma/seed-categories.ts
+
+  log_success "Catalog categories seeded"
 }
 
 deploy() {
@@ -181,6 +198,10 @@ while [ $# -gt 0 ]; do
     ACTION="migrate"
     shift
     ;;
+  --seed-categories)
+    ACTION="seed-categories"
+    shift
+    ;;
   --status)
     ACTION="status"
     shift
@@ -221,6 +242,10 @@ case "$ACTION" in
   migrate)
     check_env
     run_migrations
+    ;;
+  seed-categories)
+    check_env
+    seed_categories
     ;;
   status)
     $DC ps

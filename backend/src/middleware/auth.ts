@@ -1,6 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
+import { timingSafeEqual } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { CONFIG } from '../config.js';
+
+function secretsMatch(a: string | undefined, b: string | undefined): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
 
 // Extended request type with user info
 export interface AuthenticatedRequest extends Request {
@@ -180,7 +189,7 @@ export function requireInternalAuth(req: AuthenticatedRequest, res: Response, ne
   }
 
   // Check internal service authentication
-  if (serviceSecret === expectedSecret) {
+  if (secretsMatch(serviceSecret, expectedSecret)) {
     const userId = req.headers['x-user-id'] as string;
     const userEmail = req.headers['x-user-email'] as string;
     const userRole = req.headers['x-user-role'] as string;
@@ -209,7 +218,7 @@ export function requireInternalAdmin(req: AuthenticatedRequest, res: Response, n
     return;
   }
 
-  if (serviceSecret !== expectedSecret) {
+  if (!secretsMatch(serviceSecret, expectedSecret)) {
     res.status(401).json({ error: 'Authentication required' });
     return;
   }
@@ -249,7 +258,7 @@ export function requireInternalService(req: Request, res: Response, next: NextFu
     return;
   }
 
-  if (serviceSecret === expectedSecret) {
+  if (secretsMatch(serviceSecret, expectedSecret)) {
     return next();
   }
 

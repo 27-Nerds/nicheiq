@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { signOut } from "@auth/sveltekit/client";
   import {
     LogOut,
@@ -8,15 +8,16 @@
     CreditCard,
     Settings,
     Shield,
+    Library,
   } from "lucide-svelte";
   import NewResearchModal from "$lib/components/NewResearchModal.svelte";
-  import { showNewResearchModal } from "$lib/stores/newResearchModal";
+  import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import { openCookiePreferences } from "$lib/utils/cookies";
 
   let { children } = $props();
 
-  const session = $derived($page.data.session);
-  const creditBalance = $derived(($page.data.creditBalance as number) ?? 0);
+  const session = $derived(page.data.session);
+  const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
   let showUserMenu = $state(false);
   let imageError = $state(false);
 
@@ -47,7 +48,7 @@
 
         <nav class="flex items-center gap-1">
           <button
-            onclick={() => ($showNewResearchModal = true)}
+            onclick={() => (showNewResearchModal.open = true)}
             class="btn-primary flex items-center gap-2 ml-1"
           >
             <Plus class="w-4 h-4" />
@@ -132,6 +133,13 @@
                     {creditBalance} credits
                   </span>
                 </a>
+                <!-- <a -->
+                <!--   href="/catalog" -->
+                <!--   class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors" -->
+                <!-- > -->
+                <!--   <Library class="w-4 h-4" /> -->
+                <!--   Catalog -->
+                <!-- </a> -->
                 {#if session?.user?.role === "ADMIN"}
                   <a
                     href="/admin"
@@ -194,4 +202,4 @@
   }}
 />
 
-<NewResearchModal bind:open={$showNewResearchModal} />
+<NewResearchModal bind:open={showNewResearchModal.open} />

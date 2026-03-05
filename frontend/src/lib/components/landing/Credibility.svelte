@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
   import {
     MessageSquare,
     MessagesSquare,
@@ -11,22 +11,6 @@
   } from "lucide-svelte";
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.2 },
-    );
-
-    const section = document.getElementById("credibility");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   const sourcePills = [
     { icon: MessageSquare, label: "Real User Problems" },
@@ -63,7 +47,7 @@
   };
 </script>
 
-<section id="credibility" class="section-alt">
+<section id="credibility" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Header -->

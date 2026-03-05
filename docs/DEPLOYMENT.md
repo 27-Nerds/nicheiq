@@ -353,6 +353,13 @@ docker compose -f docker/docker-compose.yml --env-file .env.production --profile
 
 ### Database Migrations
 
+> **Always back up the database before running migrations in production:**
+> ```bash
+> docker exec nicheiq-postgres pg_dump -U nicheiq -Fc nicheiq > backup_$(date +%Y%m%d_%H%M%S).dump
+> ```
+> Use `-Fc` (custom compressed format) for smallest file size and selective restore support.
+> To restore: `docker exec -i nicheiq-postgres pg_restore -U nicheiq -d nicheiq --clean < backup.dump`
+
 ```bash
 # Run pending migrations
 docker compose -f docker/docker-compose.yml run --rm api npx prisma migrate deploy

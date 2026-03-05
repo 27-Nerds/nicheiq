@@ -53,6 +53,8 @@ QUEUE_NAME = "nicheiq:jobs"
 TASK_TYPE_LANDING_PAGE = "landing_page"
 TASK_TYPE_RESEARCH_PHASE2 = "research_phase2"
 TASK_TYPE_REGENERATE_IDEAS = "regenerate_ideas"
+TASK_TYPE_CATALOG_PAIN_POINTS = "catalog_pain_points"
+TASK_TYPE_CATALOG_IDEAS = "catalog_ideas"
 JOB_MODE_INTERACTIVE = "interactive"
 STATUS_AWAITING_SELECTION = "awaiting_selection"
 
@@ -148,6 +150,26 @@ def process_job(job_data: dict) -> None:
                 existing_solution_names=job_data.get("existing_solution_names", []),
                 niche=job_data.get("niche", ""),
             )
+        elif task_type == TASK_TYPE_CATALOG_PAIN_POINTS:
+            from .tasks import run_catalog_pain_points
+
+            result = run_catalog_pain_points(
+                job_id=job_id,
+                category_id=job_data["category_id"],
+                category_name=job_data["category_name"],
+                category_description=job_data.get("category_description", ""),
+                parent_category_name=job_data.get("parent_category_name", ""),
+            )
+        elif task_type == TASK_TYPE_CATALOG_IDEAS:
+            from .tasks import run_catalog_ideas
+
+            result = run_catalog_ideas(
+                job_id=job_id,
+                category_id=job_data["category_id"],
+                pain_points=job_data["pain_points"],
+                niche=job_data.get("niche", ""),
+                parent_category_name=job_data.get("parent_category_name", ""),
+            )
         else:
             # Default research task
             niche = job_data.get("niche")
@@ -184,6 +206,10 @@ def process_job(job_data: dict) -> None:
         # For interactive jobs that are awaiting selection, don't notify completion
         if isinstance(result, dict) and result.get("status") == STATUS_AWAITING_SELECTION:
             logger.info(f"Job {job_id} awaiting user selection - worker releasing without completion notification")
+        elif task_type in (TASK_TYPE_CATALOG_PAIN_POINTS, TASK_TYPE_CATALOG_IDEAS):
+            logger.info(f"Job {job_id} catalog generation complete - worker releasing")
+            from .heartbeat import notify_job_completed
+            notify_job_completed(job_id)
         elif task_type == TASK_TYPE_REGENERATE_IDEAS:
             logger.info(f"Job {job_id} regeneration complete - worker releasing")
             from .heartbeat import notify_job_completed

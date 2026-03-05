@@ -6,6 +6,7 @@
   import SolutionDetail from "./SolutionDetail.svelte";
   import { ListChecks, Clock } from "lucide-svelte";
   import type { SolutionPreview } from "$lib/types/job";
+  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED } from "$lib/utils/solution-utils";
 
   interface Props {
     selectedNames: string[];
@@ -23,38 +24,6 @@
       .map((name) => solutionIdeas.find((s) => s.solution_name === name))
       .filter((s): s is SolutionPreview => !!s),
   );
-
-  const SUPERPOWER_MAP: Record<string, { label: string; variant: "success" | "accent" | "info" | "warning" }> = {
-    market_fit_score: { label: "Strong Market Fit", variant: "success" },
-    seo_scalability_score: { label: "SEO Powerhouse", variant: "accent" },
-    novelty_score: { label: "Innovator", variant: "info" },
-    technical_feasibility_score: { label: "Quick to Build", variant: "warning" },
-    solo_dev_feasibility: { label: "Solo-Friendly", variant: "success" },
-  };
-
-  function getSuperpower(solution: SolutionPreview) {
-    const scores: [string, number][] = [
-      ["market_fit_score", solution.market_fit_score ?? 0],
-      ["seo_scalability_score", solution.seo_scalability_score ?? 0],
-      ["novelty_score", solution.novelty_score ?? 0],
-      ["technical_feasibility_score", solution.technical_feasibility_score ?? 0],
-      ["solo_dev_feasibility", solution.solo_dev_feasibility ?? 0],
-    ];
-    scores.sort((a, b) => b[1] - a[1]);
-    return SUPERPOWER_MAP[scores[0][0]];
-  }
-
-  function getCompositeScore(solution: SolutionPreview): number {
-    if (solution.adjusted_composite_score != null) return solution.adjusted_composite_score;
-    const scores = [
-      solution.market_fit_score ?? 0,
-      solution.technical_feasibility_score ?? 0,
-      solution.seo_scalability_score ?? 0,
-      solution.novelty_score ?? 0,
-      solution.solo_dev_feasibility ?? 0,
-    ];
-    return scores.reduce((a, b) => a + b, 0) / scores.length;
-  }
 
   const isCollapsible = $derived(status === "COMPLETED");
 </script>
@@ -85,8 +54,8 @@
 {#snippet summaryContent()}
   <div class="grid grid-cols-1 {selectedSolutions.length > 1 ? `sm:grid-cols-${Math.min(selectedSolutions.length, 3)}` : ''} gap-3">
     {#each selectedSolutions as solution, i}
-      {@const score = getCompositeScore(solution)}
-      {@const superpower = getSuperpower(solution)}
+      {@const score = computeCompositeScore(solution)}
+      {@const superpower = getSuperpower(solution, SUPERPOWER_MAP_DETAILED)}
       <button
         type="button"
         class="flex items-center gap-3 p-3 rounded-lg border border-border text-left cursor-pointer transition-colors hover:border-border-hover
@@ -100,7 +69,7 @@
           <div class="flex items-center flex-wrap gap-1.5 mt-1.5">
             {#if solution.solution_name === primaryWinner}
               <Badge variant="accent" size="sm">Top Recommended</Badge>
-            {:else}
+            {:else if superpower}
               <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
             {/if}
             {#if solution.project_type}

@@ -16,6 +16,7 @@
   import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
   import { invalidateAll } from "$app/navigation";
   import { tick } from "svelte";
+  import { SvelteSet } from "svelte/reactivity";
   import { Coins } from "lucide-svelte";
 
   const MAX_SELECTIONS = 3;
@@ -49,12 +50,14 @@
   }: Props = $props();
 
   // Track user's multi-select choices (before confirmation)
-  let selectedNames = $state<Set<string>>(new Set());
+  let selectedNames = new SvelteSet<string>();
   let modalOpen = $state(false);
   let selectLoading = $state(false);
   let selectError = $state("");
+  let isSelectInsufficientCredits = $state(false);
   let regenerating = $state(false);
   let regenerateError = $state("");
+  let isRegenInsufficientCredits = $state(false);
 
   // Horizon expander: track original batch for divider + badges
   let originalBatchSize = $state(solutions.length);
@@ -77,7 +80,7 @@
       showNewBadges = true;
 
       // Auto-scroll to divider if not already visible
-      setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         const el = document.getElementById('batch-divider');
         if (!el) return;
         const rect = el.getBoundingClientRect();
@@ -91,22 +94,32 @@
       }, 400);
 
       // Remove "New" badges after 8s
-      setTimeout(() => { showNewBadges = false; }, 8000);
+      const badgeTimer = setTimeout(() => { showNewBadges = false; }, 8000);
+
+      return () => { clearTimeout(scrollTimer); clearTimeout(badgeTimer); };
     }
   });
+
+  // Track solution count at regeneration start for success/failure detection
+  let solutionCountAtRegenStart = $state(solutions.length);
 
   // Detect regeneration failure via SSE state transitions
   $effect(() => {
     if (isRegenerating) {
       // SSE confirms backend is regenerating — hand off from local state
       regenerating = false;
+      if (!wasRegenerating) {
+        // Entering regeneration: snapshot current count and reset batch UI
+        solutionCountAtRegenStart = solutions.length;
+        originalBatchSize = solutions.length;
+        hasRevealedNewBatch = false;
+      }
       wasRegenerating = true;
     } else if (wasRegenerating) {
       // isRegenerating just went false. Was it success or failure?
       wasRegenerating = false;
-      // canRegenerate === true means backend reverted ideasRegeneratedAt to null (failure)
-      // canRegenerate === false means ideasRegeneratedAt stayed set (success)
-      if (canRegenerate) {
+      // If no new solutions appeared, regeneration failed
+      if (solutions.length <= solutionCountAtRegenStart) {
         regenerateError = 'Couldn\'t generate new ideas — this sometimes happens with niche-specific data. You can try again.';
       }
     }
@@ -160,13 +173,11 @@
   function handleToggle(name: string) {
     if (alreadySubmitted || selectLoading || isRegenerating) return;
 
-    const next = new Set(selectedNames);
-    if (next.has(name)) {
-      next.delete(name);
-    } else if (next.size < MAX_SELECTIONS) {
-      next.add(name);
+    if (selectedNames.has(name)) {
+      selectedNames.delete(name);
+    } else if (selectedNames.size < MAX_SELECTIONS) {
+      selectedNames.add(name);
     }
-    selectedNames = next;
   }
 
   function handleOpenDetail(i: number) {
@@ -184,6 +195,7 @@
   function handleSubmitClick() {
     if (!canSubmit) return;
     selectError = "";
+    isSelectInsufficientCredits = false;
     modalOpen = true;
   }
 
@@ -201,6 +213,7 @@
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
         selectError = `Insufficient credits for deep research (need ${stageCosts.deep_research})`;
+        isSelectInsufficientCredits = true;
         await invalidateAll();
       } else {
         selectError =
@@ -239,6 +252,7 @@
     if (regenerating) return;
     regenerating = true;
     regenerateError = "";
+    isRegenInsufficientCredits = false;
 
     try {
       await regenerateIdeas(jobId);
@@ -248,6 +262,7 @@
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
         regenerateError = `Insufficient credits (need ${stageCosts.regenerate_ideas})`;
+        isRegenInsufficientCredits = true;
         await invalidateAll();
       } else {
         regenerateError =
@@ -274,7 +289,7 @@
           </p>
         {/snippet}
       </AlertBanner>
-    {:else if !canAffordBoth && canRegenerate}
+    {:else if !canAffordBoth}
       <AlertBanner
         variant="warning"
         title="Budget check"
@@ -282,6 +297,7 @@
         {#snippet children()}
           <p class="text-sm text-text-muted mt-1">
             {creditBalance} credits remaining. Deep analysis ({stageCosts.deep_research}) or new ideas ({stageCosts.regenerate_ideas}) &mdash; pick one.
+            <a href="/billing" class="text-accent hover:text-accent-hover font-medium">Add credits &rarr;</a>
           </p>
         {/snippet}
       </AlertBanner>
@@ -290,11 +306,11 @@
 
   <!-- Header -->
   <div class="card p-3">
-    <div class="flex items-start gap-3">
+    <div class="flex flex-wrap items-start gap-3">
       <div class="p-2 rounded-xl bg-accent/10 border border-accent/20 shrink-0">
         <Lightbulb class="w-4 h-4 text-accent" />
       </div>
-      <div class="flex-1">
+      <div class="flex-1 min-w-0">
         <h2 class="text-lg font-semibold text-text-primary">
           {headerNarrative.title}
         </h2>
@@ -330,7 +346,7 @@
 
       <!-- Selection counter + submit button -->
       {#if !alreadySubmitted && !isRegenerating}
-        <div class="flex items-center gap-3 shrink-0">
+        <div class="flex items-center gap-3 shrink-0 w-full sm:w-auto">
           {#if selectionCount > 0}
             <span class="text-sm font-medium text-accent tabular-nums">
               {selectionCount}/{MAX_SELECTIONS}
@@ -340,7 +356,7 @@
             onclick={handleSubmitClick}
             disabled={!canSubmit || selectLoading || !canAffordDeepResearch}
             aria-describedby={!canAffordDeepResearch ? 'credit-warning-banner' : undefined}
-            class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto justify-center sm:justify-start"
           >
             {#if selectLoading}
               <Loader2 class="w-4 h-4 animate-spin motion-reduce:animate-none" />
@@ -404,7 +420,7 @@
     {/each}
 
     <!-- Generate More card (last grid cell) -->
-    {#if !alreadySubmitted && (canRegenerate || regenerating || isRegenerating)}
+    {#if !alreadySubmitted}
       <AnimateOnScroll animation="fade-up" delay={100 + Math.floor(solutions.length / 3) * 150} duration={500} once={true}>
         {#if regenConfirmPending}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -450,11 +466,21 @@
               <span class="text-sm font-medium text-text-secondary mt-2.5">Exploring new angles...</span>
               <span class="text-xs text-text-muted mt-0.5">This may take a moment</span>
             {:else if !canAffordRegenerate}
-              <div class="p-2.5 rounded-xl bg-bg-surface">
-                <Sparkles class="w-5 h-5 text-text-muted" />
+              <div class="p-2.5 rounded-xl bg-amber-500/10">
+                <Sparkles class="w-5 h-5 text-amber-500" />
               </div>
-              <span class="text-sm font-medium text-text-muted mt-2.5">Generate More Ideas</span>
-              <span class="text-xs text-text-muted mt-0.5 inline-flex items-center gap-1"><Coins class="w-3 h-3" />{stageCosts.regenerate_ideas} credits &mdash; insufficient balance</span>
+              <span class="text-sm font-semibold text-text-primary mt-2.5">Generate More Ideas</span>
+              <span class="text-xs text-text-muted mt-1 inline-flex items-center gap-1">
+                <Coins class="w-3 h-3" />Costs {stageCosts.regenerate_ideas} credits &middot; You have {creditBalance}
+              </span>
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
+              <a
+                href="/billing"
+                class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover transition-colors"
+                onclick={(e) => e.stopPropagation()}
+              >
+                Get more credits <ArrowRight class="w-3 h-3" />
+              </a>
             {:else}
               <div class="p-2.5 rounded-xl bg-accent/10 group-icon">
                 <Sparkles class="w-5 h-5 text-accent" />
@@ -474,6 +500,14 @@
       <div class="col-span-full flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm">
         <AlertCircle class="w-4 h-4 shrink-0" />
         <span>{regenerateError}</span>
+        {#if isRegenInsufficientCredits}
+          <a
+            href="/billing"
+            class="ml-auto text-accent hover:underline text-xs shrink-0"
+          >
+            Get credits
+          </a>
+        {/if}
       </div>
     {/if}
   </div>
@@ -511,6 +545,7 @@
   loading={selectLoading}
   error={selectError}
   creditCost={stageCosts.deep_research}
+  isInsufficientCredits={isSelectInsufficientCredits}
   onConfirm={handleConfirmSelection}
   onCancel={handleCancelModal}
 />

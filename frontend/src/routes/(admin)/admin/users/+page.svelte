@@ -2,7 +2,7 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import { Search, Check, AlertCircle } from "lucide-svelte";
   import { goto, invalidateAll } from "$app/navigation";
-  import { page as pageStore } from "$app/stores";
+  import { page } from "$app/state";
 
   let { data } = $props();
 
@@ -87,7 +87,7 @@
 
   function handleSearch(e: Event) {
     e.preventDefault();
-    const url = new URL($pageStore.url);
+    const url = new URL(page.url);
     if (searchInput) {
       url.searchParams.set("search", searchInput);
     } else {

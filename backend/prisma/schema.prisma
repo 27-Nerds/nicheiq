@@ -173,9 +173,10 @@ model Job {
   jobMode              String?     @db.VarChar(20)   // 'interactive' or null (legacy one-shot)
   solutionIdeas        Json?                          // Array of solution preview objects
   selectedSolution     String?     @db.VarChar(255)   // Name of winning solution (set by Phase 2 re-ranking)
-  selectedSolutions    String[]                       // User's 1-3 selected solution names
+  selectedSolutions    String[]    @default([])         // User's 1-3 selected solution names
   selectionRationale   String?     @db.Text           // User's reason for selection
   ideasRegeneratedAt   DateTime?                      // When ideas were last regenerated (null = not regenerated)
+  regenerationCount    Int       @default(0)           // Number of times ideas have been regenerated
   awaitingSelectionAt  DateTime?                      // When job entered AWAITING_SELECTION
   ideasShownAt         DateTime?                      // When ideas were first shown to user
   phase1CheckpointPath String?     @db.VarChar(500)   // Path to phase 1 checkpoint for resuming phase 2
@@ -207,6 +208,10 @@ model Job {
   workerId             String?     @db.VarChar(100)  // Which worker is processing this job
   lastHeartbeat        DateTime?   // Last heartbeat from worker for this job
   retryCount           Int         @default(0)       // Number of times job has been retried due to worker crash
+
+  // Catalog category link (only for catalog_pain_points / catalog_ideas jobs)
+  catalogCategoryId    String?
+  catalogCategory      CatalogCategory? @relation(fields: [catalogCategoryId], references: [id], onDelete: SetNull)
 
   // Timestamps
   createdAt            DateTime    @default(now())
@@ -398,6 +403,19 @@ model TokenPackage {
   isPopular     Boolean  @default(false)      // Highlight as "Most Popular"
   sortOrder     Int      @default(0)          // Display order
 
+  // Rich pricing card fields
+  tagline           String?  @db.VarChar(200)     // "Plan how to build & profit"
+  includesLabel     String?  @db.VarChar(200)     // "Includes: Discovery + Deep Research"
+  features          Json?                         // JSON array of feature items
+  creditsInfo       String?  @db.VarChar(200)     // "~1 Discovery run + extras"
+  ctaText           String?  @db.VarChar(100)     // "Get Your Blueprint →"
+  badgeLabel        String?  @db.VarChar(50)      // Custom badge text (overrides "Most Popular")
+  promoLine         String?  @db.VarChar(200)     // "+1 FREE Discovery" — bottom of card
+  promoPriceInCents Int?                          // Discounted price in cents
+  promoBadge        String?  @db.VarChar(50)      // "35% Off" badge
+  ctaSubText        String?  @db.VarChar(100)     // "See sample Discovery →"
+  ctaSubUrl         String?  @db.VarChar(500)     // URL the ctaSubText links to
+
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -466,4 +484,171 @@ model AppSettings {
   value     String   @db.Text
   updatedAt DateTime @updatedAt
   updatedBy String?
+}
+
+// ============================================
+// Catalog (Admin-curated ideas & pain points)
+// ============================================
+
+model CatalogSuperGroup {
+  id          String   @id @default(uuid())
+  name        String   @db.VarChar(100)
+  slug        String   @unique @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  categories  CatalogCategory[]
+
+  @@index([isActive, sortOrder])
+}
+
+model CatalogCategory {
+  id            String   @id @default(uuid())
+  name          String   @db.VarChar(100)
+  slug          String   @unique @db.VarChar(120)
+  description   String?  @db.VarChar(500)
+  parentId      String?
+  parent        CatalogCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children      CatalogCategory[] @relation("CategoryHierarchy")
+  superGroupId  String?
+  superGroup    CatalogSuperGroup? @relation(fields: [superGroupId], references: [id], onDelete: SetNull)
+  sortOrder     Int      @default(0)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  ideas         CatalogIdea[]
+  painPoints    CatalogPainPoint[]
+  jobs          Job[]
+
+  @@index([parentId])
+  @@index([superGroupId])
+  @@index([isActive, sortOrder])
+}
+
+model CatalogIdea {
+  id                    String   @id @default(uuid())
+  categoryId            String
+  category              CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  // Source context (plain strings, not FKs)
+  sourceJobId           String   @db.VarChar(100)
+  sourceNiche           String   @db.Text
+  sourceVerdict         String?  @db.VarChar(20)
+  sourceGeneratedAt     DateTime?
+  sourceItemIndex       Int
+  // Solution fields
+  solutionName          String   @db.Text
+  description           String   @db.Text
+  valueProposition      String?  @db.Text
+  projectType           String?  @db.Text
+  coreFeatures          Json?    // string[]
+  targetPersonas        Json?    // string[]
+  technicalApproach     String?  @db.Text
+  differentiationFactors Json?   // string[]
+  pricingStrategy       String?  @db.Text
+  estimatedDevTime      String?  @db.Text
+  // Scores (Float?, 0-1)
+  marketFitScore        Float?
+  technicalFeasibility  Float?
+  seoScalabilityScore   Float?
+  noveltyScore          Float?
+  soloDevFeasibility    Float?
+  // SEO data
+  estimatedCacOrganic   String?  @db.Text
+  estimatedIndexablePages Int?
+  programmaticSeoOpp    String?  @db.Text
+  // Publication metadata
+  publishedById         String   @db.VarChar(100)
+  isActive              Boolean  @default(true)
+  isFeatured            Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([sourceJobId, solutionName])
+  @@index([categoryId])
+  @@index([sourceJobId])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model CatalogPainPoint {
+  id                    String   @id @default(uuid())
+  categoryId            String
+  category              CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  sourceJobId           String   @db.VarChar(100)
+  sourceNiche           String   @db.Text
+  sourceGeneratedAt     DateTime?
+  sourceItemIndex       Int
+  title                 String   @db.Text
+  description           String   @db.Text
+  mentionCount          Int      @default(0)
+  severityScore         Float
+  willingnessToPayScore Float
+  opportunityLevel      String   @db.Text
+  representativeQuotes  Json?    // string[]
+  sourcePlatforms       Json?    // string[]
+  categories            Json?    // string[] (original report categories)
+  affectedSegments      Json?    // string[]
+  solutionApproach      String?  @db.Text
+  publishedById         String   @db.VarChar(100)
+  isActive              Boolean  @default(true)
+  isFeatured            Boolean  @default(false)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([sourceJobId, title])
+  @@index([categoryId])
+  @@index([sourceJobId])
+  @@index([isActive])
+  @@index([severityScore])
+  @@index([createdAt])
+}
+
+// ============================================
+// Reddit Thread Cache
+// ============================================
+
+model RedditThread {
+  id              String   @id @default(uuid())
+  postId          String   @unique @db.VarChar(20)
+  url             String   @db.VarChar(2048)
+  title           String   @db.VarChar(500)
+  selftext        String   @db.Text
+  author          String   @db.VarChar(100)
+  subreddit       String   @db.VarChar(50)
+  score           Int
+  numComments     Int
+  comments        Json?
+  redditCreatedAt DateTime
+  fetchedAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([subreddit])
+  @@index([fetchedAt])
+  @@index([redditCreatedAt])
+  @@index([score])
+}
+
+model CatalogItemCache {
+  id                String   @id @default(uuid())
+  jobId             String   @db.VarChar(100)
+  userId            String   @db.VarChar(100)
+  niche             String   @db.Text
+  itemType          String   @db.VarChar(20)  // 'idea' | 'painPoint'
+  itemIndex         Int      // -1=selected solution, 0+=alternative/pain point index
+  itemName          String   @db.VarChar(255)
+  itemDescription   String   @db.Text
+  itemScores        Json?    // key scores for display
+  verdict           String?  @db.VarChar(20)
+  isPublished       Boolean  @default(false)
+  categoryId        String?  @db.VarChar(100)
+  reportGeneratedAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([jobId, itemType, itemIndex])
+  @@index([userId])
+  @@index([itemType])
+  @@index([isPublished])
 }

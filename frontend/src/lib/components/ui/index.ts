@@ -14,3 +14,5 @@ export { default as StatCard } from './StatCard.svelte';
 export { default as OAuthButtons } from './OAuthButtons.svelte';
 export { default as AuthPageLayout } from './AuthPageLayout.svelte';
 export { default as FormField } from './FormField.svelte';
+export { default as Breadcrumb } from './Breadcrumb.svelte';
+export { default as EmptyState } from './EmptyState.svelte';

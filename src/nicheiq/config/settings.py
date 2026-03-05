@@ -352,6 +352,16 @@ class Settings(BaseSettings):
         description="Maximum API cost budget per run in USD (soft limit, logs warning when exceeded)"
     )
 
+    # Reddit Post Cache (PostgreSQL-backed)
+    reddit_post_cache_enabled: bool = Field(
+        default=True,
+        description="Enable PostgreSQL-backed Reddit thread cache to avoid re-fetching posts via PRAW"
+    )
+    reddit_post_cache_ttl_hours: int = Field(
+        default=168,
+        description="TTL in hours for cached Reddit threads (default 168 = 7 days)"
+    )
+
     # Reddit Freshness Search Configuration
     reddit_freshness_search_enabled: bool = Field(
         default=True,

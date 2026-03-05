@@ -16,6 +16,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from ..config.settings import settings
 from ..models.social_content import RedditComment, RedditPost
+from ..utils.reddit_cache import RedditThreadCache
 
 if TYPE_CHECKING:
     from ..models.research_state import SearchResultItem
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
 
 # Compiled outside the Pydantic model to avoid BaseTool treating it as a private attr
 _SUBREDDIT_RE = re.compile(r"reddit\.com/r/([^/]+)")
+
+# Module-level cache instance (shared across tool instances)
+_cache = RedditThreadCache()
 
 
 class RedditCollectorTool(BaseTool):
@@ -109,7 +113,7 @@ class RedditCollectorTool(BaseTool):
         stop=stop_after_attempt(settings.max_retries),
         wait=wait_exponential(multiplier=1, min=2, max=10),
     )
-    def collect_post(self, url: str) -> RedditPost:
+    def _fetch_post_from_praw(self, url: str) -> RedditPost:
         """
         Collect a single Reddit post with all comments.
 
@@ -177,9 +181,36 @@ class RedditCollectorTool(BaseTool):
             logger.error(f"Invalid Reddit URL {url}: {e}")
             raise
 
+    def collect_post(self, url: str) -> RedditPost:
+        """
+        Collect a single Reddit post, using cache when available.
+
+        Args:
+            url: Reddit post URL
+
+        Returns:
+            RedditPost model with all comments
+        """
+        if settings.reddit_post_cache_enabled:
+            cached = _cache.batch_get([url])
+            if url in cached:
+                logger.info(f"[RedditCache] HIT for {url}")
+                return cached[url]
+
+        post = self._fetch_post_from_praw(url)
+
+        if settings.reddit_post_cache_enabled:
+            try:
+                _cache.store_post(post)
+            except Exception as e:
+                logger.warning(f"[RedditCache] Failed to store post: {e}")
+
+        return post
+
     def collect_posts(self, urls: list[str]) -> list[RedditPost]:
         """
         Collect multiple Reddit posts with quality filtering.
+        Uses batch cache lookup to minimize PRAW calls.
 
         Args:
             urls: List of Reddit post URLs
@@ -187,11 +218,36 @@ class RedditCollectorTool(BaseTool):
         Returns:
             List of RedditPost models that meet quality thresholds
         """
+        # Batch cache lookup
+        if settings.reddit_post_cache_enabled:
+            cached = _cache.batch_get(urls)
+        else:
+            cached = {}
+
         posts = []
 
-        for url in urls:
+        # Add cached posts that pass quality filters
+        for url, post in cached.items():
+            if (
+                post.score >= settings.min_reddit_upvotes
+                and post.num_comments >= settings.min_reddit_comments
+            ):
+                posts.append(post)
+                logger.info(f"✓ [cached] Post meets quality thresholds: {post.title[:50]}...")
+            else:
+                logger.info(
+                    f"✗ [cached] Post filtered out (score: {post.score}, "
+                    f"comments: {post.num_comments}): {post.title[:50]}..."
+                )
+
+        # PRAW-fetch only misses
+        miss_urls = [u for u in urls if u not in cached]
+        if miss_urls:
+            logger.info(f"[RedditCache] Fetching {len(miss_urls)} uncached posts via PRAW")
+
+        for url in miss_urls:
             try:
-                post = self.collect_post(url)
+                post = self._fetch_post_from_praw(url)
 
                 # Quality filtering based on settings
                 if (
@@ -200,6 +256,13 @@ class RedditCollectorTool(BaseTool):
                 ):
                     posts.append(post)
                     logger.info(f"✓ Post meets quality thresholds: {post.title[:50]}...")
+
+                    # Store in cache for future use
+                    if settings.reddit_post_cache_enabled:
+                        try:
+                            _cache.store_post(post)
+                        except Exception as e:
+                            logger.warning(f"[RedditCache] Failed to store post: {e}")
                 else:
                     logger.info(
                         f"✗ Post filtered out (score: {post.score}, "
@@ -210,7 +273,7 @@ class RedditCollectorTool(BaseTool):
                 logger.error(f"Skipping post {url} due to error: {e}")
                 continue
 
-        logger.info(f"Collected {len(posts)} quality Reddit posts from {len(urls)} URLs")
+        logger.info(f"Collected {len(posts)} quality Reddit posts from {len(urls)} URLs ({len(cached)} cached)")
         return posts
 
     @staticmethod

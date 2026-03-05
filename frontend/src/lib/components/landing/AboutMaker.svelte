@@ -1,26 +1,10 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("about-maker");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 </script>
 
-<section id="about-maker" class="section-alt">
+<section id="about-maker" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-4xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <div class="animate-fade-in">

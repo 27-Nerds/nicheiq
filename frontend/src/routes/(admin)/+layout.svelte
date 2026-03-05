@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import {
     LayoutDashboard,
     BarChart3,
@@ -12,6 +12,8 @@
     Menu,
     X,
     Link,
+    Library,
+    MessageSquare,
   } from "lucide-svelte";
 
   let { children } = $props();
@@ -23,13 +25,15 @@
     { href: "/admin/reports", label: "Report Stats", icon: BarChart3 },
     { href: "/admin/shares", label: "Shared Links", icon: Link },
     { href: "/admin/promo-codes", label: "Promo Codes", icon: Gift },
+    { href: "/admin/catalog", label: "Catalog", icon: Library },
+    { href: "/admin/reddit-threads", label: "Reddit Threads", icon: MessageSquare },
     { href: "/admin/users", label: "Users", icon: Users },
     { href: "/admin/packages", label: "Packages", icon: Package },
     { href: "/admin/settings", label: "Settings", icon: Settings },
   ];
 
   function isActive(href: string): boolean {
-    const path = $page.url.pathname;
+    const path = page.url.pathname;
     if (href === "/admin") return path === "/admin";
     return path.startsWith(href);
   }

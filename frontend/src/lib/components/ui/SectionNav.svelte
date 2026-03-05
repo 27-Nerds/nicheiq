@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { REPORT_SECTIONS } from "$lib/config/report-sections";
   import type { ReportSectionInfo } from "$lib/config/report-sections";
   import type { Report } from "$lib/types/report";
@@ -62,38 +63,31 @@
     }
   }
 
-  $effect(() => {
-    if (typeof window === "undefined") return;
+  function handleScroll() {
+    const scrollHeight =
+      document.documentElement.scrollHeight - window.innerHeight;
+    scrollProgress = Math.min(window.scrollY / scrollHeight, 1);
 
-    const handleScroll = () => {
-      // Calculate scroll progress
-      const scrollHeight =
-        document.documentElement.scrollHeight - window.innerHeight;
-      scrollProgress = Math.min(window.scrollY / scrollHeight, 1);
+    const sectionElements = sections
+      .map((s) => ({ id: s.id, el: document.getElementById(s.id) }))
+      .filter((s) => s.el !== null);
 
-      // Find active section
-      const sectionElements = sections
-        .map((s) => ({ id: s.id, el: document.getElementById(s.id) }))
-        .filter((s) => s.el !== null);
-
-      for (let i = sectionElements.length - 1; i >= 0; i--) {
-        const section = sectionElements[i];
-        if (section.el) {
-          const rect = section.el.getBoundingClientRect();
-          if (rect.top <= 150) {
-            activeSection = section.id;
-            break;
-          }
+    for (let i = sectionElements.length - 1; i >= 0; i--) {
+      const section = sectionElements[i];
+      if (section.el) {
+        const rect = section.el.getBoundingClientRect();
+        if (rect.top <= 150) {
+          activeSection = section.id;
+          break;
         }
       }
-    };
+    }
+  }
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll(); // Initial check
-
-    return () => window.removeEventListener("scroll", handleScroll);
-  });
+  onMount(() => handleScroll());
 </script>
+
+<svelte:window onscroll={handleScroll} />
 
 <!-- Desktop Sidebar -->
 <nav class="section-nav-desktop">

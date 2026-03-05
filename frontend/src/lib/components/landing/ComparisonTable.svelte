@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { slide } from "svelte/transition";
+  import { intersect } from "$lib/actions/intersect";
   import {
     Check,
     X,
@@ -28,21 +28,6 @@
     expandedFeature = expandedFeature === index ? null : index;
   }
 
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("comparison");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   type FeatureValue = "check" | "cross" | "partial" | string;
 
@@ -151,7 +136,7 @@
   }
 </script>
 
-<section id="comparison" class="section">
+<section id="comparison" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->

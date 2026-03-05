@@ -55,7 +55,9 @@ vi.mock('../../services/creditService.js', () => ({
     }
   },
   refundForStage: vi.fn(),
+  refundForRegenerationStage: vi.fn(),
   chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 15 }),
+  chargeForRegenerationInTx: vi.fn().mockResolvedValue({}),
   getStageCost: vi.fn().mockResolvedValue(5),
 }));
 
@@ -259,6 +261,7 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
   const makeJob = (overrides: Record<string, any> = {}) => ({
     status: 'AWAITING_SELECTION',
     ideasRegeneratedAt: null,
+    regenerationCount: 0,
     phase1CheckpointPath: '/cp/path',
     solutionIdeas: [{ name: 'A' }, { solution_name: 'B' }],
     niche: 'test niche',
@@ -334,8 +337,8 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
     expect(response.body.error).toContain('only regenerate ideas when awaiting selection');
   });
 
-  it('returns 400 when already regenerated', async () => {
-    mockJobFindFirst.mockResolvedValue(makeJob({ ideasRegeneratedAt: new Date() }));
+  it('returns 400 when max regenerations reached', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({ regenerationCount: 10 }));
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/regenerate-ideas`)
@@ -343,7 +346,19 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       .send({});
 
     expect(response.status).toBe(400);
-    expect(response.body.error).toContain('only be regenerated once');
+    expect(response.body.error).toContain('Maximum regenerations');
+  });
+
+  it('allows regeneration when ideasRegeneratedAt is already set (not first regen)', async () => {
+    mockJobFindFirst.mockResolvedValue(makeJob({ ideasRegeneratedAt: new Date(), regenerationCount: 1 }));
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/regenerate-ideas`)
+      .set(authHeaders)
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe('queued');
   });
 
   it('returns 500 when phase1CheckpointPath is null', async () => {
@@ -371,7 +386,7 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
   });
 
   it('refunds credits and reverts job when enqueue fails', async () => {
-    const { refundForStage } = await import('../../services/creditService.js');
+    const { refundForRegenerationStage } = await import('../../services/creditService.js');
     mockJobFindFirst.mockResolvedValue(makeJob());
     mockEnqueueRegenerateJob.mockRejectedValue(new Error('Redis unavailable'));
 
@@ -381,10 +396,10 @@ describe('POST /api/jobs/:jobId/regenerate-ideas', () => {
       .send({});
 
     expect(response.status).toBe(500);
-    expect(refundForStage).toHaveBeenCalledWith(jobId, 'regenerate_ideas');
+    expect(refundForRegenerationStage).toHaveBeenCalledWith(jobId, 1);
     expect(mockJobUpdate).toHaveBeenCalledWith({
       where: { id: jobId },
-      data: { status: 'AWAITING_SELECTION', ideasRegeneratedAt: null, queuedAt: null },
+      data: { status: 'AWAITING_SELECTION', queuedAt: null },
     });
   });
 });
@@ -432,7 +447,7 @@ describe('GET /api/jobs/:jobId/solutions', () => {
     expect(response.body.canRegenerate).toBe(true);
   });
 
-  it('canRegenerate is false when ideasRegeneratedAt is set', async () => {
+  it('canRegenerate is always true even when ideasRegeneratedAt is set', async () => {
     mockJobFindFirst.mockResolvedValue({
       solutionIdeas: [],
       selectedSolution: null,
@@ -446,7 +461,7 @@ describe('GET /api/jobs/:jobId/solutions', () => {
       .get(`/api/jobs/${jobId}/solutions`)
       .set(authHeaders);
 
-    expect(response.body.canRegenerate).toBe(false);
+    expect(response.body.canRegenerate).toBe(true);
   });
 
   it('returns 404 for wrong user', async () => {

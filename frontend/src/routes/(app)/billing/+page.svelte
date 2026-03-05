@@ -6,7 +6,9 @@
     ArrowUpRight,
     ArrowDownRight,
     Clock,
+    Check,
     CheckCircle,
+    Plus,
     AlertCircle,
     RefreshCw,
     Loader2,
@@ -25,6 +27,7 @@
   import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import FeatureCard from "$lib/components/ui/FeatureCard.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import type { TokenPackage, FeatureItem } from "$lib/types/billing";
 
   interface Transaction {
     id: string;
@@ -40,15 +43,6 @@
     totalPurchased: number;
     totalUsed: number;
     recentTransactions: Transaction[];
-  }
-
-  interface TokenPackage {
-    id: string;
-    name: string;
-    description: string | null;
-    credits: number;
-    priceInCents: number;
-    isPopular: boolean;
   }
 
   let { data } = $props();
@@ -310,59 +304,76 @@
 
       <div class="grid gap-4 sm:grid-cols-3">
         {#each packages as pkg (pkg.id)}
+          {@const badgeText = pkg.badgeLabel || (pkg.isPopular ? 'Most Popular' : null)}
+
           <div
-            class="card relative {pkg.isPopular
-              ? 'border-accent/50 bg-accent/5'
+            class="card relative flex flex-col text-center {pkg.isPopular
+              ? 'border-2 border-accent bg-accent/5'
               : ''}"
           >
-            {#if pkg.isPopular}
+            {#if badgeText}
               <div class="absolute -top-3 left-1/2 -translate-x-1/2">
                 <span
                   class="px-3 py-1 text-xs font-semibold bg-accent text-white rounded-full flex items-center gap-1"
                 >
                   <Star class="w-3 h-3" />
-                  Most Popular
+                  {badgeText}
                 </span>
               </div>
             {/if}
 
-            <div class="text-center pt-2">
+            {#if pkg.promoBadge}
+              <div class="absolute top-0 right-0 bg-success text-white text-xs font-semibold px-2 py-1 rounded-bl-lg">
+                {pkg.promoBadge}
+              </div>
+            {/if}
+
+            <!-- Body -->
+            <div class="pt-6 pb-4 px-6">
               <h3 class="text-lg font-display font-bold text-text-primary">
                 {pkg.name}
               </h3>
-              {#if pkg.description}
+              {#if pkg.tagline}
+                <p class="text-sm text-text-muted mt-1">{pkg.tagline}</p>
+              {:else if pkg.description}
                 <p class="text-sm text-text-muted mt-1">{pkg.description}</p>
               {/if}
 
               <div class="my-4">
-                <span class="text-3xl font-display font-bold text-text-primary"
-                  >{formatPrice(pkg.priceInCents)}</span
-                >
+                {#if pkg.promoPriceInCents}
+                  <span class="text-lg text-text-muted line-through mr-1">{formatPrice(pkg.priceInCents)}</span>
+                  <span class="text-3xl sm:text-4xl font-display font-bold text-success">{formatPrice(pkg.promoPriceInCents)}</span>
+                {:else}
+                  <span class="text-3xl sm:text-4xl font-display font-bold text-text-primary">{formatPrice(pkg.priceInCents)}</span>
+                {/if}
               </div>
 
-              <div
-                class="flex items-center justify-center gap-2 text-sm text-text-muted mb-1"
-              >
+              <div class="flex items-center justify-center gap-2 text-sm text-text-muted">
                 <Coins class="w-4 h-4 text-accent" />
-                <span class="font-semibold text-text-primary"
-                  >{pkg.credits}</span
-                >
+                <span class="font-bold text-text-primary">{pkg.credits}</span>
                 <span>credits</span>
               </div>
 
-              {#if fullResearchCost > 0}
-                <p class="text-xs text-text-muted mb-4">
-                  ~{Math.floor(pkg.credits / fullResearchCost)} full research runs<a
-                    href="#credit-costs"
-                    class="text-accent"
-                    aria-label="See credit cost breakdown"
-                  >*</a>
-                </p>
-              {:else}
-                <div class="mb-4"></div>
+              {#if pkg.creditsInfo}
+                <p class="text-xs text-text-muted mt-2">{pkg.creditsInfo}</p>
               {/if}
 
-              <SubmitButton onclick={() => startCheckout(pkg.id)} disabled={checkoutLoading !== null} loading={checkoutLoading === pkg.id} loadingText="Processing..." icon={ShoppingCart} label="Buy Now" class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full" />
+              {#if pkg.includesLabel}
+                <p class="text-xs text-text-secondary mt-1 font-medium">{pkg.includesLabel}</p>
+              {/if}
+
+              {#if pkg.promoLine}
+                <p class="mt-3 text-xs font-semibold text-success">{pkg.promoLine}</p>
+              {/if}
+            </div>
+
+            <!-- CTA -->
+            <div class="mt-auto pt-4">
+              <SubmitButton onclick={() => startCheckout(pkg.id)} disabled={checkoutLoading !== null} loading={checkoutLoading === pkg.id} loadingText="Processing..." icon={ShoppingCart} label={pkg.ctaText || "Buy Now"} class="{pkg.isPopular ? 'btn-primary' : 'btn-secondary'} w-full" />
+
+              {#if pkg.ctaSubText && pkg.ctaSubUrl}
+                <a href={pkg.ctaSubUrl} class="block text-center text-xs text-accent hover:underline mt-3">{pkg.ctaSubText}</a>
+              {/if}
             </div>
           </div>
         {/each}

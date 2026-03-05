@@ -1,13 +1,13 @@
 <script lang="ts">
   import { signIn } from "@auth/sveltekit/client";
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { Mail, Lock, AlertCircle } from "lucide-svelte";
   import AuthPageLayout from "$lib/components/ui/AuthPageLayout.svelte";
   import OAuthButtons from "$lib/components/ui/OAuthButtons.svelte";
   import FormField from "$lib/components/ui/FormField.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
-  const availableProviders = $derived($page.data.availableProviders);
+  const availableProviders = $derived(page.data.availableProviders);
 
   let email = $state("");
   let password = $state("");
@@ -15,7 +15,7 @@
   let error = $state("");
 
   const returnTo = $derived(
-    $page.url.searchParams.get("returnTo") || "/dashboard",
+    page.url.searchParams.get("returnTo") || "/dashboard",
   );
 
   async function handleCredentialsLogin(e: Event) {

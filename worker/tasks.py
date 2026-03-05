@@ -21,6 +21,8 @@ from .progress import (
     notify_job_quality_gate_stop,
     notify_ideas_ready,
     notify_regeneration_complete,
+    notify_catalog_pain_points_ready,
+    notify_catalog_ideas_ready,
 )
 from .status import mark_job_running
 
@@ -655,3 +657,208 @@ def run_regenerate_ideas(
                 flow.cleanup_collections()
         except Exception as cleanup_err:
             logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
+
+
+def run_catalog_pain_points(
+    job_id: str,
+    category_id: str,
+    category_name: str,
+    category_description: str,
+    parent_category_name: str = "",
+) -> dict:
+    """
+    Generate pain points for a catalog category using the research pipeline.
+
+    Runs stages 1-3 (niche validation, social scraping, pain point analysis)
+    and sends results to backend for merge/dedup into CatalogPainPoint records.
+
+    Args:
+        job_id: UUID of the tracking job
+        category_id: UUID of the catalog category
+        category_name: Category name (used to build niche)
+        category_description: Category description (used to build niche)
+        parent_category_name: Parent category name for hierarchy context
+
+    Returns:
+        Dict with status and pain point count
+    """
+    if parent_category_name:
+        niche = f"{parent_category_name} > {category_name}: {category_description}" if category_description else f"{parent_category_name} > {category_name}"
+    else:
+        niche = f"{category_name}: {category_description}" if category_description else category_name
+    logger.info(f"[Worker] Generating catalog pain points for job {job_id}, category: {category_name}")
+
+    flow = None
+    try:
+        from nicheiq.flows.research_flow import ResearchFlow
+
+        progress_callback = create_progress_callback(job_id)
+
+        flow = ResearchFlow(
+            niche_description=niche,
+            job_id=job_id,
+        )
+        flow.progress_callback = progress_callback
+
+        mark_job_running(job_id)
+        progress_callback(1, "Niche Analysis", "running")
+
+        # Stage 1: Validate niche / generate NicheContext
+        flow.stage_1_validate_niche()
+
+        # Stage 2: Social scraping (Reddit/Twitter)
+        flow.stage_2_search_and_discover()
+
+        # Stage 3: Pain point analysis (PainPointCrew + AudienceMappingCrew)
+        flow.stage_3_analyze_pain_points()
+
+        # Extract pain points
+        state = flow.state
+        pain_analysis = getattr(state, "pain_point_analysis", None)
+        if not pain_analysis or not pain_analysis.pain_points:
+            logger.warning(f"[Worker] No pain points generated for job {job_id}")
+            notify_catalog_pain_points_ready(job_id, category_id, [], niche)
+            return {"status": "completed", "job_id": job_id, "pain_point_count": 0}
+
+        # Serialize pain points
+        pain_point_dicts = []
+        for pp in pain_analysis.pain_points:
+            d = pp.model_dump()
+            # Convert enum to string value
+            if hasattr(d.get("opportunity_level"), "value"):
+                d["opportunity_level"] = d["opportunity_level"].value
+            pain_point_dicts.append(d)
+
+        # Notify backend
+        notify_catalog_pain_points_ready(job_id, category_id, pain_point_dicts, niche)
+
+        logger.info(f"[Worker] Catalog pain points complete for job {job_id}: {len(pain_point_dicts)} pain points")
+        return {"status": "completed", "job_id": job_id, "pain_point_count": len(pain_point_dicts)}
+
+    except Exception as e:
+        from .heartbeat import JobCancelledException
+        from nicheiq.flows.research_flow import QualityGateStopException
+
+        if isinstance(e, JobCancelledException):
+            logger.info(f"[Worker] Catalog pain points job {job_id} cancelled")
+            raise
+
+        if isinstance(e, QualityGateStopException):
+            logger.info(f"[Worker] Catalog pain points job {job_id} stopped by quality gate: {e.reason}")
+            notify_job_quality_gate_stop(job_id, e.reason, e.details, e.stage)
+            return None
+
+        logger.error(f"[Worker] Catalog pain points job {job_id} failed: {e}\n{traceback.format_exc()}")
+        failed_stage = None
+        if hasattr(flow, "state") and flow.state:
+            failed_stage = flow.state.current_stage
+        e.failed_stage = failed_stage  # type: ignore
+        raise
+
+    finally:
+        try:
+            if flow is not None:
+                flow.cleanup_collections()
+        except Exception as cleanup_err:
+            logger.debug(f"Knowledge cleanup error (non-fatal): {cleanup_err}")
+
+
+def run_catalog_ideas(
+    job_id: str,
+    category_id: str,
+    pain_points: list[dict],
+    niche: str,
+    parent_category_name: str = "",
+) -> dict:
+    """
+    Generate solution ideas from admin-selected pain points for a catalog category.
+
+    Reconstructs PainPoint objects and runs UnifiedSolutionCrew to generate ideas.
+
+    Args:
+        job_id: UUID of the tracking job
+        category_id: UUID of the catalog category
+        pain_points: List of pain point dicts (camelCase from DB)
+        niche: The niche description
+        parent_category_name: Parent category name for hierarchy context
+
+    Returns:
+        Dict with status and idea count
+    """
+    if parent_category_name:
+        niche = f"{parent_category_name} > {niche}"
+    logger.info(f"[Worker] Generating catalog ideas for job {job_id} from {len(pain_points)} pain points")
+
+    try:
+        from nicheiq.models.pain_point import PainPoint, PainPointAnalysisResult
+        from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
+
+        progress_callback = create_progress_callback(job_id)
+        mark_job_running(job_id)
+        progress_callback(5, "Solution Pipeline", "running")
+
+        # Reconstruct PainPoint objects from camelCase DB fields
+        reconstructed = []
+        for pp_data in pain_points:
+            reconstructed.append(PainPoint(
+                title=pp_data.get("title", ""),
+                description=pp_data.get("description", ""),
+                mention_count=pp_data.get("mentionCount", pp_data.get("mention_count", 0)),
+                severity_score=pp_data.get("severityScore", pp_data.get("severity_score", 0.5)),
+                willingness_to_pay=pp_data.get("willingnessToPayScore", pp_data.get("willingness_to_pay", 0.5)),
+                opportunity_level=pp_data.get("opportunityLevel", pp_data.get("opportunity_level", "medium")),
+                representative_quotes=pp_data.get("representativeQuotes", pp_data.get("representative_quotes", [])) or [],
+                source_platforms=pp_data.get("sourcePlatforms", pp_data.get("source_platforms")) or [],
+                categories=pp_data.get("categories") or [],
+                affected_segments=pp_data.get("affectedSegments", pp_data.get("affected_segments")) or [],
+            ))
+
+        # Build PainPointAnalysisResult
+        total_mentions = sum(pp.mention_count for pp in reconstructed)
+        pain_analysis = PainPointAnalysisResult(
+            niche=niche,
+            pain_points=reconstructed,
+            total_mentions=total_mentions,
+            top_categories=[],
+            analysis_summary=f"Catalog pain point analysis for {niche}",
+        )
+
+        # Create UnifiedSolutionCrew with pain points only
+        crew = UnifiedSolutionCrew(
+            pain_point_analysis=pain_analysis,
+            social_content=None,
+            niche_context=None,
+            audience_mapping=None,
+            job_id=job_id,
+        )
+
+        # Execute pipeline (skip_selection=True → no Task 4)
+        result = crew.execute_pipeline(skip_selection=True)
+        idea_gen = result[0]  # IdeaGenerationResult
+
+        if not idea_gen or not hasattr(idea_gen, "solution_ideas"):
+            logger.warning(f"[Worker] No ideas generated for job {job_id}")
+            notify_catalog_ideas_ready(job_id, category_id, [], niche)
+            return {"status": "completed", "job_id": job_id, "idea_count": 0}
+
+        # Serialize ideas
+        idea_previews = [_solution_to_preview_dict(s) for s in idea_gen.solution_ideas]
+
+        progress_callback(5, "Solution Pipeline", "completed")
+
+        # Notify backend
+        notify_catalog_ideas_ready(job_id, category_id, idea_previews, niche)
+
+        logger.info(f"[Worker] Catalog ideas complete for job {job_id}: {len(idea_previews)} ideas")
+        return {"status": "completed", "job_id": job_id, "idea_count": len(idea_previews)}
+
+    except Exception as e:
+        from .heartbeat import JobCancelledException
+
+        if isinstance(e, JobCancelledException):
+            logger.info(f"[Worker] Catalog ideas job {job_id} cancelled")
+            raise
+
+        logger.error(f"[Worker] Catalog ideas job {job_id} failed: {e}\n{traceback.format_exc()}")
+        e.failed_stage = 5  # type: ignore
+        raise

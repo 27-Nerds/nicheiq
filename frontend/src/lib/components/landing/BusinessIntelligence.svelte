@@ -1,24 +1,8 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
   import { PieChart, Tag, Scale, CheckCircle2 } from "lucide-svelte";
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.2 },
-    );
-
-    const section = document.getElementById("business-intelligence");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   const blocks = [
     {
@@ -63,7 +47,7 @@
   ];
 </script>
 
-<section id="business-intelligence" class="section-alt">
+<section id="business-intelligence" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->

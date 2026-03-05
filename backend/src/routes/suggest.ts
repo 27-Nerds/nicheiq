@@ -4,13 +4,9 @@ import OpenAI from 'openai';
 import { CONFIG } from '../config.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
 import { checkSuggestRateLimit } from '../middleware/rateLimit.js';
+import { openai } from '../services/openai.js';
 
 export const suggestRouter = Router();
-
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: CONFIG.openaiApiKey,
-});
 
 // Request validation schema
 const SuggestRequestSchema = z.object({

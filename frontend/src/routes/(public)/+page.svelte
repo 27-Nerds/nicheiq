@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import {
     Hero,
     HowItWorks,
@@ -16,7 +16,7 @@
 
   let { data } = $props();
 
-  const session = $derived($page.data.session);
+  const session = $derived(page.data.session);
 </script>
 
 <svelte:head>
@@ -53,7 +53,7 @@
   <BusinessIntelligence />
   <ComparisonTable />
   <Credibility />
-  <Pricing {session} ctaTexts={data.ctaTexts} />
+  <Pricing {session} ctaTexts={data.ctaTexts} packages={data.packages ?? []} />
   <FAQ />
   <FinalCTA {session} hasSampleReport={data.hasSampleReport} ctaTexts={data.ctaTexts} />
   <Footer hasSampleReport={data.hasSampleReport} ctaTexts={data.ctaTexts} />

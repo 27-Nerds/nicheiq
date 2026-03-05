@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import { onDestroy, untrack } from "svelte";
   import { browser } from "$app/environment";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
@@ -16,7 +16,7 @@
     Trophy,
     FlaskConical,
   } from "lucide-svelte";
-  import { showNewResearchModal } from "$lib/stores/newResearchModal";
+  import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import JobCard from "$lib/components/ui/JobCard.svelte";
   import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
   import StatCard from "$lib/components/ui/StatCard.svelte";
@@ -25,7 +25,7 @@
 
   let { data } = $props();
 
-  const session = $derived($page.data.session);
+  const session = $derived(page.data.session);
   const initialJobs = $derived(data.jobs as Job[]);
 
   // Track SSE subscriptions and live job updates
@@ -349,7 +349,7 @@
         <p class="text-text-muted">Manage your market research reports</p>
       </div>
       {#if jobs.length > 0 && inProgressCount === 0}
-        <Button onclick={() => ($showNewResearchModal = true)} icon={Plus} label="New Research" class="btn-primary hidden sm:inline-flex" />
+        <Button onclick={() => (showNewResearchModal.open = true)} icon={Plus} label="New Research" class="btn-primary hidden sm:inline-flex" />
       {/if}
     </div>
   </div>
@@ -448,7 +448,7 @@
           NicheIQ analyzes Reddit discussions, identifies pain points, and
           generates a comprehensive market research report in minutes.
         </p>
-        <Button onclick={() => ($showNewResearchModal = true)} icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
+        <Button onclick={() => (showNewResearchModal.open = true)} icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
         <p class="text-xs text-text-muted mt-4">
           Two-phase AI research with your input at the gate. ~35 minutes total.
         </p>

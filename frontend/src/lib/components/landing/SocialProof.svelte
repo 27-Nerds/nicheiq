@@ -1,27 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
   import { Star, Quote } from "lucide-svelte";
 
   let { reportsDelivered = null }: { reportsDelivered?: number | null } =
     $props();
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("social-proof");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   const testimonials = [
     {
@@ -61,6 +45,7 @@
 <section
   id="social-proof"
   class="py-12 sm:py-16 bg-bg-elevated border-y border-border"
+  use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}
 >
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}

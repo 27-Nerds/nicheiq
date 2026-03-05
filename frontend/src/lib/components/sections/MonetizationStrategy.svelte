@@ -40,7 +40,7 @@
   let { pricingData, trafficData, cacBreakdown }: Props = $props();
 
   // Parse traffic source breakdown for display
-  const trafficSources = $derived(() => {
+  const trafficSources = $derived.by(() => {
     if (!trafficData?.traffic_source_breakdown) return [];
     return Object.entries(trafficData.traffic_source_breakdown).map(
       ([source, percentage]) => ({
@@ -736,14 +736,14 @@
     </AnimateOnScroll>
 
     <!-- Traffic Source Breakdown -->
-    {#if trafficSources().length > 0}
+    {#if trafficSources.length > 0}
       <AnimateOnScroll animation="fade-up">
         <div class="card mb-8">
           <h4 class="text-lg font-semibold text-text-primary mb-4">
             Traffic Source Breakdown
           </h4>
           <div class="space-y-3">
-            {#each trafficSources() as { source, percentage }}
+            {#each trafficSources as { source, percentage }}
               <div class="flex items-center gap-3">
                 <div class="w-24 text-sm text-text-muted">{source}</div>
                 <div

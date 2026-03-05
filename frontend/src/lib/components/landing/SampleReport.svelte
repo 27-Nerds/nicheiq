@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { fade } from "svelte/transition";
+  import { intersect } from "$lib/actions/intersect";
   import PainAnalysis from "$lib/components/sections/PainAnalysis.svelte";
   import SEOKeywords from "$lib/components/sections/SEOKeywords.svelte";
   import Competitors from "$lib/components/sections/Competitors.svelte";
@@ -42,21 +42,6 @@
     tabs.find((t) => t.id === activeTab)?.label ?? "",
   );
 
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("sample-report");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   // --- Mock data ---
 
@@ -442,7 +427,7 @@
   };
 </script>
 
-<section id="sample-report" class="section">
+<section id="sample-report" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->

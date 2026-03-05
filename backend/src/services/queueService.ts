@@ -113,6 +113,71 @@ export async function enqueueRegenerateJob(
 }
 
 /**
+ * Enqueue catalog pain point generation task
+ */
+export async function enqueueCatalogPainPointsJob(
+  jobId: string,
+  categoryId: string,
+  categoryName: string,
+  categoryDescription: string,
+  parentCategoryName: string,
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    category_id: categoryId,
+    category_name: categoryName,
+    category_description: categoryDescription,
+    parent_category_name: parentCategoryName,
+    task_type: 'catalog_pain_points',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued catalog pain points job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
+ * Enqueue catalog idea generation task
+ */
+export async function enqueueCatalogIdeasJob(
+  jobId: string,
+  categoryId: string,
+  painPoints: Record<string, unknown>[],
+  niche: string,
+  parentCategoryName: string,
+): Promise<void> {
+  const jobData = JSON.stringify({
+    job_id: jobId,
+    category_id: categoryId,
+    pain_points: painPoints,
+    niche,
+    parent_category_name: parentCategoryName,
+    task_type: 'catalog_ideas',
+    created_at: new Date().toISOString(),
+  });
+
+  await redis.lpush(QUEUE_NAME, jobData);
+  console.log(`Enqueued catalog ideas job ${jobId} to ${QUEUE_NAME}`);
+}
+
+/**
+ * Remove a job from the Redis queue (e.g. when cancelled while QUEUED)
+ */
+export async function removeJobFromQueue(jobId: string): Promise<boolean> {
+  const queue = await redis.lrange(QUEUE_NAME, 0, -1);
+  for (const item of queue) {
+    try {
+      const parsed = JSON.parse(item);
+      if (parsed.job_id === jobId) {
+        const removed = await redis.lrem(QUEUE_NAME, 1, item);
+        return removed > 0;
+      }
+    } catch { continue; }
+  }
+  return false;
+}
+
+/**
  * Get queue length
  */
 export async function getQueueLength(): Promise<number> {

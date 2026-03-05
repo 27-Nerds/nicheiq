@@ -62,6 +62,10 @@ export const CONFIG = {
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET || '',
   },
 
+  // Catalog categorization
+  categorizeModel: process.env.CATEGORIZE_LLM_MODEL || 'gpt-4.1-nano',
+  categorizeItemRateHourly: parseInt(process.env.CATEGORIZE_ITEM_RATE_HOURLY || '500', 10),
+
   // Discovery sharing
   ipHashSalt: process.env.IP_HASH_SALT || 'nicheiq-vote-salt',
 } as const;

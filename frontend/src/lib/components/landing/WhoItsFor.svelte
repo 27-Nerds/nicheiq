@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { intersect } from "$lib/actions/intersect";
   import {
     Compass,
     Zap,
@@ -10,22 +10,6 @@
   } from "lucide-svelte";
 
   let isVisible = $state(false);
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("who-its-for");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   const personas = [
     {
@@ -85,7 +69,7 @@
   ];
 </script>
 
-<section id="who-its-for" class="section">
+<section id="who-its-for" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->

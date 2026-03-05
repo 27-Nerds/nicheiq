@@ -134,9 +134,10 @@ async function _chargeForStageImpl(
   tx: Prisma.TransactionClient,
   userId: string,
   jobId: string,
-  stage: StageName,
+  stage: string,
   niche: string,
   cost: number,
+  description?: string,
 ): Promise<CreditTransaction> {
   // 1. Get or create credits record
   let credits = await tx.userCredits.findUnique({ where: { userId } });
@@ -170,9 +171,29 @@ async function _chargeForStageImpl(
       balanceAfter: updatedCredits.balance,
       relatedJobId: jobId,
       stage,
-      description: `${STAGE_LABELS[stage]}: ${niche.substring(0, 100)}`,
+      description: description ?? `${STAGE_LABELS[stage as StageName] ?? stage}: ${niche.substring(0, 100)}`,
     },
   });
+}
+
+/**
+ * Charge for a regeneration inside an existing transaction.
+ * Uses numbered stage strings (regenerate_ideas_1, regenerate_ideas_2, etc.)
+ * to allow multiple regenerations per job.
+ */
+export async function chargeForRegenerationInTx(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  jobId: string,
+  regenerationNumber: number,
+  niche: string,
+): Promise<CreditTransaction> {
+  const cost = await _getStageCostWithClient(tx, 'regenerate_ideas');
+  if (cost === 0) {
+    // Still create a zero-cost transaction record for audit
+    return _chargeForStageImpl(tx, userId, jobId, `regenerate_ideas_${regenerationNumber}`, niche, 0, `Generate More Ideas (#${regenerationNumber}): ${niche.substring(0, 100)}`);
+  }
+  return _chargeForStageImpl(tx, userId, jobId, `regenerate_ideas_${regenerationNumber}`, niche, cost, `Generate More Ideas (#${regenerationNumber}): ${niche.substring(0, 100)}`);
 }
 
 /**
@@ -182,6 +203,27 @@ async function _chargeForStageImpl(
 export async function refundForStage(
   jobId: string,
   stage: StageName,
+): Promise<CreditTransaction | null> {
+  return _refundForStageImpl(jobId, stage);
+}
+
+/**
+ * Refund credits for a numbered regeneration stage (e.g., regenerate_ideas_2).
+ */
+export async function refundForRegenerationStage(
+  jobId: string,
+  regenerationNumber: number,
+): Promise<CreditTransaction | null> {
+  return _refundForStageImpl(jobId, `regenerate_ideas_${regenerationNumber}`);
+}
+
+/**
+ * Internal implementation for refunding a stage. Works with any stage string.
+ * Only refunds if: (a) an original charge exists and (b) no refund for that stage yet.
+ */
+async function _refundForStageImpl(
+  jobId: string,
+  stage: string,
 ): Promise<CreditTransaction | null> {
   // Find the job to get userId
   const job = await prisma.job.findUnique({
@@ -246,7 +288,7 @@ export async function refundForStage(
           balanceAfter: updatedCredits.balance,
           relatedJobId: jobId,
           stage,
-          description: `Refund ${STAGE_LABELS[stage]}: ${job.niche?.substring(0, 100)}`,
+          description: `Refund ${STAGE_LABELS[stage as StageName] ?? stage}: ${job.niche?.substring(0, 100)}`,
         },
       });
     });
@@ -268,7 +310,7 @@ export function determineFailedStage(
   errorStage: number | null | undefined,
   jobStatus: string,
 ): StageName | null {
-  if (jobStatus === JobStatus.REGENERATING) return 'regenerate_ideas';
+  if (jobStatus === JobStatus.REGENERATING) return null; // Handled separately with numbered stages
   if (errorStage === 15) return 'landing_page';
   if (errorStage != null && errorStage > DISCOVERY_PHASE_MAX_STAGE) return 'deep_research';
   if (errorStage != null && errorStage <= DISCOVERY_PHASE_MAX_STAGE) return 'discovery';

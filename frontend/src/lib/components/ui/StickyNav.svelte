@@ -36,34 +36,26 @@
   let scrollProgress = $state(0);
   let isVisible = $state(false);
 
-  onMount(() => {
-    const handleScroll = () => {
-      // Calculate overall scroll progress
-      const scrollHeight =
-        document.documentElement.scrollHeight - window.innerHeight;
-      scrollProgress =
-        scrollHeight > 0 ? (window.scrollY / scrollHeight) * 100 : 0;
+  function handleScroll() {
+    const scrollHeight =
+      document.documentElement.scrollHeight - window.innerHeight;
+    scrollProgress =
+      scrollHeight > 0 ? (window.scrollY / scrollHeight) * 100 : 0;
 
-      // Show nav after scrolling past hero
-      isVisible = window.scrollY > 200;
+    isVisible = window.scrollY > 200;
 
-      // Find active section
-      const scrollPosition = window.scrollY + 150;
+    const scrollPosition = window.scrollY + 150;
 
-      for (let i = sections.length - 1; i >= 0; i--) {
-        const element = document.getElementById(sections[i].id);
-        if (element && element.offsetTop <= scrollPosition) {
-          activeSection = sections[i].id;
-          break;
-        }
+    for (let i = sections.length - 1; i >= 0; i--) {
+      const element = document.getElementById(sections[i].id);
+      if (element && element.offsetTop <= scrollPosition) {
+        activeSection = sections[i].id;
+        break;
       }
-    };
+    }
+  }
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    handleScroll();
-
-    return () => window.removeEventListener("scroll", handleScroll);
-  });
+  onMount(() => handleScroll());
 
   function scrollToSection(id: string) {
     const element = document.getElementById(id);
@@ -72,6 +64,8 @@
     }
   }
 </script>
+
+<svelte:window onscroll={handleScroll} />
 
 <nav class="sticky-nav" class:visible={isVisible}>
   <div class="sticky-nav-progress" style="width: {scrollProgress}%"></div>

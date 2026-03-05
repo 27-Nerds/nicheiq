@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { page } from "$app/stores";
+  import { page } from "$app/state";
   import type { CtaConfig } from "$lib/types/cta";
   import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
   let { data, children } = $props();
 
-  const session = $derived($page.data.session);
+  const session = $derived(page.data.session);
   const ctaHeader: CtaConfig | null = $derived(data.ctaTexts?.cta_header ?? null);
 </script>
 

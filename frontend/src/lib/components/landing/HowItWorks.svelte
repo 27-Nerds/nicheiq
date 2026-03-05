@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { onMount } from "svelte";
   import { slide } from "svelte/transition";
+  import { SvelteSet } from "svelte/reactivity";
+  import { intersect } from "$lib/actions/intersect";
   import {
     Search,
     Radar,
@@ -23,30 +24,12 @@
 
   let isVisible = $state(false);
   let showStages = $state(false);
-  let expandedStages = $state<Set<number>>(new Set());
+  let expandedStages = new SvelteSet<number>();
 
   function toggleStage(id: number) {
-    const next = new Set(expandedStages);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    expandedStages = next;
+    if (expandedStages.has(id)) expandedStages.delete(id);
+    else expandedStages.add(id);
   }
-
-  onMount(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          isVisible = true;
-        }
-      },
-      { threshold: 0.1 },
-    );
-
-    const section = document.getElementById("how-it-works");
-    if (section) observer.observe(section);
-
-    return () => observer.disconnect();
-  });
 
   const steps = [
     {
@@ -236,7 +219,7 @@
   {@html `<script type="application/ld+json">${JSON.stringify(howToSchema)}</script>`}
 </svelte:head>
 
-<section id="how-it-works" class="section-alt">
+<section id="how-it-works" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
       <!-- Section Header -->

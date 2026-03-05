@@ -55,14 +55,14 @@
   const needleAngle = $derived(progress * 180);
 
   // Color based on value
-  const valueColor = $derived(() => {
+  const valueColor = $derived.by(() => {
     if (value >= 0.7) return "var(--color-success)";
     if (value >= 0.4) return "var(--color-warning)";
     return "var(--color-error)";
   });
 
   let visible = $state(false);
-  let ref: HTMLDivElement;
+  let ref: HTMLDivElement | undefined = $state();
 
   $effect(() => {
     if (ref && animate) {
@@ -134,7 +134,7 @@
         visible ? needleAngle : 0,
       )}
       fill="none"
-      stroke={valueColor()}
+      stroke={valueColor}
       stroke-width={strokeWidth}
       stroke-linecap="round"
       class="gauge-progress"
@@ -146,7 +146,7 @@
       cx={centerX}
       cy={centerY}
       r="4"
-      fill={valueColor()}
+      fill={valueColor}
       class="gauge-center"
     />
 
@@ -166,7 +166,7 @@
         innerRadius - 12,
         visible ? needleAngle : 0,
       ).y}
-      stroke={valueColor()}
+      stroke={valueColor}
       stroke-width="2"
       stroke-linecap="round"
       class="gauge-needle"
@@ -177,7 +177,7 @@
   {#if showValue || label}
     <div class="gauge-content">
       {#if showValue}
-        <span class="gauge-value" style:color={valueColor()}>
+        <span class="gauge-value" style:color={valueColor}>
           {Math.round(value * 100)}%
         </span>
       {/if}

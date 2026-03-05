@@ -8,6 +8,7 @@ import { getJob, getJobAsset } from '../services/jobService.js';
 import { JobStatus, AssetType } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import { resolveAssetPath } from '../utils/assetPath.js';
+import { populateItemCache, removeItemCache } from '../services/catalogService.js';
 import rateLimit from 'express-rate-limit';
 import { CONFIG } from '../config.js';
 
@@ -140,6 +141,11 @@ sharesRouter.post('/:jobId/share', requireInternalAuth, async (req: Authenticate
       });
     }
 
+    // Populate catalog item cache (fire-and-forget)
+    populateItemCache(parsed.data.jobId).catch(err => {
+      console.error('Failed to populate item cache:', err);
+    });
+
     res.json({
       isShared: true,
       shareToken: share.shareToken,
@@ -182,6 +188,11 @@ sharesRouter.delete('/:jobId/share', requireInternalAuth, async (req: Authentica
       await prisma.reportShare.update({
         where: { jobId: parsed.data.jobId },
         data: { isActive: false },
+      });
+
+      // Remove catalog item cache (fire-and-forget)
+      removeItemCache(parsed.data.jobId).catch(err => {
+        console.error('Failed to remove item cache:', err);
       });
     }
 
@@ -232,6 +243,11 @@ sharesRouter.post('/:jobId/share/regenerate', requireInternalAuth, async (req: A
         lastViewedAt: null,
         isActive: true,
       },
+    });
+
+    // Repopulate catalog item cache (fire-and-forget)
+    populateItemCache(parsed.data.jobId).catch(err => {
+      console.error('Failed to repopulate item cache:', err);
     });
 
     res.json({

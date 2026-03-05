@@ -313,7 +313,8 @@
 	.animate-fade-in-triggered,
 	.animate-scale-in,
 	.animate-slide-left,
-	.animate-slide-right {
+	.animate-slide-right,
+	.animate-fade-slide-in {
 		opacity: 1;
 		transform: none;
 	}

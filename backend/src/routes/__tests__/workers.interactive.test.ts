@@ -66,6 +66,11 @@ vi.mock('../../utils/errorTranslator.js', () => ({
   buildErrorDetails: vi.fn().mockReturnValue(null),
 }));
 
+vi.mock('../../services/creditService.js', () => ({
+  refundForStage: vi.fn(),
+  refundForRegenerationStage: vi.fn(),
+}));
+
 vi.mock('../../types/job.js', async (importOriginal) => {
   const actual = await importOriginal() as any;
   return {
@@ -362,7 +367,8 @@ describe('POST /api/workers/regeneration-failed', () => {
     error_message: 'LLM rate limit exceeded',
   };
 
-  it('reverts REGENERATING/QUEUED → AWAITING_SELECTION and clears ideasRegeneratedAt', async () => {
+  it('reverts REGENERATING/QUEUED → AWAITING_SELECTION', async () => {
+    mockJobFindUnique.mockResolvedValue({ regenerationCount: 1 });
     mockJobUpdateMany.mockResolvedValue({ count: 1 });
     mockRegisterWorkerHeartbeat.mockResolvedValue(undefined);
 
@@ -381,7 +387,6 @@ describe('POST /api/workers/regeneration-failed', () => {
         }),
         data: expect.objectContaining({
           status: 'AWAITING_SELECTION',
-          ideasRegeneratedAt: null,
         }),
       })
     );

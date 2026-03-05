@@ -163,14 +163,26 @@ billingRouter.get('/packages', async (_req, res: Response) => {
   try {
     const packages = await getPackages();
 
+    res.setHeader('Cache-Control', 'public, max-age=300');
     res.json({
-      packages: packages.map((pkg: { id: string; name: string; description: string | null; credits: number; priceInCents: number; isPopular: boolean }) => ({
+      packages: packages.map((pkg) => ({
         id: pkg.id,
         name: pkg.name,
         description: pkg.description,
         credits: pkg.credits,
         priceInCents: pkg.priceInCents,
         isPopular: pkg.isPopular,
+        tagline: pkg.tagline,
+        includesLabel: pkg.includesLabel,
+        creditsInfo: pkg.creditsInfo,
+        features: Array.isArray(pkg.features) ? pkg.features : null,
+        ctaText: pkg.ctaText,
+        badgeLabel: pkg.badgeLabel,
+        promoLine: pkg.promoLine,
+        promoPriceInCents: pkg.promoPriceInCents,
+        promoBadge: pkg.promoBadge,
+        ctaSubText: pkg.ctaSubText,
+        ctaSubUrl: pkg.ctaSubUrl,
       })),
     });
   } catch (error) {

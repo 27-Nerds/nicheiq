@@ -32,7 +32,7 @@
   let showRegenerateConfirm = $state(false);
 
   const shareUrl = $derived(
-    shareInfo?.shareToken
+    shareInfo?.shareToken && typeof window !== "undefined"
       ? `${window.location.origin}/shared/${shareInfo.shareToken}`
       : "",
   );

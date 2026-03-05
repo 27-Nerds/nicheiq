@@ -6,7 +6,6 @@
     ArrowRight,
     Heart,
   } from "lucide-svelte";
-  import Badge from "$lib/components/ui/Badge.svelte";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import type { SolutionPreview } from "$lib/types/job";
   import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP } from "$lib/utils/solution-utils";
@@ -66,14 +65,13 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_tabindex -->
 <div
   class="card compact-card group p-3 relative transition-all duration-200 cursor-pointer
     {isSelected ? 'card-selected' : ''}
     {justSelected ? 'selection-pulse' : ''}
     {(disabled || maxReached) && !isSelected ? 'opacity-60 cursor-default' : ''}"
-  role={onSelect ? "option" : "article"}
-  aria-selected={onSelect ? isSelected : undefined}
+  role="button"
+  aria-pressed={onSelect ? isSelected : undefined}
   aria-label="Solution: {solution.solution_name}"
   tabindex={0}
   onclick={handleCardClick}
@@ -124,7 +122,9 @@
 
       <!-- Badges row -->
       <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-        <Badge variant={superpower.variant} size="sm">{superpower.label}</Badge>
+        {#if superpower}
+          <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
+        {/if}
         {#if solution.project_type}
           <span class="text-xs px-2 py-0.5 rounded-full bg-bg-elevated border border-border text-text-muted">
             {solution.project_type}
@@ -205,4 +205,19 @@
       animation: none;
     }
   }
+
+  .superpower-tag {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1.2;
+    padding-left: 0.5rem;
+    border-left: 2px solid currentColor;
+  }
+  .superpower-tag-success { color: var(--color-success-dark); }
+  .superpower-tag-accent { color: var(--color-accent-dark); }
+  .superpower-tag-info { color: var(--color-secondary-dark); }
+  .superpower-tag-warning { color: var(--color-warning-dark); }
 </style>

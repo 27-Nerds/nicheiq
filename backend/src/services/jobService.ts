@@ -1,7 +1,7 @@
 import { prisma } from './db.js';
 import { JobStatus, StageStatus, AssetType, Prisma } from '@prisma/client';
 import { PIPELINE_STAGES, TOTAL_STAGES } from '../types/job.js';
-import { determineFailedStage, refundForStage } from './creditService.js';
+import { determineFailedStage, refundForStage, refundForRegenerationStage } from './creditService.js';
 
 /**
  * Create a new research job
@@ -305,7 +305,7 @@ export async function failJob(
   // Check if job is already FAILED (idempotency)
   const existingJob = await prisma.job.findUnique({
     where: { id: jobId },
-    select: { status: true },
+    select: { status: true, regenerationCount: true },
   });
 
   if (!existingJob) {
@@ -349,6 +349,14 @@ export async function failJob(
       const refund = await refundForStage(jobId, failedStage);
       if (refund) {
         console.log(`[JobService] Auto-refunded ${Math.abs(refund.amount)} credits for failed job ${jobId} stage ${failedStage}`);
+      }
+    } else if (existingJob.status === JobStatus.REGENERATING) {
+      // Numbered regeneration stage — use count from initial SELECT
+      if (existingJob.regenerationCount) {
+        const refund = await refundForRegenerationStage(jobId, existingJob.regenerationCount);
+        if (refund) {
+          console.log(`[JobService] Auto-refunded ${Math.abs(refund.amount)} credits for crashed regen job ${jobId}`);
+        }
       }
     }
   } catch (refundError) {
