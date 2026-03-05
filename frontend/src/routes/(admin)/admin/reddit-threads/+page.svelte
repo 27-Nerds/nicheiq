@@ -26,6 +26,19 @@
   let searchInput = $state("");
   let expandedRows = new SvelteSet<string>();
   let isCleaningUp = $state(false);
+  let showAllSubreddits = $state(false);
+  const VISIBLE_SUBREDDIT_COUNT = 10;
+
+  let shouldAutoExpand = $derived(
+    filters.subreddit !== '' &&
+    (stats?.bySubreddit ?? []).findIndex((s: { name: string }) => s.name === filters.subreddit) >= VISIBLE_SUBREDDIT_COUNT
+  );
+
+  let visibleSubreddits = $derived(
+    (showAllSubreddits || shouldAutoExpand)
+      ? stats?.bySubreddit ?? []
+      : (stats?.bySubreddit ?? []).slice(0, VISIBLE_SUBREDDIT_COUNT)
+  );
 
   $effect(() => {
     searchInput = filters.q;
@@ -186,7 +199,7 @@
       <div class="mb-6">
         <h3 class="text-sm font-medium text-text-muted mb-2">By Subreddit</h3>
         <div class="flex flex-wrap gap-2">
-          {#each stats.bySubreddit as sub}
+          {#each visibleSubreddits as sub}
             <button
               onclick={() => filterBySubreddit(sub.name)}
               class="px-3 py-1 text-sm rounded-full border transition-colors
@@ -198,6 +211,16 @@
               <span class="ml-1 text-xs opacity-70">{sub.count}</span>
             </button>
           {/each}
+          {#if (stats.bySubreddit?.length ?? 0) > VISIBLE_SUBREDDIT_COUNT && !shouldAutoExpand}
+            <button
+              onclick={() => showAllSubreddits = !showAllSubreddits}
+              class="px-3 py-1 text-sm rounded-full border border-dashed border-border text-text-muted hover:text-text-primary hover:border-accent/30 transition-colors"
+            >
+              {showAllSubreddits
+                ? 'Show less'
+                : `+${stats.bySubreddit.length - VISIBLE_SUBREDDIT_COUNT} more`}
+            </button>
+          {/if}
         </div>
       </div>
     {/if}

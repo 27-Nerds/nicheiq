@@ -1,7 +1,6 @@
 <script lang="ts">
   import { intersect } from "$lib/actions/intersect";
   import {
-    Check,
     ShieldCheck,
     Waypoints,
     TrendingUp,
@@ -10,15 +9,13 @@
     Clock,
     ArrowRight,
     MessageSquare,
-    Gift,
-    Plus,
-    Star,
-    Layers,
+    Check,
   } from "lucide-svelte";
 
   import type { CtaConfig } from "$lib/types/cta";
   import type { TokenPackage } from "$lib/types/billing";
   import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
+  import PricingCard from "$lib/components/ui/PricingCard.svelte";
 
   interface Props {
     session?: { user?: { name?: string | null; email?: string | null } } | null;
@@ -53,6 +50,28 @@
   function formatPrice(cents: number): string {
     const dollars = cents / 100;
     return dollars % 1 === 0 ? `$${dollars}` : `$${dollars.toFixed(2)}`;
+  }
+
+  function fallbackToPackage(tier: { name: string; reports: number; price: number; popular: boolean }): TokenPackage {
+    return {
+      id: tier.name.toLowerCase(),
+      name: tier.name,
+      credits: tier.reports,
+      priceInCents: tier.price * 100,
+      isPopular: tier.popular,
+      description: `~${tier.reports} ${tier.reports === 1 ? "report" : "reports"}`,
+      creditsInfo: tier.reports > 1 ? `$${(tier.price / tier.reports).toFixed(0)}/report` : null,
+      promoLine: "+1 FREE Discovery (up to 10 ideas)",
+      tagline: null,
+      includesLabel: null,
+      features: null,
+      ctaText: null,
+      badgeLabel: null,
+      promoPriceInCents: null,
+      promoBadge: null,
+      ctaSubText: null,
+      ctaSubUrl: null,
+    };
   }
 </script>
 
@@ -89,94 +108,9 @@
         <div
           class="animate-fade-in delay-300 grid grid-cols-1 {packages.length === 1 ? 'md:grid-cols-1 max-w-sm' : packages.length === 2 ? 'md:grid-cols-2 max-w-3xl' : 'md:grid-cols-3 max-w-5xl'} gap-6 lg:gap-8 mx-auto"
         >
-          {#each packages as pkg}
-            {@const badgeText = pkg.badgeLabel || (pkg.isPopular ? 'Most Popular' : null)}
-            <div
-              class="relative bg-bg-elevated border rounded-xl overflow-hidden transition-transform hover:scale-[1.02] flex flex-col {pkg.isPopular
-                ? 'border-accent md:-translate-y-2'
-                : 'border-border'}"
-            >
-              <!-- Badge -->
-              {#if badgeText}
-                <div
-                  class="absolute top-0 right-0 bg-accent text-white text-xs font-semibold px-3 py-1 rounded-bl-lg"
-                >
-                  {badgeText}
-                </div>
-              {/if}
-
-              <!-- Promo Badge -->
-              {#if pkg.promoBadge}
-                <div
-                  class="absolute top-0 left-0 bg-success text-white text-xs font-semibold px-3 py-1 rounded-br-lg"
-                >
-                  {pkg.promoBadge}
-                </div>
-              {/if}
-
-              <!-- Content area -->
-              <div class="p-7 sm:p-9 flex-1 text-left">
-                <p class="text-sm text-text-muted font-medium">{pkg.name}</p>
-
-                <div class="flex items-baseline gap-2 mt-2">
-                  {#if pkg.promoPriceInCents}
-                    <span class="text-lg font-display text-text-muted line-through">{formatPrice(pkg.priceInCents)}</span>
-                    <span class="text-[2.75rem] sm:text-5xl font-display font-bold text-success leading-tight">{formatPrice(pkg.promoPriceInCents)}</span>
-                  {:else}
-                    <span class="text-[2.75rem] sm:text-5xl font-display font-bold text-text-primary leading-tight">{formatPrice(pkg.priceInCents)}</span>
-                  {/if}
-                </div>
-
-                <p class="text-sm text-text-muted mt-1">
-                  {pkg.credits} {pkg.credits === 1 ? "credit" : "credits"}
-                </p>
-
-                {#if pkg.tagline}
-                  <p class="text-base sm:text-lg font-bold text-text-primary mt-3">{pkg.tagline}</p>
-                {/if}
-                {#if pkg.description}
-                  <p class="text-sm text-text-muted mt-1.5 leading-relaxed">{pkg.description}</p>
-                {/if}
-
-                {#if pkg.includesLabel}
-                  <div class="mt-6 flex items-center gap-2">
-                    <span class="flex items-center gap-1.5 text-xs font-medium text-text-muted bg-accent/[0.06] px-2 py-0.5 rounded">
-                      <Layers class="w-4 h-4 text-accent" />
-                      {pkg.includesLabel}
-                    </span>
-                  </div>
-                {/if}
-
-                <!-- Features -->
-                {#if pkg.features && pkg.features.length > 0}
-                  <div class="mt-5 space-y-4">
-                    {#each pkg.features as feature}
-                      <div class="flex items-center gap-3 {feature.highlight ? 'text-accent font-semibold' : 'text-text-secondary'}">
-                        <span class="flex-shrink-0 {feature.highlight ? 'text-accent' : 'text-accent/70'}">
-                          {#if feature.icon === 'star'}
-                            <Star class="w-5 h-5" />
-                          {:else if feature.icon === 'plus'}
-                            <Plus class="w-5 h-5" />
-                          {:else}
-                            <Check class="w-5 h-5" />
-                          {/if}
-                        </span>
-                        <span class="text-sm sm:text-base leading-snug">{feature.text}</span>
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-
-                {#if pkg.promoLine}
-                  <div class="flex items-center gap-1.5 text-xs font-semibold text-accent bg-accent/[0.06] border border-accent/20 rounded-full px-3 py-1.5 mt-5 w-fit">
-                    <Gift class="w-3.5 h-3.5 flex-shrink-0" />
-                    <span>{pkg.promoLine}</span>
-                  </div>
-                {/if}
-              </div>
-
-              <!-- CTA area -->
-              <div class="px-7 sm:px-9 pb-7 sm:pb-9 mt-auto">
+          {#each packages as pkg (pkg.id)}
+            <PricingCard {pkg} variant="full">
+              {#snippet actions()}
                 {#if session?.user}
                   <a
                     href="/dashboard"
@@ -200,12 +134,8 @@
                     <CtaIcon name={pricingCta?.icon} class="w-4 h-4" />
                   </a>
                 {/if}
-
-                {#if pkg.ctaSubText && pkg.ctaSubUrl}
-                  <a href={pkg.ctaSubUrl} class="block text-xs text-accent hover:underline mt-3">{pkg.ctaSubText}</a>
-                {/if}
-              </div>
-            </div>
+              {/snippet}
+            </PricingCard>
           {/each}
         </div>
 
@@ -214,42 +144,10 @@
         <div
           class="animate-fade-in delay-300 grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto"
         >
-          {#each fallbackTiers as tier}
-            <div
-              class="relative bg-bg-elevated border rounded-xl overflow-hidden transition-transform hover:scale-[1.02] {tier.popular
-                ? 'border-accent md:-translate-y-2'
-                : 'border-border'}"
-            >
-              {#if tier.popular}
-                <div
-                  class="absolute top-0 right-0 bg-accent text-white text-xs font-semibold px-3 py-1 rounded-bl-lg"
-                >
-                  Most Popular
-                </div>
-              {/if}
-
-              <div class="p-7 sm:p-9 pb-5 text-left">
-                <p class="text-sm text-text-muted font-medium">{tier.name}</p>
-                <div class="flex items-baseline gap-1 mt-2">
-                  <span class="text-[2.75rem] sm:text-5xl font-display font-bold text-text-primary leading-tight">${tier.price}</span>
-                </div>
-                <p class="text-sm text-text-muted mt-1">
-                  <span class="text-text-muted">~</span>{tier.reports}
-                  {tier.reports === 1 ? "report" : "reports"}<sup class="text-accent text-[10px] ml-0.5 relative -top-1">*</sup>
-                </p>
-                {#if tier.reports > 1}
-                  <p class="text-text-muted text-xs mt-1">
-                    ${(tier.price / tier.reports).toFixed(0)}/report
-                  </p>
-                {/if}
-              </div>
-
-              <div class="px-7 sm:px-9 pb-7 sm:pb-9">
-                <div class="flex items-center gap-1.5 text-xs font-semibold text-accent bg-accent/[0.06] border border-accent/20 rounded-full px-3 py-1.5 mb-3 w-fit">
-                  <Gift class="w-3.5 h-3.5 flex-shrink-0" />
-                  <span>+1 FREE Discovery</span>
-                  <span class="text-text-muted font-normal">(up to 10 ideas)</span>
-                </div>
+          {#each fallbackTiers as tier (tier.name)}
+            {@const pkg = fallbackToPackage(tier)}
+            <PricingCard {pkg} variant="full">
+              {#snippet actions()}
                 {#if session?.user}
                   <a
                     href="/dashboard"
@@ -275,8 +173,8 @@
                     <CtaIcon name={pricingCta?.icon} class="w-4 h-4" />
                   </a>
                 {/if}
-              </div>
-            </div>
+              {/snippet}
+            </PricingCard>
           {/each}
         </div>
       {/if}
