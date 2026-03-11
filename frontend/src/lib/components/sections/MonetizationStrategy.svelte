@@ -42,12 +42,10 @@
   // Parse traffic source breakdown for display
   const trafficSources = $derived.by(() => {
     if (!trafficData?.traffic_source_breakdown) return [];
-    return Object.entries(trafficData.traffic_source_breakdown).map(
-      ([source, percentage]) => ({
-        source,
-        percentage,
-      }),
-    );
+    return trafficData.traffic_source_breakdown.map((item) => ({
+      source: item.source,
+      percentage: item.percentage,
+    }));
   });
 
   // Detect N/A values for muted styling

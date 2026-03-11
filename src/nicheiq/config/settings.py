@@ -101,6 +101,10 @@ class Settings(BaseSettings):
         default="gpt-4.1-mini",
         description="Model for pain point analysis/validation in Stage 6 (use non-reasoning model to allow max_tokens)"
     )
+    competitor_extraction_llm: str = Field(
+        default="gpt-4o-mini",
+        description="Model for extracting product/brand/tool names from social discussion sentences"
+    )
     pain_solution_mapping_llm: str = Field(
         default="gpt-4o-mini",
         description="Model for pain-to-solution mapping in Stage 10 report generation (gpt-4o-mini recommended for cost efficiency)"

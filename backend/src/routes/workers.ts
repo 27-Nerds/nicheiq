@@ -1137,7 +1137,7 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
 
     // Fetch existing idea names for this category (case-insensitive check)
     const existingIdeas = await prisma.catalogIdea.findMany({
-      where: { categoryId: data.category_id },
+      where: { categoryId: data.category_id, isActive: true },
       select: { solutionName: true },
     });
     const existingNames = new Set(existingIdeas.map(i => i.solutionName.toLowerCase()));

@@ -169,6 +169,7 @@ def process_job(job_data: dict) -> None:
                 pain_points=job_data["pain_points"],
                 niche=job_data.get("niche", ""),
                 parent_category_name=job_data.get("parent_category_name", ""),
+                existing_ideas=job_data.get("existing_ideas", []),
             )
         else:
             # Default research task

@@ -113,7 +113,7 @@ export interface TrafficMonetization {
 	solution_name: string;
 	monetization_model: string;
 	estimated_monthly_pageviews: string;
-	traffic_source_breakdown: Record<string, string>;
+	traffic_source_breakdown: Array<{ source: string; percentage: string }>;
 	estimated_cpm_rate?: string;
 	estimated_monthly_ad_revenue: string;
 	recommended_ad_networks: string[];
@@ -549,7 +549,7 @@ export interface PricingStrategy {
 	value_proposition_delta?: string;
 	pricing_confidence?: 'High' | 'Medium' | 'Low';
 	wtp_validation?: string;
-	market_segment_pricing?: Record<string, string | null>;
+	market_segment_pricing?: Array<{ segment: string; price: string | null }>;
 }
 
 export interface MarketSizing {

@@ -377,10 +377,6 @@ RULES:
                     model=settings.brainstorm_llm,
                 )
 
-            # Collect Knowledge objects for cleanup
-            if getattr(unified_crew, '_crew_knowledge', None):
-                self.register_knowledge(unified_crew._crew_knowledge)
-
             # Build/update state.competitive_analysis
             if self.state.competitive_analysis is None:
                 # Generate strategic recommendations from landscape data
@@ -1274,8 +1270,10 @@ RULES:
                         completed_stages = self.checkpoint_mgr.get_completed_stages()
                     else:
                         logger.info("Skipping Stage 7 (Pricing Validation) - prerequisites not met")
+                        self._skip_stage(7, "Pricing Validation", "Prerequisites not met")
                 else:
                     logger.info("Skipping Stage 7 (Pricing Validation) - awaiting Stage 6")
+                    self._skip_stage(7, "Pricing Validation", "Awaiting SEO strategy")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 7 in self.state.skipped_stages else "completed"
@@ -1291,8 +1289,10 @@ RULES:
                         completed_stages = self.checkpoint_mgr.get_completed_stages()
                     else:
                         logger.info("Skipping Stage 8 (Traffic Monetization) - prerequisites not met")
+                        self._skip_stage(8, "Traffic Monetization", "Prerequisites not met")
                 else:
                     logger.info("Skipping Stage 8 (Traffic Monetization) - awaiting Stage 7")
+                    self._skip_stage(8, "Traffic Monetization", "Awaiting pricing validation")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 8 in self.state.skipped_stages else "completed"
@@ -1308,8 +1308,10 @@ RULES:
                         completed_stages = self.checkpoint_mgr.get_completed_stages()
                     else:
                         logger.info("Skipping Stage 9 (Market Sizing) - prerequisites not met")
+                        self._skip_stage(9, "Market Sizing", "Prerequisites not met")
                 else:
                     logger.info("Skipping Stage 9 (Market Sizing) - awaiting Stage 7")
+                    self._skip_stage(9, "Market Sizing", "Awaiting pricing validation")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 9 in self.state.skipped_stages else "completed"
@@ -1324,6 +1326,7 @@ RULES:
                     completed_stages = self.checkpoint_mgr.get_completed_stages()
                 else:
                     logger.info("Skipping Stage 10 (Solution Refinement) - prerequisites not met")
+                    self._skip_stage(10, "Solution Refinement", "Prerequisites not met")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 10 in self.state.skipped_stages else "completed"
@@ -1337,6 +1340,7 @@ RULES:
                     self.stage_11_trend_longevity()
                 else:
                     logger.info("Skipping Stage 11 (Trend Longevity) - prerequisites not met")
+                    self._skip_stage(11, "Trend Analysis", "Prerequisites not met")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 11 in self.state.skipped_stages else "completed"
@@ -1350,6 +1354,7 @@ RULES:
                     self.stage_12_refine_seo_scores()
                 else:
                     logger.info("Skipping Stage 12 (SEO Refinement) - prerequisites not met")
+                    self._skip_stage(12, "SEO Score Refinement", "Prerequisites not met")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 12 in self.state.skipped_stages else "completed"
@@ -1363,6 +1368,7 @@ RULES:
                     self.stage_13_research_data_sources()
                 else:
                     logger.info("Skipping Stage 13 (Data Source Research) - prerequisites not met")
+                    self._skip_stage(13, "Data Source Research", "Prerequisites not met")
             else:
                 if skip_bulk_replay:
                     status = "skipped" if 13 in self.state.skipped_stages else "completed"
@@ -2295,6 +2301,23 @@ Return a valid JSON object with this structure:
             f"{len(medium_priority)} medium-priority pain points"
         )
 
+        # Compute competitor mentions once and cache for regeneration
+        if not self.state.competitor_mentions_formatted and self.state.social_content:
+            from nicheiq.utils.crew_helpers.content_preparers import format_competitor_mentions_for_prompt
+            known_tools = (
+                self.state.audience_mapping.tools_currently_used
+                if self.state.audience_mapping and self.state.audience_mapping.tools_currently_used
+                else None
+            )
+            self.state.competitor_mentions_formatted = format_competitor_mentions_for_prompt(
+                self.state.social_content, known_tools=known_tools
+            )
+            self.checkpoint_mgr.save_stage(
+                "stage_5_competitor_mentions",
+                {"text": self.state.competitor_mentions_formatted}
+            )
+            logger.info(f"Cached competitor mentions ({len(self.state.competitor_mentions_formatted)} chars)")
+
         try:
             # Initialize UnifiedSolutionCrew with audience intelligence from Stage 6.5
             unified_crew = UnifiedSolutionCrew(
@@ -2305,6 +2328,7 @@ Return a valid JSON object with this structure:
                 audience_mapping=self.state.audience_mapping,
                 checkpoint_mgr=self.checkpoint_mgr,
                 job_id=self.state.job_id,
+                competitor_mentions_text=self.state.competitor_mentions_formatted,
             )
 
             # Execute complete pipeline
@@ -2313,10 +2337,6 @@ Return a valid JSON object with this structure:
                 refined_solutions,
                 solution_selection,
             ) = unified_crew.execute_pipeline(skip_selection=skip_selection)
-
-            # Collect Knowledge objects for cleanup
-            if getattr(unified_crew, '_crew_knowledge', None):
-                self.register_knowledge(unified_crew._crew_knowledge)
 
             # Record crew cost
             if unified_crew.usage_metrics:
@@ -3047,6 +3067,7 @@ Return a valid JSON object with this structure:
             logger.warning("No solution selected - skipping SEO strategy")
             self.state.seo_strategy_report = None
             self.state.current_stage = 7
+            self._skip_stage(6, "SEO & Keyword Strategy", "No solution selected")
             self.checkpoint_mgr.save_stage("stage_6_seo_strategy", {"skipped": True, "reason": "No solution selected"})
             return
 
@@ -3055,6 +3076,7 @@ Return a valid JSON object with this structure:
             logger.warning("Insufficient data for SEO strategy - skipping")
             self.state.seo_strategy_report = None
             self.state.current_stage = 7
+            self._skip_stage(6, "SEO & Keyword Strategy", "Insufficient data for SEO strategy")
             self.checkpoint_mgr.save_stage("stage_6_seo_strategy", {"skipped": True, "reason": "Insufficient data for SEO strategy"})
             return
 
@@ -3072,6 +3094,7 @@ Return a valid JSON object with this structure:
             )
             self.state.seo_strategy_report = None
             self.state.current_stage = 7
+            self._skip_stage(6, "SEO & Keyword Strategy", "Selected solution not found")
             self.checkpoint_mgr.save_stage("stage_6_seo_strategy", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
@@ -3278,6 +3301,7 @@ Return a valid JSON object with this structure:
                 )
                 logger.warning("Skipping SEO strategy generation - insufficient keyword data")
                 self.state.current_stage = 7
+                self._skip_stage(6, "SEO & Keyword Strategy", f"Insufficient keyword data ({len(quality_validated)} keywords)")
                 self.checkpoint_mgr.save_stage("stage_6_seo_strategy", {
                     "skipped": True,
                     "reason": f"Insufficient validated keywords ({len(quality_validated)} < 5)"
@@ -3442,6 +3466,7 @@ Return a valid JSON object with this structure:
             )
         except Exception as e:
             logger.error(f"SEO strategy generation failed: {e}")
+            self._skip_stage(6, "SEO & Keyword Strategy", "SEO strategy generation failed")
             raise RuntimeError(f"Stage 6 failed: SEO strategy generation failed - {e}") from e
 
         # Update stage first, then checkpoint (so resume skips this stage)
@@ -4788,7 +4813,7 @@ Return a valid JSON object with this structure:
             self.state.current_stage = 11
 
             # Mark stage complete with tracking (used fallback since refinement failed)
-            self._mark_stage_complete(8.7, used_fallback=True)
+            self._skip_stage(10, "Solution Refinement", "Refinement failed")
 
             self.checkpoint_mgr.save_stage("stage_10_solution_refinement", {"skipped": True, "reason": "refinement_failed"})
 
@@ -5137,6 +5162,7 @@ Return a valid JSON object with this structure:
 
             # Mark stage complete with tracking (used fallback since refinement failed)
             self._mark_stage_complete(12, used_fallback=True)
+            self.checkpoint_mgr.save_stage("stage_12_seo_refinement", {"skipped": True, "reason": str(e)})
 
     @listen(stage_12_refine_seo_scores)
     def stage_13_research_data_sources(self):
@@ -5157,7 +5183,7 @@ Return a valid JSON object with this structure:
             logger.info("No solution selected - skipping data source research")
             self.state.data_source_research = None
             self.state.current_stage = 14
-            self._mark_stage_complete(13)
+            self._skip_stage(13, "Data Source Research", "No solution selected")
             self.checkpoint_mgr.save_stage("stage_13_data_sources", {"skipped": True, "reason": "No solution selected"})
             return
 
@@ -5175,7 +5201,7 @@ Return a valid JSON object with this structure:
             )
             self.state.data_source_research = None
             self.state.current_stage = 14
-            self._mark_stage_complete(13)
+            self._skip_stage(13, "Data Source Research", f"Selected solution '{selected_solution_name}' not found")
             self.checkpoint_mgr.save_stage("stage_13_data_sources", {"skipped": True, "reason": f"Selected solution '{selected_solution_name}' not found"})
             return
 
@@ -5187,7 +5213,7 @@ Return a valid JSON object with this structure:
             )
             self.state.data_source_research = None
             self.state.current_stage = 14
-            self._mark_stage_complete(13)
+            self._skip_stage(13, "Data Source Research", "Solution doesn't require data aggregation")
             self.checkpoint_mgr.save_stage("stage_13_data_sources", {"skipped": True, "reason": "Solution doesn't require data aggregation"})
             return
 

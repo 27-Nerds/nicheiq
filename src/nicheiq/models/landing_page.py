@@ -233,6 +233,27 @@ class VisualSurprise(BaseModel):
     )
 
 
+class SectionWeight(BaseModel):
+    """Visual weight for a page section."""
+
+    section: str = Field(..., description="Section name, e.g. 'hero', 'problem', 'features'")
+    weight: str = Field(..., description="Visual weight: 'dominant', 'standard', or 'subtle'")
+
+
+class SectionContent(BaseModel):
+    """Content composition for a page section."""
+
+    section: str = Field(..., description="Section name, e.g. 'hero', 'problem'")
+    composition: str = Field(..., description="Content description, e.g. 'headline + form + artifact'")
+
+
+class SectionItem(BaseModel):
+    """Item within a landing page section (feature, pain point, step, etc.)."""
+
+    title: str = Field(..., description="Item title")
+    description: str = Field(..., description="Item description")
+
+
 class VisualDesignSpec(BaseModel):
     """Task 2.5 output: Visual design specifications from Visual Designer.
 
@@ -266,9 +287,9 @@ class VisualDesignSpec(BaseModel):
     )
 
     # Section Hierarchy
-    section_visual_weights: dict[str, str] = Field(
+    section_visual_weights: list[SectionWeight] = Field(
         ...,
-        description="Visual weight per section: 'hero': 'dominant', 'problem': 'secondary', etc. Options: 'dominant', 'standard', 'subtle'"
+        description="Visual weight per section as a list of objects. Options for weight: 'dominant', 'standard', 'subtle'"
     )
 
     # Animation Personality
@@ -294,9 +315,9 @@ class VisualDesignSpec(BaseModel):
         description="Hero content: what elements belong (headline, form, artifact) and what doesn't (feature cards if artifact demonstrates them)"
     )
 
-    section_composition: dict[str, str] = Field(
+    section_composition: list[SectionContent] = Field(
         ...,
-        description="Per-section content: 'hero': 'headline + form + artifact, no feature cards', 'problem': 'single pain point callout'"
+        description="Per-section content as a list of objects, e.g. [{section: 'hero', composition: 'headline + form + artifact, no feature cards'}]"
     )
 
     content_redundancy_notes: str = Field(
@@ -390,9 +411,9 @@ class LandingPageSection(BaseModel):
         default=None,
         description="Call-to-action button text if section has a CTA"
     )
-    items: Optional[list[dict]] = Field(
+    items: Optional[list[SectionItem]] = Field(
         default=None,
-        description="List items for features, pain points, steps, etc. Each item MUST be an object with 'title' and 'description' keys. Example: [{'title': 'Feature 1', 'description': 'Details...'}]"
+        description="List items for features, pain points, steps, etc. Each item has 'title' and 'description' fields."
     )
 
 

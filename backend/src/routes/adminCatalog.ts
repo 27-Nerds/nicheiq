@@ -581,7 +581,17 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       affectedSegments: pp.affectedSegments,
     }));
 
-    await enqueueCatalogIdeasJob(job.id, categoryId, painPointData, niche, category.parent?.name || '');
+    // Query existing ideas for this category to avoid regenerating duplicates
+    const existingIdeas = await prisma.catalogIdea.findMany({
+      where: { categoryId },
+      select: { solutionName: true, description: true },
+    });
+    const existingIdeasMapped = existingIdeas.map(i => ({
+      name: i.solutionName,
+      description: i.description || '',
+    }));
+
+    await enqueueCatalogIdeasJob(job.id, categoryId, painPointData, niche, category.parent?.name || '', existingIdeasMapped);
 
     res.json({ jobId: job.id });
   } catch (error) {
@@ -719,5 +729,18 @@ adminCatalogRouter.get('/categories/:id/pain-points', async (req: AuthenticatedR
   } catch (error) {
     console.error('Failed to list pain points:', error);
     res.status(500).json({ error: 'Failed to list pain points' });
+  }
+});
+
+adminCatalogRouter.get('/categories/:id/ideas', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const ideas = await prisma.catalogIdea.findMany({
+      where: { categoryId: req.params.id, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.json({ ideas });
+  } catch (error) {
+    console.error('Failed to list ideas:', error);
+    res.status(500).json({ error: 'Failed to list ideas' });
   }
 });

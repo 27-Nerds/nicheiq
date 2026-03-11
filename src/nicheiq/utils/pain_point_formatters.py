@@ -119,7 +119,23 @@ def format_pain_points_for_agents(
                 f"- Mentions: {pp.mention_count}"
             ]
             if include_quotes and pp.representative_quotes:
-                parts.append(f"- Key Quote: \"{pp.representative_quotes[0]}\"")
+                # Select 2 diverse quotes: pick longest, then longest non-overlapping
+                quotes = pp.representative_quotes
+                sorted_by_len = sorted(quotes, key=len, reverse=True)
+                selected = [sorted_by_len[0]]
+                if len(sorted_by_len) > 1:
+                    # Pick second quote with least word overlap
+                    first_words = set(sorted_by_len[0].lower().split())
+                    best_idx, best_overlap = 1, 1.0
+                    for i, q in enumerate(sorted_by_len[1:], 1):
+                        q_words = set(q.lower().split())
+                        overlap = len(first_words & q_words) / max(len(q_words), 1)
+                        if overlap < best_overlap:
+                            best_overlap = overlap
+                            best_idx = i
+                    selected.append(sorted_by_len[best_idx])
+                for q in selected:
+                    parts.append(f"  - \"{q}\"")
             lines.append("\n".join(parts))
         return "\n\n".join(lines) if lines else ""
 

@@ -45,11 +45,11 @@ export async function listCategories(activeOnly = false) {
         where: childWhere,
         orderBy: { sortOrder: 'asc' },
         include: {
-          _count: { select: { painPoints: true, ideas: true } },
+          _count: { select: { painPoints: { where: { isActive: true } }, ideas: { where: { isActive: true } } } },
         },
       },
       superGroup: { select: { id: true, name: true, slug: true, sortOrder: true } },
-      _count: { select: { painPoints: true, ideas: true } },
+      _count: { select: { painPoints: { where: { isActive: true } }, ideas: { where: { isActive: true } } } },
     },
     orderBy: { sortOrder: 'asc' },
   });
@@ -379,7 +379,7 @@ export async function listCachedItems(params: {
 
     if (itemType === 'idea') {
       const records = await prisma.catalogIdea.findMany({
-        where: { sourceJobId: { in: jobIds } },
+        where: { sourceJobId: { in: jobIds }, isActive: true },
         select: { id: true, sourceJobId: true, sourceItemIndex: true },
       });
       for (const r of records) {
@@ -387,7 +387,7 @@ export async function listCachedItems(params: {
       }
     } else {
       const records = await prisma.catalogPainPoint.findMany({
-        where: { sourceJobId: { in: jobIds } },
+        where: { sourceJobId: { in: jobIds }, isActive: true },
         select: { id: true, sourceJobId: true, sourceItemIndex: true },
       });
       for (const r of records) {
@@ -666,7 +666,7 @@ export async function depublishIdea(id: string) {
   if (!idea) return null;
 
   await prisma.$transaction(async (tx) => {
-    await tx.catalogIdea.delete({ where: { id } });
+    await tx.catalogIdea.update({ where: { id }, data: { isActive: false } });
 
     const result = await tx.catalogItemCache.updateMany({
       where: {
@@ -678,7 +678,35 @@ export async function depublishIdea(id: string) {
     });
 
     if (result.count === 0) {
-      console.warn(`[depublishIdea] Cache entry not found for job=${idea.sourceJobId}, itemIndex=${idea.sourceItemIndex}`);
+      // Generated item with no cache entry — create one so it appears in Curate tab
+      await tx.catalogItemCache.upsert({
+        where: {
+          jobId_itemType_itemIndex: {
+            jobId: idea.sourceJobId,
+            itemType: 'idea',
+            itemIndex: idea.sourceItemIndex,
+          },
+        },
+        update: { isPublished: false, categoryId: null },
+        create: {
+          jobId: idea.sourceJobId,
+          userId: idea.publishedById,
+          niche: idea.sourceNiche,
+          itemType: 'idea',
+          itemIndex: idea.sourceItemIndex,
+          itemName: idea.solutionName,
+          itemDescription: idea.description,
+          itemScores: {
+            marketFitScore: idea.marketFitScore,
+            noveltyScore: idea.noveltyScore,
+            technicalFeasibility: idea.technicalFeasibility,
+          },
+          verdict: idea.sourceVerdict,
+          isPublished: false,
+          categoryId: null,
+          reportGeneratedAt: idea.sourceGeneratedAt,
+        },
+      });
     }
   });
 
@@ -690,7 +718,7 @@ export async function depublishPainPoint(id: string) {
   if (!pp) return null;
 
   await prisma.$transaction(async (tx) => {
-    await tx.catalogPainPoint.delete({ where: { id } });
+    await tx.catalogPainPoint.update({ where: { id }, data: { isActive: false } });
 
     const result = await tx.catalogItemCache.updateMany({
       where: {
@@ -702,7 +730,34 @@ export async function depublishPainPoint(id: string) {
     });
 
     if (result.count === 0) {
-      console.warn(`[depublishPainPoint] Cache entry not found for job=${pp.sourceJobId}, itemIndex=${pp.sourceItemIndex}`);
+      // Generated item with no cache entry — create one so it appears in Curate tab
+      await tx.catalogItemCache.upsert({
+        where: {
+          jobId_itemType_itemIndex: {
+            jobId: pp.sourceJobId,
+            itemType: 'painPoint',
+            itemIndex: pp.sourceItemIndex,
+          },
+        },
+        update: { isPublished: false, categoryId: null },
+        create: {
+          jobId: pp.sourceJobId,
+          userId: pp.publishedById,
+          niche: pp.sourceNiche,
+          itemType: 'painPoint',
+          itemIndex: pp.sourceItemIndex,
+          itemName: pp.title,
+          itemDescription: pp.description,
+          itemScores: {
+            severityScore: pp.severityScore,
+            willingnessToPayScore: pp.willingnessToPayScore,
+          },
+          verdict: null,
+          isPublished: false,
+          categoryId: null,
+          reportGeneratedAt: pp.sourceGeneratedAt,
+        },
+      });
     }
   });
 
@@ -893,7 +948,7 @@ export async function searchCatalog(query: string, limit = 5) {
         name: true,
         slug: true,
         parentId: true,
-        _count: { select: { ideas: true, painPoints: true, children: true } },
+        _count: { select: { ideas: { where: { isActive: true } }, painPoints: { where: { isActive: true } }, children: true } },
       },
       take: limit,
       orderBy: { name: 'asc' },

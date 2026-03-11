@@ -17,6 +17,8 @@ Benefits:
 - Solo-dev feasibility weighted in scoring
 """
 
+import re
+from collections import Counter
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
@@ -40,10 +42,7 @@ from ..models.solution_idea import (
 )
 from ..models.solution_selection import SolutionSelection
 from ..tools import CachedSerperDevTool, CompetitorQueryTool
-from ..utils.crew_helpers import (
-    prepare_competitor_intelligence,
-    prepare_pain_point_content,
-)
+from ..utils.crew_helpers.content_preparers import format_competitor_mentions_for_prompt
 from ..utils.validation import (
     create_diversity_guardrail,
     validate_competitive_analysis,
@@ -51,6 +50,26 @@ from ..utils.validation import (
     validate_raw_concepts,
     validate_solution_selection,
 )
+
+
+_NAME_STOP_WORDS = {"the", "a", "an", "app", "tool", "pro", "hub", "io", "ai", "my"}
+
+
+def _tokenize_name(name: str) -> list[str]:
+    """Tokenize a concept name into normalized fragments for frequency analysis.
+
+    Order: strip hyphens between alnum → split camelCase → split whitespace/underscores
+    → lowercase → filter stop words and short tokens.
+    """
+    # 1. Strip hyphens between alphanumeric chars (GLP-1 → GLP1, BPC-157 → BPC157)
+    result = re.sub(r"(?<=[A-Za-z0-9])-(?=[A-Za-z0-9])", "", name)
+    # 2. Split camelCase boundaries (SideEffect → Side Effect, GLP1Side → GLP1 Side)
+    result = re.sub(r"([a-z])([A-Z])", r"\1 \2", result)
+    result = re.sub(r"([0-9])([A-Z])", r"\1 \2", result)
+    # 3. Split on whitespace/underscores
+    tokens = re.split(r"[\s_]+", result)
+    # 4-5. Lowercase, filter stop words and tokens < 2 chars
+    return [t.lower() for t in tokens if len(t) >= 2 and t.lower() not in _NAME_STOP_WORDS]
 
 
 @CrewBase
@@ -62,7 +81,7 @@ class UnifiedSolutionCrew:
     - Output Pydantic models for structured data
     - Context chaining for automatic field preservation
     - Guardrails for validation
-    - Knowledge Sources for large datasets
+    - Direct context injection for pain points, competitors, and themes
     """
 
     agents_config = "config/unified_solution_agents.yaml"
@@ -77,6 +96,8 @@ class UnifiedSolutionCrew:
         audience_mapping: AudienceMappingResult | None = None,
         checkpoint_mgr: "CheckpointManager | None" = None,
         job_id: str | None = None,
+        existing_ideas: list[dict] | None = None,
+        competitor_mentions_text: str | None = None,
     ):
         """
         Initialize UnifiedSolutionCrew with pain points and optional context.
@@ -88,7 +109,12 @@ class UnifiedSolutionCrew:
             niche_context: Optional structured niche context with market segments and boundaries
             audience_mapping: Optional audience intelligence from AudienceMappingCrew
             checkpoint_mgr: Optional checkpoint manager for task-level saves
-            job_id: Optional job identifier for per-job ChromaDB collection isolation
+            job_id: Optional job identifier for tracking
+            existing_ideas: Optional list of dicts with "name", optional "description",
+                and optional "project_type" keys for previously generated ideas to
+                avoid duplicating
+            competitor_mentions_text: Optional pre-computed competitor mentions string
+                to skip LLM extraction on regeneration
         """
         self.pain_point_analysis = pain_point_analysis
         self.social_content = social_content
@@ -97,6 +123,9 @@ class UnifiedSolutionCrew:
         self.audience_mapping = audience_mapping
         self.checkpoint_mgr = checkpoint_mgr
         self.job_id = job_id
+        self.existing_ideas = existing_ideas or []
+        self.competitor_mentions_text = competitor_mentions_text
+        self.existing_idea_names = {i["name"].lower() for i in self.existing_ideas if i.get("name")}
 
         # Initialize search tool for competitive research
         self.search_tool = CachedSerperDevTool()
@@ -104,47 +133,12 @@ class UnifiedSolutionCrew:
         # Initialize competitor query generator tool
         self.query_tool = CompetitorQueryTool(niche_context=niche_context)
 
-        # Initialize knowledge sources
-        self.knowledge_sources = []
-
-        # Prepare pain point knowledge source (for Task 1)
-        if pain_point_analysis.pain_points:
-            pain_point_content = prepare_pain_point_content(pain_point_analysis)
-            from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
-
-            self.pain_point_knowledge = StringKnowledgeSource(
-                content=pain_point_content,
-                chunk_size=1500,
-                chunk_overlap=250
-            )
-            self.knowledge_sources.append(self.pain_point_knowledge)
-            logger.info(
-                f"Pain point knowledge source created ({len(pain_point_content)} chars) "
-                f"for {len(pain_point_analysis.pain_points)} pain points"
-            )
-
-        # Prepare competitor intelligence knowledge source (for Task 2)
-        if social_content and (social_content.reddit_posts or social_content.twitter_threads):
-            competitor_intel = prepare_competitor_intelligence(social_content)
-            if competitor_intel:
-                from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
-
-                self.competitor_knowledge = StringKnowledgeSource(
-                    content=competitor_intel,
-                    chunk_size=1000,
-                    chunk_overlap=150
-                )
-                self.knowledge_sources.append(self.competitor_knowledge)
-                logger.info(
-                    f"Competitor intelligence knowledge source created ({len(competitor_intel)} chars)"
-                )
-
         # Create diversity guardrail with allowed project types
         self._diversity_guardrail = create_diversity_guardrail(allowed_project_types)
 
         logger.info(
             f"UnifiedSolutionCrew initialized with {len(pain_point_analysis.pain_points)} pain points "
-            f"and {len(self.knowledge_sources)} knowledge sources"
+            f"(direct context injection, no RAG)"
         )
 
     # ========== AUDIENCE CONTEXT HELPER ==========
@@ -175,6 +169,103 @@ class UnifiedSolutionCrew:
             ) if self.audience_mapping.frustrations_with_existing else "Not available",
             "tools_currently_used": ", ".join(self.audience_mapping.tools_currently_used[:8]) if self.audience_mapping.tools_currently_used else "Not available",
         }
+
+    # ========== COMPETITOR MENTIONS HELPER ==========
+
+    def _format_competitor_mentions(self) -> str:
+        """Format competitor mentions from social content for direct prompt injection."""
+        if self.competitor_mentions_text:
+            return self.competitor_mentions_text
+        if not self.social_content:
+            return "No competitor data available"
+        known_tools = (
+            self.audience_mapping.tools_currently_used
+            if self.audience_mapping and self.audience_mapping.tools_currently_used
+            else None
+        )
+        return format_competitor_mentions_for_prompt(
+            self.social_content, known_tools=known_tools
+        )
+
+    # ========== BLACKLIST FORMATTING ==========
+
+    def _format_blacklist(self, compact: bool = False) -> str:
+        """Format existing ideas as a structured blacklist for prompt injection.
+
+        Args:
+            compact: If True, emit short format (names + summary only) for Task 2.
+                     If False, emit full format with descriptions for Task 1.
+
+        Returns:
+            Formatted blacklist string ready for YAML template injection.
+        """
+        if not self.existing_ideas:
+            return "None (first generation — no previously generated ideas)"
+
+        ideas = self.existing_ideas
+        n_ideas = len(ideas)
+
+        # --- Banned name fragments ---
+        all_tokens: list[str] = []
+        for idea in ideas:
+            all_tokens.extend(_tokenize_name(idea.get("name", "")))
+        token_counts = Counter(all_tokens)
+        freq_threshold = max(2, n_ideas // 3) if n_ideas < 9 else 3
+        banned = [t for t, c in token_counts.most_common() if c >= freq_threshold][:15]
+
+        # --- Adaptive description length ---
+        if n_ideas <= 15:
+            max_desc_len = 200
+        elif n_ideas <= 30:
+            max_desc_len = 150
+        else:
+            max_desc_len = 0  # summary one-liner only
+
+        # --- Build per-idea lines ---
+        lines: list[str] = []
+        for idea in ideas:
+            name = idea.get("name", "Unknown")
+            desc = idea.get("description", "")
+            project_type = idea.get("project_type", "")
+
+            # Summary one-liner: first sentence, capped at 80 chars
+            if desc:
+                # Split on ". " or " — "
+                first_sentence = re.split(r"\. | — ", desc)[0]
+                summary = first_sentence[:80].rstrip(".")
+            else:
+                summary = "(no description available)"
+
+            # Name with optional project type
+            name_part = f"{name} ({project_type})" if project_type else name
+
+            if compact:
+                lines.append(f"- {name_part} | summary: {summary}")
+            else:
+                if max_desc_len > 0 and desc:
+                    desc_truncated = desc[:max_desc_len] + ("..." if len(desc) > max_desc_len else "")
+                    lines.append(f"- {name_part} [summary: {summary}]: {desc_truncated}")
+                else:
+                    lines.append(f"- {name_part} [summary: {summary}]")
+
+        # --- Assemble output ---
+        parts: list[str] = []
+        if banned:
+            if compact:
+                parts.append(f"BANNED FRAGMENTS: {', '.join(banned)}")
+            else:
+                parts.append(
+                    f"BANNED NAME FRAGMENTS (do not reuse in new concept names):\n"
+                    f"{', '.join(banned)}"
+                )
+
+        if compact:
+            parts.append(f"EXISTING IDEAS ({n_ideas} total):")
+        else:
+            parts.append(f"ALL PREVIOUSLY GENERATED IDEAS ({n_ideas} total):")
+        parts.append("\n".join(lines))
+
+        return "\n\n".join(parts)
 
     # ========== AGENTS ==========
 
@@ -427,9 +518,6 @@ class UnifiedSolutionCrew:
         - Novelty scoring ensures innovation
         - Solo-dev feasibility weighted in scoring
         """
-        from ..utils.crew_helpers import create_knowledge
-        from ..utils.helpers import sanitize_collection_name
-
         embedder_config = {
             "provider": "openai",
             "config": {"model_name": "text-embedding-3-small"}
@@ -450,21 +538,6 @@ class UnifiedSolutionCrew:
             "process_type": "sequential",
             "embedder": embedder_config,
         }
-
-        # Create Knowledge with niche-specific collection name for isolation
-        self._crew_knowledge = None
-        if self.knowledge_sources:
-            niche = self.niche_context.niche_input if self.niche_context else "default"
-            collection_name = sanitize_collection_name(niche, "solution", self.job_id)
-            logger.info(f"Creating solution knowledge with collection: {collection_name}")
-            knowledge = create_knowledge(
-                sources=self.knowledge_sources,
-                embedder_config=embedder_config,
-                collection_name=collection_name,
-            )
-            if knowledge:
-                crew_config["knowledge"] = knowledge
-                self._crew_knowledge = knowledge
 
         return Crew(**crew_config)
 
@@ -554,6 +627,23 @@ class UnifiedSolutionCrew:
                 user_segments_formatted = "Not available"
                 logger.warning("No user segments available from pain point analysis")
 
+            # Format theme categories from content categorization
+            theme_categories_formatted = ""
+            if (self.pain_point_analysis.content_categorization and
+                self.pain_point_analysis.content_categorization.theme_categories):
+                themes = self.pain_point_analysis.content_categorization.theme_categories
+                theme_lines = []
+                for t in sorted(themes, key=lambda x: x.mention_count, reverse=True):
+                    keywords = ", ".join(f'"{k}"' for k in t.anchor_keywords[:6])
+                    theme_lines.append(
+                        f"- **{t.category_name}** ({t.mention_count} mentions): "
+                        f"keywords: [{keywords}] — {t.definition}"
+                    )
+                theme_categories_formatted = "\n".join(theme_lines)
+                logger.info(f"Passing {len(themes)} theme categories to solution ideation")
+            else:
+                theme_categories_formatted = "Not available"
+
             # Format audience context for task inputs
             audience_context = self._format_audience_context()
             if self.audience_mapping:
@@ -567,6 +657,15 @@ class UnifiedSolutionCrew:
             # When skipping selection, trim to first 3 tasks (remove Task 4)
             if skip_selection:
                 self._last_crew.tasks = self._last_crew.tasks[:3]
+
+            # Format existing ideas blacklist for prompt injection
+            if self.existing_ideas:
+                existing_ideas_blacklist = self._format_blacklist(compact=False)
+                existing_ideas_blacklist_compact = self._format_blacklist(compact=True)
+                logger.info(f"Injecting {len(self.existing_ideas)} existing ideas into blacklist prompt")
+            else:
+                existing_ideas_blacklist = "None (first generation — no previously generated ideas)"
+                existing_ideas_blacklist_compact = existing_ideas_blacklist
 
             crew_output = self._last_crew.kickoff(inputs={
                 "analysis_summary": self.pain_point_analysis.analysis_summary,
@@ -584,6 +683,12 @@ class UnifiedSolutionCrew:
                 "user_segments": user_segments_formatted,
                 # Audience intelligence from Stage 6.5
                 **audience_context,
+                # Existing ideas blacklist for dedup across regeneration runs
+                "existing_ideas_blacklist": existing_ideas_blacklist,
+                "existing_ideas_blacklist_compact": existing_ideas_blacklist_compact,
+                # Direct context injection (replaces RAG)
+                "competitor_mentions": self._format_competitor_mentions(),
+                "theme_categories": theme_categories_formatted,
             })
 
             # Access intermediate task outputs (CrewAI provides access via crew_output.tasks_outputs)

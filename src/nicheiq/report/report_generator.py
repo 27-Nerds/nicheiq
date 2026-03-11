@@ -57,6 +57,7 @@ from ..models.research_state import (
     RefinementHighlights,
     ResearchMetadata,
     ResearchState,
+    RevenueMilestone,
     SEOCalculationTransparency,
     StageTimingSummary,
     SubredditBreakdown,
@@ -519,30 +520,30 @@ class ReportGenerator:
 
             # --- Revenue milestones (evidence-based thresholds) ---
             revenue_milestones = [
-                {
-                    "traffic": "5,000 sessions/mo",
-                    "ad_revenue": f"${int(5000 * cpm_low / 1000)}-${int(5000 * cpm_high / 1000)}/mo",
-                    "unlock": "Ezoic, Mediavine Journey eligible (basic programmatic ads)",
-                    "total_potential": f"${int(5000 * cpm_low / 1000)}-${int(5000 * cpm_high * 1.3 / 1000)}/mo with affiliate",
-                },
-                {
-                    "traffic": "25,000 sessions/mo",
-                    "ad_revenue": f"${int(25000 * cpm_low / 1000)}-${int(25000 * cpm_high / 1000)}/mo",
-                    "unlock": "Raptive eligible ($10-$30 RPM), newsletter sponsors viable",
-                    "total_potential": f"${int(25000 * 10 / 1000)}-${int(25000 * 30 / 1000)}/mo with premium ads",
-                },
-                {
-                    "traffic": "50,000 sessions/mo",
-                    "ad_revenue": f"${int(50000 * 10 / 1000)}-${int(50000 * 30 / 1000)}/mo",
-                    "unlock": "Mediavine Official, premium RPMs ($10-$30), sponsored content",
-                    "total_potential": f"${int(50000 * 10 * 2 / 1000)}-${int(50000 * 30 * 2.5 / 1000)}/mo total",
-                },
-                {
-                    "traffic": "100,000 sessions/mo",
-                    "ad_revenue": f"${int(100000 * 10 / 1000)}-${int(100000 * 30 / 1000)}/mo",
-                    "unlock": "Sponsored posts ($1K-$5K/post for tech/B2B), digital products, consulting",
-                    "total_potential": f"${int(100000 * 10 * 2 / 1000)}-${int(100000 * 30 * 3 / 1000)}/mo total",
-                },
+                RevenueMilestone(
+                    traffic="5,000 sessions/mo",
+                    ad_revenue=f"${int(5000 * cpm_low / 1000)}-${int(5000 * cpm_high / 1000)}/mo",
+                    unlock="Ezoic, Mediavine Journey eligible (basic programmatic ads)",
+                    total_potential=f"${int(5000 * cpm_low / 1000)}-${int(5000 * cpm_high * 1.3 / 1000)}/mo with affiliate",
+                ),
+                RevenueMilestone(
+                    traffic="25,000 sessions/mo",
+                    ad_revenue=f"${int(25000 * cpm_low / 1000)}-${int(25000 * cpm_high / 1000)}/mo",
+                    unlock="Raptive eligible ($10-$30 RPM), newsletter sponsors viable",
+                    total_potential=f"${int(25000 * 10 / 1000)}-${int(25000 * 30 / 1000)}/mo with premium ads",
+                ),
+                RevenueMilestone(
+                    traffic="50,000 sessions/mo",
+                    ad_revenue=f"${int(50000 * 10 / 1000)}-${int(50000 * 30 / 1000)}/mo",
+                    unlock="Mediavine Official, premium RPMs ($10-$30), sponsored content",
+                    total_potential=f"${int(50000 * 10 * 2 / 1000)}-${int(50000 * 30 * 2.5 / 1000)}/mo total",
+                ),
+                RevenueMilestone(
+                    traffic="100,000 sessions/mo",
+                    ad_revenue=f"${int(100000 * 10 / 1000)}-${int(100000 * 30 / 1000)}/mo",
+                    unlock="Sponsored posts ($1K-$5K/post for tech/B2B), digital products, consulting",
+                    total_potential=f"${int(100000 * 10 * 2 / 1000)}-${int(100000 * 30 * 3 / 1000)}/mo total",
+                ),
             ]
 
             # Build model_copy update dict — always include methodology + growth trajectory

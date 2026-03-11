@@ -4,6 +4,7 @@
   import Badge from "$lib/components/ui/Badge.svelte";
   import { groupCategories } from "$lib/utils/catalog-utils";
   import { SvelteSet, SvelteMap } from "svelte/reactivity";
+  import CategoryItemsModal from "./CategoryItemsModal.svelte";
   import {
     ChevronRight,
     ChevronDown,
@@ -17,6 +18,7 @@
     Lightbulb,
     Check,
     Search,
+    Eye,
   } from "lucide-svelte";
 
   let { categories }: {
@@ -46,6 +48,32 @@
   const topLevelCategories = $derived(
     (categories || []).filter((c: any) => !c.parentId),
   );
+
+  // ============================================
+  // Category Items Modal state
+  // ============================================
+
+  let itemsModalOpen = $state(false);
+  let itemsModalCategoryId = $state("");
+  let itemsModalCategoryName = $state("");
+
+  const allChildCategories = $derived.by(() => {
+    const result: { id: string; name: string }[] = [];
+    for (const cat of categories || []) {
+      if (cat.children) {
+        for (const child of cat.children) {
+          result.push({ id: child.id, name: `${cat.name} > ${child.name}` });
+        }
+      }
+    }
+    return result;
+  });
+
+  function openItemsModal(childId: string, parentName: string, childName: string) {
+    itemsModalCategoryId = childId;
+    itemsModalCategoryName = `${parentName} > ${childName}`;
+    itemsModalOpen = true;
+  }
 
   // ============================================
   // Search + Filter state
@@ -1000,7 +1028,11 @@
                                 {#if pp === 0 && ideas === 0}
                                   <span class="text-xs text-text-muted italic">empty</span>
                                 {:else}
-                                  <span class="flex items-center gap-1">
+                                  <button
+                                    class="flex items-center gap-1 hover:bg-bg-elevated/50 rounded px-1 -mx-1 transition-colors cursor-pointer"
+                                    title="View & manage items"
+                                    onclick={(e) => { e.stopPropagation(); openItemsModal(child.id, parent.name, child.name); }}
+                                  >
                                     {#if pp > 0}
                                       <Badge variant="default" size="sm">{pp} pp</Badge>
                                     {:else}
@@ -1011,7 +1043,8 @@
                                     {:else}
                                       <span class="text-xs text-text-muted">&middot; 0 ideas</span>
                                     {/if}
-                                  </span>
+                                    <Eye class="w-3 h-3 text-text-muted" />
+                                  </button>
                                 {/if}
                               {/if}
                             </div>
@@ -1196,6 +1229,14 @@
     </div>
   </div>
 {/if}
+
+<CategoryItemsModal
+  bind:open={itemsModalOpen}
+  categoryId={itemsModalCategoryId}
+  categoryName={itemsModalCategoryName}
+  allCategories={allChildCategories}
+  onMutated={() => invalidateAll()}
+/>
 
 <!-- Generation toast notification -->
 {#if genToast}

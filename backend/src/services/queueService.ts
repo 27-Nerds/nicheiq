@@ -145,6 +145,7 @@ export async function enqueueCatalogIdeasJob(
   painPoints: Record<string, unknown>[],
   niche: string,
   parentCategoryName: string,
+  existingIdeas: Array<{name: string, description: string}> = [],
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -152,6 +153,7 @@ export async function enqueueCatalogIdeasJob(
     pain_points: painPoints,
     niche,
     parent_category_name: parentCategoryName,
+    existing_ideas: existingIdeas,
     task_type: 'catalog_ideas',
     created_at: new Date().toISOString(),
   });

@@ -1,17 +1,38 @@
 """
-Content Preparers - Functions for formatting data into knowledge source content.
-Used by crews to prepare pain points and competitor intelligence for RAG.
+Content Preparers - Functions for formatting data for crew consumption.
+Includes RAG-era formatters (prepare_*) and direct injection formatters (format_*).
 """
 
 import re
 from datetime import datetime, timezone
-from typing import List
+from typing import List, Literal
 
 from loguru import logger
+from pydantic import BaseModel, Field
 
 from ...models.pain_point import PainPointAnalysisResult
 from ...models.social_content import SocialContentCollection
 from ...utils.token_monitor import ContentTokenMonitor
+
+
+# ============================================================
+# Pydantic models for LLM-based tool extraction
+# ============================================================
+
+class ExtractedToolMention(BaseModel):
+    """A product/brand/tool extracted from community discussions."""
+    name: str = Field(description="Product, brand, tool, or service name as mentioned by users")
+    category: Literal["software", "supplement", "skincare", "equipment", "service", "compound", "other"] = Field(
+        description="Category of the product/tool"
+    )
+
+
+class ToolMentionExtractionResult(BaseModel):
+    """Extracted tool/product mentions from community discussion sentences."""
+    mentions: list[ExtractedToolMention] = Field(
+        description="All distinct products, brands, tools, or services mentioned. "
+        "Exclude generic category terms (e.g., 'peptides', 'supplements', 'collagen')."
+    )
 
 MAX_COMPETITOR_CONTENT_CHARS = 30_000
 MAX_COMMENT_EXCERPTS_PER_POST = 8
@@ -308,4 +329,207 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
         f"(was {sum(len(p.selftext or '') for p in reddit_posts)} chars raw)"
     )
 
+    return result
+
+
+def _extract_tools_via_llm(
+    all_mentions: list[tuple[str, str, int]],
+) -> list[ExtractedToolMention]:
+    """Extract tool/product names from sentences using LLM.
+
+    Deduplicates by sentence text and takes top 80 by score, sends to gpt-4o-mini
+    in a single structured-output call. Returns list of extracted mentions.
+    """
+    from ...config.settings import settings
+    from ..llm_service import LLMService
+
+    # Deduplicate by full lowercase sentence, keep highest-scored
+    seen: set[str] = set()
+    unique: list[tuple[str, str, int]] = []
+    for sent, source, score in sorted(all_mentions, key=lambda x: x[2], reverse=True):
+        key = sent.strip().lower()
+        if key not in seen:
+            seen.add(key)
+            # Truncate long sentences to ~200 chars
+            unique.append((sent[:200], source, score))
+        if len(unique) >= 80:
+            break
+
+    # Build numbered prompt
+    numbered = "\n".join(f"[{i+1}] {sent}" for i, (sent, _, _) in enumerate(unique))
+
+    prompt = f"""Extract all specific product names, brand names, tool names, software names,
+compound trade names, and service names mentioned in these community discussion excerpts.
+
+RULES:
+- Extract SPECIFIC products/brands/tools (e.g., "Notion", "BPC-157", "The Ordinary", "Ahrefs")
+- Do NOT extract generic category terms (e.g., "peptides", "supplements", "software", "tools")
+- Do NOT extract medical/scientific terms that aren't product names
+- Normalize variations into canonical form (e.g., "tirz"/"tirzepatide" → "Tirzepatide")
+
+Sentences:
+{numbered}"""
+
+    model = getattr(settings, 'competitor_extraction_llm', 'gpt-4o-mini')
+
+    # Single retry on failure before raising
+    last_error: Exception | None = None
+    for attempt in range(2):
+        try:
+            result, usage = LLMService.invoke_structured(
+                prompt=prompt,
+                output_model=ToolMentionExtractionResult,
+                temperature=0,
+                timeout=30,
+                model_name=model,
+            )
+            logger.info(
+                f"LLM tool extraction: {len(result.mentions)} unique tools "
+                f"({usage.prompt_tokens}+{usage.completion_tokens} tokens, attempt {attempt+1})"
+            )
+            return result.mentions
+        except Exception as e:
+            last_error = e
+            if attempt == 0:
+                logger.warning(f"LLM tool extraction attempt 1 failed: {e}, retrying...")
+
+    raise last_error  # type: ignore[misc]
+
+
+def _boost_with_seed_list(
+    tool_map: dict[str, list[tuple[str, str, int]]],
+    all_mentions: list[tuple[str, str, int]],
+    known_tools: list[str],
+) -> None:
+    """Add known tools from audience mapping not already found by LLM."""
+    existing_lower = {k.lower() for k in tool_map}
+    for tool in known_tools:
+        if tool.lower() in existing_lower:
+            continue
+        pattern = re.compile(r'\b' + re.escape(tool) + r'\b', re.IGNORECASE)
+        matched = [(s, src, sc) for s, src, sc in all_mentions if pattern.search(s)]
+        if matched:
+            tool_map[tool] = matched
+
+
+def format_competitor_mentions_for_prompt(
+    social_content: SocialContentCollection,
+    known_tools: list[str] | None = None,
+    max_entries: int = 15,
+    max_chars: int = 3000,
+) -> str:
+    """Format competitor/tool mentions as direct task input.
+
+    Uses LLM extraction (gpt-4o-mini) to identify product/brand/tool names.
+    Falls back to seed-list matching on API failure.
+
+    Returns:
+        Formatted string, or "No competitor data available" if empty.
+    """
+    if not social_content:
+        return "No competitor data available"
+
+    if not social_content.reddit_posts and not social_content.twitter_threads:
+        return "No competitor data available"
+
+    # --- Pre-filter: extract indicator-matched sentences ---
+    all_mentions: List[tuple] = []
+
+    for post in (social_content.reddit_posts or []):
+        source = f"r/{post.subreddit}"
+        score = post.score or 0
+
+        post_text = f"{post.title}. {post.selftext or ''}"
+        for sent in _split_sentences(post_text):
+            if _INDICATOR_PATTERN.search(sent):
+                all_mentions.append((sent, source, score))
+
+        for comment in (post.comments or []):
+            for sent in _split_sentences(comment.body):
+                if _INDICATOR_PATTERN.search(sent):
+                    all_mentions.append((sent, source, score))
+
+    for thread in (social_content.twitter_threads or []):
+        source = "Twitter"
+        score = thread.original_tweet.likes or 0
+
+        for sent in _split_sentences(thread.original_tweet.text):
+            if _INDICATOR_PATTERN.search(sent):
+                all_mentions.append((sent, source, score))
+
+        for reply in thread.replies:
+            for sent in _split_sentences(reply.text):
+                if _INDICATOR_PATTERN.search(sent):
+                    all_mentions.append((sent, source, score))
+
+    if not all_mentions:
+        return "No competitor data available"
+
+    # --- Extract tool names via LLM ---
+    tool_map: dict[str, list[tuple[str, str, int]]] = {}
+
+    try:
+        extracted = _extract_tools_via_llm(all_mentions)
+        # Map extracted names back to sentences via word-boundary matching
+        for mention in extracted:
+            name = mention.name.strip()
+            if len(name) < 2:
+                continue
+            pattern = re.compile(r'\b' + re.escape(name) + r'\b', re.IGNORECASE)
+            matched = [(s, src, sc) for s, src, sc in all_mentions if pattern.search(s)]
+            if matched:
+                tool_map[name] = matched
+    except Exception as e:
+        logger.warning(f"LLM tool extraction failed, using seed list only: {e}")
+
+    # --- Boost with seed list ---
+    if known_tools:
+        _boost_with_seed_list(tool_map, all_mentions, known_tools)
+
+    if not tool_map:
+        return "No competitor data available"
+
+    # --- Format output ---
+    sorted_tools = sorted(tool_map.items(), key=lambda x: len(x[1]), reverse=True)
+
+    lines = ["### Competitor & Tool Mentions from Community Discussions\n"]
+    total_chars = len(lines[0])
+    entry_count = 0
+
+    frequent = [(name, sents) for name, sents in sorted_tools if len(sents) >= 3]
+    occasional = [(name, sents) for name, sents in sorted_tools if len(sents) < 3]
+
+    if frequent:
+        lines.append("**Frequently mentioned (3+ posts):**")
+        total_chars += len(lines[-1])
+        for name, sents in frequent:
+            if entry_count >= max_entries or total_chars >= max_chars:
+                break
+            best = max(sents, key=lambda x: x[2])
+            line = f"- **{name}** ({len(sents)} mentions): \"{best[0][:150]}\" [{best[1]}]"
+            if total_chars + len(line) > max_chars:
+                break
+            lines.append(line)
+            total_chars += len(line)
+            entry_count += 1
+
+    if occasional and entry_count < max_entries:
+        lines.append("\n**Also mentioned:**")
+        total_chars += len(lines[-1])
+        for name, sents in occasional:
+            if entry_count >= max_entries or total_chars >= max_chars:
+                break
+            best = max(sents, key=lambda x: x[2])
+            line = f"- **{name}**: \"{best[0][:150]}\" [{best[1]}]"
+            if total_chars + len(line) > max_chars:
+                break
+            lines.append(line)
+            total_chars += len(line)
+            entry_count += 1
+
+    result = "\n".join(lines)
+    logger.info(
+        f"Formatted {entry_count} competitor mentions for direct injection "
+        f"({len(result)} chars, {len(frequent)} frequent, {len(occasional)} occasional)"
+    )
     return result

@@ -123,7 +123,7 @@ create_visual_design:
     <output_verbosity_spec>
     - page_blueprint: 2-3 sentences
     - hero_composition: 1-2 sentences
-    - section_composition: 1 sentence per section
+    - section_composition: list of objects with section name and composition description
     - content_redundancy_notes: What NOT to include
     - card_treatments: 1-2 sentences per type
     - visual_surprises: 2-3 specific items

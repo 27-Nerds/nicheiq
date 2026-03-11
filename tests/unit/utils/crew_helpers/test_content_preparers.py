@@ -11,11 +11,18 @@ from nicheiq.models.social_content import (
     TwitterThread,
     TwitterTweet,
 )
+from unittest.mock import patch, MagicMock
+
 from nicheiq.utils.crew_helpers.content_preparers import (
     MAX_COMPETITOR_CONTENT_CHARS,
+    ExtractedToolMention,
+    ToolMentionExtractionResult,
     _INDICATOR_PATTERN,
+    _boost_with_seed_list,
     _extract_relevant_sentences,
+    _extract_tools_via_llm,
     _split_sentences,
+    format_competitor_mentions_for_prompt,
     prepare_competitor_intelligence,
 )
 
@@ -315,3 +322,242 @@ class TestPrepareCompetitorIntelligence:
         collection = _make_collection(posts=[post])
         result = prepare_competitor_intelligence(collection)
         assert result != ""
+
+
+# ============================================================
+# _extract_tools_via_llm tests
+# ============================================================
+
+_MOCK_PATCH_LLM = "nicheiq.utils.llm_service.LLMService.invoke_structured"
+
+
+def _mock_invoke_result(mentions):
+    """Create a mock return value for LLMService.invoke_structured."""
+    result = ToolMentionExtractionResult(mentions=mentions)
+    usage = MagicMock(prompt_tokens=100, completion_tokens=50)
+    return result, usage
+
+
+class TestExtractToolsViaLLM:
+    """Tests for LLM-based tool extraction."""
+
+    @patch(_MOCK_PATCH_LLM)
+    def test_basic_extraction(self, mock_invoke):
+        mock_invoke.return_value = _mock_invoke_result([
+            ExtractedToolMention(name="Notion", category="software"),
+            ExtractedToolMention(name="Ahrefs", category="software"),
+        ])
+
+        mentions = [
+            ("I switched from Notion to something else.", "r/test", 10),
+            ("Ahrefs is great for SEO.", "r/seo", 20),
+        ]
+        result = _extract_tools_via_llm(mentions)
+        assert len(result) == 2
+        assert result[0].name == "Notion"
+
+    @patch(_MOCK_PATCH_LLM)
+    def test_deduplicates_sentences(self, mock_invoke):
+        mock_invoke.return_value = _mock_invoke_result([])
+
+        mentions = [
+            ("I tried this tool today.", "r/test", 10),
+            ("I tried this tool today.", "r/test", 5),  # duplicate
+            ("Different sentence about a tool.", "r/test", 8),
+        ]
+        _extract_tools_via_llm(mentions)
+
+        # Check the prompt sent to LLM has only 2 unique sentences
+        call_args = mock_invoke.call_args
+        prompt = call_args.kwargs.get("prompt", "")
+        assert prompt.count("[1]") == 1
+        assert prompt.count("[2]") == 1
+        assert "[3]" not in prompt
+
+    @patch(_MOCK_PATCH_LLM)
+    def test_retries_on_failure(self, mock_invoke):
+        """Should retry once on failure."""
+        mock_invoke.side_effect = [
+            Exception("API error"),
+            _mock_invoke_result([
+                ExtractedToolMention(name="Notion", category="software"),
+            ]),
+        ]
+
+        mentions = [("I use Notion for notes.", "r/test", 10)]
+        result = _extract_tools_via_llm(mentions)
+        assert len(result) == 1
+        assert mock_invoke.call_count == 2
+
+    @patch(_MOCK_PATCH_LLM)
+    def test_raises_after_two_failures(self, mock_invoke):
+        mock_invoke.side_effect = Exception("API error")
+
+        mentions = [("I use Notion for notes.", "r/test", 10)]
+        with pytest.raises(Exception, match="API error"):
+            _extract_tools_via_llm(mentions)
+        assert mock_invoke.call_count == 2
+
+    @patch(_MOCK_PATCH_LLM)
+    def test_caps_at_80_sentences(self, mock_invoke):
+        mock_invoke.return_value = _mock_invoke_result([])
+
+        mentions = [
+            (f"Sentence {i} about some tool.", "r/test", i)
+            for i in range(200)
+        ]
+        _extract_tools_via_llm(mentions)
+
+        call_args = mock_invoke.call_args
+        prompt = call_args.kwargs.get("prompt", "")
+        assert "[80]" in prompt
+        assert "[81]" not in prompt
+
+
+# ============================================================
+# _boost_with_seed_list tests
+# ============================================================
+
+class TestBoostWithSeedList:
+    def test_adds_known_tools(self):
+        tool_map: dict[str, list] = {}
+        all_mentions = [
+            ("I really like using Jira for project management.", "r/pm", 10),
+            ("Linear is a great alternative.", "r/pm", 8),
+        ]
+        _boost_with_seed_list(tool_map, all_mentions, ["Jira", "Linear"])
+        assert "Jira" in tool_map
+        assert "Linear" in tool_map
+
+    def test_skips_already_present(self):
+        tool_map = {"Notion": [("I use Notion daily.", "r/test", 10)]}
+        all_mentions = [("I use Notion daily.", "r/test", 10)]
+        _boost_with_seed_list(tool_map, all_mentions, ["Notion"])
+        # Should not duplicate
+        assert len(tool_map["Notion"]) == 1
+
+    def test_skips_unmatched_tools(self):
+        tool_map: dict[str, list] = {}
+        all_mentions = [("I use Notion daily.", "r/test", 10)]
+        _boost_with_seed_list(tool_map, all_mentions, ["Ahrefs"])
+        assert "Ahrefs" not in tool_map
+
+
+# ============================================================
+# format_competitor_mentions_for_prompt tests
+# ============================================================
+
+class TestFormatCompetitorMentionsForPrompt:
+    def test_empty_input(self):
+        assert format_competitor_mentions_for_prompt(None) == "No competitor data available"
+
+    def test_no_posts(self):
+        collection = _make_collection()
+        assert format_competitor_mentions_for_prompt(collection) == "No competitor data available"
+
+    @patch("nicheiq.utils.crew_helpers.content_preparers._extract_tools_via_llm")
+    def test_llm_extraction_used(self, mock_extract):
+        """Should call LLM extraction and format results."""
+        mock_extract.return_value = [
+            ExtractedToolMention(name="Notion", category="software"),
+        ]
+        post = _make_post(
+            title="Best tools for work",
+            selftext="I currently use Notion for project management. Looking for an alternative.",
+        )
+        collection = _make_collection(posts=[post])
+        result = format_competitor_mentions_for_prompt(collection)
+
+        mock_extract.assert_called_once()
+        assert "Notion" in result
+        assert "No competitor data available" not in result
+
+    @patch("nicheiq.utils.crew_helpers.content_preparers._extract_tools_via_llm")
+    def test_llm_failure_falls_back_to_seed_list(self, mock_extract):
+        """When LLM fails, should fall back to seed list."""
+        mock_extract.side_effect = Exception("API error")
+        post = _make_post(
+            title="Best tools for work",
+            selftext="I currently use Jira for tracking. Looking for an alternative to Jira.",
+            comments=[
+                _make_comment("Jira is expensive, try Linear instead."),
+            ],
+        )
+        collection = _make_collection(posts=[post])
+        result = format_competitor_mentions_for_prompt(
+            collection, known_tools=["Jira", "Linear"]
+        )
+
+        assert "Jira" in result
+
+    @patch("nicheiq.utils.crew_helpers.content_preparers._extract_tools_via_llm")
+    def test_seed_list_boosts_missing_tools(self, mock_extract):
+        """Seed list should add tools that LLM missed."""
+        mock_extract.return_value = [
+            ExtractedToolMention(name="Notion", category="software"),
+        ]
+        post = _make_post(
+            title="Best tools for work",
+            selftext="I currently use Notion and Linear as my main tools. Looking for an alternative to both.",
+        )
+        collection = _make_collection(posts=[post])
+        result = format_competitor_mentions_for_prompt(
+            collection, known_tools=["Linear"]
+        )
+
+        assert "Notion" in result
+        assert "Linear" in result
+
+    @patch("nicheiq.utils.crew_helpers.content_preparers._extract_tools_via_llm")
+    def test_frequent_vs_occasional_grouping(self, mock_extract):
+        """Tools with 3+ mentions should be in 'Frequently mentioned' group."""
+        mock_extract.return_value = [
+            ExtractedToolMention(name="Notion", category="software"),
+        ]
+        posts = [
+            _make_post(
+                post_id=f"p{i}",
+                title="Best tools",
+                selftext="I currently use Notion. It's a great tool for my workflow.",
+                score=10,
+            )
+            for i in range(5)
+        ]
+        collection = _make_collection(posts=posts)
+        result = format_competitor_mentions_for_prompt(collection)
+
+        assert "Frequently mentioned" in result
+        assert "Notion" in result
+
+    @patch("nicheiq.utils.crew_helpers.content_preparers._extract_tools_via_llm")
+    def test_max_entries_respected(self, mock_extract):
+        """Should not exceed max_entries."""
+        mock_extract.return_value = [
+            ExtractedToolMention(name=f"Tool{i}", category="software")
+            for i in range(20)
+        ]
+        post = _make_post(
+            title="Tools comparison",
+            selftext=" ".join(
+                f"I tried Tool{i} and it's interesting." for i in range(20)
+            ),
+        )
+        collection = _make_collection(posts=[post])
+        result = format_competitor_mentions_for_prompt(collection, max_entries=5)
+
+        # Count bullet points
+        bullets = [l for l in result.split("\n") if l.startswith("- ")]
+        assert len(bullets) <= 5
+
+    @patch("nicheiq.utils.crew_helpers.content_preparers._extract_tools_via_llm")
+    def test_no_matches_returns_no_data(self, mock_extract):
+        """If no indicator sentences match, return no data."""
+        post = _make_post(
+            title="My garden",
+            selftext="I planted tomatoes in my garden. The weather was perfect.",
+        )
+        collection = _make_collection(posts=[post])
+        result = format_competitor_mentions_for_prompt(collection)
+
+        assert result == "No competitor data available"
+        mock_extract.assert_not_called()

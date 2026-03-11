@@ -291,6 +291,7 @@ class CheckpointManager:
             "stage_2_social_content.json": "social_content",
             "stage_3_pain_points.json": "pain_point_analysis",
             "stage_4_audience_mapping.json": "audience_mapping",
+            "stage_5_competitor_mentions.json": "competitor_mentions_formatted",
             # Stage 5: Unified solution pipeline (6 tasks - divergent-convergent architecture)
             # Tasks 1-2: Intermediate outputs (for debugging, not loaded to state)
             "stage_5_1_divergent.json": None,  # RawConceptList - debug only
@@ -382,7 +383,10 @@ class CheckpointManager:
                             setattr(self.state, state_attr, reconstructed)
                             logger.debug(f"  ✓ Loaded {stage_file} → {state_attr} ({field_type.__name__})")
                         else:
-                            # Non-Pydantic type (dict, etc.) - set directly
+                            # Non-Pydantic type (dict, str, etc.) - set directly
+                            # Unwrap single-key dict for plain string fields
+                            if field_type is str and isinstance(stage_data, dict) and len(stage_data) == 1:
+                                stage_data = next(iter(stage_data.values()))
                             setattr(self.state, state_attr, stage_data)
                             logger.debug(f"  ✓ Loaded {stage_file} → {state_attr} (raw data)")
                     except Exception as e:

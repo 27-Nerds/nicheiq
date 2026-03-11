@@ -699,6 +699,29 @@ class FinalReport(BaseModel):
     )
 
 
+class MarketSegmentPrice(BaseModel):
+    """Pricing for a specific market segment."""
+
+    segment: str = Field(..., description="Market segment name")
+    price: Optional[str] = Field(default=None, description="Price for this segment")
+
+
+class TrafficSourceShare(BaseModel):
+    """Traffic source with its share percentage."""
+
+    source: str = Field(..., description="Traffic source name, e.g. 'organic_search', 'direct'")
+    percentage: str = Field(..., description="Share percentage, e.g. '70%'")
+
+
+class RevenueMilestone(BaseModel):
+    """Revenue milestone at a specific traffic level."""
+
+    traffic: str = Field(..., description="Traffic level, e.g. '5,000 sessions/mo'")
+    ad_revenue: str = Field(..., description="Ad revenue at this level")
+    unlock: str = Field(..., description="What becomes available at this traffic level")
+    total_potential: str = Field(..., description="Total revenue potential including all sources")
+
+
 # Stage 7: Pricing Strategy Validation
 class PricingStrategyResult(BaseModel):
     """Pricing strategy validation result from Stage 7."""
@@ -781,7 +804,7 @@ class PricingStrategyResult(BaseModel):
     wtp_validation: str = Field(
         ..., description="How pain point willingness-to-pay scores support this pricing"
     )
-    market_segment_pricing: Optional[dict[str, Optional[str]]] = Field(
+    market_segment_pricing: Optional[list[MarketSegmentPrice]] = Field(
         default=None, description="Different pricing for different market segments if applicable"
     )
 
@@ -826,8 +849,8 @@ class TrafficMonetizationResult(BaseModel):
     estimated_monthly_pageviews: str = Field(
         ..., description="Estimated monthly pageviews range (e.g., '50,000 - 100,000')"
     )
-    traffic_source_breakdown: dict[str, str] = Field(
-        ..., description="Traffic source distribution (e.g., {'organic_search': '70%', 'direct': '20%', 'referral': '10%'})"
+    traffic_source_breakdown: list[TrafficSourceShare] = Field(
+        ..., description="Traffic source distribution as a list of objects, e.g. [{source: 'organic_search', percentage: '70%'}]"
     )
 
     # Ad Revenue Estimates
@@ -922,8 +945,8 @@ class TrafficMonetizationResult(BaseModel):
     revenue_growth_note: Optional[str] = Field(
         default=None, description="Contextual note explaining revenue growth path (set by report generator)"
     )
-    revenue_milestones: Optional[list[dict[str, str]]] = Field(
-        default=None, description="Revenue milestones at traffic levels. Keys: traffic, ad_revenue, unlock, total_potential (set by report generator)"
+    revenue_milestones: Optional[list[RevenueMilestone]] = Field(
+        default=None, description="Revenue milestones at traffic levels (set by report generator)"
     )
 
 
@@ -1233,6 +1256,12 @@ class ResearchState(BaseModel):
     audience_mapping: Optional[AudienceMappingResult] = Field(
         default=None,
         description="Audience segmentation and influencer mapping from Stage 6.5"
+    )
+
+    # Cached competitor mentions (extracted once, reused on regeneration)
+    competitor_mentions_formatted: Optional[str] = Field(
+        default=None,
+        description="Formatted competitor/tool mentions. Cached to avoid re-extraction on regeneration."
     )
 
     # Stage 7: Idea Generation

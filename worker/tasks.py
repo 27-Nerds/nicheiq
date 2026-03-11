@@ -584,6 +584,28 @@ def run_regenerate_ideas(
         niche_context = getattr(state, "niche_context", None)
         audience = getattr(state, "audience_mapping", None)
 
+        # Build existing_ideas list for prompt-level blacklisting
+        # Enrich with descriptions and project_type from checkpoint state when available
+        idea_lookup: dict[str, dict] = {}
+        if state.idea_generation and hasattr(state.idea_generation, "solution_ideas"):
+            for s in state.idea_generation.solution_ideas:
+                name = getattr(s, "solution_name", "")
+                if name:
+                    idea_lookup[name.lower()] = {
+                        "description": getattr(s, "description", ""),
+                        "project_type": getattr(s, "project_type", ""),
+                    }
+        existing_ideas_for_crew = [
+            {
+                "name": n,
+                "description": idea_lookup.get(n.lower(), {}).get("description", ""),
+                "project_type": idea_lookup.get(n.lower(), {}).get("project_type", ""),
+            }
+            for n in existing_solution_names
+        ]
+
+        competitor_mentions = getattr(state, "competitor_mentions_formatted", None)
+
         crew = UnifiedSolutionCrew(
             pain_point_analysis=pain_points,
             social_content=social_content,
@@ -592,22 +614,23 @@ def run_regenerate_ideas(
             audience_mapping=audience,
             checkpoint_mgr=flow.checkpoint_mgr,
             job_id=job_id,
+            existing_ideas=existing_ideas_for_crew,
+            competitor_mentions_text=competitor_mentions,
         )
 
         # Execute pipeline with skip_selection=True (no Task 4 needed for regeneration)
-        # The crew doesn't have a built-in exclusion mechanism,
-        # so we'll filter out existing names from the results
         result = crew.execute_pipeline(skip_selection=True)
         idea_gen = result[0]  # IdeaGenerationResult (result[1] is None)
 
         if not idea_gen or not hasattr(idea_gen, "solution_ideas"):
             raise RuntimeError("Regeneration did not produce solution ideas")
 
-        # Filter out solutions with names matching existing ones
+        # Post-hoc safety-net: filter out solutions with names matching existing ones (case-insensitive)
+        existing_names_lower = {n.lower() for n in existing_solution_names}
         new_solutions = [
             s for s in idea_gen.solution_ideas
-            if (getattr(s, "solution_name", "") not in existing_solution_names
-                and getattr(s, "name", "") not in existing_solution_names)
+            if (getattr(s, "solution_name", "").lower() not in existing_names_lower
+                and getattr(s, "name", "").lower() not in existing_names_lower)
         ]
 
         if not new_solutions:
@@ -769,6 +792,7 @@ def run_catalog_ideas(
     pain_points: list[dict],
     niche: str,
     parent_category_name: str = "",
+    existing_ideas: list[dict[str, str]] | None = None,
 ) -> dict:
     """
     Generate solution ideas from admin-selected pain points for a catalog category.
@@ -781,6 +805,8 @@ def run_catalog_ideas(
         pain_points: List of pain point dicts (camelCase from DB)
         niche: The niche description
         parent_category_name: Parent category name for hierarchy context
+        existing_ideas: Optional list of dicts with "name" and "description" keys
+            for previously generated ideas to avoid duplicating
 
     Returns:
         Dict with status and idea count
@@ -823,13 +849,14 @@ def run_catalog_ideas(
             analysis_summary=f"Catalog pain point analysis for {niche}",
         )
 
-        # Create UnifiedSolutionCrew with pain points only
+        # Create UnifiedSolutionCrew with pain points and existing ideas blacklist
         crew = UnifiedSolutionCrew(
             pain_point_analysis=pain_analysis,
             social_content=None,
             niche_context=None,
             audience_mapping=None,
             job_id=job_id,
+            existing_ideas=existing_ideas,
         )
 
         # Execute pipeline (skip_selection=True → no Task 4)
@@ -840,6 +867,19 @@ def run_catalog_ideas(
             logger.warning(f"[Worker] No ideas generated for job {job_id}")
             notify_catalog_ideas_ready(job_id, category_id, [], niche)
             return {"status": "completed", "job_id": job_id, "idea_count": 0}
+
+        # Post-hoc safety-net: filter out ideas whose names match existing ones (case-insensitive)
+        if existing_ideas:
+            existing_names_lower = {i["name"].lower() for i in existing_ideas if i.get("name")}
+            filtered = [
+                s for s in idea_gen.solution_ideas
+                if getattr(s, "solution_name", "").lower() not in existing_names_lower
+            ]
+            if filtered:
+                logger.info(f"[Worker] Post-hoc filter: {len(idea_gen.solution_ideas)} → {len(filtered)} ideas (removed {len(idea_gen.solution_ideas) - len(filtered)} duplicates)")
+                idea_gen.solution_ideas = filtered
+            else:
+                logger.warning(f"[Worker] Post-hoc filter removed all ideas — keeping originals")
 
         # Serialize ideas
         idea_previews = [_solution_to_preview_dict(s) for s in idea_gen.solution_ideas]

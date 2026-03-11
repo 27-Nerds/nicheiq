@@ -41,6 +41,18 @@ divergent_exploration:
     **Tools Currently Used** (competitive context):
     {tools_currently_used}
 
+    ## Competitor & Tool Mentions (from community discussions)
+
+    {competitor_mentions}
+
+    ## Discussion Themes — use anchor keywords for concept_name and target_keywords
+
+    The quoted keywords below are the EXACT phrases users type in community discussions.
+    Use them to inspire concept_name choices and target_keywords values. Solutions that
+    use community vocabulary convert better because they match how users search.
+
+    {theme_categories}
+
     <long_context_handling>
     Before generating concepts:
     1. List 3-5 key pain point themes from the analysis above
@@ -62,6 +74,100 @@ divergent_exploration:
     BLACKLIST these ideas. Your concepts must be STRUCTURALLY DIFFERENT from each one.
     "Structurally different" = different mechanism, data source, or user journey.
     Each concept's why_non_obvious field must explain the difference.
+
+    ## STEP 0.5: Previously Generated Ideas — Do Not Regenerate
+
+    The ideas below were generated in prior runs. You MUST NOT reproduce them
+    or produce structural variants where only the name or vertical changes.
+
+    **Structural dimensions (use these in STEP 0.75):**
+    - M (Mechanism): the core process loop — how value is produced
+    - D (Data source): where the primary input data originates
+    - J (User journey): trigger → action → reward sequence
+
+    **Duplicate threshold:** A new concept is a DUPLICATE if it shares M+D, M+J,
+    or all three with any blacklisted idea. Differing on only ONE dimension is
+    insufficient — that is a cosmetic variant, not a structural alternative.
+
+    {existing_ideas_blacklist}
+
+    Before writing any concept to your output, you MUST complete the STEP 0.75
+    dedup gate below. Any concept that fails the gate must be replaced.
+
+    ## STEP 0.75: Dedup Gate — Required Before Committing Each Concept
+
+    For EVERY concept you intend to include in your output, complete this check
+    IN WRITING before moving to the next concept:
+
+    CANDIDATE: [concept_name]
+    M-tag: [one phrase describing the mechanism]
+    D-tag: [one phrase describing the data source]
+    J-tag: [one phrase describing the user journey]
+    Competitor check: [tool name or "none identified"] → gap exploited: [specific gap or "N/A"]
+    Most similar blacklisted idea: [name it, or "none"]
+    Overlap: M=yes/no, D=yes/no, J=yes/no → match count: [0-3]
+    VERDICT: PASS (match count <= 1) or REJECT (match count >= 2)
+
+    If REJECT: state which blacklisted idea triggered the rejection, which two
+    dimensions matched, then generate a replacement concept and re-run this gate.
+
+    === Few-shot calibration examples (niche-agnostic) ===
+
+    These illustrate where the PASS/REJECT threshold falls.
+    They are structural pattern illustrations only — do not reuse these
+    names, verticals, or keywords in your output.
+
+    EXAMPLE 1 — REJECT (M+D match):
+    Existing: "PublicSalaryAggregator"
+      M: aggregates self-reported salary submissions
+      D: user-submitted data via web form
+      J: user searches job title → sees salary distribution chart
+    Candidate: "CompensationBenchmark"
+      M: aggregates self-reported compensation submissions
+      D: user-submitted data via web form
+      J: user enters role + location → gets percentile ranking
+    Overlap: M=yes, D=yes, J=no → match count 2 → REJECT
+    Reason: data collection and value-production loop are identical;
+    output UI difference alone is not structural differentiation.
+
+    EXAMPLE 2 — REJECT (M+J match):
+    Existing: "APIStatusMonitor"
+      M: runs scheduled automated uptime checks
+      D: HTTP polling of public API endpoints
+      J: user subscribes → receives alert on downtime
+    Candidate: "DatabaseHealthWatcher"
+      M: runs scheduled automated health checks
+      D: database query latency probes
+      J: user subscribes → receives alert on degradation
+    Overlap: M=yes, D=no, J=yes → match count 2 → REJECT
+    Reason: different data source does not rescue structural duplication when
+    mechanism and user engagement pattern are the same product.
+
+    EXAMPLE 3 — PASS (only M matches):
+    Existing: "EvictionRiskMap"
+      M: aggregates public records into ranked location pages
+      D: county court eviction filings
+      J: user searches neighborhood → views risk score page
+    Candidate: "BuildingPermitFeed"
+      M: aggregates public records into ranked location pages
+      D: municipal open data portals (permit filings)
+      J: developer enters address → receives permit digest via email
+    Overlap: M=yes, D=no, J=no → match count 1 → PASS
+    Reason: one shared dimension is acceptable — data source and journey
+    are structurally distinct enough.
+
+    EXAMPLE 4 — PASS (no dimensions match):
+    Existing: "FreelancerRateRadar"
+      M: community-submitted data creates benchmark pages
+      D: anonymized self-reported rates from freelancers
+      J: freelancer browses skill+city → sees market rate distribution
+    Candidate: "PlatformFeeCalculator"
+      M: parametric calculator produces derived output from user inputs
+      D: platform fee schedules scraped from pricing pages
+      J: user enters transaction amount → sees net earnings breakdown
+    Overlap: M=no, D=no, J=no → match count 0 → PASS
+
+    === End calibration examples ===
 
     ═══════════════════════════════════════════════════════════════════════════
 
@@ -106,10 +212,13 @@ divergent_exploration:
     - **one_liner**: 1-2 sentence description focusing on unique angle
     - **ideation_technique**: Which technique generated it (niche_drilling, data_source_inversion, cross_industry_template, atomic_feature, community_flip, platform_leverage)
     - **project_type**: directory, aggregator, comparison-tool, marketplace, saas, or other
-    - **target_keywords**: 2-5 specific SEO queries this would rank for
+    - **target_keywords**: 2-5 specific SEO queries. PRIORITY: use community-vocabulary
+      phrases from Discussion Themes above before inventing new terms.
     - **data_source_hint**: Primary data source or mechanism
     - **why_non_obvious**: 1-2 sentences explaining the SPECIFIC insight that makes this
       non-trivial. What would a naive builder try instead, and why is THIS better?
+      If competing with a tool from the Competitor Mentions above,
+      include the specific gap (e.g., "unlike ToolX which lacks offline access, this...")
       BANNED phrases: "unique approach", "nobody has built this", "innovative solution"
     - **distribution_channel**: Primary channel: seo (default), platform_marketplace,
       or hybrid. SEO remains primary — platform distribution is a bonus accelerator.
@@ -225,6 +334,25 @@ diversity_filtering:
        - "AI-powered" vs "smart" vs "intelligent" labeling
        → They are DUPLICATES. Keep only the most novel.
 
+    1b. **CROSS-RUN DUPLICATE CHECK** (mandatory — check every surviving concept)
+
+        {existing_ideas_blacklist_compact}
+
+        For EACH concept carried forward from Task 1:
+
+        Concept: [Name]
+        M-tag: ___
+        D-tag: ___
+        Most similar blacklisted idea: [name] or "none"
+        Overlap: M=yes/no, D=yes/no, J=yes/no → match count: ___
+
+        REJECT rules:
+        (a) Match count >= 2 with any blacklisted idea → REMOVE
+        (b) Concept name contains a banned fragment from the list above → REMOVE
+
+        For each removal, output:
+        "[Name]: cross-run duplicate — [rule a/b] — [detail]"
+
     2. **ADAPTIVE DIVERSITY ENFORCEMENT**
 
        **If multiple project types allowed:**
@@ -320,11 +448,24 @@ solution_refinement:
     High-priority ({high_priority_count}): {high_priority_list}
     User segments: {user_segments}
 
+    ## Competitor & Tool Context (cite in differentiation_factors and why_it_works)
+
+    {competitor_mentions}
+
+    ## Discussion Themes
+
+    {theme_categories}
+
     <long_context_handling>
     Before scoring and expanding:
     1. List pain point themes from above context
     2. Re-state selection criteria: Top 3-5 by composite score
     3. Anchor each solution's market_fit_score to specific pain points
+    4. List the 3 most frequently mentioned competitor tools from the Competitor & Tool
+       Mentions section. For each solution you expand, note which (if any) of these tools
+       it competes with and what the differentiation claim will be.
+    5. From Discussion Themes above, identify 2-3 keyword clusters with the highest mention counts.
+       Use at least one cluster's keywords verbatim in organic_discovery_queries for each solution.
     </long_context_handling>
 
     <output_verbosity_spec>
@@ -453,6 +594,9 @@ solution_refinement:
 
     **why_it_works** — Evidence-based reason grounded in research data:
     - Reference specific pain points, community signals, or user behavior
+    - If a direct competitor is named in the Competitor & Tool Mentions section above,
+      cite the specific gap with subreddit source (e.g., "[r/subreddit] users report
+      ToolX lacks offline access — this solution prioritizes offline-first design")
     - Example: "Community threads show users distrust subjective reviews and specifically ask for real-world speed data."
     - Example: "Pain point analysis shows 'salary opacity' is the #2 frustration with 0.87 severity — users want data, not listings."
 

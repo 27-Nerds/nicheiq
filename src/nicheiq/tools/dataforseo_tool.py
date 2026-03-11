@@ -12,9 +12,12 @@ from typing import Any
 import requests
 from crewai.tools import BaseTool
 from loguru import logger
-from tenacity import retry, stop_after_attempt, wait_exponential
+import time
+
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from ..config.settings import settings
+from ..utils.rate_limiter import dataforseo_rate_limiter
 
 # DataForSEO API limits per request
 MAX_KEYWORDS_SEARCH_VOLUME = 1000  # Search volume endpoint
@@ -81,6 +84,7 @@ class DataForSEOBaseClient:
     @retry(
         stop=stop_after_attempt(settings.max_retries),
         wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception_type(requests.exceptions.RequestException),
     )
     def _make_request(self, endpoint: str, payload: list[dict[str, Any]]) -> dict[str, Any]:
         """
@@ -118,6 +122,32 @@ class DataForSEOBaseClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"DataForSEO API request failed: {e}")
             raise
+
+    def _make_request_with_task_retry(
+        self, endpoint: str, payload: list[dict], max_task_retries: int = 3
+    ) -> dict:
+        """Make request with proactive rate limiting and retry on task-level rate limit errors."""
+        for attempt in range(max_task_retries):
+            dataforseo_rate_limiter.wait_if_needed(endpoint)
+            response = self._make_request(endpoint, payload)
+            tasks = response.get("tasks", [])
+            if not tasks:
+                return response
+            task_status = tasks[0].get("status_code", 20000)
+            if task_status == 20000:
+                return response
+            error_msg = tasks[0].get("status_message", "")
+            if "too many" in error_msg.lower() and attempt < max_task_retries - 1:
+                wait = 15 * (attempt + 1)
+                logger.warning(
+                    f"[DataForSEO] Rate limited (task-level), waiting {wait}s "
+                    f"(attempt {attempt + 1}/{max_task_retries})"
+                )
+                time.sleep(wait)
+                continue
+            # Non-rate-limit error — don't retry, let caller handle
+            return response
+        return response
 
     def _chunk_list(self, items: list[Any], chunk_size: int) -> list[list[Any]]:
         """Split a list into chunks of specified size."""
@@ -282,7 +312,7 @@ class DataForSEOBaseClient:
             post_data = [task_payload]
 
             try:
-                response = self._make_request(endpoint, post_data)
+                response = self._make_request_with_task_retry(endpoint, post_data)
 
                 # Extract keyword data from response
                 # Handle both response formats:
@@ -513,7 +543,7 @@ class DataForSEOBaseClient:
             post_data = [task_payload]
 
             try:
-                response = self._make_request(endpoint, post_data)
+                response = self._make_request_with_task_retry(endpoint, post_data)
 
                 # Extract keyword metrics from response
                 # Handle both response formats:
@@ -529,7 +559,9 @@ class DataForSEOBaseClient:
                     # Check for errors in task
                     if task_data.get("status_code") != 20000:
                         error_msg = task_data.get("status_message", "Unknown task error")
-                        logger.error(f"DataForSEO task error: {error_msg}")
+                        status_code = task_data.get("status_code")
+                        logger.error(f"DataForSEO task error (code {status_code}): {error_msg}")
+                        logger.error(f"Failed batch {batch_idx} keywords: {batch[:5]}...")
                         continue
 
                     result_data = task_data.get("result")
@@ -726,7 +758,7 @@ class DataForSEOBaseClient:
             post_data = [task_payload]
 
             try:
-                response = self._make_request(endpoint, post_data)
+                response = self._make_request_with_task_retry(endpoint, post_data)
 
                 # Extract results from response
                 task_data = None
@@ -736,7 +768,9 @@ class DataForSEOBaseClient:
                     task_data = response["tasks"][0]
                     if task_data.get("status_code") != 20000:
                         error_msg = task_data.get("status_message", "Unknown task error")
-                        logger.error(f"DataForSEO difficulty task error: {error_msg}")
+                        status_code = task_data.get("status_code")
+                        logger.error(f"DataForSEO task error (code {status_code}): {error_msg}")
+                        logger.error(f"Failed difficulty batch {batch_idx} keywords: {batch[:5]}...")
                         continue
                     result_data = task_data.get("result")
                 elif response.get("result"):
