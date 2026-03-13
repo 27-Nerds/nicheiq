@@ -41,7 +41,7 @@
 
   // Parse traffic source breakdown for display
   const trafficSources = $derived.by(() => {
-    if (!trafficData?.traffic_source_breakdown) return [];
+    if (!Array.isArray(trafficData?.traffic_source_breakdown)) return [];
     return trafficData.traffic_source_breakdown.map((item) => ({
       source: item.source,
       percentage: item.percentage,
