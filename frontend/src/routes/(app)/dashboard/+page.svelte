@@ -21,6 +21,7 @@
   import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
   import StatCard from "$lib/components/ui/StatCard.svelte";
   import Button from "$lib/components/ui/Button.svelte";
+  import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import type { Job } from "$lib/types/job";
 
   let { data } = $props();
@@ -328,31 +329,25 @@
   }}
 />
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <!-- Header -->
-  <div class="mb-8">
-    <div class="flex items-center justify-between flex-wrap gap-4">
-      <div>
-        <div class="flex items-center gap-3 mb-1">
-          <h1 class="text-2xl font-bold text-text-primary">
-            Welcome back{session?.user?.name ? `, ${session.user.name}` : ""}
-          </h1>
-          {#if inProgressCount > 0}
-            <span
-              class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20 animate-pulse"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
-              {inProgressCount} active
-            </span>
-          {/if}
-        </div>
-        <p class="text-text-muted">Manage your market research reports</p>
-      </div>
-      {#if jobs.length > 0 && inProgressCount === 0}
-        <Button onclick={() => (showNewResearchModal.open = true)} icon={Plus} label="New Research" class="btn-primary hidden sm:inline-flex" />
+<div class="max-w-5xl mx-auto">
+  <PageHeader
+    title="Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}"
+    subtitle="Manage your market research reports"
+  >
+    {#snippet badge()}
+      {#if inProgressCount > 0}
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20 animate-pulse">
+          <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
+          {inProgressCount} active
+        </span>
       {/if}
-    </div>
-  </div>
+    {/snippet}
+    {#snippet actions()}
+      {#if jobs.length > 0 && inProgressCount === 0}
+        <Button href="/new" icon={Plus} label="New Research" class="btn-primary hidden sm:inline-flex" />
+      {/if}
+    {/snippet}
+  </PageHeader>
 
   <!-- Pro tip banner (show when no active jobs and has completed jobs, unless dismissed) -->
   {#if jobs.length > 0 && inProgressCount === 0 && completedCount > 0 && !tipDismissed}
@@ -448,7 +443,7 @@
           NicheIQ analyzes Reddit discussions, identifies pain points, and
           generates a comprehensive market research report in minutes.
         </p>
-        <Button onclick={() => (showNewResearchModal.open = true)} icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
+        <Button href="/new" icon={Plus} label="Start Your First Research" class="btn-primary inline-flex text-base px-6 py-3" />
         <p class="text-xs text-text-muted mt-4">
           Two-phase AI research with your input at the gate. ~35 minutes total.
         </p>

@@ -3,7 +3,7 @@
   import CatalogIdeaCard from "$lib/components/catalog/CatalogIdeaCard.svelte";
   import CatalogPainPointCard from "$lib/components/catalog/CatalogPainPointCard.svelte";
   import SubcategoryGrid from "$lib/components/catalog/SubcategoryGrid.svelte";
-  import { Breadcrumb, EmptyState } from "$lib/components/ui";
+  import { PageHeader, EmptyState } from "$lib/components/ui";
   import { buildLeafCategoryListingUrl } from "$lib/utils/catalog-utils";
 
   let { data } = $props();
@@ -35,44 +35,41 @@
   <title>{category.name} | Catalog | NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <Breadcrumb
-    items={[
+<div>
+  <PageHeader
+    breadcrumbItems={[
       { label: 'Dashboard', href: '/dashboard' },
       { label: 'Catalog', href: '/catalog' },
       ...(parentCat ? [{ label: parentCat.name, href: `/catalog/categories/${parentCat.slug}` }] : []),
     ]}
-    current={category.name}
-  />
-
-  <!-- Category header -->
-  <div class="mb-8">
-    <h1 class="text-2xl font-bold text-text-primary">{category.name}</h1>
-    {#if category.description}
-      <p class="text-text-secondary mt-2">{category.description}</p>
-    {/if}
-    <div class="flex items-center gap-4 mt-3 text-sm">
-      {#if children.length > 0}
-        <span class="text-text-muted">{children.length} {children.length === 1 ? 'subcategory' : 'subcategories'}</span>
-      {/if}
-      {#if totalIdeas > 0}
-        <a
-          href="/catalog/ideas?category={category.slug}"
-          class="inline-flex items-center gap-1 text-accent hover:text-accent/80 transition-colors"
-        >
-          {totalIdeas} {totalIdeas === 1 ? 'idea' : 'ideas'} <ArrowRight class="w-3.5 h-3.5" />
-        </a>
-      {/if}
-      {#if totalPainPoints > 0}
-        <a
-          href="/catalog/pain-points?category={category.slug}"
-          class="inline-flex items-center gap-1 text-accent hover:text-accent/80 transition-colors"
-        >
-          {totalPainPoints} {totalPainPoints === 1 ? 'pain point' : 'pain points'} <ArrowRight class="w-3.5 h-3.5" />
-        </a>
-      {/if}
-    </div>
-  </div>
+    breadcrumbCurrent={category.name}
+    title={category.name}
+    subtitle={category.description}
+  >
+    {#snippet metadata()}
+      <div class="flex items-center gap-4 text-sm">
+        {#if children.length > 0}
+          <span class="text-text-muted">{children.length} {children.length === 1 ? 'subcategory' : 'subcategories'}</span>
+        {/if}
+        {#if totalIdeas > 0}
+          <a
+            href="/catalog/ideas?category={category.slug}"
+            class="inline-flex items-center gap-1 text-accent hover:text-accent/80 transition-colors"
+          >
+            {totalIdeas} {totalIdeas === 1 ? 'idea' : 'ideas'} <ArrowRight class="w-3.5 h-3.5" />
+          </a>
+        {/if}
+        {#if totalPainPoints > 0}
+          <a
+            href="/catalog/pain-points?category={category.slug}"
+            class="inline-flex items-center gap-1 text-accent hover:text-accent/80 transition-colors"
+          >
+            {totalPainPoints} {totalPainPoints === 1 ? 'pain point' : 'pain points'} <ArrowRight class="w-3.5 h-3.5" />
+          </a>
+        {/if}
+      </div>
+    {/snippet}
+  </PageHeader>
 
   <!-- Preview Ideas (above subcategories for immediate value) -->
   {#if previewIdeas.length > 0}

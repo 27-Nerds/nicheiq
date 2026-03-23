@@ -244,6 +244,8 @@ class AlternativeSolution(BaseModel):
 
     # Core identification
     solution_name: str = Field(..., description="Name of the alternative solution")
+    headline: Optional[str] = Field(default=None, description="Short searchable title for the solution (5-12 words)")
+    short_description: Optional[str] = Field(default=None, description="Punchy 1-2 sentence card summary (<180 chars)")
     summary: str = Field(..., description="2-3 paragraph overview of the solution")
 
     # Existing score fields

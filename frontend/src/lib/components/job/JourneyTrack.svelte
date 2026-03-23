@@ -43,7 +43,7 @@
           class:node-completed={phase.status === 'completed'}
           class:node-active={phase.status === 'active'}
           class:node-failed={phase.status === 'failed'}
-          class:node-pending={phase.status === 'pending' || phase.status === 'locked'}
+          class:node-pending={phase.status === 'pending' || phase.status === 'locked' || phase.status === 'preview'}
         >
           {#if phase.status === 'completed'}
             <Check class="node-check" />

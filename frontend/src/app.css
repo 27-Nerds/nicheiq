@@ -845,26 +845,6 @@
 	background: linear-gradient(180deg, var(--color-warning) 0%, rgba(245, 158, 11, 0.3) 100%);
 }
 
-/* Solution Card Styling */
-.solution-card {
-	background: linear-gradient(135deg, rgba(240, 96, 48, 0.08) 0%, transparent 60%);
-	border: 1px solid rgba(240, 96, 48, 0.2);
-	border-radius: var(--radius-xl);
-	padding: var(--space-6);
-	position: relative;
-	overflow: hidden;
-}
-
-.solution-card::before {
-	content: '';
-	position: absolute;
-	left: 0;
-	top: 0;
-	bottom: 0;
-	width: 4px;
-	background: linear-gradient(180deg, var(--color-success) 0%, rgba(240, 96, 48, 0.3) 100%);
-}
-
 /* Timeline Styling */
 .timeline {
 	position: relative;

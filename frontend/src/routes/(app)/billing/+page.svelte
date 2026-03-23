@@ -1,10 +1,12 @@
 <script lang="ts">
   import { invalidateAll, goto } from "$app/navigation";
+  import { onMount } from "svelte";
   import {
     Coins,
     Gift,
     ArrowUpRight,
     ArrowDownRight,
+    ArrowRight,
     Clock,
     Check,
     CheckCircle,
@@ -65,6 +67,26 @@
 
   // Refresh state
   let isRefreshing = $state(false);
+
+  // Pending research state (from /new page)
+  let hasPendingResearch = $state(false);
+
+  // Pending job return state (from job page billing links)
+  let pendingJobUrl = $state<string | null>(null);
+
+  onMount(() => {
+    hasPendingResearch = sessionStorage.getItem('nicheiq:pendingResearch') !== null;
+
+    const jobReturn = sessionStorage.getItem('nicheiq:pendingJobReturn');
+    if (jobReturn) {
+      try {
+        const parsed = JSON.parse(jobReturn);
+        if (Date.now() - parsed.savedAt < 3_600_000 && parsed.url?.startsWith('/jobs/')) {
+          pendingJobUrl = parsed.url;
+        }
+      } catch {}
+    }
+  });
 
   // Dismiss success/canceled banners
   function dismissBanner() {
@@ -205,13 +227,13 @@
   <title>Billing - NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+<div class="max-w-5xl mx-auto">
   {#snippet refreshButton()}
     <button
       onclick={refreshData}
       disabled={isRefreshing}
       aria-label="Refresh billing data"
-      class="btn-secondary"
+      class="btn-secondary !px-3"
       title="Refresh"
     >
       <RefreshCw class="w-4 h-4 {isRefreshing ? 'animate-spin' : ''}" />
@@ -219,6 +241,8 @@
   {/snippet}
   <PageHeader
     icon={CreditCard}
+    breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
+    breadcrumbCurrent="Billing"
     title="Research Credits"
     subtitle="Manage your credits and view transaction history"
     actions={refreshButton}
@@ -233,20 +257,20 @@
         Available Credits
       </p>
       <div class="flex items-baseline gap-2">
-        <span class="text-5xl font-display font-bold text-text-primary"
+        <span class="text-5xl font-display font-bold text-text-primary tabular-nums"
           >{billing.balance}</span
         >
         <span class="text-lg text-text-muted">credits</span>
       </div>
       <div class="flex items-center gap-4 mt-3 text-sm">
         <span class="text-text-muted">
-          <span class="font-display font-bold text-success"
+          <span class="font-display font-bold text-success tabular-nums"
             >{billing.totalPurchased}</span
           >
           <span class="text-xs uppercase tracking-wide">earned</span>
         </span>
         <span class="text-text-muted">
-          <span class="font-display font-bold text-warning"
+          <span class="font-display font-bold text-warning tabular-nums"
             >{billing.totalUsed}</span
           >
           <span class="text-xs uppercase tracking-wide">used</span>
@@ -264,7 +288,24 @@
       dismissible
       onDismiss={dismissBanner}
       class="mb-8"
-    />
+    >
+      {#snippet children()}
+        {#if pendingJobUrl}
+          <a href={pendingJobUrl}
+            class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-3 no-underline">
+            Continue to your analysis
+            <ArrowRight class="w-4 h-4" />
+          </a>
+          <p class="text-xs text-text-muted mt-1.5">Your selected solutions are waiting — pick up where you left off.</p>
+        {:else if hasPendingResearch}
+          <a href="/new"
+            class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-3 no-underline">
+            Continue your research
+            <ArrowRight class="w-4 h-4" />
+          </a>
+        {/if}
+      {/snippet}
+    </AlertBanner>
   {/if}
 
   <!-- Canceled Banner -->
@@ -325,7 +366,7 @@
                     <CheckCircle class="w-2.5 h-2.5" /> Free
                   </span>
                 {:else}
-                  <span class="font-mono font-bold text-text-primary">{cost}<span class="text-text-muted text-xs font-normal">cr</span></span>
+                  <span class="font-mono font-bold text-text-primary tabular-nums">{cost}<span class="text-text-muted text-xs font-normal">cr</span></span>
                 {/if}
               </span>
             {/each}
@@ -337,7 +378,7 @@
               <Coins class="w-3.5 h-3.5 text-accent" />
               Full research
             </span>
-            <span class="font-mono text-sm font-bold text-accent">{fullResearchCost} credits</span>
+            <span class="font-mono text-sm font-bold text-accent tabular-nums">{fullResearchCost} credits</span>
           </div>
 
           <!-- Add-ons -->
@@ -355,7 +396,7 @@
                       <CheckCircle class="w-2.5 h-2.5" /> Free
                     </span>
                   {:else}
-                    <span class="font-mono font-semibold text-text-secondary">{cost}<span class="text-text-muted/70 font-normal">cr</span></span>
+                    <span class="font-mono font-semibold text-text-secondary tabular-nums">{cost}<span class="text-text-muted/70 font-normal">cr</span></span>
                   {/if}
                 </span>
               {/each}
@@ -393,6 +434,19 @@
 
         {#if promoSuccess}
           <InlineFeedback message={promoSuccess} variant="success" />
+          {#if pendingJobUrl}
+            <a href={pendingJobUrl}
+              class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-2 no-underline">
+              Continue to your analysis
+              <ArrowRight class="w-4 h-4" />
+            </a>
+          {:else if hasPendingResearch}
+            <a href="/new"
+              class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-2 no-underline">
+              Continue your research
+              <ArrowRight class="w-4 h-4" />
+            </a>
+          {/if}
         {/if}
 
         <SubmitButton
@@ -423,7 +477,7 @@
             {@const TxIcon = txInfo.icon}
             <div
               class="flex items-center gap-3 p-3 rounded-lg bg-bg-elevated/50 border border-border/50 animate-fade-slide-in"
-              style="animation-delay: {i * 50}ms"
+              style="animation-delay: {Math.min(i, 5) * 50}ms"
             >
               <div class="p-2 rounded-lg {txInfo.class}">
                 <TxIcon class="w-4 h-4" />
@@ -434,7 +488,7 @@
                     {formatTransactionType(tx.type)}
                   </span>
                   <span
-                    class="text-sm font-semibold {tx.amount > 0
+                    class="text-sm font-semibold tabular-nums {tx.amount > 0
                       ? 'text-success'
                       : 'text-warning'}"
                   >
@@ -462,8 +516,6 @@
       {/if}
     </div>
   </div>
-
-  <div class="my-8 h-px bg-border"></div>
 
   <!-- How It Works -->
   <div class="card bg-bg-elevated/50">

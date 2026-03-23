@@ -333,6 +333,7 @@ export async function createJobAndChargeDiscovery(
   niche: string,
   allowedProjectTypes?: string[],
   jobMode?: string,
+  entryMode?: string,
 ): Promise<{ job: Job; transaction?: CreditTransaction }> {
   const stages = PIPELINE_STAGES.filter(s => s.number !== 15);
 
@@ -345,6 +346,7 @@ export async function createJobAndChargeDiscovery(
         allowedProjectTypes: allowedProjectTypes as Prisma.InputJsonValue,
         generateLandingPage: false,
         jobMode,
+        entryMode: entryMode || null,
         status: JobStatus.PENDING,
         totalStages: stages.length,
         progress: {

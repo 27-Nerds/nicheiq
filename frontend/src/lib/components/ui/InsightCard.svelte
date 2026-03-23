@@ -87,7 +87,7 @@
 
   .insight-card--border-left {
     border: 1px solid var(--color-border);
-    border-left-width: 3px;
+    border-left-width: 2px;
   }
 
   .insight-card--border-top {

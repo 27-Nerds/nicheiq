@@ -4,7 +4,7 @@
   import CatalogPainPointCard from "$lib/components/catalog/CatalogPainPointCard.svelte";
   import CatalogSearch from "$lib/components/catalog/CatalogSearch.svelte";
   import SubcategoryGrid from "$lib/components/catalog/SubcategoryGrid.svelte";
-  import { Breadcrumb } from "$lib/components/ui";
+  import { PageHeader } from "$lib/components/ui";
   import { groupCategories } from "$lib/utils/catalog-utils";
 
   let { data } = $props();
@@ -27,22 +27,19 @@
   <title>Catalog | NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <Breadcrumb items={[{ label: 'Dashboard', href: '/dashboard' }]} current="Catalog" />
-
-  <!-- Header + Search -->
-  <div class="mb-8">
-    <div class="mb-5">
-      <h1 class="text-3xl font-bold text-text-primary">Catalog</h1>
-      <p class="text-text-secondary mt-1.5">
-        Browse curated SaaS ideas and validated market pain points across {superGroups.length} sectors and {parentCategories.length} industries.
-      </p>
-    </div>
-
-    <div class="max-w-2xl">
-      <CatalogSearch />
-    </div>
-  </div>
+<div>
+  <PageHeader
+    breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
+    breadcrumbCurrent="Catalog"
+    title="Catalog"
+    subtitle="Browse curated SaaS ideas and validated market pain points across {superGroups.length} sectors and {parentCategories.length} industries."
+  >
+    {#snippet below()}
+      <div class="max-w-2xl">
+        <CatalogSearch />
+      </div>
+    {/snippet}
+  </PageHeader>
 
   <!-- Browse by Industry — 3-tier: SuperGroup → L1 → L2 -->
   {#if parentCategories.length > 0}

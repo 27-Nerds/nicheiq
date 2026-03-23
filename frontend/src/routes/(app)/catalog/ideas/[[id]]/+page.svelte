@@ -7,7 +7,7 @@
   import CatalogViewToggle from "$lib/components/catalog/CatalogViewToggle.svelte";
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
   import { Filter, FolderOpen, ArrowRight } from "lucide-svelte";
-  import { Breadcrumb, EmptyState } from "$lib/components/ui";
+  import { PageHeader, EmptyState } from "$lib/components/ui";
   import { resolveActiveCategory } from "$lib/utils/catalog-utils";
 
   let { data } = $props();
@@ -112,10 +112,16 @@
   <title>Ideas | Catalog | NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <Breadcrumb items={breadcrumbItems} current={breadcrumbCurrent} />
-  <h1 class="text-2xl font-bold text-text-primary mb-4">Solution Ideas</h1>
-  <CatalogViewToggle activeView="ideas" category={data.filters.category} />
+<div>
+  <PageHeader
+    breadcrumbItems={breadcrumbItems}
+    breadcrumbCurrent={breadcrumbCurrent}
+    title="Solution Ideas"
+  >
+    {#snippet below()}
+      <CatalogViewToggle activeView="ideas" category={data.filters.category} />
+    {/snippet}
+  </PageHeader>
 
   <div class="flex gap-8">
     <!-- Sidebar: Category navigation -->
@@ -155,7 +161,7 @@
 
       <!-- Ideas grid -->
       {#if ideas.length > 0}
-        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           {#each ideas as idea, i}
             <CatalogIdeaCard
               {idea}

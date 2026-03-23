@@ -1765,6 +1765,8 @@ It differentiates through {diff_text}.
                 alternative_solutions.append(AlternativeSolution(
                     # Existing fields (using pre-validated variables)
                     solution_name=solution.solution_name,
+                    headline=getattr(solution, 'headline', None),
+                    short_description=getattr(solution, 'short_description', None),
                     summary=summary,  # Already stripped and validated above
                     market_fit_score=market_fit,
                     technical_feasibility_score=technical_feasibility,
@@ -2270,7 +2272,7 @@ It differentiates through {diff_text}.
             # Step 4: Assemble dashboard (Python - 10% of work)
             solution_snapshot = SolutionSnapshot(
                 name=selected_solution.solution_name,
-                tagline=narrative.tagline if narrative else f"{selected_solution.solution_name} for {selected_solution.target_personas[0] if selected_solution.target_personas else 'target users'}",
+                tagline=narrative.tagline if narrative else (getattr(selected_solution, 'headline', None) or f"{selected_solution.solution_name} for {selected_solution.target_personas[0] if selected_solution.target_personas else 'target users'}"),
                 core_value_prop=narrative.core_value_prop if narrative else selected_solution.description,
                 project_type=selected_solution.project_type
             )

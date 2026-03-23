@@ -46,11 +46,12 @@ jobsRouter.post('/', requireInternalAuth, jobCreationLimiter, async (req: Authen
       userId,
       input.niche,
       input.allowedProjectTypes,
-      'interactive'
+      'interactive',
+      input.entryMode
     );
 
     // Enqueue job for Python worker
-    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, 'interactive');
+    await enqueueJob(job.id, input.niche, userId, input.allowedProjectTypes, false, 'interactive', input.entryMode);
 
     // Update status to QUEUED and set queuedAt timestamp
     await prisma.job.update({

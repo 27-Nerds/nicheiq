@@ -8,7 +8,7 @@
   import PainPointListRow from "$lib/components/catalog/PainPointListRow.svelte";
   import PainPointDetailPanel from "$lib/components/catalog/PainPointDetailPanel.svelte";
   import { ChevronLeft, Filter, FolderOpen, ArrowRight } from "lucide-svelte";
-  import { Breadcrumb, EmptyState } from "$lib/components/ui";
+  import { PageHeader, EmptyState } from "$lib/components/ui";
   import { resolveActiveCategory } from "$lib/utils/catalog-utils";
 
   let { data } = $props();
@@ -147,10 +147,16 @@
   <title>Pain Points | Catalog | NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <Breadcrumb items={breadcrumbItems} current={breadcrumbCurrent} />
-  <h1 class="text-2xl font-bold text-text-primary mb-4">Pain Points</h1>
-  <CatalogViewToggle activeView="pain-points" category={data.filters.category} />
+<div>
+  <PageHeader
+    breadcrumbItems={breadcrumbItems}
+    breadcrumbCurrent={breadcrumbCurrent}
+    title="Pain Points"
+  >
+    {#snippet below()}
+      <CatalogViewToggle activeView="pain-points" category={data.filters.category} />
+    {/snippet}
+  </PageHeader>
 
   <div class="flex gap-8">
     <!-- Sidebar: Category navigation -->

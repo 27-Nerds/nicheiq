@@ -1015,9 +1015,106 @@
 	animation: checkPop var(--duration-slower) var(--ease-spring) forwards;
 }
 
+/* ========================================
+   Pressable Utility
+   ======================================== */
+
+.pressable:not(:disabled):active {
+	transform: scale(0.98);
+}
+
 /* Gradient divider — replaces inline gradient-to-r pattern */
 .gradient-divider {
 	height: 1px;
 	background: linear-gradient(to right, transparent, var(--color-border-emphasis-50, rgba(255,255,255,0.1)), transparent);
+}
+
+/* ========================================
+   Animated Glow Border
+   ======================================== */
+
+@property --glow-angle {
+	syntax: '<angle>';
+	initial-value: 0deg;
+	inherits: false;
+}
+
+.glow-border-wrapper {
+	padding: 1.5px;
+	border-radius: 1rem;
+	background: var(--color-border-emphasis);
+	transition: box-shadow 0.5s ease, background 0.5s ease;
+}
+
+.glow-border-wrapper.glow-active {
+	background: conic-gradient(
+		from var(--glow-angle, 0deg),
+		var(--glow-color-1), var(--glow-color-2), var(--glow-color-1)
+	);
+	animation: glow-rotate 8s linear infinite;
+	box-shadow: 0 0 30px -5px color-mix(in srgb, var(--glow-color-1) 25%, transparent);
+}
+
+.glow-border-inner {
+	border-radius: calc(1rem - 1.5px);
+	background: var(--color-bg-surface);
+}
+
+@keyframes glow-rotate {
+	to { --glow-angle: 360deg; }
+}
+
+/* ========================================
+   CTA Button Shimmer
+   ======================================== */
+
+.btn-shimmer {
+	position: relative;
+	overflow: hidden;
+}
+
+.btn-shimmer::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	background: linear-gradient(
+		105deg,
+		transparent 40%,
+		rgba(255,255,255,0.15) 45%,
+		rgba(255,255,255,0.25) 50%,
+		rgba(255,255,255,0.15) 55%,
+		transparent 60%
+	);
+	transform: translateX(-100%);
+	animation: shimmer-sweep 3s ease-in-out infinite;
+	pointer-events: none;
+}
+
+@keyframes shimmer-sweep {
+	0%, 100% { transform: translateX(-100%); }
+	50% { transform: translateX(100%); }
+}
+
+/* ========================================
+   Staggered Page Load Animation
+   ======================================== */
+
+.stagger-in {
+	animation: fade-in-up 0.5s ease-out both;
+}
+
+@keyframes fade-in-up {
+	from { opacity: 0; transform: translateY(12px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+/* ========================================
+   Reduced Motion
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+	.glow-border-wrapper.glow-active { animation: none; }
+	.btn-shimmer::after { animation: none; }
+	.stagger-in { animation: none; opacity: 1; transform: none; }
 }
 

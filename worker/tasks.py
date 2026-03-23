@@ -250,6 +250,7 @@ def run_interactive_research(
     user_id: Optional[str] = None,
     allowed_project_types: Optional[list[str]] = None,
     resume: bool = False,
+    entry_mode: Optional[str] = None,
 ) -> dict:
     """
     Interactive research task: runs Phase 1, validates solutions, waits for user selection.
@@ -279,6 +280,7 @@ def run_interactive_research(
             niche_description=niche,
             allowed_project_types=allowed_project_types,
             job_id=job_id,
+            entry_mode=entry_mode,
         )
         flow.progress_callback = progress_callback
 

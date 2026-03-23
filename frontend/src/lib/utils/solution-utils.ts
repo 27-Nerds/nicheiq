@@ -29,6 +29,22 @@ export function computeCompositeScore(solution: SolutionPreview): number {
   return _computeComposite(solution as unknown as Record<string, unknown>, SOLUTION_PREVIEW_KEYS);
 }
 
+export function solutionDisplayTitle(s: { headline?: string | null; solution_name: string }): string {
+  return s.headline?.trim() || s.solution_name;
+}
+
+export function solutionCardDescription(s: { short_description?: string | null; description: string }): string {
+  return s.short_description?.trim() || s.description;
+}
+
+/** Human-readable fit label from market_fit_score (0-1 scale) */
+export function fitLabel(score: number | null | undefined): { text: string; variant: 'success' | 'warning' | 'muted' } {
+  if (score == null) return { text: '', variant: 'muted' };
+  if (score >= 0.7) return { text: 'HIGH FIT', variant: 'success' };
+  if (score >= 0.4) return { text: 'MOD FIT', variant: 'warning' };
+  return { text: 'LOW FIT', variant: 'muted' };
+}
+
 export function getSuperpower(
   solution: SolutionPreview,
   map: Record<string, SuperpowerEntry> = SUPERPOWER_MAP,

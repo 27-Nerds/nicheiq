@@ -1,8 +1,6 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import {
-    CheckCircle,
-    Circle,
     ChevronLeft,
     ChevronRight,
     X,
@@ -13,7 +11,7 @@
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import SolutionDetailContent from "$lib/components/SolutionDetailContent.svelte";
   import type { SolutionPreview } from "$lib/types/job";
-  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED } from "$lib/utils/solution-utils";
+  import { computeCompositeScore, getSuperpower, SUPERPOWER_MAP_DETAILED, solutionDisplayTitle } from "$lib/utils/solution-utils";
 
   interface Props {
     open: boolean;
@@ -23,6 +21,7 @@
     isSelected?: boolean;
     disabled?: boolean;
     maxReached?: boolean;
+    selectionIndex?: number;
     onSelect?: (name: string) => void;
     onNavigate: (index: number) => void;
     onClose: () => void;
@@ -38,6 +37,7 @@
     isSelected = false,
     disabled = false,
     maxReached = false,
+    selectionIndex = 0,
     onSelect,
     onNavigate,
     onClose,
@@ -65,7 +65,26 @@
     return 'var(--color-error)';
   });
 
+  // Per-score color
+  function individualScoreColor(value: number | null | undefined): string {
+    if (value == null) return 'var(--color-text-muted)';
+    if (value >= 0.7) return 'var(--color-success)';
+    if (value >= 0.4) return 'var(--color-warning)';
+    return 'var(--color-error)';
+  }
+
+  const individualScores = $derived([
+    { label: "MF", value: solution.market_fit_score },
+    { label: "Feas", value: solution.technical_feasibility_score },
+    { label: "SEO", value: solution.seo_scalability_score },
+    { label: "Nov", value: solution.novelty_score },
+    { label: "Solo", value: solution.solo_dev_feasibility },
+  ]);
+
   const superpower = $derived(getSuperpower(solution, SUPERPOWER_MAP_DETAILED));
+
+  const displayTitle = $derived(solutionDisplayTitle(solution));
+  const hasHeadline = $derived(!!solution.headline?.trim());
 
   const isToggleable = $derived(!!onSelect && !disabled && (isSelected || !maxReached));
 
@@ -108,7 +127,7 @@
     onclick={handleBackdropClick}
     role="dialog"
     aria-modal="true"
-    aria-label="Solution details: {solution.solution_name}"
+    aria-label="Solution details: {displayTitle}"
     tabindex="-1"
   >
     <!-- Nav arrow: Previous -->
@@ -132,12 +151,10 @@
       <!-- Header -->
       <div class="flex items-center justify-between gap-3 p-4 border-b border-border shrink-0">
         <div class="min-w-0">
-          <div class="flex items-center gap-3">
-            <h2 class="text-xl font-semibold text-text-primary truncate">{solution.solution_name}</h2>
-            {#if total > 1}
-              <span class="text-xs text-text-muted tabular-nums shrink-0">{currentIndex + 1} of {total}</span>
-            {/if}
-          </div>
+          <h2 class="text-xl font-semibold text-text-primary line-clamp-2">{displayTitle}</h2>
+          {#if hasHeadline}
+            <p class="text-xs font-mono text-text-muted/60 mt-0.5">{solution.solution_name}</p>
+          {/if}
           <div class="flex items-center gap-2 mt-1.5 flex-wrap">
             <div class="flex items-center gap-1">
               <ProgressRing value={compositeScore} size={24} showValue={false} color="auto" animate={false} showTooltip={false} flat={true} />
@@ -156,34 +173,47 @@
                 <Heart class="w-3 h-3" /> {voteCount} vote{voteCount === 1 ? '' : 's'}
               </span>
             {/if}
+            <!-- Individual score breakdown -->
+            <span class="hidden sm:inline w-px h-3 bg-border-emphasis"></span>
+            {#each individualScores as s}
+              <span class="hidden sm:inline text-[10px] text-text-muted">
+                {s.label}:<span class="font-semibold tabular-nums ml-0.5" style:color={individualScoreColor(s.value)}>{s.value != null ? (s.value * 100).toFixed(0) : '--'}</span>
+              </span>
+            {/each}
           </div>
         </div>
         <div class="flex items-center gap-2 shrink-0">
+          {#if total > 1}
+            <span class="hidden sm:inline text-xs text-text-muted tabular-nums">{currentIndex + 1} of {total}</span>
+          {/if}
           {#if onSelect}
-            <!-- Select / Deselect button -->
-            <button
-              type="button"
-              onclick={handleSelect}
-              disabled={!isToggleable}
-              title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
-              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
-                {isSelected
-                  ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
-                  : 'bg-bg-elevated text-text-secondary border border-border hover:border-accent/40 hover:text-accent'
-                }
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {#if isSelected}
-                <CheckCircle class="w-4 h-4" />
-                Selected
-              {:else if maxReached}
-                <Circle class="w-4 h-4" />
-                Limit reached
-              {:else}
-                <Circle class="w-4 h-4" />
-                Select
-              {/if}
-            </button>
+            <!-- Select / Deselect button (hidden on mobile — footer CTA handles it) -->
+            <div class="hidden sm:flex">
+              <button
+                type="button"
+                onclick={handleSelect}
+                disabled={!isToggleable}
+                title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors
+                  {isSelected
+                    ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
+                    : 'bg-bg-elevated text-text-secondary border border-border hover:border-accent/40 hover:text-accent'
+                  }
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded-md text-xs font-bold tabular-nums
+                  {isSelected ? 'bg-accent text-white' : 'border-2 border-current'}">
+                  {#if isSelected && selectionIndex}{selectionIndex}{/if}
+                </span>
+                {#if isSelected}
+                  Selected
+                {:else if maxReached}
+                  Limit reached
+                {:else}
+                  Select
+                {/if}
+              </button>
+            </div>
           {:else if actionSlot}
             {@render actionSlot()}
           {/if}
@@ -203,6 +233,36 @@
       <div class="p-5 overflow-y-auto flex-1">
         <SolutionDetailContent {solution} />
       </div>
+
+      <!-- Sticky footer select CTA -->
+      {#if onSelect}
+        <div class="shrink-0 border-t border-border p-3">
+          <button
+            type="button"
+            onclick={handleSelect}
+            disabled={!isToggleable}
+            title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
+            class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors
+              {isSelected
+                ? 'bg-accent/10 text-accent border border-accent/30 hover:bg-accent/15'
+                : 'btn-primary'
+              }
+              disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span class="inline-flex items-center justify-center w-5 h-5 rounded-md text-xs font-bold tabular-nums
+              {isSelected ? 'bg-accent text-white' : 'border-2 border-current'}">
+              {#if isSelected && selectionIndex}{selectionIndex}{/if}
+            </span>
+            {#if isSelected}
+              Selected
+            {:else if maxReached}
+              Limit reached
+            {:else}
+              Select this idea
+            {/if}
+          </button>
+        </div>
+      {/if}
     </div>
 
     <!-- Nav arrow: Next -->

@@ -7,7 +7,7 @@ import type { ComponentType } from 'svelte';
 import { STAGE_MAP } from '$lib/config/billable-stages';
 
 export type PhaseId = 'discovery' | 'analysis';
-export type PhaseStatus = 'locked' | 'pending' | 'active' | 'completed' | 'failed';
+export type PhaseStatus = 'locked' | 'pending' | 'active' | 'completed' | 'failed' | 'preview';
 export type CelebrationTier = 1 | 2 | 3;
 
 export interface NarrativeTemplate {

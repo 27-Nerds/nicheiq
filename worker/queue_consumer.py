@@ -178,6 +178,7 @@ def process_job(job_data: dict) -> None:
             allowed_project_types = job_data.get("allowed_project_types")
             resume = job_data.get("resume", False)
             job_mode = job_data.get("job_mode")
+            entry_mode = job_data.get("entry_mode")
 
             logger.info(f"Processing research for user {user_id or 'anonymous'}: {niche[:50]}... (resume={resume}, mode={job_mode})")
 
@@ -190,6 +191,7 @@ def process_job(job_data: dict) -> None:
                     user_id=user_id,
                     allowed_project_types=allowed_project_types,
                     resume=resume,
+                    entry_mode=entry_mode,
                 )
             else:
                 from .tasks import run_research_job

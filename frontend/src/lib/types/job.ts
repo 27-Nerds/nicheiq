@@ -32,6 +32,8 @@ export interface SolutionValidationData {
 
 export interface SolutionPreview {
   solution_name: string;
+  headline?: string | null;
+  short_description?: string | null;
   description: string;
   value_proposition: string;
   pain_points_addressed?: string[];
@@ -53,6 +55,7 @@ export interface SolutionPreview {
   pricing_strategy?: string | null;
   estimated_development_time?: string | null;
   why_it_works?: string | null;
+  why_it_works_short?: string | null;
   innovation_angle?: string | null;
   conventional_approach?: string | null;
 }

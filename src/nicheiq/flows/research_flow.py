@@ -70,7 +70,7 @@ class ResearchFlow(Flow[ResearchState]):
     10: Final Report Generation (Flow)
     """
 
-    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None, job_id: str | None = None):
+    def __init__(self, niche_description: str, allowed_project_types: list[str | None] = None, job_id: str | None = None, entry_mode: str | None = None):
         """
         Initialize ResearchFlow with niche description.
 
@@ -78,6 +78,7 @@ class ResearchFlow(Flow[ResearchState]):
             niche_description: User's niche area description
             allowed_project_types: Optional list of allowed project types (saas, directory, aggregator, comparison-tool, marketplace)
             job_id: Optional job identifier for per-job ChromaDB collection isolation
+            entry_mode: Optional entry mode ('idea', 'audience', 'discovery') for future mode-aware prompts
         """
         super().__init__()
 
@@ -85,6 +86,7 @@ class ResearchFlow(Flow[ResearchState]):
         self.niche_description = niche_description
         self.allowed_project_types = allowed_project_types
         self.job_id = job_id
+        self.entry_mode = entry_mode
 
         # Track Knowledge objects created during the run for cleanup
         self._knowledge_objects: list = []

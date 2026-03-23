@@ -171,6 +171,7 @@ model Job {
 
   // Interactive job flow
   jobMode              String?     @db.VarChar(20)   // 'interactive' or null (legacy one-shot)
+  entryMode            String?     @db.VarChar(20)   // 'idea' | 'audience' | 'discovery'
   solutionIdeas        Json?                          // Array of solution preview objects
   selectedSolution     String?     @db.VarChar(255)   // Name of winning solution (set by Phase 2 re-ranking)
   selectedSolutions    String[]    @default([])         // User's 1-3 selected solution names

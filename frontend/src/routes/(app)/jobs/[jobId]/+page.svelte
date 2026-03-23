@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { page } from "$app/state";
   import { invalidateAll } from "$app/navigation";
   import {
@@ -10,6 +10,7 @@
     getDiscoveryShareStatus,
   } from "$lib/api";
   import Badge from "$lib/components/ui/Badge.svelte";
+  import PageHeader from "$lib/components/ui/PageHeader.svelte";
   import {
     Loader2,
     AlertTriangle,
@@ -386,7 +387,8 @@
     if (stagesInPhase.length === 0) {
       // Analysis phase with no stages yet
       if (phaseId === 'analysis') {
-        if (['AWAITING_SELECTION', 'REGENERATING'].includes(jobStatus)) return 'locked';
+        if (jobStatus === 'AWAITING_SELECTION') return 'preview';
+        if (jobStatus === 'REGENERATING') return 'locked';
         if (['RUNNING_PHASE2'].includes(jobStatus)) return 'active';
       }
       return 'pending';
@@ -530,14 +532,18 @@
       .finally(() => { summaryLoading = false; });
   });
 
+  // Clear pending job return state — we're back on the job page
+  onMount(() => {
+    sessionStorage.removeItem('nicheiq:pendingJobReturn');
+  });
+
 </script>
 
 <svelte:head>
   <title>{job ? `Job ${job.status}` : "Loading..."} - NicheIQ</title>
 </svelte:head>
 
-<div class="py-8">
-  <div class="page-container">
+<div class="max-w-5xl mx-auto">
     {#if loading}
       <div class="text-center py-12 animate-fade-slide-in">
         <Loader2 class="w-10 h-10 text-accent mx-auto animate-spin" />
@@ -553,39 +559,42 @@
         <Button onclick={() => (showNewResearchModal.open = true)} label="Start New Research" class="mt-6 btn-primary inline-block" />
       </div>
     {:else if job}
-      <!-- Header -->
-      <div class="mb-8 animate-fade-slide-in">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div class="flex items-center gap-4">
-            <div class="p-2.5 rounded-xl bg-accent/10 border border-accent/20">
-              <Telescope class="w-5 h-5 text-accent" />
-            </div>
-            <div>
-              <h1 class="text-2xl font-bold text-text-primary">Research Progress</h1>
-              <p class="mt-1 text-sm text-text-muted truncate" title={job.niche}>
-                {job.niche.length > 100 ? job.niche.substring(0, 100) + "..." : job.niche}
-              </p>
-            </div>
-          </div>
-          <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
-            {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status) && !(job.solutionIdeas?.length)}
-              <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
-            {/if}
-            {#if isCompleted && reportAsset}
-              <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
-            {/if}
-            <Badge variant={getStatusVariant(isRegenQueued ? "REGENERATING" : job.status)}>
-              {#if ["RUNNING", "RUNNING_PHASE2", "REGENERATING"].includes(job.status) || isRegenQueued}
-                <Loader2 class="w-3.5 h-3.5 animate-spin" />
+      <PageHeader
+        icon={Telescope}
+        breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
+        breadcrumbCurrent="Research Progress"
+        title="Research Progress"
+        class="animate-fade-slide-in"
+      >
+        {#snippet metadata()}
+          {#if job}
+            <p class="mt-1 text-sm text-text-muted truncate" title={job.niche}>
+              {job.niche.length > 100 ? job.niche.substring(0, 100) + "..." : job.niche}
+            </p>
+          {/if}
+          {#if cancelError}
+            <div class="mt-2 text-sm text-error">{cancelError}</div>
+          {/if}
+        {/snippet}
+        {#snippet actions()}
+          {#if job}
+            <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+              {#if ["QUEUED", "PENDING", "RUNNING"].includes(job.status) && !(job.solutionIdeas?.length)}
+                <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
               {/if}
-              {getStatusLabel(isRegenQueued ? "REGENERATING" : job.status)}
-            </Badge>
-          </div>
-        </div>
-        {#if cancelError}
-          <div class="mt-3 text-sm text-error">{cancelError}</div>
-        {/if}
-      </div>
+              {#if isCompleted && reportAsset}
+                <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
+              {/if}
+              <Badge variant={getStatusVariant(isRegenQueued ? "REGENERATING" : job.status)}>
+                {#if ["RUNNING", "RUNNING_PHASE2", "REGENERATING"].includes(job.status) || isRegenQueued}
+                  <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                {/if}
+                {getStatusLabel(isRegenQueued ? "REGENERATING" : job.status)}
+              </Badge>
+            </div>
+          {/if}
+        {/snippet}
+      </PageHeader>
 
       <!-- Queue Position (for QUEUED jobs, but not regen-queued which shows inline) -->
       {#if (job.status === "QUEUED" || job.status === "PENDING") && !isRegenQueued}
@@ -606,7 +615,7 @@
               </p>
               {#if job.queuePosition}
                 <p class="text-sm text-text-muted mt-0.5">
-                  Position {job.queuePosition} of {job.totalQueued} in queue
+                  Position <span class="tabular-nums">{job.queuePosition}</span> of <span class="tabular-nums">{job.totalQueued}</span> in queue
                 </p>
               {/if}
             </div>
@@ -986,11 +995,33 @@
             status={analysisStatus}
             stagesCompleted={analysisStages.filter((s) => s.status === 'COMPLETED' || s.status === 'SKIPPED').length}
             stagesTotal={analysisStages.length || PHASES[1].stageNumbers.length}
-            defaultOpen={analysisStatus === 'active'}
+            defaultOpen={analysisStatus === 'active' || analysisStatus === 'preview'}
             creditCost={analysisStatus === 'locked' || analysisStatus === 'pending'
               ? (page.data.stageCosts as any)?.deep_research ?? 0
               : 0}
           >
+            {#snippet heroStrip()}
+              {#if analysisStatus === 'preview'}
+                {@const painPointCount = stageArtifacts[3]?.count || stageArtifacts[3]?.top?.length || 0}
+                <div class="rounded-lg border border-dashed border-accent/20 bg-accent/[0.03] px-4 py-3">
+                  {#if painPointCount > 0}
+                    <p class="text-sm text-text-secondary mb-2">
+                      Discovery found <span class="font-semibold text-accent tabular-nums">{painPointCount}</span> pain points.
+                      Deep analysis turns these into a validated go/no-go verdict — so you don't waste months on an unproven idea.
+                    </p>
+                  {/if}
+                  <p class="text-xs font-medium text-text-muted uppercase tracking-wider mb-1.5">What deep analysis answers</p>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-text-secondary">
+                    <span>Is this market oversaturated?</span>
+                    <span>What keywords have real search demand?</span>
+                    <span>What can you charge?</span>
+                    <span>How big is the addressable market?</span>
+                    <span>Is momentum growing or fading?</span>
+                    <span>Full report with go/no-go verdict</span>
+                  </div>
+                </div>
+              {/if}
+            {/snippet}
             <div class="stage-list">
               {#each analysisStages as stage, i (stage.stageNumber)}
                 <StageRow
@@ -1056,7 +1087,6 @@
         </div>
       </div>
     {/if}
-  </div>
 </div>
 
 {#if jobId}
@@ -1064,30 +1094,12 @@
 {/if}
 
 <style>
-  .page-container {
-    max-width: 72rem; /* wider to accommodate two columns */
-    margin: 0 auto;
-    padding: 0 1rem;
-  }
-
-  @media (min-width: 640px) {
-    .page-container {
-      padding: 0 1.5rem;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .page-container {
-      padding: 0 2rem;
-    }
-  }
-
   .phases-column {
     min-width: 0;
     margin-bottom: 1.5rem;
   }
 
-  .phases-column :global(.insight-card--border-left) {
+  .phases-column :global(.insight-card--default.insight-card--border-left) {
     border-left: none;
     background: var(--color-bg-elevated);
     background-image: none;

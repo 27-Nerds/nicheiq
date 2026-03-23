@@ -17,6 +17,7 @@
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import Section from "$lib/components/ui/Section.svelte";
   import { getTermTooltip } from "$lib/stores/glossary";
+  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
 
   interface Props {
     data: AlternativeSolution[];
@@ -61,11 +62,14 @@
           <div class="flex flex-wrap items-start justify-between gap-4 mb-4">
             <div>
               <h3 class="text-xl font-semibold text-text-primary">
-                {solution.solution_name}
+                {solutionDisplayTitle(solution)}
               </h3>
-              {#if solution.value_proposition}
+              {#if solution.headline?.trim()}
+                <p class="text-text-muted text-xs uppercase tracking-wider">{solution.solution_name}</p>
+              {/if}
+              {#if solution.short_description || solution.value_proposition}
                 <p class="text-text-secondary text-sm mt-1">
-                  {solution.value_proposition}
+                  {solution.short_description || solution.value_proposition}
                 </p>
               {/if}
             </div>

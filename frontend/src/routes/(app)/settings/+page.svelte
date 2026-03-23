@@ -171,8 +171,14 @@
   <title>Settings - NicheIQ</title>
 </svelte:head>
 
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <PageHeader icon={Settings} title="Account Settings" subtitle="Manage your account, security, and preferences" />
+<div class="max-w-5xl mx-auto">
+  <PageHeader
+    icon={Settings}
+    breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
+    breadcrumbCurrent="Settings"
+    title="Account Settings"
+    subtitle="Manage your account, security, and preferences"
+  />
 
   <!-- Profile Card -->
   <FeatureCard icon={User} class="mb-8">
@@ -241,8 +247,9 @@
               <button
                 type="button"
                 onclick={() => (showCurrentPassword = !showCurrentPassword)}
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-text-muted hover:text-text-primary transition-colors rounded-md"
                 tabindex={-1}
+                aria-label={showCurrentPassword ? "Hide password" : "Show password"}
               >
                 {#if showCurrentPassword}
                   <EyeOff class="w-4 h-4" />
@@ -273,8 +280,9 @@
               <button
                 type="button"
                 onclick={() => (showNewPassword = !showNewPassword)}
-                class="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors"
+                class="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-text-muted hover:text-text-primary transition-colors rounded-md"
                 tabindex={-1}
+                aria-label={showNewPassword ? "Hide password" : "Show password"}
               >
                 {#if showNewPassword}
                   <EyeOff class="w-4 h-4" />
@@ -449,7 +457,7 @@
     </div>
   </div>
 
-  <div class="my-8 h-px bg-border"></div>
+
 </div>
 
 <style>
@@ -486,6 +494,11 @@
   .toggle:checked::after {
     background: white;
     left: 22px;
+  }
+
+  .toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .toggle:disabled {

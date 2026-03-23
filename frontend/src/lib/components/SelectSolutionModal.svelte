@@ -1,10 +1,13 @@
 <script lang="ts">
   import { portal } from "$lib/actions/portal";
   import { X, Loader2, AlertCircle, Coins } from "lucide-svelte";
+  import type { SolutionPreview } from "$lib/types/job";
+  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
 
   interface Props {
     open: boolean;
     solutionNames: string[];
+    solutions?: SolutionPreview[];
     loading?: boolean;
     error?: string;
     creditCost?: number;
@@ -16,6 +19,7 @@
   let {
     open = $bindable(false),
     solutionNames,
+    solutions = [],
     loading = false,
     error: errorMessage = "",
     creditCost = 0,
@@ -24,19 +28,29 @@
     onCancel,
   }: Props = $props();
 
-  let rationale = $state("");
+  const MODAL_OUTCOMES = [
+    'Whether this market has real demand — or is already saturated',
+    'Which keywords your customers actually search for',
+    'How big the opportunity is — and what slice you can capture',
+    'Who you\'d compete with — and where the gaps are',
+    'What to charge and how to position against alternatives',
+    'What to build and launch first — a 30-day playbook',
+  ];
+
+  // Display name map from solutions prop
+  const displayMap = $derived(new Map(solutions?.map(s => [s.solution_name, solutionDisplayTitle(s)]) ?? []));
+
   let modalEl: HTMLDivElement | undefined = $state();
   let triggerEl: HTMLElement | null = null;
 
   const isSingle = $derived(solutionNames.length === 1);
 
   function handleConfirm() {
-    onConfirm(rationale);
+    onConfirm("");
   }
 
   function handleClose() {
     if (!loading) {
-      rationale = "";
       onCancel();
       triggerEl?.focus();
     }
@@ -52,7 +66,7 @@
     if (!modalEl) return [];
     return Array.from(
       modalEl.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), textarea:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
       )
     );
   }
@@ -115,7 +129,7 @@
       <!-- Header -->
       <div class="flex items-center justify-between p-4 border-b border-border">
         <h2 class="text-lg font-semibold text-text-primary">
-          Confirm Selection
+          Start Your Market Analysis
         </h2>
         <button
           onclick={handleClose}
@@ -131,51 +145,49 @@
       <div class="p-4 space-y-4">
         {#if isSingle}
           <p class="text-sm text-text-secondary">
-            Run deep analysis on <span class="font-semibold text-text-primary">{solutionNames[0]}</span>. We'll evaluate market demand, technical feasibility, SEO potential, and competitive landscape — you'll get a go/no-go verdict and a strategic action plan.
+            Validating <span class="font-semibold text-text-primary">{displayMap.get(solutionNames[0]) || solutionNames[0]}</span>.
           </p>
         {:else}
           <p class="text-sm text-text-secondary">
-            Run deep analysis on {solutionNames.length} solutions. We'll score each on market fit, feasibility, and SEO potential. Your report will feature the strongest as your primary recommendation with the rest as alternatives.
+            Validating <span class="font-semibold text-text-primary">{solutionNames.length} solutions</span>. The strongest becomes your primary recommendation; the rest appear as alternatives.
           </p>
           <ul class="space-y-1">
             {#each solutionNames as name}
               <li class="text-sm text-text-primary flex items-start gap-2">
                 <span class="text-accent mt-0.5 shrink-0">&#x2022;</span>
-                <span class="font-medium">{name}</span>
+                <span class="font-medium">
+                  {displayMap.get(name) || name}
+                  {#if displayMap.get(name) && displayMap.get(name) !== name}
+                    <span class="text-[10px] font-mono text-text-muted/60 ml-1">{name}</span>
+                  {/if}
+                </span>
               </li>
             {/each}
           </ul>
         {/if}
 
-        <div>
-          <label
-            for="rationale"
-            class="block text-sm font-medium text-text-primary mb-1.5"
-          >
-            Why {isSingle ? 'this solution' : 'these solutions'}? <span class="text-text-muted font-normal">(optional — but helpful)</span>
-          </label>
-          <textarea
-            id="rationale"
-            bind:value={rationale}
-            placeholder="e.g., Matches my technical skills, strong recurring revenue potential, underserved niche I know well..."
-            rows={3}
-            maxlength={2000}
-            disabled={loading}
-            class="input w-full resize-none text-sm"
-          ></textarea>
-          <div class="mt-1 flex items-center justify-between">
-            <p class="text-xs text-text-muted">
-              Share your thinking — we'll use this to align the analysis with your situation.
-            </p>
-            <span
-              class="text-xs tabular-nums {rationale.length > 1800
-                ? 'text-warning'
-                : 'text-text-muted'}"
-            >
-              {rationale.length}/2000
+        <div class="rounded-lg border border-border bg-bg-elevated/50 p-3">
+          <p class="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2.5">What you'll know after this</p>
+          <ul class="space-y-2">
+            {#each MODAL_OUTCOMES as outcome}
+              <li class="flex items-start gap-2 text-sm">
+                <span class="text-accent mt-0.5 shrink-0">&#x2713;</span>
+                <span class="text-text-secondary">{outcome}</span>
+              </li>
+            {/each}
+          </ul>
+          <div class="mt-3 pt-2.5 border-t border-border flex items-center gap-2 text-xs text-text-muted">
+            <span class="flex items-center gap-1">
+              <span class="inline-block w-1.5 h-1.5 rounded-full bg-success"></span>
+              ~20 minutes
             </span>
+            <span class="ml-auto">You'll get an email when ready</span>
           </div>
         </div>
+
+        <p class="text-sm text-text-secondary">
+          Your analysis starts immediately — results by email in ~20 minutes.
+        </p>
 
         {#if errorMessage}
           <div
@@ -226,7 +238,7 @@
               <Loader2 class="w-4 h-4 animate-spin" />
               Submitting...
             {:else}
-              Run Deep Analysis
+              Validate my picks
               {#if creditCost > 0}
                 <span class="inline-flex items-center gap-1 text-xs opacity-80">
                   <Coins class="w-3 h-3" />{creditCost}

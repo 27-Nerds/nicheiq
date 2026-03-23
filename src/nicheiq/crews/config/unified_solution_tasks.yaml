@@ -479,6 +479,7 @@ solution_refinement:
     - conventional_approach: 1-2 sentences (what most would try)
     - innovation_angle: 1-2 sentences (how this diverges)
     - why_it_works: 1-2 sentences (evidence-based reason)
+    - why_it_works_short: 1 sentence, max 120 chars (card summary of why_it_works — write AFTER why_it_works)
     - novelty_score: decimal derived from the three fields above
     - organic_discovery_queries: 5-10 queries
     - All other numeric scores: decimal only (e.g., 0.75)
@@ -534,10 +535,20 @@ solution_refinement:
     Expand concept into complete BaseSolutionIdea with ALL 25+ fields:
 
     **Basic Info:**
-    - solution_name, description (4-6 sentence HOW IT WORKS), value_proposition
+    - solution_name, headline (5-12 word human-readable title — NOT the code name), short_description (1-2 punchy sentences for card display, <180 chars), description (4-6 sentence HOW IT WORKS), value_proposition
     - pain_points_addressed (MUST include the #1 highest-severity pain point from {high_priority_list}; use exact titles from data)
     - core_features (5-7 MVP features)
     - target_personas (2-4 aligned with user segments)
+
+    **HEADLINE + SHORT_DESCRIPTION EXAMPLES:**
+    - solution_name: "EvictionRiskMap"
+      headline: "Real-time eviction risk scores by neighborhood"
+      short_description: "See eviction probability for any US address. Aggregates county court filings into block-level risk scores updated weekly."
+    - solution_name: "OneClickProposal"
+      headline: "One-click proposals for independent contractors"
+      short_description: "Turn a project brief into a branded proposal in seconds. Auto-fills scope, timeline, and pricing from your past work."
+    Bad headlines: "EvictionRiskMap Tool" (code name), "A great tool" (vague)
+    Bad short_descriptions: repeating the headline, or pasting the full 4-6 sentence description
 
     **Scores (from above criteria):**
     - market_fit_score, technical_feasibility_score
@@ -599,6 +610,12 @@ solution_refinement:
       ToolX lacks offline access — this solution prioritizes offline-first design")
     - Example: "Community threads show users distrust subjective reviews and specifically ask for real-world speed data."
     - Example: "Pain point analysis shows 'salary opacity' is the #2 frustration with 0.87 severity — users want data, not listings."
+
+    **why_it_works_short** — Card summary (write AFTER why_it_works):
+    - Condense why_it_works into one sentence, max 120 characters
+    - Keep the specific evidence (numbers, subreddit names, severity scores)
+    - Example: "14 threads (200+ upvotes) show users want objective speed data, not reviews."
+    - Example: "'Salary opacity' is #2 frustration (0.87 severity) — users want data."
 
     **SCORING ORDER:** Fill the three text fields FIRST. Then assign novelty_score
     based on the strength of your own analysis — not the other way around.

@@ -45,6 +45,7 @@
   import CheckListItem from "$lib/components/ui/CheckListItem.svelte";
   import SectionLabel from "$lib/components/ui/SectionLabel.svelte";
   import ExpandableSection from "$lib/components/ui/ExpandableSection.svelte";
+  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
 
   interface Props {
     solution: SolutionDetails;
@@ -62,7 +63,8 @@
     pricingStrategy,
   }: Props = $props();
 
-  const solutionName = $derived(solution.solution_name || "Solution");
+  const solutionName = $derived(solutionDisplayTitle({ ...solution, solution_name: solution.solution_name || "Solution" }) || "Solution");
+  const hasHeadline = $derived(!!solution.headline?.trim());
   const snapshot = $derived(dashboard.recommended_solution_snapshot);
   const verdict = $derived(dashboard.go_no_go_verdict);
 
@@ -226,8 +228,14 @@
 
     <h3 class="hero-title">{solutionName}</h3>
 
+    {#if hasHeadline}
+      <p class="hero-codename">{solution.solution_name}</p>
+    {/if}
+
     {#if snapshot.tagline}
       <p class="hero-tagline">{snapshot.tagline}</p>
+    {:else if solution.short_description}
+      <p class="hero-tagline">{solution.short_description}</p>
     {/if}
 
     <!-- Value Proposition -->
@@ -629,6 +637,14 @@
     line-height: 1.2;
     color: #18181b;
     margin-bottom: 0.375rem;
+  }
+
+  .hero-codename {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--color-text-muted);
+    margin-top: 0.25rem;
   }
 
   .hero-tagline {

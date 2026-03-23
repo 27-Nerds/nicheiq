@@ -56,6 +56,8 @@ class SolutionPreview(BaseModel):
 
     # Core identity fields
     solution_name: str = Field(..., alias="name", description="Solution name")
+    headline: Optional[str] = Field(default=None, description="Human-readable display title")
+    short_description: Optional[str] = Field(default=None, description="1-2 sentence card summary")
     description: str = Field(..., description="Solution description")
     value_proposition: str = Field(..., description="Value proposition")
 

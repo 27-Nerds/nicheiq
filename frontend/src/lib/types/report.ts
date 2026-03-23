@@ -653,6 +653,8 @@ export interface DataQualitySummary {
 export interface SolutionDetails {
 	// Basic info
 	solution_name?: string;
+	headline?: string;
+	short_description?: string;
 	description: string;
 	estimated_development_time?: string;
 
@@ -683,6 +685,7 @@ export interface SolutionDetails {
 	conventional_approach?: string;
 	innovation_angle?: string;
 	why_it_works?: string;
+	why_it_works_short?: string;
 	solo_dev_feasibility?: number;
 	keyword_geographic_priorities?: string[];
 	keyword_feature_priorities?: string[];
@@ -759,6 +762,8 @@ export interface AudienceSegment {
 export interface AlternativeSolution {
 	// Core identification
 	solution_name: string;
+	headline?: string;
+	short_description?: string;
 	summary: string;
 
 	// Description

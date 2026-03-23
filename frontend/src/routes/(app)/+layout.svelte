@@ -47,13 +47,13 @@
         </a>
 
         <nav class="flex items-center gap-1">
-          <button
-            onclick={() => (showNewResearchModal.open = true)}
+          <a
+            href="/new"
             class="btn-primary flex items-center gap-2 ml-1"
           >
             <Plus class="w-4 h-4" />
             <span class="hidden sm:inline">New Research</span>
-          </button>
+          </a>
 
           <!-- Credit Balance -->
           <a
@@ -165,7 +165,13 @@
   </header>
 
   <main class="flex-1">
-    {@render children()}
+    {#if page.route.id?.endsWith('/report') || page.route.id?.endsWith('/new')}
+      {@render children()}
+    {:else}
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {@render children()}
+      </div>
+    {/if}
   </main>
 
   <footer class="bg-bg-surface border-t border-border py-4">

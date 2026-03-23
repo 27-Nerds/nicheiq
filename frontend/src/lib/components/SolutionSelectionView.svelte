@@ -9,15 +9,25 @@
   import SolutionCard from "./SolutionCard.svelte";
   import SolutionDetail from "./SolutionDetail.svelte";
   import SelectSolutionModal from "./SelectSolutionModal.svelte";
+
   import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { SolutionPreview, StageCosts } from "$lib/types/job";
   import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
   import { invalidateAll } from "$app/navigation";
-  import { tick } from "svelte";
+  import { tick, onMount } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { Coins } from "lucide-svelte";
+  import { computeCompositeScore, solutionDisplayTitle } from "$lib/utils/solution-utils";
+
+  const REPORT_DELIVERABLES = [
+    'Market demand proof',
+    'Competition analysis',
+    'Keyword opportunities',
+    'Pricing blueprint',
+    '30-day launch strategy',
+  ];
 
   const MAX_SELECTIONS = 3;
 
@@ -51,6 +61,16 @@
 
   // Track user's multi-select choices (before confirmation)
   let selectedNames = new SvelteSet<string>();
+
+  /** 1-based selection order, 0 if not selected. Set iteration follows insertion order (ES6). */
+  function selectionIndexOf(name: string): number {
+    let i = 1;
+    for (const n of selectedNames) {
+      if (n === name) return i;
+      i++;
+    }
+    return 0;
+  }
   let modalOpen = $state(false);
   let selectLoading = $state(false);
   let selectError = $state("");
@@ -148,6 +168,33 @@
   const balanceAfterDeep = $derived(creditBalance - stageCosts.deep_research);
   const canAffordLandingAfterDeep = $derived(balanceAfterDeep >= stageCosts.landing_page);
 
+
+  function saveJobReturnState() {
+    sessionStorage.setItem('nicheiq:pendingJobReturn', JSON.stringify({
+      url: `/jobs/${jobId}`,
+      savedAt: Date.now(),
+    }));
+    // Persist selections so they survive the billing round-trip
+    if (selectedNames.size > 0) {
+      sessionStorage.setItem(`nicheiq:pendingSelections:${jobId}`, JSON.stringify([...selectedNames]));
+    }
+  }
+
+  // Restore selections after billing round-trip
+  onMount(() => {
+    const stored = sessionStorage.getItem(`nicheiq:pendingSelections:${jobId}`);
+    if (stored) {
+      try {
+        const names: string[] = JSON.parse(stored);
+        const validNames = new Set(solutions.map(s => s.solution_name));
+        for (const n of names) {
+          if (validNames.has(n)) selectedNames.add(n);
+        }
+      } catch {}
+      sessionStorage.removeItem(`nicheiq:pendingSelections:${jobId}`);
+    }
+  });
+
   // Regen confirmation state
   let regenConfirmPending = $state(false);
 
@@ -158,15 +205,34 @@
     }
   });
 
+  // Identify highest-viability solution
+  const topPickName = $derived.by(() => {
+    if (solutions.length === 0) return null;
+    let best = solutions[0];
+    for (const s of solutions) {
+      if (computeCompositeScore(s) > computeCompositeScore(best)) best = s;
+    }
+    return best.solution_name;
+  });
+
+  // Map solution_name → display title for pills
+  const displayNameMap = $derived(new Map(solutions.map(s => [s.solution_name, solutionDisplayTitle(s)])));
+
   // Dynamic header narrative based on selection count
   const headerNarrative = $derived.by(() => {
-    if (alreadySubmitted) return { title: `Solution${submittedNames.size > 1 ? 's' : ''} Selected`, subtitle: '' };
+    if (alreadySubmitted) return { title: 'Validation in Progress', subtitle: 'Check your email in ~20 minutes for your full report.' };
     if (isRegenerating) return { title: 'Generating New Solutions...', subtitle: 'New solutions are being generated and will be added to your options shortly.' };
+    if (selectionCount > 0 && !canAffordDeepResearch) {
+      return {
+        title: selectionCount >= MAX_SELECTIONS ? 'Picks locked in' : 'Good picks so far',
+        subtitle: 'Your selections are saved. Add credits to unlock the full validation — market demand, competition, pricing, and launch strategy.'
+      };
+    }
     switch (selectionCount) {
-      case 0: return { title: 'Choose Your Solutions', subtitle: `Pick up to ${MAX_SELECTIONS} solutions. We'll analyze all of them, feature the strongest in your report, and include the rest as alternatives.` };
-      case 1: return { title: 'Strong start', subtitle: `Add up to ${MAX_SELECTIONS - 1} more for broader coverage — the report will feature the strongest with the rest as alternatives.` };
-      case 2: return { title: 'Two strong contenders', subtitle: 'Add a third to maximize coverage, or start now — we\'ll run a complete analysis either way.' };
-      default: return { title: 'Maximum coverage', subtitle: `All ${MAX_SELECTIONS} slots filled. We'll evaluate market fit, feasibility, and SEO potential across all of them.` };
+      case 0: return { title: 'Choose Your Solutions', subtitle: `Pick up to ${MAX_SELECTIONS} ideas to validate. We'll analyze market demand, competition, and pricing — you'll know which one is worth building.` };
+      case 1: return { title: 'Good first pick', subtitle: `Add 1–2 more to compare against. The report will show which has the strongest market.` };
+      case 2: return { title: 'Strong shortlist', subtitle: `Add a third or validate now — either way, you'll get a clear winner.` };
+      default: return { title: 'Ready to validate', subtitle: `All ${MAX_SELECTIONS} slots filled. Hit validate and we'll find your strongest market opportunity.` };
     }
   });
 
@@ -196,6 +262,7 @@
     if (!canSubmit) return;
     selectError = "";
     isSelectInsufficientCredits = false;
+    // Always show confirmation modal so all users see the outcome checklist
     modalOpen = true;
   }
 
@@ -273,39 +340,9 @@
   }
 </script>
 
-<div class="space-y-6">
-  <!-- Credit warning banners -->
-  {#if !alreadySubmitted && !isRegenerating}
-    {#if !canAffordDeepResearch}
-      <AlertBanner
-        variant="error"
-        title="Insufficient credits for deep analysis"
-        id="credit-warning-banner"
-      >
-        {#snippet children()}
-          <p class="text-sm text-text-muted mt-1">
-            Deep analysis requires {stageCosts.deep_research} credits (you have {creditBalance}).
-            <a href="/billing" class="text-accent hover:text-accent-hover font-medium">Add credits to continue &rarr;</a>
-          </p>
-        {/snippet}
-      </AlertBanner>
-    {:else if !canAffordBoth}
-      <AlertBanner
-        variant="warning"
-        title="Budget check"
-      >
-        {#snippet children()}
-          <p class="text-sm text-text-muted mt-1">
-            {creditBalance} credits remaining. Deep analysis ({stageCosts.deep_research}) or new ideas ({stageCosts.regenerate_ideas}) &mdash; pick one.
-            <a href="/billing" class="text-accent hover:text-accent-hover font-medium">Add credits &rarr;</a>
-          </p>
-        {/snippet}
-      </AlertBanner>
-    {/if}
-  {/if}
-
-  <!-- Header -->
-  <div class="card p-3">
+<div>
+  <!-- Header card (sticky below nav) -->
+  <div class="card p-3 sticky top-14 z-30 selection-header">
     <div class="flex flex-wrap items-start gap-3">
       <div class="p-2 rounded-xl bg-accent/10 border border-accent/20 shrink-0">
         <Lightbulb class="w-4 h-4 text-accent" />
@@ -317,22 +354,29 @@
         <p class="mt-1 text-sm text-text-secondary">
           {#if alreadySubmitted}
             {#if submittedNames.size === 1}
-              You selected <span class="font-medium text-text-primary">{[...submittedNames][0]}</span>. Deep analysis is in progress.
+              You selected <span class="font-medium text-text-primary">{[...submittedNames][0]}</span>. {headerNarrative.subtitle}
             {:else}
-              You selected {submittedNames.size} solutions. The system is evaluating all of them and will feature the strongest in your report.
+              You selected {submittedNames.size} solutions. {headerNarrative.subtitle}
             {/if}
           {:else}
             {headerNarrative.subtitle}
           {/if}
         </p>
+        {#if !alreadySubmitted && !isRegenerating && selectionCount === 0}
+          <p class="mt-1.5 text-[11px] text-text-muted flex items-center gap-1.5">
+            <span class="inline-block w-1.5 h-1.5 rounded-full bg-success shrink-0"></span>
+            847 founders validated ideas this month
+          </p>
+        {/if}
         {#if !alreadySubmitted && selectionCount > 0}
           <div class="flex flex-wrap items-center gap-1.5 mt-2">
-            {#each [...selectedNames] as name}
-              <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent font-medium">
-                {name}
+            {#each [...selectedNames] as name, i}
+              <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent font-medium max-w-[200px]">
+                <span class="inline-flex items-center justify-center w-4 h-4 rounded shrink-0 bg-accent text-white text-[10px] font-bold tabular-nums">{i + 1}</span>
+                <span class="truncate">{displayNameMap.get(name) || name}</span>
                 <button
                   type="button"
-                  class="ml-0.5 hover:text-accent-hover transition-colors"
+                  class="ml-0.5 hover:text-accent-hover transition-colors shrink-0"
                   aria-label="Remove {name}"
                   onclick={() => handleToggle(name)}
                 >
@@ -346,31 +390,85 @@
 
       <!-- Selection counter + submit button -->
       {#if !alreadySubmitted && !isRegenerating}
-        <div class="flex items-center gap-3 shrink-0 w-full sm:w-auto">
-          {#if selectionCount > 0}
-            <span class="text-sm font-medium text-accent tabular-nums">
-              {selectionCount}/{MAX_SELECTIONS}
-            </span>
-          {/if}
-          <button
-            onclick={handleSubmitClick}
-            disabled={!canSubmit || selectLoading || !canAffordDeepResearch}
-            aria-describedby={!canAffordDeepResearch ? 'credit-warning-banner' : undefined}
-            class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto justify-center sm:justify-start"
-          >
-            {#if selectLoading}
-              <Loader2 class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-              Submitting...
+        <div class="flex flex-col items-end gap-2 shrink-0 w-full sm:w-auto">
+          <div class="flex items-center gap-3 w-full sm:w-auto">
+            <div class="flex items-center gap-2">
+              <div class="flex items-center gap-1" aria-hidden="true">
+                {#each Array(MAX_SELECTIONS) as _, i}
+                  <span class="w-1.5 h-1.5 rounded-full transition-colors duration-200
+                    {i < selectionCount ? 'bg-accent' : 'bg-border-emphasis'}"></span>
+                {/each}
+              </div>
+              <span class="text-sm font-medium text-accent tabular-nums">
+                {selectionCount}/{MAX_SELECTIONS}
+              </span>
+            </div>
+            {#if selectionCount === 0}
+              <span class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
+                border border-dashed border-border-emphasis text-text-muted">
+                Pick 1–3 solutions to start validation
+              </span>
+            {:else if !canAffordDeepResearch}
+              <!-- Active billing CTA — never disabled -->
+              <a
+                href="/billing"
+                onclick={saveJobReturnState}
+                class="px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2
+                       w-full sm:w-auto justify-center sm:justify-start no-underline
+                       bg-accent text-white hover:bg-accent-hover active:scale-[0.98] transition-all
+                       shadow-[0_0_0_1px_rgba(229,90,40,0.3),0_0_12px_rgba(229,90,40,0.15)]"
+              >
+                <Coins class="w-4 h-4" />
+                Get my report
+                <span class="text-xs opacity-80">({stageCosts.deep_research - creditBalance} credits needed)</span>
+                <ArrowRight class="w-4 h-4" />
+              </a>
             {:else}
-              Run Deep Analysis
-              {#if stageCosts.deep_research > 0}
-                <span class="inline-flex items-center gap-1 text-xs opacity-80">
-                  <Coins class="w-3 h-3" />{stageCosts.deep_research}
-                </span>
-              {/if}
+              <button
+                onclick={handleSubmitClick}
+                disabled={!canSubmit || selectLoading}
+                class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2
+                       disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto justify-center sm:justify-start"
+              >
+                {#if selectLoading}
+                  <Loader2 class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+                  Starting analysis...
+                {:else}
+                  Validate my picks
+                  {#if stageCosts.deep_research > 0}
+                    <span class="inline-flex items-center gap-1 text-xs opacity-80">
+                      <Coins class="w-3 h-3" />{stageCosts.deep_research}
+                    </span>
+                  {/if}
+                  <ArrowRight class="w-4 h-4" />
+                {/if}
+              </button>
             {/if}
-          </button>
-          {#if canAffordDeepResearch && !canAffordLandingAfterDeep && selectionCount > 0}
+          </div>
+          {#if selectionCount > 0}
+            <div class="hidden sm:flex items-center gap-2 text-[10px] text-text-muted">
+              <span class="flex items-center gap-1">
+                <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">1</span>
+                Select
+              </span>
+              <span class="w-4 h-px bg-border-emphasis"></span>
+              <span class="flex items-center gap-1 text-text-secondary">
+                <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">2</span>
+                We analyze (~20 min)
+              </span>
+              <span class="w-4 h-px bg-border-emphasis"></span>
+              <span class="flex items-center gap-1">
+                <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">3</span>
+                Full validation report
+              </span>
+            </div>
+          {/if}
+          {#if !canAffordDeepResearch && selectionCount > 0}
+            <p class="text-xs text-text-muted flex items-center gap-1.5">
+              <Coins class="w-3 h-3 text-accent shrink-0" />
+              You have {creditBalance} credits — validation costs {stageCosts.deep_research}.
+            </p>
+          {:else if canAffordDeepResearch && !canAffordLandingAfterDeep && selectionCount > 0}
             <p class="text-xs text-text-muted mt-1">This uses all your remaining credits. Landing page ({stageCosts.landing_page} credits) will need more.</p>
           {/if}
         </div>
@@ -378,8 +476,40 @@
     </div>
   </div>
 
+  {#if !alreadySubmitted && !isRegenerating}
+    <div class="mt-3 px-1">
+      <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-text-muted">
+        <span class="font-medium text-text-secondary uppercase tracking-wider text-[10px]">Your report includes</span>
+        {#each REPORT_DELIVERABLES as item}
+          <span class="flex items-center gap-1.5">
+            <span class="w-1 h-1 rounded-full bg-accent shrink-0"></span>
+            {item}
+          </span>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  <div class="space-y-6 mt-6">
+  <!-- Credit warning banners -->
+  {#if !alreadySubmitted && !isRegenerating}
+    {#if !canAffordBoth && canAffordDeepResearch}
+      <AlertBanner
+        variant="warning"
+        title="Budget check"
+      >
+        {#snippet children()}
+          <p class="text-sm text-text-muted mt-1">
+            {creditBalance} credits remaining. Deep analysis ({stageCosts.deep_research}) or new ideas ({stageCosts.regenerate_ideas}) &mdash; pick one.
+            <a href="/billing" onclick={saveJobReturnState} class="text-accent hover:text-accent-hover font-medium">Add credits &rarr;</a>
+          </p>
+        {/snippet}
+      </AlertBanner>
+    {/if}
+  {/if}
+
   <!-- Solution Cards Grid -->
-  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
     {#each solutions as solution, i}
       <!-- Batch divider before first new card -->
       {#if i === originalBatchSize && solutions.length > originalBatchSize}
@@ -414,7 +544,9 @@
             : selectedNames.has(solution.solution_name)}
           maxReached={!alreadySubmitted && selectionCount >= MAX_SELECTIONS}
           isNew={showNewBadges && i >= originalBatchSize}
+          isTopPick={!alreadySubmitted && solution.solution_name === topPickName}
           voteCount={solutionVotes[solution.solution_name] ?? 0}
+          selectionIndex={alreadySubmitted ? 0 : selectionIndexOf(solution.solution_name)}
         />
       </AnimateOnScroll>
     {/each}
@@ -477,7 +609,7 @@
               <a
                 href="/billing"
                 class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover transition-colors"
-                onclick={(e) => e.stopPropagation()}
+                onclick={(e) => { e.stopPropagation(); saveJobReturnState(); }}
               >
                 Get more credits <ArrowRight class="w-3 h-3" />
               </a>
@@ -503,6 +635,7 @@
         {#if isRegenInsufficientCredits}
           <a
             href="/billing"
+            onclick={saveJobReturnState}
             class="ml-auto text-accent hover:underline text-xs shrink-0"
           >
             Get credits
@@ -517,6 +650,7 @@
     {#if solutions.length > originalBatchSize && hasRevealedNewBatch}
       {solutions.length - originalBatchSize} new solution ideas added below.
     {/if}
+  </div>
   </div>
 </div>
 
@@ -536,12 +670,14 @@
     onNavigate={handleNavigate}
     onClose={handleCloseDetail}
     voteCount={solutionVotes[solutions[modalIndex].solution_name] ?? 0}
+    selectionIndex={alreadySubmitted ? 0 : selectionIndexOf(solutions[modalIndex].solution_name)}
   />
 {/if}
 
 <SelectSolutionModal
   bind:open={modalOpen}
   solutionNames={Array.from(selectedNames)}
+  {solutions}
   loading={selectLoading}
   error={selectError}
   creditCost={stageCosts.deep_research}
@@ -551,6 +687,11 @@
 />
 
 <style>
+  /* Stabilize sticky header height so grid doesn't jump on selection changes */
+  .selection-header {
+    min-height: 5.5rem;
+  }
+
   .generate-more-card {
     display: flex;
     flex-direction: column;

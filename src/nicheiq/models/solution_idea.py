@@ -150,6 +150,24 @@ class BaseSolutionIdea(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     solution_name: str = Field(..., description="Name of the proposed product")
+    headline: Optional[str] = Field(
+        default=None,
+        description=(
+            "Human-readable title (5-12 words) that communicates what the product does. "
+            "NOT the code name. Should read like a search query a real person types into Google. "
+            "Examples: 'CI/CD-style reliability testing for AI agents', "
+            "'Real-time eviction risk scores by neighborhood'."
+        )
+    )
+    short_description: Optional[str] = Field(
+        default=None,
+        description=(
+            "Punchy 1-2 sentence summary for card display. Focuses on what the user gets "
+            "and why it matters — not the full user journey. Must be under 180 characters. "
+            "Example: 'Run automated test suites against agent outputs before every deploy. "
+            "Catch hallucinations, format drift, and regression.'"
+        )
+    )
     description: str = Field(
         ...,
         description=(
@@ -333,6 +351,16 @@ class BaseSolutionIdea(BaseModel):
             "from the research. Reference real user behavior or validated frustrations. "
             "Example: 'Community threads show users distrust subjective reviews and specifically "
             "ask for real-world speed data — 14 threads with 200+ upvotes mention this gap.'"
+        )
+    )
+
+    why_it_works_short: Optional[str] = Field(
+        default=None,
+        description=(
+            "One-sentence card summary of why_it_works. Max 120 chars. "
+            "Distill the core evidence into a single punchy claim. "
+            "Write AFTER why_it_works. Keep the specific evidence. "
+            "Example: '14 threads (200+ upvotes) show users want objective speed data, not reviews.'"
         )
     )
 

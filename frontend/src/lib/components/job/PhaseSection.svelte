@@ -42,6 +42,7 @@
   const sectionOpen = $derived(
     status === 'active' ? true
     : status === 'completed' ? false
+    : status === 'preview' ? true
     : defaultOpen
   );
 
