@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ComponentType } from "svelte";
+  import type { ComponentType, Snippet } from "svelte";
   import { Loader2 } from "lucide-svelte";
 
   interface Props {
@@ -11,6 +11,7 @@
     iconPosition?: "start" | "end";
     keepIconOnLoad?: boolean;
     label: string;
+    suffix?: Snippet;
     type?: "button" | "submit";
     title?: string;
     class?: string;
@@ -25,6 +26,7 @@
     iconPosition = "start",
     keepIconOnLoad = false,
     label,
+    suffix,
     type = "submit",
     title,
     class: className = "btn-primary w-full",
@@ -48,6 +50,7 @@
   {:else}
     {#if Icon && iconPosition === "start"}<Icon class="w-4 h-4" />{/if}
     {label}
+    {#if suffix}{@render suffix()}{/if}
     {#if Icon && iconPosition === "end"}<Icon class="w-4 h-4" />{/if}
   {/if}
 </button>

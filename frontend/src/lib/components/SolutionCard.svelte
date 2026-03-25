@@ -257,7 +257,7 @@
     class="card solution-card group p-3 relative transition-all duration-200 cursor-pointer overflow-visible
       {isSelected ? 'card-selected' : ''}
       {justSelected ? 'selection-pulse' : ''}
-      {isTopPick ? 'border-l-2 border-l-accent mt-3' : ''}
+      {isTopPick ? 'border-border-emphasis mt-3' : ''}
       {(disabled || maxReached) && !isSelected ? 'opacity-60 cursor-default' : ''}"
     role="button"
     aria-pressed={onSelect ? isSelected : undefined}

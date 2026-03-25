@@ -34,7 +34,7 @@
       {/if}
       <div class="flex items-center gap-1.5 mt-0.5">
         <Coins class="w-3 h-3 text-accent" />
-        <span class="text-xs text-text-muted">{creditCost} credits · ~35 min</span>
+        <span class="text-xs text-text-muted">{creditCost} credits · ~5 min</span>
       </div>
     </div>
     {#if hasCredits}

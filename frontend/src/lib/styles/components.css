@@ -132,7 +132,7 @@
 	font-size: var(--text-base);
 	color: white;
 	background: var(--color-accent);
-	border: none;
+	border: 1px solid transparent;
 	border-radius: var(--radius-md);
 	cursor: pointer;
 	transition: all var(--duration-normal) ease;
@@ -140,7 +140,6 @@
 
 .btn-primary:hover {
 	background: var(--color-accent-hover);
-	transform: translateY(-1px);
 }
 
 .btn-primary:active {
@@ -198,7 +197,7 @@
 	font-size: var(--text-base);
 	color: var(--color-text-secondary);
 	background: transparent;
-	border: none;
+	border: 1px solid transparent;
 	border-radius: var(--radius-md);
 	cursor: pointer;
 	transition: all var(--duration-normal) ease;
@@ -221,6 +220,22 @@
 .btn-lg {
 	padding: var(--space-3) var(--space-6);
 	font-size: var(--text-md);
+}
+
+.btn-dashed {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: var(--space-2);
+	padding: var(--space-3) var(--space-6);
+	font-family: var(--font-body);
+	font-weight: var(--font-semibold);
+	font-size: var(--text-base);
+	color: var(--color-text-muted);
+	background: transparent;
+	border: 1px dashed var(--color-border-emphasis);
+	border-radius: var(--radius-md);
+	cursor: default;
 }
 
 /* ========================================

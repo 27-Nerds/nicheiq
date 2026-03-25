@@ -11,6 +11,7 @@
   import SelectSolutionModal from "./SelectSolutionModal.svelte";
 
   import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import AnimateOnScroll from "$lib/components/ui/AnimateOnScroll.svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { SolutionPreview, StageCosts } from "$lib/types/job";
@@ -22,13 +23,7 @@
   import { computeCompositeScore, solutionDisplayTitle } from "$lib/utils/solution-utils";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 
-  const REPORT_DELIVERABLES = [
-    'Market demand proof',
-    'Competition analysis',
-    'Keyword opportunities',
-    'Pricing blueprint',
-    '30-day launch strategy',
-  ];
+
 
   const MAX_SELECTIONS = 3;
 
@@ -235,6 +230,14 @@
     modalIndex = null;
   }
 
+  function handleValidateClick() {
+    if (selectionCount > 0 && !canAffordDeepResearch) {
+      openTopUp(stageCosts.deep_research, 'deep research');
+    } else {
+      handleSubmitClick();
+    }
+  }
+
   function handleSubmitClick() {
     if (!canSubmit) return;
     selectError = "";
@@ -330,7 +333,7 @@
         <h2 class="text-lg font-semibold text-text-primary">
           {headerNarrative.title}
         </h2>
-        <p class="mt-1 text-sm text-text-secondary">
+        <p class="mt-1 text-sm text-text-secondary min-h-[42px]">
           {#if alreadySubmitted}
             {#if submittedNames.size === 1}
               You selected <span class="font-medium text-text-primary">{[...submittedNames][0]}</span>. {headerNarrative.subtitle}
@@ -341,30 +344,6 @@
             {headerNarrative.subtitle}
           {/if}
         </p>
-        {#if !alreadySubmitted && !isRegenerating && selectionCount === 0}
-          <p class="mt-1.5 text-[11px] text-text-muted flex items-center gap-1.5">
-            <span class="inline-block w-1.5 h-1.5 rounded-full bg-success shrink-0"></span>
-            847 founders validated ideas this month
-          </p>
-        {/if}
-        {#if !alreadySubmitted && selectionCount > 0}
-          <div class="flex flex-wrap items-center gap-1.5 mt-2">
-            {#each [...selectedNames] as name, i}
-              <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent font-medium max-w-[200px]">
-                <span class="inline-flex items-center justify-center w-4 h-4 rounded shrink-0 bg-accent text-white text-[10px] font-bold tabular-nums">{i + 1}</span>
-                <span class="truncate">{displayNameMap.get(name) || name}</span>
-                <button
-                  type="button"
-                  class="ml-0.5 hover:text-accent-hover transition-colors shrink-0"
-                  aria-label="Remove {name}"
-                  onclick={() => handleToggle(name)}
-                >
-                  &times;
-                </button>
-              </span>
-            {/each}
-          </div>
-        {/if}
       </div>
 
       <!-- Selection counter + submit button -->
@@ -382,91 +361,81 @@
                 {selectionCount}/{MAX_SELECTIONS}
               </span>
             </div>
-            {#if selectionCount === 0}
-              <span class="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg
-                border border-dashed border-border-emphasis text-text-muted">
-                Pick 1–3 solutions to start validation
-              </span>
-            {:else if !canAffordDeepResearch}
-              <!-- Active top-up CTA — never disabled -->
-              <button
-                onclick={() => openTopUp(stageCosts.deep_research, 'deep research')}
-                class="px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2
-                       w-full sm:w-auto justify-center sm:justify-start
-                       bg-accent text-white hover:bg-accent-hover active:scale-[0.98] transition-all
-                       shadow-[0_0_0_1px_rgba(229,90,40,0.3),0_0_12px_rgba(229,90,40,0.15)]"
-              >
-                <Coins class="w-4 h-4" />
-                Get my report
-                <span class="text-xs opacity-80">({stageCosts.deep_research - creditBalance} credits needed)</span>
-                <ArrowRight class="w-4 h-4" />
-              </button>
-            {:else}
-              <button
-                onclick={handleSubmitClick}
-                disabled={!canSubmit || selectLoading}
-                class="btn-primary px-4 py-2 text-sm font-medium rounded-lg flex items-center gap-2
-                       disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto justify-center sm:justify-start"
-              >
-                {#if selectLoading}
-                  <Loader2 class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-                  Starting analysis...
-                {:else}
-                  Validate my picks
-                  {#if stageCosts.deep_research > 0}
-                    <span class="inline-flex items-center gap-1 text-xs opacity-80">
-                      <Coins class="w-3 h-3" />{stageCosts.deep_research}
-                    </span>
-                  {/if}
-                  <ArrowRight class="w-4 h-4" />
+            <SubmitButton
+              onclick={handleValidateClick}
+              disabled={selectionCount === 0}
+              loading={selectLoading}
+              loadingText="Starting analysis..."
+              icon={selectionCount > 0 ? ArrowRight : undefined}
+              iconPosition="end"
+              label={selectionCount === 0
+                ? 'Pick 1–3 solutions to start validation'
+                : 'Validate my picks'}
+              type="button"
+              class={selectionCount === 0
+                ? 'btn-dashed w-full sm:w-auto'
+                : 'btn-primary w-full sm:w-auto'}
+            >
+              {#snippet suffix()}
+                {#if selectionCount > 0}
+                  <span class="inline-flex items-center gap-1 text-xs opacity-80">
+                    <Coins class="w-3 h-3" />
+                    {#if canAffordDeepResearch}
+                      {stageCosts.deep_research}
+                    {:else}
+                      {stageCosts.deep_research - creditBalance} needed
+                    {/if}
+                  </span>
                 {/if}
-              </button>
-            {/if}
+              {/snippet}
+            </SubmitButton>
           </div>
-          {#if selectionCount > 0}
-            <div class="hidden sm:flex items-center gap-2 text-[10px] text-text-muted">
-              <span class="flex items-center gap-1">
-                <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">1</span>
-                Select
-              </span>
-              <span class="w-4 h-px bg-border-emphasis"></span>
-              <span class="flex items-center gap-1 text-text-secondary">
-                <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">2</span>
-                We analyze (~20 min)
-              </span>
-              <span class="w-4 h-px bg-border-emphasis"></span>
-              <span class="flex items-center gap-1">
-                <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">3</span>
-                Full validation report
-              </span>
-            </div>
-          {/if}
-          {#if !canAffordDeepResearch && selectionCount > 0}
+          <div class="hidden sm:flex items-center gap-2 text-[10px] text-text-muted">
+            <span class="flex items-center gap-1">
+              <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">1</span>
+              Select
+            </span>
+            <span class="w-4 h-px bg-border-emphasis"></span>
+            <span class="flex items-center gap-1 text-text-secondary">
+              <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">2</span>
+              We analyze (~20 min)
+            </span>
+            <span class="w-4 h-px bg-border-emphasis"></span>
+            <span class="flex items-center gap-1">
+              <span class="w-4 h-4 rounded-full bg-accent/20 border border-accent/40 text-accent font-bold flex items-center justify-center" style="font-size:8px">3</span>
+              Full validation report
+            </span>
+          </div>
+          {#if !canAffordDeepResearch && !alreadySubmitted}
             <p class="text-xs text-text-muted flex items-center gap-1.5">
               <Coins class="w-3 h-3 text-accent shrink-0" />
               You have {creditBalance} credits — validation costs {stageCosts.deep_research}.
             </p>
-          {:else if canAffordDeepResearch && !canAffordLandingAfterDeep && selectionCount > 0}
+          {:else if canAffordDeepResearch && !canAffordLandingAfterDeep && !alreadySubmitted}
             <p class="text-xs text-text-muted mt-1">This uses all your remaining credits. Landing page ({stageCosts.landing_page} credits) will need more.</p>
           {/if}
         </div>
       {/if}
     </div>
-  </div>
-
-  {#if !alreadySubmitted && !isRegenerating}
-    <div class="mt-3 px-1">
-      <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-text-muted">
-        <span class="font-medium text-text-secondary uppercase tracking-wider text-[10px]">Your report includes</span>
-        {#each REPORT_DELIVERABLES as item}
-          <span class="flex items-center gap-1.5">
-            <span class="w-1 h-1 rounded-full bg-accent shrink-0"></span>
-            {item}
+    {#if !alreadySubmitted}
+      <div class="flex flex-wrap items-center gap-1.5 mt-2 min-h-[28px]">
+        {#each [...selectedNames] as name, i}
+          <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent font-medium max-w-[200px]">
+            <span class="inline-flex items-center justify-center w-4 h-4 rounded shrink-0 bg-accent text-white text-[10px] font-bold tabular-nums">{i + 1}</span>
+            <span class="truncate">{displayNameMap.get(name) || name}</span>
+            <button
+              type="button"
+              class="ml-0.5 hover:text-accent-hover transition-colors shrink-0"
+              aria-label="Remove {name}"
+              onclick={() => handleToggle(name)}
+            >
+              &times;
+            </button>
           </span>
         {/each}
       </div>
-    </div>
-  {/if}
+    {/if}
+  </div>
 
   <div class="space-y-6 mt-6">
   <!-- Credit warning banners -->
@@ -678,8 +647,6 @@
   .generate-more-card:hover:not(:disabled) {
     border-color: var(--color-accent);
     background: linear-gradient(135deg, rgba(229, 90, 40, 0.06) 0%, var(--color-bg-card) 60%);
-    transform: translateY(-2px);
-    outline: 1px solid var(--color-accent);
   }
   .generate-more-card:hover:not(:disabled) :global(.group-icon) {
     background: rgba(229, 90, 40, 0.15);

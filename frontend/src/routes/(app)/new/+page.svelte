@@ -116,7 +116,7 @@
   const modeConfig = $derived(
     {
       idea: {
-        label: "What's your idea?",
+        label: "What niche are you exploring?",
         icon: Lightbulb,
         colorClass: "text-accent",
         glowColors: MODE_COLORS.idea,
@@ -583,7 +583,7 @@
               loadingText="Starting..."
               icon={ArrowRight}
               iconPosition="end"
-              label="Start research ({stageCosts.discovery} credits)"
+              label="Discover ideas (~5 min)"
               disabled={!niche.trim()}
               class="btn-primary w-full justify-center text-base py-3"
             />
@@ -599,7 +599,7 @@
           {/if}
 
           <p class="text-xs text-text-muted text-center mt-2">
-            {stageCosts.discovery} credits for discovery &middot; you review ideas before full validation
+            {stageCosts.discovery} credits &middot; you choose which ideas to validate further
           </p>
           <p class="text-xs text-center mt-1">
             <a href="/sample-report" class="text-text-muted hover:text-text-secondary underline underline-offset-2 decoration-border">Sample report</a>

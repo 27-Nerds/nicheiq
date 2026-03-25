@@ -53,7 +53,7 @@
         focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:outline-none
         {isSelected
         ? 'border-border-emphasis bg-bg-elevated'
-        : 'border-border bg-bg-elevated opacity-50 hover:opacity-75'}"
+        : 'border-border bg-bg-elevated opacity-70 hover:opacity-90'}"
     >
       <div class="flex items-start gap-3">
         <mode.icon class="w-5 h-5 shrink-0 mt-0.5 {isSelected ? mode.iconClass : 'text-text-muted'}" />

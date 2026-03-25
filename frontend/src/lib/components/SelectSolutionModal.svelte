@@ -26,14 +26,6 @@
     onCancel,
   }: Props = $props();
 
-  const MODAL_OUTCOMES = [
-    'Whether this market has real demand — or is already saturated',
-    'Which keywords your customers actually search for',
-    'How big the opportunity is — and what slice you can capture',
-    'Who you\'d compete with — and where the gaps are',
-    'What to charge and how to position against alternatives',
-    'What to build and launch first — a 30-day playbook',
-  ];
 
   // Display name map from solutions prop
   const displayMap = $derived(new Map(solutions?.map(s => [s.solution_name, solutionDisplayTitle(s)]) ?? []));
@@ -164,27 +156,8 @@
           </ul>
         {/if}
 
-        <div class="rounded-lg border border-border bg-bg-elevated/50 p-3">
-          <p class="text-xs font-semibold text-text-primary uppercase tracking-wider mb-2.5">What you'll know after this</p>
-          <ul class="space-y-2">
-            {#each MODAL_OUTCOMES as outcome}
-              <li class="flex items-start gap-2 text-sm">
-                <span class="text-accent mt-0.5 shrink-0">&#x2713;</span>
-                <span class="text-text-secondary">{outcome}</span>
-              </li>
-            {/each}
-          </ul>
-          <div class="mt-3 pt-2.5 border-t border-border flex items-center gap-2 text-xs text-text-muted">
-            <span class="flex items-center gap-1">
-              <span class="inline-block w-1.5 h-1.5 rounded-full bg-success"></span>
-              ~20 minutes
-            </span>
-            <span class="ml-auto">You'll get an email when ready</span>
-          </div>
-        </div>
-
         <p class="text-sm text-text-secondary">
-          Your analysis starts immediately — results by email in ~20 minutes.
+          You'll get a full market analysis — demand signals, competitor landscape, keyword opportunities, and a pricing recommendation. Results by email in ~20 minutes.
         </p>
 
         {#if errorMessage}

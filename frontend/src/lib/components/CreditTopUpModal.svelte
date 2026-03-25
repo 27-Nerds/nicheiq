@@ -6,10 +6,10 @@
   import type { TokenPackage } from "$lib/types/billing";
   import {
     X,
-    Loader2,
     AlertCircle,
     Check,
   } from "lucide-svelte";
+  import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   // ── Local state ──────────────────────────────────────────
   let packages = $state<TokenPackage[]>([]);
@@ -380,22 +380,15 @@
                   <span class="text-sm text-text-muted">
                     {pkg.credits} credits{#if isRecommended}<span class="text-accent font-medium ml-1.5">· Recommended</span>{/if}
                   </span>
-                  <button
+                  <SubmitButton
+                    type="button"
                     onclick={() => startCheckout(pkg.id)}
+                    loading={checkoutLoading === pkg.id}
+                    loadingText="Redirecting..."
+                    label={isRecommended ? 'Continue' : 'Get credits'}
+                    class="{isRecommended ? 'btn-primary' : 'btn-secondary'} !px-3.5 !py-1.5 !text-sm"
                     disabled={!!checkoutLoading}
-                    class="inline-flex items-center gap-1.5
-                           {isRecommended ? 'bg-accent text-white hover:bg-accent-hover' : 'bg-bg-surface text-text-primary border border-border hover:border-border-emphasis'}
-                           px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors active:scale-[0.97] disabled:opacity-50"
-                  >
-                    {#if checkoutLoading === pkg.id}
-                      <Loader2 class="w-3 h-3 animate-spin" />
-                      Redirecting...
-                    {:else if isRecommended}
-                      Continue
-                    {:else}
-                      Get credits
-                    {/if}
-                  </button>
+                  />
                 </div>
               </div>
             {/each}
@@ -430,18 +423,15 @@
                   class="flex-1 text-sm px-2.5 py-1.5 rounded-md border border-border bg-bg-surface
                          focus:outline-none focus:border-accent/40 transition-colors disabled:opacity-50"
                 />
-                <button
+                <SubmitButton
+                  type="button"
                   onclick={redeemPromo}
-                  disabled={!promoCode.trim() || promoLoading}
-                  class="text-sm font-medium text-accent border border-accent/30 rounded-md px-2.5 py-1
-                         hover:bg-accent/[0.04] active:scale-[0.97] transition-colors disabled:opacity-50"
-                >
-                  {#if promoLoading}
-                    <Loader2 class="w-3 h-3 animate-spin inline" />
-                  {:else}
-                    Apply
-                  {/if}
-                </button>
+                  loading={promoLoading}
+                  loadingText=""
+                  label="Apply"
+                  disabled={!promoCode.trim()}
+                  class="btn-secondary !px-2.5 !py-1 !text-sm !border-accent/30 !text-accent"
+                />
               </div>
               {#if promoError}
                 <p class="text-xs text-error mt-1.5">{promoError}</p>

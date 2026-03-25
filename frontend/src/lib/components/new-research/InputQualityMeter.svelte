@@ -16,7 +16,7 @@
 
   let { niche, qualityTiers, helpText }: Props = $props();
 
-  const QUALIFYING_WORDS = ["struggling", "who", "for", "with", "that", "need", "want", "trying"];
+  const QUALIFYING_WORDS = ["struggling", "who", "need", "want", "trying", "can't", "overwhelmed", "stuck"];
 
   const currentTier = $derived.by(() => {
     const trimmed = niche.trim();
@@ -33,7 +33,7 @@
     if (currentTier === -1) return helpText;
     if (currentTier === 0) return `Tip: be more specific — e.g., "${qualityTiers.best.example}"`;
     if (currentTier === 1) return "Try adding who and what problem they face";
-    return "";
+    return "Specific enough to get good results.";
   });
 </script>
 
