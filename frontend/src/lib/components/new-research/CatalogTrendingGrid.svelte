@@ -84,7 +84,7 @@
             <button
               type="button"
               onclick={() =>
-                selectItem(pp.id, `${pp.title} — ${pp.description.substring(0, 100)}`)}
+                selectItem(pp.id, pp.title ?? pp.description.substring(0, 100))}
               class="text-left p-3 rounded-lg border transition-all group
                 {selectedId === pp.id ? 'border-accent bg-accent/10' : 'border-border bg-bg-surface hover:border-accent/40 hover:bg-accent/5'}"
             >
@@ -131,7 +131,7 @@
             <button
               type="button"
               onclick={() =>
-                selectItem(idea.id, `${idea.solutionName} — ${idea.description.substring(0, 100)}`)}
+                selectItem(idea.id, idea.solutionName ?? idea.description.substring(0, 100))}
               class="text-left p-3 rounded-lg border transition-all group
                 {selectedId === idea.id ? 'border-accent bg-accent/10' : 'border-border bg-bg-surface hover:border-accent/40 hover:bg-accent/5'}"
             >
@@ -166,8 +166,5 @@
       </div>
     {/if}
 
-    <p class="text-xs text-text-muted text-center">
-      Pick one to jump-start your research, or type your own.
-    </p>
   </div>
 {/if}

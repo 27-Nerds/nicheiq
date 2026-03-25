@@ -57,12 +57,35 @@ export async function getPackageById(packageId: string) {
 }
 
 /**
- * Create a Stripe Checkout Session for purchasing credits
+ * Validate a return URL to prevent open redirect attacks.
+ * Must be a relative path starting with / and resolving to our origin.
+ */
+function isValidReturnUrl(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  if (!url.startsWith('/')) return false;
+  if (url.startsWith('//')) return false;
+  if (url.includes('://')) return false;
+  if (url.includes('\\')) return false;
+  if (url.length > 500) return false;
+  try {
+    const parsed = new URL(url, CONFIG.baseUrl);
+    if (parsed.origin !== new URL(CONFIG.baseUrl).origin) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Create a Stripe Checkout Session for purchasing credits.
+ * If a valid returnUrl is provided, Stripe redirects back to that page
+ * instead of /billing (used by the credit top-up modal).
  */
 export async function createCheckoutSession(
   userId: string,
   userEmail: string,
-  packageId: string
+  packageId: string,
+  returnUrl?: string
 ): Promise<{ url: string }> {
   // Get the package
   const pkg = await prisma.tokenPackage.findUnique({
@@ -75,6 +98,19 @@ export async function createCheckoutSession(
 
   if (!pkg.isActive) {
     throw new Error('Package is no longer available');
+  }
+
+  // Build return URLs — use returnUrl if valid, otherwise default to /billing
+  let successUrl: string;
+  let cancelUrl: string;
+
+  if (returnUrl && isValidReturnUrl(returnUrl)) {
+    const sep = returnUrl.includes('?') ? '&' : '?';
+    successUrl = `${CONFIG.baseUrl}${returnUrl}${sep}credits_added=true&session_id={CHECKOUT_SESSION_ID}`;
+    cancelUrl = `${CONFIG.baseUrl}${returnUrl}${sep}checkout_canceled=true`;
+  } else {
+    successUrl = `${CONFIG.baseUrl}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`;
+    cancelUrl = `${CONFIG.baseUrl}/billing?canceled=true`;
   }
 
   // Create Stripe Checkout Session
@@ -95,8 +131,8 @@ export async function createCheckoutSession(
       packageName: pkg.name,
       credits: pkg.credits.toString(),
     },
-    success_url: `${CONFIG.baseUrl}/billing?success=true&session_id={CHECKOUT_SESSION_ID}`,
-    cancel_url: `${CONFIG.baseUrl}/billing?canceled=true`,
+    success_url: successUrl,
+    cancel_url: cancelUrl,
   });
 
   if (!session.url) {

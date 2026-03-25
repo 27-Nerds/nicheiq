@@ -1,6 +1,5 @@
 <script lang="ts">
   import { invalidateAll, goto } from "$app/navigation";
-  import { onMount } from "svelte";
   import {
     Coins,
     Gift,
@@ -67,26 +66,6 @@
 
   // Refresh state
   let isRefreshing = $state(false);
-
-  // Pending research state (from /new page)
-  let hasPendingResearch = $state(false);
-
-  // Pending job return state (from job page billing links)
-  let pendingJobUrl = $state<string | null>(null);
-
-  onMount(() => {
-    hasPendingResearch = sessionStorage.getItem('nicheiq:pendingResearch') !== null;
-
-    const jobReturn = sessionStorage.getItem('nicheiq:pendingJobReturn');
-    if (jobReturn) {
-      try {
-        const parsed = JSON.parse(jobReturn);
-        if (Date.now() - parsed.savedAt < 3_600_000 && parsed.url?.startsWith('/jobs/')) {
-          pendingJobUrl = parsed.url;
-        }
-      } catch {}
-    }
-  });
 
   // Dismiss success/canceled banners
   function dismissBanner() {
@@ -289,22 +268,6 @@
       onDismiss={dismissBanner}
       class="mb-8"
     >
-      {#snippet children()}
-        {#if pendingJobUrl}
-          <a href={pendingJobUrl}
-            class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-3 no-underline">
-            Continue to your analysis
-            <ArrowRight class="w-4 h-4" />
-          </a>
-          <p class="text-xs text-text-muted mt-1.5">Your selected solutions are waiting — pick up where you left off.</p>
-        {:else if hasPendingResearch}
-          <a href="/new"
-            class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-3 no-underline">
-            Continue your research
-            <ArrowRight class="w-4 h-4" />
-          </a>
-        {/if}
-      {/snippet}
     </AlertBanner>
   {/if}
 
@@ -434,19 +397,6 @@
 
         {#if promoSuccess}
           <InlineFeedback message={promoSuccess} variant="success" />
-          {#if pendingJobUrl}
-            <a href={pendingJobUrl}
-              class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-2 no-underline">
-              Continue to your analysis
-              <ArrowRight class="w-4 h-4" />
-            </a>
-          {:else if hasPendingResearch}
-            <a href="/new"
-              class="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm mt-2 no-underline">
-              Continue your research
-              <ArrowRight class="w-4 h-4" />
-            </a>
-          {/if}
         {/if}
 
         <SubmitButton

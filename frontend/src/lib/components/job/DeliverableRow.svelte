@@ -12,6 +12,8 @@
   } from "lucide-svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
+  import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
+  import { page } from "$app/state";
 
   interface Props {
     label: string;
@@ -22,7 +24,6 @@
     asset?: { url: string } | null;
     generating?: boolean;
     error?: string;
-    isInsufficientCredits?: boolean;
     onGenerate: () => Promise<void>;
   }
 
@@ -35,7 +36,6 @@
     asset = null,
     generating = false,
     error: errorMsg = "",
-    isInsufficientCredits = false,
     onGenerate,
   }: Props = $props();
 
@@ -98,11 +98,11 @@
       <SubmitButton onclick={onGenerate} loading={generating} loadingText="Retrying..." icon={RotateCw} label="Retry" class="btn-secondary btn-sm" />
     {:else if status === 'pending'}
       {#if !canAfford && creditCost > 0}
-        <!-- Insufficient credits strip — replaces the button entirely -->
+        <!-- Insufficient credits strip — opens top-up modal -->
         <div class="dr-credit-warning">
           <AlertTriangle class="dr-credit-warning-icon" />
           <span>Insufficient credits</span>
-          <Button href="/billing" label="Add credits" class="btn-tertiary btn-sm" />
+          <button onclick={() => creditTopUp.show({ balance: (page.data.creditBalance as number) ?? 0, required: creditCost, stageName: label.toLowerCase() })} class="btn-tertiary btn-sm">Add credits</button>
         </div>
       {:else if confirmPending}
         <div class="dr-confirm-strip">
@@ -130,9 +130,6 @@
   <div class="dr-error-strip">
     <AlertTriangle class="dr-error-strip-icon" />
     <span>{errorMsg}</span>
-    {#if isInsufficientCredits}
-      <Button href="/billing" label="Add credits" class="btn-tertiary btn-sm dr-error-billing-link" />
-    {/if}
   </div>
 {/if}
 

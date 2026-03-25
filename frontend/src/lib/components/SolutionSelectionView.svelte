@@ -16,10 +16,11 @@
   import type { SolutionPreview, StageCosts } from "$lib/types/job";
   import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
   import { invalidateAll } from "$app/navigation";
-  import { tick, onMount } from "svelte";
+  import { tick } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import { Coins } from "lucide-svelte";
   import { computeCompositeScore, solutionDisplayTitle } from "$lib/utils/solution-utils";
+  import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 
   const REPORT_DELIVERABLES = [
     'Market demand proof',
@@ -74,10 +75,8 @@
   let modalOpen = $state(false);
   let selectLoading = $state(false);
   let selectError = $state("");
-  let isSelectInsufficientCredits = $state(false);
   let regenerating = $state(false);
   let regenerateError = $state("");
-  let isRegenInsufficientCredits = $state(false);
 
   // Horizon expander: track original batch for divider + badges
   let originalBatchSize = $state(solutions.length);
@@ -169,31 +168,9 @@
   const canAffordLandingAfterDeep = $derived(balanceAfterDeep >= stageCosts.landing_page);
 
 
-  function saveJobReturnState() {
-    sessionStorage.setItem('nicheiq:pendingJobReturn', JSON.stringify({
-      url: `/jobs/${jobId}`,
-      savedAt: Date.now(),
-    }));
-    // Persist selections so they survive the billing round-trip
-    if (selectedNames.size > 0) {
-      sessionStorage.setItem(`nicheiq:pendingSelections:${jobId}`, JSON.stringify([...selectedNames]));
-    }
+  function openTopUp(required: number, stageName: string) {
+    creditTopUp.show({ balance: creditBalance, required, stageName });
   }
-
-  // Restore selections after billing round-trip
-  onMount(() => {
-    const stored = sessionStorage.getItem(`nicheiq:pendingSelections:${jobId}`);
-    if (stored) {
-      try {
-        const names: string[] = JSON.parse(stored);
-        const validNames = new Set(solutions.map(s => s.solution_name));
-        for (const n of names) {
-          if (validNames.has(n)) selectedNames.add(n);
-        }
-      } catch {}
-      sessionStorage.removeItem(`nicheiq:pendingSelections:${jobId}`);
-    }
-  });
 
   // Regen confirmation state
   let regenConfirmPending = $state(false);
@@ -261,7 +238,6 @@
   function handleSubmitClick() {
     if (!canSubmit) return;
     selectError = "";
-    isSelectInsufficientCredits = false;
     // Always show confirmation modal so all users see the outcome checklist
     modalOpen = true;
   }
@@ -279,9 +255,11 @@
       onSelectionComplete?.();
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
-        selectError = `Insufficient credits for deep research (need ${stageCosts.deep_research})`;
-        isSelectInsufficientCredits = true;
-        await invalidateAll();
+        creditTopUp.show({
+          balance: creditBalance,
+          required: stageCosts.deep_research,
+          stageName: "deep research",
+        });
       } else {
         selectError =
           e instanceof Error ? e.message : "Failed to select solution";
@@ -319,7 +297,6 @@
     if (regenerating) return;
     regenerating = true;
     regenerateError = "";
-    isRegenInsufficientCredits = false;
 
     try {
       await regenerateIdeas(jobId);
@@ -328,9 +305,11 @@
       // Keep regenerating=true — SSE will set isRegenerating, then new cards arrive and button disappears
     } catch (e) {
       if (e instanceof ApiError && e.status === 402) {
-        regenerateError = `Insufficient credits (need ${stageCosts.regenerate_ideas})`;
-        isRegenInsufficientCredits = true;
-        await invalidateAll();
+        creditTopUp.show({
+          balance: creditBalance,
+          required: stageCosts.regenerate_ideas,
+          stageName: "idea regeneration",
+        });
       } else {
         regenerateError =
           e instanceof Error ? e.message : "Failed to regenerate ideas";
@@ -409,12 +388,11 @@
                 Pick 1–3 solutions to start validation
               </span>
             {:else if !canAffordDeepResearch}
-              <!-- Active billing CTA — never disabled -->
-              <a
-                href="/billing"
-                onclick={saveJobReturnState}
+              <!-- Active top-up CTA — never disabled -->
+              <button
+                onclick={() => openTopUp(stageCosts.deep_research, 'deep research')}
                 class="px-4 py-2 text-sm font-semibold rounded-lg flex items-center gap-2
-                       w-full sm:w-auto justify-center sm:justify-start no-underline
+                       w-full sm:w-auto justify-center sm:justify-start
                        bg-accent text-white hover:bg-accent-hover active:scale-[0.98] transition-all
                        shadow-[0_0_0_1px_rgba(229,90,40,0.3),0_0_12px_rgba(229,90,40,0.15)]"
               >
@@ -422,7 +400,7 @@
                 Get my report
                 <span class="text-xs opacity-80">({stageCosts.deep_research - creditBalance} credits needed)</span>
                 <ArrowRight class="w-4 h-4" />
-              </a>
+              </button>
             {:else}
               <button
                 onclick={handleSubmitClick}
@@ -501,7 +479,7 @@
         {#snippet children()}
           <p class="text-sm text-text-muted mt-1">
             {creditBalance} credits remaining. Deep analysis ({stageCosts.deep_research}) or new ideas ({stageCosts.regenerate_ideas}) &mdash; pick one.
-            <a href="/billing" onclick={saveJobReturnState} class="text-accent hover:text-accent-hover font-medium">Add credits &rarr;</a>
+            <button type="button" onclick={() => openTopUp(stageCosts.deep_research, 'deep research')} class="text-accent hover:text-accent-hover font-medium">Add credits &rarr;</button>
           </p>
         {/snippet}
       </AlertBanner>
@@ -606,13 +584,15 @@
                 <Coins class="w-3 h-3" />Costs {stageCosts.regenerate_ideas} credits &middot; You have {creditBalance}
               </span>
               <!-- svelte-ignore a11y_no_static_element_interactions -->
-              <a
-                href="/billing"
-                class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover transition-colors"
-                onclick={(e) => { e.stopPropagation(); saveJobReturnState(); }}
+              <span
+                role="link"
+                tabindex="0"
+                class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover transition-colors cursor-pointer"
+                onclick={(e) => { e.stopPropagation(); openTopUp(stageCosts.regenerate_ideas, 'idea regeneration'); }}
+                onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); openTopUp(stageCosts.regenerate_ideas, 'idea regeneration'); } }}
               >
                 Get more credits <ArrowRight class="w-3 h-3" />
-              </a>
+              </span>
             {:else}
               <div class="p-2.5 rounded-xl bg-accent/10 group-icon">
                 <Sparkles class="w-5 h-5 text-accent" />
@@ -632,15 +612,6 @@
       <div class="col-span-full flex items-center gap-2 p-3 bg-error/10 border border-error/20 rounded-lg text-error text-sm">
         <AlertCircle class="w-4 h-4 shrink-0" />
         <span>{regenerateError}</span>
-        {#if isRegenInsufficientCredits}
-          <a
-            href="/billing"
-            onclick={saveJobReturnState}
-            class="ml-auto text-accent hover:underline text-xs shrink-0"
-          >
-            Get credits
-          </a>
-        {/if}
       </div>
     {/if}
   </div>
@@ -681,7 +652,6 @@
   loading={selectLoading}
   error={selectError}
   creditCost={stageCosts.deep_research}
-  isInsufficientCredits={isSelectInsufficientCredits}
   onConfirm={handleConfirmSelection}
   onCancel={handleCancelModal}
 />

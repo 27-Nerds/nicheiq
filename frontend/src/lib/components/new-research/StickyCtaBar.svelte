@@ -1,5 +1,7 @@
 <script lang="ts">
   import { ArrowRight, Loader2, Coins } from "lucide-svelte";
+  import { page } from "$app/state";
+  import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 
   interface Props {
     visible: boolean;
@@ -9,13 +11,12 @@
     disabled: boolean;
     hasCredits: boolean;
     stageCost: number;
-    onsave?: () => void;
   }
 
-  let { visible, niche, creditCost, loading, disabled, hasCredits, stageCost, onsave }: Props = $props();
+  let { visible, niche, creditCost, loading, disabled, hasCredits, stageCost }: Props = $props();
 
   const truncatedNiche = $derived(
-    niche.length > 40 ? niche.slice(0, 40) + "…" : niche,
+    niche.length > 40 ? niche.slice(0, 40) + "\u2026" : niche,
   );
 </script>
 
@@ -51,14 +52,14 @@
         {/if}
       </button>
     {:else}
-      <a
-        href="/billing"
-        onclick={onsave}
-        class="btn-primary shrink-0 flex items-center gap-2 px-5 py-2.5 text-sm no-underline"
+      <button
+        type="button"
+        onclick={() => creditTopUp.show({ balance: (page.data.creditBalance as number) ?? 0, required: stageCost, stageName: 'discovery' })}
+        class="btn-primary shrink-0 flex items-center gap-2 px-5 py-2.5 text-sm"
       >
         <Coins class="w-4 h-4" />
         Get {stageCost} Credits
-      </a>
+      </button>
     {/if}
   </div>
 </div>

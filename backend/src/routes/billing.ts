@@ -199,7 +199,7 @@ billingRouter.post('/checkout', requireInternalAuth, async (req: AuthenticatedRe
   try {
     const userId = req.user!.id;
     const userEmail = req.user!.email || '';
-    const { packageId } = req.body;
+    const { packageId, returnUrl } = req.body;
 
     if (!packageId || typeof packageId !== 'string') {
       res.status(400).json({
@@ -227,7 +227,7 @@ billingRouter.post('/checkout', requireInternalAuth, async (req: AuthenticatedRe
       return;
     }
 
-    const { url } = await createCheckoutSession(userId, userEmail, packageId);
+    const { url } = await createCheckoutSession(userId, userEmail, packageId, returnUrl);
 
     res.json({ url });
   } catch (error) {

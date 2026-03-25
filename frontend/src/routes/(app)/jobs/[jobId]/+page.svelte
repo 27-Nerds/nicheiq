@@ -25,6 +25,7 @@
     Share2,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
+  import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import Button from "$lib/components/ui/Button.svelte";
@@ -55,7 +56,6 @@
   let showTechnicalDetails = $state(false);
   let generatingLanding = $state(false);
   let landingError = $state("");
-  let landingInsufficientCredits = $state(false);
   let localSolutions = $state<SolutionPreview[] | null>(null);
   let hasPlayedReveal = $state(false);
   let showReveal = $state(false);
@@ -215,15 +215,18 @@
     if (!job || generatingLanding) return;
     generatingLanding = true;
     landingError = "";
-    landingInsufficientCredits = false;
     try {
       const res = await fetch(`/api/jobs/${jobId}/generate-landing`, { method: "POST" });
       if (!res.ok) {
         const data = await res.json();
         if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
-          landingError = `Insufficient credits for landing page (need ${(page.data.stageCosts as any)?.landing_page ?? 5})`;
-          landingInsufficientCredits = true;
-          await invalidateAll();
+          const landingCost = (page.data.stageCosts as any)?.landing_page ?? 5;
+          creditTopUp.show({
+            balance: data.balance ?? (page.data.creditBalance as number) ?? 0,
+            required: landingCost,
+            stageName: "landing page",
+          });
+          generatingLanding = false;
           return;
         }
         throw new Error(data.error || "Failed to generate landing page");
@@ -532,10 +535,6 @@
       .finally(() => { summaryLoading = false; });
   });
 
-  // Clear pending job return state — we're back on the job page
-  onMount(() => {
-    sessionStorage.removeItem('nicheiq:pendingJobReturn');
-  });
 
 </script>
 
@@ -1067,7 +1066,6 @@
               asset={landingAsset}
               generating={generatingLanding}
               error={landingError}
-              isInsufficientCredits={landingInsufficientCredits}
               onGenerate={generateLanding}
             />
           </div>

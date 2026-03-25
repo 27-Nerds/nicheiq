@@ -14,6 +14,7 @@
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { StageCosts } from "$lib/types/job";
+  import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 
   const MAX_NICHE_LENGTH = 500;
 
@@ -65,7 +66,6 @@
   );
   let loading = $state(false);
   let error = $state("");
-  let isInsufficientCredits = $state(false);
 
   function toggleProjectType(value: string) {
     if (selectedProjectTypes.includes(value)) {
@@ -86,7 +86,6 @@
 
     loading = true;
     error = "";
-    isInsufficientCredits = false;
 
     try {
       const res = await fetch("/api/jobs", {
@@ -103,12 +102,13 @@
       const data = await res.json();
 
       if (!res.ok) {
-        // Handle insufficient credits error
         if (res.status === 402 && data.code === "INSUFFICIENT_CREDITS") {
-          isInsufficientCredits = true;
-          error = "You need credits to start a new research.";
-          // Refresh page data to update credit balance
-          await invalidateAll();
+          creditTopUp.show({
+            balance: data.balance ?? 0,
+            required: data.required ?? stageCosts.discovery,
+            stageName: "discovery",
+          });
+          loading = false;
           return;
         }
         const detail = data.details?.[0]?.message;
@@ -276,14 +276,14 @@
               <p class="text-xs text-text-muted mt-1">
                 You need at least {stageCosts.discovery} credits to start a new research.
               </p>
-              <a
-                href="/billing"
-                onclick={() => (open = false)}
+              <button
+                type="button"
+                onclick={() => { open = false; creditTopUp.show({ balance: creditBalance, required: stageCosts.discovery, stageName: 'discovery' }); }}
                 class="inline-flex items-center gap-1 text-xs text-accent hover:underline mt-2"
               >
                 Get credits
                 <ArrowRight class="w-3 h-3" />
-              </a>
+              </button>
             </div>
           </div>
         {:else}
@@ -401,15 +401,6 @@
           >
             <AlertCircle class="w-4 h-4 shrink-0" />
             <span>{error}</span>
-            {#if isInsufficientCredits}
-              <a
-                href="/billing"
-                onclick={() => (open = false)}
-                class="ml-auto text-accent hover:underline text-xs"
-              >
-                Get credits
-              </a>
-            {/if}
           </div>
         {/if}
 
@@ -419,7 +410,10 @@
           </p>
           <SubmitButton loading={loading} loadingText="Starting..." icon={ArrowRight} iconPosition="end" label="Start Research" disabled={!niche.trim()} class="btn-primary w-full justify-center" />
         {:else}
-          <Button href="/billing" onclick={() => (open = false)} icon={Coins} label="Get Credits to Start" class="btn-primary w-full justify-center" />
+          <button type="button" onclick={() => { open = false; creditTopUp.show({ balance: creditBalance, required: stageCosts.discovery, stageName: 'discovery' }); }} class="btn-primary w-full justify-center flex items-center gap-2">
+            <Coins class="w-4 h-4" />
+            Get Credits to Start
+          </button>
         {/if}
       </form>
     </div>

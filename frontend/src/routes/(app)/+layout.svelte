@@ -11,6 +11,7 @@
     Library,
   } from "lucide-svelte";
   import NewResearchModal from "$lib/components/NewResearchModal.svelte";
+  import CreditTopUpModal from "$lib/components/CreditTopUpModal.svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import { openCookiePreferences } from "$lib/utils/cookies";
 
@@ -209,3 +210,4 @@
 />
 
 <NewResearchModal bind:open={showNewResearchModal.open} />
+<CreditTopUpModal />

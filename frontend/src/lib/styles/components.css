@@ -1052,12 +1052,19 @@
 		var(--glow-color-1), var(--glow-color-2), var(--glow-color-1)
 	);
 	animation: glow-rotate 8s linear infinite;
-	box-shadow: 0 0 30px -5px color-mix(in srgb, var(--glow-color-1) 25%, transparent);
+}
+
+.glow-border-wrapper:focus-within:not(.glow-active) {
+	background: color-mix(in srgb, var(--glow-color-1) 40%, var(--color-border-emphasis));
 }
 
 .glow-border-inner {
 	border-radius: calc(1rem - 1.5px);
-	background: var(--color-bg-surface);
+	background: var(--color-bg-elevated);
+}
+
+.glow-border-inner textarea:focus-visible {
+	outline: none;
 }
 
 @keyframes glow-rotate {
