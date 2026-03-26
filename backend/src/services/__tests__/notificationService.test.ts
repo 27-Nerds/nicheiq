@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { shouldNotifyUser, notifyJobStart, notifyJobComplete, notifyJobError, notifySolutionsReady, notifySelectionReminder, notifyPhase2Start, notifyRegenerationComplete } from '../notificationService.js';
+import { shouldNotifyUser, notifyJobStart, notifyJobComplete, notifyJobError, notifySolutionsReady, notifySelectionReminder, notifyPhase2Start, notifyRegenerationComplete, notifyLandingPageReady } from '../notificationService.js';
 
 // Mock prisma
 vi.mock('../db.js', () => ({
   prisma: {
     notificationPreferences: {
+      findUnique: vi.fn(),
+    },
+    job: {
       findUnique: vi.fn(),
     },
   },
@@ -19,10 +22,11 @@ vi.mock('../emailService.js', () => ({
   sendSelectionReminderEmail: vi.fn(),
   sendPhase2StartEmail: vi.fn(),
   sendRegenerationCompleteEmail: vi.fn(),
+  sendLandingPageReadyEmail: vi.fn(),
 }));
 
 import { prisma } from '../db.js';
-import { sendJobStartEmail, sendCompletionEmail, sendFailureEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail } from '../emailService.js';
+import { sendJobStartEmail, sendCompletionEmail, sendFailureEmail, sendSolutionsReadyEmail, sendSelectionReminderEmail, sendPhase2StartEmail, sendRegenerationCompleteEmail, sendLandingPageReadyEmail } from '../emailService.js';
 
 describe('notificationService', () => {
   beforeEach(() => {
@@ -315,6 +319,153 @@ describe('notificationService', () => {
       await notifyJobError('user-123', 'test@example.com', 'job-456', 'test niche', 'Error');
 
       expect(sendFailureEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche', 'Error', undefined, undefined);
+    });
+  });
+
+  describe('catalog job email suppression', () => {
+    const catalogPainPointsJob = { jobMode: 'catalog_pain_points' };
+    const catalogIdeasJob = { jobMode: 'catalog_ideas' };
+    const interactiveJob = { jobMode: 'interactive' };
+    const nullModeJob = { jobMode: null };
+
+    describe('shouldNotifyUser', () => {
+      it('returns false for catalog_pain_points jobs', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogPainPointsJob as any);
+
+        const result = await shouldNotifyUser('user-123', 'jobComplete', 'job-456');
+        expect(result).toBe(false);
+        expect(prisma.notificationPreferences.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('returns false for catalog_ideas jobs', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogIdeasJob as any);
+
+        const result = await shouldNotifyUser('user-123', 'jobStart', 'job-456');
+        expect(result).toBe(false);
+        expect(prisma.notificationPreferences.findUnique).not.toHaveBeenCalled();
+      });
+
+      it('proceeds to preference check for interactive jobs', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(interactiveJob as any);
+        vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+        const result = await shouldNotifyUser('user-123', 'jobComplete', 'job-456');
+        expect(result).toBe(true);
+        expect(prisma.notificationPreferences.findUnique).toHaveBeenCalled();
+      });
+
+      it('proceeds to preference check for null jobMode (legacy jobs)', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(nullModeJob as any);
+        vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+        const result = await shouldNotifyUser('user-123', 'jobComplete', 'job-456');
+        expect(result).toBe(true);
+      });
+
+      it('proceeds to preference check when job not found (deleted)', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(null);
+        vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+        const result = await shouldNotifyUser('user-123', 'jobComplete', 'job-456');
+        expect(result).toBe(true);
+      });
+
+      it('skips catalog check when jobId is not provided', async () => {
+        vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+        const result = await shouldNotifyUser('user-123', 'jobComplete');
+        expect(result).toBe(true);
+        expect(prisma.job.findUnique).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifyJobStart', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogPainPointsJob as any);
+
+        await notifyJobStart('user-123', 'test@example.com', 'job-456', 'test niche');
+
+        expect(sendJobStartEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifyJobComplete', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogIdeasJob as any);
+
+        await notifyJobComplete('user-123', 'test@example.com', 'job-456', 'test niche');
+
+        expect(sendCompletionEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifyJobError', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogPainPointsJob as any);
+
+        await notifyJobError('user-123', 'test@example.com', 'job-456', 'test niche', 'error');
+
+        expect(sendFailureEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifySolutionsReady', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogPainPointsJob as any);
+
+        await notifySolutionsReady('user-123', 'test@example.com', 'job-456', 'test niche', 5);
+
+        expect(sendSolutionsReadyEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifyPhase2Start', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogIdeasJob as any);
+
+        await notifyPhase2Start('user-123', 'test@example.com', 'job-456', 'test niche', ['Solution A']);
+
+        expect(sendPhase2StartEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifyRegenerationComplete', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogPainPointsJob as any);
+
+        await notifyRegenerationComplete('user-123', 'test@example.com', 'job-456', 'test niche', 3, 8);
+
+        expect(sendRegenerationCompleteEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifySelectionReminder', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogIdeasJob as any);
+
+        await notifySelectionReminder('user-123', 'test@example.com', 'job-456', 'test niche', 5);
+
+        expect(sendSelectionReminderEmail).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('notifyLandingPageReady', () => {
+      it('skips email for catalog job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(catalogPainPointsJob as any);
+
+        await notifyLandingPageReady('user-123', 'test@example.com', 'job-456', 'test niche');
+
+        expect(sendLandingPageReadyEmail).not.toHaveBeenCalled();
+      });
+
+      it('sends email for interactive job', async () => {
+        vi.mocked(prisma.job.findUnique).mockResolvedValue(interactiveJob as any);
+        vi.mocked(prisma.notificationPreferences.findUnique).mockResolvedValue(null);
+
+        await notifyLandingPageReady('user-123', 'test@example.com', 'job-456', 'test niche');
+
+        expect(sendLandingPageReadyEmail).toHaveBeenCalledWith('test@example.com', 'job-456', 'test niche');
+      });
     });
   });
 });

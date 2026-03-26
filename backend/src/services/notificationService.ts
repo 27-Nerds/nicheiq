@@ -4,6 +4,16 @@ import type { PhaseContextForEmail } from './emailService.js';
 
 export type NotificationType = 'jobStart' | 'jobComplete' | 'jobError' | 'solutionsReady';
 
+const CATALOG_JOB_MODES = ['catalog_pain_points', 'catalog_ideas'] as const;
+
+async function isCatalogJob(jobId: string): Promise<boolean> {
+  const job = await prisma.job.findUnique({
+    where: { id: jobId },
+    select: { jobMode: true },
+  });
+  return job?.jobMode != null && CATALOG_JOB_MODES.includes(job.jobMode as typeof CATALOG_JOB_MODES[number]);
+}
+
 const DEFAULT_PREFERENCES = {
   emailEnabled: true,
   emailOnJobStart: true,
@@ -17,9 +27,11 @@ const DEFAULT_PREFERENCES = {
  */
 export async function shouldNotifyUser(
   userId: string | null | undefined,
-  notificationType: NotificationType
+  notificationType: NotificationType,
+  jobId?: string
 ): Promise<boolean> {
   if (!userId) return false;
+  if (jobId && await isCatalogJob(jobId)) return false;
 
   const prefs = await prisma.notificationPreferences.findUnique({
     where: { userId },
@@ -52,7 +64,7 @@ export async function notifyJobStart(
   jobId: string,
   niche: string
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'jobStart'))) {
+  if (!(await shouldNotifyUser(userId, 'jobStart', jobId))) {
     console.log(`[Notification] Skipping start email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -68,7 +80,7 @@ export async function notifyJobComplete(
   jobId: string,
   niche: string
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'jobComplete'))) {
+  if (!(await shouldNotifyUser(userId, 'jobComplete', jobId))) {
     console.log(`[Notification] Skipping completion email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -103,7 +115,7 @@ export async function notifyJobError(
   errorDetails?: ErrorDetails | null,
   phaseContext?: PhaseContextForEmail | null
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'jobError'))) {
+  if (!(await shouldNotifyUser(userId, 'jobError', jobId))) {
     console.log(`[Notification] Skipping failure email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -120,7 +132,7 @@ export async function notifySolutionsReady(
   niche: string,
   solutionCount: number
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'solutionsReady'))) {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady', jobId))) {
     console.log(`[Notification] Skipping solutions-ready email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -137,7 +149,7 @@ export async function notifyPhase2Start(
   niche: string,
   selectedSolutions: string[]
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'jobStart'))) {
+  if (!(await shouldNotifyUser(userId, 'jobStart', jobId))) {
     console.log(`[Notification] Skipping phase 2 start email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -155,7 +167,7 @@ export async function notifyRegenerationComplete(
   newSolutionCount: number,
   totalSolutionCount: number
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'solutionsReady'))) {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady', jobId))) {
     console.log(`[Notification] Skipping regeneration-complete email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -172,7 +184,7 @@ export async function notifySelectionReminder(
   niche: string,
   solutionCount: number
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'solutionsReady'))) {
+  if (!(await shouldNotifyUser(userId, 'solutionsReady', jobId))) {
     console.log(`[Notification] Skipping selection reminder email for job ${jobId} - disabled by preference`);
     return;
   }
@@ -189,7 +201,7 @@ export async function notifyLandingPageReady(
   jobId: string,
   niche: string
 ): Promise<void> {
-  if (!(await shouldNotifyUser(userId, 'jobComplete'))) {
+  if (!(await shouldNotifyUser(userId, 'jobComplete', jobId))) {
     console.log(`[Notification] Skipping landing page email for job ${jobId} - disabled by preference`);
     return;
   }

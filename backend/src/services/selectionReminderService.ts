@@ -34,6 +34,7 @@ export async function checkAndSendReminders(): Promise<void> {
         status: JobStatus.AWAITING_SELECTION,
         selectionReminderCount: { lt: MAX_REMINDERS },
         awaitingSelectionAt: { not: null },
+        jobMode: { notIn: ['catalog_pain_points', 'catalog_ideas'] },
       },
       select: {
         id: true,
