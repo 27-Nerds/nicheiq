@@ -4,18 +4,13 @@
   interface CatalogItem {
     id: string;
     title?: string;
-    solutionName?: string;
     description: string;
     severityScore?: number;
-    willingnessToPayScore?: number;
     mentionCount?: number;
-    noveltyScore?: number;
-    marketFitScore?: number;
   }
 
   interface Props {
     painPoints: CatalogItem[];
-    ideas: CatalogItem[];
     hasCatalogData: boolean;
     onselect: (text: string) => void;
     onsurprise: () => void;
@@ -24,7 +19,6 @@
 
   let {
     painPoints,
-    ideas,
     hasCatalogData,
     onselect,
     onsurprise,
@@ -80,7 +74,7 @@
           Problems People Are Talking About
         </h3>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {#each painPoints.slice(0, 4) as pp, i}
+          {#each painPoints as pp}
             <button
               type="button"
               onclick={() =>
@@ -94,9 +88,6 @@
                 >
                   {pp.title}
                 </p>
-                {#if i === 0}
-                  <span class="text-[10px] font-medium text-error bg-error/10 px-1.5 py-0.5 rounded-full shrink-0">Most severe</span>
-                {/if}
               </div>
               <p class="text-xs text-text-muted mt-1 line-clamp-2">
                 {pp.description}
@@ -111,52 +102,6 @@
                 {#if pp.mentionCount != null && pp.mentionCount > 0}
                   <span class="text-xs text-text-muted"
                     >{pp.mentionCount} mentions</span
-                  >
-                {/if}
-              </div>
-            </button>
-          {/each}
-        </div>
-      </div>
-    {/if}
-
-    <!-- Ideas Grid -->
-    {#if ideas.length > 0}
-      <div>
-        <h3 class="text-sm font-semibold text-text-primary mb-3">
-          Validated Ideas
-        </h3>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {#each ideas.slice(0, 4) as idea, i}
-            <button
-              type="button"
-              onclick={() =>
-                selectItem(idea.id, idea.solutionName ?? idea.description.substring(0, 100))}
-              class="text-left p-3 rounded-lg border transition-all group
-                {selectedId === idea.id ? 'border-accent bg-accent/10' : 'border-border bg-bg-surface hover:border-accent/40 hover:bg-accent/5'}"
-            >
-              <div class="flex items-center gap-2">
-                <p
-                  class="text-sm font-medium text-text-primary group-hover:text-accent line-clamp-1 flex-1"
-                >
-                  {idea.solutionName}
-                </p>
-                {#if i === 0}
-                  <span class="text-[10px] font-medium text-accent bg-accent/10 px-1.5 py-0.5 rounded-full shrink-0">Top pick</span>
-                {/if}
-              </div>
-              <p class="text-xs text-text-muted mt-1 line-clamp-2">
-                {idea.description}
-              </p>
-              <div class="flex items-center gap-3 mt-2">
-                {#if idea.noveltyScore != null}
-                  <span class="text-xs text-text-muted"
-                    >Novelty: {(idea.noveltyScore * 100).toFixed(0)}%</span
-                  >
-                {/if}
-                {#if idea.marketFitScore != null}
-                  <span class="text-xs text-text-muted"
-                    >Fit: {(idea.marketFitScore * 100).toFixed(0)}%</span
                   >
                 {/if}
               </div>

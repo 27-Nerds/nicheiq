@@ -329,7 +329,7 @@
                     <CheckCircle class="w-2.5 h-2.5" /> Free
                   </span>
                 {:else}
-                  <span class="font-mono font-bold text-text-primary tabular-nums">{cost}<span class="text-text-muted text-xs font-normal">cr</span></span>
+                  <span class="font-mono font-bold text-text-primary tabular-nums">{cost}<span class="text-text-muted text-xs font-normal"> credits</span></span>
                 {/if}
               </span>
             {/each}
@@ -359,7 +359,7 @@
                       <CheckCircle class="w-2.5 h-2.5" /> Free
                     </span>
                   {:else}
-                    <span class="font-mono font-semibold text-text-secondary tabular-nums">{cost}<span class="text-text-muted/70 font-normal">cr</span></span>
+                    <span class="font-mono font-semibold text-text-secondary tabular-nums">{cost}<span class="text-text-muted/70 font-normal"> credits</span></span>
                   {/if}
                 </span>
               {/each}

@@ -1011,3 +1011,25 @@ export async function searchCatalog(query: string, limit = 5) {
     })),
   };
 }
+
+// ============================================
+// Discover — random pain points for /new page
+// ============================================
+
+interface DiscoverPainPoint {
+  id: string;
+  title: string;
+  description: string;
+  severityScore: number | null;
+  mentionCount: number | null;
+}
+
+export async function getDiscoverPainPoints(count: number = 4): Promise<DiscoverPainPoint[]> {
+  return prisma.$queryRaw<DiscoverPainPoint[]>`
+    SELECT id, title, description, "severityScore", "mentionCount"
+    FROM "CatalogPainPoint"
+    WHERE "isActive" = true
+    ORDER BY RANDOM()
+    LIMIT ${count}
+  `;
+}

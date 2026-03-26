@@ -11,34 +11,19 @@ export const load: PageServerLoad = async ({ parent }) => {
     'X-User-ID': session.user.id,
   };
 
-  // Fetch catalog data for Mode 3 (trending discovery)
   let catalogPainPoints: any[] = [];
-  let catalogIdeas: any[] = [];
   let hasCatalogData = false;
 
   try {
-    const [painPointsRes, ideasRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/catalog/pain-points?sort=highest_severity&limit=8&page=1`, { headers }),
-      fetch(`${BACKEND_URL}/api/catalog/ideas?sort=highest_novelty&limit=8&page=1`, { headers }),
-    ]);
-
-    if (painPointsRes.ok) {
-      const data = await painPointsRes.json();
+    const res = await fetch(`${BACKEND_URL}/api/catalog/discover`, { headers });
+    if (res.ok) {
+      const data = await res.json();
       catalogPainPoints = data.items || [];
+      hasCatalogData = catalogPainPoints.length > 0;
     }
-    if (ideasRes.ok) {
-      const data = await ideasRes.json();
-      catalogIdeas = data.items || [];
-    }
-
-    hasCatalogData = catalogPainPoints.length > 0 || catalogIdeas.length > 0;
   } catch (error) {
-    console.error('Failed to fetch catalog data for /new:', error);
+    console.error('Failed to fetch discover data for /new:', error);
   }
 
-  return {
-    catalogPainPoints,
-    catalogIdeas,
-    hasCatalogData,
-  };
+  return { catalogPainPoints, catalogIdeas: [], hasCatalogData };
 };

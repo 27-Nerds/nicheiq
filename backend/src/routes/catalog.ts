@@ -9,6 +9,7 @@ import {
   getPublishedPainPoint,
   getCatalogStats,
   searchCatalog,
+  getDiscoverPainPoints,
 } from '../services/catalogService.js';
 
 export const catalogRouter = Router();
@@ -140,5 +141,16 @@ catalogRouter.get('/stats', async (_req: AuthenticatedRequest, res: Response) =>
   } catch (error) {
     console.error('Failed to get catalog stats:', error);
     res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+catalogRouter.get('/discover', async (_req: AuthenticatedRequest, res: Response) => {
+  try {
+    const items = await getDiscoverPainPoints(4);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.json({ items });
+  } catch (error) {
+    console.error('Failed to get discover items:', error);
+    res.status(500).json({ error: 'Failed to get discover items' });
   }
 });

@@ -392,7 +392,6 @@
           <div class="animate-fade-in mt-2">
             <CatalogTrendingGrid
               painPoints={data.catalogPainPoints}
-              ideas={data.catalogIdeas}
               hasCatalogData={data.hasCatalogData}
               onselect={handleCatalogSelect}
               onsurprise={handleFeelingLucky}
@@ -588,14 +587,12 @@
               class="btn-primary w-full justify-center text-base py-3"
             />
           {:else}
-            <button
-              type="button"
+            <Button
               onclick={() => creditTopUp.show({ balance: creditBalance, required: stageCosts.discovery, stageName: 'discovery' })}
-              class="btn-primary w-full justify-center text-base py-3 flex items-center gap-2"
-            >
-              <Coins class="w-4 h-4" />
-              Get {stageCosts.discovery} Credits to Start
-            </button>
+              icon={Coins}
+              label="Get {stageCosts.discovery} Credits to Start"
+              class="btn-primary w-full justify-center text-base py-3"
+            />
           {/if}
 
           <p class="text-xs text-text-muted text-center mt-2">
