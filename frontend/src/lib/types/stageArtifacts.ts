@@ -24,9 +24,25 @@ export interface SearchDiscoveryArtifact {
 }
 
 // Stage 3: Pain Point Extraction
+export interface PainPointSummary {
+  title: string;
+  short_summary?: string;
+  severity: number;
+  wtp: number;
+  opportunity: 'high' | 'medium' | 'low';
+  mentions: number;
+  categories: string[];
+  platforms: string[];
+}
+
 export interface PainPointsArtifact {
   type: 'pain_points';
   count: number;
+  confidence?: number;
+  quality_tier?: string;
+  total_mentions?: number;
+  top_categories?: string[];
+  pain_points?: PainPointSummary[];
   top: Array<{ title: string; severity: number }>;
 }
 

@@ -430,27 +430,28 @@
 <section id="sample-report" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-12">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">01</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">Inside the Report</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
+          class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
           What You <span class="text-accent">Actually Get</span>
         </h2>
         <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
+          class="text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
           See the exact research that tells you whether an idea is worth
           building.
         </p>
         <p
-          class="animate-fade-in delay-300 text-sm sm:text-base text-text-muted mt-4 sm:mt-5 max-w-2xl"
+          class="text-sm sm:text-base text-text-muted mt-4 sm:mt-5 max-w-2xl"
         >
           This is a real report for a content repurposing tool. Pain points,
           keywords, competitors, and the final verdict, all from a single run.
@@ -459,7 +460,7 @@
 
       <!-- Hero Stat Strip -->
       <div
-        class="animate-fade-in delay-300 flex justify-center gap-6 sm:gap-10 mb-8 text-center"
+        class="flex justify-center gap-6 sm:gap-10 mb-8 text-center"
       >
         <div>
           <div class="text-2xl font-display font-bold text-accent">156</div>
@@ -485,7 +486,7 @@
 
       <!-- Pill Tab Navigation -->
       <div
-        class="animate-fade-in delay-300 flex justify-center gap-1 mb-8
+        class="flex justify-center gap-1 mb-8
                bg-bg-elevated border border-border rounded-lg p-1 max-w-fit mx-auto"
       >
         {#each tabs as tab}
@@ -503,7 +504,7 @@
 
       <!-- Report Window Frame -->
       <div
-        class="animate-fade-in delay-400 max-w-5xl mx-auto rounded-xl border border-border
+        class="max-w-5xl mx-auto rounded-xl border border-border
                overflow-hidden shadow-sm"
       >
         <!-- Toolbar strip -->
@@ -580,8 +581,8 @@
       </p>
 
       <!-- CTA -->
-      {@const sampleCta = ctaTexts?.cta_sample_button}
-      {#if hasSampleReport && sampleCta?.visible !== false}
+      {#if hasSampleReport && ctaTexts?.cta_sample_button?.visible !== false}
+        {@const sampleCta = ctaTexts?.cta_sample_button}
         <div class="mt-8 text-center">
           <a
             href={sampleCta?.url ?? "/sample-report"}
@@ -595,6 +596,7 @@
           </p>
         </div>
       {/if}
+      </div>
     {/if}
   </div>
 </section>

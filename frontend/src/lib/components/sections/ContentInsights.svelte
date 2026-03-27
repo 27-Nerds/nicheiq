@@ -271,8 +271,8 @@
 	   ========================= */
   .insight-hero {
     display: flex;
-    gap: 1rem;
-    margin-bottom: 1.5rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
   }
 
   .insight-icon {
@@ -282,7 +282,7 @@
     align-items: center;
     justify-content: center;
     background: var(--color-accent-subtle);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     flex-shrink: 0;
   }
 
@@ -307,13 +307,13 @@
   }
 
   .insight-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.6;
   }
 
   .insight-text :global(p) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .insight-text :global(p:last-child) {
@@ -327,19 +327,19 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.5rem;
-    padding: 1rem 1.25rem;
+    gap: var(--space-6);
+    padding: var(--space-4) var(--space-5);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-radius: 0.625rem;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
     flex-wrap: wrap;
   }
 
   .quality-main {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .quality-ring {
@@ -367,7 +367,7 @@
 
   .quality-num {
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 700;
     color: var(--color-text-primary);
   }
@@ -375,7 +375,7 @@
   .quality-info {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .quality-label {
@@ -388,7 +388,7 @@
 
   .quality-stats {
     display: flex;
-    gap: 1.5rem;
+    gap: var(--space-6);
   }
 
   .quality-stat {
@@ -405,7 +405,7 @@
 
   .stat-num {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 700;
     color: var(--color-text-primary);
   }
@@ -425,8 +425,8 @@
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 0.625rem;
-    padding: 1rem 1.25rem;
-    margin-bottom: 1rem;
+    padding: var(--space-4) var(--space-5);
+    margin-bottom: var(--space-4);
   }
 
   .summary-title {
@@ -444,7 +444,7 @@
   }
 
   .summary-text :global(p) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .summary-text :global(p:last-child) {
@@ -455,13 +455,13 @@
   .themes-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .theme-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
@@ -473,8 +473,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     cursor: pointer;
     list-style: none;
   }
@@ -497,9 +497,9 @@
     align-items: center;
     justify-content: center;
     background: var(--color-accent-subtle);
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-accent);
     flex-shrink: 0;
@@ -511,7 +511,7 @@
 
   .theme-name {
     font-family: var(--font-display);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-text-primary);
     margin-bottom: 0.125rem;
@@ -522,7 +522,7 @@
   }
 
   .theme-def {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
     line-height: 1.4;
     display: -webkit-box;
@@ -539,24 +539,24 @@
   .theme-meta {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
 
   .theme-mentions {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
   }
 
   .theme-details {
     padding: 0 1rem 1rem;
     border-top: 1px solid var(--color-border);
-    padding-top: 0.75rem;
+    padding-top: var(--space-3);
   }
 
   .theme-section {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .theme-section:last-child {
@@ -566,7 +566,7 @@
   .theme-section-label {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-1);
     font-family: var(--font-mono);
     font-size: 0.5625rem;
     font-weight: 600;
@@ -584,7 +584,7 @@
   .tag-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .tag {
@@ -592,7 +592,7 @@
     padding: 0.125rem 0.5rem;
     background: var(--color-bg-base);
     border: 1px solid var(--color-border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--color-text-secondary);
   }
 
@@ -607,7 +607,7 @@
   }
 
   :global(.theme-quote-block .quote-text) {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
   }
 
   .quotes-more {
@@ -619,13 +619,13 @@
   .segments-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .segment-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     padding: 0.875rem;
   }
 
@@ -633,7 +633,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .segment-name {
@@ -651,8 +651,8 @@
 
   .concerns-list li {
     position: relative;
-    padding-left: 0.75rem;
-    font-size: 0.75rem;
+    padding-left: var(--space-3);
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
     line-height: 1.4;
     margin-bottom: 0.125rem;
@@ -669,13 +669,13 @@
   .assessment-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .assessment-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     padding: 0.875rem;
   }
 
@@ -687,7 +687,7 @@
     font-size: 0.8125rem;
     font-weight: 600;
     color: var(--color-text-primary);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   :global(.assessment-icon) {
@@ -697,7 +697,7 @@
   }
 
   .assessment-text {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
     line-height: 1.6;
   }

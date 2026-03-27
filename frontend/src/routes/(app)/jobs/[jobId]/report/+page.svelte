@@ -68,7 +68,7 @@
     border: 1px solid var(--color-border);
     border-radius: 0.5rem;
     cursor: pointer;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .share-btn:hover {

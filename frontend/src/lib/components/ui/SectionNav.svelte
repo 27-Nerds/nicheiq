@@ -212,7 +212,7 @@
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease;
     white-space: nowrap;
   }
 
@@ -230,7 +230,7 @@
     opacity: 0;
     max-width: 0;
     overflow: hidden;
-    transition: all 0.2s ease;
+    transition: opacity 0.2s ease, max-width 0.2s ease, margin-left 0.2s ease;
   }
 
   .section-nav-desktop:hover .nav-item-label {
@@ -341,7 +341,7 @@
     font-size: 0.75rem;
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease;
     white-space: nowrap;
   }
 

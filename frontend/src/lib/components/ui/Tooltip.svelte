@@ -132,7 +132,7 @@
     border: 1px solid var(--color-border);
     border-radius: 50%;
     cursor: help;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
   }
 
   .tooltip-trigger:hover {

@@ -122,15 +122,13 @@
 >
   <!-- Tech Stack Overview -->
   {#if solution.technical_approach}
-    <AnimateOnScroll animation="fade-up">
-      <div class="tech-approach-card">
-        <div class="tech-approach-header">
-          <Server class="w-5 h-5 text-accent" />
-          <h3>Technical Architecture</h3>
-        </div>
-        <p class="tech-approach-text">{solution.technical_approach}</p>
+    <div class="tech-approach-card">
+      <div class="tech-approach-header">
+        <Server class="w-5 h-5 text-accent" />
+        <h3>Technical Architecture</h3>
       </div>
-    </AnimateOnScroll>
+      <p class="tech-approach-text">{solution.technical_approach}</p>
+    </div>
   {/if}
 
   <!-- Bento Grid: Key Metrics with Progress Rings -->
@@ -243,8 +241,7 @@
 
   <!-- Data Sources with enhanced styling -->
   {#if hasDataSources}
-    <AnimateOnScroll animation="fade-up" delay={200}>
-      <div class="data-sources-section">
+    <div class="data-sources-section">
         <SubsectionHeader
           title="Data Sources & Integrations"
           icon={HardDrive}
@@ -258,12 +255,11 @@
           {/each}
         </div>
       </div>
-    </AnimateOnScroll>
   {/if}
 
   <!-- Implementation Overview with Timeline styling -->
   {#if implementationOverview}
-    <AnimateOnScroll animation="fade-up" delay={300}>
+    <AnimateOnScroll animation="fade-in" delay={200}>
       <div class="implementation-section">
         <SubsectionHeader title="Implementation Roadmap" icon={Layers} />
         <div class="markdown-content implementation-content timeline-styled">
@@ -291,8 +287,7 @@
 
   <!-- Site Structure (LLM-generated) -->
   {#if siteStructure}
-    <AnimateOnScroll animation="fade-up" delay={450}>
-      <div class="site-structure-section">
+    <div class="site-structure-section">
         <SubsectionHeader title="Site Architecture" icon={LayoutGrid} />
 
         <!-- Overview and Stats -->
@@ -391,12 +386,11 @@
           {/each}
         </div>
       </div>
-    </AnimateOnScroll>
   {/if}
 
   <!-- User Flows (LLM-generated) -->
   {#if userFlows && userFlows.flows.length > 0}
-    <AnimateOnScroll animation="fade-up" delay={500}>
+    <AnimateOnScroll animation="scale-in" delay={300}>
       <div class="user-flows-section">
         <SubsectionHeader title="User Journey Flows" icon={Route} />
 
@@ -468,25 +462,23 @@
 
   <!-- User Journey -->
   {#if userJourney}
-    <AnimateOnScroll animation="fade-up" delay={500}>
-      <div class="journey-section">
-        <ExpandableSection
-          title="User Journey Flow"
-          icon={User}
-          defaultOpen={false}
-          variant="muted"
-        >
-          <div class="markdown-content journey-content">
-            {@html renderMarkdown(userJourney)}
-          </div>
-        </ExpandableSection>
-      </div>
-    </AnimateOnScroll>
+    <div class="journey-section">
+      <ExpandableSection
+        title="User Journey Flow"
+        icon={User}
+        defaultOpen={false}
+        variant="muted"
+      >
+        <div class="markdown-content journey-content">
+          {@html renderMarkdown(userJourney)}
+        </div>
+      </ExpandableSection>
+    </div>
   {/if}
 
   <!-- Feature Priorities from Keywords -->
   {#if solution.keyword_feature_priorities && solution.keyword_feature_priorities.length > 0}
-    <AnimateOnScroll animation="fade-up" delay={600}>
+    <AnimateOnScroll animation="fade-in" delay={400}>
       <div class="priorities-section">
         <SubsectionHeader title="Feature Development Priorities" icon={ListChecks} />
         <div class="timeline">
@@ -505,31 +497,29 @@
 
   <!-- Geographic Priorities -->
   {#if solution.keyword_geographic_priorities && solution.keyword_geographic_priorities.length > 0}
-    <AnimateOnScroll animation="fade-up" delay={700}>
-      <div class="geo-section">
-        <SubsectionHeader
-          title="Target Markets (Priority Order)"
-          icon={Globe}
-        />
-        <div class="geo-badges">
-          {#each solution.keyword_geographic_priorities as market, i}
-            <Badge
-              variant={i === 0 ? "success" : i < 3 ? "default" : "muted"}
-              size="sm"
-            >
-              {market}
-            </Badge>
-          {/each}
-        </div>
+    <div class="geo-section">
+      <SubsectionHeader
+        title="Target Markets (Priority Order)"
+        icon={Globe}
+      />
+      <div class="geo-badges">
+        {#each solution.keyword_geographic_priorities as market, i}
+          <Badge
+            variant={i === 0 ? "success" : i < 3 ? "default" : "muted"}
+            size="sm"
+          >
+            {market}
+          </Badge>
+        {/each}
       </div>
-    </AnimateOnScroll>
+    </div>
   {/if}
 </Section>
 
 <style>
   .dev-time-value {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--color-text-primary);
     line-height: 1.4;
@@ -539,16 +529,16 @@
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-accent);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-8);
   }
 
   .tech-approach-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
   }
 
   .tech-approach-header h3 {
@@ -566,13 +556,13 @@
   }
 
   .data-sources-section {
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-8);
   }
 
   .data-sources-grid {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .implementation-section,
@@ -580,9 +570,9 @@
   .journey-section {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
   }
 
   .implementation-content,
@@ -594,7 +584,7 @@
   /* Timeline-styled markdown lists */
   .timeline-styled :global(ul) {
     position: relative;
-    padding-left: 2rem;
+    padding-left: var(--space-8);
     list-style: none;
   }
 
@@ -610,7 +600,7 @@
 
   .timeline-styled :global(li) {
     position: relative;
-    padding-bottom: 1rem;
+    padding-bottom: var(--space-4);
   }
 
   .timeline-styled :global(li)::before {
@@ -626,27 +616,27 @@
   }
 
   .priorities-section {
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-8);
   }
 
   .priority-content {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: var(--space-4);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 1rem 1.25rem;
+    border-radius: var(--radius-md);
+    padding: var(--space-4) var(--space-5);
   }
 
   .priority-rank {
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     color: var(--color-accent);
     background: var(--color-accent-subtle);
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
   }
 
   .priority-text {
@@ -655,13 +645,13 @@
   }
 
   .geo-section {
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
   }
 
   .geo-badges {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   /* =============================================================================
@@ -669,68 +659,68 @@
 	   ============================================================================= */
 
   .site-structure-section {
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-8);
   }
 
   .site-overview-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-4);
   }
 
   .site-overview-text {
     font-size: 0.9375rem;
     color: var(--color-text-secondary);
     line-height: 1.7;
-    margin-bottom: 1.25rem;
+    margin-bottom: var(--space-5);
   }
 
   .site-stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
   }
 
   .site-stat {
     text-align: center;
-    padding: 0.75rem;
+    padding: var(--space-3);
     background: var(--color-bg-base);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     border: 1px solid var(--color-border);
   }
 
   .site-stat-value {
     display: block;
     font-family: var(--font-mono);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--color-accent);
   }
 
   .site-stat-label {
     display: block;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
   }
 
   .tech-stack-callout {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   .tech-stack-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     font-family: var(--font-mono);
   }
@@ -738,13 +728,13 @@
   .site-sections {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .site-section-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
@@ -753,7 +743,7 @@
     justify-content: space-between;
     align-items: center;
     width: 100%;
-    padding: 1rem 1.25rem;
+    padding: var(--space-4) var(--space-5);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -767,7 +757,7 @@
   .site-section-header-left {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: var(--space-3);
     text-align: left;
   }
 
@@ -782,28 +772,28 @@
   .site-section-desc {
     font-size: 0.8125rem;
     color: var(--color-text-muted);
-    margin: 0.25rem 0 0 0;
+    margin: var(--space-1) 0 0 0;
   }
 
   .site-section-header-right {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .site-pages-list {
     border-top: 1px solid var(--color-border);
-    padding: 0.75rem 1.25rem;
+    padding: var(--space-3) var(--space-5);
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .site-page-row {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    padding: 0.75rem;
+    padding: var(--space-3);
     background: var(--color-bg-base);
     border-radius: 0.375rem;
     border: 1px solid var(--color-border);
@@ -817,21 +807,21 @@
   .site-page-name-row {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-wrap: wrap;
     margin-bottom: 0.375rem;
   }
 
   .site-page-name {
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-primary);
   }
 
   .site-page-url {
     display: block;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-accent);
     margin-bottom: 0.375rem;
   }
@@ -847,18 +837,18 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding-left: 1rem;
+    padding-left: var(--space-4);
   }
 
   .site-page-count .count-value {
     font-family: var(--font-mono);
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 700;
     color: var(--color-accent);
   }
 
   .site-page-count .count-label {
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
     text-transform: uppercase;
   }
@@ -868,18 +858,18 @@
 	   ============================================================================= */
 
   .user-flows-section {
-    margin-bottom: 2rem;
+    margin-bottom: var(--space-8);
   }
 
   .user-flows-insight {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
-    padding: 1rem 1.25rem;
+    gap: var(--space-3);
+    padding: var(--space-4) var(--space-5);
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
-    border-radius: 0.5rem;
-    margin-bottom: 1.25rem;
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-5);
   }
 
   .user-flows-insight p {
@@ -892,14 +882,14 @@
   .user-flows-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 1.25rem;
+    gap: var(--space-5);
   }
 
   .user-flow-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
     display: flex;
     flex-direction: column;
   }
@@ -908,13 +898,13 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
   }
 
   .user-flow-name {
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 600;
     color: var(--color-text-primary);
     margin: 0;
@@ -923,15 +913,15 @@
   .user-flow-meta {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-4);
     border-bottom: 1px solid var(--color-border);
   }
 
   .user-flow-meta-item {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     font-size: 0.8125rem;
   }
 
@@ -947,15 +937,15 @@
   .user-flow-steps {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
     flex: 1;
   }
 
   .user-flow-step {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .step-number {
@@ -968,7 +958,7 @@
     background: var(--color-accent);
     color: white;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 700;
     border-radius: 50%;
   }
@@ -979,10 +969,10 @@
   }
 
   .step-action {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-primary);
     font-weight: 500;
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--space-1);
   }
 
   .step-page {
@@ -990,13 +980,13 @@
     align-items: center;
     gap: 0.375rem;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-accent);
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--space-1);
   }
 
   .step-response {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
     font-style: italic;
   }
@@ -1004,22 +994,22 @@
   .step-connector {
     display: flex;
     justify-content: center;
-    padding: 0.25rem 0;
+    padding: var(--space-1) 0;
     margin-left: 0.625rem;
   }
 
   .user-flow-footer {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding-top: 1rem;
+    gap: var(--space-2);
+    padding-top: var(--space-4);
     border-top: 1px solid var(--color-border);
   }
 
   .user-flow-conversion,
   .user-flow-metric {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     font-size: 0.8125rem;
   }
 

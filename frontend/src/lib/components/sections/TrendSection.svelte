@@ -260,25 +260,25 @@
   .stats-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-top: 1.5rem;
-    margin-bottom: 1rem;
+    gap: var(--space-2);
+    margin-top: var(--space-6);
+    margin-bottom: var(--space-4);
   }
 
   /* Seasonality Card */
   .seasonality-card {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    margin-bottom: var(--space-4);
   }
 
   .seasonality-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
   }
 
   .seasonality-header :global(.seasonality-icon) {
@@ -295,22 +295,22 @@
   }
 
   .seasonality-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.5;
-    margin: 0 0 0.75rem;
+    margin: 0 0 var(--space-3);
   }
 
   .peak-periods {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .periods-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -325,7 +325,7 @@
   }
 
   .analysis-content :global(p) {
-    margin: 0 0 0.75rem;
+    margin: 0 0 var(--space-3);
   }
 
   .analysis-content :global(p:last-child) {
@@ -336,30 +336,30 @@
   .item-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   /* Metadata Footer */
   .metadata-footer {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    padding-top: 0.75rem;
+    gap: var(--space-4);
+    padding-top: var(--space-3);
     border-top: 1px solid var(--color-border);
   }
 
   .metadata-item {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 
   .metadata-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    margin-right: 0.25rem;
+    margin-right: var(--space-1);
   }
 
   /* Responsive */

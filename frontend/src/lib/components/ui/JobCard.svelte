@@ -415,7 +415,7 @@
 {/snippet}
 
 <div
-  class="card relative hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 border-l-2 {borderClass} cursor-pointer animate-fade-slide-in {isMenuOpen
+  class="card relative hover:bg-bg-hover hover:border-border-emphasis transition-colors duration-150 border-l-2 {borderClass} cursor-pointer animate-fade-slide-in {isMenuOpen
     ? 'z-50'
     : ''}"
   style="animation-delay: {animationDelay}ms"

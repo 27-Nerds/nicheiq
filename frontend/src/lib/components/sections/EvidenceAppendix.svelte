@@ -453,16 +453,16 @@
   .subreddits-card {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    margin-bottom: 1.5rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    margin-bottom: var(--space-6);
   }
 
   .subreddits-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
   }
 
   :global(.subreddits-icon) {
@@ -473,7 +473,7 @@
 
   .subreddits-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -483,23 +483,23 @@
   .subreddits-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .subreddit-tag {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem 0.75rem;
-    background: rgba(249, 115, 22, 0.1);
-    border: 1px solid rgba(249, 115, 22, 0.2);
-    border-radius: 9999px;
+    gap: var(--space-2);
+    padding: 0.375rem var(--space-3);
+    background: var(--color-accent-subtle);
+    border: 1px solid var(--color-border-accent);
+    border-radius: var(--radius-full);
   }
 
   .subreddit-name {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: #f97316;
+    color: var(--color-accent);
   }
 
   .subreddit-count {
@@ -512,18 +512,18 @@
   .stats-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
   }
 
   .stats-pill {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.5rem 1rem;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
   }
 
   :global(.pill-icon) {
@@ -533,22 +533,22 @@
   }
 
   :global(.pill-icon.success) {
-    color: #22c55e;
+    color: var(--color-success);
   }
 
   :global(.pill-icon.warning) {
-    color: #eab308;
+    color: var(--color-warning);
   }
 
   .pill-value {
     font-family: var(--font-display);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 700;
     color: var(--color-text-primary);
   }
 
   .pill-label {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 
@@ -556,18 +556,18 @@
   .expandable-sections {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .expandable-section {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
   .expandable-section.accent-section {
-    border-left: 3px solid var(--color-accent);
+    border-left: 3px solid var(--color-success);
   }
 
   .expandable-header {
@@ -575,7 +575,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 1rem 1.25rem;
+    padding: var(--space-4) var(--space-5);
     background: none;
     border: none;
     cursor: pointer;
@@ -589,7 +589,7 @@
   .expandable-title {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   :global(.expandable-icon) {
@@ -599,7 +599,7 @@
   }
 
   :global(.expandable-icon.warning) {
-    color: #eab308;
+    color: var(--color-warning);
   }
 
   :global(.expandable-icon.accent) {
@@ -628,25 +628,25 @@
   }
 
   .expandable-content {
-    padding: 0 1.25rem 1.25rem;
+    padding: 0 var(--space-5) var(--space-5);
     border-top: 1px solid var(--color-border);
-    padding-top: 1.25rem;
+    padding-top: var(--space-5);
   }
 
   /* Threads List */
   .threads-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .thread-card {
     display: flex;
-    gap: 1rem;
-    padding: 1rem 1.25rem;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     transition: border-color 0.15s ease;
   }
 
@@ -662,9 +662,9 @@
     justify-content: center;
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     font-family: var(--font-display);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 700;
     color: var(--color-text-muted);
     flex-shrink: 0;
@@ -685,14 +685,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.75rem;
-    margin-bottom: 0.5rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
   }
 
   .thread-actions {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .thread-link {
@@ -705,7 +705,7 @@
     border: 1px solid var(--color-border);
     border-radius: 0.375rem;
     color: var(--color-accent);
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
   }
 
   .thread-link:hover {
@@ -741,20 +741,20 @@
   .thread-meta {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-top: 0.75rem;
+    gap: var(--space-4);
+    margin-top: var(--space-3);
   }
 
   .thread-stat {
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 
   .thread-stat.highlight {
-    color: #22c55e;
+    color: var(--color-success);
     font-weight: 600;
   }
 
@@ -772,13 +772,13 @@
   .quotes-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .quote-group {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
   }
 
@@ -787,7 +787,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.875rem 1rem;
+    padding: 0.875rem var(--space-4);
     background: none;
     border: none;
     cursor: pointer;
@@ -801,19 +801,19 @@
   .quote-group-title {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .quote-pain-point {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-text-primary);
   }
 
   .quote-group-content {
-    padding: 0 1rem 1rem;
+    padding: 0 var(--space-4) var(--space-4);
     border-top: 1px solid var(--color-border);
-    padding-top: 0.75rem;
+    padding-top: var(--space-3);
   }
 
   .quote-item {
@@ -827,27 +827,27 @@
   }
 
   :global(.evidence-quote) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .quote-meta {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    font-size: 0.75rem;
+    gap: var(--space-4);
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
-    padding-left: 1rem;
+    padding-left: var(--space-4);
   }
 
   .quote-source {
-    color: #f97316;
+    color: var(--color-accent);
     font-weight: 500;
   }
 
   .quote-score {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   :global(.quote-score-icon) {
@@ -862,7 +862,7 @@
 
   /* Subreddit Groups */
   .subreddit-group {
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
   }
 
   .subreddit-group:last-child {
@@ -872,35 +872,35 @@
   .subreddit-group-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
   }
 
   .subreddit-group-name {
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #f97316;
+    color: var(--color-accent);
   }
 
   .subreddit-threads-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .mini-thread-card {
     background: var(--color-bg-base);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
   }
 
   .mini-thread-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .mini-thread-title {
@@ -929,15 +929,15 @@
 
   .mini-thread-meta {
     display: flex;
-    gap: 1rem;
-    margin-top: 0.5rem;
+    gap: var(--space-4);
+    margin-top: var(--space-2);
   }
 
   .mini-stat {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 

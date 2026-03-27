@@ -70,18 +70,19 @@
 <section id="faq" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-3xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="text-center mb-16">
-        <span class="section-label animate-fade-in">FAQ</span>
+        <span class="section-label">FAQ</span>
         <h2
-          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
+          class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
           Common Questions
         </h2>
       </div>
 
       <!-- FAQ Items - Dark Accordion Style -->
-      <div class="animate-fade-in delay-300 border-t border-border">
+      <div class="border-t border-border">
         {#each faqs as faq}
           <Accordion title={faq.question}>
             {@html faq.answer}
@@ -90,7 +91,7 @@
       </div>
 
       <!-- Contact CTA -->
-      <div class="animate-fade-in delay-400 mt-12 text-center">
+      <div class="mt-12 text-center">
         <div class="divider max-w-xs mx-auto mb-8"></div>
         <p class="text-text-muted">
           Still have questions?
@@ -101,6 +102,7 @@
             Contact us
           </a>
         </p>
+      </div>
       </div>
     {/if}
   </div>

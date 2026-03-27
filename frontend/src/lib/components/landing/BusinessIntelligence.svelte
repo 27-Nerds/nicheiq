@@ -50,23 +50,24 @@
 <section id="business-intelligence" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-16">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">04</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">The Numbers</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
+          class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
           Real Numbers. <span class="text-accent"
             >Not Vibes.</span
           >
         </h2>
         <p
-          class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
+          class="text-lg text-text-secondary mt-6 max-w-2xl"
         >
           The business data behind the decision. Market sizing, pricing, and a clear verdict.
         </p>
@@ -76,15 +77,14 @@
       <div class="space-y-10 sm:space-y-14">
         {#each blocks as block, i}
           <div
-            class="animate-fade-in grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8"
-            style="animation-delay: {300 + i * 200}ms"
+            class="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8"
           >
             <!-- Metric Callout (first on mobile, right on desktop) -->
             <div class="order-1 md:order-2">
               {#if block.question === "How big is this opportunity?"}
                 <!-- Block 1: Funnel Bars -->
                 <div
-                  class="border-l-4 border-accent bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                  class="border-t-2 border-t-accent/30 bg-bg-elevated rounded-xl p-5 sm:p-6"
                   role="img"
                   aria-label="Market funnel: TAM $2.4B, SAM $630M, SOM $12M"
                 >
@@ -139,7 +139,7 @@
               {:else if block.question === "What should I charge?"}
                 <!-- Block 2: Tier Pills -->
                 <div
-                  class="border-l-4 border-accent/70 bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                  class="border-t-2 border-t-accent/30 bg-bg-elevated rounded-xl p-5 sm:p-6"
                 >
                   <div class="flex flex-col sm:flex-row flex-wrap gap-2 mb-3">
                     <span
@@ -178,7 +178,7 @@
               {:else}
                 <!-- Block 3: Verdict Badge -->
                 <div
-                  class="border-l-4 border-accent bg-bg-elevated rounded-r-xl p-5 sm:p-6"
+                  class="border-t-2 border-t-accent/30 bg-bg-elevated rounded-xl p-5 sm:p-6"
                 >
                   <div class="flex flex-wrap items-center gap-3 mb-3">
                     <span
@@ -256,11 +256,12 @@
       </div>
 
       <!-- Bottom Tagline -->
-      <div class="animate-fade-in delay-500 text-center mt-12">
+      <div class="text-center mt-12">
         <div class="divider max-w-xs mx-auto"></div>
         <p class="text-text-muted italic text-lg mt-8">
           Built on search volume data and community signals. No surveys. No gut feelings.
         </p>
+      </div>
       </div>
     {/if}
   </div>

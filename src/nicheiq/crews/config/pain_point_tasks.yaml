@@ -155,6 +155,8 @@ extract_pain_points:
        - **Focused themes**: Map 1:1 to a pain point
        - **Broad themes**: Split into 2-3 specific pain points
        - Example: "Housing Challenges" → "Affordability Crisis", "Safety Concerns", "Housing Instability"
+       - Write a **short_summary** (1-2 punchy sentences, under 180 chars) for each pain point.
+         Focuses on the core user problem and its impact. Must differ from the title.
     3. **Extract Anchor Keywords** → For each pain point:
        - Select 2-6 anchor_keywords from Task 1's theme keywords
        - These are SHORT PHRASES (2-6 words) for Task 4 vector search
@@ -194,6 +196,7 @@ extract_pain_points:
         {
           "title": "Short descriptive name",
           "description": "2-3 sentence problem articulation in user language",
+          "short_summary": "Punchy 1-2 sentence card summary under 180 chars",
           "mention_count": 18,
           "anchor_keywords": ["took 3 hours", "no documentation", "gave up"],
           "source_platforms": ["Reddit"],
@@ -203,8 +206,16 @@ extract_pain_points:
       "extraction_summary": "3-4 sentences overview of pain point landscape"
     }
 
+    **short_summary examples:**
+    - title: "Manual Invoicing Burden"
+      short_summary: "Manual invoicing wastes 3-5 hours weekly per user. Delays payments and introduces billing errors."
+    - title: "No Analytics Dashboard"
+      short_summary: "Teams fly blind without unified metrics. Decisions based on gut feel instead of data."
+    Bad short_summary: repeating the title, or pasting the full 2-3 sentence description
+
     Rules:
     - Return ONLY raw JSON starting with { and ending with }
+    - short_summary: 1-2 punchy sentences, under 180 characters, different from title
     - 2-10 anchor_keywords per pain point (short phrases, 2-6 words each)
     - anchor_keywords must be EXACT user phrases for Task 4 vector search
     - mention_count from Task 1 theme data

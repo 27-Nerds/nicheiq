@@ -54,9 +54,9 @@
 
   <div class="space-y-6">
     {#each data as solution, index}
-      <AnimateOnScroll animation="fade-up" delay={index * 100}>
+      <AnimateOnScroll animation="fade-in" delay={index * 100}>
         <div
-          class="card border-l-4 border-l-accent/50 hover:border-l-accent transition-colors"
+          class="card hover:border-border-emphasis transition-colors"
         >
           <!-- Header -->
           <div class="flex flex-wrap items-start justify-between gap-4 mb-4">

@@ -536,8 +536,8 @@
   .key-competitors-strip {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
     flex-wrap: wrap;
   }
 
@@ -564,7 +564,7 @@
 
   .strip-description {
     width: 100%;
-    margin: 0.5rem 0 0 0;
+    margin: var(--space-2) 0 0 0;
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
     line-height: 1.5;
@@ -572,11 +572,11 @@
 
   /* Summary Card */
   .summary-card {
-    padding: 1rem 1.25rem;
+    padding: var(--space-4) var(--space-5);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
   }
 
   .summary-text {
@@ -587,7 +587,7 @@
   }
 
   .summary-text :global(p) {
-    margin: 0 0 0.75rem;
+    margin: 0 0 var(--space-3);
   }
 
   .summary-text :global(p:last-child) {
@@ -604,7 +604,7 @@
   .opportunity-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .opportunity-number {
@@ -623,7 +623,7 @@
   }
 
   .opportunity-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.5;
   }
@@ -638,7 +638,7 @@
   .competitor-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     overflow: hidden;
     transition: border-color 0.15s ease;
   }
@@ -659,9 +659,9 @@
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1rem;
+    gap: var(--space-4);
     width: 100%;
-    padding: 1rem;
+    padding: var(--space-4);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -681,7 +681,7 @@
     display: flex;
     align-items: center;
     gap: 0.625rem;
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--space-1);
     flex-wrap: wrap;
   }
 
@@ -724,7 +724,7 @@
     width: 1.75rem;
     height: 1.75rem;
     color: var(--color-text-muted);
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     transition:
       color 0.15s ease,
       background 0.15s ease;
@@ -755,12 +755,12 @@
     display: flex;
     flex-direction: column;
     gap: 0.375rem;
-    padding: 0 1rem 0.75rem;
+    padding: 0 var(--space-4) var(--space-3);
   }
 
   .solutions-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -777,8 +777,8 @@
   .group-separator {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.5rem 0;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
   }
 
   .group-separator::before,
@@ -801,26 +801,26 @@
 
   /* Competitor Details (Expandable) */
   .competitor-details {
-    padding: 0 1rem 1rem;
+    padding: 0 var(--space-4) var(--space-4);
     border-top: 1px solid var(--color-border);
   }
 
   .details-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 1.25rem;
-    padding-top: 1rem;
+    gap: var(--space-5);
+    padding-top: var(--space-4);
   }
 
   .detail-section {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .detail-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -848,7 +848,7 @@
   .feature-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: var(--space-2);
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
   }
@@ -873,7 +873,7 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .swot-item {
@@ -902,13 +902,13 @@
   .table-container {
     overflow-x: auto;
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   .feature-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.875rem;
+    font-size: var(--text-base);
   }
 
   .feature-table th,
@@ -928,7 +928,7 @@
   .competitor-col-header {
     text-align: center;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     font-weight: 500;
     color: var(--color-text-secondary);
     background: var(--color-bg-surface);
@@ -973,7 +973,7 @@
   }
 
   .recommendations-content :global(p) {
-    margin: 0 0 0.75rem;
+    margin: 0 0 var(--space-3);
   }
 
   .recommendations-content :global(p:last-child) {
@@ -981,8 +981,8 @@
   }
 
   .recommendations-content :global(ul) {
-    margin: 0 0 0.75rem;
-    padding-left: 1.25rem;
+    margin: 0 0 var(--space-3);
+    padding-left: var(--space-5);
   }
 
   .recommendations-content :global(li) {

@@ -285,15 +285,15 @@
 	   SEGMENTS
 	   ========================= */
   .segments-section {
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
   }
 
   .segment-card {
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
     border-radius: 0.625rem;
-    padding: 1rem;
-    transition: all 0.15s ease;
+    padding: var(--space-4);
+    transition: border-color 0.15s ease;
   }
 
   .segment-card:hover {
@@ -308,20 +308,20 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
   }
 
   .segment-name {
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #18181b;
+    color: var(--color-text-primary);
     margin: 0;
   }
 
   .segment-pains {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .segment-pains-label {
@@ -332,7 +332,7 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     display: block;
-    margin-bottom: 0.25rem;
+    margin-bottom: var(--space-1);
   }
 
   .pains-list {
@@ -343,9 +343,9 @@
 
   .pains-list li {
     position: relative;
-    padding-left: 0.75rem;
-    font-size: 0.75rem;
-    color: #71717a;
+    padding-left: var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
     line-height: 1.45;
     margin-bottom: 0.125rem;
   }
@@ -364,11 +364,11 @@
     display: flex;
     align-items: center;
     gap: 0.875rem;
-    padding: 0.75rem 1rem;
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0.5rem;
-    margin-bottom: 0.75rem;
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
     flex-wrap: wrap;
   }
 
@@ -386,7 +386,7 @@
 
   .communities-label span {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
@@ -400,12 +400,12 @@
   }
 
   .community-tag {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     padding: 0.25rem 0.625rem;
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 9999px;
-    color: #71717a;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
   }
 
   /* Discovery Channel Tags */
@@ -413,31 +413,31 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.375rem;
-    margin-top: 0.5rem;
+    margin-top: var(--space-2);
   }
 
   .insight-card__tag {
     font-size: 0.6875rem;
     padding: 0.2rem 0.5rem;
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 9999px;
-    color: #71717a;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    color: var(--color-text-muted);
   }
 
   /* Influencer Card */
   .influencer-card {
-    padding: 0.75rem;
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 0.5rem;
+    padding: var(--space-3);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
   }
 
   .influencer-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 0.5rem;
+    gap: var(--space-2);
     margin-bottom: 0.375rem;
   }
 
@@ -445,13 +445,13 @@
     font-family: var(--font-display);
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #18181b;
+    color: var(--color-text-primary);
   }
 
   .influencer-meta {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     margin-bottom: 0.375rem;
   }
 
@@ -463,13 +463,13 @@
 
   .influencer-followers {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
   }
 
   .influencer-focus {
-    font-size: 0.75rem;
-    color: #71717a;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
     line-height: 1.45;
     margin: 0 0 0.375rem 0;
   }
@@ -477,23 +477,23 @@
   .influencer-subs {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: var(--space-1);
     margin-bottom: 0.375rem;
   }
 
   .influencer-sub-tag {
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     padding: 0.125rem 0.375rem;
-    background: rgba(0, 0, 0, 0.03);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 9999px;
+    background: var(--color-bg-subtle);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
     color: var(--color-text-muted);
   }
 
   .influencer-posts-toggle {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-1);
     background: none;
     border: none;
     padding: 0.125rem 0;
@@ -521,16 +521,16 @@
   .influencer-posts-list {
     list-style: none;
     padding: 0;
-    margin: 0.25rem 0 0 0;
+    margin: var(--space-1) 0 0 0;
   }
 
   .influencer-post-item {
     display: flex;
     align-items: baseline;
-    gap: 0.25rem;
+    gap: var(--space-1);
     font-size: 0.6875rem;
     padding: 0.1875rem 0;
-    color: #71717a;
+    color: var(--color-text-muted);
   }
 
   .influencer-post-item::before {
@@ -571,9 +571,9 @@
 
   /* Messaging Box */
   .messaging-box {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 0.5rem;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
     padding: 0.875rem;
   }
 
@@ -584,7 +584,7 @@
     font-family: var(--font-display);
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #18181b;
+    color: var(--color-text-primary);
     margin-bottom: 0.625rem;
   }
 
@@ -597,7 +597,7 @@
   .messaging-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .messaging-item {
@@ -608,14 +608,14 @@
 
   .quote-mark {
     color: var(--color-accent);
-    font-size: 1rem;
+    font-size: var(--text-md);
     line-height: 1;
     font-weight: 500;
   }
 
   .messaging-text {
-    font-size: 0.75rem;
-    color: #71717a;
+    font-size: var(--text-sm);
+    color: var(--color-text-muted);
     line-height: 1.5;
   }
 
@@ -627,22 +627,22 @@
 
   .vocab-tag {
     font-size: 0.6875rem;
-    padding: 0.25rem 0.5rem;
+    padding: var(--space-1) var(--space-2);
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     color: var(--color-accent);
   }
 
   /* Tactics */
   .tactics-content {
     font-size: 0.8125rem;
-    color: #71717a;
+    color: var(--color-text-muted);
     line-height: 1.65;
   }
 
   .tactics-content :global(p) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .tactics-content :global(p:last-child) {

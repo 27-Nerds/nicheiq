@@ -203,20 +203,18 @@
   {#if activeTab === "journey"}
     <div transition:fade={{ duration: 200 }}>
       <!-- Intro Narrative -->
-      <AnimateOnScroll animation="fade-up">
-        <div class="journey-intro">
-          <div class="journey-intro-icon">
-            <Compass class="w-5 h-5 text-accent" />
-          </div>
-          <p class="journey-intro-text">
-            Through extensive research across social platforms, we identified
-            key pain points that users experience daily. Here's how <strong
-              >{solution.solution_name || "Solution"}</strong
-            >
-            directly addresses these challenges.
-          </p>
+      <div class="journey-intro">
+        <div class="journey-intro-icon">
+          <Compass class="w-5 h-5 text-accent" />
         </div>
-      </AnimateOnScroll>
+        <p class="journey-intro-text">
+          Through extensive research across social platforms, we identified
+          key pain points that users experience daily. Here's how <strong
+            >{solution.solution_name || "Solution"}</strong
+          >
+          directly addresses these challenges.
+        </p>
+      </div>
 
       <!-- Pain Points Flow -->
       <div class="pain-solution-flow">
@@ -394,7 +392,7 @@
     <div transition:fade={{ duration: 200 }}>
       <!-- Pain Point Matrix Chart -->
       {#if painPoints.length > 0}
-        <AnimateOnScroll animation="fade-up" delay={100}>
+        <AnimateOnScroll animation="fade-in" delay={100}>
           <div class="mb-8">
             <PainPointMatrix {painPoints} />
           </div>
@@ -403,29 +401,27 @@
 
       <!-- Filters -->
       {#if painPoints.length > 0}
-        <AnimateOnScroll animation="fade-up" delay={150}>
-          <div class="filters-row mb-6">
+        <div class="filters-row mb-6">
+          <FilterGroup
+            label="Opportunity"
+            options={opportunityOptions}
+            bind:selected={selectedOpportunity}
+            showCounts={true}
+          />
+          {#if platformOptions.length > 0}
             <FilterGroup
-              label="Opportunity"
-              options={opportunityOptions}
-              bind:selected={selectedOpportunity}
-              showCounts={true}
+              label="Platform"
+              options={platformOptions}
+              bind:selected={selectedPlatform}
             />
-            {#if platformOptions.length > 0}
-              <FilterGroup
-                label="Platform"
-                options={platformOptions}
-                bind:selected={selectedPlatform}
-              />
-            {/if}
-          </div>
-        </AnimateOnScroll>
+          {/if}
+        </div>
       {/if}
 
       <!-- Pain Points List -->
       <div class="pain-points-list">
         {#each filteredPainPoints as point, index}
-          <AnimateOnScroll animation="fade-up" delay={index * 100}>
+          <AnimateOnScroll animation="fade-in" delay={index * 100}>
             <div
               class="pain-point-card-enhanced {point.opportunity_level ===
               'high'
@@ -589,27 +585,27 @@
   /* Tab Navigation */
   .tab-navigation {
     display: flex;
-    gap: 0.5rem;
-    padding: 0.25rem;
+    gap: var(--space-2);
+    padding: var(--space-1);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
     width: fit-content;
   }
 
   .tab-button {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     padding: 0.625rem 1rem;
     background: transparent;
     border: none;
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease;
   }
 
   .tab-button:hover {
@@ -626,9 +622,9 @@
   .journey-intro {
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    margin-bottom: var(--space-8);
   }
 
   .journey-intro-icon {
@@ -639,8 +635,8 @@
     height: 2.5rem;
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
-    border-radius: 0.5rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-4);
   }
 
   .journey-intro-text {
@@ -656,23 +652,23 @@
   .pain-solution-flow {
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
-    margin-bottom: 2rem;
+    gap: var(--space-6);
+    margin-bottom: var(--space-8);
   }
 
   .flow-row {
     display: grid;
     grid-template-columns: 1fr auto 1fr;
-    gap: 1rem;
+    gap: var(--space-4);
     align-items: center;
   }
 
   .pain-card-enhanced {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    transition: all 0.3s ease;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    transition: border-color 0.3s ease;
   }
 
   .pain-card-enhanced:hover {
@@ -692,8 +688,8 @@
   .pain-header-enhanced {
     display: flex;
     align-items: center;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
   }
 
   .pain-severity-ring {
@@ -711,7 +707,7 @@
 
   .pain-severity-value {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 700;
     color: var(--color-error);
     line-height: 1;
@@ -719,7 +715,7 @@
 
   .pain-severity-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--color-text-muted);
@@ -731,20 +727,20 @@
     font-size: 0.9375rem;
     font-weight: 600;
     color: var(--color-text-primary);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .pain-description {
     font-size: 0.9375rem;
     color: var(--color-text-secondary);
     line-height: 1.6;
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .pain-platforms {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-wrap: wrap;
   }
 
@@ -783,9 +779,9 @@
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-success);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    transition: all 0.3s ease;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    transition: border-color 0.3s ease;
   }
 
   .solution-card-enhanced:hover {
@@ -795,8 +791,8 @@
   .solution-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
   }
 
   .solution-label {
@@ -823,16 +819,16 @@
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-success);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-8);
   }
 
   .wtp-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
   }
 
   .wtp-header h4 {
@@ -846,21 +842,21 @@
     font-size: 0.9375rem;
     color: var(--color-text-secondary);
     line-height: 1.6;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
   }
 
   .wtp-scores {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .wtp-item {
     display: flex;
     flex-direction: column;
     background: var(--color-bg-elevated);
-    border-radius: 0.5rem;
-    padding: 0.75rem 1rem;
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
   }
 
   .wtp-name {
@@ -870,7 +866,7 @@
 
   .wtp-value {
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-success);
   }
@@ -878,7 +874,7 @@
   .journey-stats {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .stat-item {
@@ -887,14 +883,14 @@
     align-items: center;
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
     text-align: center;
   }
 
   .stat-value {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--color-accent);
   }
@@ -905,32 +901,32 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--color-text-muted);
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
   }
 
   /* Analysis Tab Styles */
   .filters-row {
     display: flex;
     flex-wrap: wrap;
-    gap: 1.5rem;
-    padding: 1rem 1.25rem;
+    gap: var(--space-6);
+    padding: var(--space-4) var(--space-5);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-lg);
   }
 
   .pain-points-list {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .pain-point-card-enhanced {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    transition: all 0.3s ease;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    transition: border-color 0.3s ease;
   }
 
   .pain-point-card-enhanced:hover {
@@ -950,8 +946,8 @@
   .pain-point-header {
     display: flex;
     align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
   }
 
   .pain-point-rank {
@@ -962,9 +958,9 @@
     height: 2.5rem;
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     font-family: var(--font-mono);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 700;
     color: var(--color-accent);
     flex-shrink: 0;
@@ -980,14 +976,14 @@
     font-size: 1.125rem;
     font-weight: 600;
     color: var(--color-text-primary);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .pain-point-badges {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .opportunity-badge {
@@ -997,7 +993,7 @@
     text-transform: uppercase;
     letter-spacing: 0.04em;
     padding: 0.25rem 0.625rem;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
   }
 
   .opportunity-badge-high {
@@ -1020,7 +1016,7 @@
 
   .pain-point-scores {
     display: flex;
-    gap: 1rem;
+    gap: var(--space-4);
     flex-shrink: 0;
   }
 
@@ -1028,7 +1024,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .score-ring-label {
@@ -1043,22 +1039,22 @@
     font-size: 0.9375rem;
     color: var(--color-text-secondary);
     line-height: 1.7;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
   }
 
   .pain-point-categories {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
   }
 
   .pain-segments {
     display: flex;
     align-items: flex-start;
     gap: 0.375rem;
-    margin-top: 0.5rem;
-    margin-bottom: 0.75rem;
+    margin-top: var(--space-2);
+    margin-bottom: var(--space-3);
   }
 
   .pain-segments__tags {
@@ -1070,7 +1066,7 @@
   .category-tag {
     font-size: 0.6875rem;
     padding: 0.25rem 0.625rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     color: var(--color-text-muted);
@@ -1078,19 +1074,19 @@
 
   .quotes-section {
     border-top: 1px solid var(--color-border);
-    padding-top: 1rem;
-    margin-top: 0.5rem;
+    padding-top: var(--space-4);
+    margin-top: var(--space-2);
   }
 
   .quotes-toggle {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     background: none;
     border: none;
     padding: 0.5rem 0;
     color: var(--color-text-muted);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     cursor: pointer;
     transition: color 0.2s ease;
   }
@@ -1102,8 +1098,8 @@
   .quotes-list {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 1rem;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
   }
 
   /* Quote animation support */
@@ -1127,8 +1123,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
-    margin-top: 0.75rem;
+    gap: var(--space-2);
+    margin-top: var(--space-3);
   }
 
   .source-label {
@@ -1138,10 +1134,10 @@
 
   .source-id {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     padding: 0.125rem 0.375rem;
     background: var(--color-bg-elevated);
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     color: var(--color-text-muted);
   }
 

@@ -50,30 +50,31 @@
 <section id="credibility" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Header -->
       <div class="mb-12">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">06</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">Source-Backed Research</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
+          class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
           Every Claim Links to <span class="text-accent"
             >Its Source.</span
           >
         </h2>
         <p
-          class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
+          class="text-lg text-text-secondary mt-6 max-w-2xl"
         >
           Pain points link to Reddit threads. Keywords come with real search volumes. You can verify any claim before you act on it.
         </p>
       </div>
 
       <!-- Source Bar -->
-      <div class="animate-fade-in delay-300 mb-12">
+      <div class="mb-12">
         <div class="flex flex-wrap justify-center gap-3">
           {#each sourcePills as pill}
             <span
@@ -94,9 +95,7 @@
       <div class="max-w-3xl mx-auto space-y-3 mb-6">
         {#each threadCards as thread, i}
           <div
-            class="p-5 bg-bg-elevated border border-border border-l-4 border-l-accent rounded-r-xl"
-            style="animation: fadeIn 0.5s ease-out both; animation-delay: {400 +
-              i * 100}ms"
+            class="p-5 bg-bg-elevated border border-border rounded-xl"
           >
             <div class="flex items-center gap-4">
               <div
@@ -127,8 +126,7 @@
 
         <!-- Quote Card -->
         <div
-          class="p-4 bg-bg-surface border-l-4 border-l-accent rounded-r-xl mt-3"
-          style="animation: fadeIn 0.5s ease-out both; animation-delay: 550ms"
+          class="p-4 bg-bg-surface border border-border rounded-xl mt-3"
         >
           <div class="flex items-start gap-3">
             <Quote class="w-4 h-4 text-accent flex-shrink-0 mt-1" />
@@ -151,7 +149,6 @@
       <!-- Caption -->
       <p
         class="text-center text-sm text-text-muted italic mb-14"
-        style="animation: fadeIn 0.5s ease-out both; animation-delay: 550ms"
       >
         In your report, every source links to the original discussion thread.
         Full evidence appendix included.
@@ -160,7 +157,6 @@
       <!-- Dual Callout -->
       <div
         class="grid grid-cols-1 md:grid-cols-2 gap-6"
-        style="animation: fadeIn 0.5s ease-out both; animation-delay: 650ms"
       >
         <!-- Part A: Everything Traces Back to Data -->
         <div class="bg-bg-surface border border-border-accent rounded-xl p-6">
@@ -209,7 +205,6 @@
       <!-- About the Maker -->
       <div
         class="mt-14 sm:mt-16"
-        style="animation: fadeIn 0.5s ease-out both; animation-delay: 750ms"
       >
         <div
           class="flex flex-col md:flex-row items-start gap-6 sm:gap-8 md:gap-12 bg-bg-elevated border border-border rounded-xl p-6 sm:p-8"
@@ -246,6 +241,7 @@
             </div>
           </div>
         </div>
+      </div>
       </div>
     {/if}
   </div>

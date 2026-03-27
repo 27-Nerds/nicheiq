@@ -18,6 +18,7 @@
     totalStages?: number;
     isRunning?: boolean;
     isFailed?: boolean;
+    painPointCount?: number;
   }
 
   let {
@@ -30,7 +31,10 @@
     totalStages = 0,
     isRunning = false,
     isFailed = false,
+    painPointCount,
   }: Props = $props();
+
+  const painPointsCompleted = $derived(painPointCount != null && painPointCount > 0);
 </script>
 
 <div class="journey-track">
@@ -64,10 +68,41 @@
 
       <!-- Connector line (between nodes) -->
       {#if i < phases.length - 1}
-        <!-- Gate diamond for interactive jobs between discovery and analysis -->
+        <!-- Milestones + gate for interactive jobs between discovery and analysis -->
         {#if isInteractive && i === 0}
-          <div class="connector-segment">
-            <div class="track-line" class:line-filled={gateStatus === 'passed' || phases[0].status === 'completed'}></div>
+          <!-- Line from Discovery to Pain Points milestone -->
+          <div class="connector-segment connector-segment--short">
+            <div class="track-line" class:line-filled={painPointsCompleted}></div>
+          </div>
+
+          <!-- Pain Points milestone -->
+          <div class="node-group">
+            <div
+              class="milestone-node"
+              class:milestone-completed={painPointsCompleted}
+              class:milestone-pending={!painPointsCompleted}
+            >
+              {#if painPointsCompleted}
+                <Check class="milestone-check" />
+              {:else}
+                <span class="milestone-dot"></span>
+              {/if}
+            </div>
+            <span
+              class="milestone-label"
+              class:label-completed={painPointsCompleted}
+            >
+              Pain Points{#if painPointsCompleted && painPointCount}&nbsp;({painPointCount}){/if}
+            </span>
+          </div>
+
+          <!-- Line from Pain Points to Ideas gate -->
+          <div class="connector-segment connector-segment--short">
+            <div class="track-line" class:line-filled={gateStatus === 'active' || gateStatus === 'passed'}></div>
+          </div>
+
+          <!-- Ideas gate (= diamond) -->
+          <div class="node-group">
             <div
               class="gate-diamond"
               class:diamond-active={gateStatus === 'active'}
@@ -75,7 +110,45 @@
             >
               <span class="diamond-inner"></span>
             </div>
+            <span
+              class="milestone-label"
+              class:label-active={gateStatus === 'active'}
+              class:label-completed={gateStatus === 'passed'}
+            >
+              Ideas
+            </span>
+          </div>
+
+          <!-- Line from Ideas to Analysis -->
+          <div class="connector-segment connector-segment--short">
             <div class="track-line" class:line-filled={gateStatus === 'passed'}></div>
+          </div>
+        {:else if i === 0}
+          <!-- Non-interactive: Pain Points milestone only (no Ideas gate) -->
+          <div class="connector-segment connector-segment--short">
+            <div class="track-line" class:line-filled={painPointsCompleted}></div>
+          </div>
+          <div class="node-group">
+            <div
+              class="milestone-node"
+              class:milestone-completed={painPointsCompleted}
+              class:milestone-pending={!painPointsCompleted}
+            >
+              {#if painPointsCompleted}
+                <Check class="milestone-check" />
+              {:else}
+                <span class="milestone-dot"></span>
+              {/if}
+            </div>
+            <span
+              class="milestone-label"
+              class:label-completed={painPointsCompleted}
+            >
+              Pain Points{#if painPointsCompleted && painPointCount}&nbsp;({painPointCount}){/if}
+            </span>
+          </div>
+          <div class="connector-segment connector-segment--short">
+            <div class="track-line" class:line-filled={phases[i].status === 'completed'}></div>
           </div>
         {:else}
           <div class="connector-segment">
@@ -275,6 +348,60 @@
     background: var(--color-success);
   }
 
+  /* ===== Milestone nodes (smaller, subordinate to phase nodes) ===== */
+  .milestone-node {
+    width: 1.25rem;
+    height: 1.25rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+  }
+
+  .milestone-completed {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1.5px solid rgba(34, 197, 94, 0.4);
+  }
+
+  .milestone-pending {
+    background: var(--color-bg-elevated);
+    border: 1.5px solid var(--color-border);
+  }
+
+  :global(.milestone-check) {
+    width: 0.625rem;
+    height: 0.625rem;
+    color: var(--color-success);
+  }
+
+  .milestone-dot {
+    width: 0.25rem;
+    height: 0.25rem;
+    border-radius: 50%;
+    background: var(--color-text-muted);
+    opacity: 0.4;
+  }
+
+  .milestone-label {
+    font-size: 0.5625rem;
+    font-weight: 500;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .connector-segment--short {
+    min-width: 1rem;
+    max-width: 4rem;
+  }
+
+  /* The gate diamond also needs a label now — vertically offset to align */
+  .node-group > .gate-diamond {
+    margin-top: 0.125rem;
+  }
 
   @keyframes pulse-glow {
     0%, 100% { box-shadow: none; }
@@ -285,6 +412,12 @@
     0% { inset: -4px; opacity: 0.6; }
     70% { inset: -10px; opacity: 0; }
     100% { inset: -10px; opacity: 0; }
+  }
+
+  @media (max-width: 480px) {
+    .milestone-label {
+      display: none;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {

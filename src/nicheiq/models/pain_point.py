@@ -16,6 +16,15 @@ class UnvalidatedPainPoint(BaseModel):
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
+    short_summary: Optional[str] = Field(
+        default=None,
+        description=(
+            "Punchy 1-2 sentence summary for card display. Focuses on the core user "
+            "problem and its impact. Must be under 180 characters. "
+            "Example: 'Manual invoicing wastes 3-5 hours weekly per user. "
+            "Delays payments and introduces billing errors.'"
+        ),
+    )
     mention_count: int = Field(
         ...,
         description="Total UNIQUE discussions mentioning this problem"
@@ -211,6 +220,13 @@ class PainPoint(BaseModel):
 
     title: str = Field(..., description="Short title of the pain point")
     description: str = Field(..., description="Detailed description of the problem")
+    short_summary: Optional[str] = Field(
+        default=None,
+        description=(
+            "Punchy 1-2 sentence summary for card display. Focuses on the core user "
+            "problem and its impact. Must be under 180 characters."
+        ),
+    )
     mention_count: int = Field(
         ...,
         description="Total UNIQUE discussions mentioning this problem - typically much larger than quote count"

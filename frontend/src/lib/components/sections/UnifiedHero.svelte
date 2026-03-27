@@ -1334,7 +1334,7 @@
 
   .verdict-score-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.12em;
@@ -1775,7 +1775,7 @@
   }
 
   .callout-text {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
     line-height: var(--leading-relaxed);
     margin: 0;
@@ -1855,7 +1855,7 @@
     padding: var(--space-2) var(--space-3);
     background: var(--color-accent-subtle);
     border-radius: var(--radius-md);
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   .pain-cta:hover {
@@ -1875,13 +1875,12 @@
     padding-left: calc(var(--space-5) + 2px);
     position: relative;
     box-shadow: var(--shadow-md);
-    transition: all 0.2s ease;
+    transition: border-color 0.15s ease, background-color 0.15s ease;
   }
 
   .solution-teaser:hover {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
     border-color: var(--color-success);
+    background: var(--color-bg-hover);
   }
 
   .teaser-header {
@@ -1934,7 +1933,7 @@
     padding: var(--space-2) var(--space-3);
     background: var(--color-accent-subtle);
     border-radius: var(--radius-md);
-    transition: all 0.2s ease;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 
   .teaser-cta:hover {
@@ -1962,15 +1961,15 @@
   .teaser-target {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: var(--space-2);
     margin-bottom: 0.875rem;
     padding-bottom: 0.875rem;
     border-bottom: 1px solid var(--color-border);
   }
 
   :global(.teaser-target-icon) {
-    width: 1rem;
-    height: 1rem;
+    width: var(--space-4);
+    height: var(--space-4);
     color: var(--color-text-muted);
     flex-shrink: 0;
     margin-top: 0.125rem;
@@ -2010,7 +2009,7 @@
 
   .metrics-panel-title {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: var(--font-bold);
     letter-spacing: 0.12em;
     color: var(--color-text-muted);
@@ -2027,7 +2026,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 1.25rem 0.5rem;
+    padding: var(--space-5) var(--space-2);
     position: relative;
     transition: background 0.2s ease;
     /* Staggered entrance animation */
@@ -2074,7 +2073,7 @@
     font-family: var(--font-display);
     font-size: 0.6875rem;
     font-weight: var(--font-semibold);
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
     text-align: center;
   }
 
@@ -2117,7 +2116,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 1.5rem;
+    gap: var(--space-6);
     padding: 0.875rem 1.25rem;
     border-top: 1px solid var(--color-border);
     background: var(--color-bg-surface);
@@ -2126,7 +2125,7 @@
   .footer-stat {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   :global(.footer-stat-icon) {
@@ -2144,7 +2143,7 @@
   }
 
   .footer-stat-label {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
     display: flex;
     align-items: center;
@@ -2271,7 +2270,7 @@
     border: none;
     padding: 0;
     font-family: var(--font-mono);
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: rgba(255, 255, 255, 0.5);
     text-decoration: underline;
     text-underline-offset: 2px;
@@ -2311,7 +2310,7 @@
 
   .adjustment-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -2375,7 +2374,7 @@
   }
 
   :global(.priority-icon.geo) {
-    color: #6366f1;
+    color: var(--color-secondary);
   }
 
   :global(.priority-icon.feature) {
@@ -2703,7 +2702,7 @@
 
     .metrics-footer {
       flex-wrap: wrap;
-      gap: 1rem;
+      gap: var(--space-4);
     }
 
     .rationale-header {
@@ -2722,11 +2721,11 @@
     /* Teaser responsive */
     .teaser-value-prop,
     .teaser-target-text {
-      font-size: 0.75rem;
+      font-size: var(--text-sm);
     }
 
     .teaser-badges {
-      gap: 0.25rem;
+      gap: var(--space-1);
     }
   }
 
@@ -2764,16 +2763,16 @@
     }
 
     .metric-verdict {
-      font-size: 0.625rem;
+      font-size: var(--text-xs);
     }
 
     .metrics-footer {
-      gap: 0.75rem;
-      padding: 0.75rem 1rem;
+      gap: var(--space-3);
+      padding: var(--space-3) var(--space-4);
     }
 
     .footer-stat-value {
-      font-size: 0.875rem;
+      font-size: var(--text-base);
     }
 
     .footer-stat-label {

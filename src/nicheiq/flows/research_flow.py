@@ -910,14 +910,18 @@ RULES:
         self._emit_progress(stage_num, stage_name, "skipped", artifact={"skip_reason": reason})
 
     def _extract_stage_artifact(self, stage: float) -> dict | None:
-        """Extract a lightweight artifact dict (<2KB) for a completed stage.
+        """Extract a lightweight artifact dict for a completed stage.
+
+        Stage 3 (pain points) allows up to 4KB to include all pain point
+        summaries for the frontend showcase. All other stages use 2KB limit.
 
         Returns None if no artifact is available or extraction fails.
         """
         try:
             artifact = self._build_stage_artifact(stage)
-            if artifact and len(json.dumps(artifact)) > 2048:
-                logger.warning(f"Artifact for stage {stage} exceeds 2KB, omitting")
+            max_size = 8192 if stage == 3 else 2048
+            if artifact and len(json.dumps(artifact)) > max_size:
+                logger.warning(f"Artifact for stage {stage} exceeds {max_size}B, omitting")
                 return None
             return artifact
         except Exception as e:
@@ -957,13 +961,29 @@ RULES:
             }
         elif stage == 3 and self.state.pain_point_analysis:
             ppa = self.state.pain_point_analysis
-            top3 = sorted(ppa.pain_points, key=lambda p: p.severity_score, reverse=True)[:3]
+            sorted_points = sorted(ppa.pain_points, key=lambda p: p.severity_score, reverse=True)
             return {
                 "type": "pain_points",
                 "count": len(ppa.pain_points),
                 "confidence": self.state.pain_point_confidence_score,
                 "quality_tier": self.state.pain_point_quality_tier,
-                "top": [{"title": p.title, "severity": p.severity_score} for p in top3],
+                "total_mentions": ppa.total_mentions,
+                "top_categories": ppa.top_categories[:5],
+                "pain_points": [
+                    {
+                        "title": p.title,
+                        "short_summary": p.short_summary or p.description,
+                        "severity": p.severity_score,
+                        "wtp": p.willingness_to_pay,
+                        "opportunity": p.opportunity_level.value if hasattr(p.opportunity_level, 'value') else str(p.opportunity_level),
+                        "mentions": p.mention_count,
+                        "categories": (p.categories or [])[:3],
+                        "platforms": p.source_platforms or [],
+                    }
+                    for p in sorted_points
+                ],
+                # Backward compat for old frontend code
+                "top": [{"title": p.title, "severity": p.severity_score} for p in sorted_points[:3]],
             }
         elif stage == 4:
             am = self.state.audience_mapping

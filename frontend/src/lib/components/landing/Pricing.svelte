@@ -78,26 +78,27 @@
 <section id="pricing" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-10 sm:mb-16">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">07</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">Pricing</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6 text-center"
+          class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6 text-center"
         >
           Simple Pricing. <span class="text-accent">Full Report.</span>
         </h2>
         <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl mx-auto text-center"
+          class="text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl mx-auto text-center"
         >
           Buy report bundles, use them whenever. No subscription required.
         </p>
         <p
-          class="animate-fade-in delay-300 text-sm sm:text-base text-text-secondary mt-3 max-w-2xl mx-auto text-center"
+          class="text-sm sm:text-base text-text-secondary mt-3 max-w-2xl mx-auto text-center"
         >
           Every package includes 1 FREE Discovery (up to 10 ideas). Don't worry about your first try.
         </p>
@@ -106,7 +107,7 @@
       <!-- Dynamic Pricing Cards -->
       {#if useDynamic}
         <div
-          class="animate-fade-in delay-300 grid grid-cols-1 {packages.length === 1 ? 'md:grid-cols-1 max-w-sm' : packages.length === 2 ? 'md:grid-cols-2 max-w-3xl' : 'md:grid-cols-3 max-w-5xl'} gap-6 lg:gap-8 mx-auto"
+          class="grid grid-cols-1 {packages.length === 1 ? 'md:grid-cols-1 max-w-sm' : packages.length === 2 ? 'md:grid-cols-2 max-w-3xl' : 'md:grid-cols-3 max-w-5xl'} gap-6 lg:gap-8 mx-auto"
         >
           {#each packages as pkg (pkg.id)}
             <PricingCard {pkg} variant="full">
@@ -142,7 +143,7 @@
       <!-- Fallback: Hardcoded Tiers -->
       {:else}
         <div
-          class="animate-fade-in delay-300 grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto"
+          class="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto"
         >
           {#each fallbackTiers as tier (tier.name)}
             {@const pkg = fallbackToPackage(tier)}
@@ -184,7 +185,7 @@
       </p>
 
       <!-- What's Included Section -->
-      <div class="animate-fade-in delay-400 mt-12 sm:mt-16 max-w-3xl mx-auto">
+      <div class="mt-12 sm:mt-16 max-w-3xl mx-auto">
         <h3
           class="text-center text-lg sm:text-xl font-semibold text-text-primary mb-6 sm:mb-8"
         >
@@ -226,6 +227,7 @@
             >
           </p>
         {/if}
+      </div>
       </div>
     {/if}
   </div>

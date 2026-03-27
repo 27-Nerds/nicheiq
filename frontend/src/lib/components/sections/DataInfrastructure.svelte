@@ -264,17 +264,15 @@
     </AnimateOnScroll>
   {:else if data.estimated_monthly_cost}
     <!-- Fallback for unparseable cost format -->
-    <AnimateOnScroll animation="fade-up">
-      <div class="cost-fallback-card">
-        <DollarSign class="cost-fallback-icon" />
-        <div class="cost-fallback-content">
-          <span class="cost-fallback-label">Estimated Monthly Cost</span>
-          <div class="cost-fallback-text">
-            {@html renderMarkdown(data.estimated_monthly_cost)}
-          </div>
+    <div class="cost-fallback-card">
+      <DollarSign class="cost-fallback-icon" />
+      <div class="cost-fallback-content">
+        <span class="cost-fallback-label">Estimated Monthly Cost</span>
+        <div class="cost-fallback-text">
+          {@html renderMarkdown(data.estimated_monthly_cost)}
         </div>
       </div>
-    </AnimateOnScroll>
+    </div>
   {/if}
 
   <!-- Implementation Phases - Timeline -->
@@ -677,16 +675,16 @@
   .cost-tiers-section {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
   }
 
   .cost-tiers-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.25rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-5);
   }
 
   :global(.cost-tiers-icon) {
@@ -713,7 +711,7 @@
 
   .cost-tier-card {
     position: relative;
-    padding: 1.25rem;
+    padding: var(--space-5);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     display: flex;
@@ -745,21 +743,21 @@
   }
 
   .cost-tier-card--scale {
-    background: rgba(168, 85, 247, 0.06);
-    border-color: rgba(168, 85, 247, 0.3);
+    background: var(--tier-3-bg);
+    border-color: var(--tier-3-border);
   }
 
   .cost-tier-header {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 0.25rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-1);
+    margin-bottom: var(--space-3);
   }
 
   .cost-tier-badge {
     font-family: var(--font-display);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -772,7 +770,7 @@
     color: var(--color-info);
   }
   .cost-tier-card--scale .cost-tier-badge {
-    color: #a855f7;
+    color: var(--viz-cat-4);
   }
 
   .cost-tier-users {
@@ -782,7 +780,7 @@
 
   .cost-tier-amount {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 800;
     color: var(--color-text-primary);
     line-height: 1.1;
@@ -791,11 +789,11 @@
   .cost-tier-period {
     font-size: 0.6875rem;
     color: var(--color-text-muted);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .cost-tier-details {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
     line-height: 1.4;
     max-width: 180px;
@@ -826,12 +824,12 @@
   .unit-economics-note {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-2);
+    margin-top: var(--space-4);
+    padding: var(--space-3) var(--space-4);
     background: var(--color-success-subtle);
     border: 1px solid var(--color-border-success);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
   }
@@ -847,12 +845,12 @@
   .cost-fallback-card {
     display: flex;
     align-items: flex-start;
-    gap: 1rem;
-    padding: 1.25rem;
+    gap: var(--space-4);
+    padding: var(--space-5);
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    margin-bottom: 1.5rem;
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-6);
   }
 
   :global(.cost-fallback-icon) {
@@ -874,7 +872,7 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-muted);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .cost-fallback-text {
@@ -887,16 +885,16 @@
   .timeline-section {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
-    margin-bottom: 1.5rem;
+    border-radius: var(--radius-lg);
+    padding: var(--space-6);
+    margin-bottom: var(--space-6);
   }
 
   .timeline-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1.5rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-6);
   }
 
   :global(.timeline-header-icon) {
@@ -920,7 +918,7 @@
 
   .timeline-phase {
     display: flex;
-    gap: 1.25rem;
+    gap: var(--space-5);
   }
 
   .timeline-connector {
@@ -952,28 +950,28 @@
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--phase-color);
-    border-radius: 0.5rem;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
+    margin-bottom: var(--space-4);
   }
 
   .phase-card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-3);
   }
 
   .phase-badge-group {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .phase-number {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -982,7 +980,7 @@
 
   .phase-name {
     font-family: var(--font-display);
-    font-size: 1rem;
+    font-size: var(--text-md);
     font-weight: 700;
   }
 
@@ -994,7 +992,7 @@
   }
 
   .phase-timeline {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 
@@ -1006,7 +1004,7 @@
   }
 
   .phase-goal {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.5;
     margin: 0 0 1rem;
@@ -1014,7 +1012,7 @@
 
   .phase-sources,
   .phase-milestones {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .phase-section-label {
@@ -1027,7 +1025,7 @@
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-muted);
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   :global(.phase-section-icon) {
@@ -1042,11 +1040,11 @@
   }
 
   .source-tag {
-    font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
+    font-size: var(--text-sm);
+    padding: var(--space-1) var(--space-2);
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: 0.25rem;
+    border-radius: var(--radius-sm);
     color: var(--color-text-secondary);
   }
 
@@ -1061,7 +1059,7 @@
   .milestone-item {
     font-size: 0.8125rem;
     color: var(--color-text-secondary);
-    padding-left: 1rem;
+    padding-left: var(--space-4);
     position: relative;
   }
 
@@ -1077,16 +1075,16 @@
   }
 
   .phase-fallbacks {
-    margin-top: 0.75rem;
-    padding-top: 0.75rem;
+    margin-top: var(--space-3);
+    padding-top: var(--space-3);
     border-top: 1px solid var(--color-border);
   }
 
   .fallbacks-summary {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.75rem;
+    gap: var(--space-2);
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
     cursor: pointer;
     list-style: none;
@@ -1099,7 +1097,7 @@
   :global(.fallbacks-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: #eab308;
+    color: var(--color-warning);
   }
 
   .fallback-list {
@@ -1107,13 +1105,13 @@
     padding: 0;
     margin: 0.5rem 0 0;
     display: grid;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .fallback-item {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
-    padding-left: 1.25rem;
+    padding-left: var(--space-5);
     position: relative;
   }
 
@@ -1128,35 +1126,35 @@
   .expandable-sections {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   /* Sources Grid */
   .sources-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .source-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 1rem;
+    border-radius: var(--radius-md);
+    padding: var(--space-4);
   }
 
   .source-card-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
   }
 
   .source-info {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .source-name {
@@ -1169,8 +1167,8 @@
   .source-link {
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
     color: var(--color-accent);
     text-decoration: none;
   }
@@ -1187,15 +1185,15 @@
   .source-metrics {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-3);
   }
 
   .source-metric {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    font-size: 0.75rem;
+    gap: var(--space-1);
+    font-size: var(--text-sm);
     color: var(--color-text-secondary);
   }
 
@@ -1206,7 +1204,7 @@
   }
 
   .source-coverage {
-    padding-top: 0.75rem;
+    padding-top: var(--space-3);
     border-top: 1px solid var(--color-border);
     display: flex;
     flex-direction: column;
@@ -1230,22 +1228,22 @@
   /* Evaluated Sources */
   .evaluated-sources-list {
     display: grid;
-    gap: 1rem;
+    gap: var(--space-4);
   }
 
   .evaluated-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 1.25rem;
+    border-radius: var(--radius-md);
+    padding: var(--space-5);
   }
 
   .evaluated-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    gap: 1rem;
-    margin-bottom: 1rem;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
   }
 
   .evaluated-info {
@@ -1268,19 +1266,19 @@
   /* Quality Matrix */
   .quality-matrix {
     display: grid;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
   }
 
   .quality-row {
     display: grid;
     grid-template-columns: 80px 1fr 60px;
     align-items: center;
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .quality-label {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
   }
 
@@ -1312,13 +1310,13 @@
 
   .evaluated-costs {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .cost-tag {
     font-size: 0.6875rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
   }
 
   .cost-tag--mvp {
@@ -1327,22 +1325,22 @@
   }
 
   .cost-tag--scale {
-    background: rgba(168, 85, 247, 0.15);
-    color: #a855f7;
+    background: var(--tier-3-bg);
+    color: var(--viz-cat-4);
   }
 
   /* Fallback Sources Grid */
   .fallback-sources-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 0.75rem;
+    gap: var(--space-3);
   }
 
   .fallback-source-card {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-left: 3px solid #eab308;
-    border-radius: 0.5rem;
+    border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-md);
     padding: 0.875rem 1rem;
   }
 
@@ -1350,36 +1348,36 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .fallback-source-name {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 500;
     color: var(--color-text-primary);
   }
 
   .fallback-source-cost {
-    font-size: 0.75rem;
+    font-size: var(--text-sm);
     color: var(--color-text-muted);
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
     display: block;
   }
 
   /* Risks List */
   .risks-list {
     display: grid;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .risk-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     background: var(--color-error-subtle);
     border: 1px solid var(--color-border-error);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   :global(.risk-icon) {
@@ -1391,7 +1389,7 @@
   }
 
   .risk-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.4;
   }
@@ -1399,17 +1397,17 @@
   /* Mitigation List */
   .mitigation-list {
     display: grid;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .mitigation-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
     background: var(--color-success-subtle);
     border: 1px solid var(--color-border-success);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   :global(.mitigation-icon) {
@@ -1421,7 +1419,7 @@
   }
 
   .mitigation-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-secondary);
     line-height: 1.4;
   }
@@ -1434,34 +1432,34 @@
   }
 
   .narrative-content--highlight {
-    padding: 1rem;
+    padding: var(--space-4);
     background: var(--color-success-subtle);
     border: 1px solid var(--color-border-success);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   /* Recommended Stack */
   .recommended-stack {
-    margin-top: 1.5rem;
-    padding-top: 1.25rem;
+    margin-top: var(--space-6);
+    padding-top: var(--space-5);
     border-top: 1px solid var(--color-border);
   }
 
   .recommended-stack-label {
     display: block;
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: var(--color-text-muted);
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .recommended-stack-tags {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   /* Responsive */

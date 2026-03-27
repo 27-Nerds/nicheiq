@@ -57,43 +57,50 @@ class RedditThreadCache:
         pid_to_url = {pid: url for url, pid in url_to_pid.items()}
         post_ids = list(set(url_to_pid.values()))
 
-        try:
-            resp = requests.post(
-                f"{_get_backend_url()}/api/workers/reddit-threads/batch-lookup",
-                json={"postIds": post_ids},
-                headers=_headers(),
-                timeout=15,
-            )
-            if resp.status_code >= 500:
-                logger.warning(f"[RedditCache] batch-lookup 5xx: {resp.status_code}")
-                return {}
-            if resp.status_code >= 400:
-                logger.error(f"[RedditCache] batch-lookup {resp.status_code}: {resp.text[:200]}")
-                return {}
+        # Backend API has a limit of 100 post IDs per request
+        BATCH_SIZE = 100
+        all_found: dict[str, dict] = {}
 
-            data = resp.json()
-            found = data.get("found", {})
-
-            result: dict[str, RedditPost] = {}
-            for pid, thread in found.items():
-                url = pid_to_url.get(pid)
-                if not url:
+        for i in range(0, len(post_ids), BATCH_SIZE):
+            chunk = post_ids[i:i + BATCH_SIZE]
+            try:
+                resp = requests.post(
+                    f"{_get_backend_url()}/api/workers/reddit-threads/batch-lookup",
+                    json={"postIds": chunk},
+                    headers=_headers(),
+                    timeout=15,
+                )
+                if resp.status_code >= 500:
+                    logger.warning(f"[RedditCache] batch-lookup 5xx: {resp.status_code}")
                     continue
-                try:
-                    post = self._thread_to_post(thread, url)
-                    result[url] = post
-                except Exception as e:
-                    logger.warning(f"[RedditCache] Failed to parse cached thread {pid}: {e}")
+                if resp.status_code >= 400:
+                    logger.error(f"[RedditCache] batch-lookup {resp.status_code}: {resp.text[:200]}")
+                    continue
 
-            hit_count = len(result)
-            miss_count = len(urls) - hit_count
-            if hit_count:
-                logger.info(f"[RedditCache] HIT {hit_count}, MISS {miss_count}")
-            return result
+                data = resp.json()
+                found = data.get("found", {})
+                all_found.update(found)
 
-        except requests.exceptions.RequestException as e:
-            logger.warning(f"[RedditCache] batch-lookup network error: {e}")
-            return {}
+            except requests.exceptions.RequestException as e:
+                logger.warning(f"[RedditCache] batch-lookup network error: {e}")
+                continue
+
+        result: dict[str, RedditPost] = {}
+        for pid, thread in all_found.items():
+            url = pid_to_url.get(pid)
+            if not url:
+                continue
+            try:
+                post = self._thread_to_post(thread, url)
+                result[url] = post
+            except Exception as e:
+                logger.warning(f"[RedditCache] Failed to parse cached thread {pid}: {e}")
+
+        hit_count = len(result)
+        miss_count = len(urls) - hit_count
+        if hit_count:
+            logger.info(f"[RedditCache] HIT {hit_count}, MISS {miss_count}")
+        return result
 
     def store_post(self, post: RedditPost) -> None:
         """Store a fetched Reddit post in the cache."""

@@ -710,7 +710,7 @@
 
     <!-- 6. SUPPORTING DETAILS -->
     <!-- Traffic & Break-even -->
-    <AnimateOnScroll animation="fade-up">
+    <AnimateOnScroll animation="fade-in">
       <div class="grid md:grid-cols-2 gap-4 mb-8">
         <div class="card-surface">
           <div class="text-sm text-text-muted mb-1">
@@ -735,7 +735,7 @@
 
     <!-- Traffic Source Breakdown -->
     {#if trafficSources.length > 0}
-      <AnimateOnScroll animation="fade-up">
+      <AnimateOnScroll animation="fade-in">
         <div class="card mb-8">
           <h4 class="text-lg font-semibold text-text-primary mb-4">
             Traffic Source Breakdown
@@ -763,8 +763,7 @@
     {/if}
 
     <!-- Strategy & Rationale -->
-    <AnimateOnScroll animation="fade-up">
-      <div class="grid md:grid-cols-2 gap-6 mb-6 items-start">
+    <div class="grid md:grid-cols-2 gap-6 mb-6 items-start">
         <div class="card">
           <h4 class="text-lg font-semibold text-text-primary mb-3">
             Monetization Rationale
@@ -782,10 +781,9 @@
           </p>
         </div>
       </div>
-    </AnimateOnScroll>
 
     <!-- SaaS Alternative Recommendation -->
-    <AnimateOnScroll animation="fade-up">
+    <AnimateOnScroll animation="slide-right">
       <div
         class="card mb-6 {trafficData.saas_alternative_viable
           ? 'border-success/30'
@@ -856,14 +854,13 @@
   .pricing-tier {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-radius: 1rem;
-    padding: 1.5rem;
-    transition: all 0.3s ease;
+    border-radius: var(--radius-xl);
+    padding: var(--space-6);
+    transition: border-color 0.15s ease;
   }
 
   .pricing-tier:hover {
     border-color: var(--color-border-hover);
-    transform: translateY(-2px);
   }
 
   .pricing-tier-recommended {
@@ -880,12 +877,12 @@
     transform: translateX(-50%);
     background: var(--color-accent);
     color: var(--color-bg-primary);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-full);
   }
 
   .pricing-tier-pro {
@@ -902,7 +899,7 @@
 
   .mono-label {
     font-family: var(--font-mono);
-    font-size: 0.625rem;
+    font-size: var(--text-xs);
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.03em;
@@ -911,9 +908,9 @@
 
   .metric-value {
     font-family: var(--font-display);
-    font-size: 1.25rem;
+    font-size: var(--text-xl);
     font-weight: 700;
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
     color: var(--color-text-primary);
   }
 

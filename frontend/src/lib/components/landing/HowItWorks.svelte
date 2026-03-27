@@ -222,21 +222,22 @@
 <section id="how-it-works" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-10 sm:mb-16">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">02</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">The Process</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
+          class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
           How It <span class="text-accent">Works</span>
         </h2>
         <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
+          class="text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
           3 stages. 45 minutes. A GO or NO-GO verdict you can trust.
         </p>
@@ -244,7 +245,7 @@
 
       <!-- Desktop: Horizontal flexbox track (md+) -->
       <ol
-        class="hidden md:flex animate-fade-in delay-300 mb-10 sm:mb-16"
+        class="hidden md:flex mb-10 sm:mb-16"
       >
         {#each steps as step, i}
           <!-- Step column -->
@@ -252,12 +253,7 @@
             <!-- Circle -->
             <div
               class="w-12 h-12 rounded-full border-2 border-accent bg-bg-elevated
-                     flex items-center justify-center font-display text-lg font-bold text-accent
-                     animate-fade-in {i === 0
-                ? 'delay-100'
-                : i === 1
-                  ? 'delay-300'
-                  : 'delay-500'}"
+                     flex items-center justify-center font-display text-lg font-bold text-accent"
             >
               {i + 1}
             </div>
@@ -269,12 +265,7 @@
                      {step.dashed
                 ? 'border-dashed border-accent/40'
                 : 'border-border'}
-                     {step.cardClass}
-                     animate-fade-in {i === 0
-                ? 'delay-200'
-                : i === 1
-                  ? 'delay-[400ms]'
-                  : 'delay-[600ms]'}"
+                     {step.cardClass}"
             >
               <!-- Icon -->
               <div
@@ -332,7 +323,7 @@
       </ol>
 
       <!-- Mobile: Vertical timeline (<md) -->
-      <ol class="md:hidden flex flex-col animate-fade-in delay-300 mb-10">
+      <ol class="md:hidden flex flex-col mb-10">
         {#each steps as step, i}
           <li class="flex gap-4">
             <!-- Timeline column -->
@@ -396,7 +387,7 @@
       </ol>
 
       <!-- Expandable: Under the Hood Section -->
-      <div class="animate-fade-in delay-500">
+      <div>
         <button
           onclick={() => (showStages = !showStages)}
           class="w-full flex items-center justify-center gap-3 py-3 sm:py-4 text-text-secondary hover:text-accent transition-colors group"
@@ -529,6 +520,7 @@
             </div>
           </div>
         {/if}
+      </div>
       </div>
     {/if}
   </div>

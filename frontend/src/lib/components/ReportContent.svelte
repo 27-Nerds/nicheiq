@@ -279,7 +279,7 @@
     color: var(--color-text-secondary);
     font-size: 0.875rem;
     border-radius: 0.375rem;
-    transition: all 0.15s ease;
+    transition: color 0.15s ease, background-color 0.15s ease;
   }
 
   .back-link:hover {

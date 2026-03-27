@@ -4,6 +4,7 @@ Thread relevance validation using LLM.
 Validates search result threads for relevance to a niche.
 """
 
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from typing import TYPE_CHECKING
@@ -17,6 +18,36 @@ from ..prompts import get_prompt
 
 if TYPE_CHECKING:
     from ...models.research_state import SearchResultItem
+
+
+def _sanitize_text(text: str | None) -> str:
+    """
+    Sanitize text for safe JSON encoding and LLM prompts.
+    
+    Removes control characters (except standard whitespace) and invalid
+    Unicode sequences that could break OpenAI API JSON parsing.
+    
+    Args:
+        text: Input text to sanitize
+        
+    Returns:
+        Sanitized text safe for API calls
+    """
+    if not text:
+        return ""
+    
+    # Remove control characters except standard whitespace (\n, \r, \t)
+    # Control characters are 0x00-0x1F and 0x7F, except 0x09 (tab), 0x0A (LF), 0x0D (CR)
+    sanitized = "".join(
+        char for char in text
+        if ord(char) >= 32 or char in "\n\r\t"
+    )
+    
+    # Remove other problematic Unicode characters that can break JSON
+    # This includes surrogate pairs and other invalid Unicode
+    sanitized = sanitized.encode("utf-8", errors="ignore").decode("utf-8")
+    
+    return sanitized
 
 class ValidationResult(BaseModel):
     """Single validation result for a thread."""
@@ -111,8 +142,9 @@ class ThreadRelevanceValidator:
             batch = search_results[i:i + batch_size]
 
             # Format batch for prompt (title + snippet only)
+            # Sanitize text to prevent JSON encoding issues with OpenAI API
             threads_text = "\n\n".join([
-                f"[{idx}] Title: {result.title}\nSnippet: {result.snippet}"
+                f"[{idx}] Title: {_sanitize_text(result.title)}\nSnippet: {_sanitize_text(result.snippet)}"
                 for idx, result in enumerate(batch)
             ])
 

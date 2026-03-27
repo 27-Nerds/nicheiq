@@ -44,6 +44,8 @@
   import { STAGE_MAP, REPORT_ICON } from "$lib/config/billable-stages";
   import { getSolutions } from "$lib/api";
   import ShareDiscoveryModal from "$lib/components/ShareDiscoveryModal.svelte";
+  import PainPointsShowcase from "$lib/components/PainPointsShowcase.svelte";
+  import type { PainPointSummary } from "$lib/types/stageArtifacts";
 
   let job = $state<Job | null>(null);
   let loading = $state(true);
@@ -64,6 +66,7 @@
   let summaryLoading = $state(false);
   let discoveryShareOpen = $state(false);
   let solutionVotes = $state<Record<string, number>>({});
+  let ideasRevealed = $state(false);
 
   const jobId = $derived(page.params.jobId);
 
@@ -141,6 +144,7 @@
     reportSummary = null;
     summaryFetched = false;
     summaryLoading = false;
+    ideasRevealed = false;
     solutionVotes = {};
 
     try {
@@ -458,6 +462,18 @@
     (job?.solutionIdeas?.length ?? 0) > 0
   );
 
+  // Pain points showcase (progressive disclosure)
+  const painPointsFromArtifact = $derived(
+    stageArtifacts[3]?.pain_points as PainPointSummary[] | undefined
+  );
+  const showPainPointsShowcase = $derived(
+    (job?.status === 'AWAITING_SELECTION' || job?.status === 'REGENERATING' || isRegenQueued) &&
+    (painPointsFromArtifact?.length ?? 0) > 0
+  );
+  const solutionNamesForTeaser = $derived(
+    displaySolutions.slice(0, 4).map(s => s.headline || s.short_description || s.solution_name || 'Solution')
+  );
+
   // Cumulative stats
   const cumulativeStats = $derived(computeCumulativeStats(stageArtifacts));
 
@@ -751,8 +767,11 @@
             totalStages={adjustedTotalStages}
             isRunning={job.status === 'RUNNING' || job.status === 'RUNNING_PHASE2'}
             isFailed={job.status === 'FAILED'}
+            painPointCount={stageArtifacts[3]?.count ?? stageArtifacts[3]?.pain_points?.length}
           />
-          <CumulativeStats stats={cumulativeStats} />
+          {#if !showPainPointsShowcase}
+            <CumulativeStats stats={cumulativeStats} />
+          {/if}
         </div>
       {/if}
 
@@ -930,23 +949,43 @@
                   </button>
                 </div>
               {/if}
-              <div class="mb-3 animate-fade-slide-in">
-                <SolutionSelectionView
-                  jobId={jobId ?? ''}
-                  solutions={displaySolutions}
-                  selectedSolution={job.selectedSolution}
-                  selectedSolutions={job.selectedSolutions}
-                  isRegenerating={job.status === "REGENERATING" || isRegenQueued}
-                  canRegenerate={job.canRegenerate ?? false}
-                  stageCosts={page.data.stageCosts}
-                  creditBalance={page.data.creditBalance}
-                  onSelectionComplete={handleSelectionComplete}
-                  onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
-                  {solutionVotes}
-                />
-              </div>
+
+              <!-- Pain Points Showcase (progressive disclosure) -->
+              {#if showPainPointsShowcase}
+                <div class="mb-3">
+                  <PainPointsShowcase
+                    painPoints={painPointsFromArtifact ?? []}
+                    totalMentions={stageArtifacts[3]?.total_mentions}
+                    qualityTier={stageArtifacts[3]?.quality_tier}
+                    confidence={stageArtifacts[3]?.confidence}
+                    solutionCount={displaySolutions.length}
+                    solutionNames={solutionNamesForTeaser}
+                    {ideasRevealed}
+                    onRevealIdeas={() => { ideasRevealed = true; }}
+                  />
+                </div>
+              {/if}
+
+              <!-- Solution Selection (shown after reveal or when showcase unavailable) -->
+              {#if ideasRevealed || !showPainPointsShowcase}
+                <div class="mb-3">
+                  <SolutionSelectionView
+                    jobId={jobId ?? ''}
+                    solutions={displaySolutions}
+                    selectedSolution={job.selectedSolution}
+                    selectedSolutions={job.selectedSolutions}
+                    isRegenerating={job.status === "REGENERATING" || isRegenQueued}
+                    canRegenerate={job.canRegenerate ?? false}
+                    stageCosts={page.data.stageCosts}
+                    creditBalance={page.data.creditBalance}
+                    onSelectionComplete={handleSelectionComplete}
+                    onRegenerateStart={() => { job = { ...job!, status: "QUEUED" }; }}
+                    {solutionVotes}
+                  />
+                </div>
+              {/if}
             {:else if showSelectedSummary}
-              <div class="mb-3 animate-fade-slide-in">
+              <div class="mb-3">
                 <SelectedSolutionsSummary
                   selectedNames={job.selectedSolutions ?? []}
                   solutionIdeas={job.solutionIdeas ?? []}
@@ -966,7 +1005,7 @@
           {:else}
             <!-- Non-interactive: show selected summary if present -->
             {#if showSelectedSummary}
-              <div class="mb-3 animate-fade-slide-in">
+              <div class="mb-3">
                 <SelectedSolutionsSummary
                   selectedNames={job.selectedSolutions ?? []}
                   solutionIdeas={job.solutionIdeas ?? []}

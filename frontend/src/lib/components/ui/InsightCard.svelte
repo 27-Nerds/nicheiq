@@ -64,7 +64,6 @@
   .insight-card {
     background: var(--color-bg-elevated);
     border-radius: 0.625rem;
-    transition: all 0.15s ease;
   }
 
   /* Padding sizes */

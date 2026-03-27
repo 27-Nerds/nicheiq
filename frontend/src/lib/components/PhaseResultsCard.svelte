@@ -83,7 +83,27 @@
         {/if}
       {/if}
 
-      {#if painArtifact?.top}
+      {#if painArtifact?.pain_points}
+        <div class="space-y-1.5">
+          <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Top Pain Points</span>
+          {#each painArtifact.pain_points.slice(0, 3) as point}
+            <div class="flex items-center gap-2 text-sm">
+              <Badge variant={point.severity > 0.7 ? "error" : "warning"} size="sm">
+                {(point.severity * 10).toFixed(0)}/10
+              </Badge>
+              <span class="text-text-secondary flex-1">{point.title}</span>
+              {#if point.opportunity}
+                <Badge
+                  variant={point.opportunity === 'high' ? 'success' : point.opportunity === 'medium' ? 'accent' : 'muted'}
+                  size="sm"
+                >
+                  {point.opportunity}
+                </Badge>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {:else if painArtifact?.top}
         <div class="space-y-1.5">
           <span class="text-xs font-medium text-text-muted uppercase tracking-wide">Top Pain Points</span>
           {#each painArtifact.top as rawPoint}

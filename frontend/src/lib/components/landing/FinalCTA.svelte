@@ -32,21 +32,21 @@
 
         <!-- Headline -->
         <h2
-          class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary tracking-tight mb-4 sm:mb-6"
+          class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary tracking-tight mb-4 sm:mb-6"
         >
-          45 minutes to <span class="text-gradient-animated">a verdict.</span>
+          45 minutes to <span class="text-accent">a verdict.</span>
         </h2>
 
         <!-- Subtext -->
         <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-muted mb-8 sm:mb-10 max-w-lg mx-auto"
+          class="text-base sm:text-lg text-text-muted mb-8 sm:mb-10 max-w-lg mx-auto"
         >
           Pick a niche. Get the full report with a go/no-go verdict. From $19.
         </p>
 
         <!-- Dual CTA buttons -->
         <div
-          class="animate-fade-in delay-300 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8"
+          class="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8"
         >
           {#if session?.user}
             <a
@@ -80,7 +80,7 @@
 
         <!-- Guarantee badges -->
         <div
-          class="animate-fade-in delay-400 flex flex-wrap justify-center gap-x-6 gap-y-2 mb-6 text-sm text-text-muted"
+          class="flex flex-wrap justify-center gap-x-6 gap-y-2 mb-6 text-sm text-text-muted"
         >
           <span class="flex items-center gap-1.5" aria-hidden="true">
             <Check class="w-4 h-4 text-success flex-shrink-0" />

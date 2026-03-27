@@ -139,21 +139,22 @@
 <section id="comparison" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-16">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">05</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">The Comparison</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
+          class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
           How NicheIQ <span class="text-accent">Compares</span>
         </h2>
         <p
-          class="animate-fade-in delay-200 text-lg text-text-secondary mt-6 max-w-2xl"
+          class="text-lg text-text-secondary mt-6 max-w-2xl"
         >
           Compare NicheIQ against the latest AI research tools and
           Reddit-focused competitors.
@@ -161,7 +162,7 @@
       </div>
 
       <!-- Mobile Accordion View -->
-      <div class="animate-fade-in delay-300 md:hidden space-y-3">
+      <div class="md:hidden space-y-3">
         {#each features as feature, i}
           <div
             class="bg-bg-elevated border border-border rounded-lg overflow-hidden"
@@ -282,7 +283,7 @@
       </div>
 
       <!-- Desktop Table -->
-      <div class="animate-fade-in delay-300 overflow-x-auto hidden md:block">
+      <div class="overflow-x-auto hidden md:block">
         <table class="dark-table w-full min-w-[640px]">
           <!-- Header -->
           <thead>
@@ -291,7 +292,7 @@
               <th class="text-center w-1/5 nicheiq-col">
                 <div class="flex flex-col items-center gap-1.5">
                   <span
-                    class="text-[10px] font-mono uppercase tracking-widest text-accent font-semibold animate-pulse-glow"
+                    class="text-[10px] font-mono uppercase tracking-widest text-accent font-semibold"
                     >Recommended</span
                   >
                   <div class="h-8 flex items-center justify-center">
@@ -358,10 +359,7 @@
           <!-- Body -->
           <tbody>
             {#each features as feature, i}
-              <tr
-                class="animate-fade-in"
-                style="animation-delay: {300 + i * 50}ms"
-              >
+              <tr>
                 <!-- Feature Name -->
                 <td class="py-5">
                   <div class="flex items-center gap-3">
@@ -447,7 +445,7 @@
 
       <!-- Key Differentiator Callouts -->
       <div
-        class="animate-fade-in delay-500 mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+        class="mt-10 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
       >
         <div class="differentiator-callout">
           <MessageSquare class="w-5 h-5 text-accent flex-shrink-0" />
@@ -476,10 +474,11 @@
       </div>
 
       <!-- Bottom Note -->
-      <div class="animate-fade-in delay-600 mt-10 text-center">
+      <div class="mt-10 text-center">
         <p class="text-text-muted text-sm italic">
           Everything in the table above ships in a single report — full niche validation for one price.
         </p>
+      </div>
       </div>
     {/if}
   </div>

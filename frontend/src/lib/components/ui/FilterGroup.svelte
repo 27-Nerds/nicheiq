@@ -130,7 +130,7 @@
     border: 1px solid var(--color-border);
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
   }
 
   .filter-button:hover {

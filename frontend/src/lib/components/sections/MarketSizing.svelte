@@ -323,11 +323,11 @@
 	   FUNNEL CARD
 	   ========================= */
   .funnel-card {
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0.75rem;
-    padding: 1.25rem;
-    margin-bottom: 1rem;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
+    margin-bottom: var(--space-4);
   }
 
   /* =========================
@@ -336,20 +336,20 @@
   .stats-strip {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-4);
   }
 
   /* =========================
 	   STRATEGY CARD - using InsightCard
 	   ========================= */
   :global(.strategy-card) {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .strategy-text {
-    font-size: 0.875rem;
-    color: #18181b;
+    font-size: var(--text-base);
+    color: var(--color-text-primary);
     line-height: 1.6;
     margin: 0;
   }
@@ -358,7 +358,7 @@
   .item-list {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   /* Segments Grid */
@@ -377,9 +377,9 @@
 
   .segment-name {
     font-family: var(--font-display);
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     font-weight: 600;
-    color: #18181b;
+    color: var(--color-text-primary);
     margin: 0;
   }
 
@@ -387,7 +387,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.875rem;
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .metric {
@@ -411,14 +411,14 @@
     color: var(--color-text-muted);
     display: inline-flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .metric-value {
     font-family: var(--font-display);
     font-size: 0.8125rem;
     font-weight: 600;
-    color: #18181b;
+    color: var(--color-text-primary);
   }
 
   .metric-value.accent {
@@ -441,7 +441,7 @@
   }
 
   .methodology-content :global(p) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .methodology-content :global(p:last-child) {
@@ -452,9 +452,9 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     padding-top: 0.875rem;
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 1px solid var(--color-border);
   }
 
   .sources-label {
@@ -474,10 +474,10 @@
 
   .source-tag {
     font-size: 0.6875rem;
-    padding: 0.25rem 0.5rem;
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 0.25rem;
+    padding: var(--space-1) var(--space-2);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
     color: var(--color-text-muted);
   }
 
@@ -489,7 +489,7 @@
   }
 
   .rationale-content :global(p) {
-    margin-bottom: 0.5rem;
+    margin-bottom: var(--space-2);
   }
 
   .rationale-content :global(p:last-child) {
@@ -503,7 +503,7 @@
   .segment-breakdown-section,
   .methodology-section,
   .viability-rationale-section {
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
   }
 
   /* =========================

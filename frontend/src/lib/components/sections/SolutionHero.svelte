@@ -592,23 +592,23 @@
 	   SOLUTION HERO CARD
 	   ========================= */
   .solution-hero-card {
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
     border-radius: 0.875rem;
-    padding: 1.5rem;
-    margin-bottom: 1rem;
+    padding: var(--space-6);
+    margin-bottom: var(--space-4);
   }
 
   .hero-top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
   }
 
   .hero-badges {
     display: flex;
-    gap: 0.5rem;
+    gap: var(--space-2);
     flex-wrap: wrap;
   }
 
@@ -620,7 +620,7 @@
     height: 2.5rem;
     background: var(--color-accent-subtle);
     border: 1px solid var(--color-border-accent);
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
   }
 
   :global(.hero-icon-svg) {
@@ -635,7 +635,7 @@
     font-weight: 800;
     letter-spacing: -0.02em;
     line-height: 1.2;
-    color: #18181b;
+    color: var(--color-text-primary);
     margin-bottom: 0.375rem;
   }
 
@@ -644,20 +644,20 @@
     text-transform: uppercase;
     letter-spacing: 0.1em;
     color: var(--color-text-muted);
-    margin-top: 0.25rem;
+    margin-top: var(--space-1);
   }
 
   .hero-tagline {
     font-size: 0.9375rem;
     color: var(--color-text-muted);
     font-style: italic;
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
     line-height: 1.5;
   }
 
   /* Value Block - using InsightCard */
   .value-text {
-    font-size: 0.875rem;
+    font-size: var(--text-base);
     color: var(--color-text-muted);
     line-height: 1.6;
     margin: 0;
@@ -668,10 +668,10 @@
 	   ========================= */
   .launch-params {
     background: var(--color-bg-surface);
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-radius: 0.75rem;
-    padding: 1rem 1.25rem 1.25rem;
-    margin-bottom: 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-4) var(--space-5) var(--space-5);
+    margin-bottom: var(--space-4);
     position: relative;
     overflow: hidden;
   }
@@ -679,8 +679,8 @@
   .launch-params-header {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
+    gap: var(--space-3);
+    margin-bottom: var(--space-4);
     position: relative;
     z-index: 1;
   }
@@ -711,12 +711,11 @@
     align-items: center;
     gap: 0.875rem;
     padding: 0.875rem 1rem;
-    background: #ffffff;
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
     border-radius: 0.625rem;
     position: relative;
     overflow: hidden;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     /* Staggered entrance animation */
     opacity: 0;
     transform: translateY(6px);
@@ -729,10 +728,6 @@
       opacity: 1;
       transform: translateY(0);
     }
-  }
-
-  .param-card:hover {
-    transform: translateY(-2px);
   }
 
   /* Semantic color variants */
@@ -764,7 +759,7 @@
     width: 2.25rem;
     height: 2.25rem;
     background: var(--param-bg, var(--color-accent-subtle));
-    border-radius: 0.5rem;
+    border-radius: var(--radius-md);
     flex-shrink: 0;
     transition:
       transform 0.25s ease,
@@ -798,7 +793,7 @@
     font-family: var(--font-display);
     font-size: 1.0625rem;
     font-weight: 800;
-    color: #18181b;
+    color: var(--color-text-primary);
     line-height: 1.1;
     letter-spacing: -0.01em;
   }
@@ -812,62 +807,62 @@
     letter-spacing: 0.06em;
     display: flex;
     align-items: center;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   /* =========================
 	   ADVANTAGES CARD
 	   ========================= */
   .advantages-card {
-    background: rgba(34, 197, 94, 0.04);
-    border: 1px solid rgba(34, 197, 94, 0.15);
-    border-radius: 0.75rem;
+    background: var(--color-success-subtle);
+    border: 1px solid var(--color-border-success);
+    border-radius: var(--radius-lg);
     padding: 1.125rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .advantages-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
     margin-bottom: 0.875rem;
   }
 
   :global(.advantages-icon) {
     width: 1rem;
     height: 1rem;
-    color: #22c55e;
+    color: var(--color-success);
   }
 
   .advantages-title {
     font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;
-    color: #22c55e;
+    color: var(--color-success);
   }
 
   .advantage-item {
     display: flex;
     align-items: flex-start;
-    gap: 0.5rem;
+    gap: var(--space-2);
     padding: 0.625rem;
     background: rgba(255, 255, 255, 0.7);
     border: 1px solid rgba(34, 197, 94, 0.1);
     border-left: 2px solid transparent;
     border-radius: 0.375rem;
-    transition: all 0.15s ease;
+    transition: background-color 0.15s ease, border-left-color 0.15s ease, transform 0.15s ease;
   }
 
   .advantage-item:hover {
-    background: rgba(34, 197, 94, 0.08);
-    border-left-color: #22c55e;
+    background: var(--color-success-subtle);
+    border-left-color: var(--color-success);
     transform: scale(1.01);
   }
 
   :global(.check-icon) {
     width: 0.875rem;
     height: 0.875rem;
-    color: #22c55e;
+    color: var(--color-success);
     flex-shrink: 0;
     margin-top: 0.125rem;
   }
@@ -884,7 +879,7 @@
   .persona-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .persona-num {
@@ -893,10 +888,9 @@
     font-size: 0.5625rem;
     font-weight: 700;
     color: var(--color-text-muted);
-    background: rgba(0, 0, 0, 0.06);
+    background: var(--color-bg-subtle);
     padding: 0.25rem 0.375rem;
-    border-radius: 0.25rem;
-    transition: all 0.15s ease;
+    border-radius: var(--radius-sm);
   }
 
   .persona-num.primary {
@@ -908,13 +902,13 @@
 	   HOW IT WORKS
 	   ========================= */
   :global(.how-it-works-card) {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .how-it-works-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   :global(.how-it-works-icon) {
@@ -948,7 +942,7 @@
     margin: 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   /* =========================
@@ -972,14 +966,14 @@
 	   SELECTION RATIONALE
 	   ========================= */
   .rationale-metrics-section {
-    margin-bottom: 1.25rem;
+    margin-bottom: var(--space-5);
   }
 
   .rationale-metrics-label {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.75rem;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
   }
 
   :global(.rationale-metrics-icon) {
@@ -1020,9 +1014,9 @@
   .metric-progress {
     width: 100%;
     height: 4px;
-    background: rgba(0, 0, 0, 0.08);
+    background: var(--color-bg-subtle);
     border-radius: 2px;
-    margin-top: 0.5rem;
+    margin-top: var(--space-2);
     overflow: hidden;
   }
 
@@ -1051,14 +1045,14 @@
 	   ========================= */
   .core-features-section,
   .seo-engine-section {
-    margin-bottom: 1.5rem;
+    margin-bottom: var(--space-6);
   }
 
   /* =========================
 	   TARGET PERSONAS SECTION
 	   ========================= */
   .personas-section {
-    margin-bottom: 1rem;
+    margin-bottom: var(--space-4);
   }
 
   .persona-text {
@@ -1071,7 +1065,7 @@
 	   BUSINESS MODEL - using InsightCard
 	   ========================= */
   :global(.business-model-card) {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .business-model-header {
@@ -1108,14 +1102,14 @@
     font-size: 0.6875rem;
     font-weight: 500;
     color: var(--color-text-muted);
-    margin-left: 0.25rem;
+    margin-left: var(--space-1);
   }
 
   /* =========================
 	   INNOVATION SCORE - using InsightCard
 	   ========================= */
   :global(.innovation-card) {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .innovation-header {
@@ -1128,7 +1122,7 @@
   .innovation-label {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   :global(.innovation-icon) {
@@ -1154,7 +1148,7 @@
 
   .innovation-score .score-value {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: var(--text-2xl);
     font-weight: 800;
     color: var(--color-warning);
     line-height: 1;
@@ -1169,20 +1163,20 @@
   .innovation-breakdown {
     display: flex;
     flex-direction: column;
-    gap: 0.75rem;
-    margin-top: 0.25rem;
+    gap: var(--space-3);
+    margin-top: var(--space-1);
   }
 
   .innovation-facet {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: var(--space-1);
   }
 
   .innovation-facet.facet-highlight {
     background: transparent;
     border-left: 2px solid var(--color-warning);
-    padding: 0.5rem 0.75rem;
+    padding: var(--space-2) var(--space-3);
     border-radius: 0 0.375rem 0.375rem 0;
   }
 
@@ -1214,13 +1208,13 @@
 	   DISCOVERY QUERIES - using InsightCard
 	   ========================= */
   :global(.discovery-card) {
-    margin-bottom: 0.75rem;
+    margin-bottom: var(--space-3);
   }
 
   .discovery-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   :global(.discovery-icon) {
@@ -1241,19 +1235,19 @@
   .discovery-queries {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: var(--space-2);
   }
 
   .query-chip {
     display: inline-flex;
     align-items: center;
     padding: 0.375rem 0.75rem;
-    background: rgba(99, 102, 241, 0.08);
+    background: var(--color-secondary-subtle);
     border: 1px solid rgba(99, 102, 241, 0.15);
     border-radius: 100px;
-    font-size: 0.75rem;
-    color: #4f46e5;
-    transition: all 0.15s ease;
+    font-size: var(--text-sm);
+    color: var(--color-secondary-dark);
+    transition: background-color 0.15s ease, border-color 0.15s ease;
   }
 
   .query-chip:hover {

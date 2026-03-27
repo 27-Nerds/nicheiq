@@ -82,40 +82,41 @@
     {#if isVisible}
       <!-- Centered Content -->
       <div class="text-center">
-        <!-- Badge -->
-        <div class="animate-fade-in mb-6 sm:mb-8 inline-flex">
-          <span class="inline-flex items-center gap-2 badge">
-            <Sparkles class="w-3.5 h-3.5" />
-            For solo founders. By a solo founder
-          </span>
+        <!-- Badge + Headline group -->
+        <div class="animate-fade-in">
+          <div class="mb-6 sm:mb-8 inline-flex">
+            <span class="inline-flex items-center gap-2 badge">
+              <Sparkles class="w-3.5 h-3.5" />
+              For solo founders. By a solo founder
+            </span>
+          </div>
+
+          <h1
+            class="font-display text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
+          >
+            Discover your next SaaS opportunity in <span
+              class="text-accent font-extrabold">45 minutes</span
+            >
+          </h1>
+
+          <p
+            class="text-lg sm:text-xl text-text-secondary leading-relaxed mb-3 sm:mb-4 max-w-xl mx-auto"
+          >
+            NicheIQ helps solo founders get clear answers on <strong
+              class="text-text-primary">what to build</strong
+            >
+            and <strong class="text-text-primary">how to profit</strong>.
+          </p>
+          <p
+            class="text-base sm:text-lg text-text-muted italic leading-relaxed mb-4 sm:mb-6 max-w-xl mx-auto"
+          >
+            Now 45 minutes feels like 3 weeks of research.
+          </p>
         </div>
-
-        <!-- Main Headline - Mobile optimized: text-3xl (30px) on mobile, scaling up -->
-        <h1
-          class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
-        >
-          Discover your next SaaS opportunity in <span
-            class="text-gradient-animated">45 minutes</span
-          >
-        </h1>
-
-        <p
-          class="animate-fade-in delay-300 text-lg sm:text-xl text-text-secondary leading-relaxed mb-3 sm:mb-4 max-w-xl mx-auto"
-        >
-          NicheIQ helps solo founders get clear answers on <strong
-            class="text-text-primary">what to build</strong
-          >
-          and <strong class="text-text-primary">how to profit</strong>.
-        </p>
-        <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-muted italic leading-relaxed mb-4 sm:mb-6 max-w-xl mx-auto"
-        >
-          Now 45 minutes feels like 3 weeks of research.
-        </p>
 
         <!-- CTA Buttons - Mobile optimized with full width on small screens -->
         <div
-          class="animate-fade-in delay-400 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8 sm:mb-10"
+          class="animate-fade-in delay-200 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-8 sm:mb-10"
         >
           {#if session?.user}
             <a
@@ -158,7 +159,7 @@
 
         <!-- Terminal Animation - Full container width, aligned with hero text -->
         <div
-          class="animate-fade-in delay-400 bg-bg-elevated border border-accent/15 rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm mb-8 sm:mb-10 text-left w-full"
+          class="animate-fade-in delay-300 bg-bg-elevated border border-accent/15 rounded-xl p-3 sm:p-4 font-mono text-xs sm:text-sm mb-8 sm:mb-10 text-left w-full"
         >
           <!-- Terminal Header -->
           <div
@@ -204,7 +205,7 @@
         {#if hasSampleReport && ctaTexts?.cta_view_sample_link?.visible !== false}
           <a
             href={ctaTexts?.cta_view_sample_link?.url ?? "/sample-report"}
-            class="animate-fade-in delay-600 mt-6 sm:mt-8 text-text-muted hover:text-accent transition-colors text-sm underline underline-offset-4 inline-flex items-center gap-1.5"
+            class="mt-6 sm:mt-8 text-text-muted hover:text-accent transition-colors text-sm underline underline-offset-4 inline-flex items-center gap-1.5"
           >
             {ctaTexts?.cta_view_sample_link?.text ?? "View Sample Report"}
             <CtaIcon name={ctaTexts?.cta_view_sample_link?.icon} class="w-4 h-4" />

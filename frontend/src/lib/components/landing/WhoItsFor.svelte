@@ -72,21 +72,22 @@
 <section id="who-its-for" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
     {#if isVisible}
+      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-12 sm:mb-16">
-        <div class="section-header-meta animate-fade-in">
+        <div class="section-header-meta">
           <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">03</span> / 07 ]</span>
           <span class="section-header-dot">·</span>
           <span class="section-label">Who It's For</span>
         </div>
         <h2
-          class="animate-fade-in delay-100 font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
+          class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
         >
           Built for People Who <span class="text-accent">Actually Ship.</span>
         </h2>
         <p
-          class="animate-fade-in delay-200 text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
+          class="text-base sm:text-lg text-text-secondary mt-4 sm:mt-6 max-w-2xl"
         >
           Give us a niche. We'll find what's worth building in it.
         </p>
@@ -94,7 +95,7 @@
 
       <!-- Persona Cards -->
       <div
-        class="animate-fade-in delay-300 grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-8 mb-10 sm:mb-16"
+        class="grid grid-cols-1 md:grid-cols-3 gap-5 sm:gap-8 mb-10 sm:mb-16"
       >
         {#each personas as persona, i}
           <div
@@ -185,7 +186,7 @@
       </div>
 
       <!-- Anti-Persona Section -->
-      <div class="animate-fade-in delay-500 max-w-2xl mx-auto">
+      <div class="max-w-2xl mx-auto">
         <div class="p-5 sm:p-6 bg-bg-surface border border-border rounded-xl">
           <h4
             class="font-display font-semibold text-text-primary mb-3 sm:mb-4 text-center text-sm sm:text-base"
@@ -212,13 +213,14 @@
           </ul>
         </div>
       </div>
+      </div>
     {/if}
   </div>
 </section>
 
 <style>
   .arrow-pulse {
-    animation: arrow-pulse 2s ease-in-out infinite;
+    animation: arrow-pulse 1s ease-in-out 1;
   }
 
   @keyframes arrow-pulse {
