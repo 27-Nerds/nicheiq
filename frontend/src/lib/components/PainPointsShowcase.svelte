@@ -28,38 +28,16 @@
     onRevealIdeas,
   }: Props = $props();
 
-  let expanded = $state(false);
-
-  const INITIAL_SHOW = 7;
-
-  const highOpportunityCount = $derived(
-    painPoints.filter((p) => p.opportunity === "high").length,
+  // Split by opportunity level
+  const topOpportunities = $derived(painPoints.filter((p) => p.opportunity === "high"));
+  const additionalFindings = $derived(painPoints.filter((p) => p.opportunity !== "high"));
+  let additionalExpanded = $state(false);
+  const ADDITIONAL_INITIAL = 4;
+  const displayedAdditional = $derived(
+    additionalExpanded ? additionalFindings : additionalFindings.slice(0, ADDITIONAL_INITIAL),
   );
 
-  const mediumOpportunityCount = $derived(
-    painPoints.filter((p) => p.opportunity === "medium").length,
-  );
-
-  const displayedPoints = $derived(
-    expanded ? painPoints : painPoints.slice(0, INITIAL_SHOW),
-  );
-
-  const anchorText = $derived.by(() => {
-    const mentions = totalMentions && totalMentions > 0
-      ? ` across ${totalMentions.toLocaleString()} discussions`
-      : "";
-
-    if (highOpportunityCount > 0) {
-      return `Strong market signal: ${highOpportunityCount} high-opportunity pain point${highOpportunityCount > 1 ? "s" : ""} with verified willingness-to-pay${mentions}`;
-    }
-    if (mediumOpportunityCount > 0) {
-      return `${painPoints.length} validated pain points identified${mentions}`;
-    }
-    if (painPoints.length > 0) {
-      return `${painPoints.length} pain points identified from community discussions${mentions}`;
-    }
-    return null;
-  });
+  const highOpportunityCount = $derived(topOpportunities.length);
 
   const tierTooltip = $derived.by(() => {
     const tier = qualityTier?.toUpperCase();
@@ -80,6 +58,20 @@
     return "muted";
   });
 
+  const anchorText = $derived.by(() => {
+    const mentions = totalMentions && totalMentions > 0
+      ? ` across ${totalMentions.toLocaleString()} discussions`
+      : "";
+
+    if (highOpportunityCount > 0) {
+      return `Strong market signal: ${highOpportunityCount} high-opportunity pain point${highOpportunityCount > 1 ? "s" : ""} with verified willingness-to-pay${mentions}`;
+    }
+    if (painPoints.length > 0 && mentions) {
+      return `${painPoints.length} validated pain points identified${mentions}`;
+    }
+    return null;
+  });
+
   function severityColor(severity: number): string {
     if (severity > 0.75) return "var(--color-error)";
     if (severity > 0.55) return "var(--color-warning)";
@@ -98,14 +90,23 @@
     return "muted";
   }
 
-
+  // Global rank counter across both sections
+  function globalRank(point: PainPointSummary): number {
+    return painPoints.indexOf(point) + 1;
+  }
 </script>
 
-<!-- Research Findings -->
 <div class="showcase">
+  <!-- Headline-first header -->
   <div class="showcase-header">
     <div class="showcase-header-row">
-      <span class="showcase-label">Research Findings</span>
+      <h2 class="showcase-headline">
+        {#if highOpportunityCount > 0}
+          {highOpportunityCount} High-Opportunity Pain Point{highOpportunityCount > 1 ? "s" : ""} Found
+        {:else}
+          {painPoints.length} Pain Point{painPoints.length > 1 ? "s" : ""} Identified
+        {/if}
+      </h2>
       {#if qualityTier}
         <Tooltip content={tierTooltip}>
           {#snippet children()}
@@ -114,9 +115,9 @@
         </Tooltip>
       {/if}
     </div>
-    <span class="showcase-subtitle"
-      >Verified pain points from real community discussions</span
-    >
+    <p class="showcase-scope">
+      {painPoints.length} signals identified{totalMentions ? ` across ${totalMentions.toLocaleString()} discussions` : ""}
+    </p>
   </div>
 
   {#if anchorText}
@@ -127,61 +128,96 @@
 
   <hr class="divider" />
 
-  <!-- Pain Point Card Grid -->
-  <CardGrid minWidth={320} gap="lg">
-    {#each displayedPoints as point, i (point.title)}
-      <article
-        class="pp-card animate-fade-slide-in"
-        style="animation-delay: {Math.min(i, INITIAL_SHOW - 1) * 60}ms"
-        aria-label="{point.title} — severity {(point.severity * 10).toFixed(1)}/10"
-      >
-        <!-- Rank + Title + Opportunity -->
-        <div class="pp-card-header">
-          <span class="pp-rank">#{i + 1}</span>
-          <h3 class="pp-title">{point.title}</h3>
-          <Badge
-            variant={opportunityVariant(point.opportunity)}
-            size="sm"
+  <!-- Top Opportunities (HIGH only) -->
+  {#if topOpportunities.length > 0}
+    <div class="section-group">
+      <span class="section-label">Top Opportunities</span>
+      <div class="top-grid">
+        {#each topOpportunities as point, i (point.title)}
+          <article
+            class="pp-card animate-fade-slide-in"
+            style="animation-delay: {i * 60}ms"
+            aria-label="{point.title} — severity {(point.severity * 10).toFixed(1)}/10"
           >
-            {point.opportunity}
-          </Badge>
+            <div class="pp-card-header">
+              <span class="pp-rank">#{globalRank(point)}</span>
+              <h3 class="pp-title">{point.title}</h3>
+              <Badge variant={opportunityVariant(point.opportunity)} size="sm">
+                {point.opportunity}
+              </Badge>
+            </div>
+            {#if point.short_summary}
+              <p class="pp-desc">{point.short_summary}</p>
+            {/if}
+            <div class="pp-metrics">
+              <span class="pp-wtp">
+                {wtpDisplay(point.wtp)}<span class="pp-wtp-label">WTP</span>
+              </span>
+              <span class="pp-mentions">
+                {point.mentions.toLocaleString()} discussions
+              </span>
+              <span class="pp-severity" style="color: {severityColor(point.severity)}">
+                {(point.severity * 10).toFixed(1)}/10
+              </span>
+            </div>
+          </article>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  <!-- Additional Findings (MEDIUM/LOW) -->
+  {#if additionalFindings.length > 0}
+    <div class="section-group">
+      {#if topOpportunities.length > 0}
+        <span class="section-label section-label--secondary">Additional Findings</span>
+      {/if}
+      <CardGrid minWidth={320} gap="lg">
+        {#each displayedAdditional as point, i (point.title)}
+          <article
+            class="pp-card animate-fade-slide-in"
+            style="animation-delay: {(topOpportunities.length + i) * 60}ms"
+            aria-label="{point.title} — severity {(point.severity * 10).toFixed(1)}/10"
+          >
+            <div class="pp-card-header">
+              <span class="pp-rank">#{globalRank(point)}</span>
+              <h3 class="pp-title">{point.title}</h3>
+              <Badge variant={opportunityVariant(point.opportunity)} size="sm">
+                {point.opportunity}
+              </Badge>
+            </div>
+            {#if point.short_summary}
+              <p class="pp-desc">{point.short_summary}</p>
+            {/if}
+            <div class="pp-metrics">
+              <span class="pp-wtp">
+                {wtpDisplay(point.wtp)}<span class="pp-wtp-label">WTP</span>
+              </span>
+              <span class="pp-mentions">
+                {point.mentions.toLocaleString()} discussions
+              </span>
+              <span class="pp-severity" style="color: {severityColor(point.severity)}">
+                {(point.severity * 10).toFixed(1)}/10
+              </span>
+            </div>
+          </article>
+        {/each}
+      </CardGrid>
+
+      {#if additionalFindings.length > ADDITIONAL_INITIAL}
+        <div class="expand-row">
+          <button
+            type="button"
+            class="expand-btn"
+            aria-expanded={additionalExpanded}
+            onclick={() => { additionalExpanded = !additionalExpanded; }}
+          >
+            {additionalExpanded
+              ? "Show fewer"
+              : `Show all ${additionalFindings.length} additional findings`}
+          </button>
         </div>
-
-        <!-- Short summary -->
-        {#if point.short_summary}
-          <p class="pp-desc">{point.short_summary}</p>
-        {/if}
-
-        <!-- Metrics: WTP + Mentions + Severity -->
-        <div class="pp-metrics">
-          <span class="pp-wtp">
-            {wtpDisplay(point.wtp)}<span class="pp-wtp-label">WTP</span>
-          </span>
-          <span class="pp-mentions">
-            {point.mentions.toLocaleString()} discussions
-          </span>
-          <span class="pp-severity" style="color: {severityColor(point.severity)}">
-            {(point.severity * 10).toFixed(1)}/10
-          </span>
-        </div>
-
-      </article>
-    {/each}
-  </CardGrid>
-
-  <!-- Miller's Chunking: Expand -->
-  {#if painPoints.length > INITIAL_SHOW}
-    <div class="expand-row">
-      <button
-        type="button"
-        class="expand-btn"
-        aria-expanded={expanded}
-        onclick={() => { expanded = !expanded; }}
-      >
-        {expanded
-          ? `Show fewer`
-          : `Show all ${painPoints.length} findings`}
-      </button>
+      {/if}
     </div>
   {/if}
 
@@ -190,18 +226,27 @@
 
   {#if !ideasRevealed}
     <div class="cta-section">
-      <span class="cta-label">Ready for Solutions</span>
+      <span class="cta-label">Solutions Ready</span>
       <p class="cta-desc">
-        Based on your pain points, we generated
-        <strong class="cta-count">{solutionCount}</strong> tailored solution ideas
+        Your research identified
+        <strong class="cta-count">{solutionCount}</strong> solution opportunities ranked by market fit
       </p>
 
+      <div class="cta-checks">
+        <span class="cta-check">
+          <CheckCircle class="cta-check-icon" />
+          Each addresses your highest-severity pain points
+        </span>
+        <span class="cta-check">
+          <CheckCircle class="cta-check-icon" />
+          Ranked by market fit and technical feasibility
+        </span>
+      </div>
+
       {#if solutionNames.length > 0}
-        <ul class="cta-teasers">
-          {#each solutionNames as name}
-            <li>{name}</li>
-          {/each}
-        </ul>
+        <p class="cta-teaser-hint">
+          Including "{solutionNames[0]}"{solutionNames.length > 1 ? ` and ${solutionNames.length - 1} more` : ''}
+        </p>
       {/if}
 
       <div class="cta-button-wrap">
@@ -209,8 +254,8 @@
           onclick={onRevealIdeas}
           icon={ArrowRight}
           iconPosition="end"
-          label="Continue to Solutions"
-          class="btn-primary btn-shimmer cta-btn"
+          label="See your ranked shortlist"
+          class="btn-primary cta-btn"
         />
       </div>
 
@@ -236,10 +281,11 @@
     padding: var(--space-6);
   }
 
+  /* ===== Headline-first header ===== */
   .showcase-header {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 0.375rem;
     margin-bottom: var(--space-3);
   }
 
@@ -250,20 +296,26 @@
     gap: var(--space-2);
   }
 
-  .showcase-label {
+  .showcase-headline {
+    font-family: var(--font-display);
+    font-size: var(--text-xl);
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
+    line-height: 1.3;
+  }
+
+  .showcase-scope {
     font-family: var(--font-mono);
     font-size: var(--text-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+    font-weight: 500;
     color: var(--color-text-muted);
+    margin: 0;
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
   }
 
-  .showcase-subtitle {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-  }
-
+  /* ===== Anchor callout ===== */
   .anchor-strip {
     margin-top: var(--space-3);
     padding: var(--space-2) var(--space-3);
@@ -280,14 +332,41 @@
 
   .showcase > .divider {
     height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      var(--color-border-emphasis),
-      transparent
-    );
+    background: linear-gradient(90deg, transparent, var(--color-border-emphasis), transparent);
     border: none;
     margin: var(--space-5) 0;
+  }
+
+  /* ===== Section groups ===== */
+  .section-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .section-group + .section-group {
+    margin-top: var(--space-5);
+  }
+
+  .section-label {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+  }
+
+  .section-label--secondary {
+    color: var(--color-text-muted);
+    opacity: 0.7;
+  }
+
+  /* Top Opportunities: single-column layout */
+  .top-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
   }
 
   /* ===== Pain Point Cards ===== */
@@ -370,7 +449,7 @@
   .expand-row {
     display: flex;
     justify-content: center;
-    margin-top: var(--space-3);
+    margin-top: var(--space-2);
   }
 
   .expand-btn {
@@ -383,8 +462,7 @@
     cursor: pointer;
     padding: var(--space-2) var(--space-4);
     border-radius: var(--radius-md);
-    transition: color var(--duration-fast) ease,
-      background var(--duration-fast) ease;
+    transition: color var(--duration-fast) ease, background var(--duration-fast) ease;
   }
 
   .expand-btn:hover {
@@ -402,15 +480,6 @@
     padding: var(--space-4) 0;
   }
 
-  .cta-label {
-    font-family: var(--font-mono);
-    font-size: var(--text-xs);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--color-text-muted);
-  }
-
   .cta-desc {
     font-size: var(--text-sm);
     color: var(--color-text-secondary);
@@ -425,23 +494,33 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .cta-teasers {
-    list-style: none;
-    padding: 0;
-    margin: 0;
+  .cta-checks {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+    align-items: center;
   }
 
-  .cta-teasers li {
-    font-size: var(--text-sm);
-    color: var(--color-text-secondary);
-  }
-
-  .cta-teasers li::before {
-    content: "·  ";
+  .cta-check {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: var(--text-xs);
     color: var(--color-text-muted);
+  }
+
+  :global(.cta-check-icon) {
+    width: 0.75rem;
+    height: 0.75rem;
+    color: var(--color-success);
+    flex-shrink: 0;
+  }
+
+  .cta-teaser-hint {
+    font-size: var(--text-xs);
+    font-style: italic;
+    color: var(--color-text-muted);
+    margin: 0;
   }
 
   .cta-button-wrap {
@@ -488,6 +567,10 @@
   @media (max-width: 768px) {
     .showcase {
       padding: var(--space-4);
+    }
+
+    .showcase-headline {
+      font-size: var(--text-lg);
     }
 
     .pp-metrics {
