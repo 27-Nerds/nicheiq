@@ -386,6 +386,10 @@ When changing the report schema (adding/removing/modifying fields), you must upd
    - Add field to `_assemble_base_report()` or related methods
    - Handle None/fallback cases
 
+3b. **Preview Report Materializer** (`src/nicheiq/flows/research_flow.py`)
+   - Update `_materialize_preview_report()` if field affects Phase 1 sections
+   - Update placeholder data in `frontend/src/lib/data/previewPlaceholders.ts` if field affects locked sections
+
 4. **Frontend Types** (`frontend/src/lib/types/report.ts`)
    - Add/update TypeScript interfaces to match Pydantic models
    - Keep field names identical (snake_case)

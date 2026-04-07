@@ -44,9 +44,9 @@ except ImportError:
         competitive_intensity_low_threshold = 3
         competitive_intensity_high_threshold = 8
         verdict_go_avg_score = 0.75
-        verdict_go_min_individual_score = 0.7
-        verdict_conditional_avg_score = 0.60
-        verdict_conditional_min_individual_score = 0.55
+        verdict_go_min_individual_score = 0.60
+        verdict_conditional_avg_score = 0.55
+        verdict_conditional_min_individual_score = 0.50
 
     settings = FallbackSettings()
 
