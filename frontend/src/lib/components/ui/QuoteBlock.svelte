@@ -53,7 +53,9 @@
 
   /* Variants */
   .quote-block--card {
-    background: var(--color-bg-surface);
+    background: transparent;
+    border-left: none;
+    padding-left: 1.75rem;
   }
 
   .quote-block--enhanced {

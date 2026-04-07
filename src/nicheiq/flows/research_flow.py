@@ -1071,6 +1071,584 @@ RULES:
             return None
         return None
 
+    # ──────────────────────────────────────────────────────────
+    # Discovery Data Materialization (for frontend evidence UI)
+    # ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _score_quote(text: str, upvotes: int = 0) -> float:
+        """Score a quote for display quality. Higher = better for UI.
+
+        Rejects fragments and rewards self-contained, frustration-laden quotes
+        that convey genuine user voice.
+        """
+        # Hard rejections — return -1 for unusable quotes
+        if not text or len(text.strip()) < 40:
+            return -1.0
+        stripped = text.strip()
+        reject_prefixes = (
+            "Edit to add", "Also ", "That would", "This.", "http",
+            "https", "www.", "And ", "But ", "Or ", "Yeah ",
+        )
+        if any(stripped.startswith(p) for p in reject_prefixes):
+            return -1.0
+        # Reject bare URLs or mostly-URL quotes
+        if stripped.count("http") > 0 and len(stripped) < 80:
+            return -1.0
+
+        score = 0.0
+
+        # Length preference: 60-200 chars is the sweet spot
+        length = len(stripped)
+        if 60 <= length <= 200:
+            score += 3.0
+        elif 40 <= length < 60:
+            score += 1.0
+        elif 200 < length <= 300:
+            score += 2.0
+        else:
+            score += 0.5
+
+        # Frustration signal — first-person pain language
+        frustration_phrases = [
+            "i can't", "i've been", "i give up", "why would i",
+            "i don't understand", "i don't get", "took", "hours",
+            "gave up", "frustrated", "struggled", "confusing",
+            "painful", "impossible", "nightmare", "ridiculous",
+            "waste of time", "makes no sense", "spent", "failed",
+            "disappointed", "hard to", "difficult", "overwhelming",
+        ]
+        lower = stripped.lower()
+        frustration_hits = sum(1 for p in frustration_phrases if p in lower)
+        score += min(frustration_hits * 1.5, 6.0)
+
+        # First-person voice boost (makes it feel like a real person)
+        first_person = ["i ", "i'", "my ", "me ", "i've", "i'm"]
+        if any(lower.startswith(p) or f" {p}" in lower for p in first_person):
+            score += 2.0
+
+        # Upvote tiebreaker (log scale to avoid domination)
+        if upvotes > 0:
+            import math
+            score += min(math.log2(upvotes + 1), 4.0)
+
+        return score
+
+    def _materialize_discovery_data(self, output_dir: str) -> str | None:
+        """Assemble and write discovery data JSON for frontend evidence UI.
+
+        Called after phase 1 completion when all data is in memory.
+        Returns the file path if successful, None on failure.
+        """
+        try:
+            state = self.state
+
+            # Build post_id → RedditPost lookup for cross-referencing upvotes
+            post_lookup: dict[str, object] = {}
+            if state.social_content:
+                for p in state.social_content.reddit_posts:
+                    post_lookup[p.post_id] = p
+
+            # ── Quotes: score and select top 3 per pain point ──
+            quotes_by_pain: dict[str, list[dict]] = {}
+            all_scored_quotes: list[tuple[float, dict, str]] = []  # (score, quote_dict, pain_title)
+
+            if state.pain_point_analysis:
+                for pp in state.pain_point_analysis.pain_points:
+                    pain_quotes = []
+                    raw_quotes = pp.representative_quotes or []
+                    raw_ids = pp.source_post_ids or []
+
+                    for i, q_text in enumerate(raw_quotes):
+                        post_id = raw_ids[i] if i < len(raw_ids) else ""
+                        post = post_lookup.get(post_id)
+                        upvotes = getattr(post, "score", 0) if post else 0
+                        subreddit = getattr(post, "subreddit", "") if post else ""
+                        url = f"https://reddit.com/comments/{post_id}" if post_id else ""
+
+                        q_score = self._score_quote(q_text, upvotes)
+                        if q_score < 0:
+                            continue
+
+                        quote_dict = {
+                            "text": q_text[:300],  # cap length for safety
+                            "post_id": post_id,
+                            "source_url": url,
+                            "upvotes": upvotes,
+                            "subreddit": subreddit,
+                        }
+                        pain_quotes.append((q_score, quote_dict))
+                        all_scored_quotes.append((q_score, quote_dict, pp.title))
+
+                    # Top 3 per pain point
+                    pain_quotes.sort(key=lambda x: x[0], reverse=True)
+                    quotes_by_pain[pp.title] = [q[1] for q in pain_quotes[:3]]
+
+            # ── Hero quote: best single quote across all pain points ──
+            hero_quote = None
+            if all_scored_quotes:
+                all_scored_quotes.sort(key=lambda x: x[0], reverse=True)
+                best = all_scored_quotes[0]
+                hero_quote = {
+                    **best[1],
+                    "pain_point_title": best[2],
+                }
+
+            # ── Discussion trend (monthly post counts, last 12 months) ──
+            discussion_trend = []
+            if state.social_content and state.social_content.reddit_posts:
+                from collections import Counter
+                from datetime import timedelta
+
+                now = datetime.now()
+                cutoff = now - timedelta(days=365)
+                monthly: Counter[str] = Counter()
+                for p in state.social_content.reddit_posts:
+                    if p.created_utc and p.created_utc >= cutoff:
+                        monthly[p.created_utc.strftime('%Y-%m')] += 1
+
+                # Build sorted array with 0-filled gaps
+                current = cutoff.replace(day=1)
+                end = now.replace(day=1)
+                while current <= end:
+                    key = current.strftime('%Y-%m')
+                    discussion_trend.append({"month": key, "count": monthly.get(key, 0)})
+                    current = (current + timedelta(days=32)).replace(day=1)
+
+            # ── Growth rate (last 6 months vs prior 6 months) ──
+            growth_pct = None
+            if len(discussion_trend) >= 6:
+                recent_half = sum(d["count"] for d in discussion_trend[-6:])
+                prior_half = sum(d["count"] for d in discussion_trend[-12:-6]) if len(discussion_trend) >= 12 else sum(d["count"] for d in discussion_trend[:-6])
+                if prior_half > 0:
+                    growth_pct = round((recent_half - prior_half) / prior_half * 100)
+
+            # ── Methodology ──
+            fs = state.filtering_stats or {}
+            urls_searched = fs.get("total_urls_searched", 0)
+            urls_relevant = fs.get("total_urls_relevant", 0)
+            scm = getattr(state, 'social_content_metrics', None)
+            scm_dict = scm if isinstance(scm, dict) else {}
+            methodology = {
+                "urls_searched": urls_searched,
+                "urls_relevant": urls_relevant,
+                "filtering_rate": round(urls_relevant / urls_searched * 100, 1) if urls_searched > 0 else 0,
+                "quality_tier": state.social_content_quality_tier or "",
+                "pain_point_quality_tier": state.pain_point_quality_tier or "",
+                "pain_point_confidence": state.pain_point_confidence_score or 0,
+                "total_engagement": scm_dict.get("total_engagement", 0),
+                "avg_engagement": scm_dict.get("avg_engagement_per_source", 0),
+            }
+
+            # ── Subreddit names ──
+            subreddit_names = []
+            if state.social_content:
+                subreddit_names = sorted(set(
+                    getattr(p, "subreddit", "") for p in state.social_content.reddit_posts
+                    if getattr(p, "subreddit", "")
+                ))
+
+            # ── Audience ──
+            audience = None
+            am = state.audience_mapping
+            if am:
+                audience = {
+                    "segments": [
+                        {
+                            "segment_name": seg.segment_name,
+                            "size_estimate": seg.size_estimate,
+                            "pain_point_alignment": seg.pain_point_alignment[:3],
+                            "motivation_drivers": seg.motivation_drivers[:5],
+                            "expertise_level": seg.expertise_level,
+                            "budget_sensitivity": seg.budget_sensitivity,
+                            "discovery_channels": seg.discovery_channels[:5],
+                        }
+                        for seg in am.audience_segments
+                    ],
+                    "primary_target": am.primary_target_segment,
+                    "prioritization_rationale": am.segment_prioritization_rationale,
+                    "community_hubs": am.community_hubs[:10] if am.community_hubs else [],
+                    "common_vocabulary": am.common_vocabulary[:15] if am.common_vocabulary else [],
+                    "content_preferences": am.content_preferences or "",
+                    "tools_currently_used": am.tools_currently_used[:10] if am.tools_currently_used else [],
+                    "frustrations_with_existing": am.frustrations_with_existing[:5] if am.frustrations_with_existing else [],
+                }
+
+            # ── Influencers (top 8 by relevance_score) ──
+            influencers = []
+            if am and am.key_influencers:
+                sorted_inf = sorted(am.key_influencers, key=lambda x: x.relevance_score, reverse=True)
+                for inf in sorted_inf[:8]:
+                    influencers.append({
+                        "name": inf.name,
+                        "platform": inf.platform,
+                        "relevance_score": inf.relevance_score,
+                        "content_focus": inf.content_focus,
+                        "top_subreddits": inf.top_subreddits[:3] if inf.top_subreddits else [],
+                        "top_posts": [
+                            {
+                                "title": tp.title[:120],
+                                "subreddit": tp.subreddit,
+                                "score": tp.score,
+                                "url": tp.url,
+                            }
+                            for tp in (inf.top_posts or [])[:3]
+                        ],
+                    })
+
+            # ── Social posts sample (top 10 by score, omit author) ──
+            social_posts_sample = []
+            if state.social_content:
+                sorted_posts = sorted(
+                    state.social_content.reddit_posts,
+                    key=lambda p: p.score,
+                    reverse=True,
+                )
+                for p in sorted_posts[:10]:
+                    social_posts_sample.append({
+                        "title": p.title[:200],
+                        "subreddit": p.subreddit,
+                        "score": p.score,
+                        "num_comments": p.num_comments,
+                        "url": p.url,
+                        "created_utc": p.created_utc.isoformat() if p.created_utc else "",
+                    })
+
+            # ── Assemble final structure ──
+            discovery_data = {
+                "methodology": methodology,
+                "hero_quote": hero_quote,
+                "quotes": quotes_by_pain,
+                "audience": audience,
+                "influencers": influencers,
+                "social_posts_sample": social_posts_sample,
+                "subreddit_names": subreddit_names,
+                "data_attribution": "Public community activity from Reddit",
+                "discussion_trend": discussion_trend,
+                "discussion_growth_pct": growth_pct,
+            }
+
+            # Write to file
+            out_path = Path(output_dir) / f"discovery_data_{state.job_id}.json"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(discovery_data, indent=2, default=str))
+            logger.info(f"[Discovery Data] Materialized to {out_path} ({out_path.stat().st_size} bytes)")
+            return str(out_path)
+
+        except Exception as e:
+            logger.warning(f"[Discovery Data] Failed to materialize: {e}")
+            return None
+
+    def _materialize_preview_report(self, output_dir: str) -> str | None:
+        """Assemble and write a preview report JSON that mirrors FinalReport shape.
+
+        Called after Phase 1 completion alongside _materialize_discovery_data().
+        Produces a Partial<Report>-shaped dict from stages 1-5 data only.
+        No LLM calls — pure Python data reshaping.
+
+        Returns the file path if successful, None on failure.
+        """
+        try:
+            state = self.state
+            report: dict = {}
+
+            # ── Stage 1: Niche Context ──
+            try:
+                niche_ctx = getattr(state, "niche_context", None)
+                if niche_ctx:
+                    report["niche"] = niche_ctx.niche_description
+                    report["niche_context"] = niche_ctx.model_dump()
+                else:
+                    report["niche"] = self.niche_description or "Unknown niche"
+                    report["niche_context"] = None
+            except Exception as e:
+                logger.debug(f"[Preview Report] Niche context section failed: {e}")
+                report["niche"] = self.niche_description or "Unknown niche"
+                report["niche_context"] = None
+
+            # ── Stage 2: Evidence Appendix (top reddit threads + quote sources) ──
+            try:
+                evidence_appendix: dict | None = None
+                social = getattr(state, "social_content", None)
+                if social and social.reddit_posts:
+                    sorted_posts = sorted(
+                        social.reddit_posts,
+                        key=lambda p: p.score,
+                        reverse=True,
+                    )
+
+                    top_reddit_threads = []
+                    for post in sorted_posts[:5]:
+                        top_reddit_threads.append({
+                            "post_id": post.post_id,
+                            "title": post.title,
+                            "subreddit": post.subreddit,
+                            "score": post.score,
+                            "num_comments": post.num_comments,
+                            "url": post.url,
+                            "created_utc": post.created_utc.isoformat() if post.created_utc else "",
+                            "key_insight": post.title,  # fallback: use title
+                        })
+
+                    # Build pain_point_quote_sources from Stage 3 quotes
+                    pain_point_quote_sources = []
+                    pain_analysis = getattr(state, "pain_point_analysis", None)
+                    if pain_analysis and pain_analysis.pain_points:
+                        # Build post_id → post lookup for metadata
+                        post_lookup: dict[str, object] = {}
+                        for p in social.reddit_posts:
+                            post_lookup[p.post_id] = p
+
+                        for pp in pain_analysis.pain_points:
+                            quotes_with_sources = []
+                            raw_quotes = pp.representative_quotes or []
+                            raw_ids = pp.source_post_ids or []
+
+                            for i, quote_text in enumerate(raw_quotes):
+                                post_id = raw_ids[i] if i < len(raw_ids) else ""
+                                post = post_lookup.get(post_id) if post_id else None
+                                subreddit = getattr(post, "subreddit", "Unknown") if post else "Unknown"
+                                score = getattr(post, "score", 0) if post else 0
+
+                                quotes_with_sources.append({
+                                    "quote": quote_text[:300],
+                                    "post_id": post_id or "unknown",
+                                    "subreddit": subreddit,
+                                    "score": str(score),
+                                })
+
+                            pain_point_quote_sources.append({
+                                "pain_point_title": pp.title,
+                                "quotes_with_sources": quotes_with_sources,
+                            })
+
+                    evidence_appendix = {
+                        "top_reddit_threads": top_reddit_threads,
+                        "pain_point_quote_sources": pain_point_quote_sources,
+                    }
+
+                report["evidence_appendix"] = evidence_appendix
+            except Exception as e:
+                logger.debug(f"[Preview Report] Evidence appendix section failed: {e}")
+                report["evidence_appendix"] = None
+
+            # ── Stage 3: Pain Points + Analytics ──
+            try:
+                pain_analysis = getattr(state, "pain_point_analysis", None)
+                if pain_analysis and pain_analysis.pain_points:
+                    pain_points = pain_analysis.pain_points
+                    report["detailed_pain_points"] = [pp.model_dump() for pp in pain_points]
+
+                    # Synthesize pain_point_analytics from raw data
+                    total = len(pain_points)
+                    high_severity = sum(
+                        1 for pp in pain_points if pp.severity_score >= 0.6
+                    )
+                    high_opportunity = sum(
+                        1 for pp in pain_points
+                        if getattr(pp.opportunity_level, "value", str(pp.opportunity_level)) == "high"
+                    )
+
+                    # Quadrant distribution
+                    quadrants = {
+                        "high_severity_high_wtp": 0,
+                        "high_severity_low_wtp": 0,
+                        "low_severity_high_wtp": 0,
+                        "low_severity_low_wtp": 0,
+                    }
+                    for pp in pain_points:
+                        sev_high = pp.severity_score >= 0.5
+                        wtp_high = pp.willingness_to_pay >= 0.5
+                        if sev_high and wtp_high:
+                            quadrants["high_severity_high_wtp"] += 1
+                        elif sev_high:
+                            quadrants["high_severity_low_wtp"] += 1
+                        elif wtp_high:
+                            quadrants["low_severity_high_wtp"] += 1
+                        else:
+                            quadrants["low_severity_low_wtp"] += 1
+
+                    avg_severity = sum(pp.severity_score for pp in pain_points) / total
+                    avg_wtp = sum(pp.willingness_to_pay for pp in pain_points) / total
+
+                    # Category distribution
+                    category_counts: dict[str, int] = {}
+                    for pp in pain_points:
+                        for cat in (pp.categories or []):
+                            category_counts[cat] = category_counts.get(cat, 0) + 1
+
+                    # Top pain point by combined score
+                    sorted_pps = sorted(
+                        pain_points,
+                        key=lambda p: p.severity_score + p.willingness_to_pay,
+                        reverse=True,
+                    )
+                    top_title = sorted_pps[0].title if sorted_pps else "N/A"
+
+                    report["pain_point_analytics"] = {
+                        "total_pain_points": total,
+                        "high_severity_count": high_severity,
+                        "high_opportunity_count": high_opportunity,
+                        "quadrant_distribution": quadrants,
+                        "avg_severity": round(avg_severity, 3),
+                        "avg_willingness_to_pay": round(avg_wtp, 3),
+                        "top_pain_point_title": top_title,
+                        "category_distribution": category_counts,
+                    }
+                else:
+                    report["detailed_pain_points"] = None
+                    report["pain_point_analytics"] = None
+            except Exception as e:
+                logger.debug(f"[Preview Report] Pain points section failed: {e}")
+                report["detailed_pain_points"] = None
+                report["pain_point_analytics"] = None
+
+            # ── Stage 4: Audience Mapping (direct pass-through) ──
+            try:
+                am = getattr(state, "audience_mapping", None)
+                report["audience_mapping"] = am.model_dump() if am else None
+            except Exception as e:
+                logger.debug(f"[Preview Report] Audience mapping section failed: {e}")
+                report["audience_mapping"] = None
+
+            # ── Stage 5: Solutions → AlternativeSolution[] format ──
+            try:
+                idea_gen = getattr(state, "idea_generation", None)
+                comp_analysis = getattr(state, "competitive_analysis", None)
+
+                alternative_solutions = []
+                if idea_gen and idea_gen.solution_ideas:
+                    # Build competitive landscape lookup
+                    landscapes: dict[str, object] = {}
+                    if comp_analysis:
+                        for landscape in comp_analysis.solution_landscapes:
+                            landscapes[landscape.solution_name] = landscape
+
+                    for solution in idea_gen.solution_ideas:
+                        description = getattr(solution, "description", "") or ""
+                        tech_approach = getattr(solution, "technical_approach", "") or ""
+                        diff_factors = getattr(solution, "differentiation_factors", []) or []
+                        key_diff = diff_factors[0] if diff_factors else ""
+                        personas = getattr(solution, "target_personas", []) or []
+                        personas_text = ", ".join(personas[:2]) if personas else ""
+                        features = getattr(solution, "core_features", []) or []
+                        features_text = ", ".join(features[:5]) if features else ""
+
+                        summary = (
+                            f"**Overview:** {description}\n\n"
+                            f"**Key Features:** {features_text}\n\n"
+                            f"**Target Users:** {personas_text}. "
+                            f"Differentiates through {key_diff}.\n\n"
+                            f"**Technical Approach:** {tech_approach}"
+                        ).strip()
+                        if not summary:
+                            summary = f"{solution.solution_name}: Solution concept for this market"
+
+                        # Extract competitive data
+                        landscape = landscapes.get(solution.solution_name)
+                        top_competitors = None
+                        market_gaps = None
+                        competitive_intensity = None
+                        if landscape:
+                            comps = getattr(landscape, "competitors", []) or []
+                            if comps:
+                                top_competitors = [getattr(c, "name", str(c)) for c in comps[:3]]
+                            gaps = getattr(landscape, "market_gaps", []) or []
+                            if gaps:
+                                market_gaps = gaps[:3]
+                            competitive_intensity = getattr(landscape, "competitive_intensity", None)
+
+                        # Extract scores defensively
+                        market_fit = getattr(solution, "market_fit_score", None)
+                        tech_feas = getattr(solution, "technical_feasibility_score", None)
+                        novelty = getattr(solution, "novelty_score", None)
+                        solo_dev = getattr(solution, "solo_dev_feasibility", None)
+                        seo_score = getattr(solution, "seo_scalability_score", None)
+
+                        alt = {
+                            "solution_name": solution.solution_name,
+                            "headline": getattr(solution, "headline", None),
+                            "short_description": getattr(solution, "short_description", None),
+                            "summary": summary,
+                            "description": description,
+                            "value_proposition": getattr(solution, "value_proposition", "") or "",
+                            "core_features": features[:5] if features else None,
+                            "target_personas": personas[:3] if personas else None,
+                            "technical_approach": tech_approach or None,
+                            "market_fit_score": float(market_fit) if market_fit is not None else None,
+                            "technical_feasibility_score": float(tech_feas) if tech_feas is not None else None,
+                            "competitive_advantage_score": None,  # Not available in Phase 1
+                            "seo_growth_potential_score": float(seo_score) if seo_score is not None else None,
+                            "novelty_score": float(novelty) if novelty is not None else None,
+                            "solo_dev_feasibility": float(solo_dev) if solo_dev is not None else None,
+                            "key_differentiator": key_diff or "Unique approach to this market",
+                            "best_suited_for": personas[0] if personas else "General market",
+                            "pivot_trigger": "Consider if primary solution faces execution barriers",
+                            "top_competitors": top_competitors,
+                            "market_gaps": market_gaps,
+                            "competitive_intensity": competitive_intensity,
+                            "estimated_development_time": getattr(solution, "estimated_development_time", None),
+                            "estimated_cac_organic": getattr(solution, "estimated_cac_organic", None),
+                            "pricing_model": getattr(solution, "pricing_strategy", None),
+                        }
+                        alternative_solutions.append(alt)
+
+                report["alternative_solutions"] = alternative_solutions if alternative_solutions else None
+
+                # Extract competitor mentions
+                competitor_mentions = getattr(state, "competitor_mentions_formatted", None)
+                if not competitor_mentions and comp_analysis:
+                    # Build from competitive analysis landscapes
+                    all_comp_names = set()
+                    for landscape in comp_analysis.solution_landscapes:
+                        for comp in (getattr(landscape, "competitors", []) or []):
+                            all_comp_names.add(getattr(comp, "name", str(comp)))
+                    if all_comp_names:
+                        competitor_mentions = ", ".join(sorted(all_comp_names))
+                report["overall_competitive_insights"] = (
+                    comp_analysis.strategic_recommendations if comp_analysis else None
+                )
+            except Exception as e:
+                logger.debug(f"[Preview Report] Solutions section failed: {e}")
+                report["alternative_solutions"] = None
+                report["overall_competitive_insights"] = None
+
+            # ── Metadata ──
+            try:
+                report["generated_at"] = datetime.utcnow().isoformat()
+
+                fs = getattr(state, "filtering_stats", None) or {}
+                reddit_count = 0
+                twitter_count = 0
+                social = getattr(state, "social_content", None)
+                if social:
+                    reddit_count = len(social.reddit_posts)
+                    twitter_count = len(social.twitter_threads)
+
+                report["research_metadata"] = {
+                    "reddit_posts_analyzed": reddit_count,
+                    "twitter_threads_analyzed": twitter_count,
+                    "filtering_stats": fs,
+                    "started_at": state.started_at.isoformat() if getattr(state, "started_at", None) else None,
+                    "completed_stages": getattr(state, "completed_stages", []),
+                }
+            except Exception as e:
+                logger.debug(f"[Preview Report] Metadata section failed: {e}")
+                report["generated_at"] = datetime.utcnow().isoformat()
+                report["research_metadata"] = None
+
+            # ── Write to file ──
+            job_id = getattr(state, "job_id", "unknown")
+            out_path = Path(output_dir) / f"preview_report_{job_id}.json"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(json.dumps(report, indent=2, default=str))
+            logger.info(f"[Preview Report] Materialized to {out_path} ({out_path.stat().st_size} bytes)")
+            return str(out_path)
+
+        except Exception as e:
+            logger.warning(f"[Preview Report] Failed to materialize: {e}")
+            return None
+
     def _map_pain_points_to_segments(self, audience_result) -> None:
         """
         Map pain points to audience segments based on keyword matching.

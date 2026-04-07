@@ -307,8 +307,30 @@ def run_interactive_research(
         if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder:
             checkpoint_path = str(flow.checkpoint_mgr.checkpoint_folder)
 
+        # Materialize discovery data for frontend evidence UI
+        discovery_data_path = ""
+        preview_report_path = ""
+        try:
+            output_dir = str(flow.checkpoint_mgr.checkpoint_folder.parent) if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder else "output"
+            result = flow._materialize_discovery_data(output_dir)
+            if result:
+                discovery_data_path = result
+                logger.info(f"[Worker] Discovery data materialized: {discovery_data_path}")
+        except Exception as e:
+            logger.warning(f"[Worker] Failed to materialize discovery data: {e}")
+
+        # Materialize preview report for frontend preview page
+        try:
+            output_dir = str(flow.checkpoint_mgr.checkpoint_folder.parent) if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder else "output"
+            result = flow._materialize_preview_report(output_dir)
+            if result:
+                preview_report_path = result
+                logger.info(f"[Worker] Preview report materialized: {preview_report_path}")
+        except Exception as e:
+            logger.warning(f"[Worker] Failed to materialize preview report: {e}")
+
         # Notify backend: ideas ready, skip to AWAITING_SELECTION directly
-        notify_ideas_ready(job_id, solution_previews, checkpoint_path, len(solutions), skip_validation=True)
+        notify_ideas_ready(job_id, solution_previews, checkpoint_path, len(solutions), skip_validation=True, discovery_data_path=discovery_data_path, preview_report_path=preview_report_path)
 
         logger.info(f"[Worker] Job {job_id} entering AWAITING_SELECTION")
         return {"status": "awaiting_selection", "job_id": job_id}

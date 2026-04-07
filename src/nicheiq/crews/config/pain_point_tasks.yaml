@@ -168,6 +168,9 @@ extract_pain_points:
 
     **CRITICAL CONSTRAINTS:**
     - anchor_keywords: 2-10 short phrases (2-6 words each) - exact user language
+    - Ensure each anchor_keyword includes domain context to avoid ambiguity:
+      BAD: "setup", "hours building" (too generic, matches unrelated topics)
+      GOOD: "software setup", "hours configuring settings" (specific to the niche)
     - DO NOT include full quotes - Task 4 will find them via vector search
     - mention_count from Task 1 theme data (don't fabricate)
 

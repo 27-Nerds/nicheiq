@@ -861,33 +861,127 @@ class PainPointCrew:
             guardrail_max_retries=2,
         )
 
-    def _parse_search_results(self, results: str) -> list[tuple[str, str]]:
+    # Stopwords for relevance scoring (common English words that don't carry topic signal)
+    _STOPWORDS = frozenset({
+        'i', 'me', 'my', 'we', 'our', 'you', 'your', 'he', 'she', 'it', 'they',
+        'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+        'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+        'on', 'with', 'at', 'by', 'from', 'as', 'into', 'about', 'but', 'or',
+        'and', 'not', 'no', 'so', 'if', 'then', 'than', 'that', 'this', 'which',
+        'who', 'what', 'when', 'where', 'how', 'all', 'each', 'every', 'both',
+        'few', 'more', 'most', 'other', 'some', 'such', 'just', 'very', 'really',
+        'also', 'too', 'much', 'many', 'any', 'up', 'out', 'get', 'got',
+    })
+
+    @staticmethod
+    def _clean_quote_text(text: str) -> str:
+        """Remove formatting artifacts from quote text.
+
+        Strips Reddit/Twitter formatting markers that leak from the knowledge base:
+        markdown headers, list prefixes, [N pts] scores, [source: id] tags.
         """
-        Parse QuoteSearchTool results into (quote, post_id) tuples.
+        # Order matters: structural markers first
+        text = re.sub(r'^#{1,6}\s+', '', text)            # markdown headers
+        text = re.sub(r'^\s*[-•]\s+', '', text)            # list prefixes
+        text = re.sub(r'\[\d+\s*pts?\]', '', text)         # [N pts] markers
+        text = re.sub(r'\[\d+\s*likes?\]', '', text)       # [N likes] markers
+        text = re.sub(r'\[source:\s*[^\]]+\]', '', text)   # [source: id] tags
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    @staticmethod
+    def _build_relevance_terms(pain_point: UnvalidatedPainPoint) -> frozenset[str]:
+        """Precompute relevance terms from a pain point (title + description + keywords).
+
+        Called once per pain point, result reused for all quote candidates.
+        """
+        words: set[str] = set()
+        sources = [pain_point.title, pain_point.description] + pain_point.anchor_keywords
+        for source in sources:
+            for word in source.lower().split():
+                word = re.sub(r'[^\w]', '', word)
+                if word and word not in PainPointCrew._STOPWORDS and len(word) > 2:
+                    words.add(word)
+        return frozenset(words)
+
+    @staticmethod
+    def _compute_quote_relevance(
+        quote_text: str,
+        relevance_terms: frozenset[str],
+        anchor_keywords: list[str],
+    ) -> float:
+        """Score how relevant a quote is to a pain point using keyword overlap.
+
+        Returns 0.0-1.0. Used as a safety-net filter (low threshold) and for ranking.
+        No API calls — pure string operations.
+        """
+        if not relevance_terms:
+            return 0.0
+
+        quote_words: set[str] = set()
+        for word in quote_text.lower().split():
+            word = re.sub(r'[^\w]', '', word)
+            if word and len(word) > 2:
+                quote_words.add(word)
+
+        overlap = quote_words & relevance_terms
+        # Floor denominator at 5 to prevent short titles from inflating scores
+        effective_size = max(len(relevance_terms), 5)
+        base_score = len(overlap) / effective_size
+
+        # Scaled bonus for anchor keyword phrase matches (substring in quote)
+        quote_lower = quote_text.lower()
+        kw_matches = sum(1 for kw in anchor_keywords[:4] if kw.lower() in quote_lower)
+        bonus = min(0.3, kw_matches * 0.1) if kw_matches else 0.0
+
+        return min(1.0, base_score + bonus)
+
+    def _parse_search_results(self, results: str) -> list[tuple[str, str, float]]:
+        """
+        Parse QuoteSearchTool results into (quote, post_id, vector_score) tuples.
+
+        Uses 3-phase splitting to correctly separate Reddit list-item comments:
+        1. Split on paragraph breaks and newline-before-list-item
+        2. Split on inline [N pts] markers (handles lost newlines from chunking)
+        3. Split on sentence-ending punctuation within each segment
 
         Args:
             results: Raw string output from QuoteSearchTool._run()
 
         Returns:
-            List of (quote_text, post_id) tuples extracted from results
+            List of (quote_text, post_id, vector_score) tuples
         """
-        parsed = []
+        parsed: list[tuple[str, str, float]] = []
 
-        # Pattern: --- Result N (score: X.XX, post_id: abc123, source: reddit) ---
-        pattern = r'--- Result \d+ \(score: [\d.]+, post_id: ([^,]+), source: \w+\) ---\n(.*?)(?=--- Result|\Z)'
+        # Capture score (group 1), post_id (group 2), content (group 3)
+        pattern = r'--- Result \d+ \(score: ([\d.]+), post_id: ([^,]+), source: \w+\) ---\n(.*?)(?=--- Result|\Z)'
 
         for match in re.finditer(pattern, results, re.DOTALL):
-            post_id = match.group(1).strip()
-            content = match.group(2).strip()
+            vector_score = float(match.group(1))
+            post_id = match.group(2).strip()
+            content = match.group(3).strip()
 
-            # Extract sentences as potential quotes (15+ words)
-            sentences = re.split(r'(?<=[.!?])\s+', content)
-            for sentence in sentences:
-                sentence = sentence.strip()
-                if len(sentence.split()) >= 15:
-                    parsed.append((sentence, post_id))
+            # Phase 1: Split on paragraph breaks and newline-before-list-item
+            segments = re.split(r'\n\n+|\n(?=\s*[-•])', content)
+
+            for segment in segments:
+                # Phase 2: Split on inline list markers (handles lost newlines)
+                # Catches "...Allen key - [2 pts] i spent..." mid-line
+                sub_segments = re.split(r'\s*(?=-\s*\[\d+\s*pts?\])', segment)
+
+                for sub in sub_segments:
+                    # Phase 3: Split on sentence-ending punctuation
+                    sentences = re.split(r'(?<=[.!?])\s+', sub.strip())
+                    for sentence in sentences:
+                        cleaned = PainPointCrew._clean_quote_text(sentence)
+                        if len(cleaned.split()) >= 15:
+                            parsed.append((cleaned, post_id, vector_score))
 
         return parsed
+
+    # Minimum relevance score for a quote to be accepted (safety net, not primary filter)
+    _MIN_RELEVANCE = 0.05
 
     def _enrich_single_pain_point(
         self,
@@ -900,6 +994,10 @@ class PainPointCrew:
         Designed to run in parallel via ThreadPoolExecutor.
         Each pain point is processed independently, so the LLM can't skip any.
 
+        Uses contextual queries (pain point title + description) instead of bare
+        anchor keywords to give the embedding model enough semantic context to
+        disambiguate polysemous terms (e.g., "software setup" vs "physical setup").
+
         Args:
             pain_point: The pain point to find quotes for
             search_tool: QuoteSearchTool instance for vector search
@@ -907,34 +1005,62 @@ class PainPointCrew:
         Returns:
             SinglePainPointQuotesResult with quotes found for this pain point
         """
-        all_quotes: list[ExtractedQuote] = []
         seen_quote_texts: set[str] = set()
+        scored_quotes: list[tuple[float, ExtractedQuote]] = []
 
-        # Limit to 4 keywords to avoid excessive API calls
-        keywords_to_search = pain_point.anchor_keywords[:4]
+        # Precompute relevance terms once for this pain point
+        relevance_terms = self._build_relevance_terms(pain_point)
 
-        for keyword in keywords_to_search:
+        # Build contextual queries: description first (max context), then keywords with title
+        description_query = f"{pain_point.title} - {pain_point.description}"
+        keyword_queries = [
+            f"{pain_point.title}: {kw}"
+            for kw in pain_point.anchor_keywords[:3]
+        ]
+        all_queries = [description_query] + keyword_queries
+
+        for query in all_queries:
             try:
-                results = search_tool._run(keyword)
+                results = search_tool._run(query)
                 parsed_quotes = self._parse_search_results(results)
 
-                for quote_text, post_id in parsed_quotes:
+                for quote_text, post_id, vector_score in parsed_quotes:
                     normalized = quote_text.lower().strip()
-                    # Deduplicate and filter short quotes
-                    if normalized not in seen_quote_texts and len(quote_text.split()) >= 15:
-                        seen_quote_texts.add(normalized)
-                        all_quotes.append(ExtractedQuote(
-                            quote_text=quote_text,
-                            post_id=post_id,
-                        ))
+                    if normalized in seen_quote_texts:
+                        continue
+
+                    relevance = self._compute_quote_relevance(
+                        quote_text, relevance_terms, pain_point.anchor_keywords
+                    )
+                    if relevance < self._MIN_RELEVANCE:
+                        logger.debug(
+                            f"Rejected quote (relevance={relevance:.3f}): "
+                            f"'{quote_text[:60]}...' for '{pain_point.title}'"
+                        )
+                        continue
+
+                    seen_quote_texts.add(normalized)
+                    # Combined ranking: weight vector similarity + keyword relevance
+                    combined_score = vector_score * 0.6 + relevance * 0.4
+                    scored_quotes.append((combined_score, ExtractedQuote(
+                        quote_text=quote_text,
+                        post_id=post_id,
+                    )))
             except Exception as e:
-                logger.warning(f"Search failed for keyword '{keyword}': {e}")
+                logger.warning(f"Search failed for query '{query[:60]}': {e}")
+
+        # Sort by combined score descending, take best 12
+        scored_quotes.sort(key=lambda x: x[0], reverse=True)
+        final_quotes = [q for _, q in scored_quotes[:12]]
 
         return SinglePainPointQuotesResult(
             pain_point_title=pain_point.title,
-            anchor_keywords_searched=keywords_to_search,
-            quotes=all_quotes[:12],  # Cap at 12 quotes per pain point
-            search_summary=f"Searched {len(keywords_to_search)} keywords, found {len(all_quotes)} quotes"
+            anchor_keywords_searched=pain_point.anchor_keywords[:3],
+            quotes=final_quotes,
+            search_summary=(
+                f"Searched {len(all_queries)} queries (contextual), "
+                f"found {len(final_quotes)} quotes from {len(scored_quotes)} candidates"
+            ),
         )
 
     def _run_parallel_quote_enrichment(

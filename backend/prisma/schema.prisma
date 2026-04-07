@@ -34,9 +34,11 @@ enum StageStatus {
 
 // Types of generated assets
 enum AssetType {
-  REPORT_JSON   // Final report (JSON)
-  REPORT_RAW    // Raw research state
-  LANDING_PAGE  // Generated HTML landing page
+  REPORT_JSON      // Final report (JSON)
+  REPORT_RAW       // Raw research state
+  LANDING_PAGE     // Generated HTML landing page
+  DISCOVERY_DATA   // Materialized discovery evidence (quotes, audience, influencers)
+  PREVIEW_REPORT   // Phase 1 preview report (lightweight summary for selection screen)
 }
 
 // User roles

@@ -774,6 +774,30 @@ workersRouter.post('/ideas-ready', async (req: Request, res: Response) => {
       return;
     }
 
+    // Register discovery data asset if provided
+    if (data.discovery_data_path) {
+      const { AssetType } = await import('@prisma/client');
+      const { addJobAsset } = await import('../services/jobService.js');
+      try {
+        await addJobAsset(data.job_id, AssetType.DISCOVERY_DATA, data.discovery_data_path);
+        console.log(`[Workers] Discovery data asset registered for job ${data.job_id}`);
+      } catch (err) {
+        console.warn(`[Workers] Failed to register discovery data asset: ${err}`);
+      }
+    }
+
+    // Register preview report asset if provided
+    if (data.preview_report_path) {
+      const { AssetType } = await import('@prisma/client');
+      const { addJobAsset } = await import('../services/jobService.js');
+      try {
+        await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
+        console.log(`[Workers] Preview report asset registered for job ${data.job_id}`);
+      } catch (err) {
+        console.warn(`[Workers] Failed to register preview report asset:`, err);
+      }
+    }
+
     // Broadcast progress update to SSE clients
     broadcastProgress(data.job_id, {
       stage: 5,

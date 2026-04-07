@@ -93,6 +93,8 @@ export const IdeasReadySchema = z.object({
   checkpoint_path: z.string().min(1).max(500),
   total_to_validate: z.number().int().min(0).default(0),
   skip_validation: z.boolean().optional(),
+  discovery_data_path: z.string().max(500).optional().default(''),
+  preview_report_path: z.string().optional(),
 });
 
 export type IdeasReadyInput = z.infer<typeof IdeasReadySchema>;

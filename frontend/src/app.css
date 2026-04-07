@@ -198,6 +198,12 @@
 	}
 }
 
+@media (min-width: 1280px) {
+	.report-content--with-sidebar {
+		padding-left: calc(200px + 2rem);
+	}
+}
+
 .report-section {
 	padding-bottom: var(--space-16);
 	border-bottom: 1px solid var(--color-border);
@@ -1000,6 +1006,22 @@
 .differentiator-callout strong {
 	color: var(--color-text-primary);
 	font-weight: 600;
+}
+
+/* ========================================
+   Reduced Motion
+   Respects user accessibility preferences.
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
 }
 
 /* ========================================

@@ -256,6 +256,171 @@ jobsRouter.get('/:jobId/report-summary', requireInternalAuth, validateJobId, asy
 });
 
 /**
+ * GET /api/jobs/:jobId/discovery-data
+ * Materialized discovery evidence (quotes, audience, influencers) for frontend trust UI.
+ * Available after Phase 1 completes (AWAITING_SELECTION and beyond).
+ */
+const discoveryCache = new Map<string, { data: object; ts: number }>();
+const DISCOVERY_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const DISCOVERY_CACHE_MAX = 200;
+
+jobsRouter.get('/:jobId/discovery-data', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await getJob(jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Available after discovery phase completes
+    const allowedStatuses: JobStatus[] = [
+      JobStatus.AWAITING_SELECTION,
+      JobStatus.REGENERATING,
+      JobStatus.RUNNING_PHASE2,
+      JobStatus.COMPLETED,
+      JobStatus.FAILED,
+    ];
+    if (!allowedStatuses.includes(job.status as JobStatus)) {
+      res.status(400).json({ error: 'Discovery data not yet available' });
+      return;
+    }
+
+    // Check cache
+    const cached = discoveryCache.get(jobId);
+    if (cached && Date.now() - cached.ts < DISCOVERY_CACHE_TTL) {
+      res.json(cached.data);
+      return;
+    }
+
+    const asset = await getJobAsset(jobId, AssetType.DISCOVERY_DATA);
+    if (!asset) {
+      res.status(404).json({ error: 'Discovery data not available for this job' });
+      return;
+    }
+
+    const resolvedPath = resolveAssetPath(asset.filePath);
+
+    // Path validation: ensure resolved path stays within expected base directory
+    const { resolve: pathResolve } = await import('path');
+    const normalizedPath = pathResolve(resolvedPath);
+    if (!normalizedPath.startsWith(pathResolve('output')) && !normalizedPath.startsWith('/home')) {
+      console.error(`[Jobs] Discovery data path traversal attempt: ${normalizedPath}`);
+      res.status(404).json({ error: 'Discovery data not found' });
+      return;
+    }
+
+    if (!existsSync(resolvedPath)) {
+      res.status(404).json({ error: 'Discovery data file not found' });
+      return;
+    }
+
+    const raw = await readFile(resolvedPath, 'utf-8');
+    const data = JSON.parse(raw);
+
+    // Cache the parsed result
+    if (discoveryCache.size >= DISCOVERY_CACHE_MAX) {
+      const oldest = [...discoveryCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) discoveryCache.delete(oldest[0]);
+    }
+    discoveryCache.set(jobId, { data, ts: Date.now() });
+
+    res.json(data);
+  } catch (error) {
+    console.error('Failed to get discovery data:', error);
+    res.status(500).json({ error: 'Failed to load discovery data' });
+  }
+});
+
+/**
+ * GET /api/jobs/:jobId/preview-report
+ * Phase 1 preview report (lightweight summary for the selection screen).
+ * Available after Phase 1 completes (AWAITING_SELECTION and beyond).
+ */
+const previewReportCache = new Map<string, { data: object; ts: number }>();
+const PREVIEW_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+const PREVIEW_CACHE_MAX = 200;
+
+jobsRouter.get('/:jobId/preview-report', requireInternalAuth, validateJobId, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { jobId } = req.params;
+
+    const job = await getJob(jobId);
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (!verifyOwnership(req, job.userId)) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    // Available after discovery phase completes
+    const allowedStatuses: JobStatus[] = [
+      JobStatus.AWAITING_SELECTION,
+      JobStatus.REGENERATING,
+      JobStatus.RUNNING_PHASE2,
+      JobStatus.COMPLETED,
+    ];
+    if (!allowedStatuses.includes(job.status as JobStatus)) {
+      res.status(400).json({ error: 'Preview report not yet available' });
+      return;
+    }
+
+    // Check cache
+    const cached = previewReportCache.get(jobId);
+    if (cached && Date.now() - cached.ts < PREVIEW_CACHE_TTL) {
+      res.json(cached.data);
+      return;
+    }
+
+    const asset = await getJobAsset(jobId, AssetType.PREVIEW_REPORT);
+    if (!asset) {
+      res.status(404).json({ error: 'Preview report not available for this job' });
+      return;
+    }
+
+    const resolvedPath = resolveAssetPath(asset.filePath);
+
+    // Path validation: ensure resolved path stays within expected base directory
+    const { resolve: pathResolve } = await import('path');
+    const normalizedPath = pathResolve(resolvedPath);
+    if (!normalizedPath.startsWith(pathResolve('output')) && !normalizedPath.startsWith('/home')) {
+      console.error(`[Jobs] Preview report path traversal attempt: ${normalizedPath}`);
+      res.status(404).json({ error: 'Preview report not found' });
+      return;
+    }
+
+    if (!existsSync(resolvedPath)) {
+      res.status(404).json({ error: 'Preview report file not found' });
+      return;
+    }
+
+    const raw = await readFile(resolvedPath, 'utf-8');
+    const data = JSON.parse(raw);
+
+    // Cache the parsed result
+    if (previewReportCache.size >= PREVIEW_CACHE_MAX) {
+      const oldest = [...previewReportCache.entries()].sort((a, b) => a[1].ts - b[1].ts)[0];
+      if (oldest) previewReportCache.delete(oldest[0]);
+    }
+    previewReportCache.set(jobId, { data, ts: Date.now() });
+
+    res.json(data);
+  } catch (error) {
+    console.error('Failed to get preview report:', error);
+    res.status(500).json({ error: 'Failed to load preview report' });
+  }
+});
+
+/**
  * GET /api/jobs/:jobId/landingpage
  * View or download the landing page HTML (requires authentication and ownership)
  */

@@ -18,7 +18,9 @@
     count?: number | null;
     countSuffix?: string;
     defaultOpen?: boolean;
+    resetKey?: number | string;
     variant?: LegacyVariant;
+    id?: string;
     children: Snippet;
   }
 
@@ -28,7 +30,9 @@
     count = null,
     countSuffix,
     defaultOpen = false,
+    resetKey,
     variant = "default",
+    id,
     children,
   }: Props = $props();
 
@@ -52,6 +56,8 @@
   {count}
   {countSuffix}
   {defaultOpen}
+  {resetKey}
+  {id}
   mode="expandable"
   headerSize="sm"
   variant={mappedVariant}

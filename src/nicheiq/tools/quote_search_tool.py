@@ -68,7 +68,8 @@ class QuoteSearchTool(BaseTool):
             # Results are TypedDict with: id, content, metadata, score
             results = self._knowledge.query(
                 query=[query.strip()],
-                results_limit=15,  # Get top 15 results
+                results_limit=15,
+                score_threshold=0.75,  # Tighter than default 0.6 to filter weak matches
             )
 
             if not results:

@@ -201,6 +201,11 @@
         {solution.project_type}
       </span>
     {/if}
+    {#if solution.estimated_development_time}
+      <span class="text-xs font-mono text-text-muted tabular-nums">
+        ~{solution.estimated_development_time}
+      </span>
+    {/if}
     {#if voteCount > 0}
       <span class="text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent flex items-center gap-1">
         <Heart class="w-3 h-3" /> {voteCount}

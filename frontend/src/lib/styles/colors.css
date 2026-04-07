@@ -70,6 +70,18 @@
 	--color-info-light: #60A5FA;
 	--color-info-subtle: rgba(59, 130, 246, 0.08);
 
+	/* Severity - Pain point analysis */
+	--color-severity-critical: #D93025;
+	--color-severity-critical-bg: #FDE7E5;
+	--color-severity-high: #E67E22;
+	--color-severity-high-bg: #FEF3E2;
+	--color-severity-medium: #D4A017;
+	--color-severity-medium-bg: #FEF9E7;
+
+	/* Opportunity - Green */
+	--color-opportunity: #1A7F5A;
+	--color-opportunity-bg: #E6F5EE;
+
 	/* ========================================
 	   Border Colors
 	   Subtle, professional borders

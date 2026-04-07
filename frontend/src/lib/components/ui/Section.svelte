@@ -38,6 +38,9 @@
     // Callbacks
     onToggle?: (expanded: boolean) => void;
 
+    // Reset key: increment to force-reset user toggle state (e.g., on major status transitions)
+    resetKey?: number | string;
+
     // Other
     id?: string;
     class?: string;
@@ -63,6 +66,7 @@
     padding = "md",
     marginBottom = "md",
     onToggle,
+    resetKey,
     id,
     class: className = "",
     heroStrip,
@@ -70,17 +74,36 @@
   }: Props = $props();
 
   let expanded = $state<boolean>(false);
+  let userHasToggled = $state(false);
   let prevDefaultOpen: boolean | undefined = undefined;
+  let prevResetKey: number | string | undefined = undefined;
 
-  // Sync expanded from defaultOpen only when the prop actually changes value
+  // Reset user toggle state when resetKey changes (major status transitions)
   $effect(() => {
-    if (prevDefaultOpen !== defaultOpen) {
-      prevDefaultOpen = defaultOpen;
-      expanded = defaultOpen;
+    if (resetKey !== undefined && prevResetKey !== resetKey) {
+      prevResetKey = resetKey;
+      userHasToggled = false;
     }
   });
 
+  // Sync expanded from defaultOpen only when the prop changes AND user hasn't manually toggled
+  $effect(() => {
+    if (prevDefaultOpen !== defaultOpen) {
+      prevDefaultOpen = defaultOpen;
+      if (!userHasToggled) {
+        expanded = defaultOpen;
+      }
+    }
+  });
+
+  function handleToggle() {
+    expanded = !expanded;
+    userHasToggled = true;
+    onToggle?.(expanded);
+  }
+
   const isExpandable = $derived(mode === "expandable");
+  const showBody = $derived(!isExpandable || expanded);
 
   // Badge variant mapping
   const badgeVariants: Record<
@@ -104,7 +127,8 @@
     <!-- Expandable header (clickable) -->
     <button
       class="section-header-row expandable-trigger"
-      onclick={() => { expanded = !expanded; onToggle?.(expanded); }}
+      onclick={handleToggle}
+      aria-expanded={expanded}
     >
       <div class="header-content">
         {#if Icon}
@@ -124,6 +148,25 @@
       </div>
       <ChevronDown class="chevron-icon {expanded ? 'expanded' : ''}" />
     </button>
+
+    <!-- Always-mounted body with CSS grid transition for smooth expand/collapse -->
+    <div
+      class="section-body"
+      class:section-body--open={showBody}
+      aria-hidden={!showBody}
+      inert={!showBody ? true : undefined}
+    >
+      <div class="section-body-inner">
+        {#if heroStrip}
+          <div class="hero-strip-container">
+            {@render heroStrip()}
+          </div>
+        {/if}
+        <div class="section-content">
+          {@render children()}
+        </div>
+      </div>
+    </div>
   {:else if headerSize === "lg"}
     <!-- Large static header (SectionHeader style) -->
     <div class="section-header-row header-lg">
@@ -144,6 +187,14 @@
         >
       {/if}
     </div>
+    {#if heroStrip}
+      <div class="hero-strip-container">
+        {@render heroStrip()}
+      </div>
+    {/if}
+    <div class="section-content">
+      {@render children()}
+    </div>
   {:else}
     <!-- Medium/Small static header (SubsectionHeader style) -->
     <div class="section-header-row header-inline">
@@ -157,15 +208,11 @@
         >
       {/if}
     </div>
-  {/if}
-
-  {#if heroStrip && (!isExpandable || expanded)}
-    <div class="hero-strip-container">
-      {@render heroStrip()}
-    </div>
-  {/if}
-
-  {#if !isExpandable || expanded}
+    {#if heroStrip}
+      <div class="hero-strip-container">
+        {@render heroStrip()}
+      </div>
+    {/if}
     <div class="section-content">
       {@render children()}
     </div>
@@ -300,9 +347,37 @@
     }
   }
 
-  /* Expandable sections have padding around content only */
-  .section-container.expandable > .section-content {
-    padding-top: 0.5rem;
+  /* ============================================
+	   Expandable Body (CSS grid transition)
+	   ============================================ */
+  .section-body {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 220ms ease-out;
+    overflow: hidden;
+  }
+
+  .section-body--open {
+    grid-template-rows: 1fr;
+  }
+
+  .section-body-inner {
+    overflow: hidden;
+  }
+
+  /* Expandable sections: inherit horizontal padding from variant.
+     The > .section-content rules above don't match expandable mode
+     because .section-content is nested inside .section-body > .section-body-inner. */
+  .padding-sm .section-body .section-content {
+    padding: 0.5rem 0.75rem 0.75rem;
+  }
+
+  .padding-md .section-body .section-content {
+    padding: 0.5rem 1.25rem 1.25rem;
+  }
+
+  .padding-lg .section-body .section-content {
+    padding: 0.5rem 1.5rem 1.5rem;
   }
 
   /* ============================================
@@ -434,7 +509,7 @@
     width: 1.25rem;
     height: 1.25rem;
     color: var(--color-text-muted);
-    transition: transform 0.2s ease;
+    transition: transform 0.2s ease-in-out;
   }
 
   :global(.chevron-icon.expanded) {
@@ -448,7 +523,7 @@
     padding: 1rem 1.25rem 0;
   }
 
-  .section-container.expandable > .hero-strip-container {
+  .section-body .hero-strip-container {
     padding-top: 0;
   }
 

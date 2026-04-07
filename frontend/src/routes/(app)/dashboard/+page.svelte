@@ -1,6 +1,7 @@
 <script lang="ts">
   import { page } from "$app/state";
   import { onDestroy, untrack } from "svelte";
+  import { beforeNavigate } from "$app/navigation";
   import { browser } from "$app/environment";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import { subscribeToProgress, isTerminalStatus } from "$lib/api";
@@ -182,12 +183,15 @@
     return jobUpdates.get(jobId) || initialJobs.find((j) => j.id === jobId);
   }
 
-  // Connect SSE for active jobs (including queued to catch status changes)
-  // Use $effect.pre with untrack() to prevent reactive tracking of map mutations
+  // Connect SSE only for jobs that are actively processing.
+  // AWAITING_SELECTION/REGENERATING don't need SSE on the dashboard — nothing changes
+  // server-side until the user acts. This also avoids exhausting the browser's
+  // HTTP/1.1 connection limit (6 per hostname) with idle SSE connections.
+  const SSE_STATUSES = ['PENDING', 'QUEUED', 'RUNNING', 'RUNNING_PHASE2'];
+
   $effect.pre(() => {
-    // Only track initialJobs for dependencies
     const activeJobsList = initialJobs.filter(
-      (j) => !isTerminalStatus(j.status),
+      (j) => SSE_STATUSES.includes(j.status),
     );
 
     // Use untrack to prevent tracking map mutations
@@ -200,12 +204,13 @@
             (data) => {
               jobUpdates.set(job.id, data as Job);
 
-              // Cleanup subscription if job reached terminal state
-              if (isTerminalStatus(data.status)) {
+              // Cleanup subscription if job no longer needs live updates
+              if (isTerminalStatus(data.status) || !SSE_STATUSES.includes(data.status)) {
                 sseUnsubscribers.get(job.id)?.();
                 sseUnsubscribers.delete(job.id);
-                // Prune completed job data after brief delay (allows final UI update)
-                setTimeout(() => jobUpdates.delete(job.id), 5000);
+                if (isTerminalStatus(data.status)) {
+                  setTimeout(() => jobUpdates.delete(job.id), 5000);
+                }
               }
             },
             (err) => console.warn(`SSE error for job ${job.id}:`, err.message),
@@ -215,11 +220,10 @@
         }
       }
 
-      // Cleanup subscriptions for jobs no longer active
-      // Use initialJobs.find() instead of getJobData() to avoid reading jobUpdates
+      // Cleanup subscriptions for jobs no longer needing SSE
       for (const [jobId] of sseUnsubscribers) {
         const job = initialJobs.find((j) => j.id === jobId);
-        if (!job || isTerminalStatus(job.status)) {
+        if (!job || !SSE_STATUSES.includes(job.status)) {
           sseUnsubscribers.get(jobId)?.();
           sseUnsubscribers.delete(jobId);
         }
@@ -227,7 +231,14 @@
     });
   });
 
-  // Cleanup on destroy
+  // Close SSE connections BEFORE navigation starts — frees HTTP/1.1 connection slots
+  // so the next page's __data.json fetch isn't blocked by open EventSource connections.
+  beforeNavigate(() => {
+    sseUnsubscribers.forEach((unsubscribe) => unsubscribe());
+    sseUnsubscribers.clear();
+  });
+
+  // Cleanup on destroy (fallback for non-navigation teardown)
   onDestroy(() => {
     sseUnsubscribers.forEach((unsubscribe) => unsubscribe());
     sseUnsubscribers.clear();

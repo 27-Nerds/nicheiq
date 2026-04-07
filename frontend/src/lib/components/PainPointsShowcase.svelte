@@ -4,7 +4,9 @@
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import { ArrowRight, CheckCircle } from "lucide-svelte";
+  import { fade } from "svelte/transition";
   import type { PainPointSummary } from "$lib/types/stageArtifacts";
+  import type { DiscoveryQuote } from "$lib/types/discovery";
 
   interface Props {
     painPoints: PainPointSummary[];
@@ -15,6 +17,7 @@
     solutionNames: string[];
     ideasRevealed: boolean;
     onRevealIdeas: () => void;
+    discoveryQuotes?: Record<string, DiscoveryQuote[]>;
   }
 
   let {
@@ -26,6 +29,7 @@
     solutionNames,
     ideasRevealed,
     onRevealIdeas,
+    discoveryQuotes,
   }: Props = $props();
 
   // Split by opportunity level
@@ -160,6 +164,19 @@
                 {(point.severity * 10).toFixed(1)}/10
               </span>
             </div>
+            {#if discoveryQuotes?.[point.title]?.length}
+              {@const q = discoveryQuotes[point.title][0]}
+              <div class="pp-quote" in:fade={{ duration: 200 }}>
+                <span class="pp-quote-upvote">&#9650; {q.upvotes.toLocaleString()}</span>
+                <span class="pp-quote-text">&ldquo;{q.text.length > 180 ? q.text.slice(0, 177) + '...' : q.text}&rdquo;</span>
+                <span class="pp-quote-attr">
+                  {#if q.subreddit}r/{q.subreddit}{/if}
+                  {#if q.source_url}
+                    &middot; <a href={q.source_url} target="_blank" rel="noopener noreferrer" class="pp-quote-link">View source &rarr;</a>
+                  {/if}
+                </span>
+              </div>
+            {/if}
           </article>
         {/each}
       </div>
@@ -200,6 +217,19 @@
                 {(point.severity * 10).toFixed(1)}/10
               </span>
             </div>
+            {#if discoveryQuotes?.[point.title]?.length}
+              {@const q = discoveryQuotes[point.title][0]}
+              <div class="pp-quote" in:fade={{ duration: 200 }}>
+                <span class="pp-quote-upvote">&#9650; {q.upvotes.toLocaleString()}</span>
+                <span class="pp-quote-text">&ldquo;{q.text.length > 180 ? q.text.slice(0, 177) + '...' : q.text}&rdquo;</span>
+                <span class="pp-quote-attr">
+                  {#if q.subreddit}r/{q.subreddit}{/if}
+                  {#if q.source_url}
+                    &middot; <a href={q.source_url} target="_blank" rel="noopener noreferrer" class="pp-quote-link">View source &rarr;</a>
+                  {/if}
+                </span>
+              </div>
+            {/if}
           </article>
         {/each}
       </CardGrid>
@@ -254,7 +284,7 @@
           onclick={onRevealIdeas}
           icon={ArrowRight}
           iconPosition="end"
-          label="See your ranked shortlist"
+          label="See your {solutionCount} validated solution ideas"
           class="btn-primary cta-btn"
         />
       </div>
@@ -445,6 +475,58 @@
     margin-left: auto;
   }
 
+  /* ===== Inline Quotes ===== */
+  .pp-quote {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--color-border);
+  }
+
+  .pp-quote-upvote {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: var(--text-sm);
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  .pp-quote-text {
+    font-size: var(--text-sm);
+    font-style: italic;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+  }
+
+  .pp-quote-attr {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--color-text-muted);
+    width: 100%;
+    margin-top: var(--space-1);
+  }
+
+  .pp-quote-link {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color var(--duration-fast) ease;
+  }
+
+  .pp-quote-link:hover {
+    color: var(--color-accent);
+  }
+
+  .pp-quote-link:active {
+    transform: scale(0.98);
+  }
+
   /* ===== Expand ===== */
   .expand-row {
     display: flex;
@@ -468,6 +550,10 @@
   .expand-btn:hover {
     color: var(--color-text-secondary);
     background: var(--color-bg-surface);
+  }
+
+  .expand-btn:active {
+    transform: scale(0.98);
   }
 
   /* ===== CTA Section ===== */

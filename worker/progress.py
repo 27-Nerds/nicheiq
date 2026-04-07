@@ -259,7 +259,7 @@ def publish_job_failed(job_id: str, error: str, stage: Optional[float] = None) -
 
 
 
-def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str, total_to_validate: int = 0, skip_validation: bool = False) -> None:
+def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str, total_to_validate: int = 0, skip_validation: bool = False, discovery_data_path: str = "", preview_report_path: str | None = None) -> None:
     """
     Notify backend that Phase 1 solution ideas are ready.
 
@@ -269,6 +269,8 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
         checkpoint_path: Path to phase 1 checkpoint
         total_to_validate: Number of solutions to validate
         skip_validation: If True, skip validation step
+        discovery_data_path: Path to materialized discovery data JSON
+        preview_report_path: Path to materialized preview report JSON
     """
     try:
         payload = {
@@ -278,7 +280,10 @@ def notify_ideas_ready(job_id: str, solutions: list[dict], checkpoint_path: str,
             "checkpoint_path": checkpoint_path,
             "total_to_validate": total_to_validate,
             "skip_validation": skip_validation,
+            "discovery_data_path": discovery_data_path,
         }
+        if preview_report_path:
+            payload["preview_report_path"] = preview_report_path
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/ideas-ready",

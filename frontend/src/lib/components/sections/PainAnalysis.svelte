@@ -9,6 +9,7 @@
     DollarSign,
     ArrowRight,
     CheckCircle,
+    Lock,
     Compass,
     Users,
     Flame,
@@ -49,9 +50,11 @@
     analytics: PainPointAnalytics;
     solution: SolutionDetails;
     topPainPointsSummary?: string[];
+    previewMode?: boolean;
+    onUnlockClick?: () => void;
   }
 
-  let { painPoints, analytics, solution, topPainPointsSummary }: Props =
+  let { painPoints, analytics, solution, topPainPointsSummary, previewMode = false, onUnlockClick }: Props =
     $props();
 
   // Tab state
@@ -208,11 +211,17 @@
           <Compass class="w-5 h-5 text-accent" />
         </div>
         <p class="journey-intro-text">
-          Through extensive research across social platforms, we identified
-          key pain points that users experience daily. Here's how <strong
-            >{solution.solution_name || "Solution"}</strong
-          >
-          directly addresses these challenges.
+          {#if previewMode}
+            Through extensive research across social platforms, we identified
+            key pain points that users experience daily. Run <strong>Deep Research</strong>
+            to see how a solution directly addresses each challenge.
+          {:else}
+            Through extensive research across social platforms, we identified
+            key pain points that users experience daily. Here's how <strong
+              >{solution.solution_name || "Solution"}</strong
+            >
+            directly addresses these challenges.
+          {/if}
         </p>
       </div>
 
@@ -295,21 +304,33 @@
               </div>
 
               <!-- Solution Card -->
-              <div class="solution-card-enhanced">
+              <div class="solution-card-enhanced" class:solution-card-locked={previewMode}>
                 <div class="solution-header">
-                  <CheckCircle class="w-4 h-4 text-success" />
-                  <span class="solution-label">How We Solve It</span>
+                  {#if previewMode}
+                    <Lock class="w-4 h-4 text-muted" />
+                    <span class="solution-label solution-label-locked">How We Solve It</span>
+                  {:else}
+                    <CheckCircle class="w-4 h-4 text-success" />
+                    <span class="solution-label">How We Solve It</span>
+                  {/if}
                 </div>
-                {#if painPoint.solution_approach}
-                  <!-- New: LLM-generated specific mapping -->
+                {#if previewMode}
+                  <div class="solution-skeleton">
+                    <div class="solution-skeleton-line"></div>
+                    <div class="solution-skeleton-line"></div>
+                    <div class="solution-skeleton-line"></div>
+                    <div class="solution-skeleton-line"></div>
+                    <div class="solution-skeleton-line"></div>
+                    <div class="solution-lock-chip">
+                      <Lock class="w-2.5 h-2.5" />
+                      <span>Deep Research</span>
+                    </div>
+                  </div>
+                {:else if painPoint.solution_approach}
                   <p class="solution-text">{painPoint.solution_approach}</p>
-                {:else if solution.core_features && solution.core_features[i]}
-                  <!-- Fallback: Old index-based mapping for legacy reports -->
-                  <p class="solution-text">{solution.core_features[i]}</p>
                 {:else if solution.core_features && solution.core_features[i]}
                   <p class="solution-text">{solution.core_features[i]}</p>
                 {:else}
-                  <!-- Final fallback: Generic value proposition -->
                   <p class="solution-text solution-generic">
                     {solution.value_proposition || solution.description}
                   </p>
@@ -319,6 +340,14 @@
           </AnimateOnScroll>
         {/each}
       </div>
+
+      {#if previewMode && onUnlockClick}
+        <div class="unlock-link-wrapper">
+          <button class="unlock-link" onclick={onUnlockClick}>
+            See how each problem maps to a solution — unlock Deep Research
+          </button>
+        </div>
+      {/if}
 
       <!-- Willingness to Pay Insight -->
       {#if topPainPoints.some((p) => p.willingness_to_pay > 0.5)}
@@ -366,11 +395,13 @@
             >
             <span class="stat-label">High Severity Issues</span>
           </div>
-          <div class="stat-item">
-            <span class="stat-value">{solution.core_features?.length || 0}</span
-            >
-            <span class="stat-label">Solution Features</span>
-          </div>
+          {#if !previewMode}
+            <div class="stat-item">
+              <span class="stat-value">{solution.core_features?.length || 0}</span
+              >
+              <span class="stat-label">Solution Features</span>
+            </div>
+          {/if}
           <div class="stat-item">
             <span class="stat-value">
               {formatScorePercent(avgWtp)}
@@ -815,10 +846,83 @@
     color: var(--color-text-muted);
   }
 
+  /* Locked solution card (preview mode) */
+  .solution-card-locked {
+    border-left-color: var(--color-border);
+  }
+
+  .solution-label-locked {
+    color: var(--color-text-muted);
+  }
+
+  .solution-skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    position: relative;
+  }
+
+  .solution-skeleton-line {
+    height: 0.875rem;
+    border-radius: 4px;
+    background: var(--color-bg-hover);
+    filter: blur(3px);
+  }
+
+  .solution-skeleton-line:nth-child(1) { width: 90%; }
+  .solution-skeleton-line:nth-child(2) { width: 75%; }
+  .solution-skeleton-line:nth-child(3) { width: 55%; }
+  .solution-skeleton-line:nth-child(4) { width: 85%; }
+  .solution-skeleton-line:nth-child(5) { width: 40%; }
+
+  .solution-lock-chip {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 2px 10px;
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border);
+    border-radius: 2rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+
+  .unlock-link-wrapper {
+    text-align: center;
+    padding: var(--space-6) 0 var(--space-2);
+  }
+
+  .unlock-link {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--color-accent);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-md);
+    transition: background-color 0.15s ease;
+  }
+
+  .unlock-link:hover {
+    background: rgba(240, 96, 48, 0.06);
+  }
+
   .wtp-insight {
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-success);
     border-radius: var(--radius-lg);
     padding: var(--space-6);
     margin-bottom: var(--space-8);

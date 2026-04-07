@@ -2,8 +2,10 @@
 Unit tests for parallel quote enrichment methods in PainPointCrew.
 
 Tests the Python-driven parallel enrichment that replaces Task 4:
-- _parse_search_results() - regex parsing of QuoteSearchTool output
-- _enrich_single_pain_point() - single pain point enrichment logic
+- _clean_quote_text() - formatting artifact removal
+- _build_relevance_terms() / _compute_quote_relevance() - relevance scoring
+- _parse_search_results() - regex parsing + 3-phase splitting
+- _enrich_single_pain_point() - contextual queries + relevance filtering
 - _run_parallel_quote_enrichment() - ThreadPoolExecutor orchestration
 
 These tests use mocking to isolate the methods from actual Knowledge/embedding dependencies.
@@ -153,6 +155,180 @@ def create_minimal_crew(enrichment_knowledge=None, niche="test niche"):
 
 
 # ============================================================================
+# TESTS: _clean_quote_text()
+# ============================================================================
+
+
+class TestCleanQuoteText:
+    """Tests for _clean_quote_text() static method."""
+
+    def test_strips_pts_markers(self):
+        assert PainPointCrew._clean_quote_text("[2 pts] Some comment text here") == "Some comment text here"
+
+    def test_strips_pts_marker_singular(self):
+        assert PainPointCrew._clean_quote_text("[1 pt] Single point comment") == "Single point comment"
+
+    def test_strips_list_prefix(self):
+        assert PainPointCrew._clean_quote_text("- Some list item text") == "Some list item text"
+
+    def test_strips_indented_list_prefix(self):
+        assert PainPointCrew._clean_quote_text("  - Nested reply text") == "Nested reply text"
+
+    def test_strips_likes_marker(self):
+        assert PainPointCrew._clean_quote_text("[5 likes] Tweet reply text") == "Tweet reply text"
+
+    def test_strips_source_tag(self):
+        assert PainPointCrew._clean_quote_text("Quote text [source: r/subreddit/t3_abc123]") == "Quote text"
+
+    def test_strips_markdown_header(self):
+        assert PainPointCrew._clean_quote_text("### Post Title Here") == "Post Title Here"
+
+    def test_strips_combined_formatting(self):
+        """Strip multiple formatting artifacts in one pass."""
+        raw = "- [85 pts] The software setup is terrible [source: post123]"
+        assert PainPointCrew._clean_quote_text(raw) == "The software setup is terrible"
+
+    def test_preserves_normal_text(self):
+        text = "This is a normal sentence without any formatting artifacts"
+        assert PainPointCrew._clean_quote_text(text) == text
+
+    def test_collapses_whitespace(self):
+        assert PainPointCrew._clean_quote_text("Too   many    spaces   here") == "Too many spaces here"
+
+    def test_operation_ordering_header_then_dash(self):
+        """Markdown header stripped first, then list prefix if present."""
+        assert PainPointCrew._clean_quote_text("### - Some header-list combo") == "Some header-list combo"
+
+
+# ============================================================================
+# TESTS: _build_relevance_terms() and _compute_quote_relevance()
+# ============================================================================
+
+
+class TestRelevanceScoring:
+    """Tests for relevance scoring methods."""
+
+    def test_build_relevance_terms_basic(self):
+        pp = UnvalidatedPainPoint(
+            title="Software Setup Issues",
+            description="Users struggle with confusing configuration",
+            mention_count=10,
+            anchor_keywords=["software setup", "configuration problems"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        assert "software" in terms
+        assert "setup" in terms
+        assert "confusing" in terms
+        assert "configuration" in terms
+        # Stopwords excluded
+        assert "with" not in terms
+        assert "the" not in terms
+
+    def test_build_relevance_terms_excludes_short_words(self):
+        pp = UnvalidatedPainPoint(
+            title="AI ML",
+            description="AI and ML tools are hard to use",
+            mention_count=5,
+            anchor_keywords=["AI tools", "ML setup"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        # 2-char words excluded
+        assert "ai" not in terms
+        assert "ml" not in terms
+        assert "tools" in terms
+
+    def test_compute_relevance_high_overlap(self):
+        pp = UnvalidatedPainPoint(
+            title="Manual Invoicing",
+            description="Users struggle with manual invoicing processes",
+            mention_count=10,
+            anchor_keywords=["manual invoicing", "invoice automation"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        quote = "I spend hours on manual invoicing every week and invoice automation would save us"
+        score = PainPointCrew._compute_quote_relevance(quote, terms, pp.anchor_keywords)
+        assert score > 0.2
+
+    def test_compute_relevance_no_overlap(self):
+        pp = UnvalidatedPainPoint(
+            title="Manual Invoicing",
+            description="Users struggle with invoicing processes",
+            mention_count=10,
+            anchor_keywords=["manual invoicing", "invoice pain"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        quote = "The cat sat on the mat and looked at the bird through the window"
+        score = PainPointCrew._compute_quote_relevance(quote, terms, pp.anchor_keywords)
+        assert score < 0.05
+
+    def test_compute_relevance_empty_terms(self):
+        """Handle empty relevance terms without division by zero."""
+        score = PainPointCrew._compute_quote_relevance("Some text here", frozenset(), [])
+        assert score == 0.0
+
+    def test_compute_relevance_denominator_floor(self):
+        """Short pain points don't inflate scores due to denominator floor of 5."""
+        pp = UnvalidatedPainPoint(
+            title="API Bugs",
+            description="API has bugs",
+            mention_count=5,
+            anchor_keywords=["api bugs", "bug reports"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        # Only "bugs" overlaps → 1/max(len(terms), 5), not 1/2
+        quote = "There are some bugs in the system that cause problems for users"
+        score = PainPointCrew._compute_quote_relevance(quote, terms, pp.anchor_keywords)
+        assert score < 0.5  # Would be 0.5 without floor
+
+    def test_compute_relevance_anchor_keyword_bonus_scales(self):
+        """Bonus scales with number of matching keywords."""
+        pp = UnvalidatedPainPoint(
+            title="Test",
+            description="Test description for testing",
+            mention_count=5,
+            anchor_keywords=["keyword alpha", "keyword beta", "keyword gamma"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        one_match = "This text contains keyword alpha but not others in a sufficiently long way"
+        two_matches = "This text contains keyword alpha and keyword beta in a sufficiently long way"
+        s1 = PainPointCrew._compute_quote_relevance(one_match, terms, pp.anchor_keywords)
+        s2 = PainPointCrew._compute_quote_relevance(two_matches, terms, pp.anchor_keywords)
+        assert s2 > s1
+
+    def test_allen_key_quote_rejected(self):
+        """The specific bug case: Allen key quote should score below threshold for software pain point."""
+        pp = UnvalidatedPainPoint(
+            title="Confusing Software Setup and Settings Tuning",
+            description="Users struggle with confusing software setup processes and unintuitive settings panels",
+            mention_count=10,
+            anchor_keywords=["software setup", "settings configuration", "confusing settings"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        bad_quote = (
+            "Getting an Allen bit for a drill or impact helps a lot but always start "
+            "by hand and final torque with an Allen key"
+        )
+        score = PainPointCrew._compute_quote_relevance(bad_quote, terms, pp.anchor_keywords)
+        assert score < 0.05, f"Allen key quote should be rejected, got score={score:.3f}"
+
+    def test_relevant_software_quote_accepted(self):
+        """A relevant quote about software setup should pass the threshold."""
+        pp = UnvalidatedPainPoint(
+            title="Confusing Software Setup and Settings Tuning",
+            description="Users struggle with confusing software setup processes and unintuitive settings panels",
+            mention_count=10,
+            anchor_keywords=["software setup", "settings configuration", "confusing settings"],
+        )
+        terms = PainPointCrew._build_relevance_terms(pp)
+        good_quote = (
+            "I spent 3 hours trying to configure the software settings and still "
+            "could not get it working properly for our dental practice"
+        )
+        score = PainPointCrew._compute_quote_relevance(good_quote, terms, pp.anchor_keywords)
+        assert score > 0.05, f"Software setup quote should be accepted, got score={score:.3f}"
+
+
+# ============================================================================
 # TESTS: _parse_search_results()
 # ============================================================================
 
@@ -168,10 +344,11 @@ class TestParseSearchResults:
 
         # Should extract at least one quote with 15+ words
         assert len(parsed) >= 1
-        # Each result is a (quote_text, post_id) tuple
-        for quote_text, post_id in parsed:
+        # Each result is a (quote_text, post_id, vector_score) tuple
+        for quote_text, post_id, vector_score in parsed:
             assert isinstance(quote_text, str)
             assert isinstance(post_id, str)
+            assert isinstance(vector_score, float)
             assert len(quote_text.split()) >= 15
 
     def test_parse_extracts_post_id(self, mock_search_result_standard):
@@ -181,9 +358,18 @@ class TestParseSearchResults:
         parsed = crew._parse_search_results(mock_search_result_standard)
 
         # Verify post_ids are extracted correctly
-        post_ids = [post_id for _, post_id in parsed]
+        post_ids = [post_id for _, post_id, _ in parsed]
         # At least one of these should be present
         assert any(pid in ["abc123", "def456", "ghi789"] for pid in post_ids)
+
+    def test_parse_extracts_vector_score(self, mock_search_result_standard):
+        """Verify vector score is extracted from result header."""
+        crew = create_minimal_crew()
+
+        parsed = crew._parse_search_results(mock_search_result_standard)
+
+        for _, _, vector_score in parsed:
+            assert 0.0 <= vector_score <= 1.0
 
     def test_parse_filters_short_quotes(self, mock_search_result_with_short_sentences):
         """Filter quotes with < 15 words."""
@@ -192,7 +378,7 @@ class TestParseSearchResults:
         parsed = crew._parse_search_results(mock_search_result_with_short_sentences)
 
         # All extracted quotes should have 15+ words
-        for quote_text, _ in parsed:
+        for quote_text, _, _ in parsed:
             word_count = len(quote_text.split())
             assert word_count >= 15, f"Quote has only {word_count} words: '{quote_text[:50]}...'"
 
@@ -225,7 +411,7 @@ This is the first sentence that definitely has more than fifteen words in it for
         # Should extract multiple sentences from same result (same post_id)
         assert len(parsed) >= 1
         # All should have same post_id
-        for _, post_id in parsed:
+        for _, post_id, _ in parsed:
             assert post_id == "multi123"
 
     def test_parse_handles_special_characters_in_content(self):
@@ -238,9 +424,57 @@ This quote has special characters like @mentions, #hashtags, and URLs https://ex
         parsed = crew._parse_search_results(result)
 
         assert len(parsed) >= 1
-        quote_text, post_id = parsed[0]
+        quote_text, post_id, _ = parsed[0]
         assert post_id == "special_123"
         assert "@mentions" in quote_text or "#hashtags" in quote_text or "https://" in quote_text
+
+    def test_parse_splits_reddit_list_items_on_newline(self):
+        """Split separate Reddit comments (newline + list marker) into separate quotes."""
+        crew = create_minimal_crew()
+
+        result = """--- Result 1 (score: 0.88, post_id: list123, source: reddit) ---
+- [85 pts] The software setup process took me three hours and I still couldn't get the settings configured properly for my practice
+- [42 pts] I completely agree the configuration wizard is terrible and needs to be redesigned from scratch to be more intuitive"""
+
+        parsed = crew._parse_search_results(result)
+
+        # Should produce 2 separate quotes, not 1 merged quote
+        assert len(parsed) == 2
+        # Both should be cleaned (no [N pts] or - prefix)
+        for quote_text, _, _ in parsed:
+            assert "[" not in quote_text
+            assert not quote_text.startswith("-")
+
+    def test_parse_splits_inline_pts_markers(self):
+        """Split comments merged on one line (lost newlines during chunking)."""
+        crew = create_minimal_crew()
+
+        # This simulates the specific bug: two comments on one line
+        result = """--- Result 1 (score: 0.85, post_id: merged123, source: reddit) ---
+- [2 pts] Getting an Allen bit for a drill or impact helps a lot but always start by hand and final torque with an Allen key - [2 pts] I spent a couple hours building mine and the instructions were confusing the whole time"""
+
+        parsed = crew._parse_search_results(result)
+
+        # Should produce 2 separate quotes, not 1 merged quote
+        assert len(parsed) == 2
+        for quote_text, _, _ in parsed:
+            assert "[2 pts]" not in quote_text
+            assert not quote_text.startswith("-")
+
+    def test_parse_cleans_formatting_artifacts(self):
+        """Quotes should have formatting artifacts removed."""
+        crew = create_minimal_crew()
+
+        result = """--- Result 1 (score: 0.90, post_id: fmt123, source: reddit) ---
+- [15 pts] I spent three hours trying to configure the software settings and still could not get it working properly for our business [source: r/software/t3_abc]"""
+
+        parsed = crew._parse_search_results(result)
+
+        assert len(parsed) >= 1
+        quote_text = parsed[0][0]
+        assert "[15 pts]" not in quote_text
+        assert "[source:" not in quote_text
+        assert not quote_text.startswith("-")
 
 
 # ============================================================================
@@ -251,27 +485,26 @@ This quote has special characters like @mentions, #hashtags, and URLs https://ex
 class TestEnrichSinglePainPoint:
     """Tests for _enrich_single_pain_point() method."""
 
-    def test_enrich_uses_anchor_keywords(self, mock_pain_point, mock_quote_search_tool):
-        """Verify searches use anchor_keywords from pain point."""
+    def test_enrich_uses_contextual_queries(self, mock_pain_point, mock_quote_search_tool):
+        """Verify searches use contextual queries (title + description), not bare keywords."""
         crew = create_minimal_crew(enrichment_knowledge=MagicMock())
 
         result = crew._enrich_single_pain_point(mock_pain_point, mock_quote_search_tool)
 
-        # Verify search tool was called with keywords
+        # Should be called: 1 description query + up to 3 keyword queries
         assert mock_quote_search_tool._run.called
-        # Check that keywords used are from the pain point
-        assert result.anchor_keywords_searched
-        for kw in result.anchor_keywords_searched:
-            assert kw in mock_pain_point.anchor_keywords
+        calls = [str(c) for c in mock_quote_search_tool._run.call_args_list]
+        # First call should include pain point description
+        first_call_arg = mock_quote_search_tool._run.call_args_list[0][0][0]
+        assert mock_pain_point.title in first_call_arg
 
-    def test_enrich_limits_keywords_to_4(self, mock_pain_point_many_keywords, mock_quote_search_tool):
-        """Only use first 4 anchor_keywords."""
+    def test_enrich_limits_keyword_queries_to_3(self, mock_pain_point_many_keywords, mock_quote_search_tool):
+        """Use at most 3 supplemental keyword queries + 1 description query = 4 total."""
         crew = create_minimal_crew(enrichment_knowledge=MagicMock())
 
         result = crew._enrich_single_pain_point(mock_pain_point_many_keywords, mock_quote_search_tool)
 
-        # Should only search first 4 keywords even if more available
-        assert len(result.anchor_keywords_searched) <= 4
+        # 1 description query + 3 keyword queries = 4 max
         assert mock_quote_search_tool._run.call_count <= 4
 
     def test_enrich_deduplicates_quotes(self, mock_pain_point):
@@ -285,7 +518,7 @@ I spend 3 hours every week on manual invoices and it's killing me. We need a bet
 
         result = crew._enrich_single_pain_point(mock_pain_point, mock_tool)
 
-        # Even with 4 keyword searches returning same quote, should only have 1 unique quote
+        # Even with 4 queries returning same quote, should only have 1 unique quote
         unique_texts = set(q.quote_text.lower().strip() for q in result.quotes)
         assert len(unique_texts) <= len(result.quotes)
 
@@ -296,7 +529,7 @@ I spend 3 hours every week on manual invoices and it's killing me. We need a bet
         # Create a mock that returns many quotes
         many_quotes_result = "\n\n".join([
             f"""--- Result {i} (score: 0.{90-i:02d}, post_id: post{i}, source: reddit) ---
-This is quote number {i} with enough words to pass the fifteen word minimum filter for testing purposes in this test case."""
+This is quote number {i} about manual invoicing with enough words to pass the fifteen word minimum filter for testing purposes in this test case."""
             for i in range(1, 20)  # 19 potential quotes
         ])
 
@@ -336,14 +569,12 @@ This is quote number {i} with enough words to pass the fifteen word minimum filt
         assert isinstance(result.search_summary, str)
 
     def test_enrich_with_empty_keywords(self):
-        """Handle pain point with no anchor keywords gracefully."""
+        """Handle pain point with minimal anchor keywords gracefully."""
         crew = create_minimal_crew(enrichment_knowledge=MagicMock())
 
-        # Create pain point with minimum keywords but simulate empty after slicing
         mock_tool = MagicMock()
         mock_tool._run.return_value = ""
 
-        # Create a pain point (min 2 keywords required by model)
         pp = UnvalidatedPainPoint(
             title="Test",
             description="Test description",
@@ -368,6 +599,58 @@ This is quote number {i} with enough words to pass the fifteen word minimum filt
             assert hasattr(quote, "post_id")
             assert quote.quote_text  # Non-empty
             assert quote.post_id  # Non-empty
+
+    def test_enrich_rejects_irrelevant_quotes(self):
+        """Quotes with low relevance to the pain point are filtered out."""
+        crew = create_minimal_crew(enrichment_knowledge=MagicMock())
+
+        pp = UnvalidatedPainPoint(
+            title="Confusing Software Setup",
+            description="Users struggle with confusing software setup and configuration",
+            mention_count=10,
+            anchor_keywords=["software setup", "confusing configuration"],
+        )
+
+        # Return an irrelevant quote about physical assembly
+        mock_tool = MagicMock()
+        mock_tool._run.return_value = """--- Result 1 (score: 0.78, post_id: irrelevant1, source: reddit) ---
+Getting an Allen bit for a drill or impact helps a lot but always start by hand and final torque with an Allen key for best results"""
+
+        result = crew._enrich_single_pain_point(pp, mock_tool)
+
+        # The irrelevant quote should be filtered out
+        assert len(result.quotes) == 0
+
+    def test_enrich_sorts_by_combined_score(self):
+        """Quotes are ranked by combined vector + relevance score."""
+        crew = create_minimal_crew(enrichment_knowledge=MagicMock())
+
+        pp = UnvalidatedPainPoint(
+            title="Manual Invoicing",
+            description="Users struggle with manual invoicing processes",
+            mention_count=10,
+            anchor_keywords=["manual invoicing", "invoice problems"],
+        )
+
+        # Return two quotes: one with higher vector score but lower relevance,
+        # another with lower vector score but higher relevance
+        mock_tool = MagicMock()
+        mock_tool._run.side_effect = [
+            # Description query returns medium-relevance quote
+            """--- Result 1 (score: 0.92, post_id: post1, source: reddit) ---
+The billing system has some issues that affect our workflow and take time to resolve for the accounting team members""",
+            # First keyword query returns high-relevance quote
+            """--- Result 1 (score: 0.85, post_id: post2, source: reddit) ---
+Manual invoicing is killing our small business and we desperately need invoice automation to save time and reduce errors""",
+            # Other queries return nothing
+            "",
+            "",
+        ]
+
+        result = crew._enrich_single_pain_point(pp, mock_tool)
+
+        # Both should be included (both relevant enough) and sorted by combined score
+        assert len(result.quotes) >= 1
 
 
 # ============================================================================
@@ -629,17 +912,17 @@ class TestParallelEnrichmentIntegration:
 
         pain_point = UnvalidatedPainPoint(
             title="Manual Invoicing",
-            description="Users struggle with manual invoicing",
+            description="Users struggle with manual invoicing processes taking too much time",
             mention_count=20,
             anchor_keywords=["manual invoicing", "invoice automation"],
         )
 
-        # Realistic search results
+        # Realistic search results with quotes that are individually 15+ words AND relevant
         search_result = """--- Result 1 (score: 0.92, post_id: abc123, source: reddit) ---
-I spend 3 hours every week on manual invoices and it's killing me. We need a better solution for our small business that integrates with our existing accounting software.
+I spend at least 3 hours every single week on manual invoicing and it is absolutely killing our productivity at work.
 
 --- Result 2 (score: 0.87, post_id: def456, source: reddit) ---
-Our invoicing process is completely manual and error-prone. I've lost count of how many times we've sent duplicate invoices."""
+Our manual invoicing process is completely error-prone and we have lost count of how many times we sent duplicate invoices to clients."""
 
         mock_tool = MagicMock()
         mock_tool._run.return_value = search_result
@@ -652,18 +935,18 @@ Our invoicing process is completely manual and error-prone. I've lost count of h
         for quote in result.quotes:
             assert quote.post_id in ["abc123", "def456"]
 
-    def test_quote_deduplication_across_keywords(self):
-        """Verify deduplication works when same quote found via different keywords."""
+    def test_quote_deduplication_across_queries(self):
+        """Verify deduplication works when same quote found via different queries."""
         crew = create_minimal_crew(enrichment_knowledge=MagicMock())
 
         pain_point = UnvalidatedPainPoint(
             title="Test Pain Point",
-            description="Test description",
+            description="Test description for deduplication testing",
             mention_count=10,
             anchor_keywords=["keyword one", "keyword two", "keyword three"],
         )
 
-        # Same quote returned for different keywords
+        # Same quote returned for different queries
         identical_result = """--- Result 1 (score: 0.90, post_id: same123, source: reddit) ---
 This is the exact same quote that should be deduplicated across multiple keyword searches in testing."""
 
@@ -672,7 +955,7 @@ This is the exact same quote that should be deduplicated across multiple keyword
 
         result = crew._enrich_single_pain_point(pain_point, mock_tool)
 
-        # Should only have 1 unique quote despite being found 3 times (once per keyword)
+        # Should only have 1 unique quote despite being found via 4 queries
         assert len(result.quotes) == 1
 
     def test_enrichment_result_structure_for_merge(self):

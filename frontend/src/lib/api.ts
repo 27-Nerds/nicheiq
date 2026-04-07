@@ -257,6 +257,26 @@ export async function getReportSummary(jobId: string): Promise<ReportSummary> {
 }
 
 /**
+ * Get materialized discovery evidence data (quotes, audience, influencers)
+ * Returns null on 404 (old jobs without discovery data asset)
+ */
+export async function getDiscoveryData(jobId: string): Promise<import('$lib/types/discovery').DiscoveryData | null> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/discovery-data`);
+  if (response.status === 404) return null;
+  return handleResponse<import('$lib/types/discovery').DiscoveryData>(response);
+}
+
+/**
+ * Get preview report data (Phase 1 materialized into Report-shaped JSON)
+ * Returns null on 404 (old jobs without preview report asset)
+ */
+export async function getPreviewReport(jobId: string): Promise<import('$lib/types/previewReport').PreviewReport | null> {
+  const response = await fetch(`${API_BASE}/jobs/${jobId}/preview-report`);
+  if (response.status === 404) return null;
+  return handleResponse<import('$lib/types/previewReport').PreviewReport>(response);
+}
+
+/**
  * Get download URL for report
  */
 export function getReportUrl(jobId: string): string {

@@ -166,7 +166,7 @@
   </header>
 
   <main class="flex-1">
-    {#if page.route.id?.endsWith('/report') || page.route.id?.endsWith('/new')}
+    {#if page.route.id?.endsWith('/report') || page.route.id?.endsWith('/new') || page.route.id?.endsWith('/preview') || page.route.id?.match(/\/jobs\/[^/]+$/)}
       {@render children()}
     {:else}
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
