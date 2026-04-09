@@ -24,6 +24,13 @@
     Package,
     Share2,
     BarChart3,
+    DollarSign,
+    Search,
+    Coins,
+    TrendingUp,
+    Briefcase,
+    Code,
+    Database,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
@@ -42,7 +49,7 @@
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import PreviewSolutionSelector from "$lib/components/preview/PreviewSolutionSelector.svelte";
   import GenerationSlideshow from "$lib/components/preview/GenerationSlideshow.svelte";
-  import LockedSection from "$lib/components/preview/LockedSection.svelte";
+
   import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
   import MarketSnapshot from "$lib/components/preview/MarketSnapshot.svelte";
   import DiscoveryEvidence from "$lib/components/discovery/DiscoveryEvidence.svelte";
@@ -54,6 +61,7 @@
     placeholderExecutiveDashboard,
     placeholderCompetitors,
   } from "$lib/data/previewPlaceholders";
+  import { stripLeadingArticle, titleCase } from "$lib/utils/format";
   import { PHASES, PARALLEL_STAGE_GROUPS } from "$lib/components/job/phaseConfig";
   import { STAGE_MAP, REPORT_ICON } from "$lib/config/billable-stages";
   import { getSolutions } from "$lib/api";
@@ -480,10 +488,51 @@
     previewReport?.audience_mapping?.audience_segments?.length ?? 0
   );
 
-  // Placeholder data for locked sections
+  // Placeholder data for locked sections — use short niche name, not full description
   const niche = $derived(previewReport?.niche ?? job?.niche ?? '');
-  const placeholderExec = $derived(placeholderExecutiveDashboard(niche));
-  const placeholderComp = $derived(placeholderCompetitors(niche));
+  const placeholderNiche = $derived(stripLeadingArticle(nicheName || niche));
+  const placeholderExec = $derived(placeholderExecutiveDashboard(placeholderNiche));
+  const placeholderComp = $derived(placeholderCompetitors(placeholderNiche));
+
+  // Real top pain point for preview hero (correct 0-1 scale)
+  const topRealPain = $derived(
+    (previewReport?.detailed_pain_points ?? [])
+      .slice()
+      .sort((a: any, b: any) => (b.severity_score ?? 0) - (a.severity_score ?? 0))[0] ?? null
+  );
+
+  // Preview hero: mix real Phase 1 data with fake Phase 2 data
+  const previewHeroReport = $derived({
+    ...placeholderExec,
+    detailed_pain_points: previewReport?.detailed_pain_points ?? placeholderExec.detailed_pain_points,
+    pain_point_analytics: previewReport?.pain_point_analytics ?? null,
+    evidence_appendix: previewReport?.evidence_appendix ?? null,
+    executive_dashboard: {
+      ...placeholderExec.executive_dashboard,
+      core_pain_point: topRealPain ? {
+        title: topRealPain.title,
+        severity_score: topRealPain.severity_score,
+        willingness_to_pay_score: topRealPain.willingness_to_pay ?? 0,
+      } : placeholderExec.executive_dashboard?.core_pain_point,
+    },
+  } as import('$lib/types/report').Report);
+
+  const realFunnelStats = $derived({
+    scanned: discoveryData?.methodology?.urls_searched ?? 0,
+    relevant: discoveryData?.methodology?.urls_relevant ?? discussionCount,
+    analyzed: previewReport?.research_metadata?.reddit_posts_analyzed ?? discussionCount,
+    problems: previewPainPointCount,
+  });
+
+  const unlockSections = [
+    { icon: DollarSign, title: 'Market Sizing', teaser: 'Total addressable market and revenue projections' },
+    { icon: Search, title: 'SEO Keyword Strategy', teaser: 'Full keyword map with search volumes and difficulty scores' },
+    { icon: Coins, title: 'Pricing & Revenue Model', teaser: 'Monetization tiers and willingness-to-pay analysis' },
+    { icon: TrendingUp, title: 'Trend Longevity Analysis', teaser: 'Trend trajectory, momentum signals, and reversal risks' },
+    { icon: Briefcase, title: 'Go-to-Market Playbook', teaser: 'Launch sequence, channel strategy, and first 90-day plan' },
+    { icon: Code, title: 'Technical Blueprint', teaser: 'Stack recommendations, MVP scope, and build timeline' },
+    { icon: Database, title: 'Data Infrastructure', teaser: 'Data sources and integration architecture' },
+  ];
 
   // Sticky bar state
   let ctaBannerRef = $state<HTMLElement | null>(null);
@@ -585,7 +634,7 @@
 </script>
 
 <svelte:head>
-  <title>{job ? `${nicheName || job.niche} — ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
+  <title>{job ? `${titleCase(nicheName) || job.niche} — ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
 </svelte:head>
 
 <div class="job-page-shell">
@@ -612,8 +661,8 @@
       <PageHeader
         icon={Telescope}
         breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-        breadcrumbCurrent={nicheName || 'Research'}
-        title={nicheName || 'Research Progress'}
+        breadcrumbCurrent={titleCase(nicheName) || 'Research'}
+        title={titleCase(nicheName) || 'Research Progress'}
       >
         {#snippet metadata()}
           {#if job && nicheName !== job.niche}
@@ -820,7 +869,7 @@
         <!-- Pain Points -->
         {#if previewReport?.detailed_pain_points?.length}
           <ExpandableSection
-            title="Pain Point Analysis"
+            title="Pain Points"
             count={previewPainPointCount}
             countSuffix="clusters"
             variant="success"
@@ -873,17 +922,11 @@
             resetKey={sectionResetKey}
             id="community"
           >
-            <p class="section-intro">Where do these conversations happen? Source communities and top evidence threads.</p>
             <CommunitySourcesSection
               subredditNames={discoveryData?.subreddit_names}
               communityHubs={previewReport?.audience_mapping?.community_hubs}
-              topThreads={previewReport?.evidence_appendix?.top_reddit_threads}
               postsAnalyzed={previewReport?.research_metadata?.reddit_posts_analyzed}
             />
-
-            {#if discoveryData?.social_posts_sample?.length}
-              <DiscoveryEvidence data={discoveryData} />
-            {/if}
 
             {#if discoveryData?.methodology}
               <p class="methodology-note">
@@ -891,6 +934,10 @@
                 {discoveryData.methodology.urls_relevant} relevant ({discoveryData.methodology.filtering_rate}%) &middot;
                 {discoveryData.methodology.quality_tier} quality
               </p>
+            {/if}
+
+            {#if discoveryData?.social_posts_sample?.length}
+              <DiscoveryEvidence data={discoveryData} />
             {/if}
           </ExpandableSection>
         {/if}
@@ -900,7 +947,7 @@
           <ExpandableSection
             title="Opportunities"
             count={displaySolutions.length}
-            countSuffix="ideas"
+            countSuffix="opportunities"
             variant="accent"
             defaultOpen={discoveryOpen}
             resetKey={sectionResetKey}
@@ -953,38 +1000,50 @@
           />
         {/if}
 
-        <!-- ═══ LOCKED DEEP RESEARCH SECTIONS ═══ -->
+        <!-- ═══ DEEP RESEARCH PREVIEW SECTIONS ═══ -->
         {#if !isCompleted}
-          <!-- Keep 2 high-impact blurred previews for Zeigarnik curiosity -->
-          {#each LOCKED_PREVIEW_SECTIONS.filter(c => c.id === 'unified-hero' || c.id === 'competitors') as config (config.id)}
-            <section id={config.id} class="locked-section-wrapper">
-              <LockedSection
-                sectionNumber={config.sectionNumber}
-                title={config.title}
-                teaser={isGeneratingP2
-                  ? `Generating... stage ${adjustedStagesCompleted}/${adjustedTotalStages}`
-                  : config.teaser}
-              >
-                {#if config.id === 'unified-hero'}
-                  <UnifiedHero report={placeholderExec} nicheName={niche} nicheDescription={`Analysis of the ${niche} market`} funnelStats={{ scanned: 120, relevant: 79, analyzed: 50, problems: 4 }} />
-                {:else if config.id === 'competitors'}
-                  <Competitors profiles={placeholderComp.profiles} analysis={placeholderComp.analysis} analytics={placeholderComp.analytics} selectedSolutionName={`${niche} Opportunity Analyzer`} />
-                {/if}
-              </LockedSection>
-            </section>
-          {/each}
+          <!-- Generation progress -->
+          {#if isGeneratingP2}
+            <p class="generation-status">Generating... stage {adjustedStagesCompleted}/{adjustedTotalStages}</p>
+          {/if}
 
-          <!-- Compact pill card for remaining locked sections -->
+          <!-- Tier 1: UnifiedHero with real Phase 1 data + blurred Phase 2 -->
+          <section id="unified-hero">
+            <UnifiedHero
+              report={previewHeroReport}
+              nicheName={nicheName}
+              nicheDescription={previewReport?.niche_context?.niche_description ?? `Analysis of the ${niche} market`}
+              funnelStats={realFunnelStats}
+              previewMode={true}
+            />
+          </section>
+
+          <!-- Tier 2: Competitors fully blurred (structure preview) -->
+          <section id="competitors">
+            <Competitors
+              profiles={placeholderComp.profiles}
+              analysis={placeholderComp.analysis}
+              analytics={placeholderComp.analytics}
+              selectedSolutionName={`${placeholderNiche} Opportunity Analyzer`}
+              previewMode={true}
+            />
+          </section>
+
+          <!-- Tier 3: Remaining sections value list -->
           <div class="unlock-card">
-            <h3 class="unlock-title">
-              {LOCKED_PREVIEW_SECTIONS.filter(c => c.id !== 'unified-hero' && c.id !== 'competitors').length + ADDITIONAL_LOCKED_SECTIONS.length} more sections unlock with Deep Research
-            </h3>
-            <div class="unlock-pills">
-              {#each LOCKED_PREVIEW_SECTIONS.filter(c => c.id !== 'unified-hero' && c.id !== 'competitors') as config}
-                <span class="unlock-pill">{config.title}</span>
-              {/each}
-              {#each ADDITIONAL_LOCKED_SECTIONS as title}
-                <span class="unlock-pill unlock-pill--extra">{title}</span>
+            <div class="unlock-header">
+              <span class="unlock-count">{unlockSections.length}</span>
+              <h3 class="unlock-title">Also included in Deep Research</h3>
+            </div>
+
+            <div class="unlock-list">
+              {#each unlockSections as section}
+                {@const Icon = section.icon}
+                <div class="unlock-row">
+                  <Icon size={15} class="unlock-row-icon" />
+                  <span class="unlock-row-title">{section.title}</span>
+                  <span class="unlock-row-teaser">{section.teaser}</span>
+                </div>
               {/each}
             </div>
           </div>
@@ -1069,6 +1128,10 @@
           {/if}
         </div>
       </div>
+    {/if}
+
+    {#if isSelectionPhase}
+      <div class="sticky-bar-spacer" aria-hidden="true"></div>
     {/if}
   </main>
 </div>
@@ -1248,57 +1311,82 @@
     color: var(--color-text-primary);
   }
 
-  /* ═══ Unlock card (compact pill list) ═══ */
+  /* ═══ Unlock card (value list) ═══ */
   .unlock-card {
-    padding: 1.25rem 1.5rem;
+    padding: 1.25rem;
     margin-bottom: 1rem;
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg, 0.75rem);
   }
 
+  .unlock-header {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    margin-bottom: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  .unlock-count {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-accent);
+    line-height: 1;
+  }
+
   .unlock-title {
     font-family: var(--font-display);
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--color-text-secondary);
-    margin: 0 0 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin: 0;
   }
 
-  .unlock-pills {
+  .unlock-list {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.375rem;
+    flex-direction: column;
+    gap: 0.625rem;
   }
 
-  .unlock-pill {
-    font-size: 0.75rem;
-    font-weight: 500;
-    padding: 0.25rem 0.625rem;
-    background: var(--color-accent-subtle);
-    border: 1px solid var(--color-border-accent);
-    border-radius: 9999px;
-    color: var(--color-accent);
-    white-space: nowrap;
+  .unlock-row {
+    display: grid;
+    grid-template-columns: 1rem 1fr;
+    column-gap: var(--space-3);
+    row-gap: 0.0625rem;
+    align-items: baseline;
   }
 
-  .unlock-pill--extra {
-    background: var(--color-bg-surface);
-    border-color: var(--color-border);
+  :global(.unlock-row-icon) {
     color: var(--color-text-muted);
+    grid-row: 1 / 3;
+    align-self: start;
+    margin-top: 0.125rem;
   }
 
-  @media (max-width: 639px) {
-    .unlock-pills {
-      max-height: 4.5rem;
-      overflow: hidden;
-      position: relative;
-    }
+  .unlock-row-title {
+    font-family: var(--font-display);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
   }
 
-  /* ═══ Locked section wrapper ═══ */
-  .locked-section-wrapper {
-    padding-bottom: 0.75rem;
+  .unlock-row-teaser {
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    line-height: 1.4;
+    grid-column: 2;
+  }
+
+  .generation-status {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--color-accent);
+    text-align: center;
+    padding: 0.5rem 0;
+    letter-spacing: 0.02em;
   }
 
   /* ═══ Report summary (completed state) ═══ */
@@ -1361,6 +1449,10 @@
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
+  }
+
+  .sticky-bar-spacer {
+    height: 5rem;
   }
 
   /* ═══ Sticky bar ═══ */

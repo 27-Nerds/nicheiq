@@ -392,7 +392,7 @@
   }
 
   .mb-md {
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
   }
 
   .mb-lg {
@@ -435,8 +435,8 @@
     padding: 1rem 1.25rem 0;
   }
 
-  /* Large header (lg static) */
-  .header-lg {
+  /* Large header (lg static) — scoped to header row only */
+  .section-header-row.header-lg {
     gap: 1rem;
     padding: 1.25rem 1.25rem 0;
     align-items: flex-start;

@@ -33,10 +33,6 @@ from ..utils.validation.crew_guardrails import (
     validate_quote_enrichment,
 )
 
-# Source tracking pattern for [source: ID] suffixes
-# Matches alphanumeric, dash, underscore, period (1-50 chars) for post/thread IDs
-SOURCE_TAG_PATTERN = r'[\w\-_\.]{1,50}'
-
 # Fuzzy matching threshold for pain point title matching (0.0-1.0)
 # 0.85 = 85% similarity required to consider a match
 FUZZY_MATCH_THRESHOLD = 0.85
@@ -1204,84 +1200,6 @@ class PainPointCrew:
             process_type="sequential",  # Tasks run in order
             embedder=embedder_config,
         )
-
-    def _extract_and_clean_sources(self, pain_points: list[UnvalidatedPainPoint]) -> list[UnvalidatedPainPoint]:
-        """
-        Extract source_post_ids from [source: ID] suffixes in quotes and clean quote text.
-
-        This implements CrewAI's recommended approach for source tracking:
-        embed source metadata within chunk content itself, then extract post-processing.
-
-        IMPORTANT: This method modifies pain_points in-place (Pydantic models are mutable).
-        Side effects:
-        - Updates pp.source_post_ids with extracted IDs
-        - Updates pp.representative_quotes with cleaned text (no [source: ID] suffixes)
-
-        Args:
-            pain_points: List of UnvalidatedPainPoint objects with quotes containing [source: ID]
-
-        Returns:
-            List of pain points with source_post_ids populated and quotes cleaned (same list, modified)
-        """
-        import re
-
-        logger.info(f"[Stage 6] Extracting source IDs from {len(pain_points)} pain points...")
-
-        for pp in pain_points:
-            quote_source_ids: list[str] = []  # Parallel with cleaned_quotes
-            cleaned_quotes = []
-
-            for quote in pp.representative_quotes:
-                # Extract all [source: ID] patterns using module-level pattern constant
-                all_matches = re.findall(rf'\[source: ({SOURCE_TAG_PATTERN})\]', quote)
-                if len(all_matches) > 1:
-                    logger.warning(
-                        f"Quote has {len(all_matches)} source tags, using first: "
-                        f"'{quote[:50]}...'"
-                    )
-                if all_matches:
-                    quote_source_ids.append(all_matches[0])
-                    # Remove [source: ID] suffix from quote text
-                    cleaned_quote = re.sub(rf'\s*\[source: {SOURCE_TAG_PATTERN}\]', '', quote).strip()
-                    cleaned_quotes.append(cleaned_quote)
-                else:
-                    # Empty string = unknown source, preserves parallel alignment
-                    quote_source_ids.append("")
-                    logger.debug(
-                        f"Quote missing [source: ID] suffix in '{pp.title[:30]}...': "
-                        f"'{quote[:50]}...'"
-                    )
-                    cleaned_quotes.append(quote)
-
-            # Update pain point: parallel array (may have duplicates and empty strings)
-            pp.source_post_ids = quote_source_ids
-            pp.representative_quotes = cleaned_quotes
-
-            # Bound mention_count using unique non-empty source IDs as a floor
-            unique_sources = {sid for sid in quote_source_ids if sid}
-            if unique_sources:
-                source_count = len(unique_sources)
-                if pp.mention_count < source_count:
-                    pp.mention_count = source_count
-                elif pp.mention_count > source_count * 10:
-                    logger.warning(
-                        f"Pain point '{pp.title[:40]}': mention_count {pp.mention_count} "
-                        f"vs {source_count} sources, capping at {source_count * 10}"
-                    )
-                    pp.mention_count = source_count * 10
-
-            # Log extraction results for this pain point
-            if unique_sources:
-                logger.info(
-                    f"[Stage 6] '{pp.title[:50]}...': Extracted {len(unique_sources)} unique source ID(s) "
-                    f"from {len(pp.representative_quotes)} quote(s)"
-                )
-            else:
-                logger.warning(
-                    f"[Stage 6] '{pp.title[:50]}...': No source IDs found in {len(pp.representative_quotes)} quote(s)"
-                )
-
-        return pain_points
 
     def analyze(self) -> PainPointAnalysisResult:
         """

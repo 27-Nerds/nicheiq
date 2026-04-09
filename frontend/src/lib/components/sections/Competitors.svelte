@@ -38,6 +38,7 @@
     landscapeMatrix?: CompetitiveLandscapeMatrix;
     summary?: string;
     selectedSolutionName?: string;
+    previewMode?: boolean;
   }
 
   let {
@@ -47,6 +48,7 @@
     landscapeMatrix,
     summary,
     selectedSolutionName,
+    previewMode = false,
   }: Props = $props();
 
   // Merged competitor type
@@ -184,9 +186,10 @@
   headerSize="lg"
   elevated={false}
   border="none"
-  padding="container"
+  padding={previewMode ? "none" : "container"}
   marginBottom="none"
 >
+  <div class:preview-locked={previewMode}>
   <!-- Hero Strip -->
   <HeroStrip>
     {#snippet primary()}
@@ -230,7 +233,7 @@
     <div class="insight-card insight-card--accent key-competitors-strip">
       <Target class="strip-icon" />
       <span class="strip-label">Key Competitors:</span>
-      <div class="strip-badges">
+      <div class="strip-badges" class:preview-blur={previewMode}>
         {#each landscapeMatrix.selected_solution_competitors as competitor}
           <Badge variant="accent">{competitor}</Badge>
         {/each}
@@ -247,7 +250,7 @@
         {/if}
       </div>
       {#if selectedIntensityDescription}
-        <p class="strip-description">{selectedIntensityDescription}</p>
+        <p class="strip-description" class:preview-blur={previewMode}>{selectedIntensityDescription}</p>
       {/if}
     </div>
   {/if}
@@ -255,7 +258,7 @@
   <!-- Competitive Summary (if available) -->
   {#if summary}
     <div class="summary-card">
-      <p class="summary-text">{@html renderMarkdown(summary)}</p>
+      <p class="summary-text" class:preview-blur={previewMode}>{@html renderMarkdown(summary)}</p>
     </div>
   {/if}
 
@@ -266,8 +269,9 @@
       icon={Crosshair}
       count={selectedLandscape.market_gaps.length}
       variant="success"
+      defaultOpen={previewMode}
     >
-      <div class="opportunities-list">
+      <div class="opportunities-list" class:preview-blur={previewMode}>
         {#each selectedLandscape.market_gaps as gap, i}
           <div class="opportunity-item">
             <span class="opportunity-number">{i + 1}</span>
@@ -284,8 +288,9 @@
       title="Competitive Landscape"
       icon={Layers}
       count={totalCompetitors}
+      defaultOpen={previewMode}
     >
-      <div class="competitors-list">
+      <div class="competitors-list" class:preview-blur={previewMode}>
         <!-- Selected Solution Competitors -->
         {#each mergedCompetitors.selected as comp (comp.name)}
           {@const isExpanded = expandedName === comp.name}
@@ -450,7 +455,7 @@
       icon={BarChart3}
       count={analytics.feature_comparison.feature_groups.length}
     >
-      <div class="table-container">
+      <div class="table-container" class:preview-blur={previewMode}>
         <table class="feature-table">
           <thead>
             <tr>
@@ -489,7 +494,7 @@
       icon={BarChart3}
       count={featureList.length}
     >
-      <div class="table-container">
+      <div class="table-container" class:preview-blur={previewMode}>
         <table class="feature-table">
           <thead>
             <tr>
@@ -524,11 +529,12 @@
   <!-- Expandable: Strategic Recommendations -->
   {#if analysis?.strategic_recommendations}
     <ExpandableSection title="Strategic Recommendations" icon={TrendingUp}>
-      <div class="recommendations-content">
+      <div class="recommendations-content" class:preview-blur={previewMode}>
         {@html renderMarkdown(analysis.strategic_recommendations)}
       </div>
     </ExpandableSection>
   {/if}
+  </div>
 </Section>
 
 <style>
@@ -1011,5 +1017,27 @@
       align-items: flex-start;
       gap: 0.5rem;
     }
+  }
+
+  /* ── Preview mode ── */
+  .preview-locked {
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .preview-blur {
+    filter: blur(5px);
+    opacity: 0.5;
+  }
+
+  /* Blur HeroStrip data values, keep labels clear */
+  .preview-locked :global(.hero-metric__value),
+  .preview-locked :global(.hero-metric__bar-fill),
+  .preview-locked :global(.hero-metric__footer),
+  .preview-locked :global(.hero-primary__sublabel),
+  .preview-locked :global(.hero-primary__value),
+  .preview-locked :global(.hero-primary__ring) {
+    filter: blur(5px);
+    opacity: 0.5;
   }
 </style>

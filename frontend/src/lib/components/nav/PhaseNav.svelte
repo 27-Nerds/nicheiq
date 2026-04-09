@@ -1,10 +1,11 @@
 <script lang="ts">
   import {
     PHASES,
-    DEEP_RESEARCH_PREVIEW_IDS,
+    DEEP_RESEARCH_BLURRED_PREVIEW_IDS,
     type PhaseConfig,
     type SectionConfig,
   } from "$lib/config/phase-sections";
+  import Tooltip from "$lib/components/ui/Tooltip.svelte";
 
   interface Props {
     jobStatus: string;
@@ -51,13 +52,11 @@
     }
   });
 
-  // Deep research: preview-able vs fully locked
+  // Deep research: blurred previews (scrollable) vs fully locked
   const deepResearchPhase = PHASES.find(p => p.id === 'deep-research')!;
-  const hiddenLockedSections = $derived(
-    deepResearchPhase.sections.filter(s => !DEEP_RESEARCH_PREVIEW_IDS.includes(s.id))
+  const lockedNonPreviewSections = $derived(
+    deepResearchPhase.sections.filter(s => !DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id))
   );
-  const peekSections = $derived(hiddenLockedSections.slice(0, 2));
-  const remainingCount = $derived(hiddenLockedSections.length);
 
   function isPhaseUnlocked(phaseId: string): boolean {
     const badge = phaseBadges[phaseId];
@@ -65,6 +64,7 @@
   }
 
   const HEADER_OFFSET = 72; // 56px header + 16px breathing room
+  const SCROLL_THRESHOLD = HEADER_OFFSET + 80; // threshold for active section tracking
 
   function scrollToElement(el: HTMLElement) {
     const y = el.getBoundingClientRect().top + window.scrollY - HEADER_OFFSET;
@@ -98,7 +98,7 @@
       const section = sectionElements[i];
       if (section.el) {
         const rect = section.el.getBoundingClientRect();
-        if (rect.top <= 150) {
+        if (rect.top <= SCROLL_THRESHOLD) {
           trackedSection = section.id;
           break;
         }
@@ -118,18 +118,11 @@
       {@const badge = phaseBadges[phase.id]}
       {@const unlocked = isPhaseUnlocked(phase.id)}
 
-      <!-- Phase gate between Discovery and Deep Research -->
-      {#if phaseIndex === 1}
-        <div class="phase-gate">
-          <div class="phase-gate-icon">
-            <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
-          </div>
-        </div>
-      {:else if phaseIndex > 0}
+      {#if phaseIndex > 0}
         <div class="phase-divider"></div>
       {/if}
 
-      <div class="phase-group" class:phase-discovery={phase.id === 'discovery' && unlocked}>
+      <div class="phase-group">
         <div class="phase-header">
           <span class="phase-label">{phase.label}</span>
           <span
@@ -144,33 +137,38 @@
 
         <div class="phase-sections">
           {#if phase.id === 'deep-research' && !unlocked}
-            <!-- Preview-able + locked items for deep research -->
-            {#each deepResearchPhase.sections as section}
+            <!-- Blurred preview items first (scrollable on page) -->
+            {#each deepResearchPhase.sections.filter(s => DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id)) as section}
               {@const isActive = currentSection === section.id}
-              {@const isPreviewable = DEEP_RESEARCH_PREVIEW_IDS.includes(section.id)}
-              {@const isLocked = !isPreviewable}
-
-              {#if isPreviewable}
-                <button
-                  class="nav-item previewable"
-                  class:active={isActive}
-                  onclick={() => handleSectionClick(phase, section)}
-                >
-                  <span class="nav-item-label">{section.label}</span>
-                  <span class="nav-preview-tag">Preview</span>
-                </button>
-              {:else if isLocked && !hiddenLockedSections.slice(2).includes(section)}
-                <button class="nav-item locked" disabled>
-                  <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
-                  <span class="nav-item-label">{section.label}</span>
-                </button>
-              {/if}
+              {@const Icon = section.icon}
+              <button
+                class="nav-item previewable"
+                class:active={isActive}
+                onclick={() => handleSectionClick(phase, section)}
+              >
+                {#if Icon}<Icon class="nav-icon" />{/if}
+                <span class="nav-item-label">{section.label}</span>
+                <span class="nav-preview-tag">Preview</span>
+              </button>
             {/each}
-            <!-- "+N more" -->
-            {#if remainingCount > 2}
-              <span class="nav-more">
-                <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
-                +{remainingCount - 2} more
+            <!-- Locked items (peek first 2, collapse rest) -->
+            {#each lockedNonPreviewSections.slice(0, 2) as section}
+              {@const Icon = section.icon}
+              <div class="nav-item locked" role="listitem">
+                {#if Icon}<Icon class="nav-icon" />{/if}
+                <span class="nav-item-label">{section.label}</span>
+                <Tooltip content="Unlocks with Deep Research" position="right">
+                  {#snippet children()}
+                    <span class="nav-lock-trigger" aria-label="Locked - unlocks with Deep Research">
+                      <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
+                    </span>
+                  {/snippet}
+                </Tooltip>
+              </div>
+            {/each}
+            {#if lockedNonPreviewSections.length > 2}
+              <span class="nav-more" title="Unlocks with Deep Research">
+                +{lockedNonPreviewSections.length - 2} more
               </span>
             {/if}
           {:else}
@@ -178,6 +176,7 @@
             {#each phase.sections as section}
               {@const isActive = currentSection === section.id}
               {@const isDone = unlocked && (badge?.state === 'done' || badge?.state === 'active')}
+              {@const Icon = section.icon}
 
               <button
                 class="nav-item"
@@ -187,14 +186,17 @@
                 onclick={() => handleSectionClick(phase, section)}
                 disabled={!unlocked}
               >
+                {#if Icon}
+                  <Icon class="nav-icon" />
+                {/if}
+                <span class="nav-item-label">{section.label}</span>
                 {#if isDone}
                   <span class="nav-check">
-                    <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
                   </span>
                 {:else if !unlocked}
                   <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
                 {/if}
-                <span class="nav-item-label">{section.label}</span>
               </button>
             {/each}
           {/if}
@@ -238,15 +240,14 @@
         </div>
 
         {#if phase.id === 'deep-research' && !unlocked}
-          {#each deepResearchPhase.sections.filter(s => DEEP_RESEARCH_PREVIEW_IDS.includes(s.id)) as section}
+          {#each deepResearchPhase.sections.filter(s => DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id)) as section}
             <button class="mobile-item previewable" onclick={() => handleSectionClick(phase, section)}>
               <span>{section.label}</span>
               <span class="nav-preview-tag">Preview</span>
             </button>
           {/each}
-          <span class="mobile-item locked nav-more">
-            <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
-            +{remainingCount} more
+          <span class="mobile-item locked nav-more" title="Unlocks with Deep Research">
+            +{lockedNonPreviewSections.length} more
           </span>
         {:else}
           {#each phase.sections as section}
@@ -276,7 +277,7 @@
      DESKTOP SIDEBAR
      ═══════════════════════════════════ */
   .sidebar-desktop {
-    width: 220px;
+    width: 240px;
     flex-shrink: 0;
     background: var(--color-bg-elevated);
     border-right: 1px solid var(--color-border);
@@ -303,27 +304,18 @@
     flex-direction: column;
   }
 
-  .phase-group.phase-discovery {
-    border-left: 3px solid var(--color-success);
-  }
-
-  .phase-group.phase-discovery .phase-header,
-  .phase-group.phase-discovery .nav-item {
-    padding-left: calc(1.25rem - 3px);
-  }
-
   .phase-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0.375rem 1.25rem 0.5rem;
+    padding: 0.375rem 1.5rem 0.5rem;
   }
 
   .phase-label {
     font-family: var(--font-mono);
     font-size: 0.625rem;
     font-weight: 700;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-text-muted);
   }
@@ -361,36 +353,7 @@
   .phase-divider {
     height: 0.5px;
     background: var(--color-border);
-    margin: 0.75rem 1.25rem;
-  }
-
-  /* ── Phase gate (between Discovery and Deep Research) ── */
-  .phase-gate {
-    position: relative;
-    height: 1px;
-    background: var(--color-border);
-    margin: 1rem 1.25rem;
-  }
-
-  .phase-gate-icon {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 20px;
-    height: 20px;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .phase-gate-icon svg {
-    width: 8px;
-    height: 8px;
-    color: var(--color-text-muted);
+    margin: 0.75rem 1.5rem;
   }
 
   /* ── Section items ── */
@@ -404,8 +367,8 @@
     position: relative;
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.45rem 1.25rem;
+    gap: 0.625rem;
+    padding: 0.5rem 1.5rem;
     background: transparent;
     border: none;
     color: var(--color-text-secondary);
@@ -432,31 +395,22 @@
     outline-offset: -2px;
   }
 
-  /* Active indicator: 2px accent bar on left edge */
+  /* Active indicator: text color + background fill */
   .nav-item.active {
     color: var(--color-accent);
     font-weight: 600;
-  }
-
-  .nav-item.active::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 4px;
-    bottom: 4px;
-    width: 2px;
-    border-radius: 1px;
-    background: var(--color-accent);
+    background: var(--color-accent-subtle);
   }
 
   /* Done tier */
   .nav-item.done {
-    color: var(--color-success-dark);
+    color: var(--color-text-primary);
   }
 
   .nav-check {
-    width: 14px;
-    height: 14px;
+    margin-left: auto;
+    width: 16px;
+    height: 16px;
     background: var(--color-success);
     border-radius: 50%;
     display: flex;
@@ -494,11 +448,22 @@
     pointer-events: none;
   }
 
+  .nav-lock-trigger {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    pointer-events: auto;
+    cursor: help;
+    flex-shrink: 0;
+  }
+
   .nav-lock-icon {
     width: 12px;
     height: 12px;
     flex-shrink: 0;
-    opacity: 0.5;
+    opacity: 0.35;
   }
 
   .nav-item-label {
@@ -510,12 +475,29 @@
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    padding: 0.35rem 1.25rem;
+    padding: 0.35rem 1.5rem;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     color: var(--color-text-muted);
     opacity: 0.4;
     letter-spacing: 0.03em;
+  }
+
+  /* ── Section icons ── */
+  .nav-item :global(.nav-icon) {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    opacity: 0.5;
+    transition: opacity 150ms ease;
+  }
+
+  .nav-item.active :global(.nav-icon) {
+    opacity: 1;
+  }
+
+  .nav-item.done :global(.nav-icon) {
+    opacity: 0.7;
   }
 
   /* ═══════════════════════════════════

@@ -35,7 +35,7 @@
       id: 'deep_research',
       label: 'Deep Research',
       state: (currentStep === 'deep_research' ? 'active' : 'pending') as StepState,
-      stat: solutionCount > 0 ? `${solutionCount} ideas` : undefined,
+      stat: solutionCount > 0 ? `${solutionCount} opportunities` : undefined,
     },
   ]);
 </script>
@@ -80,8 +80,8 @@
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
-    padding: 1.25rem 1.5rem;
-    margin-bottom: 1.25rem;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
   }
 
   .stepper {

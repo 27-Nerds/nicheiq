@@ -80,6 +80,7 @@ export interface DiscoveryData {
   influencers: InfluencerProfile[];
   social_posts_sample: SocialPost[];
   subreddit_names: string[];
+  subreddit_post_counts?: Record<string, number>;
   data_attribution: string;
   discussion_trend?: { month: string; count: number }[];
   discussion_growth_pct?: number | null;

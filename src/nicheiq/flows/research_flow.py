@@ -679,10 +679,21 @@ RULES:
         """
         Validate pain point analysis quality and return tier classification.
 
-        Implements tiered quality gates to ensure pipeline proceeds with sufficient data:
-        - GOLD: High-quality pain points with strong evidence and cross-platform validation
-        - SILVER: Medium-quality pain points with adequate supporting data
-        - BRONZE: Minimum viable pain points with basic evidence
+        Uses evidence-based metrics to measure research quality (how real and
+        well-sourced the data is), NOT niche attractiveness. Severity, WTP, and
+        opportunity scores measure the niche itself and belong in the go/no-go
+        verdict, not here.
+
+        Evidence metrics:
+        - unique_source_count: How many distinct Reddit posts provide evidence
+        - subreddit_diversity: Cross-community validation (unique subreddits)
+        - quote_density: Average quotes per pain point (evidence depth)
+        - pain_point_count: Number of distinct problems identified
+
+        Tiers:
+        - GOLD: Broad, diverse evidence across multiple communities
+        - SILVER: Adequate evidence from multiple sources
+        - BRONZE: Minimum viable evidence to proceed
         - INSUFFICIENT: Below minimum threshold, should not proceed
 
         Args:
@@ -701,146 +712,142 @@ RULES:
             logger.warning("No pain points identified")
             return ("INSUFFICIENT", 0.0)
 
-        # Calculate quality metrics
+        # Calculate evidence-based quality metrics
         pain_points = analysis.pain_points
         total_count = len(pain_points)
-
-        # Severity distribution
-        high_severity = len([pp for pp in pain_points if pp.severity_score >= 0.7])
-        medium_severity = len([pp for pp in pain_points if 0.5 <= pp.severity_score < 0.7])
-
-        # WTP (Willingness-to-Pay) signal strength
-        # NOTE: WTP thresholds aligned with task prompt rubric:
-        # - Explicit payment mentions: ≥0.6
-        # - Inferred from severity/workflow: 0.45-0.55
-        # - Inferred from productivity loss: 0.3-0.4
-        # High WTP threshold at 0.45 to capture inferred-WTP pain points (severity+workflow)
-        high_wtp = len([pp for pp in pain_points if pp.willingness_to_pay >= 0.45])
-        medium_wtp = len([pp for pp in pain_points if 0.3 <= pp.willingness_to_pay < 0.45])
 
         # Quote evidence density (average quotes per pain point)
         quote_density = sum(len(pp.representative_quotes) for pp in pain_points) / total_count if total_count > 0 else 0
 
-        # Cross-platform validation (pain points found on multiple platforms)
+        # Unique source count: distinct Reddit posts providing evidence across all pain points
+        all_source_ids = set(
+            sid for pp in pain_points for sid in pp.source_post_ids if sid
+        )
+        unique_source_count = len(all_source_ids)
+
+        # Observability: warn if pain points have quotes but no source attribution
+        for pp in pain_points:
+            if pp.representative_quotes and not any(pp.source_post_ids):
+                logger.warning(
+                    f"Pain point '{pp.title[:50]}' has {len(pp.representative_quotes)} quotes "
+                    f"but no source attribution — possible vector search failure"
+                )
+
+        # Subreddit diversity: unique subreddits across all source posts
+        # Build post_id → subreddit lookup from social content
+        post_id_to_subreddit: dict[str, str] = {}
+        if self.state.social_content:
+            for post in self.state.social_content.reddit_posts:
+                post_id_to_subreddit[post.post_id] = post.subreddit
+
+        # Map source_post_ids to subreddits, count unique
+        subreddits_found: set[str] = set()
+        unresolvable_ids: list[str] = []
+        for sid in all_source_ids:
+            subreddit = post_id_to_subreddit.get(sid)
+            if subreddit:
+                subreddits_found.add(subreddit)
+            else:
+                unresolvable_ids.append(sid)
+
+        subreddit_diversity = len(subreddits_found)
+
+        if unresolvable_ids:
+            logger.warning(
+                f"{len(unresolvable_ids)} source_post_ids could not be resolved to a subreddit "
+                f"(posts may have been quality-filtered during collection). "
+                f"Subreddit diversity may be undercounted."
+            )
+
+        # Cross-platform validation (for future dual-platform mode)
         cross_platform_count = 0
         for pp in pain_points:
             if pp.source_platforms and len(pp.source_platforms) > 1:
                 cross_platform_count += 1
 
-        # Source attribution coverage (% of pain points with source_post_ids)
-        sourced_count = len([pp for pp in pain_points if any(pp.source_post_ids)])
-        source_coverage = sourced_count / total_count if total_count > 0 else 0
-
-        # High-opportunity pain points
-        high_opportunity = len([pp for pp in pain_points if pp.opportunity_level.value == "high"])
-
-        # Determine if single-platform mode (either Twitter or Reddit disabled)
+        # Determine platform mode
         single_platform_mode = not settings.enable_twitter or not settings.enable_reddit
 
-        # Adjust weights based on platform availability
+        # Evidence-based weights — no LLM-assessed niche metrics
         if single_platform_mode:
-            # Redistribute cross-platform 15% weight to other metrics
-            # Quote density gets +10% (most impactful for single-source validation)
-            # Source attribution gets +5% (verifiable without cross-platform)
             weights = {
-                "high_severity": 0.25,
-                "high_wtp": 0.20,
-                "quote_density": 0.30,  # 20% + 10% redistributed
-                "cross_platform": 0.0,   # N/A in single-platform mode
-                "source_coverage": 0.15, # 10% + 5% redistributed
-                "high_opportunity": 0.10
+                "unique_source_count": 0.30,
+                "subreddit_diversity": 0.25,
+                "quote_density": 0.25,
+                "cross_platform": 0.0,
+                "pain_point_count": 0.20,
             }
         else:
             weights = {
-                "high_severity": 0.25,
-                "high_wtp": 0.20,
+                "unique_source_count": 0.25,
+                "subreddit_diversity": 0.15,
                 "quote_density": 0.20,
-                "cross_platform": 0.15,
-                "source_coverage": 0.10,
-                "high_opportunity": 0.10
+                "cross_platform": 0.20,
+                "pain_point_count": 0.20,
             }
 
-        # Calculate confidence score (0-1)
+        # Calculate confidence score (0-1) with normalized metrics
         confidence_score = (
-            (high_severity / max(total_count, 1)) * weights["high_severity"] +
-            (high_wtp / max(total_count, 1)) * weights["high_wtp"] +
-            (min(quote_density / 8, 1.0)) * weights["quote_density"] +
+            min(unique_source_count / 30, 1.0) * weights["unique_source_count"] +
+            min(subreddit_diversity / 5, 1.0) * weights["subreddit_diversity"] +
+            min(quote_density / 12, 1.0) * weights["quote_density"] +
             (cross_platform_count / max(total_count, 1)) * weights["cross_platform"] +
-            source_coverage * weights["source_coverage"] +
-            (high_opportunity / max(total_count, 1)) * weights["high_opportunity"]
+            min(total_count / 8, 1.0) * weights["pain_point_count"]
         )
 
         # Tier classification with detailed logging
         logger.info("=" * 60)
-        logger.info("PAIN POINT QUALITY ASSESSMENT")
+        logger.info("PAIN POINT QUALITY ASSESSMENT (Evidence-Based)")
         logger.info("=" * 60)
-        logger.info(f"Total pain points: {total_count}")
-        logger.info(f"Severity distribution: {high_severity} high | {medium_severity} medium | {total_count - high_severity - medium_severity} low")
-        logger.info(f"WTP signal: {high_wtp} high | {medium_wtp} medium")
+        logger.info(f"Pain point count: {total_count}")
         logger.info(f"Quote density: {quote_density:.1f} quotes/pain point (target: ≥8 for GOLD)")
-        if single_platform_mode:
-            logger.info("Platform mode: Single-platform (Twitter disabled) - cross-platform metric skipped")
-        else:
-            logger.info(f"Cross-platform validation: {cross_platform_count}/{total_count} pain points ({cross_platform_count/total_count*100:.0f}%)")
-        logger.info(f"Source attribution coverage: {source_coverage*100:.0f}%")
-        logger.info(f"High-opportunity pain points: {high_opportunity} ({high_opportunity/total_count*100:.0f}%)")
+        logger.info(f"Unique source posts: {unique_source_count} (target: ≥20 for GOLD)")
+        logger.info(f"Subreddit diversity: {subreddit_diversity} subreddits ({', '.join(sorted(subreddits_found)) if subreddits_found else 'none'})")
+        if not single_platform_mode:
+            logger.info(f"Cross-platform validation: {cross_platform_count}/{total_count} pain points")
         logger.info(f"Overall confidence score: {confidence_score:.2f}")
 
-        # Source coverage gates: skip when single-platform (already penalized via weights)
-        gold_source_ok = single_platform_mode or source_coverage >= 0.90
-        silver_source_ok = single_platform_mode or source_coverage >= 0.70
-        bronze_source_ok = single_platform_mode or source_coverage >= 0.50
-
-        # Percentage-based severity thresholds (scale with pain point count)
-        gold_severity_min = max(2, math.ceil(total_count * 0.6))
-        gold_opportunity_min = max(1, math.ceil(total_count * 0.4))
-        silver_severity_min = max(1, math.ceil(total_count * 0.4))
-        silver_combined_min = max(2, math.ceil(total_count * 0.6))
-
-        logger.info(
-            f"Tier thresholds (based on {total_count} pain points): "
-            f"GOLD needs severity>={gold_severity_min}, opportunity>={gold_opportunity_min} | "
-            f"SILVER needs severity>={silver_severity_min} or combined>={silver_combined_min}"
-        )
-
-        # GOLD tier: Exceptional quality for high-confidence pipeline
+        # Tier gates — evidence-only, no LLM-assessed scores
         gold_cross_platform_ok = single_platform_mode or cross_platform_count >= 3
         if (
-            high_severity >= gold_severity_min and
+            unique_source_count >= 20 and
+            subreddit_diversity >= 4 and
+            total_count >= 5 and
             quote_density >= 8 and
-            gold_cross_platform_ok and
-            gold_source_ok and
-            high_opportunity >= gold_opportunity_min
+            gold_cross_platform_ok
         ):
             tier = "GOLD"
-            logger.info(f"✅ Quality Tier: {tier} (Exceptional - High confidence for pipeline)")
+            logger.info(f"✅ Quality Tier: {tier} (Premium Research - Broad, diverse evidence)")
 
-        # SILVER tier: Good quality for reliable pipeline
         elif (
-            (high_severity >= silver_severity_min or
-             (high_severity + medium_severity) >= silver_combined_min) and
-            quote_density >= 5 and
-            silver_source_ok
+            unique_source_count >= 10 and
+            subreddit_diversity >= 2 and
+            total_count >= 3 and
+            quote_density >= 5
         ):
             tier = "SILVER"
-            logger.info(f"✅ Quality Tier: {tier} (Good - Reliable for pipeline)")
+            logger.info(f"✅ Quality Tier: {tier} (Standard Research - Adequate evidence)")
 
-        # BRONZE tier: Minimum viable quality
+        # BRONZE: no subreddit_diversity gate (single-subreddit research with
+        # sufficient depth should still proceed)
         elif (
+            unique_source_count >= 5 and
             total_count >= 2 and
-            quote_density >= 3 and
-            bronze_source_ok
+            quote_density >= 3
         ):
             tier = "BRONZE"
-            logger.warning(f"⚠️  Quality Tier: {tier} (Minimum Viable - Proceed with caution)")
+            logger.warning(f"⚠️  Quality Tier: {tier} (Basic Research - Minimum viable evidence)")
             logger.warning("    Consider expanding social content collection for better insights")
 
-        # INSUFFICIENT: Below minimum threshold
         else:
             tier = "INSUFFICIENT"
             logger.error(f"❌ Quality Tier: {tier} (Insufficient - Should not proceed)")
             logger.error("    Recommendation: Expand social content collection or adjust niche focus")
-            logger.error(f"    Gaps: quote_density={quote_density:.1f} (need ≥3), source_coverage={source_coverage*100:.0f}% (need ≥50%)")
+            logger.error(
+                f"    Gaps: unique_sources={unique_source_count} (need ≥5), "
+                f"pain_points={total_count} (need ≥2), "
+                f"quote_density={quote_density:.1f} (need ≥3)"
+            )
 
         logger.info("=" * 60)
 
@@ -1242,11 +1249,18 @@ RULES:
 
             # ── Subreddit names ──
             subreddit_names = []
+            subreddit_post_counts: dict[str, int] = {}
             if state.social_content:
                 subreddit_names = sorted(set(
                     getattr(p, "subreddit", "") for p in state.social_content.reddit_posts
                     if getattr(p, "subreddit", "")
                 ))
+                # Per-subreddit post counts (top 10 by volume) for distribution visualization
+                from collections import Counter
+                subreddit_post_counts = dict(Counter(
+                    getattr(p, "subreddit", "") for p in state.social_content.reddit_posts
+                    if getattr(p, "subreddit", "")
+                ).most_common(10))
 
             # ── Audience ──
             audience = None
@@ -1323,6 +1337,7 @@ RULES:
                 "influencers": influencers,
                 "social_posts_sample": social_posts_sample,
                 "subreddit_names": subreddit_names,
+                "subreddit_post_counts": subreddit_post_counts,
                 "data_attribution": "Public community activity from Reddit",
                 "discussion_trend": discussion_trend,
                 "discussion_growth_pct": growth_pct,
@@ -2703,8 +2718,9 @@ Return a valid JSON object with this structure:
             pain_points = self.state.pain_point_analysis.pain_points if self.state.pain_point_analysis else []
             total_count = len(pain_points)
             quote_density = sum(len(pp.representative_quotes) for pp in pain_points) / total_count if total_count > 0 else 0
-            sourced_count = len([pp for pp in pain_points if any(pp.source_post_ids)])
-            source_coverage = sourced_count / total_count if total_count > 0 else 0
+            unique_sources = len(set(
+                sid for pp in pain_points for sid in pp.source_post_ids if sid
+            ))
 
             raise QualityGateStopException(
                 stage=6,
@@ -2715,7 +2731,7 @@ Return a valid JSON object with this structure:
                     "metrics": {
                         "painPointCount": total_count,
                         "quoteDensity": round(quote_density, 2),
-                        "sourceCoverage": round(source_coverage, 2),
+                        "uniqueSourceCount": unique_sources,
                     },
                     "recommendation": "Expand social content collection or refine niche focus"
                 }

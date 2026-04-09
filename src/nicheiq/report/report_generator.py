@@ -2129,8 +2129,7 @@ It differentiates through {diff_text}.
                             f"Quote source unresolved: '{quote[:50]}...'"
                         )
 
-                    # Quotes are already cleaned by _extract_and_clean_sources,
-                    # but clean again defensively
+                    # Defensively strip any [source: ID] tags that may remain in quotes
                     cleaned_quote = re.sub(r'\s*\[source:[^\]]+\]', '', quote).strip()
 
                     metadata = post_metadata.get(source_id, {"subreddit": "Unknown", "score": 0})

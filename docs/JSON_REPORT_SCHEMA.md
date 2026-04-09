@@ -361,10 +361,21 @@ Actionable GTM strategy for immediate execution.
 | Field | Type | Description |
 |-------|------|-------------|
 | `social_content_quality_tier` | `"EXCELLENT" \| "GOOD" \| "MINIMAL" \| "INSUFFICIENT"` | Social content quality |
-| `pain_point_quality_tier` | `"GOLD" \| "SILVER" \| "BRONZE" \| "INSUFFICIENT"` | Pain point quality |
-| `pain_point_confidence_score` | `number` (0-1) | Confidence score |
+| `pain_point_quality_tier` | `"GOLD" \| "SILVER" \| "BRONZE" \| "INSUFFICIENT"` | Research evidence quality (see tier definitions below) |
+| `pain_point_confidence_score` | `number` (0-1) | Weighted confidence score based on evidence metrics (see weights below) |
 | `overall_data_quality` | `"HIGH" \| "MEDIUM" \| "LOW"` | Overall quality |
 | `quality_caveats` | `array[string]` | Warnings about limitations |
+
+**Pain Point Quality Tier** measures research evidence breadth and diversity, not niche attractiveness. Tiers are determined by four evidence metrics:
+
+| Tier | `unique_source_count` | `subreddit_diversity` | `pain_point_count` | `quote_density` |
+|------|----------------------|----------------------|-------------------|----------------|
+| GOLD | >= 20 | >= 4 | >= 5 | >= 8.0 |
+| SILVER | >= 10 | >= 2 | >= 3 | >= 5.0 |
+| BRONZE | >= 5 | (no gate) | >= 2 | >= 3.0 |
+| INSUFFICIENT | below BRONZE — pipeline stops | | | |
+
+**Confidence score weights** (single-platform): `unique_source_count` 0.30, `subreddit_diversity` 0.25, `quote_density` 0.25, `pain_point_count` 0.20.
 
 ---
 
@@ -1480,7 +1491,7 @@ Array of 7 recommended next steps.
 | `PricingModel` | `"Freemium"`, `"Freemium-Lite"`, `"Subscription"`, `"Hybrid"`, `"One-time"`, `"Usage-Based"`, `"Ad-Supported-Free"`, `"Affiliate-Only"` |
 | `MonetizationModel` | `"Ad-Supported"`, `"Affiliate"`, `"Hybrid-Traffic"`, `"Lead-Gen"` |
 | `DataQualityTier` | `"EXCELLENT"`, `"GOOD"`, `"MINIMAL"`, `"INSUFFICIENT"` |
-| `PainPointQualityTier` | `"GOLD"`, `"SILVER"`, `"BRONZE"`, `"INSUFFICIENT"` |
+| `PainPointQualityTier` | `"GOLD"`, `"SILVER"`, `"BRONZE"`, `"INSUFFICIENT"` — measures research evidence quality (source count, subreddit diversity, quote density, pain point count), not niche attractiveness |
 | `OverallDataQuality` | `"HIGH"`, `"MEDIUM"`, `"LOW"` |
 | `IntegrationComplexity` | `"LOW"`, `"MEDIUM"`, `"HIGH"`, `"LOW-MEDIUM"`, `"MEDIUM-HIGH"` |
 | `SourcePriority` | `"HIGH"`, `"MEDIUM"`, `"LOW"` |

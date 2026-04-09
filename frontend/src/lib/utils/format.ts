@@ -150,6 +150,17 @@ export function formatScoreOn10(score: number | undefined | null): string {
 	return (clamped * 10).toFixed(1);
 }
 
+/** Strip a leading "the " (case-insensitive) from a string */
+export function stripLeadingArticle(s: string): string {
+	return s.replace(/^the\s+/i, '');
+}
+
+/** Title-case a string (capitalize first letter of each word) */
+export function titleCase(s: string | null | undefined): string {
+	if (!s) return '';
+	return s.replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export function formatCurrency(value: string | number | undefined | null): string {
 	if (value === undefined || value === null) return 'N/A';
 	if (typeof value === 'string') return value;

@@ -347,6 +347,32 @@ VERDICT_GO_MIN_INDIVIDUAL_SCORE=0.55
 **See Also**:
 - [ENV_REFERENCE.md](ENV_REFERENCE.md#report-generation--validation) - Complete configuration reference
 
+### Quality Tier Framework
+
+The `pain_point_quality_tier` (GOLD/SILVER/BRONZE/INSUFFICIENT) measures **research evidence quality**, not niche attractiveness. This separation ensures that a well-researched niche with conservative LLM severity scores is not penalized on data quality.
+
+**Evidence metrics** (computed in Stage 6):
+
+| Metric | Description |
+|--------|-------------|
+| `unique_source_count` | Distinct Reddit posts cited across all pain points |
+| `subreddit_diversity` | Unique subreddits represented in evidence |
+| `quote_density` | Average direct quotes per pain point |
+| `pain_point_count` | Total pain points extracted |
+
+**Tier thresholds:**
+
+| Tier | Sources | Subreddits | Pain Points | Quote Density |
+|------|---------|------------|-------------|---------------|
+| GOLD | >= 20 | >= 4 | >= 5 | >= 8.0 |
+| SILVER | >= 10 | >= 2 | >= 3 | >= 5.0 |
+| BRONZE | >= 5 | — | >= 2 | >= 3.0 |
+| INSUFFICIENT | below BRONZE — pipeline stops |
+
+**Confidence score** is a weighted composite: `unique_source_count` (0.30), `subreddit_diversity` (0.25), `quote_density` (0.25), `pain_point_count` (0.20).
+
+Niche attractiveness (severity, WTP, opportunity scores) is assessed separately via the Go/No-Go verdict system.
+
 ---
 
 ## Data Passing Architecture

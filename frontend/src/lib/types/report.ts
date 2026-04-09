@@ -640,8 +640,8 @@ export interface SubredditBreakdown {
 
 export interface DataQualitySummary {
 	social_content_quality_tier?: string; // EXCELLENT, GOOD, MINIMAL, INSUFFICIENT
-	pain_point_quality_tier?: string; // GOLD, SILVER, BRONZE, INSUFFICIENT
-	pain_point_confidence_score?: number; // 0-1
+	pain_point_quality_tier?: string; // GOLD, SILVER, BRONZE, INSUFFICIENT (evidence-based: measures research quality, not niche attractiveness)
+	pain_point_confidence_score?: number; // 0-1 (based on unique sources, subreddit diversity, quote density, pain point count)
 	overall_data_quality: string; // HIGH, MEDIUM, LOW
 	quality_caveats: string[];
 }

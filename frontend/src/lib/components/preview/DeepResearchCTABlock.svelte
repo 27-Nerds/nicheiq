@@ -69,7 +69,7 @@
     overflow: hidden;
     background: linear-gradient(135deg, var(--cta-bg-start) 0%, var(--cta-bg-mid) 50%, var(--cta-bg-end) 100%);
     border: 1px solid rgba(240, 96, 48, 0.15);
-    padding: 2.5rem 2rem;
+    padding: 2.5rem 1.25rem;
     color: var(--cta-text);
     margin: 1.5rem 0;
   }
@@ -189,7 +189,7 @@
 
   @media (max-width: 640px) {
     .cta-block {
-      padding: 2rem 1.5rem;
+      padding: 2rem 1.25rem;
     }
 
     .cta-title {

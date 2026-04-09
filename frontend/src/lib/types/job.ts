@@ -106,7 +106,7 @@ export interface StopReasonDetails {
   metrics?: {
     painPointCount?: number;
     quoteDensity?: number;
-    sourceCoverage?: number;
+    uniqueSourceCount?: number;
   };
   recommendation?: string;
 }

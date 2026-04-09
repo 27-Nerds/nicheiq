@@ -10,7 +10,7 @@
 
   // Source posts: show first 3, expand to all
   let showAllSources = $state(false);
-  const INITIAL_SOURCE_COUNT = 3;
+  const INITIAL_SOURCE_COUNT = 5;
   const displayedSources = $derived(
     data?.social_posts_sample
       ? (showAllSources ? data.social_posts_sample : data.social_posts_sample.slice(0, INITIAL_SOURCE_COUNT))
@@ -18,29 +18,46 @@
   );
   const totalSources = $derived(data?.social_posts_sample?.length ?? 0);
 
-  // Source distribution: compute subreddit proportions
+  // Source distribution: use real post counts when available, fall back to sample
   const subredditDistribution = $derived.by(() => {
-    const counts: Record<string, number> = {};
-    for (const post of data?.social_posts_sample ?? []) {
-      counts[post.subreddit] = (counts[post.subreddit] ?? 0) + 1;
+    let entries: [string, number][];
+
+    if (data?.subreddit_post_counts && Object.keys(data.subreddit_post_counts).length > 0) {
+      // Real counts from full dataset (150+ posts)
+      entries = Object.entries(data.subreddit_post_counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
+    } else {
+      // Fallback: compute from 10-item sample (legacy jobs)
+      const counts: Record<string, number> = {};
+      for (const post of data?.social_posts_sample ?? []) {
+        counts[post.subreddit] = (counts[post.subreddit] ?? 0) + 1;
+      }
+      entries = Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5);
     }
-    const total = data?.social_posts_sample?.length ?? 1;
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count], i) => ({
-        name,
-        count,
-        percent: Math.round(count / total * 100),
-        opacity: 1 - (i * 0.15),
-      }));
+
+    const total = entries.reduce((sum, [, count]) => sum + count, 0) || 1;
+    return entries.map(([name, count], i) => ({
+      name,
+      count,
+      percent: Math.round(count / total * 100),
+      opacity: 1 - (i * 0.15),
+    }));
   });
+
+  // Hide distribution bars when distribution is flat (all bars ~equal = no insight)
+  const isDistributionFlat = $derived(
+    subredditDistribution.length > 0 &&
+    subredditDistribution[0].percent <= (subredditDistribution[subredditDistribution.length - 1].percent * 2)
+  );
 </script>
 
 {#if data}
   <div class="evidence">
-    <!-- Source Distribution Bars -->
-    {#if subredditDistribution.length > 0}
+    <!-- Source Distribution Bars (hidden when flat/uniform) -->
+    {#if subredditDistribution.length > 0 && !isDistributionFlat}
       <div class="evidence-section">
         <span class="evidence-label">Source Distribution</span>
         <div class="dist-bars">

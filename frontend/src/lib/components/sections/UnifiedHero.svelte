@@ -56,6 +56,7 @@
     refinementHighlights?: RefinementHighlights;
     seoCalculationTransparency?: SEOCalculationTransparency;
     trends?: TrendLongevity;
+    previewMode?: boolean;
   }
 
   let {
@@ -66,6 +67,7 @@
     refinementHighlights,
     seoCalculationTransparency,
     trends,
+    previewMode = false,
   }: Props = $props();
 
   // Extract data from report
@@ -377,59 +379,66 @@
     <div class="hero-split">
       <!-- Left Column: Verdict Box + Risk Badge -->
       <div class="hero-left">
-        <div
-          class="verdict-giant {getVerdictClass(verdict?.verdict ?? 'No-Go')}"
-        >
-          <span class="verdict-score-label">
-            OPPORTUNITY SCORE <Tooltip
-              content={opportunityScoreTooltip}
-              position="bottom"
-            />
-          </span>
-          <span class="verdict-percentage"
-            >{formatScorePercent(confidenceScore)}</span
-          >
-          <div class="verdict-label-row">
-            {#if verdict?.verdict === "Go"}
-              <CheckCircle class="verdict-icon-large" />
-            {:else if verdict?.verdict === "Conditional"}
-              <Shield class="verdict-icon-large" />
-            {:else}
-              <AlertCircle class="verdict-icon-large" />
-            {/if}
-            <span class="verdict-label-text"
-              >{verdict?.verdict?.toUpperCase() ?? "ANALYZING"}</span
-            >
+        {#if previewMode}
+          <div class="verdict-locked">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <span class="verdict-locked-label">Select a solution to generate</span>
           </div>
-          <div class="verdict-risk-badge">
-            <Tooltip content={riskBadgeTooltip} position="bottom">
-              {#snippet children()}
-                <Badge
-                  variant={verdict?.risk_level?.toLowerCase() === "low"
-                    ? "success"
-                    : verdict?.risk_level?.toLowerCase() === "medium"
-                      ? "info"
-                      : "muted"}
-                  size="sm"
-                >
-                  {verdict?.risk_level ?? "Unknown"} Risk
-                </Badge>
-              {/snippet}
-            </Tooltip>
-            {#if dashboard?.research_depth_label}
-              <Tooltip content={tooltips.researchDepth} position="bottom">
+        {:else}
+          <div
+            class="verdict-giant {getVerdictClass(verdict?.verdict ?? 'No-Go')}"
+          >
+            <span class="verdict-score-label">
+              OPPORTUNITY SCORE <Tooltip
+                content={opportunityScoreTooltip}
+                position="bottom"
+              />
+            </span>
+            <span class="verdict-percentage"
+              >{formatScorePercent(confidenceScore)}</span
+            >
+            <div class="verdict-label-row">
+              {#if verdict?.verdict === "Go"}
+                <CheckCircle class="verdict-icon-large" />
+              {:else if verdict?.verdict === "Conditional"}
+                <Shield class="verdict-icon-large" />
+              {:else}
+                <AlertCircle class="verdict-icon-large" />
+              {/if}
+              <span class="verdict-label-text"
+                >{verdict?.verdict?.toUpperCase() ?? "ANALYZING"}</span
+              >
+            </div>
+            <div class="verdict-risk-badge">
+              <Tooltip content={riskBadgeTooltip} position="bottom">
                 {#snippet children()}
-                  <Badge variant="muted" size="sm">
-                    {dashboard.research_depth_label}
+                  <Badge
+                    variant={verdict?.risk_level?.toLowerCase() === "low"
+                      ? "success"
+                      : verdict?.risk_level?.toLowerCase() === "medium"
+                        ? "info"
+                        : "muted"}
+                    size="sm"
+                  >
+                    {verdict?.risk_level ?? "Unknown"} Risk
                   </Badge>
                 {/snippet}
               </Tooltip>
-            {/if}
+              {#if dashboard?.research_depth_label}
+                <Tooltip content={tooltips.researchDepth} position="bottom">
+                  {#snippet children()}
+                    <Badge variant="muted" size="sm">
+                      {dashboard.research_depth_label}
+                    </Badge>
+                  {/snippet}
+                </Tooltip>
+              {/if}
+            </div>
+            <button class="verdict-breakdown-link" onclick={scrollToDiagnostics}>
+              See score breakdown ↓
+            </button>
           </div>
-          <button class="verdict-breakdown-link" onclick={scrollToDiagnostics}>
-            See score breakdown ↓
-          </button>
-        </div>
+        {/if}
       </div>
 
       <!-- Right Column: Niche Info + Signal Chips -->
@@ -458,7 +467,8 @@
           {/if}
         </div>
 
-        <!-- Signal Chips -->
+        <!-- Signal Chips (hidden in preview — Phase 2 data only) -->
+        {#if !previewMode}
         <div class="signal-chips">
           <Tooltip content={tooltips.opportunity} position="bottom">
             {#snippet children()}
@@ -519,6 +529,7 @@
             {/snippet}
           </Tooltip>
         </div>
+        {/if}
       </div>
     </div>
 
@@ -566,7 +577,7 @@
   <!-- ========== CONTENT ZONE (Light Background) ========== -->
   <div class="content-zone">
     <!-- Pain/Solution Cards - Overlapping Layout -->
-    <div class="cards-container">
+    <div class="cards-container" class:cards-container--preview={previewMode}>
       <!-- Evidence Wall Card -->
       {#if heroPain || corePain}
         <div class="hero-card hero-card--pain">
@@ -686,24 +697,31 @@
         </div>
       {/if}
 
+      <!-- Preview gate: separates clear Phase 1 data from blurred Phase 2 -->
+      {#if previewMode}
+        <div class="preview-gate">
+          <span class="preview-gate-label">Unlocks with Deep Research</span>
+        </div>
+      {/if}
+
       <!-- Solution Teaser (Enhanced - links to full solution section) -->
       {#if solution}
-        <div class="solution-teaser">
+        <div class="solution-teaser" class:preview-locked={previewMode}>
           <div class="teaser-header">
             <Rocket class="teaser-icon" />
             <span class="teaser-badge">RECOMMENDED SOLUTION</span>
           </div>
-          <h3 class="teaser-name">{solution.name}</h3>
-          <p class="teaser-tagline">{solution.tagline}</p>
+          <h3 class="teaser-name" class:preview-blur={previewMode}>{solution.name}</h3>
+          <p class="teaser-tagline" class:preview-blur={previewMode}>{solution.tagline}</p>
 
           <!-- Core value prop -->
           {#if solution.core_value_prop}
-            <p class="teaser-value-prop">{solution.core_value_prop}</p>
+            <p class="teaser-value-prop" class:preview-blur={previewMode}>{solution.core_value_prop}</p>
           {/if}
 
           <!-- Target personas (unique data, not in metrics panel) -->
           {#if solutionDetails?.target_personas?.length}
-            <div class="teaser-target">
+            <div class="teaser-target" class:preview-blur={previewMode}>
               <Users class="teaser-target-icon" />
               <span class="teaser-target-text"
                 >{solutionDetails.target_personas.join(", ")}</span
@@ -713,14 +731,14 @@
 
           <!-- Differentiator badges (unique data) -->
           {#if solutionDetails?.differentiation_factors?.length}
-            <div class="teaser-badges">
+            <div class="teaser-badges" class:preview-blur={previewMode}>
               {#each solutionDetails.differentiation_factors.slice(0, 3) as factor}
                 <Badge variant="muted" size="sm">{factor}</Badge>
               {/each}
             </div>
           {:else if solution.project_type}
             <!-- Fallback to project type if no differentiators -->
-            <div class="teaser-badges">
+            <div class="teaser-badges" class:preview-blur={previewMode}>
               <Badge variant="muted" size="sm">{solution.project_type}</Badge>
             </div>
           {/if}
@@ -734,7 +752,7 @@
     </div>
 
     <!-- Score Diagnostics Panel -->
-    <div id="score-diagnostics" class="metrics-panel">
+    <div id="score-diagnostics" class="metrics-panel" class:preview-locked={previewMode}>
       <div class="metrics-panel-header">
         <span class="metrics-panel-title">SCORE DIAGNOSTICS</span>
       </div>
@@ -742,22 +760,25 @@
       <div class="metrics-cells">
         <!-- Market Fit -->
         <div class="metric-cell" style="--cell-delay: 0.1s">
-          <ProgressRing
-            value={metrics?.market_fit_score ?? 0}
-            size={52}
-            strokeWidth={4}
-            color={getScoreColor(metrics?.market_fit_score)}
-            showValue={true}
-            showTooltip={true}
-            flat={true}
-            label="Market Fit"
-            description={marketFitTooltip}
-          />
+          <span class:preview-blur={previewMode}>
+            <ProgressRing
+              value={metrics?.market_fit_score ?? 0}
+              size={52}
+              strokeWidth={4}
+              color={getScoreColor(metrics?.market_fit_score)}
+              showValue={true}
+              showTooltip={true}
+              flat={true}
+              label="Market Fit"
+              description={marketFitTooltip}
+            />
+          </span>
           <span class="metric-label">Market Fit</span>
           <span
             class="metric-verdict {getScoreColor(
               metrics?.market_fit_score,
             )}-text"
+            class:preview-blur={previewMode}
           >
             {getScoreLabel(metrics?.market_fit_score)}
           </span>
@@ -766,6 +787,7 @@
               class="threshold-badge {metrics.market_fit_score >= 0.6
                 ? 'passes'
                 : 'below'}"
+              class:preview-blur={previewMode}
             >
               {metrics.market_fit_score >= 0.6
                 ? "Passes Go"
@@ -776,22 +798,25 @@
 
         <!-- Feasibility -->
         <div class="metric-cell" style="--cell-delay: 0.15s">
-          <ProgressRing
-            value={metrics?.technical_feasibility_score ?? 0}
-            size={52}
-            strokeWidth={4}
-            color={getScoreColor(metrics?.technical_feasibility_score)}
-            showValue={true}
-            showTooltip={true}
-            flat={true}
-            label="Feasibility"
-            description={techFeasibilityTooltip}
-          />
+          <span class:preview-blur={previewMode}>
+            <ProgressRing
+              value={metrics?.technical_feasibility_score ?? 0}
+              size={52}
+              strokeWidth={4}
+              color={getScoreColor(metrics?.technical_feasibility_score)}
+              showValue={true}
+              showTooltip={true}
+              flat={true}
+              label="Feasibility"
+              description={techFeasibilityTooltip}
+            />
+          </span>
           <span class="metric-label">Feasibility</span>
           <span
             class="metric-verdict {getScoreColor(
               metrics?.technical_feasibility_score,
             )}-text"
+            class:preview-blur={previewMode}
           >
             {getScoreLabel(metrics?.technical_feasibility_score)}
           </span>
@@ -800,6 +825,7 @@
               class="threshold-badge {metrics.technical_feasibility_score >= 0.6
                 ? 'passes'
                 : 'below'}"
+              class:preview-blur={previewMode}
             >
               {metrics.technical_feasibility_score >= 0.6
                 ? "Passes Go"
@@ -810,22 +836,25 @@
 
         <!-- SEO Score -->
         <div class="metric-cell" style="--cell-delay: 0.2s">
-          <ProgressRing
-            value={metrics?.seo_potential_score ?? 0}
-            size={52}
-            strokeWidth={4}
-            color={getScoreColor(metrics?.seo_potential_score)}
-            showValue={true}
-            showTooltip={true}
-            flat={true}
-            label="SEO Score"
-            description={seoTooltip}
-          />
+          <span class:preview-blur={previewMode}>
+            <ProgressRing
+              value={metrics?.seo_potential_score ?? 0}
+              size={52}
+              strokeWidth={4}
+              color={getScoreColor(metrics?.seo_potential_score)}
+              showValue={true}
+              showTooltip={true}
+              flat={true}
+              label="SEO Score"
+              description={seoTooltip}
+            />
+          </span>
           <span class="metric-label">SEO</span>
           <span
             class="metric-verdict {getScoreColor(
               metrics?.seo_potential_score,
             )}-text"
+            class:preview-blur={previewMode}
           >
             {getScoreLabel(metrics?.seo_potential_score)}
           </span>
@@ -833,24 +862,27 @@
 
         <!-- Solo Dev Feasibility -->
         <div class="metric-cell" style="--cell-delay: 0.25s">
-          <ProgressRing
-            value={metrics?.solo_dev_feasibility ?? 0}
-            size={52}
-            strokeWidth={4}
-            color={getScoreColor(
-              metrics?.solo_dev_feasibility,
-            )}
-            showValue={true}
-            showTooltip={true}
-            flat={true}
-            label="Solo Dev"
-            description={soloDevTooltip}
-          />
+          <span class:preview-blur={previewMode}>
+            <ProgressRing
+              value={metrics?.solo_dev_feasibility ?? 0}
+              size={52}
+              strokeWidth={4}
+              color={getScoreColor(
+                metrics?.solo_dev_feasibility,
+              )}
+              showValue={true}
+              showTooltip={true}
+              flat={true}
+              label="Solo Dev"
+              description={soloDevTooltip}
+            />
+          </span>
           <span class="metric-label">Solo Dev</span>
           <span
             class="metric-verdict {getScoreColor(
               metrics?.solo_dev_feasibility,
             )}-text"
+            class:preview-blur={previewMode}
           >
             {getScoreLabel(
               metrics?.solo_dev_feasibility,
@@ -860,22 +892,25 @@
 
         <!-- Competitive Edge -->
         <div class="metric-cell" style="--cell-delay: 0.3s">
-          <ProgressRing
-            value={metrics?.competitive_advantage_score ?? 0}
-            size={52}
-            strokeWidth={4}
-            color={getScoreColor(metrics?.competitive_advantage_score)}
-            showValue={true}
-            showTooltip={true}
-            flat={true}
-            label="Comp. Edge"
-            description={compEdgeTooltip}
-          />
+          <span class:preview-blur={previewMode}>
+            <ProgressRing
+              value={metrics?.competitive_advantage_score ?? 0}
+              size={52}
+              strokeWidth={4}
+              color={getScoreColor(metrics?.competitive_advantage_score)}
+              showValue={true}
+              showTooltip={true}
+              flat={true}
+              label="Comp. Edge"
+              description={compEdgeTooltip}
+            />
+          </span>
           <span class="metric-label">Comp. Edge</span>
           <span
             class="metric-verdict {getScoreColor(
               metrics?.competitive_advantage_score,
             )}-text"
+            class:preview-blur={previewMode}
           >
             {getScoreLabel(metrics?.competitive_advantage_score)}
           </span>
@@ -883,10 +918,10 @@
       </div>
 
       <!-- Integrated Footer Stats -->
-      <div class="metrics-footer">
+      <div class="metrics-footer" class:preview-locked={previewMode}>
         <div class="footer-stat">
           <Search class="footer-stat-icon" />
-          <span class="footer-stat-value"
+          <span class="footer-stat-value" class:preview-blur={previewMode}
             >{formatNumber(metrics?.total_keyword_search_volume ?? 0)}</span
           >
           <span class="footer-stat-label">
@@ -899,7 +934,7 @@
         <div class="footer-divider"></div>
         <div class="footer-stat">
           <Target class="footer-stat-icon" />
-          <span class="footer-stat-value"
+          <span class="footer-stat-value" class:preview-blur={previewMode}
             >{metrics?.total_keyword_count ?? 0}</span
           >
           <span class="footer-stat-label">
@@ -912,7 +947,7 @@
         <div class="footer-divider"></div>
         <div class="footer-stat">
           <Users class="footer-stat-icon" />
-          <span class="footer-stat-value"
+          <span class="footer-stat-value" class:preview-blur={previewMode}
             >{metrics?.primary_competitor_count ?? 0}</span
           >
           <span class="footer-stat-label">
@@ -926,7 +961,7 @@
     </div>
 
     <!-- Verdict Rationale Zone -->
-    {#if verdict}
+    {#if verdict && !previewMode}
       <div class="verdict-rationale-zone {getVerdictClass(verdict.verdict)}">
         <div class="rationale-header">
           <div class="rationale-verdict-badge">
@@ -988,7 +1023,7 @@
     {/if}
 
     <!-- Expandable: Strategic Insights -->
-    {#if hasStrategicInsights}
+    {#if hasStrategicInsights && !previewMode}
       <ExpandableSection
         title="Strategic Rationale"
         icon={Compass}
@@ -1141,7 +1176,7 @@
     {/if}
 
     <!-- Expandable: Risk Assessment -->
-    {#if hasRiskAssessment}
+    {#if hasRiskAssessment && !previewMode}
       <ExpandableSection
         title="Risk Assessment & Timing"
         icon={Shield}
@@ -1270,7 +1305,7 @@
 	   UNIFIED HERO CONTAINER
 	   ========================= */
   .unified-hero {
-    margin-bottom: var(--space-8);
+    margin-bottom: var(--space-6);
   }
 
   /* =========================
@@ -1284,8 +1319,8 @@
       #431407 80%,
       var(--color-accent) 100%
     );
-    padding: var(--space-8);
-    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding: var(--space-8) var(--space-5);
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     position: relative;
     overflow: hidden;
   }
@@ -1314,9 +1349,9 @@
 
   .verdict-giant {
     text-align: center;
-    padding: var(--space-6) var(--space-8);
+    padding: var(--space-6) var(--space-5);
     background: rgba(255, 255, 255, 0.08);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-lg);
     border: 2px solid rgba(255, 255, 255, 0.1);
   }
 
@@ -1619,10 +1654,8 @@
 	   ========================= */
   .content-zone {
     background: var(--color-bg-base);
-    padding: var(--space-6) var(--space-8) var(--space-8);
-    border-radius: 0 0 var(--radius-xl) var(--radius-xl);
-    border: 1px solid var(--color-border);
-    border-top: none;
+    padding: var(--space-6) 0 var(--space-8);
+    border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   }
 
   /* Cards Container - Overlapping Layout */
@@ -1632,6 +1665,10 @@
     gap: var(--space-4);
     margin-bottom: var(--space-6);
     position: relative;
+  }
+
+  .cards-container--preview {
+    grid-template-columns: 1fr;
   }
 
   /* Card Header Pattern */
@@ -1995,7 +2032,7 @@
   .metrics-panel {
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-xl);
+    border-radius: var(--radius-lg);
     box-shadow: none;
     overflow: hidden;
     margin-bottom: var(--space-6);
@@ -2783,5 +2820,60 @@
       width: 3px;
       height: 3px;
     }
+  }
+
+  /* ── Preview mode ── */
+  .preview-locked {
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .preview-blur {
+    filter: blur(5px);
+    opacity: 0.5;
+  }
+
+  .verdict-locked {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    width: 100%;
+    min-height: 200px;
+    border: 1px dashed rgba(255, 255, 255, 0.15);
+    border-radius: var(--radius-lg, 0.75rem);
+    color: rgba(255, 255, 255, 0.4);
+  }
+
+  .verdict-locked-label {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.03em;
+  }
+
+  .preview-gate {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
+  .preview-gate::before,
+  .preview-gate::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  .preview-gate-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    white-space: nowrap;
   }
 </style>
