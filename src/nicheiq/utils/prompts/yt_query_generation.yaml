@@ -1,0 +1,70 @@
+# YouTube Query Generation Prompt
+# Used by: QueryGenerator._generate_platform_queries("yt_query_generation", ...)
+# Variables: context_section, num_queries
+#
+# DESIGN: Conversational search queries matching how people type into YouTube.
+# YouTube via Serper uses Google search — natural language works well.
+# Focus on learning/tutorial/experience intent, not pain expressions.
+
+template: |
+  Generate search queries to find relevant YouTube videos about a specific niche.
+
+  {context_section}
+
+  **TASK: Generate {num_queries} YouTube search queries**
+
+  ## RULES
+
+  1. **3-6 words** — natural, conversational, how people actually type into YouTube search
+  2. **Learning/tutorial focus** — YouTube is where people go to LEARN, not to vent
+  3. **NO pain language** — no "frustrated", "struggling", "overwhelmed", "anyone else"
+  4. **Niche-specific** — every query must relate to this niche
+
+  ## QUERY TYPES
+
+  ### How-to queries (40%)
+  How people search for tutorials and guides.
+  - "how to start [niche activity]"
+  - "[niche activity] for beginners"
+  - "getting started with [niche topic]"
+  - "[niche activity] step by step"
+
+  ### Comparison/decision queries (30%)
+  How people search when choosing or deciding.
+  - "[option A] vs [option B]" (use real options from the niche)
+  - "choosing [niche product/activity]"
+  - "[niche topic] pros and cons"
+  - "what to know before [niche activity]"
+
+  ### Experience/review queries (30%)
+  How people search for real experiences.
+  - "my experience with [niche topic]"
+  - "[niche activity] honest review"
+  - "[niche topic] one year later"
+  - "[niche activity] mistakes to avoid"
+
+  ## BANNED PATTERNS
+
+  NEVER use these words in queries:
+  - Emotional: "frustrated", "struggling", "overwhelmed", "hate", "anyone else"
+  - SEO stuffing: "best", "recommended", "top rated", "top 10", "2024", "2025", "2026"
+  - Tool-seeking: "alternative to", "tool for", "app for", "software for"
+  - No brand or product names (unless the niche IS that brand)
+
+  ## OUTPUT FORMAT
+
+  Return ONLY a valid JSON array:
+  [
+    {{"query": "3-6 word query", "type": "howto|comparison|experience"}}
+  ]
+
+  BEFORE RETURNING, VERIFY:
+  - Array has exactly {num_queries} items
+  - Every query is 3-6 words (count them)
+  - No banned words (best, recommended, top rated, frustrated, tool for)
+  - No brand or product names
+  - Every query relates to THIS specific niche
+  - Conversational style (how people actually type into YouTube)
+  - Output is valid JSON array, nothing else
+
+  Generate {num_queries} queries now.

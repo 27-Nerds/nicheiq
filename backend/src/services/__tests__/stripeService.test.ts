@@ -184,6 +184,17 @@ describe('stripeService', () => {
           credits: true,
           priceInCents: true,
           isPopular: true,
+          tagline: true,
+          includesLabel: true,
+          creditsInfo: true,
+          features: true,
+          ctaText: true,
+          badgeLabel: true,
+          promoLine: true,
+          promoPriceInCents: true,
+          promoBadge: true,
+          ctaSubText: true,
+          ctaSubUrl: true,
         },
       });
     });

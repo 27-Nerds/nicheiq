@@ -14,6 +14,24 @@ from ...models.pain_point import PainPointAnalysisResult
 from ...models.social_content import SocialContentCollection
 from ...utils.token_monitor import ContentTokenMonitor
 
+# Known prompt injection patterns to strip from scraped content
+_INJECTION_PATTERNS = re.compile(
+    r"(?i)(ignore\s+(all\s+)?previous\s+instructions|"
+    r"you\s+are\s+now\s+|"
+    r"^SYSTEM:|^ASSISTANT:|^USER:|"
+    r"<\|(?:im_start|im_end|endoftext)\|>|"
+    r"\bdo\s+not\s+follow\s+any\s+(?:other|previous)\b)",
+)
+
+
+def _sanitize_for_llm(text: str) -> str:
+    """Strip control characters and prompt injection patterns from scraped text."""
+    if not text:
+        return ""
+    sanitized = "".join(c for c in text if ord(c) >= 32 or c in "\n\r\t")
+    sanitized = _INJECTION_PATTERNS.sub("[REDACTED]", sanitized)
+    return sanitized
+
 
 # ============================================================
 # Pydantic models for LLM-based tool extraction
@@ -109,6 +127,9 @@ def _extract_relevant_sentences(
     if not sentences:
         return ""
 
+    # Sanitize each sentence to strip injection patterns
+    sentences = [_sanitize_for_llm(s) for s in sentences]
+
     # Find indices of matching sentences
     match_indices = set()
     for i, sent in enumerate(sentences):
@@ -196,7 +217,7 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
     if not social_content:
         return ""
 
-    if not social_content.reddit_posts and not social_content.twitter_threads:
+    if not social_content.reddit_posts and not social_content.twitter_threads and not social_content.generic_posts:
         return ""
 
     # Sort Reddit posts by discussion quality (highest first)
@@ -311,6 +332,43 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
         total_chars += len(entry)
         twitter_count += 1
 
+    # Process generic posts (HN, YouTube, etc.)
+    generic_count = 0
+    for post in (social_content.generic_posts or []):
+        if total_chars >= MAX_COMPETITOR_CONTENT_CHARS:
+            break
+
+        post_text = f"{post.title}. {post.body or ''}"
+        post_excerpt = _extract_relevant_sentences(post_text, _INDICATOR_PATTERN)
+
+        response_excerpts = []
+        for resp in (post.responses or []):
+            if len(response_excerpts) >= MAX_COMMENT_EXCERPTS_PER_POST:
+                break
+            excerpt = _extract_relevant_sentences(resp.body, _INDICATOR_PATTERN)
+            if excerpt:
+                response_excerpts.append(excerpt)
+
+        if not post_excerpt and not response_excerpts:
+            continue
+
+        container = {"hackernews": "Hacker News", "youtube": "YouTube"}.get(post.platform, post.platform)
+        entry_parts = [f"[{container}: {post.score} pts]"]
+        if post_excerpt:
+            entry_parts.append(post_excerpt)
+        if response_excerpts:
+            entry_parts.append("Responses:")
+            for re_ in response_excerpts:
+                entry_parts.append(f"- {re_}")
+
+        entry = "\n".join(entry_parts)
+        if total_chars + len(entry) > MAX_COMPETITOR_CONTENT_CHARS:
+            break
+
+        formatted.append(entry)
+        total_chars += len(entry)
+        generic_count += 1
+
     if not formatted:
         logger.info("No competitor mentions found in social content")
         return ""
@@ -325,7 +383,7 @@ def prepare_competitor_intelligence(social_content: SocialContentCollection) -> 
 
     logger.info(
         f"Extracted competitor intelligence: {reddit_count} Reddit posts, "
-        f"{twitter_count} Twitter threads, {len(result)} chars "
+        f"{twitter_count} Twitter threads, {generic_count} generic posts, {len(result)} chars "
         f"(was {sum(len(p.selftext or '') for p in reddit_posts)} chars raw)"
     )
 
@@ -429,7 +487,7 @@ def format_competitor_mentions_for_prompt(
     if not social_content:
         return "No competitor data available"
 
-    if not social_content.reddit_posts and not social_content.twitter_threads:
+    if not social_content.reddit_posts and not social_content.twitter_threads and not social_content.generic_posts:
         return "No competitor data available"
 
     # --- Pre-filter: extract indicator-matched sentences ---
@@ -459,6 +517,22 @@ def format_competitor_mentions_for_prompt(
 
         for reply in thread.replies:
             for sent in _split_sentences(reply.text):
+                if _INDICATOR_PATTERN.search(sent):
+                    all_mentions.append((sent, source, score))
+
+    # Extract competitor mentions from generic sources (HN, YouTube)
+    _platform_labels = {"hackernews": "Hacker News", "youtube": "YouTube"}
+    for post in (social_content.generic_posts or []):
+        source = _platform_labels.get(post.platform, post.platform)
+        score = post.score or 0
+
+        post_text = f"{post.title}. {post.body or ''}"
+        for sent in _split_sentences(post_text):
+            if _INDICATOR_PATTERN.search(sent):
+                all_mentions.append((sent, source, score))
+
+        for resp in (post.responses or []):
+            for sent in _split_sentences(resp.body):
                 if _INDICATOR_PATTERN.search(sent):
                     all_mentions.append((sent, source, score))
 

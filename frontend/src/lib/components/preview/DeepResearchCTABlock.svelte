@@ -10,145 +10,82 @@
 </script>
 
 <section class="cta-block">
-  <div class="cta-glow"></div>
   <div class="cta-content">
     <span class="cta-eyebrow">Phase 2 · Deep Research</span>
     <h2 class="cta-title">You found the problems.<br />Now discover how to profit from them.</h2>
-    <p class="cta-desc">
-      Deep Research analyzes competitive gaps, maps existing solutions, and builds a revenue model specifically for this niche — so you know exactly where to start.
-    </p>
-
-    <div class="cta-features">
-      <div class="cta-feat">
-        <span class="feat-check">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        Competitive landscape
-      </div>
-      <div class="cta-feat">
-        <span class="feat-check">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        Solution gap analysis
-      </div>
-      <div class="cta-feat">
-        <span class="feat-check">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        Revenue model
-      </div>
-      <div class="cta-feat">
-        <span class="feat-check">
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </span>
-        Go-to-market strategy
+    <div class="cta-row">
+      <p class="cta-desc">
+        Deep Research delivers competitive landscape, solution gap analysis, revenue model, and go-to-market strategy — validated for this niche so you know exactly where to start.
+      </p>
+      <div class="cta-actions">
+        <button class="cta-primary" onclick={onUnlock}>
+          Unlock Deep Research
+          <ArrowRight class="cta-arrow" />
+        </button>
+        <p class="cta-price">{creditCost} credits · one-time per niche</p>
       </div>
     </div>
-
-    <div class="cta-actions">
-      <button class="cta-primary" onclick={onUnlock}>
-        Unlock Deep Research
-        <ArrowRight class="cta-arrow" />
-      </button>
-    </div>
-
-    <p class="cta-price">{creditCost} credits · One-time per niche</p>
   </div>
 </section>
 
 <style>
   .cta-block {
-    --cta-bg-start: #1A1A1A;
-    --cta-bg-mid: #2D2520;
-    --cta-bg-end: #3D2A1F;
-    --cta-text: rgba(255, 255, 255, 0.92);
-    --cta-text-muted: rgba(255, 255, 255, 0.55);
-    --cta-text-secondary: rgba(255, 255, 255, 0.72);
-    position: relative;
-    border-radius: var(--radius-lg);
-    overflow: hidden;
-    background: linear-gradient(135deg, var(--cta-bg-start) 0%, var(--cta-bg-mid) 50%, var(--cta-bg-end) 100%);
-    border: 1px solid rgba(240, 96, 48, 0.15);
-    padding: 2.5rem 1.25rem;
-    color: var(--cta-text);
     margin: 1.5rem 0;
-  }
-
-  .cta-glow {
-    position: absolute;
-    top: -40%;
-    right: -15%;
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, rgba(240, 96, 48, 0.12) 0%, transparent 70%);
-    border-radius: 50%;
-    pointer-events: none;
+    padding: 3rem 0;
+    border-top: 1px solid var(--color-border-emphasis);
+    border-bottom: 1px solid var(--color-border-emphasis);
+    color: var(--color-text-secondary);
   }
 
   .cta-content {
-    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
   }
 
   .cta-eyebrow {
-    display: inline-block;
-    font-family: var(--font-display);
+    font-family: var(--font-mono);
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-accent);
-    margin-bottom: 0.875rem;
   }
 
   .cta-title {
     font-family: var(--font-display);
-    font-size: 1.5rem;
+    font-size: 1.75rem;
     font-weight: 700;
-    line-height: 1.3;
-    color: var(--cta-text);
-    margin-bottom: 0.75rem;
-    max-width: 28rem;
+    line-height: 1.2;
+    color: var(--color-text-primary);
+    margin: 0;
+    max-width: 36rem;
+  }
+
+  .cta-row {
+    display: flex;
+    gap: 2rem;
+    align-items: flex-end;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
   }
 
   .cta-desc {
     font-size: 0.9375rem;
-    color: var(--cta-text-secondary);
     line-height: 1.65;
-    margin-bottom: 1.5rem;
-    max-width: 30rem;
-  }
-
-  .cta-features {
-    display: flex;
-    gap: 1.25rem;
-    flex-wrap: wrap;
-    margin-bottom: 1.75rem;
-  }
-
-  .cta-feat {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    color: var(--cta-text);
-  }
-
-  .feat-check {
-    width: 1.25rem;
-    height: 1.25rem;
-    background: rgba(240, 96, 48, 0.2);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-accent);
-    flex-shrink: 0;
+    color: var(--color-text-secondary);
+    max-width: 32rem;
+    margin: 0;
+    flex: 1 1 22rem;
   }
 
   .cta-actions {
     display: flex;
-    gap: 0.875rem;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.5rem;
+    flex-shrink: 0;
   }
 
   .cta-primary {
@@ -165,10 +102,11 @@
     font-weight: 600;
     cursor: pointer;
     transition: background-color 150ms ease;
+    white-space: nowrap;
   }
 
   .cta-primary:hover {
-    background: var(--color-accent-dark, #D9562A);
+    background: var(--color-accent-dark);
   }
 
   .cta-primary:active {
@@ -181,24 +119,27 @@
   }
 
   .cta-price {
-    font-size: 0.75rem;
-    color: var(--cta-text-muted);
-    margin-top: 0.75rem;
-    font-variant-numeric: tabular-nums;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    letter-spacing: 0.03em;
+    margin: 0;
   }
 
   @media (max-width: 640px) {
     .cta-block {
-      padding: 2rem 1.25rem;
+      padding: 2rem 0;
     }
-
     .cta-title {
-      font-size: 1.25rem;
+      font-size: 1.375rem;
     }
-
-    .cta-features {
+    .cta-row {
       flex-direction: column;
-      gap: 0.625rem;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    .cta-actions {
+      align-items: flex-start;
     }
   }
 </style>

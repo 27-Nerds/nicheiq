@@ -8,7 +8,8 @@ import math
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -55,6 +56,14 @@ class QualityGateStopException(Exception):
         super().__init__(f"Quality gate at stage {stage}: {reason}")
 
 
+@dataclass
+class PlatformSearchResult:
+    """Return type for platform search pipelines (Stage 2 parallel execution)."""
+    posts: list = field(default_factory=list)
+    unique_results_count: int = 0
+    relevant_urls_count: int = 0
+
+
 class ResearchFlow(Flow[ResearchState]):
     """
     Main research flow orchestrating all 16 stages of the NicheIQ pipeline.
@@ -95,6 +104,16 @@ class ResearchFlow(Flow[ResearchState]):
         self.search_tool = SerperDevTool()
         self.reddit_tool = RedditCollectorTool()
         self.twitter_tool = TwitterCollectorTool()
+        if settings.enable_hackernews:
+            from ..tools.hackernews_tool import HackerNewsCollectorTool
+            self.hackernews_tool = HackerNewsCollectorTool()
+        else:
+            self.hackernews_tool = None
+        if settings.enable_youtube:
+            from ..tools.youtube_tool import YouTubeCollectorTool
+            self.youtube_tool = YouTubeCollectorTool()
+        else:
+            self.youtube_tool = None
 
         # Import DataForSEO tool for iterative enrichment
         from ..tools.dataforseo_tool import DataForSEOExpandTool
@@ -455,7 +474,7 @@ RULES:
         prerequisites = {
             3: lambda: (
                 self.state.social_content is not None and
-                (bool(self.state.social_content.reddit_posts) or bool(self.state.social_content.twitter_threads))
+                (bool(self.state.social_content.reddit_posts) or bool(self.state.social_content.twitter_threads) or bool(self.state.social_content.generic_posts))
             ),
             4: lambda: (
                 self.state.social_content is not None and
@@ -1150,10 +1169,12 @@ RULES:
         try:
             state = self.state
 
-            # Build post_id → RedditPost lookup for cross-referencing upvotes
+            # Build post_id → post lookup for cross-referencing engagement
             post_lookup: dict[str, object] = {}
             if state.social_content:
                 for p in state.social_content.reddit_posts:
+                    post_lookup[p.post_id] = p
+                for p in (state.social_content.generic_posts or []):
                     post_lookup[p.post_id] = p
 
             # ── Quotes: score and select top 3 per pain point ──
@@ -1170,8 +1191,17 @@ RULES:
                         post_id = raw_ids[i] if i < len(raw_ids) else ""
                         post = post_lookup.get(post_id)
                         upvotes = getattr(post, "score", 0) if post else 0
-                        subreddit = getattr(post, "subreddit", "") if post else ""
-                        url = f"https://reddit.com/comments/{post_id}" if post_id else ""
+
+                        # Platform-aware source label and URL
+                        if hasattr(post, "platform"):
+                            # Generic source (HN, YouTube, etc.)
+                            _platform_labels = {"hackernews": "Hacker News", "youtube": "YouTube"}
+                            subreddit = _platform_labels.get(post.platform, post.platform)
+                            url = getattr(post, "url", "") if post_id else ""
+                        else:
+                            # Reddit post
+                            subreddit = getattr(post, "subreddit", "") if post else ""
+                            url = f"https://reddit.com/comments/{post_id}" if post_id else ""
 
                         q_score = self._score_quote(q_text, upvotes)
                         if q_score < 0:
@@ -1201,18 +1231,30 @@ RULES:
                     "pain_point_title": best[2],
                 }
 
-            # ── Discussion trend (monthly post counts, last 12 months) ──
+            # ── Discussion trend (monthly post counts, last 12 months, all sources) ──
             discussion_trend = []
-            if state.social_content and state.social_content.reddit_posts:
+            all_social_posts = list(state.social_content.reddit_posts) if state.social_content else []
+            all_social_posts += list(state.social_content.generic_posts or []) if state.social_content else []
+            if all_social_posts:
                 from collections import Counter
                 from datetime import timedelta
 
-                now = datetime.now()
+                now = datetime.now(timezone.utc)
                 cutoff = now - timedelta(days=365)
                 monthly: Counter[str] = Counter()
-                for p in state.social_content.reddit_posts:
-                    if p.created_utc and p.created_utc >= cutoff:
-                        monthly[p.created_utc.strftime('%Y-%m')] += 1
+                for p in all_social_posts:
+                    created = getattr(p, "created_utc", None)
+                    if not created:
+                        continue
+                    # Skip posts with estimated dates (e.g., YouTube without parseable upload date)
+                    raw_eng = getattr(p, "raw_engagement", None)
+                    if isinstance(raw_eng, dict) and raw_eng.get("date_estimated"):
+                        continue
+                    # Normalize: make aware if naive (Reddit posts may lack tzinfo)
+                    if created.tzinfo is None:
+                        created = created.replace(tzinfo=timezone.utc)
+                    if created >= cutoff:
+                        monthly[created.strftime('%Y-%m')] += 1
 
                 # Build sorted array with 0-filled gaps
                 current = cutoff.replace(day=1)
@@ -1247,20 +1289,31 @@ RULES:
                 "avg_engagement": scm_dict.get("avg_engagement_per_source", 0),
             }
 
-            # ── Subreddit names ──
+            # ── Community source names (Reddit subreddits + generic platform labels) ──
             subreddit_names = []
             subreddit_post_counts: dict[str, int] = {}
+            _platform_labels = {"hackernews": "Hacker News", "youtube": "YouTube"}
             if state.social_content:
-                subreddit_names = sorted(set(
-                    getattr(p, "subreddit", "") for p in state.social_content.reddit_posts
+                # Reddit subreddits with r/ prefix
+                reddit_sources = [
+                    f"r/{getattr(p, 'subreddit', '')}" for p in state.social_content.reddit_posts
                     if getattr(p, "subreddit", "")
-                ))
-                # Per-subreddit post counts (top 10 by volume) for distribution visualization
+                ]
+                # Generic sources by platform label
+                generic_sources = [
+                    _platform_labels.get(p.platform, p.platform)
+                    for p in (state.social_content.generic_posts or [])
+                    if p.platform
+                ]
+                subreddit_names = sorted(set(reddit_sources + generic_sources))
+
+                # Per-source post counts (top 10 by volume) for distribution visualization
                 from collections import Counter
-                subreddit_post_counts = dict(Counter(
-                    getattr(p, "subreddit", "") for p in state.social_content.reddit_posts
-                    if getattr(p, "subreddit", "")
-                ).most_common(10))
+                all_source_labels = (
+                    [getattr(p, "subreddit", "") for p in state.social_content.reddit_posts if getattr(p, "subreddit", "")]
+                    + [_platform_labels.get(p.platform, p.platform) for p in (state.social_content.generic_posts or []) if p.platform]
+                )
+                subreddit_post_counts = dict(Counter(all_source_labels).most_common(10))
 
             # ── Audience ──
             audience = None
@@ -1310,16 +1363,12 @@ RULES:
                         ],
                     })
 
-            # ── Social posts sample (top 10 by score, omit author) ──
+            # ── Social posts sample (top 10 by score across all sources) ──
             social_posts_sample = []
             if state.social_content:
-                sorted_posts = sorted(
-                    state.social_content.reddit_posts,
-                    key=lambda p: p.score,
-                    reverse=True,
-                )
-                for p in sorted_posts[:10]:
-                    social_posts_sample.append({
+                all_sample_posts = []
+                for p in state.social_content.reddit_posts:
+                    all_sample_posts.append({
                         "title": p.title[:200],
                         "subreddit": p.subreddit,
                         "score": p.score,
@@ -1327,6 +1376,17 @@ RULES:
                         "url": p.url,
                         "created_utc": p.created_utc.isoformat() if p.created_utc else "",
                     })
+                for p in (state.social_content.generic_posts or []):
+                    container = _platform_labels.get(p.platform, p.platform)
+                    all_sample_posts.append({
+                        "title": p.title[:200],
+                        "subreddit": container,
+                        "score": p.score,
+                        "num_comments": p.num_responses,
+                        "url": p.url,
+                        "created_utc": p.created_utc.isoformat() if p.created_utc else "",
+                    })
+                social_posts_sample = sorted(all_sample_posts, key=lambda x: x["score"], reverse=True)[:10]
 
             # ── Assemble final structure ──
             discovery_data = {
@@ -1338,7 +1398,8 @@ RULES:
                 "social_posts_sample": social_posts_sample,
                 "subreddit_names": subreddit_names,
                 "subreddit_post_counts": subreddit_post_counts,
-                "data_attribution": "Public community activity from Reddit",
+                "data_attribution": f"Public community activity from {', '.join(sorted(set(subreddit_names))) or 'Reddit'}",
+                "sources_searched": state.sources_searched,
                 "discussion_trend": discussion_trend,
                 "discussion_growth_pct": growth_pct,
             }
@@ -2120,12 +2181,243 @@ Return a valid JSON object with this structure:
         context.niche_input = niche_input
         return context
 
+    # ── Platform search pipeline methods (Stage 2 parallel execution) ──────
+
+    def _search_reddit_pipeline(self, search_queries: list, niche_description: str) -> PlatformSearchResult:
+        """Full Reddit pipeline: Serper search → freshness → PRAW → dedup → LLM validation → collect."""
+        try:
+            from ..utils.validation import ThreadRelevanceValidator
+            validator = ThreadRelevanceValidator()
+
+            reddit_queries = [q for q in search_queries if q.platform in ("reddit", "both")]
+            logger.info(f"[Reddit] Searching for relevant discussions ({len(reddit_queries)}/{len(search_queries)} queries)...")
+            reddit_results = []
+            for search_query in reddit_queries:
+                try:
+                    results = self.search_tool.run(
+                        search_query=f"site:reddit.com {search_query.query}"
+                    )
+                    search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
+                    reddit_results.extend(search_items)
+                except Exception as e:
+                    logger.error(f"[Reddit] Search failed for '{search_query.query}': {e}")
+
+            standard_count = len(reddit_results)
+            logger.info(f"[Reddit] Found {standard_count} results from standard search")
+
+            # ── Freshness Serper pass ──
+            freshness_serper_count = 0
+            if settings.reddit_freshness_search_enabled:
+                freshness_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_freshness_query_fraction))]
+                freshness_errors = 0
+                for search_query in freshness_queries:
+                    if freshness_errors >= 2:
+                        logger.warning("[Reddit] Freshness search circuit breaker: 2 consecutive errors")
+                        break
+                    try:
+                        results = SearchHelper.serper_search_with_date_filter(
+                            f"site:reddit.com {search_query.query}",
+                            tbs=settings.reddit_freshness_tbs,
+                        )
+                        search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
+                        reddit_results.extend(search_items)
+                        freshness_serper_count += len(search_items)
+                        freshness_errors = 0
+                    except Exception as e:
+                        freshness_errors += 1
+                        logger.error(f"[Reddit] Freshness search failed for '{search_query.query}': {e}")
+
+                logger.info(f"[Reddit] Found {freshness_serper_count} results from freshness search (tbs={settings.reddit_freshness_tbs})")
+
+            # ── PRAW native search pass ──
+            if settings.reddit_native_search_enabled:
+                try:
+                    from ..tools.reddit_tool import RedditCollectorTool as _RedditTool
+
+                    existing_urls = [r.url for r in reddit_results]
+                    target_subs = _RedditTool.extract_subreddits_from_urls(existing_urls)
+
+                    if target_subs:
+                        native_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_native_search_query_fraction))]
+                        praw_tool = _RedditTool()
+                        praw_results = praw_tool.search_subreddits(
+                            queries=[q.query for q in native_queries],
+                            subreddits=target_subs,
+                            time_filter=settings.reddit_native_search_time_filter,
+                            max_results_per_query=settings.reddit_native_search_max_results,
+                            already_collected_urls=set(existing_urls),
+                        )
+                        reddit_results.extend(praw_results)
+                        logger.info(f"[Reddit] Found {len(praw_results)} results from PRAW native search")
+                    else:
+                        logger.info("[Reddit] No subreddits identified for PRAW native search")
+                except Exception as e:
+                    logger.error(f"[Reddit] PRAW native search failed: {e}")
+
+            # Deduplicate by URL
+            seen_urls: set[str] = set()
+            unique_reddit_results = []
+            for result in reddit_results:
+                if result.url not in seen_urls:
+                    seen_urls.add(result.url)
+                    unique_reddit_results.append(result)
+
+            new_from_freshness = len(unique_reddit_results) - standard_count
+            logger.info(f"[Reddit] After dedup: {len(unique_reddit_results)} unique ({new_from_freshness} new from freshness)")
+
+            # LLM validation
+            logger.info("[Reddit] Validating thread relevance...")
+            validated = validator.validate_batch_parallel(
+                niche_description=niche_description,
+                search_results=unique_reddit_results,
+                batch_size=10,
+            )
+            reddit_urls = [result.url for result, is_relevant in validated if is_relevant]
+            filtered_count = len(unique_reddit_results) - len(reddit_urls)
+            logger.info(f"[Reddit] Filtered {filtered_count} irrelevant, kept {len(reddit_urls)} relevant discussions")
+
+            # Collect full posts
+            logger.info("[Reddit] Collecting posts and comments...")
+            reddit_posts = self.reddit_tool.collect_posts(reddit_urls)
+            logger.info(f"[Reddit] Collected {len(reddit_posts)} quality posts")
+
+            return PlatformSearchResult(
+                posts=reddit_posts,
+                unique_results_count=len(unique_reddit_results),
+                relevant_urls_count=len(reddit_urls),
+            )
+        except Exception as exc:
+            logger.error(f"[Reddit] Pipeline failed: {exc}")
+            return PlatformSearchResult()
+
+    def _search_twitter_pipeline(self, search_queries: list, niche_description: str) -> PlatformSearchResult:
+        """Full Twitter pipeline: Serper search → dedup → LLM validation → collect."""
+        try:
+            from ..utils.validation import ThreadRelevanceValidator
+            validator = ThreadRelevanceValidator()
+
+            twitter_queries = [q for q in search_queries if q.platform in ("twitter", "both")]
+            logger.info(f"[Twitter] Searching for relevant discussions ({len(twitter_queries)}/{len(search_queries)} queries)...")
+            twitter_results = []
+            for search_query in twitter_queries:
+                try:
+                    results = self.search_tool.run(
+                        search_query=f"(site:twitter.com OR site:x.com) {search_query.query}"
+                    )
+                    twitter_results_1 = SearchHelper.extract_results_from_serper(results, "twitter.com")
+                    twitter_results_2 = SearchHelper.extract_results_from_serper(results, "x.com")
+                    twitter_results.extend(twitter_results_1 + twitter_results_2)
+                except Exception as e:
+                    logger.error(f"[Twitter] Search failed for '{search_query.query}': {e}")
+
+            seen_urls: set[str] = set()
+            unique_twitter_results = []
+            for result in twitter_results:
+                if result.url not in seen_urls:
+                    seen_urls.add(result.url)
+                    unique_twitter_results.append(result)
+
+            logger.info(f"[Twitter] Found {len(unique_twitter_results)} unique results from {len(twitter_queries)} queries")
+
+            # LLM validation
+            logger.info("[Twitter] Validating thread relevance...")
+            validated = validator.validate_batch_parallel(
+                niche_description=niche_description,
+                search_results=unique_twitter_results,
+                batch_size=10,
+            )
+            twitter_urls = [result.url for result, is_relevant in validated if is_relevant]
+            filtered_count = len(unique_twitter_results) - len(twitter_urls)
+            logger.info(f"[Twitter] Filtered {filtered_count} irrelevant, kept {len(twitter_urls)} relevant discussions")
+
+            # Collect full threads
+            logger.info("[Twitter] Collecting threads...")
+            twitter_threads = self.twitter_tool.collect_threads(twitter_urls)
+            logger.info(f"[Twitter] Collected {len(twitter_threads)} quality threads")
+
+            return PlatformSearchResult(
+                posts=twitter_threads,
+                unique_results_count=len(unique_twitter_results),
+                relevant_urls_count=len(twitter_urls),
+            )
+        except Exception as exc:
+            logger.error(f"[Twitter] Pipeline failed: {exc}")
+            return PlatformSearchResult()
+
+    def _search_hackernews_pipeline(self, search_queries: list, niche_description: str) -> PlatformSearchResult:
+        """Full HN pipeline: Algolia search + token_jaccard filtering + collect."""
+        try:
+            hn_queries = [q.query for q in search_queries if q.platform in ("hackernews", "both")]
+            if not hn_queries:
+                hn_queries = [q.query for q in search_queries[:8]]
+            logger.info(f"[HN] Collecting stories via Algolia API ({len(hn_queries)} queries)...")
+            hn_posts = self.hackernews_tool.search_and_collect(
+                queries=hn_queries,
+                niche_description=niche_description,
+                min_points=settings.min_hn_points,
+                min_hn_comments=settings.min_hn_comments,
+                max_total=25,
+            )
+            logger.info(f"[HN] Collected {len(hn_posts)} stories")
+            return PlatformSearchResult(posts=hn_posts)
+        except Exception as exc:
+            logger.warning(f"[HN] Pipeline failed (non-fatal): {exc}")
+            return PlatformSearchResult()
+
+    def _search_youtube_pipeline(self, search_queries: list, niche_description: str) -> PlatformSearchResult:
+        """Full YouTube pipeline: Serper search → dedup → transcript collection + token_jaccard filtering."""
+        try:
+            yt_queries = [q.query for q in search_queries if q.platform in ("youtube", "both")]
+            if not yt_queries:
+                yt_queries = [q.query for q in search_queries[:6]]
+
+            logger.info(f"[YouTube] Searching for videos ({len(yt_queries)} queries)...")
+            yt_serper_results = []
+            seen_yt_urls: set[str] = set()
+            for query in yt_queries[:10]:
+                try:
+                    yt_search_query = SearchHelper.build_youtube_query(query)
+                    results = self.search_tool.run(search_query=yt_search_query)
+                    extracted = SearchHelper.extract_results_from_serper(results, "youtube.com")
+                    for r in extracted:
+                        if r.url not in seen_yt_urls:
+                            seen_yt_urls.add(r.url)
+                            yt_serper_results.append(r)
+                except Exception as exc:
+                    logger.debug(f"[YouTube] Serper search failed for '{query}': {exc}")
+
+            if not yt_serper_results:
+                logger.info("[YouTube] No Serper results found")
+                return PlatformSearchResult()
+
+            yt_niche_keywords = list(set(
+                word for q in yt_queries[:5]
+                for word in q.lower().split() if len(word) > 2
+            ))
+            yt_candidate_cap = settings.max_youtube_videos * 2
+            youtube_posts = self.youtube_tool.search_and_collect(
+                serper_results=yt_serper_results[:yt_candidate_cap],
+                niche_description=niche_description,
+                min_views=settings.min_youtube_views,
+                max_total=settings.max_youtube_videos,
+                niche_keywords=yt_niche_keywords,
+            )
+            logger.info(f"[YouTube] Collected {len(youtube_posts)} transcripts")
+            return PlatformSearchResult(
+                posts=youtube_posts,
+                unique_results_count=len(yt_serper_results),
+                relevant_urls_count=len(youtube_posts),
+            )
+        except Exception as exc:
+            logger.warning(f"[YouTube] Pipeline failed (non-fatal): {exc}")
+            return PlatformSearchResult()
+
     @listen(stage_1_validate_niche)
     def stage_2_search_and_discover(self):
         """
         Stage 2: Search & Discover
 
-        Uses SerperDevTool to find relevant social discussions on Reddit and Twitter.
+        Searches Reddit, Twitter, HN, and YouTube in parallel for social discussions.
         """
         logger.info("=" * 80)
         logger.info("STAGE 5: Search & Discover")
@@ -2142,12 +2434,15 @@ Return a valid JSON object with this structure:
             enabled_platforms.append("reddit")
         if settings.enable_twitter:
             enabled_platforms.append("twitter")
+        if settings.enable_hackernews:
+            enabled_platforms.append("hackernews")
+        if settings.enable_youtube:
+            enabled_platforms.append("youtube")
 
-        logger.info(f"Generating {settings.num_search_queries} strategic search queries (platforms: {enabled_platforms or 'all'})...")
-        queries = query_gen.generate_queries(
+        logger.info(f"Generating search queries for {len(enabled_platforms)} platforms: {enabled_platforms}...")
+        queries = query_gen.generate_all_platform_queries(
             niche_description=self.niche_description,
             niche_context=self.state.niche_context,
-            num_queries=settings.num_search_queries,
             enabled_platforms=enabled_platforms if enabled_platforms else None,
         )
 
@@ -2163,206 +2458,62 @@ Return a valid JSON object with this structure:
         ]
         logger.info(f"[OK] Generated {len(self.state.search_queries)} search queries")
 
-        # Initialize thread relevance validator (used for both Reddit and Twitter)
-        from ..utils.validation import ThreadRelevanceValidator
-        validator = ThreadRelevanceValidator()
+        # ── Run all platform pipelines in parallel ──
+        from ..utils.parallel_collection import ParallelCollector
 
-        # Search Reddit (conditional)
-        reddit_urls = []
-        unique_reddit_results = []
-
+        tasks = []
         if settings.enable_reddit:
-            # Filter to Reddit-applicable queries (platform: reddit or both)
-            reddit_queries = [q for q in self.state.search_queries if q.platform in ("reddit", "both")]
-            logger.info(f"Searching Reddit for relevant discussions ({len(reddit_queries)}/{len(self.state.search_queries)} queries)...")
-            reddit_results = []
-            for search_query in reddit_queries:
-                try:
-                    results = self.search_tool.run(
-                        search_query=f"site:reddit.com {search_query.query}"
-                    )
-                    search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
-                    reddit_results.extend(search_items)
-                except Exception as e:
-                    logger.error(f"Reddit search failed for '{search_query.query}': {e}")
-
-            standard_count = len(reddit_results)
-            logger.info(f"[OK] Found {standard_count} Reddit results from standard search")
-
-            # ── Freshness Serper pass (Phase 1): date-filtered search ──
-            freshness_serper_count = 0
-            if settings.reddit_freshness_search_enabled:
-                import math
-                freshness_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_freshness_query_fraction))]
-                freshness_errors = 0
-                for search_query in freshness_queries:
-                    if freshness_errors >= 2:
-                        logger.warning("Freshness search circuit breaker: 2 consecutive errors, disabling for remaining queries")
-                        break
-                    try:
-                        results = SearchHelper.serper_search_with_date_filter(
-                            f"site:reddit.com {search_query.query}",
-                            tbs=settings.reddit_freshness_tbs,
-                        )
-                        search_items = SearchHelper.extract_results_from_serper(results, "reddit.com")
-                        reddit_results.extend(search_items)
-                        freshness_serper_count += len(search_items)
-                        freshness_errors = 0
-                    except Exception as e:
-                        freshness_errors += 1
-                        logger.error(f"Freshness search failed for '{search_query.query}': {e}")
-
-                logger.info(f"[OK] Found {freshness_serper_count} Reddit results from freshness search (tbs={settings.reddit_freshness_tbs})")
-
-            # ── PRAW native search pass (Phase 3) ──
-            praw_count = 0
-            if settings.reddit_native_search_enabled:
-                try:
-                    from ..tools.reddit_tool import RedditCollectorTool
-                    import math
-
-                    # Extract top subreddits from existing results
-                    existing_urls = [r.url for r in reddit_results]
-                    target_subs = RedditCollectorTool.extract_subreddits_from_urls(existing_urls)
-
-                    if target_subs:
-                        native_queries = reddit_queries[:max(1, math.ceil(len(reddit_queries) * settings.reddit_native_search_query_fraction))]
-                        reddit_tool = RedditCollectorTool()
-                        praw_results = reddit_tool.search_subreddits(
-                            queries=[q.query for q in native_queries],
-                            subreddits=target_subs,
-                            time_filter=settings.reddit_native_search_time_filter,
-                            max_results_per_query=settings.reddit_native_search_max_results,
-                            already_collected_urls=set(existing_urls),
-                        )
-                        reddit_results.extend(praw_results)
-                        praw_count = len(praw_results)
-                        logger.info(f"[OK] Found {praw_count} Reddit results from PRAW native search")
-                    else:
-                        logger.info("[OK] No subreddits identified for PRAW native search")
-                except Exception as e:
-                    logger.error(f"PRAW native search failed: {e}")
-
-            # Deduplicate results by URL
-            seen_urls = set()
-            for result in reddit_results:
-                if result.url not in seen_urls:
-                    seen_urls.add(result.url)
-                    unique_reddit_results.append(result)
-
-            new_from_freshness = len(unique_reddit_results) - standard_count
-            logger.info(
-                f"[OK] After dedup: {len(unique_reddit_results)} unique results "
-                f"({new_from_freshness} new from freshness passes)"
-            )
-
-            # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
-            logger.info("Validating Reddit thread relevance...")
-            validated_reddit = validator.validate_batch_parallel(
-                niche_description=self.niche_description,
-                search_results=unique_reddit_results,
-                batch_size=10
-                # max_workers defaults to settings.thread_validation_max_workers (2)
-            )
-
-            # Filter to relevant results only
-            reddit_urls = [result.url for result, is_relevant in validated_reddit if is_relevant]
-            filtered_count = len(unique_reddit_results) - len(reddit_urls)
-            logger.info(f"[OK] Filtered {filtered_count} irrelevant threads, kept {len(reddit_urls)} relevant Reddit discussions")
-        else:
-            logger.info("Reddit collection disabled (ENABLE_REDDIT=false) - skipping Reddit search")
-
-        # Search Twitter
-        twitter_urls = []
-        twitter_threads = []
-
+            tasks.append(("reddit", lambda: self._search_reddit_pipeline(self.state.search_queries, self.niche_description)))
         if settings.enable_twitter:
-            # Filter to Twitter-applicable queries (platform: twitter or both)
-            twitter_queries = [q for q in self.state.search_queries if q.platform in ("twitter", "both")]
-            logger.info(f"Searching Twitter/X for relevant discussions ({len(twitter_queries)}/{len(self.state.search_queries)} queries)...")
-            twitter_results = []
-            for search_query in twitter_queries:
-                try:
-                    results = self.search_tool.run(
-                        search_query=f"(site:twitter.com OR site:x.com) {search_query.query}"
-                    )
-                    # Extract both twitter.com and x.com results
-                    twitter_results_1 = SearchHelper.extract_results_from_serper(results, "twitter.com")
-                    twitter_results_2 = SearchHelper.extract_results_from_serper(results, "x.com")
-                    twitter_results.extend(twitter_results_1 + twitter_results_2)
-                except Exception as e:
-                    logger.error(f"Twitter search failed for '{search_query.query}': {e}")
+            tasks.append(("twitter", lambda: self._search_twitter_pipeline(self.state.search_queries, self.niche_description)))
+        if settings.enable_hackernews and self.hackernews_tool:
+            tasks.append(("hackernews", lambda: self._search_hackernews_pipeline(self.state.search_queries, self.niche_description)))
+        if settings.enable_youtube and self.youtube_tool:
+            tasks.append(("youtube", lambda: self._search_youtube_pipeline(self.state.search_queries, self.niche_description)))
 
-            # Deduplicate results by URL
-            seen_urls = set()
-            unique_twitter_results = []
-            for result in twitter_results:
-                if result.url not in seen_urls:
-                    seen_urls.add(result.url)
-                    unique_twitter_results.append(result)
+        if not tasks:
+            logger.warning("All social content sources disabled — no social content will be collected")
 
-            logger.info(f"[OK] Found {len(unique_twitter_results)} unique Twitter results from {len(twitter_queries)} queries")
+        logger.info(f"Running {len(tasks)} platform pipelines in parallel: {[t[0] for t in tasks]}")
+        parallel_results = ParallelCollector.collect_parallel(tasks, max_workers=min(len(tasks), 4)) if tasks else {}
 
-            # Validate relevance using cheap model (gpt-4o-mini) with parallel processing
-            logger.info("Validating Twitter thread relevance...")
-            validated_twitter = validator.validate_batch_parallel(
-                niche_description=self.niche_description,
-                search_results=unique_twitter_results,
-                batch_size=10
-                # max_workers defaults to settings.thread_validation_max_workers (2)
-            )
+        # Unpack results (None-safe: ParallelCollector stores None on failure, skipped platforms absent)
+        _empty = PlatformSearchResult()
+        reddit_result = parallel_results.get("reddit") or _empty
+        twitter_result = parallel_results.get("twitter") or _empty
+        hn_result = parallel_results.get("hackernews") or _empty
+        yt_result = parallel_results.get("youtube") or _empty
 
-            # Filter to relevant results only
-            twitter_urls = [result.url for result, is_relevant in validated_twitter if is_relevant]
-            filtered_count = len(unique_twitter_results) - len(twitter_urls)
-            logger.info(f"[OK] Filtered {filtered_count} irrelevant threads, kept {len(twitter_urls)} relevant Twitter discussions")
+        reddit_posts = reddit_result.posts
+        twitter_threads = twitter_result.posts
+        hn_posts = hn_result.posts
+        youtube_posts = yt_result.posts
 
-            # Collect Reddit and Twitter content in parallel
-            if settings.enable_reddit:
-                logger.info("Collecting Reddit and Twitter content in parallel...")
-                from ..utils.parallel_collection import ParallelCollector
+        if not settings.enable_reddit:
+            logger.info("Reddit collection disabled (ENABLE_REDDIT=false)")
+        if not settings.enable_twitter:
+            logger.info("Twitter collection disabled (ENABLE_TWITTER=false)")
 
-                collection_tasks = [
-                    ("reddit", lambda: self.reddit_tool.collect_posts(reddit_urls)),
-                    ("twitter", lambda: self.twitter_tool.collect_threads(twitter_urls))
-                ]
+        # Record which platforms were searched and what they found
+        self.state.sources_searched = {
+            "reddit": {"enabled": settings.enable_reddit, "posts_found": len(reddit_posts)},
+            "twitter": {"enabled": settings.enable_twitter, "posts_found": len(twitter_threads)},
+            "hackernews": {"enabled": settings.enable_hackernews, "posts_found": len(hn_posts)},
+            "youtube": {"enabled": settings.enable_youtube, "posts_found": len(youtube_posts)},
+        }
 
-                results = ParallelCollector.collect_parallel(collection_tasks, max_workers=2)
-                reddit_posts = results.get("reddit", [])
-                twitter_threads = results.get("twitter", [])
-
-                logger.info(f"[OK] Parallel collection completed:")
-                logger.info(f"    - Reddit: {len(reddit_posts)} quality posts")
-                logger.info(f"    - Twitter: {len(twitter_threads)} quality threads")
-            else:
-                # Twitter only (Reddit disabled)
-                logger.info("Collecting Twitter threads (Reddit disabled)...")
-                reddit_posts = []
-                twitter_threads = self.twitter_tool.collect_threads(twitter_urls)
-                logger.info(f"[OK] Collected {len(twitter_threads)} quality Twitter threads")
-        elif settings.enable_reddit:
-            logger.info("Twitter collection disabled (ENABLE_TWITTER=false) - skipping Twitter search")
-            # Collect Reddit content only
-            logger.info("Collecting Reddit posts and comments...")
-            reddit_posts = self.reddit_tool.collect_posts(reddit_urls)
-            twitter_threads = []
-            logger.info(f"[OK] Collected {len(reddit_posts)} quality Reddit posts")
-        else:
-            # Both disabled
-            logger.warning("Both Reddit and Twitter collection disabled - no social content will be collected")
-            reddit_posts = []
-            twitter_threads = []
-
-        # Hard stop if no social content collected from either platform
-        if len(reddit_posts) == 0 and len(twitter_threads) == 0:
+        # Hard stop if insufficient social content (< 3 posts prevents poisoned checkpoints)
+        total_content = len(reddit_posts) + len(twitter_threads) + len(hn_posts) + len(youtube_posts)
+        if total_content < 3:
             logger.error("=" * 80)
-            logger.error("PIPELINE STOPPED: No social content collected from either platform")
-            logger.error("Cannot proceed without data. Possible causes:")
-            logger.error("  - Twitter rate limiting (most common)")
-            logger.error("  - Reddit API issues")
-            logger.error("  - No relevant content found for niche")
+            logger.error(f"PIPELINE STOPPED: Insufficient social content ({total_content} posts, minimum 3)")
+            logger.error("Cannot proceed — pain point analysis requires at least 3 discussions.")
+            logger.error("Possible causes:")
+            logger.error("  - Niche too narrow (try broadening the search)")
+            logger.error("  - Reddit/Twitter API issues")
+            logger.error("  - All sources returned empty results")
             logger.error("=" * 80)
-            raise ValueError("No social content collected from either Reddit or Twitter. Cannot proceed with research pipeline.")
+            raise ValueError(f"Insufficient social content ({total_content} posts, minimum 3). Cannot proceed — would fail at pain point analysis.")
 
         # Token monitoring: Estimate size of collected content
         if settings.token_monitoring_enabled:
@@ -2411,28 +2562,39 @@ Return a valid JSON object with this structure:
             else:
                 twitter_char_count = 0
 
-            # Log combined estimate
-            total_chars = reddit_char_count + twitter_char_count
+            # Log combined estimate (including generic sources)
+            generic_char_count = sum(len(p.body or "") for p in hn_posts + youtube_posts)
+            total_chars = reddit_char_count + twitter_char_count + generic_char_count
             # Rough token estimate (1 token ≈ 4 chars)
             estimated_tokens = total_chars // 4
             logger.info(
                 f"Stage 5 - Total collected content: ~{total_chars:,} characters "
-                f"(~{estimated_tokens:,} tokens estimated)"
+                f"(~{estimated_tokens:,} tokens estimated, "
+                f"generic: ~{generic_char_count:,} chars from {len(hn_posts)} HN + {len(youtube_posts)} YouTube)"
             )
 
         # Store in social_content collection
         from ..models.social_content import SocialContentCollection
+        total_generic_responses = sum(p.num_responses for p in hn_posts + youtube_posts)
         self.state.social_content = SocialContentCollection(
             reddit_posts=reddit_posts,
-            twitter_threads=twitter_threads
+            twitter_threads=twitter_threads,
+            generic_posts=hn_posts + youtube_posts,
+            total_generic_responses=total_generic_responses,
         )
 
         # Track filtering statistics (Phase 2.5: Data quality transparency)
-        # This enables understanding of false negative rates in URL filtering
-        reddit_searched = len(unique_reddit_results)
-        reddit_relevant = len(reddit_urls)
-        twitter_searched = len(unique_twitter_results) if settings.enable_twitter else 0
-        twitter_relevant = len(twitter_urls) if settings.enable_twitter else 0
+        reddit_searched = reddit_result.unique_results_count
+        reddit_relevant = reddit_result.relevant_urls_count
+        twitter_searched = twitter_result.unique_results_count
+        twitter_relevant = twitter_result.relevant_urls_count
+        yt_searched = yt_result.unique_results_count
+        yt_collected = len(youtube_posts)
+        hn_searched = hn_result.unique_results_count
+        hn_collected = len(hn_posts)
+
+        total_searched = reddit_searched + twitter_searched + yt_searched + hn_searched
+        total_relevant = reddit_relevant + twitter_relevant + yt_collected + hn_collected
 
         self.state.filtering_stats = {
             "reddit_urls_searched": reddit_searched,
@@ -2441,22 +2603,29 @@ Return a valid JSON object with this structure:
             "twitter_urls_searched": twitter_searched,
             "twitter_urls_relevant": twitter_relevant,
             "twitter_filtering_rate": (twitter_searched - twitter_relevant) / twitter_searched if twitter_searched > 0 else 0,
-            "total_urls_searched": reddit_searched + twitter_searched,
-            "total_urls_relevant": reddit_relevant + twitter_relevant,
+            "youtube_urls_searched": yt_searched,
+            "youtube_posts_collected": yt_collected,
+            "hackernews_urls_searched": hn_searched,
+            "hackernews_posts_collected": hn_collected,
+            "total_urls_searched": total_searched,
+            "total_urls_relevant": total_relevant,
             "overall_filtering_rate": (
-                (reddit_searched + twitter_searched - reddit_relevant - twitter_relevant) /
-                (reddit_searched + twitter_searched)
-            ) if (reddit_searched + twitter_searched) > 0 else 0,
+                (total_searched - total_relevant) / total_searched
+            ) if total_searched > 0 else 0,
         }
         logger.info(
             f"[Filtering Stats] Reddit: {reddit_relevant}/{reddit_searched} relevant "
             f"({self.state.filtering_stats['reddit_filtering_rate']*100:.1f}% filtered)"
         )
-        if settings.enable_twitter:
+        if twitter_searched > 0:
             logger.info(
                 f"[Filtering Stats] Twitter: {twitter_relevant}/{twitter_searched} relevant "
                 f"({self.state.filtering_stats['twitter_filtering_rate']*100:.1f}% filtered)"
             )
+        if yt_searched > 0:
+            logger.info(f"[Filtering Stats] YouTube: {yt_collected}/{yt_searched} collected")
+        if hn_searched > 0:
+            logger.info(f"[Filtering Stats] HN: {hn_collected}/{hn_searched} collected")
 
         # Validate social content quality
         from ..utils.validation import SocialContentValidator
@@ -2480,14 +2649,17 @@ Return a valid JSON object with this structure:
             # Continue anyway (user decision), but flag in errors
             self.state.errors.append(f"Stage 2: Insufficient social content quality ({quality_tier})")
 
-        # Update stage first, then checkpoint (so resume skips this stage)
-        self.state.current_stage = 3
-
-        # Mark stage complete with tracking
-        self._mark_stage_complete(2, used_fallback=(quality_tier == "INSUFFICIENT"))
-
-        # Checkpoint: Save social content
-        self.checkpoint_mgr.save_stage("stage_2_social_content", self.state.social_content)
+        # Only advance stage and save checkpoint if quality is sufficient
+        # (Fix 1 should prevent INSUFFICIENT from reaching here, but defense-in-depth)
+        if quality_tier == "INSUFFICIENT":
+            logger.warning(
+                "Stage 2 quality is INSUFFICIENT — not advancing stage or saving checkpoint. "
+                "Next run will re-collect from scratch."
+            )
+        else:
+            self.state.current_stage = 3
+            self._mark_stage_complete(2, used_fallback=(quality_tier == "MINIMAL"))
+            self.checkpoint_mgr.save_stage("stage_2_social_content", self.state.social_content)
 
     def _run_pain_point_crew(self) -> dict:
         """
@@ -2501,6 +2673,7 @@ Return a valid JSON object with this structure:
         pain_point_crew = PainPointCrew(
             reddit_posts=self.state.social_content.reddit_posts,
             twitter_threads=self.state.social_content.twitter_threads,
+            generic_posts=self.state.social_content.generic_posts,
             niche_description=self.niche_description,
             market_segments=self.state.niche_context.market_segments,
             industry_boundaries=self.state.niche_context.industry_boundaries,
@@ -2542,6 +2715,7 @@ Return a valid JSON object with this structure:
         audience_crew = AudienceMappingCrew(
             reddit_posts=self.state.social_content.reddit_posts if self.state.social_content else [],
             twitter_threads=self.state.social_content.twitter_threads if self.state.social_content else [],
+            generic_posts=self.state.social_content.generic_posts if self.state.social_content else [],
             niche_description=self.niche_description,
             job_id=self.state.job_id,
         )
@@ -2592,17 +2766,19 @@ Return a valid JSON object with this structure:
         logger.info("=" * 80)
         self._emit_progress(3, "Pain Point Analysis", "running")
 
-        if not self.state.social_content or (not self.state.social_content.reddit_posts and not self.state.social_content.twitter_threads):
+        if not self.state.social_content or (not self.state.social_content.reddit_posts and not self.state.social_content.twitter_threads and not self.state.social_content.generic_posts):
             logger.warning("No social content collected. Skipping pain point analysis.")
             self.state.current_stage = 4
             self.checkpoint_mgr.save_stage("stage_3_pain_points", {"skipped": True, "reason": "No social content collected"})
             return
 
         # ANTI-HALLUCINATION CHECK: Verify content quality
-        total_discussions = len(self.state.social_content.reddit_posts) + len(self.state.social_content.twitter_threads)
+        generic_posts = self.state.social_content.generic_posts or []
+        total_discussions = len(self.state.social_content.reddit_posts) + len(self.state.social_content.twitter_threads) + len(generic_posts)
         total_comments = sum(len(post.comments) for post in self.state.social_content.reddit_posts)
         total_replies = sum(len(thread.replies) for thread in self.state.social_content.twitter_threads)
-        total_engagement = total_comments + total_replies
+        total_generic_responses = sum(p.num_responses for p in generic_posts)
+        total_engagement = total_comments + total_replies + total_generic_responses
 
         if total_discussions < 3:
             logger.warning(

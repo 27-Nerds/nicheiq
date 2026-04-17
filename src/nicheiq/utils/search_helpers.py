@@ -46,6 +46,11 @@ class SearchHelper:
         return f"(site:twitter.com OR site:x.com) {query}"
 
     @staticmethod
+    def build_youtube_query(query: str) -> str:
+        """Build a YouTube-specific search query with site operator."""
+        return f"site:youtube.com {query}"
+
+    @staticmethod
     def extract_results_from_serper(search_results: dict, domain: str) -> list['SearchResultItem']:
         """
         Extract search results with metadata for a specific domain from SerperDevTool results.
@@ -87,6 +92,14 @@ class SearchHelper:
                 elif 'twitter.com' in domain or 'x.com' in domain:
                     # Twitter status URLs contain '/status/'
                     if '/status/' in link:
+                        results.append(SearchResultItem(
+                            url=link,
+                            title=title,
+                            snippet=snippet
+                        ))
+                # For YouTube, only include video watch URLs (not shorts, playlists, channels)
+                elif 'youtube.com' in domain or 'youtu.be' in domain:
+                    if ('/watch?v=' in link or 'youtu.be/' in link) and '/shorts/' not in link and '/playlist' not in link and '/@' not in link:
                         results.append(SearchResultItem(
                             url=link,
                             title=title,

@@ -242,8 +242,9 @@ def detect_similarity(idea_a, idea_b) -> bool:
             "your",
         }
 
-        vp_a = set(idea_a.value_proposition.lower().split()) - stop_words
-        vp_b = set(idea_b.value_proposition.lower().split()) - stop_words
+        from ..text_stemmer import stem_tokens
+        vp_a = stem_tokens(set(idea_a.value_proposition.lower().split()) - stop_words)
+        vp_b = stem_tokens(set(idea_b.value_proposition.lower().split()) - stop_words)
 
         if vp_a and vp_b:
             overlap = len(vp_a & vp_b) / min(len(vp_a), len(vp_b))

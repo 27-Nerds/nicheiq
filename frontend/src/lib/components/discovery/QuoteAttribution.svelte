@@ -9,9 +9,9 @@
 
   let { upvotes, subreddit, sourceUrl }: Props = $props();
 
-  // Validate post URL (alphanumeric post IDs only)
+  // Validate post URL (supports Reddit, HN, YouTube)
   const safeUrl = $derived(
-    sourceUrl && /^https:\/\/(www\.)?reddit\.com\//.test(sourceUrl) ? sourceUrl : null
+    sourceUrl && /^https:\/\/(www\.)?(reddit\.com|news\.ycombinator\.com|youtube\.com)\//.test(sourceUrl) ? sourceUrl : null
   );
 </script>
 
@@ -20,7 +20,7 @@
     <span class="upvotes">&#9650; {upvotes.toLocaleString()}</span>
   {/if}
   {#if subreddit}
-    <span class="subreddit">r/{subreddit}</span>
+    <span class="subreddit">{subreddit}</span>
   {/if}
   {#if safeUrl}
     <a href={safeUrl} target="_blank" rel="noopener noreferrer" class="source-link">

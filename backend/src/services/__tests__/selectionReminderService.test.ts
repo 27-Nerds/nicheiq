@@ -43,6 +43,7 @@ describe('checkAndSendReminders', () => {
         status: 'AWAITING_SELECTION',
         selectionReminderCount: { lt: 3 },
         awaitingSelectionAt: { not: null },
+        jobMode: { notIn: ['catalog_pain_points', 'catalog_ideas'] },
       },
       select: {
         id: true,

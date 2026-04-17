@@ -496,6 +496,7 @@ class TestMarketingChannelOrchestration:
         state.social_content.twitter_threads = mock_twitter_threads
         state.seo_strategy_report = Mock()
         state.seo_strategy_report.tier_1_keywords = mock_enriched_keywords
+        state.sources_searched = None  # No source coverage tracking in this test
 
         generator = ReportGenerator(state)
         result = generator._identify_marketing_channels()
@@ -512,6 +513,7 @@ class TestMarketingChannelOrchestration:
         state.social_content.reddit_posts = mock_reddit_posts
         state.social_content.twitter_threads = None
         state.seo_strategy_report = None
+        state.sources_searched = None
 
         generator = ReportGenerator(state)
         result = generator._identify_marketing_channels()
@@ -524,6 +526,7 @@ class TestMarketingChannelOrchestration:
         state = Mock()
         state.social_content = None
         state.seo_strategy_report = None
+        state.sources_searched = None
 
         generator = ReportGenerator(state)
         result = generator._identify_marketing_channels()

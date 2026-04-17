@@ -6,6 +6,7 @@
     communityHubs?: string[];
     topThreads?: RedditThread[];
     postsAnalyzed?: number;
+    sourcesSearched?: Record<string, { enabled: boolean; posts_found: number }>;
   }
 
   let {
@@ -13,7 +14,23 @@
     communityHubs = [],
     topThreads = [],
     postsAnalyzed = 0,
+    sourcesSearched,
   }: Props = $props();
+
+  const PLATFORM_LABELS: Record<string, string> = {
+    reddit: "Reddit",
+    hackernews: "Hacker News",
+    twitter: "Twitter",
+    youtube: "YouTube",
+  };
+
+  const gapPlatforms = $derived(
+    sourcesSearched
+      ? Object.entries(sourcesSearched)
+          .filter(([_, info]) => info.enabled && info.posts_found === 0)
+          .map(([platform]) => PLATFORM_LABELS[platform] ?? platform)
+      : []
+  );
 
   const displaySources = $derived(
     subredditNames.length > 0
@@ -41,7 +58,7 @@
   {#if displaySources.length > 0}
     <div class="source-grid">
       {#each visibleSources as source}
-        <span class="source-pill">{source.startsWith('r/') ? source : `r/${source}`}</span>
+        <span class="source-pill">{source}</span>
       {/each}
       {#if hiddenSourceCount > 0 && !showAllSources}
         <button class="source-pill source-toggle" onclick={() => showAllSources = true}>
@@ -54,6 +71,11 @@
         </button>
       {/if}
     </div>
+    {#if gapPlatforms.length > 0}
+      {#each gapPlatforms as platform}
+        <span class="source-pill source-gap">{platform} · 0 posts</span>
+      {/each}
+    {/if}
   {/if}
 </div>
 
@@ -101,5 +123,11 @@
 
   .source-toggle:hover {
     background: rgba(240, 96, 48, 0.12);
+  }
+
+  .source-gap {
+    border-style: dashed;
+    color: var(--color-text-muted);
+    opacity: var(--opacity-muted);
   }
 </style>

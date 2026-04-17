@@ -337,6 +337,7 @@ model CreditTransaction {
 
   description     String?               @db.VarChar(500)
   stage           String                @default("unknown") @db.VarChar(50)
+  cycle           Int                   @default(0) // 0 = original, 1+ = resume attempts
   relatedJobId    String?               // Link to job that used credits
   relatedJob      Job?                  @relation(fields: [relatedJobId], references: [id], onDelete: SetNull)
   promoCodeId     String?               // Link to promo code if redeemed
@@ -346,8 +347,7 @@ model CreditTransaction {
   @@index([userId])
   @@index([createdAt])
   @@index([type])
-  @@index([relatedJobId])
-  @@unique([relatedJobId, type, stage], name: "unique_job_stage_transaction")
+  @@unique([relatedJobId, type, stage, cycle], name: "unique_job_stage_cycle_transaction")
 }
 
 // Admin-generated promo codes

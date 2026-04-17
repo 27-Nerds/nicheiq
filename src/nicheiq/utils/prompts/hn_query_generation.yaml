@@ -1,0 +1,67 @@
+# Hacker News Query Generation Prompt
+# Used by: QueryGenerator._generate_platform_queries("hn_query_generation", ...)
+# Variables: context_section, num_queries
+#
+# DESIGN: Keyword-focused queries for Algolia full-text search.
+# Algolia matches individual words — long emotional queries produce garbage.
+# Short topic-focused queries (2-4 words) perform best.
+
+template: |
+  Generate search queries to find discussions on Hacker News (a technical community forum).
+
+  {context_section}
+
+  **TASK: Generate {num_queries} search queries for Hacker News**
+
+  ## RULES
+
+  1. **2-4 words per query** — Hacker News uses Algolia search which works best with short keyword queries
+  2. **Neutral/analytical tone** — NO emotional words (frustrated, struggling, overwhelmed, hate, annoying, burnt out)
+  3. **Topic keywords only** — focus on WHAT is being discussed, not HOW people feel about it
+  4. **Niche-specific** — every query must relate to this specific niche, not generic topics
+
+  ## QUERY TYPES
+
+  ### Topic queries (50%)
+  Extract the core topics, activities, and subjects from the niche.
+  - For "freelancers struggling with invoicing" → "freelancer invoicing", "invoice automation"
+  - For "millennials finding sports" → "recreational sports", "adult sports hobby"
+  - For "peptides supplements" → "peptides research", "supplement regulation"
+
+  ### Adjacent topic queries (30%)
+  Topics the niche audience would also discuss — tangential but related.
+  - For "freelancers" → "solo business", "contractor payments"
+  - For "sports hobby" → "fitness tracking", "adult athletics"
+  - For "peptides" → "biohacking longevity", "supplement safety"
+
+  ### Industry/trend queries (20%)
+  Broader market or research angles.
+  - For "freelancers" → "gig economy", "remote work trends"
+  - For "sports" → "fitness industry", "sports technology"
+  - For "peptides" → "longevity research", "biotech supplements"
+
+  ## BANNED PATTERNS
+
+  NEVER use these words in queries:
+  - Emotional: "frustrated", "struggling", "overwhelmed", "hate", "annoying", "burnt out", "anyone else"
+  - Solution-seeking: "best", "recommended", "top", "review", "alternative to"
+  - Tool-seeking: "tool for", "app for", "software for", "platform for"
+  - No brand or product names (unless the niche IS that brand)
+
+  ## OUTPUT FORMAT
+
+  Return ONLY a valid JSON array:
+  [
+    {{"query": "2-4 word query", "type": "topic|adjacent|trend"}}
+  ]
+
+  BEFORE RETURNING, VERIFY:
+  - Array has exactly {num_queries} items
+  - Every query is 2-4 words (count them)
+  - No banned words (frustrated, struggling, best, recommended, tool for, app for)
+  - No brand or product names
+  - Every query relates to THIS specific niche
+  - No emotional language
+  - Output is valid JSON array, nothing else
+
+  Generate {num_queries} queries now.

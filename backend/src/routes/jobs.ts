@@ -9,10 +9,11 @@ import {
   chargeForStageInTx,
   chargeForRegenerationInTx,
   refundForRegenerationStage,
+  chargeForResume,
 } from '../services/creditService.js';
 import { prisma } from '../services/db.js';
 import { CreateJobSchema, SelectSolutionSchema } from '../types/job.js';
-import { JobStatus, AssetType, CreditTransactionType, StageStatus } from '@prisma/client';
+import { JobStatus, AssetType, StageStatus } from '@prisma/client';
 import { CONFIG } from '../config.js';
 import { existsSync, createReadStream, statSync } from 'fs';
 import { readFile } from 'fs/promises';
@@ -623,60 +624,25 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
       return;
     }
 
-    // Check if job was refunded - if so, we need to charge again
-    const refundTransaction = await prisma.creditTransaction.findFirst({
-      where: {
-        relatedJobId: jobId,
-        type: CreditTransactionType.REFUND,
-      },
-      orderBy: { createdAt: 'desc' },
-    });
-
-    if (refundTransaction) {
-      // Job was refunded, need to re-charge to resume
-      const refundAmount = Math.abs(refundTransaction.amount);
-      const credits = await prisma.userCredits.findUnique({
-        where: { userId },
-      });
-
-      if (!credits || credits.balance < refundAmount) {
+    // Re-charge credits if the job was refunded
+    let creditCharged = 0;
+    try {
+      const result = await chargeForResume(userId, jobId);
+      creditCharged = result.amount;
+      if (result.charged) {
+        console.log(`[Jobs] Re-charged ${result.amount} credits for resuming job ${jobId}`);
+      }
+    } catch (error) {
+      if (error instanceof InsufficientCreditsError) {
         res.status(402).json({
           error: 'Insufficient credits to resume job',
           code: 'INSUFFICIENT_CREDITS',
-          balance: credits?.balance ?? 0,
-          required: refundAmount,
+          balance: error.currentBalance,
+          required: error.required,
         });
         return;
       }
-
-      // Create a new JOB_DEDUCTION to re-charge (preserves full audit trail)
-      await prisma.$transaction(async (tx) => {
-        const credits = await tx.userCredits.findUnique({ where: { userId } });
-        if (!credits) throw new Error('Credits record not found');
-
-        const updatedCredits = await tx.userCredits.update({
-          where: { userId },
-          data: {
-            balance: { decrement: refundAmount },
-            totalUsed: { increment: refundAmount },
-          },
-        });
-
-        await tx.creditTransaction.create({
-          data: {
-            userId,
-            type: CreditTransactionType.JOB_DEDUCTION,
-            amount: -refundAmount,
-            balanceBefore: credits.balance,
-            balanceAfter: updatedCredits.balance,
-            relatedJobId: jobId,
-            stage: `resume_${refundTransaction.stage}`,
-            description: `Resume: re-charge ${refundTransaction.stage}`,
-          },
-        });
-      });
-
-      console.log(`[Jobs] Re-charged ${refundAmount} credits for resuming job ${jobId} (audit trail preserved)`);
+      throw error;
     }
 
     // Reset job status to QUEUED
@@ -711,7 +677,6 @@ jobsRouter.post('/:jobId/resume', requireInternalAuth, validateJobId, async (req
       );
     }
 
-    const creditCharged = refundTransaction ? Math.abs(refundTransaction.amount) : 0;
     console.log(`[Jobs] Job ${jobId} queued for resume by user ${userId}${creditCharged ? ' (credit charged)' : ''}`);
 
     res.json({

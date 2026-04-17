@@ -64,7 +64,7 @@
   }
 
   const HEADER_OFFSET = 72; // 56px header + 16px breathing room
-  const SCROLL_THRESHOLD = HEADER_OFFSET + 80; // threshold for active section tracking
+  const SCROLL_THRESHOLD = HEADER_OFFSET + 10; // small buffer above header for activation
 
   function scrollToElement(el: HTMLElement) {
     const y = el.getBoundingClientRect().top + window.scrollY - HEADER_OFFSET;
@@ -74,6 +74,7 @@
   function handleSectionClick(phase: PhaseConfig, section: SectionConfig) {
     const el = document.getElementById(section.id);
     if (el) {
+      trackedSection = section.id;
       scrollToElement(el);
       isOpen = false;
     } else {
@@ -89,10 +90,18 @@
     const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
     scrollProgress = scrollHeight > 0 ? Math.min(window.scrollY / scrollHeight, 1) : 0;
 
-    const allSections = PHASES.flatMap((p) => p.sections);
+    // Only track sections that correspond to visible/interactive sidebar items.
+    // For locked deep-research, only the blurred-preview items appear in the sidebar.
+    const allSections = PHASES.flatMap((p) => {
+      if (isPhaseUnlocked(p.id)) return p.sections;
+      if (p.id === 'deep-research') {
+        return p.sections.filter((s) => DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id));
+      }
+      return [];
+    });
     const sectionElements = allSections
       .map((s) => ({ id: s.id, el: document.getElementById(s.id) }))
-      .filter((s) => s.el !== null);
+      .filter((s) => s.el !== null && !s.el.closest('.preview-capped'));
 
     for (let i = sectionElements.length - 1; i >= 0; i--) {
       const section = sectionElements[i];
@@ -396,7 +405,8 @@
   }
 
   /* Active indicator: text color + background fill */
-  .nav-item.active {
+  .nav-item.active,
+  .nav-item.active.done {
     color: var(--color-accent);
     font-weight: 600;
     background: var(--color-accent-subtle);

@@ -107,6 +107,8 @@ python -c "import nicheiq; print('NicheIQ installed successfully!')"
 
 You'll need API keys from 4 services. Let's get them one by one.
 
+> **Note:** Hacker News collection uses the free Algolia API and requires no API key. It's auto-enabled by default — great for B2B/SaaS/developer niches.
+
 ### 1. OpenAI API Key (Required)
 
 **Purpose**: Powers the AI agents that analyze content and generate insights.
@@ -384,6 +386,13 @@ TWITTER_EMAIL=your_twitter_email@example.com
 # -----------------------------------------------------------------------------
 DATAFORSEO_LOGIN=your.email@example.com
 DATAFORSEO_PASSWORD=your-dataforseo-api-password
+
+# -----------------------------------------------------------------------------
+# Hacker News Collection (OPTIONAL - auto-enabled, no API key needed)
+# -----------------------------------------------------------------------------
+ENABLE_HACKERNEWS=true   # Free Algolia API, great for B2B/SaaS/developer niches
+MIN_HN_POINTS=5          # Minimum points for HN stories
+MIN_HN_COMMENTS=3        # Minimum comments for HN stories
 
 # -----------------------------------------------------------------------------
 # Application Settings (Optional - defaults are fine)

@@ -440,6 +440,35 @@ class CheckpointManager:
                 for k, v in metadata["stage_completion_timestamps"].items()
             }
 
+        # ── Checkpoint quality gates: detect poisoned data ──
+        # Must run AFTER metadata restoration (line 402 sets current_stage from metadata).
+        # If loaded data fails quality checks, discard it and reset to the producing stage.
+        _CHECKPOINT_MINIMUMS = {
+            "social_content": {
+                "check": lambda sc: (
+                    len(getattr(sc, "reddit_posts", None) or [])
+                    + len(getattr(sc, "twitter_threads", None) or [])
+                    + len(getattr(sc, "generic_posts", None) or [])
+                ) >= 3,
+                "stage": 2,
+                "label": "social_content (< 3 posts)",
+            },
+            "pain_point_analysis": {
+                "check": lambda pa: bool(getattr(pa, "pain_points", None)),
+                "stage": 3,
+                "label": "pain_point_analysis (0 pain points)",
+            },
+        }
+        for attr_name, gate in _CHECKPOINT_MINIMUMS.items():
+            value = getattr(self.state, attr_name, None)
+            if value is not None and not gate["check"](value):
+                logger.warning(
+                    f"Checkpoint quality gate failed: {gate['label']}. "
+                    f"Discarding — resetting to stage {gate['stage']} for re-run."
+                )
+                setattr(self.state, attr_name, None)
+                self.state.current_stage = min(self.state.current_stage, gate["stage"])
+
     def get_completed_stages(self, folder_path: Path | None = None) -> list[str]:
         """Get list of completed stage identifiers from checkpoint folder."""
         checkpoint_folder = folder_path or self.checkpoint_folder

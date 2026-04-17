@@ -95,8 +95,45 @@ class TwitterThread(BaseModel):
     replies: list[TwitterTweet] = Field(default_factory=list, description="Reply tweets")
     total_engagement: int = Field(..., description="Total likes + retweets across thread")
 
+class SocialResponse(BaseModel):
+    """Source-agnostic comment/reply for generic social sources."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    response_id: str = Field(..., description="Response identifier")
+    author: str = Field(..., description="Response author")
+    body: str = Field(..., description="Response text")
+    score: int = Field(..., description="Response score/upvotes")
+    created_utc: datetime = Field(..., description="Response creation timestamp")
+    replies: list["SocialResponse"] = Field(
+        default_factory=list, description="Nested replies"
+    )
+
+
+class SocialPost(BaseModel):
+    """Source-agnostic post for non-Reddit/Twitter sources (HN, YouTube, etc.)."""
+
+    model_config = ConfigDict(extra='forbid')
+
+    post_id: str = Field(..., description="Post identifier")
+    platform: str = Field(..., description="Source platform (hackernews, youtube, etc.)")
+    title: str = Field(..., description="Post title")
+    body: str = Field(..., description="Post body text (selftext, transcript, etc.)")
+    author: str = Field(..., description="Post author")
+    url: str = Field(..., description="Post URL")
+    score: int = Field(..., description="Post score/points")
+    num_responses: int = Field(..., description="Number of comments/replies")
+    created_utc: datetime = Field(..., description="Post creation timestamp")
+    responses: list[SocialResponse] = Field(
+        default_factory=list, description="Top-level comments/replies"
+    )
+    raw_engagement: dict[str, int | float | bool] = Field(
+        default_factory=dict, description="Platform-specific engagement metrics"
+    )
+
+
 class SocialContentCollection(BaseModel):
-    """Collection of social media content from both platforms."""
+    """Collection of social media content from all platforms."""
 
     model_config = ConfigDict(extra='forbid')
 
@@ -106,11 +143,16 @@ class SocialContentCollection(BaseModel):
     twitter_threads: list[TwitterThread] = Field(
         default_factory=list, description="Collected Twitter threads"
     )
+    generic_posts: list[SocialPost] = Field(
+        default_factory=list, description="Collected posts from generic sources (HN, YouTube, etc.)"
+    )
     total_reddit_comments: int = Field(default=0, description="Total Reddit comments collected")
     total_twitter_tweets: int = Field(default=0, description="Total tweets collected")
+    total_generic_responses: int = Field(default=0, description="Total generic source responses collected")
     collection_timestamp: datetime = Field(
         default_factory=datetime.utcnow, description="When collection was performed"
     )
 
 # Update forward references
 RedditComment.model_rebuild()
+SocialResponse.model_rebuild()

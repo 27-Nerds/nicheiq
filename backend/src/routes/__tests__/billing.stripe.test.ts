@@ -129,7 +129,7 @@ describe('GET /api/billing/packages', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.packages).toHaveLength(2);
-    expect(response.body.packages[0]).toEqual({
+    expect(response.body.packages[0]).toMatchObject({
       id: 'pkg-starter',
       name: 'Starter',
       description: '5 credits',
@@ -192,7 +192,8 @@ describe('POST /api/billing/checkout', () => {
     expect(mockCreateCheckoutSession).toHaveBeenCalledWith(
       'user-123',
       'user@example.com',
-      'pkg-starter'
+      'pkg-starter',
+      undefined
     );
   });
 

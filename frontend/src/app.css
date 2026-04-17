@@ -37,7 +37,6 @@
 	--color-text-primary: #18181B;
 	--color-text-secondary: #52525B;
 	--color-text-muted: #71717A;
-	--color-text-inverse: #FAFAFA;
 
 	/* Accent */
 	--color-accent: #F06030;
@@ -48,7 +47,6 @@
 
 	/* Secondary */
 	--color-secondary: #6366F1;
-	--color-secondary-light: #818CF8;
 	--color-secondary-dark: #4F46E5;
 
 	/* Semantic */
@@ -73,7 +71,7 @@
 
 	/* Typography */
 	--font-display: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
-	--font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--font-body: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
 	--font-mono: "JetBrains Mono", ui-monospace, monospace;
 
 	/* Animation */
@@ -90,7 +88,6 @@
 	--viz-cat-5: #64748B;
 
 	/* Quadrant Backgrounds */
-	--quadrant-high-high: rgba(240, 96, 48, 0.08);
 	--quadrant-high-low: rgba(239, 68, 68, 0.06);
 	--quadrant-low-high: rgba(99, 102, 241, 0.06);
 	--quadrant-low-low: rgba(100, 116, 139, 0.04);

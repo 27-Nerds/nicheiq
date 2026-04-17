@@ -54,6 +54,7 @@ const mockCreateJobAndChargeDiscovery = vi.fn();
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: (...args: any[]) => mockCreateJobAndChargeDiscovery(...args),
   refundForStage: vi.fn(),
+  chargeForResume: vi.fn().mockResolvedValue({ charged: false, amount: 0 }),
   chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 5 }),
   getStageCost: vi.fn().mockResolvedValue(5),
   InsufficientCreditsError: class InsufficientCreditsError extends Error {
@@ -380,7 +381,8 @@ describe('Security Audit: Jobs API', () => {
         'user-123', // from auth, not from body
         expect.any(String),
         undefined,
-        'interactive' // jobMode
+        'interactive', // jobMode
+        undefined // entryMode
       );
     });
 

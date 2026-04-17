@@ -216,10 +216,11 @@ class TestRelevanceScoring:
             anchor_keywords=["software setup", "configuration problems"],
         )
         terms = PainPointCrew._build_relevance_terms(pp)
-        assert "software" in terms
+        # Terms are Snowball-stemmed: "software"→"softwar", "confusing"→"confus", etc.
+        assert "softwar" in terms
         assert "setup" in terms
-        assert "confusing" in terms
-        assert "configuration" in terms
+        assert "confus" in terms
+        assert "configur" in terms
         # Stopwords excluded
         assert "with" not in terms
         assert "the" not in terms
@@ -235,7 +236,7 @@ class TestRelevanceScoring:
         # 2-char words excluded
         assert "ai" not in terms
         assert "ml" not in terms
-        assert "tools" in terms
+        assert "tool" in terms  # "tools" stemmed to "tool"
 
     def test_compute_relevance_high_overlap(self):
         pp = UnvalidatedPainPoint(

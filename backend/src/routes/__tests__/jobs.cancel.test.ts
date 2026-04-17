@@ -52,6 +52,7 @@ vi.mock('../../services/queueService.js', () => ({
   enqueueRegenerateJob: vi.fn(),
   getQueueStats: vi.fn(),
   getQueueLength: vi.fn(),
+  removeJobFromQueue: vi.fn(),
 }));
 
 vi.mock('../../middleware/auth.js', () => ({
@@ -82,6 +83,10 @@ vi.mock('../../utils/jobFormatter.js', () => ({
 
 vi.mock('../../utils/assetPath.js', () => ({
   resolveAssetPath: vi.fn(),
+}));
+
+vi.mock('../../middleware/validation.js', () => ({
+  validateJobId: (_req: any, _res: any, next: any) => next(),
 }));
 
 // ============================================

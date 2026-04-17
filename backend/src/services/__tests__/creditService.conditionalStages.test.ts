@@ -11,10 +11,20 @@ const mockCreditTransactionCreate = vi.fn();
 const mockCreditTransactionUpdate = vi.fn();
 const mockAppSettingsFindUnique = vi.fn();
 const mockPrismaTransaction = vi.fn();
+const mockJobFindUnique = vi.fn();
+const mockCreditTransactionFindMany = vi.fn();
+const mockCreditTransactionFindFirst = vi.fn();
 
 vi.mock('../db.js', () => ({
   prisma: {
     $transaction: (...args: any[]) => mockPrismaTransaction(...args),
+    job: {
+      findUnique: (...args: any[]) => mockJobFindUnique(...args),
+    },
+    creditTransaction: {
+      findMany: (...args: any[]) => mockCreditTransactionFindMany(...args),
+      findFirst: (...args: any[]) => mockCreditTransactionFindFirst(...args),
+    },
   },
 }));
 
@@ -162,5 +172,336 @@ describe('createJobAndChargeDiscovery', () => {
     );
     // No update needed since we pass the real ID upfront
     expect(mockCreditTransactionUpdate).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================
+// Cycle-based refund tests
+// ============================================
+describe('refundForStage — cycle-based matching', () => {
+  const JOB_ID = 'job-resume-1';
+
+  function makeCharge(stage: string, cycle: number = 0, amount: number = -5) {
+    return {
+      id: `charge-${stage}-c${cycle}`,
+      userId: USER_ID,
+      type: 'JOB_DEDUCTION',
+      amount,
+      stage,
+      cycle,
+      relatedJobId: JOB_ID,
+      createdAt: new Date('2026-04-10T09:00:00Z'),
+    };
+  }
+
+  function makeRefund(stage: string, cycle: number = 0, amount: number = 5) {
+    return {
+      id: `refund-${stage}-c${cycle}`,
+      userId: USER_ID,
+      type: 'REFUND',
+      amount,
+      stage,
+      cycle,
+      relatedJobId: JOB_ID,
+      createdAt: new Date('2026-04-10T09:01:00Z'),
+    };
+  }
+
+  beforeEach(() => {
+    mockJobFindUnique.mockResolvedValue({ userId: USER_ID, niche: 'test niche' });
+    mockCreditTransactionCreate.mockImplementation(async (args: any) => ({
+      id: 'new-refund',
+      ...args.data,
+    }));
+    mockUserCreditsUpdate.mockResolvedValue({
+      userId: USER_ID,
+      balance: 55,
+      totalPurchased: 100,
+      totalUsed: 45,
+    });
+  });
+
+  it('refunds a standard cycle=0 charge normally', async () => {
+    const charge = makeCharge('discovery', 0);
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([charge])
+      .mockResolvedValueOnce([]);
+
+    const { refundForStage } = await import('../creditService.js');
+    const result = await refundForStage(JOB_ID, 'discovery');
+
+    expect(result).not.toBeNull();
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'REFUND',
+          stage: 'discovery',
+          cycle: 0,
+          amount: 5,
+        }),
+      })
+    );
+  });
+
+  it('refunds cycle=1 charge when cycle=0 already refunded', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([makeCharge('discovery', 1), makeCharge('discovery', 0)])
+      .mockResolvedValueOnce([makeRefund('discovery', 0)]);
+
+    const { refundForStage } = await import('../creditService.js');
+    const result = await refundForStage(JOB_ID, 'discovery');
+
+    expect(result).not.toBeNull();
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'REFUND',
+          stage: 'discovery',
+          cycle: 1,
+          amount: 5,
+        }),
+      })
+    );
+  });
+
+  it('handles multiple resume cycles (0, 1, 2)', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([
+        makeCharge('discovery', 2),
+        makeCharge('discovery', 1),
+        makeCharge('discovery', 0),
+      ])
+      .mockResolvedValueOnce([
+        makeRefund('discovery', 0),
+        makeRefund('discovery', 1),
+      ]);
+
+    const { refundForStage } = await import('../creditService.js');
+    const result = await refundForStage(JOB_ID, 'discovery');
+
+    expect(result).not.toBeNull();
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stage: 'discovery',
+          cycle: 2,
+        }),
+      })
+    );
+  });
+
+  it('returns existing refund when all charges already refunded (idempotency)', async () => {
+    const charge = makeCharge('discovery', 0);
+    const refund = makeRefund('discovery', 0);
+
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([charge])
+      .mockResolvedValueOnce([refund]);
+
+    const { refundForStage } = await import('../creditService.js');
+    const result = await refundForStage(JOB_ID, 'discovery');
+
+    expect(result).toEqual(refund);
+    expect(mockCreditTransactionCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns null when no charge exists for the stage', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const { refundForStage } = await import('../creditService.js');
+    const result = await refundForStage(JOB_ID, 'discovery');
+
+    expect(result).toBeNull();
+    expect(mockCreditTransactionCreate).not.toHaveBeenCalled();
+  });
+
+  it('returns null when job has no userId', async () => {
+    mockJobFindUnique.mockResolvedValue(null);
+
+    const { refundForStage } = await import('../creditService.js');
+    const result = await refundForStage(JOB_ID, 'discovery');
+
+    expect(result).toBeNull();
+    expect(mockCreditTransactionFindMany).not.toHaveBeenCalled();
+  });
+
+  it('queries only the requested stage (no cross-contamination)', async () => {
+    const charge = makeCharge('discovery', 0);
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([charge])
+      .mockResolvedValueOnce([]);
+
+    const { refundForStage } = await import('../creditService.js');
+    await refundForStage(JOB_ID, 'discovery');
+
+    // Both findMany calls should filter by stage='discovery'
+    expect(mockCreditTransactionFindMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ stage: 'discovery' }),
+      })
+    );
+  });
+
+  it('refunds regenerate_ideas_2 at cycle=1 correctly', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([
+        makeCharge('regenerate_ideas_2', 1, -2),
+        makeCharge('regenerate_ideas_2', 0, -2),
+      ])
+      .mockResolvedValueOnce([makeRefund('regenerate_ideas_2', 0, 2)]);
+
+    const { refundForRegenerationStage } = await import('../creditService.js');
+    const result = await refundForRegenerationStage(JOB_ID, 2);
+
+    expect(result).not.toBeNull();
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stage: 'regenerate_ideas_2',
+          cycle: 1,
+          amount: 2,
+        }),
+      })
+    );
+  });
+
+  it('uses human-readable label in refund description', async () => {
+    const charge = makeCharge('discovery', 1);
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([charge])
+      .mockResolvedValueOnce([]);
+
+    const { refundForStage } = await import('../creditService.js');
+    await refundForStage(JOB_ID, 'discovery');
+
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          description: expect.stringContaining('Refund Discovery:'),
+        }),
+      })
+    );
+  });
+});
+
+// ============================================
+// chargeForResume tests
+// ============================================
+describe('chargeForResume', () => {
+  const JOB_ID = 'job-resume-1';
+
+  beforeEach(() => {
+    mockJobFindUnique.mockResolvedValue({ userId: USER_ID, niche: 'test niche' });
+    mockCreditTransactionCreate.mockImplementation(async (args: any) => ({
+      id: 'new-charge',
+      ...args.data,
+    }));
+    mockUserCreditsUpdate.mockResolvedValue({
+      userId: USER_ID,
+      balance: 45,
+      totalPurchased: 100,
+      totalUsed: 55,
+    });
+  });
+
+  it('re-charges at cycle=1 after cycle=0 refund', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: -5, createdAt: new Date('2026-04-10T09:00:00Z') }])
+      .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: 5, createdAt: new Date('2026-04-10T09:01:00Z') }]);
+
+    // Mock balance check
+    const mockTopLevelUserCredits = vi.fn().mockResolvedValue({ userId: USER_ID, balance: 50 });
+    const { prisma: mockPrisma } = await import('../db.js');
+    (mockPrisma as any).userCredits = { findUnique: mockTopLevelUserCredits };
+
+    const { chargeForResume } = await import('../creditService.js');
+    const result = await chargeForResume(USER_ID, JOB_ID);
+
+    expect(result).toEqual({ charged: true, amount: 5 });
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: 'JOB_DEDUCTION',
+          stage: 'discovery',
+          cycle: 1,
+          amount: -5,
+        }),
+      })
+    );
+  });
+
+  it('skips re-charge when unrefunded charge exists (user already paid)', async () => {
+    // Charge at cycle=0, refund at cycle=0, charge at cycle=1 (unrefunded)
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([
+        { stage: 'discovery', cycle: 1, amount: -5, createdAt: new Date('2026-04-10T10:00:00Z') },
+        { stage: 'discovery', cycle: 0, amount: -5, createdAt: new Date('2026-04-10T09:00:00Z') },
+      ])
+      .mockResolvedValueOnce([
+        { stage: 'discovery', cycle: 0, amount: 5, createdAt: new Date('2026-04-10T09:01:00Z') },
+      ]);
+
+    const { chargeForResume } = await import('../creditService.js');
+    const result = await chargeForResume(USER_ID, JOB_ID);
+
+    expect(result).toEqual({ charged: false, amount: 0 });
+    expect(mockPrismaTransaction).not.toHaveBeenCalled();
+  });
+
+  it('skips re-charge when no refund exists', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: -5, createdAt: new Date() }])
+      .mockResolvedValueOnce([]);
+
+    const { chargeForResume } = await import('../creditService.js');
+    const result = await chargeForResume(USER_ID, JOB_ID);
+
+    expect(result).toEqual({ charged: false, amount: 0 });
+  });
+
+  it('only re-charges the refunded stage in a multi-stage job', async () => {
+    // discovery(c=0) + deep_research(c=0), only deep_research refunded
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([
+        { stage: 'discovery', cycle: 0, amount: -5, createdAt: new Date('2026-04-10T09:00:00Z') },
+        { stage: 'deep_research', cycle: 0, amount: -15, createdAt: new Date('2026-04-10T10:00:00Z') },
+      ])
+      .mockResolvedValueOnce([
+        { stage: 'deep_research', cycle: 0, amount: 15, createdAt: new Date('2026-04-10T10:01:00Z') },
+      ]);
+
+    const mockTopLevelUserCredits = vi.fn().mockResolvedValue({ userId: USER_ID, balance: 50 });
+    const { prisma: mockPrisma } = await import('../db.js');
+    (mockPrisma as any).userCredits = { findUnique: mockTopLevelUserCredits };
+
+    const { chargeForResume } = await import('../creditService.js');
+    const result = await chargeForResume(USER_ID, JOB_ID);
+
+    expect(result).toEqual({ charged: true, amount: 15 });
+    expect(mockCreditTransactionCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stage: 'deep_research',
+          cycle: 1,
+          amount: -15,
+        }),
+      })
+    );
+  });
+
+  it('throws InsufficientCreditsError when balance too low', async () => {
+    mockCreditTransactionFindMany
+      .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: -5, createdAt: new Date() }])
+      .mockResolvedValueOnce([{ stage: 'discovery', cycle: 0, amount: 5, createdAt: new Date() }]);
+
+    const mockTopLevelUserCredits = vi.fn().mockResolvedValue({ userId: USER_ID, balance: 2 });
+    const { prisma: mockPrisma } = await import('../db.js');
+    (mockPrisma as any).userCredits = { findUnique: mockTopLevelUserCredits };
+
+    const { chargeForResume, InsufficientCreditsError } = await import('../creditService.js');
+
+    await expect(chargeForResume(USER_ID, JOB_ID)).rejects.toThrow(InsufficientCreditsError);
   });
 });

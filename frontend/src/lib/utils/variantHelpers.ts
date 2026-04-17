@@ -184,5 +184,7 @@ export function getPlatformVariant(platform: string): BadgeVariant {
 	const p = platform.toLowerCase();
 	if (p.includes('reddit')) return 'warning';
 	if (p.includes('twitter') || p.includes('x.com')) return 'default';
+	if (p.includes('hacker') || p.includes('hn')) return 'accent';
+	if (p.includes('youtube')) return 'info';
 	return 'muted';
 }

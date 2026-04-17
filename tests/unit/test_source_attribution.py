@@ -200,7 +200,7 @@ class TestEvidenceAppendixParallelIds:
 
         # Tier 0: parallel ID available
         assert quotes_with_sources[0].post_id == "real_post_1"
-        assert quotes_with_sources[0].subreddit == "test"
+        assert quotes_with_sources[0].source_label == "test"
 
         # Tier 1 or final: empty source ID, no fuzzy match → "unknown"
         # (the quote text doesn't match post body)
@@ -249,4 +249,4 @@ class TestEvidenceAppendixParallelIds:
 
         qs = result.pain_point_quote_sources[0].quotes_with_sources[0]
         assert qs.post_id == "matched_post"  # Fuzzy match found the source
-        assert qs.subreddit == "matchsub"
+        assert qs.source_label == "matchsub"

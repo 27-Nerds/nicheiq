@@ -49,6 +49,7 @@
   import CommunitySourcesSection from "$lib/components/preview/CommunitySourcesSection.svelte";
   import PreviewSolutionSelector from "$lib/components/preview/PreviewSolutionSelector.svelte";
   import GenerationSlideshow from "$lib/components/preview/GenerationSlideshow.svelte";
+  import DiscoveryGenerationOverlay from "$lib/components/preview/DiscoveryGenerationOverlay.svelte";
 
   import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
   import MarketSnapshot from "$lib/components/preview/MarketSnapshot.svelte";
@@ -475,8 +476,10 @@
   );
 
   const discussionCount = $derived(
-    (previewReport?.research_metadata?.filtering_stats as Record<string, number>)?.reddit_urls_relevant ??
-    previewReport?.research_metadata?.reddit_posts_analyzed ?? 0
+    (previewReport?.research_metadata?.filtering_stats as Record<string, number>)?.total_urls_relevant ??
+    (((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) +
+     (previewReport?.research_metadata?.twitter_threads_analyzed ?? 0) +
+     (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || 0)
   );
 
   const previewPainPointCount = $derived(
@@ -520,7 +523,7 @@
   const realFunnelStats = $derived({
     scanned: discoveryData?.methodology?.urls_searched ?? 0,
     relevant: discoveryData?.methodology?.urls_relevant ?? discussionCount,
-    analyzed: previewReport?.research_metadata?.reddit_posts_analyzed ?? discussionCount,
+    analyzed: (((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) + (previewReport?.research_metadata?.twitter_threads_analyzed ?? 0) + (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || discussionCount),
     problems: previewPainPointCount,
   });
 
@@ -552,15 +555,12 @@
     return () => observer.disconnect();
   });
 
-  // Top pain points for summary cards
+  // All pain points sorted by severity
   const topPainPoints = $derived(
     (previewReport?.detailed_pain_points ?? [])
       .slice()
       .sort((a, b) => b.severity_score - a.severity_score)
-      .slice(0, 5)
   );
-
-  let showFullAnalysis = $state(false);
 
   // Display current stage name (with parallel group handling)
   const displayCurrentStageName = $derived(
@@ -676,9 +676,6 @@
         {/snippet}
         {#snippet actions()}
           <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
-            {#if isGeneratingP1 && !isRegenQueued}
-              <SubmitButton onclick={cancelJob} loading={cancelling} loadingText="Cancelling..." icon={X} label="Cancel" class="btn-secondary btn-sm whitespace-nowrap text-error border-error/30 hover:bg-error/10 hover:border-error disabled:opacity-50 disabled:cursor-not-allowed" />
-            {/if}
             {#if isCompleted && reportAsset}
               <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
             {/if}
@@ -699,33 +696,6 @@
         painPointCount={previewPainPointCount}
         solutionCount={displaySolutions.length}
       />
-
-      <!-- ═══ QUEUE POSITION ═══ -->
-      {#if (job.status === 'QUEUED' || job.status === 'PENDING') && !isRegenQueued}
-        <div class="card p-6 mb-6 bg-warning/5 border-warning/20">
-          <div class="flex items-center gap-4">
-            <div class="p-3 rounded-full bg-warning/10 border border-warning/20">
-              <Clock class="w-6 h-6 text-warning" />
-            </div>
-            <div>
-              <p class="font-semibold text-text-primary text-lg">
-                {#if job.queuePosition === 1}
-                  You're next!
-                {:else if job.queuePosition && job.aheadCount}
-                  {job.aheadCount} {job.aheadCount === 1 ? 'report' : 'reports'} ahead of you
-                {:else}
-                  Waiting in queue...
-                {/if}
-              </p>
-              {#if job.queuePosition}
-                <p class="text-sm text-text-muted mt-0.5">
-                  Position <span class="tabular-nums">{job.queuePosition}</span> of <span class="tabular-nums">{job.totalQueued}</span> in queue
-                </p>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {/if}
 
       <!-- ═══ ERROR / CANCELLED / RESUME ═══ -->
       {#if job.status === 'CANCELLED'}
@@ -797,18 +767,26 @@
         </div>
       {/if}
 
-      <!-- ═══ GENERATION SLIDESHOW (Phase 1 or Phase 2) ═══ -->
-      {#if isGeneratingP1 && job.status === 'RUNNING'}
-        <div class="generation-area">
-          <div class="progress-bar-track">
-            <div class="progress-bar-fill" style:width="{job.progressPercent ?? 0}%"></div>
-          </div>
-          <p class="progress-stage">
-            Stage {adjustedStagesCompleted} of {adjustedTotalStages}{#if displayCurrentStageName}: {displayCurrentStageName}{/if}
-          </p>
-          <GenerationSlideshow currentStage={job.currentStage} phase="discovery" />
-        </div>
-      {:else if isGeneratingP2}
+      <!-- ═══ FULL-PAGE DISCOVERY OVERLAY (Phase 1) ═══ -->
+      {#if isGeneratingP1}
+        <DiscoveryGenerationOverlay
+          niche={job.niche}
+          jobStatus={job.status}
+          currentStage={job.currentStage}
+          progressPercent={job.progressPercent ?? 0}
+          stagesCompleted={adjustedStagesCompleted}
+          totalStages={adjustedTotalStages}
+          currentStageName={displayCurrentStageName}
+          queuePosition={job.queuePosition ?? undefined}
+          totalQueued={job.totalQueued ?? undefined}
+          onCancel={cancelJob}
+          {cancelling}
+          {cancelError}
+        />
+      {/if}
+
+      <!-- ═══ GENERATION SLIDESHOW (Phase 2) ═══ -->
+      {#if isGeneratingP2}
         <div class="generation-area">
           {#if showSelectedSummary}
             <div class="mb-4">
@@ -831,7 +809,7 @@
       {/if}
 
       <!-- ═══ DASHBOARD SECTIONS ═══ -->
-      {#if !isGeneratingP1 || job.status !== 'RUNNING'}
+      {#if !isGeneratingP1}
 
         <!-- Overview -->
         {#if previewReport}
@@ -882,16 +860,6 @@
               <PainPointSummaryCard painPoint={pp} rank={i + 1} isTop={i === 0} onViewOpportunity={scrollToSolutions} />
             {/each}
 
-            {#if previewReport.pain_point_analytics}
-              <button class="show-full-toggle" onclick={() => (showFullAnalysis = !showFullAnalysis)}>
-                {showFullAnalysis ? 'Hide' : 'Show'} full analysis ({previewPainPointCount} clusters)
-              </button>
-              {#if showFullAnalysis}
-                <div class="mt-4">
-                  <!-- PainAnalysis would go here — import when needed to avoid loading 1,281 lines upfront -->
-                </div>
-              {/if}
-            {/if}
           </ExpandableSection>
         {/if}
 
@@ -925,7 +893,8 @@
             <CommunitySourcesSection
               subredditNames={discoveryData?.subreddit_names}
               communityHubs={previewReport?.audience_mapping?.community_hubs}
-              postsAnalyzed={previewReport?.research_metadata?.reddit_posts_analyzed}
+              postsAnalyzed={((previewReport?.research_metadata?.reddit_posts_analyzed ?? 0) + (previewReport?.research_metadata?.generic_posts_analyzed ?? 0)) || undefined}
+              sourcesSearched={discoveryData?.sources_searched}
             />
 
             {#if discoveryData?.methodology}
@@ -944,24 +913,26 @@
 
         <!-- Opportunities (Selection) -->
         {#if displaySolutions.length > 0}
+          <div class={isSelectionPhase ? 'opportunities-zone' : ''}>
+          {#if isSelectionPhase}
+            <div class="action-banner" id="solution-selector" bind:this={ctaBannerRef}>
+              <div class="action-banner-badge">Action Required</div>
+              <p class="action-banner-text">
+                Select up to 3 ideas to compare. Deep Research will validate the most promising one.
+                <strong>{ADDITIONAL_LOCKED_SECTIONS.length + LOCKED_PREVIEW_SECTIONS.length} sections</strong> unlock with your selection.
+              </p>
+            </div>
+          {/if}
           <ExpandableSection
             title="Opportunities"
             count={displaySolutions.length}
             countSuffix="opportunities"
-            variant="accent"
+            variant={isSelectionPhase ? "default" : "accent"}
             defaultOpen={discoveryOpen}
             resetKey={sectionResetKey}
             id="opportunities"
           >
             {#if isSelectionPhase}
-              <div class="action-zone" id="solution-selector" bind:this={ctaBannerRef}>
-                <div class="action-zone-badge">Action Required</div>
-                <p class="action-zone-text">
-                  Select up to 3 ideas to compare. Deep Research will validate the most promising one.
-                  <strong>{ADDITIONAL_LOCKED_SECTIONS.length + LOCKED_PREVIEW_SECTIONS.length} sections</strong> unlock with your selection.
-                </p>
-              </div>
-
               <PreviewSolutionSelector
                 jobId={jobId ?? ''}
                 solutions={displaySolutions}
@@ -990,14 +961,7 @@
               />
             {/if}
           </ExpandableSection>
-        {/if}
-
-        <!-- ═══ DEEP RESEARCH CTA ═══ -->
-        {#if isSelectionPhase}
-          <DeepResearchCTABlock
-            creditCost={page.data.stageCosts?.deep_research ?? 15}
-            onUnlock={scrollToSolutions}
-          />
+          </div>
         {/if}
 
         <!-- ═══ DEEP RESEARCH PREVIEW SECTIONS ═══ -->
@@ -1007,8 +971,8 @@
             <p class="generation-status">Generating... stage {adjustedStagesCompleted}/{adjustedTotalStages}</p>
           {/if}
 
-          <!-- Tier 1: UnifiedHero with real Phase 1 data + blurred Phase 2 -->
-          <section id="unified-hero">
+          <!-- Capped preview: UnifiedHero with real blurred content -->
+          <div class="preview-capped">
             <UnifiedHero
               report={previewHeroReport}
               nicheName={nicheName}
@@ -1016,10 +980,14 @@
               funnelStats={realFunnelStats}
               previewMode={true}
             />
-          </section>
+            <div class="preview-capped-fade"></div>
+            <div class="preview-capped-label">
+              <span class="preview-capped-badge">Unlocks with Deep Research</span>
+            </div>
+          </div>
 
-          <!-- Tier 2: Competitors fully blurred (structure preview) -->
-          <section id="competitors">
+          <!-- Capped preview: Competitors with real blurred content -->
+          <div class="preview-capped preview-capped--sm">
             <Competitors
               profiles={placeholderComp.profiles}
               analysis={placeholderComp.analysis}
@@ -1027,9 +995,13 @@
               selectedSolutionName={`${placeholderNiche} Opportunity Analyzer`}
               previewMode={true}
             />
-          </section>
+            <div class="preview-capped-fade"></div>
+            <div class="preview-capped-label">
+              <span class="preview-capped-badge">Unlocks with Deep Research</span>
+            </div>
+          </div>
 
-          <!-- Tier 3: Remaining sections value list -->
+          <!-- Remaining sections value list -->
           <div class="unlock-card">
             <div class="unlock-header">
               <span class="unlock-count">{unlockSections.length}</span>
@@ -1047,6 +1019,14 @@
               {/each}
             </div>
           </div>
+
+          <!-- Deep Research CTA with pricing -->
+          {#if isSelectionPhase}
+            <DeepResearchCTABlock
+              creditCost={page.data.stageCosts?.deep_research ?? 15}
+              onUnlock={scrollToSolutions}
+            />
+          {/if}
         {:else if reportSummary}
           <!-- ═══ COMPLETED: Report summary cards ═══ -->
           <div class="report-summary-card">
@@ -1252,44 +1232,27 @@
     border-top: 1px solid var(--color-border);
   }
 
-  /* ═══ Show full analysis toggle ═══ */
-  .show-full-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.25rem;
-    margin-top: 1rem;
-    padding: 0.5rem 1rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--color-text-secondary);
-    background: var(--color-bg-surface);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md, 0.5rem);
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
+
+  /* ═══ Opportunities zone (warm wrapper during selection) ═══ */
+  .opportunities-zone {
+    background: rgba(240, 96, 48, 0.04);
+    border: 1px solid rgba(240, 96, 48, 0.10);
+    border-radius: var(--radius-lg, 0.75rem);
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
   }
 
-  .show-full-toggle:hover {
-    background: var(--color-bg-elevated);
-    border-color: var(--color-border-emphasis, var(--color-border));
-  }
-
-  /* ═══ Action zone (opportunities) ═══ */
-  .action-zone {
-    position: relative;
-    padding: 1rem 1.25rem;
-    padding-top: 1.25rem;
-    margin-bottom: 1.25rem;
-    background: var(--color-accent-subtle);
-    border: 1.5px solid var(--color-border-accent);
+  /* ═══ Action banner (opportunities callout) ═══ */
+  .action-banner {
+    padding: var(--space-5) var(--space-6);
+    margin-bottom: var(--space-3);
+    background: rgba(240, 96, 48, 0.10);
+    border: 1px solid rgba(240, 96, 48, 0.18);
     border-radius: var(--radius-lg, 0.75rem);
   }
 
-  .action-zone-badge {
-    position: absolute;
-    top: -1px;
-    left: 1rem;
-    transform: translateY(-50%);
+  .action-banner-badge {
+    display: inline-block;
     background: var(--color-accent);
     color: white;
     font-family: var(--font-display);
@@ -1297,18 +1260,71 @@
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    padding: 0.25rem 0.75rem;
+    padding: var(--space-1) var(--space-3);
     border-radius: 0.25rem;
+    margin-bottom: var(--space-3);
   }
 
-  .action-zone-text {
-    font-size: 0.8125rem;
+  .action-banner-text {
+    font-size: 0.875rem;
     color: var(--color-text-secondary);
-    line-height: 1.5;
+    line-height: 1.6;
   }
 
-  .action-zone-text strong {
+  .action-banner-text strong {
     color: var(--color-text-primary);
+  }
+
+  /* ═══ Capped preview (blurred content with fade + lock label) ═══ */
+  .preview-capped {
+    position: relative;
+    max-height: 580px;
+    overflow: hidden;
+    border-radius: var(--radius-lg, 0.75rem);
+    margin-bottom: var(--space-3);
+    border: 1px solid var(--color-border);
+  }
+
+  .preview-capped--sm {
+    max-height: 340px;
+  }
+
+  .preview-capped-fade {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 180px;
+    background: linear-gradient(to bottom, transparent, var(--color-bg-base));
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .preview-capped-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-bottom: 1.25rem;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  .preview-capped-badge {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    background: color-mix(in srgb, var(--color-bg-base) 80%, transparent);
+    backdrop-filter: blur(6px);
+    padding: 0.375rem 1rem;
+    border-radius: 9999px;
+    border: 1px solid var(--color-border);
   }
 
   /* ═══ Unlock card (value list) ═══ */
@@ -1452,7 +1468,7 @@
   }
 
   .sticky-bar-spacer {
-    height: 5rem;
+    height: 5.5rem;
   }
 
   /* ═══ Sticky bar ═══ */

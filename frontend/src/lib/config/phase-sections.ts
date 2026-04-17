@@ -53,7 +53,7 @@ export const DEEP_RESEARCH_SECTIONS: SectionConfig[] = [
   { id: 'monetization', label: 'Monetization', icon: Coins },
   { id: 'trends', label: 'Trends', icon: TrendingUp },
   { id: 'competitors', label: 'Competitors', icon: Swords },
-  { id: 'audience', label: 'Audience', icon: UserCheck },
+  { id: 'audience-intelligence', label: 'Audience', icon: UserCheck },
   { id: 'content-insights', label: 'Content', icon: MessageSquare },
   { id: 'gtm-playbook', label: 'GTM', icon: Briefcase },
   { id: 'seo', label: 'SEO', icon: Search },

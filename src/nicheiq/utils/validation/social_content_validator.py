@@ -61,19 +61,30 @@ class SocialContentValidator:
         reddit_posts = social_content.reddit_posts or []
         twitter_threads = social_content.twitter_threads or []
 
+        generic_posts = social_content.generic_posts or []
+
         reddit_count = len(reddit_posts)
         twitter_count = len(twitter_threads)
-        total_sources = reddit_count + twitter_count
+        generic_count = len(generic_posts)
+        total_sources = reddit_count + twitter_count + generic_count
 
         # Count total comments/replies
         reddit_comments = sum(len(post.comments) for post in reddit_posts)
         twitter_replies = sum(len(thread.replies) for thread in twitter_threads)
-        total_interactions = reddit_comments + twitter_replies
+        generic_responses = sum(p.num_responses for p in generic_posts)
+        total_interactions = reddit_comments + twitter_replies + generic_responses
 
         # Calculate engagement metrics
+        # Note: YouTube score=views (100K+) vs Reddit score=upvotes (10-1000).
+        # Log-scale YouTube/generic scores to prevent inflating totals.
+        import math
         reddit_total_score = sum(post.score for post in reddit_posts) if reddit_posts else 0
         twitter_total_engagement = sum(thread.total_engagement for thread in twitter_threads) if twitter_threads else 0
-        total_engagement = reddit_total_score + twitter_total_engagement
+        generic_total_score = sum(
+            int(math.log1p(p.score)) if p.platform == "youtube" else p.score
+            for p in generic_posts
+        ) if generic_posts else 0
+        total_engagement = reddit_total_score + twitter_total_engagement + generic_total_score
 
         # Average engagement per source (0 if no sources)
         avg_engagement = total_engagement / total_sources if total_sources > 0 else 0
@@ -82,6 +93,7 @@ class SocialContentValidator:
         metrics = {
             "reddit_posts": reddit_count,
             "twitter_threads": twitter_count,
+            "generic_posts": generic_count,
             "total_sources": total_sources,
             "total_interactions": total_interactions,
             "total_engagement": total_engagement,

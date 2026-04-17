@@ -87,7 +87,7 @@
           <span class="pp-tag">{cat}</span>
         {/each}
       {/if}
-      <span class="pp-mentions">{painPoint.mention_count} mentions</span>
+      <span class="pp-mentions">{painPoint.mention_count} {painPoint.mention_count === 1 ? 'mention' : 'mentions'}</span>
     </div>
     {#if onViewOpportunity}
       <button class="pp-action" onclick={onViewOpportunity}>
@@ -216,8 +216,9 @@
     font-weight: 500;
     padding: 0.1875rem 0.5rem;
     border-radius: 9999px;
-    background: var(--color-accent-subtle);
-    color: var(--color-accent);
+    color: var(--color-text-secondary);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
   }
 
   /* ── Evidence toggle ── */
@@ -234,6 +235,20 @@
     color: var(--color-accent);
     padding: 0.25rem 0;
     transition: color 150ms ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35em;
+  }
+
+  .pp-evidence-trigger::before {
+    content: '▸';
+    display: inline-block;
+    font-size: 0.85em;
+    transition: transform 180ms ease-out;
+  }
+
+  .pp-evidence[open] .pp-evidence-trigger::before {
+    transform: rotate(90deg);
   }
 
   .pp-evidence-trigger::-webkit-details-marker { display: none; }

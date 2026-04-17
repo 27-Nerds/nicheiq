@@ -51,17 +51,28 @@
 
   {#if showChart}
     <div class="ms-chart" role="img" aria-label="Monthly discussion trend">
-      <div class="ms-bars">
-        {#each trend as point, i}
-          {@const pct = maxCount > 0 ? (point.count / maxCount * 100) : 0}
-          {@const minHeight = point.count > 0 ? Math.max(pct, 3) : 0}
-          {@const intensity = trend.length > 1 ? (i / (trend.length - 1)) : 1}
-          <div
-            class="ms-bar"
-            style="height: {minHeight}%; opacity: {0.3 + intensity * 0.7}; animation-delay: {i * 25}ms"
-            title="{formatMonth(point.month)}: {point.count} posts"
-          ></div>
-        {/each}
+      <div class="ms-plot">
+        <div class="ms-gridlines" aria-hidden="true">
+          <span class="ms-gridline ms-gridline--top">
+            <span class="ms-gridline-label">{maxCount}</span>
+          </span>
+          <span class="ms-gridline ms-gridline--mid">
+            <span class="ms-gridline-label">{Math.round(maxCount / 2)}</span>
+          </span>
+          <span class="ms-gridline ms-gridline--bot"></span>
+        </div>
+        <div class="ms-bars">
+          {#each trend as point, i}
+            {@const pct = maxCount > 0 ? (point.count / maxCount * 100) : 0}
+            {@const minHeight = point.count > 0 ? Math.max(pct, 3) : 0}
+            {@const intensity = trend.length > 1 ? (i / (trend.length - 1)) : 1}
+            <div
+              class="ms-bar"
+              style="height: {minHeight}%; opacity: {0.3 + intensity * 0.7}; animation-delay: {i * 25}ms"
+              title="{formatMonth(point.month)}: {point.count} posts"
+            ></div>
+          {/each}
+        </div>
       </div>
       <div class="ms-axis">
         <span>{firstMonth}</span>
@@ -114,11 +125,47 @@
     margin-top: 0.25rem;
   }
 
+  .ms-plot {
+    position: relative;
+    height: 80px;
+    padding-right: 1.75rem;
+  }
+
+  .ms-gridlines {
+    position: absolute;
+    inset: 0 1.75rem 0 0;
+    pointer-events: none;
+  }
+
+  .ms-gridline {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  .ms-gridline--top { top: 0; }
+  .ms-gridline--mid { top: 50%; }
+  .ms-gridline--bot { bottom: 0; }
+
+  .ms-gridline-label {
+    position: absolute;
+    left: 100%;
+    margin-left: 0.25rem;
+    top: -0.5em;
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
   .ms-bars {
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    height: 80px;
+    height: 100%;
+    position: relative;
   }
 
   .ms-bar {

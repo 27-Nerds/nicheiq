@@ -52,11 +52,13 @@
   const funnelStats = $derived({
     scanned:
       (report?.research_metadata?.filtering_stats as Record<string, number>)
-        ?.reddit_urls_searched || 0,
+        ?.total_urls_searched || 0,
     relevant:
       (report?.research_metadata?.filtering_stats as Record<string, number>)
-        ?.reddit_urls_relevant || 0,
-    analyzed: report?.research_metadata?.reddit_posts_analyzed || 0,
+        ?.total_urls_relevant || 0,
+    analyzed: (report?.research_metadata?.reddit_posts_analyzed ?? 0) +
+              (report?.research_metadata?.twitter_threads_analyzed ?? 0) +
+              (report?.research_metadata?.generic_posts_analyzed ?? 0) || 0,
     problems:
       report?.pain_point_analytics?.total_pain_points ||
       report?.detailed_pain_points?.length ||

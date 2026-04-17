@@ -312,24 +312,40 @@ class StateAccessor:
                 breakdown[subreddit] = breakdown.get(subreddit, 0) + 1
         return breakdown
 
+    def get_generic_posts_count(self) -> int:
+        """Get count of generic source posts (HN, YouTube, etc.)."""
+        if self.state.social_content and self.state.social_content.generic_posts:
+            return len(self.state.social_content.generic_posts)
+        return 0
+
+    def get_generic_posts_by_platform(self) -> dict[str, int]:
+        """Get breakdown of generic posts by platform."""
+        breakdown: dict[str, int] = {}
+        if self.state.social_content and self.state.social_content.generic_posts:
+            for post in self.state.social_content.generic_posts:
+                breakdown[post.platform] = breakdown.get(post.platform, 0) + 1
+        return breakdown
+
     def get_real_community_hubs(self, llm_hubs: list[str] | None = None) -> list[str]:
         """
-        Build community hubs list from real Reddit data + non-Reddit LLM hubs.
+        Build community hubs list from real social data + non-Reddit LLM hubs.
 
-        Real subreddits (from collected posts) replace any r/... entries the LLM
-        produced. Non-Reddit hubs (Discord, Slack, forums) from the LLM are preserved.
+        Real subreddits and generic sources (from collected posts) replace any
+        r/... entries the LLM produced. Non-Reddit/non-generic hubs (Discord,
+        Slack, forums) from the LLM are preserved.
 
         Args:
             llm_hubs: Original community_hubs from LLM audience mapping
 
         Returns:
-            List of community hub names: real subreddits (sorted by post count desc,
-            capped at 10) followed by non-Reddit LLM hubs. Falls back to original
-            LLM list if no Reddit data exists.
+            List of community hub names: real sources (sorted by post count desc,
+            capped at 10) followed by non-social LLM hubs. Falls back to original
+            LLM list if no social data exists.
         """
         subreddit_breakdown = self.get_subreddit_breakdown()
+        generic_breakdown = self.get_generic_posts_by_platform()
 
-        if not subreddit_breakdown:
+        if not subreddit_breakdown and not generic_breakdown:
             return llm_hubs or []
 
         # Build real subreddit list sorted by post count desc, capped at 10
@@ -338,13 +354,21 @@ class StateAccessor:
         )
         real_hubs = [f"r/{name}" for name, _ in sorted_subreddits[:10]]
 
-        # Keep non-Reddit LLM hubs (anything not starting with "r/")
-        non_reddit_hubs = [
+        # Add generic sources (e.g., "Hacker News")
+        _platform_labels = {"hackernews": "Hacker News", "youtube": "YouTube"}
+        for platform, count in sorted(generic_breakdown.items(), key=lambda x: x[1], reverse=True):
+            label = _platform_labels.get(platform, platform)
+            if label not in real_hubs:
+                real_hubs.append(label)
+
+        # Keep non-social LLM hubs (anything not starting with "r/" and not a known platform)
+        known_labels = {v for v in _platform_labels.values()}
+        non_social_hubs = [
             hub for hub in (llm_hubs or [])
-            if not hub.lower().startswith("r/")
+            if not hub.lower().startswith("r/") and hub not in known_labels
         ]
 
-        return real_hubs + non_reddit_hubs
+        return real_hubs + non_social_hubs
 
     # ==================================================================================
     # Keyword & SEO Access Methods

@@ -375,3 +375,137 @@ Industry Boundaries: [Not provided - use general heuristics]
         except Exception as e:
             logger.error(f"Unexpected error in query generation: {e}", exc_info=True)
             return []
+
+    def generate_all_platform_queries(
+        self,
+        niche_description: str,
+        niche_context: "NicheContext | None" = None,
+        enabled_platforms: list[str] | None = None,
+    ) -> list[dict]:
+        """Generate queries for all enabled platforms in parallel.
+
+        Each platform gets a focused prompt optimized for its search backend:
+        - Reddit: existing pain-expression prompt (proven, unchanged)
+        - HN: keyword-focused for Algolia (neutral, 2-4 words)
+        - YouTube: tutorial/how-to for Google (conversational, 3-6 words)
+        - Twitter: shares Reddit queries
+
+        Returns combined list with 'platform' field set on each query.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        platforms = set(enabled_platforms or ["reddit"])
+        tasks: dict[str, callable] = {}
+
+        # Reddit: existing generator
+        reddit_platforms = []
+        if "reddit" in platforms:
+            reddit_platforms.append("reddit")
+        if "twitter" in platforms:
+            reddit_platforms.append("twitter")
+        if reddit_platforms:
+            tasks["reddit"] = lambda: self.generate_queries(
+                niche_description, niche_context,
+                num_queries=settings.num_search_queries,
+                enabled_platforms=reddit_platforms,
+            )
+
+        # HN: new focused generator
+        if "hackernews" in platforms:
+            tasks["hackernews"] = lambda: self._generate_platform_queries(
+                "hn_query_generation", niche_description, niche_context,
+                num_queries=8, platform="hackernews",
+            )
+
+        # YouTube: new focused generator
+        if "youtube" in platforms:
+            tasks["youtube"] = lambda: self._generate_platform_queries(
+                "yt_query_generation", niche_description, niche_context,
+                num_queries=8, platform="youtube",
+            )
+
+        # Run in parallel (3 LLM calls, wall time ≈ 1 call)
+        all_queries: list[dict] = []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {executor.submit(fn): name for name, fn in tasks.items()}
+            for future in as_completed(futures):
+                platform_name = futures[future]
+                try:
+                    queries = future.result()
+                    for q in queries:
+                        if platform_name != "reddit":
+                            q["platform"] = platform_name
+                    all_queries.extend(queries)
+                    logger.info(f"[QueryGen] {platform_name}: generated {len(queries)} queries")
+                except Exception as exc:
+                    logger.warning(f"[QueryGen] {platform_name} generation failed (non-fatal): {exc}")
+
+        logger.info(f"[QueryGen] Total: {len(all_queries)} queries across {len(tasks)} platforms")
+        return all_queries
+
+    def _generate_platform_queries(
+        self,
+        prompt_name: str,
+        niche_description: str,
+        niche_context: "NicheContext | None" = None,
+        num_queries: int = 8,
+        platform: str = "hackernews",
+    ) -> list[dict]:
+        """Generate queries using a platform-specific prompt.
+
+        Thin wrapper: loads YAML prompt, calls LLM, parses JSON.
+        No specificity scoring (Reddit-centric, irrelevant for HN/YouTube).
+        """
+        # Build context section (same as Reddit generator)
+        if niche_context:
+            sanitized_description = self._sanitize_for_prompt(niche_context.niche_description)
+            sanitized_segments = [self._sanitize_for_prompt(seg, max_length=500) for seg in niche_context.market_segments]
+            segments_formatted = "\n".join([f"{i+1}. {seg}" for i, seg in enumerate(sanitized_segments)])
+            context_section = f"""
+**NICHE CONTEXT:**
+
+Niche Description: {sanitized_description}
+
+Market Segments:
+{segments_formatted}
+"""
+        else:
+            sanitized_niche = self._sanitize_for_prompt(niche_description)
+            context_section = f"""
+**NICHE CONTEXT:**
+
+Niche Description: {sanitized_niche}
+"""
+
+        prompt = get_prompt(
+            prompt_name,
+            context_section=context_section,
+            num_queries=num_queries,
+        )
+
+        logger.info(f"[QueryGen] Generating {num_queries} {platform} queries...")
+        logger.debug(f"[QueryGen] {platform} prompt:\n{prompt[:300]}...")
+
+        content, _usage = LLMService.invoke_plain(
+            prompt=prompt,
+            temperature=0.7,
+            timeout=60,
+            model_name=settings.openai_model_name,
+        )
+
+        queries = self._extract_json_array(content)
+        if not queries:
+            logger.warning(f"[QueryGen] {platform}: no valid JSON from LLM response")
+            return []
+
+        # Minimal validation (no specificity scoring for HN/YouTube)
+        valid = []
+        for q in queries:
+            if not isinstance(q, dict) or "query" not in q:
+                continue
+            q.setdefault("type", "topic")
+            q["platform"] = platform
+            valid.append(q)
+
+        logger.info(f"[QueryGen] {platform}: {len(valid)} valid queries")
+        return valid

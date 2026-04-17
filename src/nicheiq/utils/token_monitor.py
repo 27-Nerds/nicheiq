@@ -464,6 +464,92 @@ class ContentTokenMonitor:
         return selected_posts
 
 
+    def count_generic_post_tokens(self, post: "SocialPost", model: str | None = None) -> int:
+        """Count tokens for a generic SocialPost including responses."""
+        if model is None:
+            model = settings.content_analysis_llm or "gpt-4o"
+        text_parts = [post.title, post.body]
+        for resp in post.responses:
+            text_parts.append(resp.body)
+            for reply in resp.replies[:15]:
+                text_parts.append(reply.body)
+        return self.count_tokens(" ".join(text_parts), model)
+
+    def filter_generic_posts_to_budget(
+        self,
+        posts: list["SocialPost"],
+        max_tokens: int,
+        min_per_source: int = 3,
+        max_per_author: int = 5,
+    ) -> list["SocialPost"]:
+        """Filter generic SocialPosts with source diversity guarantees.
+
+        1. Reserve min_per_source slots per platform
+        2. Cap max_per_author posts per author
+        3. Fill remaining budget by engagement score
+
+        Args:
+            posts: SocialPost objects to filter
+            max_tokens: Maximum total tokens
+            min_per_source: Minimum posts reserved per platform
+            max_per_author: Maximum posts from a single author
+
+        Returns:
+            Filtered list respecting diversity + token budget
+        """
+        from ..utils.engagement_normalizer import normalize_engagement
+
+        if not posts:
+            return posts
+
+        # Step 1: Per-author cap
+        author_counts: dict[str, int] = {}
+        author_capped: list["SocialPost"] = []
+        for post in posts:
+            author_key = post.author.strip().lower() if post.author else ""
+            if not author_key:
+                author_capped.append(post)
+                continue
+            count = author_counts.get(author_key, 0)
+            if count < max_per_author:
+                author_capped.append(post)
+                author_counts[author_key] = count + 1
+
+        # Step 2: Sort by engagement
+        scored = sorted(author_capped, key=normalize_engagement, reverse=True)
+
+        # Step 3: Reserve min slots per platform
+        platforms = {p.platform for p in scored}
+        reserved: list["SocialPost"] = []
+        reserved_ids: set[str] = set()
+        for platform in platforms:
+            platform_posts = [p for p in scored if p.platform == platform]
+            for post in platform_posts[:min_per_source]:
+                if post.post_id not in reserved_ids:
+                    reserved.append(post)
+                    reserved_ids.add(post.post_id)
+
+        # Step 4: Fill remaining budget by engagement score
+        selected = list(reserved)
+        total_tokens = sum(self.count_generic_post_tokens(p) for p in selected)
+
+        for post in scored:
+            if post.post_id in reserved_ids:
+                continue
+            post_tokens = self.count_generic_post_tokens(post)
+            if total_tokens + post_tokens <= max_tokens:
+                selected.append(post)
+                reserved_ids.add(post.post_id)
+                total_tokens += post_tokens
+
+        logger.info(
+            f"Generic token budget: kept {len(selected)}/{len(posts)} posts "
+            f"(~{total_tokens:,} tokens, budget: {max_tokens:,}, "
+            f"platforms: {len(platforms)}, author-capped: {len(posts) - len(author_capped)})"
+        )
+        return selected
+
+
 @dataclass
 class StageUsage:
     """

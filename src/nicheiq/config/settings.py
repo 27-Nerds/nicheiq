@@ -178,6 +178,43 @@ class Settings(BaseSettings):
         default=True,
         description="Enable/disable Reddit data collection (set to False to skip Reddit entirely)"
     )
+    enable_hackernews: bool = Field(
+        default=True,
+        description="Enable/disable Hacker News data collection via Algolia API (free, no auth needed)"
+    )
+    enable_youtube: bool = Field(
+        default=False,
+        description="Enable/disable YouTube transcript collection (requires youtube-transcript-api)"
+    )
+    min_hn_points: int = Field(
+        default=5, description="Minimum points for Hacker News stories"
+    )
+    min_hn_comments: int = Field(
+        default=3, description="Minimum comments for Hacker News stories"
+    )
+    min_youtube_views: int = Field(
+        default=0, description="Minimum views for YouTube videos (0 = accept all, Serper view parsing is ~40-60% reliable)"
+    )
+    youtube_api_key: str | None = Field(
+        default=None,
+        description="YouTube Data API v3 key (optional). Enables comment collection and accurate engagement metrics."
+    )
+    max_youtube_videos: int = Field(
+        default=25,
+        description="Maximum YouTube videos to collect per run (each costs 1 API quota unit for comments)."
+    )
+    max_youtube_comments_per_video: int = Field(
+        default=20,
+        description="Maximum top comments to fetch per YouTube video (by relevance)."
+    )
+    min_youtube_comment_likes: int = Field(
+        default=5,
+        description="Minimum likes for YouTube comments to be included (reduces noise)."
+    )
+    min_youtube_comment_length: int = Field(
+        default=50,
+        description="Minimum character length for YouTube comments to be included."
+    )
 
     # DataForSEO API
     dataforseo_login: str = Field(..., description="DataForSEO API login")

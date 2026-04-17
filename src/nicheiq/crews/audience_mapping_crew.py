@@ -16,7 +16,7 @@ from loguru import logger
 from ..config.settings import settings
 from ..models.pain_point import PainPointAnalysisResult
 from ..models.research_state import AudienceMappingResult
-from ..models.social_content import RedditPost, TwitterThread
+from ..models.social_content import RedditPost, SocialPost, SocialResponse, TwitterThread
 from ..utils.crew_helpers.influencer_pre_compute import compute_influencer_profiles
 from ..utils.validation.crew_guardrails import validate_audience_mapping
 
@@ -48,6 +48,7 @@ class AudienceMappingCrew:
         self,
         reddit_posts: list[RedditPost] = None,
         twitter_threads: list[TwitterThread] = None,
+        generic_posts: list[SocialPost] = None,
         niche_description: str = "",
         job_id: str | None = None,
     ):
@@ -60,6 +61,7 @@ class AudienceMappingCrew:
         Args:
             reddit_posts: List of collected Reddit posts
             twitter_threads: List of collected Twitter threads
+            generic_posts: List of generic source posts (HN, YouTube, etc.)
             niche_description: Description of the niche being analyzed
             job_id: Optional job identifier for per-job ChromaDB collection isolation
         """
@@ -67,6 +69,7 @@ class AudienceMappingCrew:
 
         self.reddit_posts = reddit_posts or []
         self.twitter_threads = twitter_threads or []
+        self.generic_posts = generic_posts or []
         self.niche_description = niche_description
         self.job_id = job_id
         self.knowledge_sources = []
@@ -74,6 +77,7 @@ class AudienceMappingCrew:
         # Calculate content stats for logging
         total_reddit_comments = sum(len(post.comments) for post in self.reddit_posts)
         total_twitter_replies = sum(len(thread.replies) for thread in self.twitter_threads)
+        total_generic_responses = sum(p.num_responses for p in self.generic_posts)
 
         # Initialize knowledge sources for semantic search
         from crewai.knowledge.source.string_knowledge_source import StringKnowledgeSource
@@ -98,10 +102,21 @@ class AudienceMappingCrew:
             self.knowledge_sources.append(self.twitter_knowledge)
             logger.info(f"Twitter knowledge source created ({len(twitter_content)} chars)")
 
+        if self.generic_posts:
+            generic_content = self._prepare_generic_content()
+            self.generic_knowledge = StringKnowledgeSource(
+                content=generic_content,
+                chunk_size=2000,
+                chunk_overlap=300,
+            )
+            self.knowledge_sources.append(self.generic_knowledge)
+            logger.info(f"Generic knowledge source created ({len(generic_content)} chars)")
+
         logger.info(
             f"AudienceMappingCrew initialized with {len(self.reddit_posts)} Reddit posts "
-            f"({total_reddit_comments} comments) and {len(self.twitter_threads)} Twitter threads "
-            f"({total_twitter_replies} replies) - {len(self.knowledge_sources)} knowledge source(s) ready"
+            f"({total_reddit_comments} comments), {len(self.twitter_threads)} Twitter threads "
+            f"({total_twitter_replies} replies), {len(self.generic_posts)} generic posts "
+            f"({total_generic_responses} responses) - {len(self.knowledge_sources)} knowledge source(s) ready"
         )
 
     def _prepare_reddit_content(self) -> str:
@@ -244,6 +259,37 @@ class AudienceMappingCrew:
             )
 
         return "\n".join(formatted)
+
+    def _prepare_generic_content(self) -> str:
+        """Format generic source posts (HN, YouTube, etc.) for knowledge source."""
+        formatted = []
+        for post in self.generic_posts:
+            platform_label = post.platform.upper()
+            container = {"hackernews": "Hacker News", "youtube": "YouTube"}.get(post.platform, post.platform)
+
+            responses_text = ""
+            if post.responses:
+                resp_lines = []
+                for resp in post.responses:
+                    resp_lines.append(f"- [{resp.score} pts] {resp.body} [source: {post.post_id}]")
+                responses_text = "\n".join(resp_lines)
+
+            formatted.append(f"""[PLATFORM: {platform_label}]
+[POST_ID: {post.post_id}]
+[CONTAINER: {container}]
+[SCORE: {post.score}]
+[URL: {post.url}]
+
+### {post.title}
+
+{post.body} [source: {post.post_id}]
+
+---
+## Discussion ({post.num_responses} responses):
+
+{responses_text}
+""")
+        return "\n\n===\n\n".join(formatted)
 
     @agent
     def audience_researcher(self) -> Agent:

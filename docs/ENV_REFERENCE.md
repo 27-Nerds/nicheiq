@@ -523,9 +523,47 @@ ENABLE_TWITTER=false
 # Enable Twitter/X data collection
 # Default: false (requires credentials or uses rate-limited guest mode)
 
+ENABLE_HACKERNEWS=true
+# Enable Hacker News data collection via Algolia API (free, no auth needed)
+# Default: true. Great for B2B/SaaS/developer niches.
+# Set to false to skip HN entirely
+
+ENABLE_YOUTUBE=false
+# Enable YouTube transcript collection (requires youtube-transcript-api package)
+# Default: false. Set to true to collect YouTube video transcripts and comments.
+
+YOUTUBE_API_KEY=
+# YouTube Data API v3 key (optional). Enables:
+# - Accurate engagement metrics (views, likes, comment count)
+# - Top YouTube comments as evidence for pain point analysis
+# - Channel name and exact upload date
+# Free tier: 10,000 quota units/day (~300+ research runs)
+# Get a key at: https://console.cloud.google.com/apis/credentials
+# If not set, YouTube still works but only collects transcripts via Serper metadata.
+
+MAX_YOUTUBE_VIDEOS=25
+# Maximum YouTube videos to collect per run (default: 25)
+# Each video costs ~1 API quota unit for comment fetching
+
+MAX_YOUTUBE_COMMENTS_PER_VIDEO=20
+# Maximum top comments to fetch per video, ordered by relevance (default: 20)
+
+MIN_YOUTUBE_COMMENT_LIKES=5
+# Minimum likes for YouTube comments to be included (default: 5, reduces noise)
+
+MIN_YOUTUBE_COMMENT_LENGTH=50
+# Minimum character length for YouTube comments (default: 50)
+
+# Hacker News quality filters
+MIN_HN_POINTS=5
+# Minimum points for Hacker News stories (default: 5)
+
+MIN_HN_COMMENTS=3
+# Minimum comments for Hacker News stories (default: 3)
+
 # Search query generation
 NUM_SEARCH_QUERIES=40
-# Number of search queries to generate for Reddit/Twitter
+# Number of search queries to generate for Reddit/Twitter/HN
 # Higher = more diverse results but more API calls
 # Recommended: 30-50 for thorough coverage
 ```

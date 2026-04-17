@@ -1201,7 +1201,7 @@
                       <Badge variant={pp.willingnessToPayScore >= 0.6 ? 'success' : 'default'} size="sm">
                         WTP {(pp.willingnessToPayScore * 100).toFixed(0)}%
                       </Badge>
-                      <span class="text-xs text-text-muted">{pp.mentionCount} mentions</span>
+                      <span class="text-xs text-text-muted">{pp.mentionCount} {pp.mentionCount === 1 ? 'mention' : 'mentions'}</span>
                     </div>
                     <p class="text-xs text-text-muted line-clamp-2">{pp.description}</p>
                   </div>

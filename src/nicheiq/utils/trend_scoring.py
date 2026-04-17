@@ -198,6 +198,14 @@ def compute_discussion_signals(
             engagement = float(getattr(tweet, 'likes', 0)) + float(getattr(tweet, 'retweets', 0))
             items.append((days, engagement))
 
+        for post in (social_content.generic_posts or []):
+            created = getattr(post, 'created_utc', None)
+            if not created:
+                continue
+            days = max((now - created).days, 0)
+            engagement = float(getattr(post, 'score', 1))
+            items.append((days, engagement))
+
     if not items:
         return "Dated", "Decreasing"
 

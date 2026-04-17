@@ -57,6 +57,7 @@
     seoCalculationTransparency?: SEOCalculationTransparency;
     trends?: TrendLongevity;
     previewMode?: boolean;
+    heroZoneOnly?: boolean;
   }
 
   let {
@@ -68,6 +69,7 @@
     seoCalculationTransparency,
     trends,
     previewMode = false,
+    heroZoneOnly = false,
   }: Props = $props();
 
   // Extract data from report
@@ -375,7 +377,7 @@
 
 <section id="unified-hero" class="unified-hero">
   <!-- ========== HERO ZONE (Dark Gradient) ========== -->
-  <div class="hero-zone">
+  <div class="hero-zone" class:hero-zone--standalone={heroZoneOnly} class:hero-zone--preview={previewMode}>
     <div class="hero-split">
       <!-- Left Column: Verdict Box + Risk Badge -->
       <div class="hero-left">
@@ -537,44 +539,28 @@
     <div class="research-pipeline">
       <div class="pipeline-stage">
         <span class="pipeline-num">{funnelStats.scanned}</span>
-        <span class="pipeline-label">
-          SCANNED <Tooltip content={tooltips.pipelineScanned} position="top" />
-        </span>
+        <span class="pipeline-label">SCANNED</span>
       </div>
       <div class="pipeline-arrow"></div>
       <div class="pipeline-stage">
         <span class="pipeline-num">{funnelStats.relevant}</span>
-        <span class="pipeline-label">
-          RELEVANT <Tooltip
-            content={tooltips.pipelineRelevant}
-            position="top"
-          />
-        </span>
+        <span class="pipeline-label">RELEVANT</span>
       </div>
       <div class="pipeline-arrow"></div>
       <div class="pipeline-stage">
         <span class="pipeline-num">{funnelStats.analyzed}</span>
-        <span class="pipeline-label">
-          ANALYZED <Tooltip
-            content={tooltips.pipelineAnalyzed}
-            position="top"
-          />
-        </span>
+        <span class="pipeline-label">EXAMINED</span>
       </div>
       <div class="pipeline-arrow"></div>
       <div class="pipeline-stage highlight">
         <span class="pipeline-num">{funnelStats.problems}</span>
-        <span class="pipeline-label">
-          PROBLEMS <Tooltip
-            content={tooltips.pipelineProblems}
-            position="top"
-          />
-        </span>
+        <span class="pipeline-label">PROBLEMS</span>
       </div>
     </div>
   </div>
 
   <!-- ========== CONTENT ZONE (Light Background) ========== -->
+  {#if !heroZoneOnly}
   <div class="content-zone">
     <!-- Pain/Solution Cards - Overlapping Layout -->
     <div class="cards-container" class:cards-container--preview={previewMode}>
@@ -1298,6 +1284,7 @@
       </ExpandableSection>
     {/if}
   </div>
+  {/if}
 </section>
 
 <style>
@@ -1323,6 +1310,84 @@
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     position: relative;
     overflow: hidden;
+  }
+
+  .hero-zone--standalone {
+    border-radius: var(--radius-lg);
+  }
+
+  /* Preview variant — light, inset data readout (escapes the dark-hero slop on job page) */
+  .hero-zone--preview {
+    background: var(--color-bg-subtle);
+    border: none;
+  }
+
+  .hero-zone--preview .niche-title {
+    color: var(--color-text-primary);
+  }
+  .hero-zone--preview .niche-description {
+    color: var(--color-text-secondary);
+  }
+  .hero-zone--preview .niche-description:hover {
+    color: var(--color-text-primary);
+  }
+  .hero-zone--preview .expand-btn {
+    color: var(--color-accent);
+  }
+  .hero-zone--preview .expand-btn:hover {
+    color: var(--color-accent-dark);
+  }
+
+  .hero-zone--preview .pipeline-stage {
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border);
+  }
+  .hero-zone--preview .pipeline-num {
+    color: var(--color-text-primary);
+  }
+  .hero-zone--preview .pipeline-label {
+    color: var(--color-text-muted);
+  }
+
+  /* Final stage: emphasize via typography, not peach fill — keeps hexagonal flow consistent */
+  .hero-zone--preview .pipeline-stage.highlight {
+    background: var(--color-bg-elevated);
+  }
+  .hero-zone--preview .pipeline-stage.highlight .pipeline-num {
+    color: var(--color-accent-dark);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-extrabold);
+  }
+  .hero-zone--preview .pipeline-stage.highlight .pipeline-label {
+    color: var(--color-accent-dark);
+    font-weight: var(--font-semibold);
+  }
+
+  .hero-zone--preview .verdict-locked {
+    border-color: var(--color-border);
+    color: var(--color-text-muted);
+  }
+
+  .hero-zone--preview :global(.tooltip-trigger) {
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
+  }
+  .hero-zone--preview :global(.tooltip-trigger:hover) {
+    color: var(--color-text-primary);
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-hover);
+  }
+
+  /* Pain card (in preview mode): larger, darker metrics for contrast on light bg.
+     Keep the existing 3px left accent stripe as the single orange container cue —
+     no bg tint, no accent border, to avoid stacked-accent slop. */
+  .cards-container--preview .pain-stat-value {
+    font-size: 1.5rem;
+    color: var(--color-accent-dark);
+  }
+
+  .cards-container--preview .pain-stat {
+    gap: 0.125rem;
   }
 
   .hero-zone > * {
@@ -1608,7 +1673,7 @@
   }
 
   .pipeline-stage.highlight {
-    background: var(--color-accent-glow-strong);
+    background: var(--color-accent-glow);
   }
 
   .pipeline-arrow {

@@ -9,15 +9,15 @@
   let { quote }: Props = $props();
 
   const safeUrl = $derived(
-    quote.source_url && /^https:\/\/(www\.)?reddit\.com\//.test(quote.source_url) ? quote.source_url : null
+    quote.source_url && /^https:\/\/(www\.)?(reddit\.com|news\.ycombinator\.com|youtube\.com)\//.test(quote.source_url) ? quote.source_url : null
   );
 </script>
 
 <section class="billboard">
-  <!-- Reddit-native attribution header -->
+  <!-- Source attribution header -->
   <div class="billboard-attr">
     {#if quote.subreddit}
-      <span class="billboard-sub">r/{quote.subreddit}</span>
+      <span class="billboard-sub">{quote.subreddit}</span>
       <span class="billboard-sep">&middot;</span>
     {/if}
     <span class="billboard-upvote">&#9650; {quote.upvotes.toLocaleString()}</span>

@@ -247,10 +247,12 @@ src/nicheiq/
 ├── models/              # Pydantic models
 │   ├── research_state.py
 │   ├── pain_point.py
-│   └── solution_idea.py
+│   ├── solution_idea.py
+│   └── social_content.py  # RedditPost, SocialPost (generic), SocialContentCollection
 ├── tools/               # External API tools
 │   ├── reddit_tool.py
 │   ├── twitter_tool.py
+│   ├── hackernews_tool.py  # Algolia HN API (free, no auth)
 │   └── dataforseo_tool.py
 ├── report/              # Report generation
 │   └── report_generator.py
@@ -412,6 +414,37 @@ source .venv/bin/activate && python -c "from nicheiq.models.research_state impor
 # Frontend types
 cd frontend && npm run check
 ```
+
+---
+
+## Multi-Source Data Collection
+
+NicheIQ collects social content from multiple platforms. Reddit is the primary source; Hacker News is auto-enabled; Twitter is disabled/optional; YouTube is planned.
+
+**Source architecture:**
+- `RedditPost` / `TwitterThread` — platform-specific models (legacy, kept for backward compat)
+- `SocialPost` — generic model for all new sources (`platform` field discriminates)
+- `SocialContentCollection.generic_posts` — holds all `SocialPost` instances
+
+**Adding a new source:**
+1. Create tool in `src/nicheiq/tools/` following `hackernews_tool.py` pattern
+2. Add `enable_<source>` setting in `config/settings.py`
+3. Add collection block in `research_flow.py` Stage 2 (append to `generic_posts`)
+4. No changes needed in PainPointCrew, content_preparers, trend_scoring — they already iterate `generic_posts`
+
+**Content security:**
+All scraped content is wrapped in delimiter fencing before reaching LLM agents:
+```
+======== UNTRUSTED SOCIAL CONTENT (source=hackernews, id=12345) ========
+... scraped text (sanitized for injection patterns) ...
+======== END UNTRUSTED CONTENT ========
+```
+
+**Quality pipeline (borrowed from last30days skill):**
+- `utils/validation/dedup.py` — hybrid n-gram + token Jaccard deduplication
+- `utils/engagement_normalizer.py` — per-platform engagement scoring (0-1 scale)
+- `utils/snippet_extraction.py` — sliding-window best-evidence extraction
+- `utils/validation/thread_validator.py:token_overlap_prefilter()` — fast pre-LLM relevance check
 
 ---
 

@@ -276,7 +276,7 @@
                     {/each}
                     {#if painPoint.mention_count > 0}
                       <span class="mention-count"
-                        >{painPoint.mention_count} mentions</span
+                        >{painPoint.mention_count} {painPoint.mention_count === 1 ? 'mention' : 'mentions'}</span
                       >
                     {/if}
                   </div>

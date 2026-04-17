@@ -25,9 +25,44 @@ from ..models.pain_point import (
     UnvalidatedPainPoint,
     ValidationResult,
 )
-from ..models.social_content import RedditComment, RedditPost, TwitterThread, TwitterTweet
+from ..models.social_content import RedditComment, RedditPost, SocialPost, SocialResponse, TwitterThread, TwitterTweet
 from ..utils.parsing.json_extractor import clean_llm_response, extract_json_object_from_text
 from ..utils.token_monitor import ContentTokenMonitor
+
+# Known prompt injection patterns to strip from scraped content
+_INJECTION_PATTERNS = re.compile(
+    r"(?i)(ignore\s+(all\s+)?previous\s+instructions|"
+    r"you\s+are\s+now\s+|"
+    r"^SYSTEM:|^ASSISTANT:|^USER:|"
+    r"<\|(?:im_start|im_end|endoftext)\|>|"
+    r"\bdo\s+not\s+follow\s+any\s+(?:other|previous)\b)",
+)
+
+
+def _sanitize_social_content(text: str) -> str:
+    """Strip control characters and known prompt injection patterns from scraped text."""
+    if not text:
+        return ""
+    # Remove control characters except standard whitespace
+    sanitized = "".join(c for c in text if ord(c) >= 32 or c in "\n\r\t")
+    # Strip known injection patterns
+    sanitized = _INJECTION_PATTERNS.sub("[REDACTED]", sanitized)
+    return sanitized
+
+
+def _fence_content(text: str, platform: str, post_id: str) -> str:
+    """Wrap user-generated content in delimiter-based fencing for prompt injection defense.
+
+    Uses delimiters instead of XML tags because CrewAI's StringKnowledgeSource
+    chunks text for embedding — XML tags get severed across chunk boundaries.
+    Delimiter lines survive chunking as they appear on their own lines.
+    """
+    sanitized = _sanitize_social_content(text)
+    return (
+        f"======== UNTRUSTED SOCIAL CONTENT (source={platform}, id={post_id}) ========\n"
+        f"{sanitized}\n"
+        f"======== END UNTRUSTED CONTENT ========"
+    )
 from ..utils.validation.crew_guardrails import (
     validate_content_categorization,
     validate_quote_enrichment,
@@ -259,7 +294,7 @@ class PainPointCrew:
     agents_config = "config/pain_point_agents.yaml"
     tasks_config = "config/pain_point_tasks.yaml"
 
-    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None):
+    def __init__(self, reddit_posts: list[RedditPost] = None, twitter_threads: list[TwitterThread] = None, generic_posts: list[SocialPost] = None, niche_description: str = "", market_segments: list[str] = None, industry_boundaries: str = "", job_id: str | None = None):
         """
         Initialize PainPointCrew with social content as knowledge sources.
 
@@ -280,6 +315,7 @@ class PainPointCrew:
         # Task 4 needs ALL posts to find quotes, not just the token-budgeted subset
         self._raw_reddit_posts = list(reddit_posts or [])
         self._raw_twitter_threads = list(twitter_threads or [])
+        self._raw_generic_posts = list(generic_posts or [])
 
         # Apply quality filter BEFORE formatting for knowledge sources
         original_reddit_count = len(reddit_posts or [])
@@ -314,6 +350,20 @@ class PainPointCrew:
                 freshness_days=settings.token_budget_freshness_days,
             )
 
+        # Generic posts (HN, YouTube, etc.) - apply token budget with diversity
+        self.generic_posts = list(generic_posts or [])
+        if self.generic_posts:
+            from nicheiq.config.settings import settings
+            from nicheiq.utils.token_monitor import ContentTokenMonitor
+
+            token_monitor = ContentTokenMonitor()
+            self.generic_posts = token_monitor.filter_generic_posts_to_budget(
+                self.generic_posts,
+                max_tokens=settings.max_reddit_content_tokens,  # share the same budget
+                min_per_source=3,
+                max_per_author=5,
+            )
+
         self.niche_description = niche_description
         self.market_segments = market_segments or []
         self.industry_boundaries = industry_boundaries
@@ -324,10 +374,12 @@ class PainPointCrew:
         # Tasks 2 & 3 use agent-level knowledge sources for RAG-based quote retrieval
         self.formatted_reddit_content = ""
         self.formatted_twitter_content = ""
+        self.formatted_generic_content = ""
 
         # Calculate total discussion volume
         total_reddit_comments = sum(len(post.comments) for post in self.reddit_posts)
         total_twitter_replies = sum(len(thread.replies) for thread in self.twitter_threads)
+        total_generic_responses = sum(p.num_responses for p in self.generic_posts)
 
         # Initialize knowledge sources for agent-level RAG (Tasks 2 & 3 only)
         # Task 1 uses direct injection only (no RAG) - content_researcher has no knowledge_sources
@@ -354,16 +406,27 @@ class PainPointCrew:
             self.knowledge_sources.append(self.twitter_knowledge)
             logger.info(f"Twitter content: {len(self.formatted_twitter_content)} chars, knowledge source created")
 
+        if self.generic_posts:
+            self.formatted_generic_content = self._prepare_generic_content()
+            self.generic_knowledge = StringKnowledgeSource(
+                content=self.formatted_generic_content,
+                chunk_size=2000,
+                chunk_overlap=600,
+            )
+            self.knowledge_sources.append(self.generic_knowledge)
+            logger.info(f"Generic content: {len(self.formatted_generic_content)} chars, knowledge source created")
+
         # Create enrichment Knowledge for Task 4 using RAW UNFILTERED posts with post_id metadata
         # This ensures Task 4 can search ALL content, not just the token-budgeted subset
         self._enrichment_knowledge = None
-        if self._raw_reddit_posts or self._raw_twitter_threads:
+        if self._raw_reddit_posts or self._raw_twitter_threads or self._raw_generic_posts:
             self._setup_enrichment_knowledge(niche_description)
 
         logger.info(
             f"PainPointCrew initialized with {len(self.reddit_posts)} Reddit posts "
-            f"({total_reddit_comments} comments) and {len(self.twitter_threads)} Twitter threads "
-            f"({total_twitter_replies} replies) - {len(self.knowledge_sources)} knowledge source(s)"
+            f"({total_reddit_comments} comments), {len(self.twitter_threads)} Twitter threads "
+            f"({total_twitter_replies} replies), {len(self.generic_posts)} generic posts "
+            f"({total_generic_responses} responses) - {len(self.knowledge_sources)} knowledge source(s)"
         )
 
     def _filter_low_quality_reddit(self, posts: list[RedditPost]) -> list[RedditPost]:
@@ -522,7 +585,7 @@ class PainPointCrew:
         for comment in comments:
             # Include full comment body with source tracking
             formatted.append(
-                f"{indent}- [{comment.score} pts] {comment.body} [source: {post_id}]"
+                f"{indent}- [{comment.score} pts] {_sanitize_social_content(comment.body)} [source: {post_id}]"
             )
 
             # Include nested replies (up to max_depth)
@@ -584,7 +647,7 @@ class PainPointCrew:
         for root_reply in root_replies:
             # Include full tweet text with source tracking
             formatted.append(
-                f"- @{root_reply.author_username} [{root_reply.likes} likes, {root_reply.retweets} RTs]: {root_reply.text} [source: {thread_id}]"
+                f"- @{root_reply.author_username} [{root_reply.likes} likes, {root_reply.retweets} RTs]: {_sanitize_social_content(root_reply.text)} [source: {thread_id}]"
             )
 
             # Add nested replies to this conversation (if any)
@@ -597,7 +660,7 @@ class PainPointCrew:
                 for nested in nested_replies[:10]:
                     # Include full nested tweet text with source tracking
                     formatted.append(
-                        f"  └─ @{nested.author_username} [{nested.likes} likes]: {nested.text} [source: {thread_id}]"
+                        f"  └─ @{nested.author_username} [{nested.likes} likes]: {_sanitize_social_content(nested.text)} [source: {thread_id}]"
                     )
 
         # Filter out any empty strings before joining
@@ -637,7 +700,7 @@ class PainPointCrew:
 
 ### {post.title}
 
-{post.selftext} [source: {post.post_id}]
+{_fence_content(post.selftext, 'reddit', post.post_id)} [source: {post.post_id}]
 
 ---
 ## Discussion ({len(post.comments)} comments):
@@ -664,7 +727,7 @@ class PainPointCrew:
 
 ## Original Tweet:
 
-{thread.original_tweet.text} [source: {thread.thread_id}]
+{_fence_content(thread.original_tweet.text, 'twitter', thread.thread_id)} [source: {thread.thread_id}]
 
 ---
 ## Conversation ({len(thread.replies)} replies):
@@ -672,6 +735,68 @@ class PainPointCrew:
 {self._format_twitter_replies(thread.replies, thread_id=thread.thread_id)}
 """)
         return "\n\n===\n\n".join(formatted)
+
+    def _prepare_generic_content(self) -> str:
+        """Format generic source posts (HN, YouTube, etc.) for knowledge source."""
+        formatted = []
+        for post in self.generic_posts:
+            platform_label = post.platform.upper()
+            container = {
+                "hackernews": "Hacker News",
+                "youtube": "YouTube",
+            }.get(post.platform, post.platform)
+
+            # Format responses (comments)
+            responses_text = self._format_generic_responses(
+                post.responses, post_id=post.post_id,
+            )
+
+            formatted.append(f"""[PLATFORM: {platform_label}]
+[POST_ID: {post.post_id}]
+[CONTAINER: {container}]
+[SCORE: {post.score}]
+[URL: {post.url}]
+
+### {post.title}
+
+{_fence_content(post.body, post.platform, post.post_id)} [source: {post.post_id}]
+
+---
+## Discussion ({post.num_responses} responses):
+
+{responses_text}
+""")
+        return "\n\n===\n\n".join(formatted)
+
+    def _format_generic_responses(
+        self,
+        responses: list[SocialResponse],
+        post_id: str = "unknown",
+        depth: int = 0,
+        max_depth: int = 3,
+    ) -> str:
+        """Recursively format generic source responses."""
+        if not responses or depth > max_depth:
+            return ""
+
+        formatted = []
+        indent = "  " * depth
+        for resp in responses:
+            formatted.append(
+                f"{indent}- [{resp.score} pts] {_sanitize_social_content(resp.body)} [source: {post_id}]"
+            )
+            if resp.replies and depth < max_depth:
+                reply_limit = 20 if depth == 0 else (10 if depth == 1 else 5)
+                nested = self._format_generic_responses(
+                    resp.replies[:reply_limit],
+                    post_id=post_id,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                )
+                if nested:
+                    formatted.append(nested)
+
+        return "\n".join(str(item) for item in formatted if item)
 
     @agent
     def content_researcher(self) -> Agent:
@@ -899,7 +1024,8 @@ class PainPointCrew:
                 word = re.sub(r'[^\w]', '', word)
                 if word and word not in PainPointCrew._STOPWORDS and len(word) > 2:
                     words.add(word)
-        return frozenset(words)
+        from ..utils.text_stemmer import stem_tokens
+        return frozenset(stem_tokens(words))
 
     @staticmethod
     def _compute_quote_relevance(
@@ -915,11 +1041,13 @@ class PainPointCrew:
         if not relevance_terms:
             return 0.0
 
-        quote_words: set[str] = set()
+        from ..utils.text_stemmer import stem_tokens
+        raw_words: set[str] = set()
         for word in quote_text.lower().split():
             word = re.sub(r'[^\w]', '', word)
             if word and len(word) > 2:
-                quote_words.add(word)
+                raw_words.add(word)
+        quote_words = stem_tokens(raw_words)
 
         overlap = quote_words & relevance_terms
         # Floor denominator at 5 to prevent short titles from inflating scores
@@ -1233,12 +1361,14 @@ class PainPointCrew:
                 f"Hybrid mode (Task 1: direct injection, Tasks 2-3: agent-level RAG): "
                 f"{len(self.reddit_posts)} Reddit posts ({total_reddit_comments} comments), "
                 f"{len(self.twitter_threads)} Twitter threads ({total_twitter_replies} replies), "
+                f"{len(self.generic_posts)} generic posts (HN/YouTube), "
                 f"{len(self.knowledge_sources)} knowledge source(s) for agents"
             )
 
             # ANTI-HALLUCINATION CHECK: Verify sufficient content volume
-            total_discussions = len(self.reddit_posts) + len(self.twitter_threads)
-            total_engagement = total_reddit_comments + total_twitter_replies
+            total_discussions = len(self.reddit_posts) + len(self.twitter_threads) + len(self.generic_posts)
+            total_generic_responses = sum(p.num_responses for p in self.generic_posts)
+            total_engagement = total_reddit_comments + total_twitter_replies + total_generic_responses
 
             if total_discussions < 3:
                 logger.warning(
@@ -1268,7 +1398,7 @@ class PainPointCrew:
             # Token monitoring: Log content size and check context limits
             monitor = ContentTokenMonitor()
             content_tokens = monitor.count_tokens(
-                self.formatted_reddit_content + self.formatted_twitter_content,
+                self.formatted_reddit_content + self.formatted_twitter_content + self.formatted_generic_content,
                 model=settings.content_analysis_llm
             )
 
@@ -1304,7 +1434,7 @@ class PainPointCrew:
 
                 # Recalculate tokens after reduction
                 content_tokens = monitor.count_tokens(
-                    self.formatted_reddit_content + self.formatted_twitter_content,
+                    self.formatted_reddit_content + self.formatted_twitter_content + self.formatted_generic_content,
                     model=settings.content_analysis_llm
                 )
 
@@ -1336,11 +1466,17 @@ class PainPointCrew:
                     model=settings.content_analysis_llm
                 )
 
+                generic_tokens = monitor.log_content_stats(
+                    content=self.formatted_generic_content,
+                    label="Stage 6 - Generic content (HN/YouTube)",
+                    model=settings.content_analysis_llm
+                )
+
                 # Combined token check
-                total_tokens = reddit_tokens + twitter_tokens
+                total_tokens = reddit_tokens + twitter_tokens + generic_tokens
                 monitor.check_soft_cap(
                     tokens=total_tokens,
-                    label="Stage 6 - Total content (Reddit + Twitter)",
+                    label="Stage 6 - Total content (Reddit + Twitter + Generic)",
                     model=settings.content_analysis_llm
                 )
 

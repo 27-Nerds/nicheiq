@@ -621,6 +621,7 @@ export interface ResearchMetadata {
 	reddit_posts_analyzed?: number;
 	reddit_comments_analyzed?: number;
 	twitter_threads_analyzed?: number;
+	generic_posts_analyzed?: number;
 	top_subreddits?: SubredditBreakdown[];
 	collection_date?: string;
 	data_size_mb?: number;
@@ -835,6 +836,7 @@ export interface RedditThread {
 	url: string;
 	created_utc?: string;
 	key_insight: string;
+	platform?: string; // "reddit", "hackernews", "youtube" — defaults to "reddit" for backward compat
 }
 
 export interface PainPointQuoteSource {

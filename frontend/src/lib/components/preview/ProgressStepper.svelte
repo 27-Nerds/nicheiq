@@ -21,7 +21,7 @@
       label: 'Discovery',
       state: (currentStep === 'discovery' ? 'active'
         : 'done') as StepState,
-      stat: discussionCount > 0 ? `${discussionCount.toLocaleString()} analyzed` : undefined,
+      stat: discussionCount > 0 ? `${discussionCount.toLocaleString()} posts` : undefined,
     },
     {
       id: 'selection',

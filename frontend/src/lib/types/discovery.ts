@@ -82,6 +82,7 @@ export interface DiscoveryData {
   subreddit_names: string[];
   subreddit_post_counts?: Record<string, number>;
   data_attribution: string;
+  sources_searched?: Record<string, { enabled: boolean; posts_found: number }>;
   discussion_trend?: { month: string; count: number }[];
   discussion_growth_pct?: number | null;
 }

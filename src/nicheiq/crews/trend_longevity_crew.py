@@ -188,7 +188,7 @@ class TrendLongevityCrew:
             "total_keyword_volume": total_kw_volume,
             "validated_keyword_count": validated_kw_count,
             "discussion_count": (
-                len(social_content.reddit_posts) + len(social_content.twitter_threads)
+                len(social_content.reddit_posts) + len(social_content.twitter_threads) + len(social_content.generic_posts or [])
                 if social_content else 0
             ),
             "competitor_count": (
@@ -371,9 +371,12 @@ class TrendLongevityCrew:
         signals = []
         reddit_count = len(social_content.reddit_posts) if social_content.reddit_posts else 0
         twitter_count = len(social_content.twitter_threads) if social_content.twitter_threads else 0
-        signals.append(f"**Total Discussions Analyzed:** {reddit_count + twitter_count}")
+        generic_count = len(social_content.generic_posts) if social_content.generic_posts else 0
+        signals.append(f"**Total Discussions Analyzed:** {reddit_count + twitter_count + generic_count}")
         signals.append(f"- Reddit posts: {reddit_count}")
         signals.append(f"- Twitter threads: {twitter_count}")
+        if generic_count:
+            signals.append(f"- Other sources (HN, YouTube): {generic_count}")
 
         # Analyze discussion recency from timestamps
         if social_content.reddit_posts:

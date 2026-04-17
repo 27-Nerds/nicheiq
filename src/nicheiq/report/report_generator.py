@@ -204,7 +204,8 @@ class ReportGenerator:
             logger.info(
                 f"[OK] Research metadata generated: "
                 f"{final_report.research_metadata.reddit_posts_analyzed} Reddit posts, "
-                f"{final_report.research_metadata.twitter_threads_analyzed} Twitter threads"
+                f"{final_report.research_metadata.twitter_threads_analyzed} Twitter threads, "
+                f"{final_report.research_metadata.generic_posts_analyzed} generic posts"
             )
 
         final_report.alternative_solutions = self._generate_alternative_solutions()
@@ -1234,10 +1235,13 @@ class ReportGenerator:
             social_content_json = social_content.model_dump_json()
             data_size_mb = len(social_content_json.encode('utf-8')) / (1024 * 1024)
 
+            generic_posts_analyzed = len(social_content.generic_posts) if social_content.generic_posts else 0
+
             return ResearchMetadata(
                 reddit_posts_analyzed=reddit_posts_analyzed,
                 reddit_comments_analyzed=reddit_comments_analyzed,
                 twitter_threads_analyzed=twitter_threads_analyzed,
+                generic_posts_analyzed=generic_posts_analyzed,
                 top_subreddits=top_subreddits,
                 collection_date=social_content.collection_timestamp,
                 data_size_mb=round(data_size_mb, 2),
@@ -1996,6 +2000,18 @@ It differentiates through {diff_text}.
         return flat
 
     @staticmethod
+    def _flatten_generic_responses(responses: list, _depth: int = 0) -> list:
+        """Recursively flatten nested SocialResponse trees."""
+        if _depth > 3:
+            return []
+        flat = []
+        for resp in responses:
+            flat.append(resp)
+            if resp.replies:
+                flat.extend(ReportGenerator._flatten_generic_responses(resp.replies, _depth + 1))
+        return flat
+
+    @staticmethod
     def _fuzzy_match_quote(
         quote: str,
         content_index: list[tuple[str, str]],
@@ -2075,6 +2091,14 @@ It differentiates through {diff_text}.
                     "score": thread.original_tweet.likes,
                     "url": thread.original_tweet.url
                 }
+            # Include generic sources (HN, YouTube) in metadata
+            _platform_labels = {"hackernews": "Hacker News", "youtube": "YouTube"}
+            for post in (self.state.social_content.generic_posts or []):
+                post_metadata[post.post_id] = {
+                    "subreddit": _platform_labels.get(post.platform, post.platform),
+                    "score": post.score,
+                    "url": post.url
+                }
 
             # Build content index for fuzzy matching: list of (normalized_text, post_id)
             content_index: list[tuple[str, str]] = []
@@ -2098,6 +2122,15 @@ It differentiates through {diff_text}.
                     normalized_reply = self._normalize_text(reply.text)
                     if len(normalized_reply) >= 30:
                         content_index.append((normalized_reply, thread.thread_id))
+            # Index generic sources (HN, YouTube) for fuzzy matching
+            for post in (self.state.social_content.generic_posts or []):
+                normalized_body = self._normalize_text(post.body)
+                if len(normalized_body) >= 30:
+                    content_index.append((normalized_body, post.post_id))
+                for resp in self._flatten_generic_responses(post.responses):
+                    normalized_resp = self._normalize_text(resp.body)
+                    if len(normalized_resp) >= 30:
+                        content_index.append((normalized_resp, post.post_id))
 
             # Map pain points to source posts
             pain_point_quote_sources = []
@@ -2377,6 +2410,7 @@ It differentiates through {diff_text}.
             if self.state.social_content:
                 social_evidence_threads += len(self.state.social_content.reddit_posts)
                 social_evidence_threads += len(self.state.social_content.twitter_threads)
+                social_evidence_threads += len(self.state.social_content.generic_posts or [])
 
             # Extract score fields via ScoreAccessor (single source of truth)
             if enriched_solution:
@@ -2455,6 +2489,8 @@ It differentiates through {diff_text}.
                 # Fallback: match source_post_ids against known posts/threads
                 reddit_ids = {p.post_id for p in self.state.social_content.reddit_posts}
                 twitter_ids = {t.thread_id for t in self.state.social_content.twitter_threads}
+                generic_map = {p.post_id: p.platform for p in (self.state.social_content.generic_posts or [])}
+                _plat_labels = {"hackernews": "Hacker News", "youtube": "YouTube"}
                 for sid in top_pp.source_post_ids:
                     if sid in reddit_ids:
                         post = next(p for p in self.state.social_content.reddit_posts if p.post_id == sid)
@@ -2462,6 +2498,9 @@ It differentiates through {diff_text}.
                         break
                     elif sid in twitter_ids:
                         source_platform = "Twitter"
+                        break
+                    elif sid in generic_map:
+                        source_platform = _plat_labels.get(generic_map[sid], generic_map[sid])
                         break
 
             return CorePainPoint(
@@ -3115,6 +3154,20 @@ It differentiates through {diff_text}.
             twitter_channel = self._identify_twitter_channel()
             if twitter_channel:
                 channels.append(twitter_channel)
+
+            # Flag content gap opportunities for zero-result platforms
+            sources = getattr(self.state, "sources_searched", None) or {}
+            for platform, info in sources.items():
+                if info.get("enabled") and info.get("posts_found", 0) == 0:
+                    label = {"hackernews": "Hacker News", "youtube": "YouTube"}.get(platform, platform)
+                    channels.append(MarketingChannel(
+                        channel_name=f"{label} (Content Gap)",
+                        channel_type="Content Gap",
+                        target_audience_size="0 competing posts found",
+                        rationale=f"Searched {label} and found no existing content for this niche. Potential first-mover opportunity if audience overlaps.",
+                        strategy=f"Research {label}'s audience to validate fit before investing content creation effort.",
+                        priority="Low",
+                    ))
 
             return channels
 

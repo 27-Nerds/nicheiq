@@ -34,6 +34,7 @@
     subredditNames={discoveryData.subreddit_names ?? []}
     totalInteractions={stageArtifacts[2]?.total_interactions}
     totalPosts={stageArtifacts[2]?.reddit_posts}
+    sourcesSearched={discoveryData.sources_searched}
   />
 
   <!-- Hero Quote -->

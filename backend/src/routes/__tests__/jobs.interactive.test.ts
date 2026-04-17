@@ -43,6 +43,8 @@ vi.mock('../../services/queueService.js', () => ({
   getQueueLength: vi.fn(),
 }));
 
+const mockChargeForResume = vi.fn();
+
 vi.mock('../../services/creditService.js', () => ({
   createJobAndChargeDiscovery: vi.fn(),
   InsufficientCreditsError: class extends Error {
@@ -58,6 +60,7 @@ vi.mock('../../services/creditService.js', () => ({
   refundForRegenerationStage: vi.fn(),
   chargeForStageInTx: vi.fn().mockResolvedValue({ cost: 15 }),
   chargeForRegenerationInTx: vi.fn().mockResolvedValue({}),
+  chargeForResume: (...args: any[]) => mockChargeForResume(...args),
   getStageCost: vi.fn().mockResolvedValue(5),
 }));
 
@@ -476,8 +479,7 @@ describe('GET /api/jobs/:jobId/solutions', () => {
 });
 
 describe('POST /api/jobs/:jobId/resume', () => {
-  it('creates JOB_DEDUCTION with resume_ stage prefix instead of deleting refund', async () => {
-    // Job is FAILED with a refund transaction
+  it('re-charges credits via chargeForResume and returns creditCharged', async () => {
     mockJobFindFirst.mockResolvedValue({
       id: jobId,
       userId: 'user-123',
@@ -485,38 +487,7 @@ describe('POST /api/jobs/:jobId/resume', () => {
       niche: 'test niche',
     });
 
-    mockCreditTransactionFindFirst.mockResolvedValue({
-      id: 'refund-tx-1',
-      amount: 5,
-      stage: 'discovery',
-    });
-
-    mockUserCreditsFindUnique.mockResolvedValue({
-      userId: 'user-123',
-      balance: 10,
-    });
-
-    // Transaction mock: execute callback with tx that has userCredits + creditTransaction
-    const mockTxUserCreditsFind = vi.fn().mockResolvedValue({ userId: 'user-123', balance: 10 });
-    const mockTxUserCreditsUpdate = vi.fn().mockResolvedValue({ userId: 'user-123', balance: 5 });
-    const mockTxCreditTransactionCreate = vi.fn().mockResolvedValue({});
-    const mockTxCreditTransactionDelete = vi.fn();
-
-    mockTransaction.mockImplementation(async (callback: any) => {
-      const tx = {
-        userCredits: {
-          findUnique: mockTxUserCreditsFind,
-          update: mockTxUserCreditsUpdate,
-        },
-        creditTransaction: {
-          create: mockTxCreditTransactionCreate,
-          delete: mockTxCreditTransactionDelete,
-        },
-        job: { updateMany: mockJobUpdateMany },
-      };
-      return callback(tx);
-    });
-
+    mockChargeForResume.mockResolvedValue({ charged: true, amount: 5 });
     mockJobUpdate.mockResolvedValue({});
 
     const response = await request(app)
@@ -525,32 +496,28 @@ describe('POST /api/jobs/:jobId/resume', () => {
       .send({});
 
     expect(response.status).toBe(200);
+    expect(mockChargeForResume).toHaveBeenCalledWith('user-123', jobId);
+    expect(response.body.creditCharged).toBe(5);
+  });
 
-    // Should NOT delete the refund transaction
-    expect(mockTxCreditTransactionDelete).not.toHaveBeenCalled();
-
-    // Should create a new JOB_DEDUCTION with resume_ prefix
-    expect(mockTxCreditTransactionCreate).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        userId: 'user-123',
-        type: 'JOB_DEDUCTION',
-        amount: -5,
-        balanceBefore: 10,
-        balanceAfter: 5,
-        relatedJobId: jobId,
-        stage: 'resume_discovery',
-        description: 'Resume: re-charge discovery',
-      }),
+  it('resumes without charging when chargeForResume returns charged=false', async () => {
+    mockJobFindFirst.mockResolvedValue({
+      id: jobId,
+      userId: 'user-123',
+      status: 'FAILED',
+      niche: 'test niche',
     });
 
-    // Should decrement balance
-    expect(mockTxUserCreditsUpdate).toHaveBeenCalledWith({
-      where: { userId: 'user-123' },
-      data: {
-        balance: { decrement: 5 },
-        totalUsed: { increment: 5 },
-      },
-    });
+    mockChargeForResume.mockResolvedValue({ charged: false, amount: 0 });
+    mockJobUpdate.mockResolvedValue({});
+
+    const response = await request(app)
+      .post(`/api/jobs/${jobId}/resume`)
+      .set(authHeaders)
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.creditCharged).toBe(0);
   });
 
   it('returns 402 when balance insufficient for resume re-charge', async () => {
@@ -561,17 +528,8 @@ describe('POST /api/jobs/:jobId/resume', () => {
       niche: 'test niche',
     });
 
-    mockCreditTransactionFindFirst.mockResolvedValue({
-      id: 'refund-tx-1',
-      amount: 5,
-      stage: 'discovery',
-    });
-
-    // Balance is too low
-    mockUserCreditsFindUnique.mockResolvedValue({
-      userId: 'user-123',
-      balance: 3,
-    });
+    const { InsufficientCreditsError } = await import('../../services/creditService.js');
+    mockChargeForResume.mockRejectedValue(new InsufficientCreditsError(3, 5));
 
     const response = await request(app)
       .post(`/api/jobs/${jobId}/resume`)
@@ -580,5 +538,7 @@ describe('POST /api/jobs/:jobId/resume', () => {
 
     expect(response.status).toBe(402);
     expect(response.body.code).toBe('INSUFFICIENT_CREDITS');
+    expect(response.body.balance).toBe(3);
+    expect(response.body.required).toBe(5);
   });
 });

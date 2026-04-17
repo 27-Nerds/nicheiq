@@ -63,7 +63,7 @@
         <div class="dist-bars">
           {#each subredditDistribution as sub (sub.name)}
             <div class="tier-bar" use:scrollVisible>
-              <span class="tier-bar-label">r/{sub.name}</span>
+              <span class="tier-bar-label">{sub.name}</span>
               <div class="tier-bar-track">
                 <div
                   class="tier-bar-fill"
@@ -87,7 +87,7 @@
               <span class="source-score">{post.score.toLocaleString()}</span>
               <span class="source-title">{post.title}</span>
               <span class="source-meta">
-                r/{post.subreddit}
+                {post.subreddit}
                 <span class="source-comments">{post.num_comments} comments</span>
               </span>
             </a>

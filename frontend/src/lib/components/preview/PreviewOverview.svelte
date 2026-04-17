@@ -32,7 +32,7 @@
     {#snippet primary()}
       <HeroPrimary icon={CheckCircle} label="Discovery" sublabel="Complete" color="success" />
     {/snippet}
-    <HeroMetric value={discussionCount} label="Posts analyzed" color="neutral" />
+    <HeroMetric value={discussionCount} label="Posts" color="neutral" />
     <HeroMetric value={painPointCount} label="Pain points" color="accent" />
     <HeroMetric value={solutionCount} label="Opportunities" color="success" />
     <HeroMetric value={segmentCount} label="Segments" color="neutral" />

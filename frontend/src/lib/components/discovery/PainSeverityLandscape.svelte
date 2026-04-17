@@ -99,7 +99,7 @@
                 <span class="pc-quote-text">&ldquo;{q.text.length > 200 ? q.text.slice(0, 197) + '...' : q.text}&rdquo;</span>
               </div>
               <div class="pc-quote-attr">
-                {#if q.subreddit}r/{q.subreddit}{/if}
+                {#if q.subreddit}{q.subreddit}{/if}
                 {#if q.source_url}
                   <span class="pc-quote-sep">&middot;</span>
                   <a href={q.source_url} target="_blank" rel="noopener noreferrer" class="pc-quote-link">

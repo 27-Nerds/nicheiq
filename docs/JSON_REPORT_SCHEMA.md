@@ -157,7 +157,7 @@ The executive dashboard provides a quick go/no-go decision framework.
 | `primary_competitor_count` | `number` | Direct competitors identified |
 | `avg_pain_point_severity` | `number` (0-1) | Average severity |
 | `avg_willingness_to_pay` | `number` (0-1) | Average WTP |
-| `social_evidence_threads` | `number` | Reddit/Twitter threads analyzed |
+| `social_evidence_threads` | `number` | Total social threads analyzed (Reddit + Twitter + HN + generic) |
 | `market_fit_score` | `number \| null` (0-1) | Market fit score |
 | `competitive_advantage_score` | `number \| null` (0-1) | Competitive advantage |
 | `technical_feasibility_score` | `number \| null` (0-1) | Technical feasibility |
@@ -1296,13 +1296,14 @@ Data sourcing strategy for aggregation projects.
 
 ## 13. Research Metadata
 
-### `research_metadata: object` (9 keys)
+### `research_metadata: object` (10 keys)
 
 ```json
 {
   "reddit_posts_analyzed": 54,
   "reddit_comments_analyzed": 1234,
   "twitter_threads_analyzed": 0,
+  "generic_posts_analyzed": 12,
   "top_subreddits": [{
     "name": "LocalLLaMA",
     "post_count": 25
@@ -1325,6 +1326,9 @@ Data sourcing strategy for aggregation projects.
 }
 ```
 
+> **Note:** `generic_posts_analyzed` counts posts from non-Reddit/Twitter sources (Hacker News, YouTube, etc.) collected via the `SocialPost` generic model. These posts are stored in `SocialContentCollection.generic_posts` and flow through the same pipeline as Reddit/Twitter content.
+```
+
 ---
 
 ## 14. Evidence & Supporting Data
@@ -1340,7 +1344,8 @@ Data sourcing strategy for aggregation projects.
     "score": 245,
     "num_comments": 89,
     "url": "string",
-    "key_insight": "string"
+    "key_insight": "string",
+    "platform": "reddit"
   }],
   "pain_point_quote_sources": [{
     "pain_point_title": "string",
@@ -1352,6 +1357,12 @@ Data sourcing strategy for aggregation projects.
     }]
   }]
 }
+```
+
+> **Multi-source notes:**
+> - `top_reddit_threads[].platform` — `"reddit"` (default), `"hackernews"`, or `"youtube"`. Added for multi-source support.
+> - `top_reddit_threads[].subreddit` — For Reddit: subreddit name. For HN: `"Hacker News"`. For YouTube: channel name. (Field name kept for backward compat, semantically a source label.)
+> - `quotes_with_sources[].subreddit` — Same multi-source label convention. Python model uses `source_label` with `alias="subreddit"` for the JSON key.
 ```
 
 ### `content_categorization: object` (6 keys)

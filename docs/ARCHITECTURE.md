@@ -61,27 +61,41 @@ User Input → Niche Description
 
 ### Stage 5: Search & Discover (Flow + Tools)
 
-**Responsibility**: Collect social media discussions
+**Responsibility**: Collect social media discussions from multiple platforms
 
 **Components**:
-1. **QueryGenerator**: Creates search queries from niche context
+1. **QueryGenerator**: Creates search queries from niche context (platform-targeted)
 2. **SerperDevTool**: Google search for Reddit/Twitter URLs
-3. **ThreadRelevanceValidator**: Filters irrelevant URLs before scraping
-4. **Reddit Tool (PRAW)**: Collects threads and comments
-5. **Twitter Tool**: Collects tweets (optional)
+3. **TokenOverlapPrefilter**: Fast local relevance check (drops ~30% off-topic results before LLM)
+4. **ThreadRelevanceValidator**: LLM-based relevance filtering for remaining URLs
+5. **Reddit Tool (PRAW)**: Collects threads and comments → `RedditPost`
+6. **Twitter Tool**: Collects tweets (optional, currently disabled) → `TwitterThread`
+7. **Hacker News Tool (Algolia API)**: Direct search + comment collection → `SocialPost`
+8. **Content Fencing**: Delimiter-based prompt injection defense on all scraped content
+9. **Hybrid Dedup**: n-gram + token Jaccard cross-source deduplication
 
 **Data Flow**:
 ```
 NicheContext → QueryGenerator → Search Queries
-            → SerperDev → URLs
-            → ThreadRelevanceValidator → Filtered URLs
-            → PRAW/Twitter → Social Content
+            → SerperDev → Reddit/Twitter URLs
+            → TokenOverlapPrefilter → Pre-filtered URLs
+            → ThreadRelevanceValidator → Validated URLs
+            → PRAW → RedditPost[]
+            → HN Algolia API → SocialPost[] (generic)
+            → Cross-source Dedup → SocialContentCollection
+                                   ├── reddit_posts
+                                   ├── twitter_threads
+                                   └── generic_posts (HN, YouTube, etc.)
 ```
 
 **Key Decisions**:
-- Pre-filter URLs to reduce API costs (ThreadRelevanceValidator)
-- Async execution with thread executor for Twitter (see TROUBLESHOOTING.md)
+- Token-overlap pre-filter before LLM validation saves ~30% API costs
+- HN uses Algolia API directly (free, no auth) — no Serper round-trip needed
+- `SocialPost` generic model supports any future source (YouTube, Indie Hackers)
+- Content fencing uses delimiter markers (not XML tags) to survive RAG chunking
+- Per-source engagement normalization for cross-platform scoring
 - Configurable comment depth (REDDIT_COMMENT_LIMIT)
+- Source diversity: min 3 posts per platform in token budget
 
 ---
 

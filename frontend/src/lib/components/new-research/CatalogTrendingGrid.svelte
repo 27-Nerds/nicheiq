@@ -101,7 +101,7 @@
                 {/if}
                 {#if pp.mentionCount != null && pp.mentionCount > 0}
                   <span class="text-xs text-text-muted"
-                    >{pp.mentionCount} mentions</span
+                    >{pp.mentionCount} {pp.mentionCount === 1 ? 'mention' : 'mentions'}</span
                   >
                 {/if}
               </div>

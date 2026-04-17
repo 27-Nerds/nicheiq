@@ -138,6 +138,7 @@ async function _chargeForStageImpl(
   niche: string,
   cost: number,
   description?: string,
+  cycle: number = 0,
 ): Promise<CreditTransaction> {
   // 1. Get or create credits record
   let credits = await tx.userCredits.findUnique({ where: { userId } });
@@ -171,6 +172,7 @@ async function _chargeForStageImpl(
       balanceAfter: updatedCredits.balance,
       relatedJobId: jobId,
       stage,
+      cycle,
       description: description ?? `${STAGE_LABELS[stage as StageName] ?? stage}: ${niche.substring(0, 100)}`,
     },
   });
@@ -218,14 +220,13 @@ export async function refundForRegenerationStage(
 }
 
 /**
- * Internal implementation for refunding a stage. Works with any stage string.
- * Only refunds if: (a) an original charge exists and (b) no refund for that stage yet.
+ * Internal implementation for refunding a stage. Uses cycle-based matching:
+ * finds the highest-cycle unrefunded charge for the given stage and refunds it.
  */
 async function _refundForStageImpl(
   jobId: string,
   stage: string,
 ): Promise<CreditTransaction | null> {
-  // Find the job to get userId
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     select: { userId: true, niche: true },
@@ -233,35 +234,31 @@ async function _refundForStageImpl(
 
   if (!job?.userId) return null;
 
-  // Find the original charge for this stage
-  const originalCharge = await prisma.creditTransaction.findFirst({
-    where: {
-      relatedJobId: jobId,
-      type: CreditTransactionType.JOB_DEDUCTION,
-      stage,
-    },
-  });
+  // Fetch charges and refunds for this specific stage in parallel
+  const [charges, refunds] = await Promise.all([
+    prisma.creditTransaction.findMany({
+      where: { relatedJobId: jobId, type: CreditTransactionType.JOB_DEDUCTION, stage },
+      orderBy: { cycle: 'desc' },
+    }),
+    prisma.creditTransaction.findMany({
+      where: { relatedJobId: jobId, type: CreditTransactionType.REFUND, stage },
+    }),
+  ]);
 
-  if (!originalCharge) {
-    console.log(`[CreditService] No charge found for job ${jobId} stage ${stage} — nothing to refund`);
-    return null;
-  }
+  const refundedCycles = new Set(refunds.map(r => r.cycle));
+  const unrefundedCharge = charges.find(c => !refundedCycles.has(c.cycle));
 
-  // Check if already refunded for this stage
-  const existingRefund = await prisma.creditTransaction.findFirst({
-    where: {
-      relatedJobId: jobId,
-      type: CreditTransactionType.REFUND,
-      stage,
-    },
-  });
-
-  if (existingRefund) {
+  if (!unrefundedCharge) {
+    if (charges.length === 0) {
+      console.log(`[CreditService] No charge found for job ${jobId} stage ${stage} — nothing to refund`);
+      return null;
+    }
     console.log(`[CreditService] Job ${jobId} stage ${stage} already refunded`);
-    return existingRefund;
+    return refunds.sort((a, b) => b.cycle - a.cycle)[0] ?? null;
   }
 
-  const refundAmount = Math.abs(originalCharge.amount);
+  const refundAmount = Math.abs(unrefundedCharge.amount);
+  const label = STAGE_LABELS[stage as StageName] ?? stage;
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -288,15 +285,16 @@ async function _refundForStageImpl(
           balanceAfter: updatedCredits.balance,
           relatedJobId: jobId,
           stage,
-          description: `Refund ${STAGE_LABELS[stage as StageName] ?? stage}: ${job.niche?.substring(0, 100)}`,
+          cycle: unrefundedCharge.cycle,
+          description: `Refund ${label}: ${job.niche?.substring(0, 100)}`,
         },
       });
     });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
-      console.log(`[CreditService] Job ${jobId} stage ${stage} refund race condition — returning existing`);
+      console.log(`[CreditService] Job ${jobId} stage ${stage} cycle ${unrefundedCharge.cycle} refund race condition — returning existing`);
       return prisma.creditTransaction.findFirst({
-        where: { relatedJobId: jobId, type: CreditTransactionType.REFUND, stage },
+        where: { relatedJobId: jobId, type: CreditTransactionType.REFUND, stage, cycle: unrefundedCharge.cycle },
       });
     }
     throw error;
@@ -389,6 +387,80 @@ export async function refundCreditsForJob(
   if (!failedStage) return null;
 
   return refundForStage(jobId, failedStage);
+}
+
+/**
+ * Determine if a resume requires re-charging and charge if needed.
+ * Uses cycle-based matching: a refund is "unmatched" if no charge exists at cycle + 1.
+ */
+export async function chargeForResume(
+  userId: string,
+  jobId: string,
+): Promise<{ charged: boolean; amount: number }> {
+  const [allCharges, allRefunds] = await Promise.all([
+    prisma.creditTransaction.findMany({
+      where: { relatedJobId: jobId, type: CreditTransactionType.JOB_DEDUCTION },
+    }),
+    prisma.creditTransaction.findMany({
+      where: { relatedJobId: jobId, type: CreditTransactionType.REFUND },
+    }),
+  ]);
+
+  // Find the most recent refund that hasn't been re-charged at the next cycle
+  const sortedRefunds = [...allRefunds].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  const unmatchedRefund = sortedRefunds.find(refund => {
+    return !allCharges.some(c => c.stage === refund.stage && c.cycle === refund.cycle + 1);
+  });
+
+  if (!unmatchedRefund) {
+    return { charged: false, amount: 0 };
+  }
+
+  const nextCycle = unmatchedRefund.cycle + 1;
+  const refundAmount = Math.abs(unmatchedRefund.amount);
+
+  const credits = await prisma.userCredits.findUnique({ where: { userId } });
+  if (!credits || credits.balance < refundAmount) {
+    throw new InsufficientCreditsError(credits?.balance ?? 0, refundAmount);
+  }
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const creds = await tx.userCredits.findUnique({ where: { userId } });
+      if (!creds) throw new Error('Credits record not found');
+
+      const updated = await tx.userCredits.update({
+        where: { userId },
+        data: {
+          balance: { decrement: refundAmount },
+          totalUsed: { increment: refundAmount },
+        },
+      });
+
+      await tx.creditTransaction.create({
+        data: {
+          userId,
+          type: CreditTransactionType.JOB_DEDUCTION,
+          amount: -refundAmount,
+          balanceBefore: creds.balance,
+          balanceAfter: updated.balance,
+          relatedJobId: jobId,
+          stage: unmatchedRefund.stage,
+          cycle: nextCycle,
+          description: `Resume: re-charge ${STAGE_LABELS[unmatchedRefund.stage as StageName] ?? unmatchedRefund.stage}`,
+        },
+      });
+    });
+
+    console.log(`[CreditService] Re-charged ${refundAmount} credits for job ${jobId} stage ${unmatchedRefund.stage} cycle ${nextCycle}`);
+    return { charged: true, amount: refundAmount };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      console.log(`[CreditService] Resume charge already exists for job ${jobId} (concurrent request)`);
+      return { charged: false, amount: 0 };
+    }
+    throw error;
+  }
 }
 
 // ============================================

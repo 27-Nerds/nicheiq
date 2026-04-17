@@ -214,6 +214,7 @@ class ResearchMetadata(BaseModel):
     reddit_posts_analyzed: int = Field(..., description="Total Reddit posts collected")
     reddit_comments_analyzed: int = Field(..., description="Total Reddit comments analyzed")
     twitter_threads_analyzed: int = Field(..., description="Total Twitter threads collected")
+    generic_posts_analyzed: int = Field(default=0, description="Total generic source posts collected (HN, YouTube, etc.)")
     top_subreddits: list[SubredditBreakdown] = Field(
         ..., description="Breakdown of posts by subreddit (top 10)"
     )
@@ -334,27 +335,28 @@ class CompetitiveLandscapeMatrix(BaseModel):
     )
 
 class TopRedditThread(BaseModel):
-    """Summary of a high-engagement Reddit thread for evidence appendix."""
+    """Summary of a high-engagement discussion thread for evidence appendix."""
 
     model_config = ConfigDict(extra='ignore')
 
-    post_id: str = Field(..., description="Reddit post ID")
+    post_id: str = Field(..., description="Post ID")
     title: str = Field(..., description="Post title")
-    subreddit: str = Field(..., description="Subreddit name")
-    score: int = Field(..., description="Post score (upvotes)")
-    num_comments: int = Field(..., description="Number of comments")
-    url: str = Field(..., description="Link to Reddit post")
+    subreddit: str = Field(..., description="Source label (r/subreddit, Hacker News, channel name)")
+    score: int = Field(..., description="Post score (upvotes/points)")
+    num_comments: int = Field(..., description="Number of comments/responses")
+    url: str = Field(..., description="Link to post")
     created_utc: Optional[datetime] = Field(default=None, description="Post creation timestamp")
     key_insight: str = Field(..., description="1-sentence summary of why this thread is significant")
+    platform: str = Field(default="reddit", description="Source platform (reddit, hackernews, youtube)")
 
 class QuoteSource(BaseModel):
     """Single quote with source attribution."""
 
-    model_config = ConfigDict(extra='ignore')
+    model_config = ConfigDict(extra='ignore', populate_by_name=True)
 
     quote: str = Field(..., description="The quote text")
     post_id: str = Field(..., description="Post ID where quote was found")
-    subreddit: str = Field(..., description="Subreddit name")
+    source_label: str = Field(..., alias="subreddit", description="Source label (r/subreddit, Hacker News, channel name)")
     score: str = Field(..., description="Post score/engagement")
 
 class PainPointEvidence(BaseModel):
@@ -1381,6 +1383,10 @@ class ResearchState(BaseModel):
     filtering_stats: Optional[dict[str, Any]] = Field(
         default=None,
         description="Filtering statistics from Stage 5: URLs searched, relevant found, filtering rate"
+    )
+    sources_searched: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Per-platform search results: {platform: {enabled: bool, posts_found: int}}"
     )
 
     # Cost Tracking

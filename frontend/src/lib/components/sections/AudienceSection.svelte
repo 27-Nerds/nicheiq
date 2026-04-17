@@ -49,11 +49,10 @@
 </script>
 
 <Section
-  id="audience"
+  id="audience-intelligence"
   class="report-section"
   icon={SECTION_MAP['audience'].icon}
   title="Audience Intelligence"
-  subtitle="Target segments and engagement strategy"
   headerSize="lg"
   elevated={false}
   border="none"
@@ -72,9 +71,9 @@
         />
       {/if}
     {/snippet}
-    <HeroMetric value={totalSegments} label="Segments" icon={Target} />
-    <HeroMetric value={totalInfluencers} label="Influencers" icon={Star} />
-    <HeroMetric value={totalCommunities} label="Communities" icon={Globe} />
+    <HeroMetric value={totalSegments} label="Segments" />
+    <HeroMetric value={totalInfluencers} label="Influencers" />
+    <HeroMetric value={totalCommunities} label="Communities" />
   </HeroStrip>
 
   <!-- Audience Segments Grid -->
@@ -84,7 +83,7 @@
 
       <CardGrid minWidth={280} gap="md">
         {#each data.audience_segments as segment, i}
-          <div class="segment-card" class:primary={i === 0}>
+          <div class="segment-card">
             <div class="segment-top">
               <h4 class="segment-name">{segment.segment_name}</h4>
               {#if segment.size_estimate}
@@ -96,7 +95,7 @@
 
             {#if segment.pain_point_alignment && segment.pain_point_alignment.length > 0}
               <div class="segment-pains">
-                <span class="segment-pains-label">Pain Alignment</span>
+                <span class="segment-pains-label">Struggles</span>
                 <ul class="pains-list">
                   {#each segment.pain_point_alignment.slice(0, 3) as painPoint}
                     <li>{painPoint}</li>
@@ -110,7 +109,7 @@
                 <MetaItem
                   icon={Briefcase}
                   value={segment.expertise_level}
-                  label=""
+                  label="Expertise"
                   iconClass="w-3 h-3 text-muted"
                 />
               {/if}
@@ -118,17 +117,20 @@
                 <MetaItem
                   icon={DollarSign}
                   value={segment.budget_sensitivity}
-                  label=""
+                  label="Budget"
                   iconClass="w-3 h-3 text-muted"
                 />
               {/if}
             </div>
 
             {#if segment.discovery_channels && segment.discovery_channels.length > 0}
-              <div class="insight-card__tags">
-                {#each segment.discovery_channels as channel}
-                  <span class="insight-card__tag">{channel}</span>
+              <div class="segment-channels">
+                {#each segment.discovery_channels.slice(0, 2) as channel}
+                  <span class="segment-channel-tag">{channel}</span>
                 {/each}
+                {#if segment.discovery_channels.length > 2}
+                  <span class="segment-channel-more">+{segment.discovery_channels.length - 2}</span>
+                {/if}
               </div>
             {/if}
           </div>
@@ -300,9 +302,7 @@
     border-color: var(--color-border-accent);
   }
 
-  .segment-card.primary {
-    border-left: 3px solid var(--color-accent);
-  }
+  /* primary card distinguished by badge only — no accent left-border */
 
   .segment-top {
     display: flex;
@@ -363,12 +363,8 @@
   .communities-strip {
     display: flex;
     align-items: center;
-    gap: 0.875rem;
-    padding: var(--space-3) var(--space-4);
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-3);
+    gap: var(--space-2);
+    margin-bottom: var(--space-2);
     flex-wrap: wrap;
   }
 
@@ -400,29 +396,41 @@
   }
 
   .community-tag {
-    font-size: var(--text-sm);
-    padding: 0.25rem 0.625rem;
+    font-size: 0.6875rem;
+    padding: var(--space-1) var(--space-2);
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
     color: var(--color-text-muted);
   }
 
-  /* Discovery Channel Tags */
-  .insight-card__tags {
+  /* Discovery channels — compact mini-pills */
+  .segment-channels {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.375rem;
+    gap: 0.25rem;
     margin-top: var(--space-2);
   }
 
-  .insight-card__tag {
-    font-size: 0.6875rem;
-    padding: 0.2rem 0.5rem;
+  .segment-channel-tag {
+    font-size: 0.625rem;
+    padding: 0.125rem 0.375rem;
     background: var(--color-bg-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-full);
     color: var(--color-text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 200px;
+  }
+
+  .segment-channel-more {
+    font-family: var(--font-mono);
+    font-size: 0.5625rem;
+    color: var(--color-text-muted);
+    padding: 0.125rem 0.25rem;
+    opacity: 0.6;
   }
 
   /* Influencer Card */

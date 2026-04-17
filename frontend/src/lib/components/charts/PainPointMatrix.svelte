@@ -248,7 +248,7 @@
         </div>
         <div class="tooltip-meta">
           <span class="tooltip-mentions"
-            >{hoveredPoint.mentionCount} mentions</span
+            >{hoveredPoint.mentionCount} {hoveredPoint.mentionCount === 1 ? 'mention' : 'mentions'}</span
           >
           <span
             class="tooltip-opportunity opportunity-{hoveredPoint.opportunity}"
