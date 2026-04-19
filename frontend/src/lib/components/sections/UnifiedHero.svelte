@@ -445,20 +445,17 @@
 
       <!-- Right Column: Niche Info + Signal Chips -->
       <div class="hero-right">
-        <h1 class="niche-title">{nicheName}</h1>
+        <h2 class="niche-title">{nicheName}</h2>
         <div class="niche-description-wrapper">
-          <!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
-          <p
+          <button
+            type="button"
             class="niche-description"
             class:expanded={descriptionExpanded}
             onclick={() => (descriptionExpanded = !descriptionExpanded)}
-            role="button"
-            tabindex="0"
-            onkeydown={(e) =>
-              e.key === "Enter" && (descriptionExpanded = !descriptionExpanded)}
+            aria-expanded={descriptionExpanded}
           >
             {nicheDescription}
-          </p>
+          </button>
           {#if !descriptionExpanded && nicheDescription?.length > 150}
             <button
               class="expand-btn"
@@ -564,8 +561,8 @@
   <div class="content-zone">
     <!-- Pain/Solution Cards - Overlapping Layout -->
     <div class="cards-container" class:cards-container--preview={previewMode}>
-      <!-- Evidence Wall Card -->
-      {#if heroPain || corePain}
+      <!-- Evidence Wall Card — skip in previewMode (Pain Points section above already shows this) -->
+      {#if !previewMode && (heroPain || corePain)}
         <div class="hero-card hero-card--pain">
           <!-- Band 1: Pain Point Identity -->
           <div class="card-header">
@@ -596,7 +593,7 @@
                 >{formatScorePercent(heroPainWTP)}</span
               >
               <span class="pain-stat-label">
-                WTP <Tooltip content={getTermTooltip("WTP")} position="top" />
+                Willing to pay <Tooltip content={getTermTooltip("WTP")} position="top" />
               </span>
             </div>
             {#if heroPainOpportunity}
@@ -1534,6 +1531,15 @@
   }
 
   .niche-description {
+    /* button reset */
+    appearance: none;
+    background: transparent;
+    border: none;
+    padding: 0;
+    text-align: left;
+    font: inherit;
+    width: 100%;
+    /* content styles */
     font-size: 0.9375rem;
     color: rgba(255, 255, 255, 0.8);
     line-height: var(--leading-relaxed);

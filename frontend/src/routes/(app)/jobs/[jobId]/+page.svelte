@@ -24,13 +24,6 @@
     Package,
     Share2,
     BarChart3,
-    DollarSign,
-    Search,
-    Coins,
-    TrendingUp,
-    Briefcase,
-    Code,
-    Database,
   } from "lucide-svelte";
   import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
@@ -527,16 +520,6 @@
     problems: previewPainPointCount,
   });
 
-  const unlockSections = [
-    { icon: DollarSign, title: 'Market Sizing', teaser: 'Total addressable market and revenue projections' },
-    { icon: Search, title: 'SEO Keyword Strategy', teaser: 'Full keyword map with search volumes and difficulty scores' },
-    { icon: Coins, title: 'Pricing & Revenue Model', teaser: 'Monetization tiers and willingness-to-pay analysis' },
-    { icon: TrendingUp, title: 'Trend Longevity Analysis', teaser: 'Trend trajectory, momentum signals, and reversal risks' },
-    { icon: Briefcase, title: 'Go-to-Market Playbook', teaser: 'Launch sequence, channel strategy, and first 90-day plan' },
-    { icon: Code, title: 'Technical Blueprint', teaser: 'Stack recommendations, MVP scope, and build timeline' },
-    { icon: Database, title: 'Data Infrastructure', teaser: 'Data sources and integration architecture' },
-  ];
-
   // Sticky bar state
   let ctaBannerRef = $state<HTMLElement | null>(null);
   let showStickyBar = $state(false);
@@ -798,10 +781,17 @@
               />
             </div>
           {/if}
-          <div class="progress-bar-track">
+          <div
+            class="progress-bar-track"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow={Math.round(job.progressPercent ?? 0)}
+            aria-label="Research progress"
+          >
             <div class="progress-bar-fill" style:width="{job.progressPercent ?? 0}%"></div>
           </div>
-          <p class="progress-stage">
+          <p class="progress-stage" aria-live="polite">
             Stage {adjustedStagesCompleted} of {adjustedTotalStages}{#if displayCurrentStageName}: {displayCurrentStageName}{/if}
           </p>
           <GenerationSlideshow currentStage={job.currentStage} phase="deep_research" />
@@ -823,6 +813,59 @@
               {segmentCount}
             />
           </ExpandableSection>
+        {/if}
+
+        <!-- Opportunities (Selection) — promoted above supporting evidence -->
+        {#if displaySolutions.length > 0}
+          <div class={isSelectionPhase ? 'opportunities-zone' : ''}>
+          {#if isSelectionPhase}
+            <div class="action-banner" id="solution-selector" bind:this={ctaBannerRef}>
+              <div class="action-banner-badge">Action Required</div>
+              <p class="action-banner-text">
+                Select up to 3 solutions to compare. Deep Research will validate the most promising one.
+                <strong>{ADDITIONAL_LOCKED_SECTIONS.length + LOCKED_PREVIEW_SECTIONS.length} sections</strong> unlock for {page.data.stageCosts?.deep_research ?? 15} credits.
+              </p>
+            </div>
+          {/if}
+          <ExpandableSection
+            title="Opportunities"
+            count={displaySolutions.length}
+            countSuffix="opportunities"
+            variant={isSelectionPhase ? "default" : "accent"}
+            defaultOpen={discoveryOpen}
+            resetKey={sectionResetKey}
+            id="opportunities"
+          >
+            {#if isSelectionPhase}
+              <PreviewSolutionSelector
+                jobId={jobId ?? ''}
+                solutions={displaySolutions}
+                creditBalance={page.data.creditBalance ?? 0}
+                stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
+                canRegenerate={job.canRegenerate ?? false}
+                isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
+                selectedSolutions={job.selectedSolutions ?? undefined}
+                {solutionVotes}
+                onComplete={handleSelectionComplete}
+                onSelectionComplete={handleSelectionComplete}
+                onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
+                onSelectionChange={(info) => {
+                  stickySelectionCount = info.count;
+                  stickyCanAfford = info.canAfford;
+                  stickySelectionNames = info.names;
+                }}
+                bind:externalValidate={validateTrigger}
+              />
+            {:else if showSelectedSummary && !isGeneratingP2}
+              <SelectedSolutionsSummary
+                selectedNames={job.selectedSolutions ?? []}
+                solutionIdeas={job.solutionIdeas ?? []}
+                primaryWinner={job.selectedSolution}
+                status={job.status}
+              />
+            {/if}
+          </ExpandableSection>
+          </div>
         {/if}
 
         <!-- Market Snapshot -->
@@ -911,59 +954,6 @@
           </ExpandableSection>
         {/if}
 
-        <!-- Opportunities (Selection) -->
-        {#if displaySolutions.length > 0}
-          <div class={isSelectionPhase ? 'opportunities-zone' : ''}>
-          {#if isSelectionPhase}
-            <div class="action-banner" id="solution-selector" bind:this={ctaBannerRef}>
-              <div class="action-banner-badge">Action Required</div>
-              <p class="action-banner-text">
-                Select up to 3 ideas to compare. Deep Research will validate the most promising one.
-                <strong>{ADDITIONAL_LOCKED_SECTIONS.length + LOCKED_PREVIEW_SECTIONS.length} sections</strong> unlock with your selection.
-              </p>
-            </div>
-          {/if}
-          <ExpandableSection
-            title="Opportunities"
-            count={displaySolutions.length}
-            countSuffix="opportunities"
-            variant={isSelectionPhase ? "default" : "accent"}
-            defaultOpen={discoveryOpen}
-            resetKey={sectionResetKey}
-            id="opportunities"
-          >
-            {#if isSelectionPhase}
-              <PreviewSolutionSelector
-                jobId={jobId ?? ''}
-                solutions={displaySolutions}
-                creditBalance={page.data.creditBalance ?? 0}
-                stageCosts={page.data.stageCosts ?? { discovery: 5, deep_research: 15, landing_page: 5, regenerate_ideas: 2 }}
-                canRegenerate={job.canRegenerate ?? false}
-                isRegenerating={job.status === 'REGENERATING' || isRegenQueued}
-                selectedSolutions={job.selectedSolutions ?? undefined}
-                {solutionVotes}
-                onComplete={handleSelectionComplete}
-                onSelectionComplete={handleSelectionComplete}
-                onRegenerateStart={() => { clientJob = { ...job!, status: 'QUEUED' }; }}
-                onSelectionChange={(info) => {
-                  stickySelectionCount = info.count;
-                  stickyCanAfford = info.canAfford;
-                  stickySelectionNames = info.names;
-                }}
-                bind:externalValidate={validateTrigger}
-              />
-            {:else if showSelectedSummary && !isGeneratingP2}
-              <SelectedSolutionsSummary
-                selectedNames={job.selectedSolutions ?? []}
-                solutionIdeas={job.solutionIdeas ?? []}
-                primaryWinner={job.selectedSolution}
-                status={job.status}
-              />
-            {/if}
-          </ExpandableSection>
-          </div>
-        {/if}
-
         <!-- ═══ DEEP RESEARCH PREVIEW SECTIONS ═══ -->
         {#if !isCompleted}
           <!-- Generation progress -->
@@ -998,25 +988,6 @@
             <div class="preview-capped-fade"></div>
             <div class="preview-capped-label">
               <span class="preview-capped-badge">Unlocks with Deep Research</span>
-            </div>
-          </div>
-
-          <!-- Remaining sections value list -->
-          <div class="unlock-card">
-            <div class="unlock-header">
-              <span class="unlock-count">{unlockSections.length}</span>
-              <h3 class="unlock-title">Also included in Deep Research</h3>
-            </div>
-
-            <div class="unlock-list">
-              {#each unlockSections as section}
-                {@const Icon = section.icon}
-                <div class="unlock-row">
-                  <Icon size={15} class="unlock-row-icon" />
-                  <span class="unlock-row-title">{section.title}</span>
-                  <span class="unlock-row-teaser">{section.teaser}</span>
-                </div>
-              {/each}
             </div>
           </div>
 
@@ -1118,8 +1089,8 @@
 
 <!-- ═══ STICKY BAR (selection phase only) ═══ -->
 {#if job && isSelectionPhase && showStickyBar}
-  <div class="sticky-bar">
-    <div class="sticky-bar-inner">
+  <div class="sticky-bar" role="region" aria-label="Selection summary">
+    <div class="sticky-bar-inner" role="status" aria-live="polite">
       <div class="sticky-bar-context">
         <span class="sticky-bar-heading">Ready to go deeper?</span>
         {#if stickySelectionCount > 0}
@@ -1129,7 +1100,7 @@
             {/each}
           </div>
         {:else}
-          <span class="sticky-bar-sub">Market Sizing, SEO, Competitors & {ADDITIONAL_LOCKED_SECTIONS.length} more sections</span>
+          <span class="sticky-bar-sub">Market Sizing, SEO, Competitors & {ADDITIONAL_LOCKED_SECTIONS.length} more · {page.data.stageCosts?.deep_research ?? 15} credits</span>
         {/if}
       </div>
       {#if stickySelectionCount > 0}
@@ -1140,7 +1111,7 @@
           {#if !stickyCanAfford}
             Add credits
           {:else}
-            Start Deep Research <ArrowRight class="w-3.5 h-3.5" />
+            Start Deep Research · {page.data.stageCosts?.deep_research ?? 15} credits <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
           {/if}
         </button>
       {:else}
@@ -1325,75 +1296,6 @@
     padding: 0.375rem 1rem;
     border-radius: 9999px;
     border: 1px solid var(--color-border);
-  }
-
-  /* ═══ Unlock card (value list) ═══ */
-  .unlock-card {
-    padding: 1.25rem;
-    margin-bottom: 1rem;
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg, 0.75rem);
-  }
-
-  .unlock-header {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 1px solid var(--color-border);
-  }
-
-  .unlock-count {
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 800;
-    color: var(--color-accent);
-    line-height: 1;
-  }
-
-  .unlock-title {
-    font-family: var(--font-display);
-    font-size: 0.9375rem;
-    font-weight: 700;
-    color: var(--color-text-primary);
-    margin: 0;
-  }
-
-  .unlock-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
-  }
-
-  .unlock-row {
-    display: grid;
-    grid-template-columns: 1rem 1fr;
-    column-gap: var(--space-3);
-    row-gap: 0.0625rem;
-    align-items: baseline;
-  }
-
-  :global(.unlock-row-icon) {
-    color: var(--color-text-muted);
-    grid-row: 1 / 3;
-    align-self: start;
-    margin-top: 0.125rem;
-  }
-
-  .unlock-row-title {
-    font-family: var(--font-display);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-  }
-
-  .unlock-row-teaser {
-    font-size: 0.6875rem;
-    color: var(--color-text-muted);
-    line-height: 1.4;
-    grid-column: 2;
   }
 
   .generation-status {

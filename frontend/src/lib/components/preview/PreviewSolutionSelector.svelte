@@ -295,10 +295,14 @@
       <p class="regenerate-error">{regenerateError}</p>
     {/if}
 
-    <!-- Selection action bar -->
-    <div class="selection-bar" class:visible={selectionCount > 0}>
+    <!-- Selection action bar (always visible; disabled state when 0 selected) -->
+    <div class="selection-bar">
       <span class="selection-count">
-        {selectionCount} selected
+        {#if selectionCount === 0}
+          Choose 1–3 solutions to compare
+        {:else}
+          {selectionCount} selected · {stageCosts.deep_research} credits
+        {/if}
       </span>
 
       {#if !canAffordDeepResearch && selectionCount > 0}
@@ -314,10 +318,10 @@
       >
         {#if selectLoading}
           Validating...
-        {:else if !canAffordDeepResearch}
-          Add credits to validate
+        {:else if !canAffordDeepResearch && selectionCount > 0}
+          Add credits to start
         {:else}
-          Validate my picks
+          Start Deep Research
         {/if}
       </button>
     </div>
@@ -391,7 +395,7 @@
     }
   }
 
-  /* Selection action bar */
+  /* Selection action bar (always visible) */
   .selection-bar {
     display: flex;
     align-items: center;
@@ -400,18 +404,6 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-surface);
-    opacity: 0;
-    max-height: 0;
-    overflow: hidden;
-    transition: opacity 0.2s ease, max-height 0.2s ease, padding 0.2s ease;
-    padding-top: 0;
-    padding-bottom: 0;
-  }
-
-  .selection-bar.visible {
-    opacity: 1;
-    max-height: 80px;
-    padding: var(--space-3) var(--space-4);
   }
 
   .selection-count {

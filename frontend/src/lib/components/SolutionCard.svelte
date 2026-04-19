@@ -111,10 +111,12 @@
     return () => { if (pulseTimer) clearTimeout(pulseTimer); };
   });
 
-  function handleCheckboxClick(e: MouseEvent) {
-    e.stopPropagation();
-    if (!isToggleable || !onSelect) return;
-    if (!isSelected) {
+  // Native <input type="checkbox"> inside <label> handles keyboard + click.
+  // onchange fires for both mouse click on label AND Space keydown on focused checkbox.
+  function handleCheckboxChange(e: Event) {
+    const target = e.currentTarget as HTMLInputElement;
+    if (!onSelect) return;
+    if (target.checked && !isSelected) {
       justSelected = true;
       if (pulseTimer) clearTimeout(pulseTimer);
       pulseTimer = setTimeout(() => { justSelected = false; pulseTimer = null; }, 300);
@@ -122,21 +124,11 @@
     onSelect(solution.solution_name);
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      // Space toggles selection when in selection mode, Enter opens detail
-      if (e.key === ' ' && isToggleable && onSelect) {
-        if (!isSelected) {
-          justSelected = true;
-          if (pulseTimer) clearTimeout(pulseTimer);
-          pulseTimer = setTimeout(() => { justSelected = false; pulseTimer = null; }, 300);
-        }
-        onSelect(solution.solution_name);
-      } else {
-        onOpen?.();
-      }
-    }
+  function handleDetailsClick(e: MouseEvent) {
+    // Inside a <label>, we need to prevent the label from toggling the checkbox
+    e.preventDefault();
+    e.stopPropagation();
+    onOpen?.();
   }
 </script>
 
@@ -162,24 +154,18 @@
       {/if}
     </h3>
     {#if onSelect}
-      <!-- Selection checkbox (numbered square) -->
-      <button
-        type="button"
+      <!-- Visual indicator only — real <input type="checkbox"> lives in the <label> wrapper below -->
+      <span
         class="selection-indicator shrink-0 w-6 h-6 flex items-center justify-center transition-all
           {isSelected ? 'selection-indicator--selected' : ''}
           {isToggleable && !isSelected ? 'selection-indicator--available' : ''}
           {!isToggleable && !isSelected ? 'selection-indicator--disabled' : ''}"
-        onclick={handleCheckboxClick}
-        role="checkbox"
-        aria-checked={isSelected}
-        aria-label={isSelected ? `Deselect solution (selection ${selectionIndex})` : 'Select solution'}
-        title={maxReached && !isSelected ? 'Maximum 3 solutions selected' : undefined}
-        tabindex={-1}
+        aria-hidden="true"
       >
         {#if isSelected && selectionIndex}
           <span class="selection-indicator__number">{selectionIndex}</span>
         {/if}
-      </button>
+      </span>
     {:else if actionSlot}
       <div class="shrink-0">
         {@render actionSlot()}
@@ -239,10 +225,22 @@
     </div>
   {/if}
 
-  <!-- Hover affordance -->
-  <span class="mt-auto pt-2 inline-flex items-center gap-1 text-xs text-text-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-    View details <ArrowRight class="w-3 h-3" />
-  </span>
+  {#if onSelect && onOpen}
+    <!-- Selection mode + detail available: dedicated button (stops label-click from toggling) -->
+    <button
+      type="button"
+      class="card-detail-btn mt-auto pt-2 self-start inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent transition-colors"
+      onclick={handleDetailsClick}
+      aria-label="View {displayTitle} details"
+    >
+      View details <ArrowRight class="w-3 h-3" aria-hidden="true" />
+    </button>
+  {:else}
+    <!-- Hover affordance for link/readonly modes -->
+    <span class="mt-auto pt-2 inline-flex items-center gap-1 text-xs text-text-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity" aria-hidden="true">
+      View details <ArrowRight class="w-3 h-3" />
+    </span>
+  {/if}
 {/snippet}
 
 <!-- Link mode: <a> with fly transition -->
@@ -256,23 +254,36 @@
   >
     {@render cardContent()}
   </a>
-<!-- Button/selection mode: <div> -->
-{:else}
-  <div
-    class="card solution-card group p-3 relative transition-all duration-200 cursor-pointer overflow-visible
+<!-- Selection mode: <label> + hidden <input type="checkbox"> — native keyboard/mouse semantics -->
+{:else if onSelect}
+  <label
+    class="card solution-card group p-3 relative transition-all duration-200 cursor-pointer overflow-visible flex flex-col
       {isSelected ? 'card-selected' : ''}
       {justSelected ? 'selection-pulse' : ''}
       {isTopPick ? 'border-border-emphasis mt-3' : ''}
-      {(disabled || maxReached) && !isSelected ? 'opacity-60 cursor-default' : ''}"
-    role="button"
-    aria-pressed={onSelect ? isSelected : undefined}
-    aria-label="Solution: {displayTitle}"
-    tabindex={0}
+      {(disabled || maxReached) && !isSelected ? 'opacity-60' : ''}"
+  >
+    <input
+      type="checkbox"
+      class="sr-only peer"
+      checked={isSelected}
+      disabled={(disabled || (!isToggleable && !isSelected))}
+      onchange={handleCheckboxChange}
+      aria-label={isSelected ? `Deselect ${displayTitle}` : `Select ${displayTitle}`}
+    />
+    {@render cardContent()}
+  </label>
+<!-- Readonly mode: <button> opens detail -->
+{:else}
+  <button
+    type="button"
+    class="card solution-card group p-3 relative transition-all duration-200 cursor-pointer overflow-visible text-left w-full flex flex-col
+      {isTopPick ? 'border-border-emphasis mt-3' : ''}"
     onclick={handleCardClick}
-    onkeydown={handleKeydown}
+    aria-label="Solution: {displayTitle}"
   >
     {@render cardContent()}
-  </div>
+  </button>
 {/if}
 
 <style>
@@ -284,6 +295,17 @@
   .card-selected {
     background: color-mix(in srgb, var(--color-accent) 4%, var(--color-bg-card));
     outline: 2px solid color-mix(in srgb, var(--color-accent) 20%, transparent);
+  }
+
+  /* Keyboard focus ring via :has(input:focus-visible) — works when native checkbox is sr-only */
+  label.solution-card:has(input:focus-visible) {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* Disabled state for the label when checkbox is disabled */
+  label.solution-card:has(input:disabled) {
+    cursor: default;
   }
 
   /* Selection pulse micro-interaction */

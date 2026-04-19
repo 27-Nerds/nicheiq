@@ -38,12 +38,8 @@
       : communityHubs
   );
 
-  const INITIAL_SOURCE_COUNT = 10;
-  let showAllSources = $state(false);
-  const visibleSources = $derived(
-    showAllSources ? displaySources : displaySources.slice(0, INITIAL_SOURCE_COUNT)
-  );
-  const hiddenSourceCount = $derived(Math.max(0, displaySources.length - INITIAL_SOURCE_COUNT));
+  // Subreddit chip grid moved to AudienceSection (community_hubs per segment).
+  // This section now owns the methodology summary + platform gap indicators only.
 </script>
 
 <div class="community">
@@ -55,27 +51,12 @@
     </span>
   {/if}
 
-  {#if displaySources.length > 0}
+  {#if gapPlatforms.length > 0}
     <div class="source-grid">
-      {#each visibleSources as source}
-        <span class="source-pill">{source}</span>
-      {/each}
-      {#if hiddenSourceCount > 0 && !showAllSources}
-        <button class="source-pill source-toggle" onclick={() => showAllSources = true}>
-          +{hiddenSourceCount} more
-        </button>
-      {/if}
-      {#if showAllSources && hiddenSourceCount > 0}
-        <button class="source-pill source-toggle" onclick={() => showAllSources = false}>
-          Show less
-        </button>
-      {/if}
-    </div>
-    {#if gapPlatforms.length > 0}
       {#each gapPlatforms as platform}
         <span class="source-pill source-gap">{platform} · 0 posts</span>
       {/each}
-    {/if}
+    </div>
   {/if}
 </div>
 
@@ -111,18 +92,6 @@
     font-weight: 500;
     color: var(--color-text-secondary);
     white-space: nowrap;
-  }
-
-  .source-toggle {
-    cursor: pointer;
-    color: var(--color-accent);
-    border-color: rgba(240, 96, 48, 0.2);
-    background: var(--color-accent-subtle);
-    transition: background var(--duration-fast) ease;
-  }
-
-  .source-toggle:hover {
-    background: rgba(240, 96, 48, 0.12);
   }
 
   .source-gap {

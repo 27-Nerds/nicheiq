@@ -15,12 +15,12 @@
     <h2 class="cta-title">You found the problems.<br />Now discover how to profit from them.</h2>
     <div class="cta-row">
       <p class="cta-desc">
-        Deep Research delivers competitive landscape, solution gap analysis, revenue model, and go-to-market strategy — validated for this niche so you know exactly where to start.
+        Deep Research delivers competitive landscape, solution gap analysis, revenue model, and go-to-market strategy — plus market sizing, SEO keyword strategy, pricing tiers, trend longevity, and technical blueprint. Validated for this niche so you know exactly where to start.
       </p>
       <div class="cta-actions">
         <button class="cta-primary" onclick={onUnlock}>
-          Unlock Deep Research
-          <ArrowRight class="cta-arrow" />
+          Start Deep Research
+          <ArrowRight class="cta-arrow" aria-hidden="true" />
         </button>
         <p class="cta-price">{creditCost} credits · one-time per niche</p>
       </div>

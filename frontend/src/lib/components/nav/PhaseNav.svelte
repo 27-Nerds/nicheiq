@@ -163,13 +163,13 @@
             <!-- Locked items (peek first 2, collapse rest) -->
             {#each lockedNonPreviewSections.slice(0, 2) as section}
               {@const Icon = section.icon}
-              <div class="nav-item locked" role="listitem">
-                {#if Icon}<Icon class="nav-icon" />{/if}
+              <div class="nav-item locked" aria-disabled="true">
+                {#if Icon}<Icon class="nav-icon" aria-hidden="true" />{/if}
                 <span class="nav-item-label">{section.label}</span>
                 <Tooltip content="Unlocks with Deep Research" position="right">
                   {#snippet children()}
                     <span class="nav-lock-trigger" aria-label="Locked - unlocks with Deep Research">
-                      <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
+                      <svg class="nav-lock-icon" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true"><rect x="2" y="5.5" width="8" height="6" rx="1.5"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>
                     </span>
                   {/snippet}
                 </Tooltip>
