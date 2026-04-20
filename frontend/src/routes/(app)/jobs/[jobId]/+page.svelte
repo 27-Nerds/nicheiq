@@ -45,6 +45,7 @@
   import DiscoveryGenerationOverlay from "$lib/components/preview/DiscoveryGenerationOverlay.svelte";
 
   import DeepResearchCTABlock from "$lib/components/preview/DeepResearchCTABlock.svelte";
+  import SEOKeywordsPreview from "$lib/components/preview/SEOKeywordsPreview.svelte";
   import MarketSnapshot from "$lib/components/preview/MarketSnapshot.svelte";
   import DiscoveryEvidence from "$lib/components/discovery/DiscoveryEvidence.svelte";
   import AudienceSection from "$lib/components/sections/AudienceSection.svelte";
@@ -662,6 +663,16 @@
             {#if isCompleted && reportAsset}
               <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
             {/if}
+            {#if isSelectionPhase && displaySolutions.length > 0}
+              <button
+                onclick={() => (discoveryShareOpen = true)}
+                class="share-discovery-btn"
+                aria-label="Share discovery"
+              >
+                <Share2 class="w-3.5 h-3.5" />
+                <span>Share</span>
+              </button>
+            {/if}
             <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
               {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
                 <Loader2 class="w-3.5 h-3.5 animate-spin" />
@@ -906,20 +917,10 @@
           </ExpandableSection>
         {/if}
 
-        <!-- Audience -->
+        <!-- Audience — rendered at full width without ExpandableSection; the
+             AudienceSection component owns its own section chrome + hero strip. -->
         {#if previewReport?.audience_mapping}
-          <ExpandableSection
-            title="Audience Analysis"
-            count={segmentCount}
-            countSuffix="segments"
-            variant="success"
-            defaultOpen={false}
-            resetKey={sectionResetKey}
-            id="audience"
-          >
-            <p class="section-intro">Who is affected? Audience segments identified from community discussions.</p>
-            <AudienceSection data={previewReport.audience_mapping} />
-          </ExpandableSection>
+          <AudienceSection data={previewReport.audience_mapping} />
         {/if}
 
         <!-- Community & Sources -->
@@ -975,6 +976,9 @@
               <span class="preview-capped-badge">Unlocks with Deep Research</span>
             </div>
           </div>
+
+          <!-- SEO Keywords preview — editorial hairline insert between capped cards -->
+          <SEOKeywordsPreview nicheName={placeholderNiche} />
 
           <!-- Capped preview: Competitors with real blurred content -->
           <div class="preview-capped preview-capped--sm">
@@ -1131,6 +1135,35 @@
 {/if}
 
 <style>
+  /* Share discovery button (header actions) */
+  .share-discovery-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    font-family: var(--font-body);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md, 0.5rem);
+    cursor: pointer;
+    transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+  }
+  .share-discovery-btn:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-border-emphasis);
+    background: var(--color-bg-surface);
+  }
+  .share-discovery-btn:active {
+    transform: scale(0.98);
+  }
+  .share-discovery-btn:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
   /* ═══ Page shell: sidebar + content ═══ */
   .job-page-shell {
     display: flex;
@@ -1246,57 +1279,8 @@
     color: var(--color-text-primary);
   }
 
-  /* ═══ Capped preview (blurred content with fade + lock label) ═══ */
-  .preview-capped {
-    position: relative;
-    max-height: 580px;
-    overflow: hidden;
-    border-radius: var(--radius-lg, 0.75rem);
-    margin-bottom: var(--space-3);
-    border: 1px solid var(--color-border);
-  }
-
-  .preview-capped--sm {
-    max-height: 340px;
-  }
-
-  .preview-capped-fade {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: 180px;
-    background: linear-gradient(to bottom, transparent, var(--color-bg-base));
-    pointer-events: none;
-    z-index: 2;
-  }
-
-  .preview-capped-label {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-bottom: 1.25rem;
-    pointer-events: none;
-    z-index: 3;
-  }
-
-  .preview-capped-badge {
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--color-text-muted);
-    background: color-mix(in srgb, var(--color-bg-base) 80%, transparent);
-    backdrop-filter: blur(6px);
-    padding: 0.375rem 1rem;
-    border-radius: 9999px;
-    border: 1px solid var(--color-border);
-  }
+  /* .preview-capped* classes moved to src/lib/styles/preview-capped.css
+     (global; shared with SharedDiscoveryView). */
 
   .generation-status {
     font-family: var(--font-mono);

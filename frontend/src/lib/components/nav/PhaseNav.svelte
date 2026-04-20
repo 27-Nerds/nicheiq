@@ -2,6 +2,7 @@
   import {
     PHASES,
     DEEP_RESEARCH_BLURRED_PREVIEW_IDS,
+    DEEP_RESEARCH_PEEK_ITEMS,
     type PhaseConfig,
     type SectionConfig,
   } from "$lib/config/phase-sections";
@@ -52,11 +53,27 @@
     }
   });
 
-  // Deep research: blurred previews (scrollable) vs fully locked
+  // Deep research: blurred previews (scrollable) vs peek (sidebar-only) vs rolled-up
   const deepResearchPhase = PHASES.find(p => p.id === 'deep-research')!;
-  const lockedNonPreviewSections = $derived(
-    deepResearchPhase.sections.filter(s => !DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id))
+  // Preserve the order declared in DEEP_RESEARCH_BLURRED_PREVIEW_IDS (matches on-page order),
+  // not the canonical DEEP_RESEARCH_SECTIONS order (which is the unlocked-state order).
+  const blurredPreviewSections: SectionConfig[] = DEEP_RESEARCH_BLURRED_PREVIEW_IDS
+    .map(id => deepResearchPhase.sections.find(s => s.id === id))
+    .filter((s): s is SectionConfig => s !== undefined);
+  // Peek items — join ids with section configs (icon/label) and attach tagline.
+  const peekItems = DEEP_RESEARCH_PEEK_ITEMS
+    .map(p => {
+      const section = deepResearchPhase.sections.find(s => s.id === p.id);
+      return section ? { ...section, tagline: p.tagline } : null;
+    })
+    .filter((x): x is SectionConfig & { tagline: string } => x !== null);
+  const peekIds = DEEP_RESEARCH_PEEK_ITEMS.map(p => p.id);
+  const rolledUpLocked = $derived(
+    deepResearchPhase.sections.filter(
+      s => !DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id) && !peekIds.includes(s.id)
+    )
   );
+  const moreItemsTooltip = $derived(rolledUpLocked.map(s => s.label).join(' · '));
 
   function isPhaseUnlocked(phaseId: string): boolean {
     const badge = phaseBadges[phaseId];
@@ -95,22 +112,25 @@
     const allSections = PHASES.flatMap((p) => {
       if (isPhaseUnlocked(p.id)) return p.sections;
       if (p.id === 'deep-research') {
-        return p.sections.filter((s) => DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id));
+        return blurredPreviewSections;
       }
       return [];
     });
+    // Resolve to elements, then sort by actual DOM position — the allSections order
+    // does not always match the rendered page order (e.g., Phase 2 previews are rendered
+    // unified-hero → seo → competitors on the page).
     const sectionElements = allSections
       .map((s) => ({ id: s.id, el: document.getElementById(s.id) }))
-      .filter((s) => s.el !== null && !s.el.closest('.preview-capped'));
+      .filter((s): s is { id: string; el: HTMLElement } => s.el !== null)
+      .map((s) => ({ id: s.id, el: s.el, top: s.el.getBoundingClientRect().top + window.scrollY }))
+      .sort((a, b) => a.top - b.top);
 
+    const scrollY = window.scrollY;
     for (let i = sectionElements.length - 1; i >= 0; i--) {
       const section = sectionElements[i];
-      if (section.el) {
-        const rect = section.el.getBoundingClientRect();
-        if (rect.top <= SCROLL_THRESHOLD) {
-          trackedSection = section.id;
-          break;
-        }
+      if (section.top - scrollY <= SCROLL_THRESHOLD) {
+        trackedSection = section.id;
+        break;
       }
     }
   }
@@ -147,7 +167,7 @@
         <div class="phase-sections">
           {#if phase.id === 'deep-research' && !unlocked}
             <!-- Blurred preview items first (scrollable on page) -->
-            {#each deepResearchPhase.sections.filter(s => DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id)) as section}
+            {#each blurredPreviewSections as section}
               {@const isActive = currentSection === section.id}
               {@const Icon = section.icon}
               <button
@@ -160,12 +180,19 @@
                 <span class="nav-preview-tag">Preview</span>
               </button>
             {/each}
-            <!-- Locked items (peek first 2, collapse rest) -->
-            {#each lockedNonPreviewSections.slice(0, 2) as section}
-              {@const Icon = section.icon}
-              <div class="nav-item locked" aria-disabled="true">
+            <!-- Peek items — locked, stacked label + value tagline -->
+            {#each peekItems as item, idx (item.id)}
+              {@const Icon = item.icon}
+              <div
+                class="nav-item locked nav-item-peek"
+                class:nav-item-peek--first={idx === 0}
+                aria-disabled="true"
+              >
                 {#if Icon}<Icon class="nav-icon" aria-hidden="true" />{/if}
-                <span class="nav-item-label">{section.label}</span>
+                <div class="nav-item-peek-text">
+                  <span class="nav-item-label">{item.label}</span>
+                  <span class="nav-item-tagline">{item.tagline}</span>
+                </div>
                 <Tooltip content="Unlocks with Deep Research" position="right">
                   {#snippet children()}
                     <span class="nav-lock-trigger" aria-label="Locked - unlocks with Deep Research">
@@ -175,9 +202,9 @@
                 </Tooltip>
               </div>
             {/each}
-            {#if lockedNonPreviewSections.length > 2}
-              <span class="nav-more" title="Unlocks with Deep Research">
-                +{lockedNonPreviewSections.length - 2} more
+            {#if rolledUpLocked.length > 0}
+              <span class="nav-more" title={moreItemsTooltip}>
+                +{rolledUpLocked.length} more
               </span>
             {/if}
           {:else}
@@ -249,14 +276,14 @@
         </div>
 
         {#if phase.id === 'deep-research' && !unlocked}
-          {#each deepResearchPhase.sections.filter(s => DEEP_RESEARCH_BLURRED_PREVIEW_IDS.includes(s.id)) as section}
+          {#each blurredPreviewSections as section}
             <button class="mobile-item previewable" onclick={() => handleSectionClick(phase, section)}>
               <span>{section.label}</span>
               <span class="nav-preview-tag">Preview</span>
             </button>
           {/each}
-          <span class="mobile-item locked nav-more" title="Unlocks with Deep Research">
-            +{lockedNonPreviewSections.length} more
+          <span class="mobile-item locked nav-more" title={moreItemsTooltip}>
+            +{rolledUpLocked.length + peekItems.length} more
           </span>
         {:else}
           {#each phase.sections as section}
@@ -442,6 +469,14 @@
     background: var(--color-bg-surface);
   }
 
+  /* Active state must win over .previewable color/opacity (source-order tie) */
+  .nav-item.active.previewable {
+    color: var(--color-accent);
+    opacity: 1;
+    font-weight: 600;
+    background: var(--color-accent-subtle);
+  }
+
   .nav-preview-tag {
     margin-left: auto;
     font-size: 0.625rem;
@@ -456,6 +491,42 @@
     opacity: 0.45;
     cursor: default;
     pointer-events: none;
+  }
+
+  /* Peek variant — locked, stacked label + value tagline */
+  .nav-item-peek {
+    align-items: flex-start;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+  .nav-item-peek--first {
+    margin-top: 6px;
+  }
+  .nav-item-peek :global(.nav-icon) {
+    margin-top: 1px;
+  }
+  .nav-item-peek-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.2;
+    min-width: 0;
+  }
+  .nav-item-peek .nav-item-label {
+    color: var(--color-text-primary);
+    font-weight: 500;
+  }
+  .nav-item-tagline {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+  /* Override .nav-item.locked's 0.45 so the tagline is readable */
+  .nav-item.locked.nav-item-peek {
+    opacity: 0.75;
   }
 
   .nav-lock-trigger {

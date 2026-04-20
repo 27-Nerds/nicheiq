@@ -19,6 +19,7 @@
 @import "./lib/styles/colors.css";
 @import "./lib/styles/utilities.css";
 @import "./lib/styles/components.css";
+@import "./lib/styles/preview-capped.css";
 
 /* ========================================
    Tailwind Theme Extensions

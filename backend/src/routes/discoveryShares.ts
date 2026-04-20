@@ -3,6 +3,8 @@ import { z } from 'zod';
 import crypto from 'crypto';
 import { prisma } from '../services/db.js';
 import { getJob } from '../services/jobService.js';
+import { getDiscoveryDataForJob, getPreviewReportForJob } from '../services/assetService.js';
+import { sanitizeDiscoveryData, sanitizePreviewReport } from './schemas/sharedDiscoveryPayload.js';
 import { JobStatus } from '@prisma/client';
 import { requireInternalAuth, verifyOwnership, AuthenticatedRequest } from '../middleware/auth.js';
 import rateLimit from 'express-rate-limit';
@@ -30,7 +32,7 @@ const ViewerTokenQuerySchema = z.object({
 // Rate limiters
 const publicDiscoveryLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: CONFIG.nodeEnv === 'production' ? 30 : 1000,
+  max: CONFIG.nodeEnv === 'production' ? 5 : 1000,
   message: { error: 'Too many requests, please slow down' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -75,7 +77,11 @@ async function buildVoteSummary(shareId: string) {
   return { totalVotes, solutionVotes };
 }
 
-// Helper: build discovery findings from job progress
+/**
+ * @deprecated Legacy minimal-shape builder kept for one release so pre-deploy
+ * visitor tabs don't crash. New clients use `previewReport` + `discoveryData`.
+ * Remove in the next PR after dual-ship window closes.
+ */
 async function buildDiscoveryFindings(jobId: string) {
   const stages = await prisma.jobProgress.findMany({
     where: { jobId, stageNumber: { lte: 4 } },
@@ -368,8 +374,15 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
     }
 
     const solutions = (share.job.solutionIdeas as any[]) || [];
-    const discoveryFindings = await buildDiscoveryFindings(share.jobId);
-    const voteSummary = await buildVoteSummary(share.id);
+    const [discoveryFindings, rawDiscoveryData, rawPreviewReport, voteSummary] = await Promise.all([
+      buildDiscoveryFindings(share.jobId), // @deprecated — remove next release
+      getDiscoveryDataForJob(share.jobId),
+      getPreviewReportForJob(share.jobId),
+      buildVoteSummary(share.id),
+    ]);
+
+    const discoveryData = sanitizeDiscoveryData(rawDiscoveryData);
+    const previewReport = sanitizePreviewReport(rawPreviewReport);
 
     // SEO headers (conditional based on admin indexing toggle)
     if (!share.allowIndexing) {
@@ -382,7 +395,9 @@ publicDiscoveryShareRouter.get('/:shareToken', publicDiscoveryLimiter, async (re
       shareType: 'discovery',
       niche: share.job.niche,
       solutions,
-      discoveryFindings,
+      discoveryFindings, // @deprecated — remove next release; use discoveryData + previewReport
+      discoveryData,
+      previewReport,
       voteSummary,
       allowIndexing: share.allowIndexing,
     });

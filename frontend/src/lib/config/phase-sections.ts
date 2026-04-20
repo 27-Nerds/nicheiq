@@ -67,19 +67,47 @@ export const BUILD_SECTIONS: SectionConfig[] = [
   { id: 'landing-page', label: 'Landing page', icon: FileText },
 ];
 
-/** Subset of deep research section IDs shown in nav when the phase is locked (must match LOCKED_PREVIEW_SECTIONS IDs) */
-export const DEEP_RESEARCH_PREVIEW_IDS: string[] = [
-  'unified-hero',
-  'market-sizing',
-  'seo',
-  'competitors',
-];
+/**
+ * Invariants for Phase 2 ID lists (relative to DEEP_RESEARCH_SECTIONS):
+ * - BLURRED_PREVIEW_IDS — rendered as scroll-target previews on the page + sidebar
+ * - PEEK_ITEMS          — rendered as value-tagline rows in the locked sidebar only
+ * - Lists must not overlap; every id must exist in DEEP_RESEARCH_SECTIONS.
+ */
 
 /** Deep research sections rendered as blurred previews with scroll targets on the page */
 export const DEEP_RESEARCH_BLURRED_PREVIEW_IDS: string[] = [
   'unified-hero',
+  'seo',
   'competitors',
 ];
+
+/**
+ * Two locked deep-research sections peeked in the Phase-2 sidebar, with a one-line
+ * value tagline each. Order here = render order.
+ */
+export const DEEP_RESEARCH_PEEK_ITEMS: { id: string; tagline: string }[] = [
+  { id: 'market-sizing', tagline: 'TAM · SAM · SOM' },
+  { id: 'monetization',  tagline: 'Pricing · LTV:CAC' },
+];
+
+if (import.meta.env.DEV) {
+  const known = new Set(DEEP_RESEARCH_SECTIONS.map(s => s.id));
+  const allSubsetIds = [
+    ...DEEP_RESEARCH_BLURRED_PREVIEW_IDS,
+    ...DEEP_RESEARCH_PEEK_ITEMS.map(p => p.id),
+  ];
+  for (const id of allSubsetIds) {
+    if (!known.has(id)) {
+      throw new Error(`[phase-sections] Unknown section id "${id}" in subset list`);
+    }
+  }
+  const previewSet = new Set(DEEP_RESEARCH_BLURRED_PREVIEW_IDS);
+  for (const p of DEEP_RESEARCH_PEEK_ITEMS) {
+    if (previewSet.has(p.id)) {
+      throw new Error(`[phase-sections] Peek id "${p.id}" also in preview list`);
+    }
+  }
+}
 
 export const PHASES: PhaseConfig[] = [
   {

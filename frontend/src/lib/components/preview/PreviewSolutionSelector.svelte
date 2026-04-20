@@ -1,16 +1,13 @@
 <script lang="ts">
   import { SvelteSet } from "svelte/reactivity";
-  import SolutionCard from "$lib/components/SolutionCard.svelte";
+  import SolutionGrid from "$lib/components/solutions/SolutionGrid.svelte";
   import SolutionDetail from "$lib/components/SolutionDetail.svelte";
   import SelectSolutionModal from "$lib/components/SelectSolutionModal.svelte";
   import { selectSolution, regenerateIdeas, ApiError } from "$lib/api";
   import { Sparkles, Loader2, Coins } from "lucide-svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { SolutionPreview, StageCosts } from "$lib/types/job";
-  import {
-    computeCompositeScore,
-    solutionDisplayTitle,
-  } from "$lib/utils/solution-utils";
+  import { solutionDisplayTitle } from "$lib/utils/solution-utils";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
 
   const MAX_SELECTIONS = 3;
@@ -108,24 +105,7 @@
     }
   });
 
-  // Identify top pick by composite score
-  const topPick = $derived.by(() => {
-    if (solutions.length === 0) return null;
-    let best = solutions[0];
-    for (const s of solutions) {
-      if (computeCompositeScore(s) > computeCompositeScore(best)) best = s;
-    }
-    return best;
-  });
-
-  // Remaining solutions (everything except top pick)
-  const remaining = $derived(
-    solutions.filter((s) => s.solution_name !== topPick?.solution_name),
-  );
-
-  // Show all remaining solutions — with only ~4-5 total, hiding any adds friction
-  const visibleRemaining = $derived(remaining);
-  const hasMore = false;
+  // Top-pick + remaining split now lives in SolutionGrid.svelte
 
   const selectionCount = $derived(selectedNames.size);
   const canSubmit = $derived(selectionCount > 0);
@@ -227,50 +207,16 @@
       <a href="/jobs/{jobId}" class="fallback-link">Go to job page</a>
     </p>
   {:else}
-    <!-- Top pick -->
-    {#if topPick}
-      <div class="top-pick-section">
-        <SolutionCard
-          solution={topPick}
-          isTopPick={true}
-          onSelect={handleToggle}
-          isSelected={selectedNames.has(topPick.solution_name)}
-          selectionIndex={selectionIndexOf(topPick.solution_name)}
-          maxReached={selectedNames.size >= MAX_SELECTIONS}
-          disabled={selectLoading}
-          voteCount={solutionVotes[topPick.solution_name] ?? 0}
-          onOpen={() =>
-            handleOpenDetail(
-              solutions.findIndex(
-                (s) => s.solution_name === topPick.solution_name,
-              ),
-            )}
-        />
-      </div>
-    {/if}
-
-    <!-- Remaining solutions grid -->
-    {#if remaining.length > 0}
-      <div class="remaining-grid">
-        {#each visibleRemaining as solution, i}
-          {@const globalIndex = solutions.findIndex(
-            (s) => s.solution_name === solution.solution_name,
-          )}
-          <SolutionCard
-            {solution}
-            onSelect={handleToggle}
-            isSelected={selectedNames.has(solution.solution_name)}
-            selectionIndex={selectionIndexOf(solution.solution_name)}
-            maxReached={selectedNames.size >= MAX_SELECTIONS}
-            disabled={selectLoading}
-            voteCount={solutionVotes[solution.solution_name] ?? 0}
-            onOpen={() => handleOpenDetail(globalIndex)}
-            index={i}
-          />
-        {/each}
-      </div>
-
-    {/if}
+    <!-- Solutions grid (top-pick + remaining, shared with visitor view) -->
+    <SolutionGrid
+      {solutions}
+      onSelect={handleToggle}
+      {selectedNames}
+      maxSelections={MAX_SELECTIONS}
+      {selectLoading}
+      voteCounts={solutionVotes}
+      onOpen={handleOpenDetail}
+    />
 
     <!-- Generate more ideas -->
     {#if canRegenerate}
@@ -379,21 +325,7 @@
     padding: var(--space-8) 0;
   }
 
-  .top-pick-section {
-    width: 100%;
-  }
-
-  .remaining-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: var(--space-3);
-  }
-
-  @media (min-width: 640px) {
-    .remaining-grid {
-      grid-template-columns: repeat(2, 1fr);
-    }
-  }
+  /* Grid styles moved to SolutionGrid.svelte */
 
   /* Selection action bar (always visible) */
   .selection-bar {

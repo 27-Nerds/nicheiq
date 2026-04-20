@@ -24,12 +24,24 @@
   import HeroMetric from "$lib/components/ui/HeroMetric.svelte";
   import MetaItem from "$lib/components/ui/MetaItem.svelte";
   import CardGrid from "$lib/components/ui/CardGrid.svelte";
+  import { LOCKED_INFLUENCERS } from "$lib/data/lockedSharedPlaceholders";
 
   interface Props {
     data: AudienceMapping;
+    /** When true, render the Influencers hero metric + subsection as
+     *  blurred/locked teasers (used on the public shared discovery view,
+     *  where real influencer data is stripped server-side). */
+    lockedInfluencers?: boolean;
   }
 
-  let { data }: Props = $props();
+  let { data, lockedInfluencers = false }: Props = $props();
+
+  // In locked mode use hardcoded placeholder rows; otherwise render the real
+  // data. Zero regression on owner/report pages since lockedInfluencers defaults
+  // to false.
+  const displayInfluencers = $derived(
+    lockedInfluencers ? LOCKED_INFLUENCERS : (data.key_influencers ?? []),
+  );
 
   // Map segment size to badge variant
   const getSizeVariant = (size: string | undefined) => {
@@ -56,7 +68,7 @@
   headerSize="lg"
   elevated={false}
   border="none"
-  padding="container"
+  padding="none"
   marginBottom="none"
 >
   <!-- Hero Strip: Primary Target + Stats -->
@@ -72,7 +84,11 @@
       {/if}
     {/snippet}
     <HeroMetric value={totalSegments} label="Segments" />
-    <HeroMetric value={totalInfluencers} label="Influencers" />
+    {#if lockedInfluencers}
+      <HeroMetric value="██" label="Influencers" locked={true} />
+    {:else}
+      <HeroMetric value={totalInfluencers} label="Influencers" />
+    {/if}
     <HeroMetric value={totalCommunities} label="Communities" />
   </HeroStrip>
 
@@ -155,19 +171,29 @@
   {/if}
 
   <!-- Expandable: Key Influencers -->
-  {#if data.key_influencers && data.key_influencers.length > 0}
+  {#if displayInfluencers.length > 0}
     <ExpandableSection
       title="Key Influencers"
       icon={Star}
-      count={data.key_influencers.length}
+      count={lockedInfluencers ? null : displayInfluencers.length}
       variant="warning"
     >
+      {#if lockedInfluencers}
+        <div class="locked-header">
+          <span class="locked-pill">Unlocks with Deep Research</span>
+        </div>
+      {/if}
       <CardGrid minWidth={240} gap="sm">
-        {#each data.key_influencers as influencer, i}
+        {#each displayInfluencers as influencer, i}
           <div class="influencer-card">
             <div class="influencer-top">
-              <span class="influencer-name">{influencer.name}</span>
-              {#if influencer.outreach_priority}
+              <span
+                class="influencer-name"
+                class:preview-blur={lockedInfluencers}
+                class:preview-locked={lockedInfluencers}
+                aria-hidden={lockedInfluencers ? "true" : undefined}
+              >{influencer.name}</span>
+              {#if !lockedInfluencers && influencer.outreach_priority}
                 <Badge
                   variant={influencer.outreach_priority === "High"
                     ? "success"
@@ -183,20 +209,35 @@
             <div class="influencer-meta">
               <span class="influencer-platform">{influencer.platform}</span>
               {#if influencer.follower_estimate}
-                <span class="influencer-followers">{influencer.follower_estimate}</span>
+                <span
+                  class="influencer-followers"
+                  class:preview-blur={lockedInfluencers}
+                  class:preview-locked={lockedInfluencers}
+                  aria-hidden={lockedInfluencers ? "true" : undefined}
+                >{influencer.follower_estimate}</span>
               {/if}
             </div>
             {#if influencer.content_focus}
-              <p class="influencer-focus">{influencer.content_focus}</p>
+              <p
+                class="influencer-focus"
+                class:preview-blur={lockedInfluencers}
+                class:preview-locked={lockedInfluencers}
+                aria-hidden={lockedInfluencers ? "true" : undefined}
+              >{influencer.content_focus}</p>
             {/if}
             {#if influencer.top_subreddits && influencer.top_subreddits.length > 0}
               <div class="influencer-subs">
                 {#each influencer.top_subreddits as sub}
-                  <span class="influencer-sub-tag">{sub}</span>
+                  <span
+                    class="influencer-sub-tag"
+                    class:preview-blur={lockedInfluencers}
+                    class:preview-locked={lockedInfluencers}
+                    aria-hidden={lockedInfluencers ? "true" : undefined}
+                  >{sub}</span>
                 {/each}
               </div>
             {/if}
-            {#if influencer.top_posts && influencer.top_posts.length > 0}
+            {#if !lockedInfluencers && influencer.top_posts && influencer.top_posts.length > 0}
               <button
                 class="influencer-posts-toggle"
                 onclick={() => { expandedPosts[i] = !expandedPosts[i]; }}
@@ -283,6 +324,44 @@
 </Section>
 
 <style>
+  /* Restore header→hero vertical rhythm that `padding="container"` used to
+     provide via its `.padding-container > .header-lg { margin-bottom: 1.5rem }`
+     rule. With `padding="none"` the default header has 0 bottom margin which
+     visually collides with the hero strip. */
+  :global(.report-section .section-header-row.header-lg) {
+    margin-bottom: 1rem;
+  }
+
+  /* Long `Primary Target` text inside the hero strip used to expand the
+     primary block unboundedly (HeroStrip sets flex-shrink: 0 on primary +
+     overflow: hidden on the wrapper), clipping the last rail item. Truncate
+     the sublabel with an ellipsis and cap it so the rail stays visible. */
+  :global(.report-section .hero-primary__sublabel) {
+    max-width: 14rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Zero the bottom margin on the last nested subsection inside Audience
+     so the parent flex-gap is the only spacing between AudienceSection and
+     the next top-level section. Without this the default mb-md (1rem) on
+     the last nested ExpandableSection stacks on top of the flex gap. */
+  :global(.report-section .section-content > :last-child) {
+    margin-bottom: 0;
+  }
+
+  /* The global `.report-section` rule in app.css adds padding-bottom: 4rem
+     + border-bottom for the report page's grand separator style. On the
+     job page and shared discovery view we rely on parent flex-gap for
+     spacing, so disable the report-page styles when AudienceSection is
+     rendered inside those containers. */
+  :global(.job-page-content .report-section),
+  :global(.shared-discovery-root .report-section) {
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
   /* =========================
 	   SEGMENTS
 	   ========================= */

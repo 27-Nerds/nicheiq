@@ -2,6 +2,8 @@
   import type { Report } from "$lib/types/report";
   import { Link2Off, ArrowRight } from "lucide-svelte";
   import ReportContent from "$lib/components/ReportContent.svelte";
+  import SharedViewBanner from "$lib/components/share/SharedViewBanner.svelte";
+  import SharedViewEndCTA from "$lib/components/share/SharedViewEndCTA.svelte";
 
   interface Props {
     data: {
@@ -52,23 +54,9 @@
     </div>
   </div>
 {:else}
-  <!-- Shared report banner -->
-  <div
-    class="bg-gradient-to-r from-accent/5 to-secondary/5 border-b border-accent/10"
-  >
-    <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-      <p class="text-sm text-text-secondary">
-        <span class="font-medium text-text-primary">Shared report</span> from NicheIQ
-      </p>
-      <a
-        href="/"
-        class="text-sm font-medium text-accent hover:text-accent/80 transition-colors flex items-center gap-1"
-      >
-        Try NicheIQ
-        <ArrowRight class="w-3.5 h-3.5" />
-      </a>
-    </div>
-  </div>
+  <SharedViewBanner variant="report" shareToken={data.shareToken} />
 
   <ReportContent {report} showBackLink={false} showShareButton={false} />
+
+  <SharedViewEndCTA variant="report" shareToken={data.shareToken} />
 {/if}

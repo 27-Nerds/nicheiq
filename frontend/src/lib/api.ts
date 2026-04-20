@@ -357,11 +357,129 @@ export interface VoteSummary {
   viewerVote?: { solutionName: string; comment: string | null } | null;
 }
 
+/**
+ * Public subset of PreviewReport exposed on shared discovery endpoints.
+ * Backed by `SharedPreviewReportSchema` on the server; if a field is
+ * missing here it's because the server strips it from the payload.
+ */
+export interface SharedPreviewReport {
+  niche?: string;
+  niche_context?: {
+    niche_input?: string;
+    niche_description?: string;
+    market_segments?: string[];
+    industry_boundaries?: unknown;
+  } | null;
+  detailed_pain_points?: Array<{
+    title: string;
+    description?: string;
+    mention_count?: number;
+    severity_score?: number;
+    willingness_to_pay?: number;
+    opportunity_level?: 'high' | 'medium' | 'low';
+    representative_quotes?: string[];
+    source_platforms?: string[];
+    categories?: string[];
+    affected_segments?: string[];
+    solution_approach?: string;
+  }>;
+  pain_point_analytics?: {
+    total_pain_points?: number;
+    high_severity_count?: number;
+    high_opportunity_count?: number;
+    quadrant_distribution?: {
+      high_severity_high_wtp: number;
+      high_severity_low_wtp: number;
+      low_severity_high_wtp: number;
+      low_severity_low_wtp: number;
+    };
+    avg_severity?: number;
+    avg_willingness_to_pay?: number;
+    top_pain_point_title?: string;
+  } | null;
+  audience_mapping?: {
+    audience_segments?: Array<{
+      segment_name: string;
+      size_estimate?: string;
+      pain_point_alignment?: string[];
+      motivation_drivers?: string[];
+      expertise_level?: string;
+      budget_sensitivity?: string;
+      discovery_channels?: string[];
+    }>;
+    primary_target_segment?: string;
+    segment_prioritization_rationale?: string;
+    community_hubs?: string[];
+    common_vocabulary?: string[];
+    content_preferences?: string;
+    messaging_frameworks?: string[];
+    tools_currently_used?: string[];
+    frustrations_with_existing?: string[];
+    recommended_channels?: string[];
+    early_adopter_tactics?: string;
+  } | null;
+  research_metadata?: {
+    reddit_posts_analyzed?: number;
+    reddit_comments_analyzed?: number;
+    generic_posts_analyzed?: number;
+    top_subreddits?: { name: string; post_count: number }[];
+  } | null;
+  evidence_appendix?: {
+    top_reddit_threads?: Array<{
+      title: string;
+      subreddit: string;
+      score?: number;
+      num_comments?: number;
+      key_insight?: string;
+      platform?: string;
+    }>;
+    pain_point_quote_sources?: Array<{
+      pain_point_title: string;
+      quotes_with_sources: Array<{
+        quote: string;
+        subreddit?: string;
+        score?: string | number;
+      }>;
+    }>;
+  } | null;
+}
+
+/**
+ * Public subset of DiscoveryData exposed on shared discovery endpoints.
+ */
+export interface SharedDiscoveryData {
+  methodology?: {
+    urls_searched: number;
+    urls_relevant: number;
+    filtering_rate: number;
+    quality_tier: string;
+    pain_point_quality_tier?: string;
+    pain_point_confidence?: number;
+    total_engagement?: number;
+    avg_engagement?: number;
+  };
+  subreddit_names?: string[];
+  subreddit_post_counts?: Record<string, number>;
+  social_posts_sample?: Array<{
+    title: string;
+    subreddit?: string;
+    score?: number;
+    num_comments?: number;
+    created_utc?: string;
+  }>;
+  sources_searched?: Record<string, { enabled: boolean; posts_found: number }>;
+  discussion_trend?: { month: string; count: number }[];
+  discussion_growth_pct?: number | null;
+}
+
 export interface DiscoveryShareData {
   shareType: 'discovery';
   niche: string;
   solutions: SolutionPreview[];
-  discoveryFindings: Record<string, any>;
+  /** @deprecated removed in next release — use previewReport + discoveryData */
+  discoveryFindings?: Record<string, any>;
+  discoveryData: SharedDiscoveryData | null;
+  previewReport: SharedPreviewReport | null;
   voteSummary: VoteSummary;
   allowIndexing?: boolean;
 }

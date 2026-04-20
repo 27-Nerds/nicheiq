@@ -9,6 +9,9 @@
     progress?: number; // 0-1 for mini progress bar
     suffix?: string;
     class?: string;
+    /** When true, apply the locked-preview blur ONLY to the value. Label
+     *  stays readable so the visitor knows what's hidden. */
+    locked?: boolean;
   }
 
   let {
@@ -19,6 +22,7 @@
     progress,
     suffix = "",
     class: className = "",
+    locked = false,
   }: Props = $props();
 
   // Format value if numeric
@@ -33,7 +37,7 @@
 </script>
 
 <div class="hero-metric hero-metric--{color} {className}">
-  <span class="hero-metric__value">
+  <span class="hero-metric__value" class:preview-blur={locked} class:preview-locked={locked}>
     {formattedValue}{suffix}
   </span>
   <span class="hero-metric__label">{label}</span>
