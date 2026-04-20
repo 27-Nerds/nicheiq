@@ -89,8 +89,8 @@ temp/
 # Generated/test HTML files at root level
 /*.html
 
-# Data directory
-data/
+# Data directory (root only — not frontend/src/lib/data)
+/data/
 
 
 .serena
