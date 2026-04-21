@@ -203,42 +203,45 @@
     </ExpandableSection>
   {/if}
 
-  <!-- Vote action banner (replaces the owner's "Select up to 3 solutions" banner) -->
-  <div class="action-banner">
-    <div class="action-banner-badge">Vote</div>
-    <p class="action-banner-text">
-      Which idea do you like most? Your vote helps the owner prioritize.
-      {#if voteSummary.totalVotes > 0}
-        <strong>{voteSummary.totalVotes} vote{voteSummary.totalVotes === 1 ? "" : "s"}</strong> so far.
-      {/if}
-    </p>
-  </div>
+  <!-- Opportunities zone — warm wrapper around vote banner + Opportunities section -->
+  <div class="opportunities-zone">
+    <!-- Vote action banner (replaces the owner's "Select up to 3 solutions" banner) -->
+    <div class="action-banner">
+      <div class="action-banner-badge">Vote</div>
+      <p class="action-banner-text">
+        Which idea do you like most? Your vote helps the owner prioritize.
+        {#if voteSummary.totalVotes > 0}
+          <strong>{voteSummary.totalVotes} vote{voteSummary.totalVotes === 1 ? "" : "s"}</strong> so far.
+        {/if}
+      </p>
+    </div>
 
-  <!-- Opportunities grid (shared with owner via SolutionGrid) -->
-  <ExpandableSection
-    title="Opportunities"
-    count={data.solutions.length}
-    countSuffix="opportunities"
-    variant="default"
-    defaultOpen={true}
-    id="opportunities"
-  >
-    <SolutionGrid
-      solutions={data.solutions}
-      onOpen={openDetail}
-      voteCounts={voteSummary.solutionVotes}
+    <!-- Opportunities grid (shared with owner via SolutionGrid) -->
+    <ExpandableSection
+      title="Opportunities"
+      count={data.solutions.length}
+      countSuffix="opportunities"
+      variant="default"
+      defaultOpen={true}
+      id="opportunities"
     >
-      {#snippet actionSlot({ solution }: { solution: SolutionPreview; index: number })}
-        <VoteButton
-          count={voteSummary.solutionVotes[solution.solution_name] ?? 0}
-          total={voteSummary.totalVotes}
-          voted={viewerVotedSolution === solution.solution_name}
-          onVote={() => handleVote(solution.solution_name)}
-          {voting}
-        />
-      {/snippet}
-    </SolutionGrid>
-  </ExpandableSection>
+      <SolutionGrid
+        solutions={data.solutions}
+        onOpen={openDetail}
+        voteCounts={voteSummary.solutionVotes}
+      >
+        {#snippet actionSlot({ solution }: { solution: SolutionPreview; index: number })}
+          <VoteButton
+            count={voteSummary.solutionVotes[solution.solution_name] ?? 0}
+            total={voteSummary.totalVotes}
+            voted={viewerVotedSolution === solution.solution_name}
+            onVote={() => handleVote(solution.solution_name)}
+            {voting}
+          />
+        {/snippet}
+      </SolutionGrid>
+    </ExpandableSection>
+  </div>
 
   <!-- Market Snapshot -->
   {#if discoveryData?.discussion_trend?.length}
@@ -439,14 +442,24 @@
     font-weight: 700;
   }
 
+  /* Warm wrapper around vote banner + Opportunities section (mirrors job page) */
+  .opportunities-zone {
+    background: rgba(240, 96, 48, 0.04);
+    border: 1px solid rgba(240, 96, 48, 0.10);
+    border-radius: var(--radius-lg, 0.75rem);
+    padding: var(--space-4, 1rem);
+    margin-bottom: var(--space-4, 1rem);
+  }
+
   .action-banner {
     display: flex;
     align-items: center;
     gap: 0.75rem;
     padding: 0.875rem 1rem;
-    border: 1px solid var(--color-border);
+    margin-bottom: var(--space-3, 0.75rem);
+    border: 1px solid rgba(240, 96, 48, 0.18);
     border-radius: var(--radius-lg, 0.75rem);
-    background: var(--color-bg-elevated);
+    background: rgba(240, 96, 48, 0.10);
   }
 
   .action-banner-badge {
@@ -457,8 +470,8 @@
     text-transform: uppercase;
     padding: 0.25rem 0.5rem;
     border-radius: 9999px;
-    background: var(--color-accent-subtle);
-    color: var(--color-accent);
+    background: var(--color-accent);
+    color: white;
     white-space: nowrap;
   }
 

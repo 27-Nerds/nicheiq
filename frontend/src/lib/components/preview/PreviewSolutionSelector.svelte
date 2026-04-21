@@ -307,6 +307,7 @@
     onSelect={handleToggle}
     onNavigate={handleNavigate}
     onClose={handleCloseDetail}
+    voteCount={solutionVotes[solutions[modalIndex].solution_name] ?? 0}
   />
 {/if}
 

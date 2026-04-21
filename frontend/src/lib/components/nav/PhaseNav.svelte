@@ -529,8 +529,12 @@
     opacity: 0.75;
   }
 
-  .nav-lock-trigger {
+  /* Push the Tooltip's outer wrapper (the actual flex child) to the right */
+  .nav-item-peek :global(.tooltip-wrapper) {
     margin-left: auto;
+  }
+
+  .nav-lock-trigger {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -545,6 +549,11 @@
     height: 12px;
     flex-shrink: 0;
     opacity: 0.35;
+  }
+
+  /* Bare lock icon (regular locked nav-items, not peek) — push right */
+  .nav-item.locked > .nav-lock-icon {
+    margin-left: auto;
   }
 
   .nav-item-label {

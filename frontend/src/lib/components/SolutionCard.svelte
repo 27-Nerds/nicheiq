@@ -175,7 +175,15 @@
 
   <!-- Metrics row -->
   <div class="flex items-center gap-2 mt-1.5 flex-wrap">
-    <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+    <span class="score-anchor">
+      <span class="text-sm font-bold font-display tabular-nums" style:color={scoreColor}>{Math.round(compositeScore * 100)}</span>
+      {#if voteCount > 0 && !actionSlot}
+        <span class="vote-mark" title="{voteCount} community vote{voteCount === 1 ? '' : 's'}">
+          <Heart class="w-2.5 h-2.5 shrink-0" fill="currentColor" aria-hidden="true" />
+          <span class="vote-mark__count">{voteCount}</span>
+        </span>
+      {/if}
+    </span>
     {#if fit.text}
       <span class="fit-label fit-label-{fit.variant}">{fit.text}</span>
     {/if}
@@ -190,11 +198,6 @@
     {#if solution.estimated_development_time}
       <span class="text-xs font-mono text-text-muted tabular-nums">
         ~{solution.estimated_development_time}
-      </span>
-    {/if}
-    {#if voteCount > 0}
-      <span class="text-xs px-2 py-0.5 rounded-full bg-accent/8 border border-accent/20 text-accent flex items-center gap-1">
-        <Heart class="w-3 h-3" /> {voteCount}
       </span>
     {/if}
     {#if hasHeadline}
@@ -343,6 +346,38 @@
     .new-badge {
       animation: none;
     }
+  }
+
+  /* Composite score + optional community-vote annotation, read as one unit.
+     items-center (not baseline) keeps the row height tight — the annotation
+     slots at the score's mid-line rather than superscripting above it, so
+     cards with and without votes stay the same height. */
+  .score-anchor {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem; /* 5px — reads as annotation, not as a separate chip */
+    line-height: 1;
+  }
+
+  .vote-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.125rem;
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    /* Subtle dotted tether to the score so they read as one unit */
+    padding-left: 0.3125rem;
+    border-left: 1px dotted color-mix(in srgb, var(--color-accent) 40%, transparent);
+    margin-left: -0.125rem; /* pull the tether closer to the score */
+  }
+
+  .vote-mark__count {
+    line-height: 1;
   }
 
   .superpower-tag {
