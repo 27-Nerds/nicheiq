@@ -232,16 +232,16 @@
     <!-- Selection mode + detail available: dedicated button (stops label-click from toggling) -->
     <button
       type="button"
-      class="card-detail-btn mt-auto pt-2 self-start inline-flex items-center gap-1 text-xs text-text-muted hover:text-accent transition-colors"
+      class="card-detail-btn mt-auto pt-2 self-start inline-flex items-center gap-1 text-sm font-medium text-accent underline-offset-2 hover:underline transition-colors"
       onclick={handleDetailsClick}
       aria-label="View {displayTitle} details"
     >
-      View details <ArrowRight class="w-3 h-3" aria-hidden="true" />
+      View details <ArrowRight class="w-3.5 h-3.5" aria-hidden="true" />
     </button>
   {:else}
     <!-- Hover affordance for link/readonly modes -->
-    <span class="mt-auto pt-2 inline-flex items-center gap-1 text-xs text-text-muted opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity" aria-hidden="true">
-      View details <ArrowRight class="w-3 h-3" />
+    <span class="mt-auto pt-2 inline-flex items-center gap-1 text-sm font-medium text-accent" aria-hidden="true">
+      View details <ArrowRight class="w-3.5 h-3.5" />
     </span>
   {/if}
 {/snippet}

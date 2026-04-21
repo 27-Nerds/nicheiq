@@ -18,16 +18,12 @@
   const totalSlides = $derived(slides.length);
 
   let currentSlide = $state(0);
-  let isHovered = $state(false);
   let transitionDuration = $state(300);
 
   // Track which slide was last highlighted by stage progress
   let lastHighlightedStage = $state<number | undefined>(undefined);
 
-  // Auto-advance timer: pauses on hover, resets on manual navigation
   $effect(() => {
-    if (isHovered) return;
-
     const id = setInterval(() => {
       transitionDuration = 300;
       currentSlide = (currentSlide + 1) % totalSlides;
@@ -73,8 +69,6 @@
   aria-label="Generation progress slideshow"
   aria-roledescription="carousel"
   tabindex="-1"
-  onmouseenter={() => (isHovered = true)}
-  onmouseleave={() => (isHovered = false)}
   onkeydown={handleKeydown}
 >
   <!-- Slide content area -->

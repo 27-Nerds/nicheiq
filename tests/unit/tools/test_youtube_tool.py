@@ -1,11 +1,23 @@
 """Tests for YouTube transcript collector tool."""
 
+import time
 import pytest
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from nicheiq.tools.youtube_tool import YouTubeCollectorTool
+
+
+@pytest.fixture(autouse=False)
+def no_youtube_api():
+    """Disable YouTube Data API path so tests don't depend on a real key."""
+    with patch("nicheiq.tools.youtube_tool.settings") as mock_settings:
+        mock_settings.youtube_api_key = None
+        mock_settings.max_youtube_comments_per_video = 20
+        mock_settings.min_youtube_comment_likes = 10
+        mock_settings.min_youtube_comment_length = 50
+        yield mock_settings
 
 
 class TestExtractVideoId:
@@ -187,7 +199,7 @@ class TestFetchTranscript:
 
 class TestSearchAndCollect:
     @patch("nicheiq.tools.youtube_tool.YouTubeCollectorTool._fetch_transcript")
-    def test_end_to_end(self, mock_fetch):
+    def test_end_to_end(self, mock_fetch, no_youtube_api):
         mock_fetch.return_value = ("This is a transcript about SaaS pricing.", "ok")
 
         serper_results = [
@@ -211,7 +223,7 @@ class TestSearchAndCollect:
         assert post.raw_engagement.get("views") == 1_200_000
 
     @patch("nicheiq.tools.youtube_tool.YouTubeCollectorTool._fetch_transcript")
-    def test_min_views_filter(self, mock_fetch):
+    def test_min_views_filter(self, mock_fetch, no_youtube_api):
         mock_fetch.return_value = ("Transcript text.", "ok")
 
         serper_results = [
@@ -228,12 +240,20 @@ class TestSearchAndCollect:
         assert len(posts) == 0  # filtered out
 
     @patch("nicheiq.tools.youtube_tool.YouTubeCollectorTool._fetch_transcript")
-    def test_ip_block_aborts_batch(self, mock_fetch, caplog):
-        """After the threshold of IP-block signals, remaining fetches are skipped."""
-        mock_fetch.return_value = (None, "ip_blocked")
+    def test_ip_block_aborts_batch(self, mock_fetch, no_youtube_api, caplog):
+        """After the threshold of IP-block signals, remaining fetches are skipped.
 
-        # 10 distinct candidates (unique 11-char video IDs)
-        video_ids = [f"vid{i:08d}" for i in range(10)]
+        Uses a slow mock so the main thread has time to process results and
+        trigger the abort before the executor drains all queued futures.
+        """
+        def slow_ip_block(*args, **kwargs):
+            time.sleep(0.05)
+            return (None, "ip_blocked")
+        mock_fetch.side_effect = slow_ip_block
+
+        # 20 candidates — with max_workers=4 and cancel_futures=True on abort,
+        # the majority of queued futures should never start.
+        video_ids = [f"vid{i:08d}" for i in range(20)]
         serper_results = [
             SimpleNamespace(
                 url=f"https://www.youtube.com/watch?v={vid}",
@@ -244,13 +264,9 @@ class TestSearchAndCollect:
         ]
 
         tool = YouTubeCollectorTool()
-        posts = tool.search_and_collect(serper_results, min_views=0, max_total=10)
+        posts = tool.search_and_collect(serper_results, min_views=0, max_total=20)
 
-        # No transcripts collected
         assert len(posts) == 0
-        # Abort kicks in after 3 ip_blocked signals, so not all 10 should have
-        # been called. Parallelism (max_workers=4) means we may see up to
-        # ~3 + workers_in_flight calls — but strictly fewer than 10.
-        assert mock_fetch.call_count < 10, (
-            f"Expected abort before all 10 calls, got {mock_fetch.call_count}"
+        assert mock_fetch.call_count < 20, (
+            f"Expected abort before all 20 calls, got {mock_fetch.call_count}"
         )
