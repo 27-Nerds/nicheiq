@@ -272,6 +272,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
       # Auth.js configuration
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
+      AUTH_URL: ${ORIGIN:-https://nicheiq.dev}
       AUTH_TRUST_HOST: "true"
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-prod-internal-secret-change-me}
       # OAuth providers
