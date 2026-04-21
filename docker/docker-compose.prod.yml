@@ -271,8 +271,9 @@ services:
       # Database for Auth.js
       DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
       # Auth.js configuration
+      # AUTH_URL intentionally unset: AUTH_TRUST_HOST=true lets Auth.js infer
+      # the URL from request headers, avoiding the env-url-basepath-redundant warning.
       AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET is required}
-      AUTH_URL: ${ORIGIN:-https://nicheiq.dev}
       AUTH_TRUST_HOST: "true"
       INTERNAL_SERVICE_SECRET: ${INTERNAL_SERVICE_SECRET:-prod-internal-secret-change-me}
       # OAuth providers
@@ -284,7 +285,8 @@ services:
     networks:
       - nicheiq-network
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000"]
       interval: 30s
