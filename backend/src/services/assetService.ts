@@ -1,9 +1,9 @@
 import { readFile } from 'fs/promises';
 import { existsSync } from 'fs';
-import { resolve as pathResolve } from 'path';
+import path from 'path';
 import { AssetType } from '@prisma/client';
 import { getJobAsset } from './jobService.js';
-import { resolveAssetPath } from '../utils/assetPath.js';
+import { resolveAssetPath, getAllowedAssetRoot } from '../utils/assetPath.js';
 
 const CACHE_TTL = 10 * 60 * 1000;
 const CACHE_MAX = 200;
@@ -29,10 +29,17 @@ async function readAssetJson(jobId: string, assetType: AssetType, logLabel: stri
   const asset = await getJobAsset(jobId, assetType);
   if (!asset) return null;
 
-  const resolvedPath = resolveAssetPath(asset.filePath);
-  const normalizedPath = pathResolve(resolvedPath);
-  if (!normalizedPath.startsWith(pathResolve('output')) && !normalizedPath.startsWith('/home')) {
-    console.error(`[assetService] ${logLabel} path traversal attempt: ${normalizedPath}`);
+  let resolvedPath: string;
+  try {
+    resolvedPath = resolveAssetPath(asset.filePath);
+  } catch (err) {
+    console.error(`[assetService] ${logLabel} path rejected: ${(err as Error).message} (filePath=${asset.filePath})`);
+    return null;
+  }
+
+  const allowedRoot = getAllowedAssetRoot();
+  if (resolvedPath !== allowedRoot && !resolvedPath.startsWith(allowedRoot + path.sep)) {
+    console.error(`[assetService] ${logLabel} path traversal attempt: ${resolvedPath}`);
     return null;
   }
   if (!existsSync(resolvedPath)) return null;

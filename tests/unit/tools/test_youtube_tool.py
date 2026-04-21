@@ -114,11 +114,12 @@ class TestFetchTranscript:
         mock_instance.fetch.return_value = mock_result
 
         tool = YouTubeCollectorTool()
-        result = tool._fetch_transcript("dQw4w9WgXcQ")
+        text, reason = tool._fetch_transcript("dQw4w9WgXcQ")
 
-        assert result is not None
-        assert "Hello everyone" in result
-        assert "pricing strategies" in result
+        assert text is not None
+        assert reason == "ok"
+        assert "Hello everyone" in text
+        assert "pricing strategies" in text
 
     @patch("youtube_transcript_api.YouTubeTranscriptApi")
     def test_strips_music_tags(self, MockApi):
@@ -130,12 +131,13 @@ class TestFetchTranscript:
         mock_instance.fetch.return_value = [segment]
 
         tool = YouTubeCollectorTool()
-        result = tool._fetch_transcript("dQw4w9WgXcQ")
+        text, reason = tool._fetch_transcript("dQw4w9WgXcQ")
 
-        assert result is not None
-        assert "[Music]" not in result
-        assert "[Applause]" not in result
-        assert "Hello" in result
+        assert text is not None
+        assert reason == "ok"
+        assert "[Music]" not in text
+        assert "[Applause]" not in text
+        assert "Hello" in text
 
     @patch("youtube_transcript_api.YouTubeTranscriptApi")
     def test_transcripts_disabled(self, MockApi):
@@ -145,8 +147,24 @@ class TestFetchTranscript:
         mock_instance.fetch.side_effect = TranscriptsDisabled("dQw4w9WgXcQ")
 
         tool = YouTubeCollectorTool()
-        result = tool._fetch_transcript("dQw4w9WgXcQ")
-        assert result is None
+        text, reason = tool._fetch_transcript("dQw4w9WgXcQ")
+        assert text is None
+        assert reason == "disabled"
+
+    @patch("youtube_transcript_api.YouTubeTranscriptApi")
+    def test_ip_block_short_circuits(self, MockApi):
+        """IpBlocked is detected and returns immediately without retrying."""
+        from youtube_transcript_api._errors import IpBlocked
+        mock_instance = MagicMock()
+        MockApi.return_value = mock_instance
+        mock_instance.fetch.side_effect = IpBlocked("dQw4w9WgXcQ")
+
+        tool = YouTubeCollectorTool()
+        text, reason = tool._fetch_transcript("dQw4w9WgXcQ")
+        assert text is None
+        assert reason == "ip_blocked"
+        # Must not retry on an IP block — single fetch attempt
+        assert mock_instance.fetch.call_count == 1
 
     @patch("youtube_transcript_api.YouTubeTranscriptApi")
     def test_truncation_with_keywords(self, MockApi):
@@ -160,16 +178,17 @@ class TestFetchTranscript:
         mock_instance.fetch.return_value = [segment]
 
         tool = YouTubeCollectorTool()
-        result = tool._fetch_transcript("dQw4w9WgXcQ", niche_keywords=["pricing", "SaaS"])
+        text, reason = tool._fetch_transcript("dQw4w9WgXcQ", niche_keywords=["pricing", "SaaS"])
 
-        assert result is not None
-        assert len(result) <= 6000  # window_words=700 ≈ ~5000 chars
+        assert text is not None
+        assert reason == "ok"
+        assert len(text) <= 6000  # window_words=700 ≈ ~5000 chars
 
 
 class TestSearchAndCollect:
     @patch("nicheiq.tools.youtube_tool.YouTubeCollectorTool._fetch_transcript")
     def test_end_to_end(self, mock_fetch):
-        mock_fetch.return_value = "This is a transcript about SaaS pricing."
+        mock_fetch.return_value = ("This is a transcript about SaaS pricing.", "ok")
 
         serper_results = [
             SimpleNamespace(
@@ -193,7 +212,7 @@ class TestSearchAndCollect:
 
     @patch("nicheiq.tools.youtube_tool.YouTubeCollectorTool._fetch_transcript")
     def test_min_views_filter(self, mock_fetch):
-        mock_fetch.return_value = "Transcript text."
+        mock_fetch.return_value = ("Transcript text.", "ok")
 
         serper_results = [
             SimpleNamespace(
@@ -207,3 +226,31 @@ class TestSearchAndCollect:
         posts = tool.search_and_collect(serper_results, min_views=1000, max_total=5)
 
         assert len(posts) == 0  # filtered out
+
+    @patch("nicheiq.tools.youtube_tool.YouTubeCollectorTool._fetch_transcript")
+    def test_ip_block_aborts_batch(self, mock_fetch, caplog):
+        """After the threshold of IP-block signals, remaining fetches are skipped."""
+        mock_fetch.return_value = (None, "ip_blocked")
+
+        # 10 distinct candidates (unique 11-char video IDs)
+        video_ids = [f"vid{i:08d}" for i in range(10)]
+        serper_results = [
+            SimpleNamespace(
+                url=f"https://www.youtube.com/watch?v={vid}",
+                title=f"Video {vid}",
+                snippet="100K views",
+            )
+            for vid in video_ids
+        ]
+
+        tool = YouTubeCollectorTool()
+        posts = tool.search_and_collect(serper_results, min_views=0, max_total=10)
+
+        # No transcripts collected
+        assert len(posts) == 0
+        # Abort kicks in after 3 ip_blocked signals, so not all 10 should have
+        # been called. Parallelism (max_workers=4) means we may see up to
+        # ~3 + workers_in_flight calls — but strictly fewer than 10.
+        assert mock_fetch.call_count < 10, (
+            f"Expected abort before all 10 calls, got {mock_fetch.call_count}"
+        )

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import re
 import time
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -52,6 +53,31 @@ _MAX_TRANSCRIPT_CHARS = 5000
 
 # Comment fetch rate limit (seconds between requests)
 _COMMENT_FETCH_DELAY = 0.5
+
+# Abort transcript collection after this many IP-block signals
+_IP_BLOCK_ABORT_THRESHOLD = 3
+
+# Message patterns that indicate YouTube is blocking the worker's IP
+_IP_BLOCK_PATTERNS = re.compile(
+    r"blocking requests from your ip"
+    r"|ip.?blocked"
+    r"|too many requests"
+    r"|\b429\b"
+    r"|cloudflare challenge",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_ip_block(exc: Exception) -> bool:
+    """Best-effort detection of YouTube IP-block responses.
+
+    Matches on the exception class name (RequestBlocked / IpBlocked) and on
+    message patterns, so we stay robust to minor library version changes.
+    """
+    name = type(exc).__name__.lower()
+    if "blocked" in name:
+        return True
+    return bool(_IP_BLOCK_PATTERNS.search(str(exc)))
 
 
 def _sanitize_api_url(url: str) -> str:
@@ -139,7 +165,10 @@ class YouTubeCollectorTool(BaseTool):
 
         # Step 3: Parallel transcript fetching
         posts: list[SocialPost] = []
+        reason_counts: Counter[str] = Counter()
         errors = 0
+        ip_block_count = 0
+        aborted_ip_block = False
 
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {
@@ -152,16 +181,45 @@ class YouTubeCollectorTool(BaseTool):
             for future in as_completed(futures):
                 video_id = futures[future]
                 try:
-                    post = future.result()
+                    post, reason = future.result()
+                    reason_counts[reason] += 1
                     if post:
                         posts.append(post)
+                    if reason == "ip_blocked":
+                        ip_block_count += 1
+                        if ip_block_count >= _IP_BLOCK_ABORT_THRESHOLD and not aborted_ip_block:
+                            aborted_ip_block = True
+                            pending = sum(1 for f in futures if not f.done())
+                            logger.warning(
+                                f"[YouTube] IP block detected ({ip_block_count} transcript requests "
+                                f"refused). Aborting {pending} pending fetches — configure a residential "
+                                "proxy (youtube-transcript-api supports proxy_config) to fix this."
+                            )
+                            executor.shutdown(wait=False, cancel_futures=True)
+                            break
                     errors = 0  # reset on any non-exception result (including None)
                 except Exception as exc:
                     errors += 1
                     logger.warning(f"[YouTube] Failed to fetch {video_id}: {exc}")
                     if errors >= 5:
                         logger.warning("[YouTube] Too many consecutive errors, stopping")
+                        executor.shutdown(wait=False, cancel_futures=True)
                         break
+
+        # Emit a single categorized summary when anything failed. A 100% failure
+        # (the case this fix was written for) escalates to WARNING so it's visible
+        # in default INFO-level worker logs.
+        failures = sum(c for r, c in reason_counts.items() if r != "ok")
+        if failures > 0:
+            breakdown = ", ".join(
+                f"{reason}={count}"
+                for reason, count in reason_counts.most_common()
+                if reason != "ok"
+            )
+            log_fn = logger.warning if len(posts) == 0 else logger.info
+            log_fn(
+                f"[YouTube] Transcript failures: {failures}/{len(candidates)} ({breakdown})"
+            )
 
         # Step 4: Sequential comment fetching via API (if key set)
         if api_key and not self._api_disabled and posts:
@@ -188,11 +246,16 @@ class YouTubeCollectorTool(BaseTool):
         serper_views: int,
         niche_keywords: list[str] | None,
         api_stats: dict[str, Any] | None = None,
-    ) -> SocialPost | None:
-        """Fetch transcript and build SocialPost for a single video."""
-        transcript = self._fetch_transcript(video_id, niche_keywords)
-        if not transcript:
-            return None
+    ) -> tuple[SocialPost | None, str]:
+        """Fetch transcript and build SocialPost for a single video.
+
+        Returns (post, reason). Reason is "ok" on success or a transcript
+        failure code ("disabled", "unavailable", "no_transcript", "ip_blocked",
+        "fetch_error", "empty") so callers can aggregate failure modes.
+        """
+        transcript, reason = self._fetch_transcript(video_id, niche_keywords)
+        if transcript is None:
+            return None, reason
 
         # Use API stats if available, otherwise fall back to Serper parsing
         if api_stats:
@@ -218,7 +281,7 @@ class YouTubeCollectorTool(BaseTool):
                 "date_estimated": date_estimated,
             }
 
-        return SocialPost(
+        post = SocialPost(
             post_id=video_id,
             platform="youtube",
             title=serper_result.title or f"YouTube video {video_id}",
@@ -231,6 +294,7 @@ class YouTubeCollectorTool(BaseTool):
             responses=[],  # Updated later if comments fetched
             raw_engagement=raw_engagement,
         )
+        return post, "ok"
 
     # ==================================================================================
     # YouTube Data API v3 methods (REST, no SDK dependency)
@@ -466,10 +530,14 @@ class YouTubeCollectorTool(BaseTool):
         self,
         video_id: str,
         niche_keywords: list[str] | None = None,
-    ) -> str | None:
+    ) -> tuple[str | None, str]:
         """Fetch and process transcript for a YouTube video.
 
-        Returns sanitized, windowed transcript text or None if unavailable.
+        Returns (text, reason). On success: (sanitized_text, "ok"). On failure:
+        (None, one of "disabled", "unavailable", "no_transcript", "ip_blocked",
+        "fetch_error", "empty"). Reasons are aggregated by the caller so a 100%
+        failure batch produces a single diagnostic WARNING instead of silent
+        DEBUG-level drops.
         """
         from youtube_transcript_api import YouTubeTranscriptApi
         from youtube_transcript_api._errors import (
@@ -480,6 +548,7 @@ class YouTubeCollectorTool(BaseTool):
 
         from ..crews.pain_point_crew import _sanitize_social_content
 
+        last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
             try:
                 api = YouTubeTranscriptApi()
@@ -495,32 +564,42 @@ class YouTubeCollectorTool(BaseTool):
                 text = _sanitize_social_content(text)
 
                 if not text.strip():
-                    return None
+                    return None, "empty"
 
                 if len(text) > _MAX_TRANSCRIPT_CHARS and niche_keywords:
                     text = best_evidence_window(text, niche_keywords, window_words=700)
                 elif len(text) > _MAX_TRANSCRIPT_CHARS:
                     text = text[:_MAX_TRANSCRIPT_CHARS]
 
-                return text.strip()
+                return text.strip(), "ok"
 
             except TranscriptsDisabled:
                 logger.debug(f"[YouTube] Transcripts disabled for {video_id}")
-                return None
+                return None, "disabled"
             except VideoUnavailable:
                 logger.debug(f"[YouTube] Video unavailable: {video_id}")
-                return None
+                return None, "unavailable"
             except NoTranscriptFound:
                 logger.debug(f"[YouTube] No transcript found for {video_id}")
-                return None
+                return None, "no_transcript"
             except Exception as exc:
+                last_exc = exc
+                # IP blocks won't recover on retry — short-circuit so the caller
+                # can abort before hammering the blocked IP with 24 more requests.
+                if _looks_like_ip_block(exc):
+                    logger.debug(
+                        f"[YouTube] IP-block signal for {video_id}: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                    return None, "ip_blocked"
                 if attempt < _MAX_RETRIES:
                     time.sleep(_RETRY_DELAY * (attempt + 1))
                     continue
                 logger.debug(f"[YouTube] Transcript fetch failed for {video_id}: {exc}")
-                return None
+                return None, "fetch_error"
 
-        return None
+        logger.debug(f"[YouTube] Transcript fetch exhausted retries for {video_id}: {last_exc}")
+        return None, "fetch_error"
 
     def _run(self, urls: str) -> str:
         """CrewAI tool interface. Accepts comma-separated YouTube URLs."""
