@@ -184,8 +184,10 @@
         </span>
       {/if}
     </span>
-    {#if fit.text}
-      <span class="fit-label fit-label-{fit.variant}">{fit.text}</span>
+    {#if solution.market_fit_score != null}
+      <span class="text-xs text-text-muted tabular-nums">
+        Fit <span class="font-semibold fit-num fit-num-{fit.variant}">{Math.round(solution.market_fit_score * 100)}%</span>
+      </span>
     {/if}
     {#if superpower}
       <span class="superpower-tag superpower-tag-{superpower.variant}">{superpower.label}</span>
@@ -395,27 +397,9 @@
   .superpower-tag-info { color: var(--color-secondary-dark); }
   .superpower-tag-warning { color: var(--color-warning-dark); }
 
-  .fit-label {
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    padding: 0.125rem 0.375rem;
-    border-radius: 0.25rem;
-  }
-  .fit-label-success {
-    color: var(--color-success-dark);
-    background: rgba(34, 197, 94, 0.1);
-  }
-  .fit-label-warning {
-    color: var(--color-warning-dark);
-    background: rgba(234, 179, 8, 0.1);
-  }
-  .fit-label-muted {
-    color: var(--color-text-muted);
-    background: var(--color-bg-elevated);
-  }
+  .fit-num-success { color: var(--color-success-dark); }
+  .fit-num-warning { color: var(--color-warning-dark); }
+  .fit-num-muted { color: var(--color-text-muted); }
 
   /* --- Selection indicator (numbered checkbox) --- */
   .selection-indicator {
