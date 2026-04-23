@@ -201,7 +201,7 @@
       </span>
     {/if}
     {#if hasHeadline}
-      <span class="ml-auto text-[10px] font-mono text-text-muted/60 truncate max-w-[120px]">{solution.solution_name}</span>
+      <span class="hidden sm:inline-block ml-auto text-[10px] font-mono text-text-muted/60 truncate max-w-[120px]">{solution.solution_name}</span>
     {/if}
   </div>
 

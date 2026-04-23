@@ -65,6 +65,7 @@
   // ── Auto-advance timer ──
   $effect(() => {
     if (isHovered) return;
+    if (hasInteracted) return;
 
     const durationMs = slides[currentSlide]?.duration ?? 6_000;
     const id = setInterval(() => {
@@ -121,6 +122,35 @@
     }
   }
 
+  // ── Touch swipe ──
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+
+  function handleTouchStart(e: TouchEvent) {
+    const t = e.changedTouches[0];
+    touchStartX = t.clientX;
+    touchStartY = t.clientY;
+    touchStartTime = Date.now();
+  }
+
+  function handleTouchEnd(e: TouchEvent) {
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStartX;
+    const dy = t.clientY - touchStartY;
+    const dt = Date.now() - touchStartTime;
+
+    if (Math.abs(dx) < 50) return;
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dt > 500) return;
+
+    if (dx < 0) {
+      goToSlide((currentSlide + 1) % totalSlides, true);
+    } else {
+      goToSlide((currentSlide - 1 + totalSlides) % totalSlides, true);
+    }
+  }
+
   // ── Derived ──
   const activeSlide = $derived(slides[currentSlide]);
   const slideBg = $derived(currentSlide % 2 === 0 ? 'var(--dg-bg)' : 'var(--dg-bg2)');
@@ -142,6 +172,8 @@
   onkeydown={handleKeydown}
   onmouseenter={() => (isHovered = true)}
   onmouseleave={() => (isHovered = false)}
+  ontouchstart={handleTouchStart}
+  ontouchend={handleTouchEnd}
 >
   <!-- ═══ HEADER ═══ -->
   <header class="overlay-header">
@@ -282,14 +314,13 @@
     height: 7px;
     border-radius: 50%;
     background: var(--dg-accent);
-    animation: pulse-once 1.6s ease-in-out 1 forwards;
+    animation: dot-breath 2.4s ease-in-out infinite;
     flex-shrink: 0;
   }
 
-  @keyframes pulse-once {
-    0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.3; transform: scale(0.75); }
-    100% { opacity: 1; transform: scale(1); }
+  @keyframes dot-breath {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.45; transform: scale(0.8); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -437,15 +468,30 @@
   /* ── RESPONSIVE ── */
   @media (max-width: 600px) {
     .overlay-header {
-      padding: 16px 24px;
+      padding: 12px 20px;
+      padding-top: max(12px, env(safe-area-inset-top));
+    }
+
+    .status-label {
+      display: none;
+    }
+
+    .cancel-btn {
+      margin-left: 8px;
+      padding: 5px 12px;
+    }
+
+    .progress-track {
+      height: 4px;
     }
 
     .progress-label {
-      padding: 6px 24px;
+      padding: 6px 20px;
     }
 
     .bottom-controls {
-      padding: 16px 24px;
+      padding: 14px 20px;
+      padding-bottom: max(14px, env(safe-area-inset-bottom));
     }
   }
 </style>

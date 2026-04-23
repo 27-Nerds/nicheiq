@@ -621,7 +621,7 @@
   <title>{job ? `${titleCase(nicheName) || job.niche} — ${getStatusLabel(job.status)}` : 'Job'} - NicheIQ</title>
 </svelte:head>
 
-<div class="job-page-shell">
+<div class="job-page-shell" class:has-sticky-bar={isSelectionPhase && showStickyBar}>
   {#if job}
     <PhaseNav jobStatus={job.status} />
   {/if}
@@ -1448,6 +1448,10 @@
       flex-direction: column;
       gap: 0.5rem;
       text-align: center;
+    }
+
+    .sticky-bar-spacer {
+      height: 8rem;
     }
 
     .report-summary-header {

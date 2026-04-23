@@ -32,6 +32,7 @@
     formatScorePercent,
     renderMarkdown,
     stripMarkdown,
+    titleCase,
   } from "$lib/utils/format";
   import Badge from "$lib/components/ui/Badge.svelte";
   import Tooltip from "$lib/components/ui/Tooltip.svelte";
@@ -445,7 +446,7 @@
 
       <!-- Right Column: Niche Info + Signal Chips -->
       <div class="hero-right">
-        <h2 class="niche-title">{nicheName}</h2>
+        <h2 class="niche-title">{titleCase(nicheName)}</h2>
         <div class="niche-description-wrapper">
           <button
             type="button"

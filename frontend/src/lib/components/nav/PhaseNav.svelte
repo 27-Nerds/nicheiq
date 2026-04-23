@@ -608,14 +608,19 @@
     .sidebar-mobile { display: none; }
   }
 
+  @media (max-width: 639px) {
+    :global(.job-page-shell.has-sticky-bar) .sidebar-mobile {
+      bottom: calc(1rem + 128px);
+    }
+  }
+
   .mobile-toggle {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0.25rem;
     padding: 0.75rem 1.5rem;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 2rem;
     color: var(--color-text-primary);
@@ -656,8 +661,7 @@
     flex-direction: column;
     gap: 2px;
     padding: 0.5rem;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg, 0.75rem);
     min-width: 200px;

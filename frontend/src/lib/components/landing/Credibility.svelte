@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import {
     MessageSquare,
     MessagesSquare,
@@ -9,8 +8,6 @@
     AlertTriangle,
     Cpu,
   } from "lucide-svelte";
-
-  let isVisible = $state(false);
 
   const sourcePills = [
     { icon: MessageSquare, label: "Real User Problems" },
@@ -47,17 +44,12 @@
   };
 </script>
 
-<section id="credibility" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
+<section id="credibility" class="section-alt">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Header -->
       <div class="mb-12">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">06</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">Source-Backed Research</span>
         </div>
         <h2
           class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
@@ -242,7 +234,5 @@
           </div>
         </div>
       </div>
-      </div>
-    {/if}
   </div>
 </section>

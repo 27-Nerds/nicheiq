@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import { PieChart, Tag, Scale, CheckCircle2 } from "lucide-svelte";
-
-  let isVisible = $state(false);
 
   const blocks = [
     {
@@ -47,17 +44,12 @@
   ];
 </script>
 
-<section id="business-intelligence" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
+<section id="business-intelligence" class="section-alt">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-16">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">04</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">The Numbers</span>
         </div>
         <h2
           class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
@@ -262,7 +254,5 @@
           Built on search volume data and community signals. No surveys. No gut feelings.
         </p>
       </div>
-      </div>
-    {/if}
   </div>
 </section>

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import { ArrowRight, Check } from "lucide-svelte";
   import type { CtaConfig } from "$lib/types/cta";
   import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
@@ -11,11 +10,9 @@
   }
 
   let { session = null, hasSampleReport = false, ctaTexts }: Props = $props();
-
-  let isVisible = $state(false);
 </script>
 
-<section id="final-cta" class="section relative overflow-hidden" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="final-cta" class="section relative overflow-hidden">
   <!-- Background: bottom-anchored warm glow -->
   <div class="absolute inset-0 bg-radial-amber-bottom"></div>
   <!-- Top gradient blending from FAQ section -->
@@ -24,10 +21,9 @@
   ></div>
 
   <div class="relative max-w-3xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
       <!-- Verdict card -->
       <div
-        class="animate-fade-in bg-bg-elevated rounded-2xl p-8 sm:p-10 lg:p-12 text-center"
+        class="bg-bg-elevated rounded-2xl p-8 sm:p-10 lg:p-12 text-center"
       >
 
         <!-- Headline -->
@@ -97,6 +93,5 @@
         </div>
 
       </div>
-    {/if}
   </div>
 </section>

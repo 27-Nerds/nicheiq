@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { ArrowRight, Sparkles } from "lucide-svelte";
+  import { ArrowRight } from "lucide-svelte";
   import type { CtaConfig } from "$lib/types/cta";
   import CtaIcon from "$lib/components/ui/CtaIcon.svelte";
 
@@ -82,15 +82,8 @@
     {#if isVisible}
       <!-- Centered Content -->
       <div class="text-center">
-        <!-- Badge + Headline group -->
+        <!-- Headline group -->
         <div class="animate-fade-in">
-          <div class="mb-6 sm:mb-8 inline-flex">
-            <span class="inline-flex items-center gap-2 badge">
-              <Sparkles class="w-3.5 h-3.5" />
-              For solo founders. By a solo founder
-            </span>
-          </div>
-
           <h1
             class="font-display text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight text-text-primary leading-[1.1] mb-6 sm:mb-8"
           >
@@ -215,13 +208,8 @@
     {/if}
   </div>
 
-  <!-- Scroll Indicator - Hidden on mobile for cleaner look -->
+  <!-- Scroll affordance: gradient line only -->
   <div class="absolute bottom-8 left-1/2 -translate-x-1/2 hidden sm:block">
-    <div class="flex flex-col items-center gap-2 text-text-muted">
-      <span class="small-caps text-xs">Scroll</span>
-      <div
-        class="w-px h-8 bg-gradient-to-b from-border-emphasis to-transparent"
-      ></div>
-    </div>
+    <div class="w-px h-8 bg-gradient-to-b from-border-emphasis to-transparent"></div>
   </div>
 </section>

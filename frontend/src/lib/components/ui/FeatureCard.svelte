@@ -11,7 +11,7 @@
 </script>
 
 <div
-  class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 border-l-4 border-l-accent {className}"
+  class="card bg-gradient-to-br from-accent/5 via-bg-surface to-secondary/5 border-accent/20 {className}"
 >
   <div
     class="flex flex-col sm:flex-row sm:items-center justify-between gap-6"

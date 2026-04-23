@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import {
     ShieldCheck,
     Waypoints,
@@ -24,8 +23,6 @@
   }
 
   let { session = null, ctaTexts, packages = [] }: Props = $props();
-
-  let isVisible = $state(false);
 
   // Hardcoded fallback tiers (used when no dynamic packages available)
   const fallbackTiers = [
@@ -75,17 +72,12 @@
   }
 </script>
 
-<section id="pricing" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="pricing" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-10 sm:mb-16">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">07</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">Pricing</span>
         </div>
         <h2
           class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6 text-center"
@@ -228,7 +220,5 @@
           </p>
         {/if}
       </div>
-      </div>
-    {/if}
   </div>
 </section>

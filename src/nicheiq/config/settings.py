@@ -215,6 +215,17 @@ class Settings(BaseSettings):
         default=50,
         description="Minimum character length for YouTube comments to be included."
     )
+    webshare_api_key: str | None = Field(
+        default=None,
+        description="Webshare API key. When set, YouTube transcript fetching routes "
+                    "through direct-mode proxies fetched from /api/v2/proxy/list. "
+                    "Get key from https://proxy2.webshare.io/userapi/keys."
+    )
+    webshare_proxy_country_codes: list[str] | None = Field(
+        default=None,
+        description="Optional ISO country code filter for the Webshare proxy pool "
+                    "(e.g. 'US,GB' comma-separated, or JSON array). None = all countries."
+    )
 
     # DataForSEO API
     dataforseo_login: str = Field(..., description="DataForSEO API login")
@@ -532,6 +543,16 @@ class Settings(BaseSettings):
         """Convert empty string to None for optional int fields."""
         if v == '':
             return None
+        return v
+
+    @field_validator('webshare_proxy_country_codes', mode='before')
+    @classmethod
+    def parse_country_codes(cls, v):
+        """Accept comma-separated env string or JSON array; emit list[str] or None."""
+        if v is None or v == '':
+            return None
+        if isinstance(v, str):
+            return [c.strip().upper() for c in v.split(',') if c.strip()]
         return v
 
     @field_validator('keyword_validation_top_pain_points', 'keyword_validation_top_competitors')

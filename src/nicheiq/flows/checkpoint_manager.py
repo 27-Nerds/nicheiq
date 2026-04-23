@@ -266,6 +266,30 @@ class CheckpointManager:
                 )
                 return False
 
+            # Cross-job resume guard: if the source checkpoint belongs to a different
+            # job, fork it to a fresh folder owned by the current job. Keeps the source
+            # folder byte-identical for other resumes / inspection and prevents
+            # save_stage + _update_checkpoint_metadata from corrupting the source.
+            checkpoint_job_id = metadata.get("job_id")
+            if self.job_id and checkpoint_job_id and self.job_id != checkpoint_job_id:
+                niche_slug = self._get_niche_slug()
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                forked = settings.checkpoint_dir / f"checkpoint_{niche_slug}_{self.job_id}_{timestamp}"
+                shutil.copytree(folder_path, forked)
+                forked_meta_path = forked / "metadata.json"
+                with open(forked_meta_path, encoding="utf-8") as f:
+                    forked_metadata = json.load(f)
+                forked_metadata["job_id"] = self.job_id
+                forked_metadata["forked_from"] = folder_path.name
+                with open(forked_meta_path, "w", encoding="utf-8") as f:
+                    json.dump(forked_metadata, f, indent=2, default=str)
+                logger.warning(
+                    f"Cross-job resume: forked {folder_path.name} → {forked.name} "
+                    f"(source job={checkpoint_job_id}, current job={self.job_id})"
+                )
+                folder_path = forked
+                metadata = forked_metadata
+
             # Load individual stage files and reconstruct state
             self._reconstruct_state_from_checkpoint(folder_path, metadata)
 

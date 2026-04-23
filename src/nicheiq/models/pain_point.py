@@ -60,9 +60,16 @@ class ThemeCategory(BaseModel):
     anchor_keywords: list[str] = Field(
         ...,
         min_length=3,
-        max_length=10,
+        max_length=12,
         description="3-8 short anchor phrases (2-6 words each) that capture how users express this theme. Used by Task 4 for vector search."
     )
+
+    @field_validator('anchor_keywords', mode='before')
+    @classmethod
+    def truncate_anchor_keywords(cls, v: object) -> object:
+        if isinstance(v, list) and len(v) > 12:
+            return v[:12]
+        return v
 
 class UserSegment(BaseModel):
     """User segment identified in categorization."""

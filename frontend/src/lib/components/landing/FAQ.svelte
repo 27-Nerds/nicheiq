@@ -1,8 +1,5 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import { Accordion } from "./ui";
-
-  let isVisible = $state(false);
 
   // Optimized FAQs: Trust first, consolidated competitor question, common objections
   // All answers are HTML strings to support rich formatting uniformly
@@ -67,13 +64,11 @@
   ];
 </script>
 
-<section id="faq" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="faq" class="section-alt">
   <div class="max-w-3xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="text-center mb-16">
-        <span class="section-label">FAQ</span>
+        <span class="text-sm text-text-muted">FAQ</span>
         <h2
           class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
@@ -103,7 +98,5 @@
           </a>
         </p>
       </div>
-      </div>
-    {/if}
   </div>
 </section>

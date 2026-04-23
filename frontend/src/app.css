@@ -825,28 +825,13 @@
 	overflow: hidden;
 }
 
-.pain-card::before {
-	content: '';
-	position: absolute;
-	left: 0;
-	top: 0;
-	bottom: 0;
-	width: 4px;
-	background: linear-gradient(180deg, var(--color-error) 0%, rgba(239, 68, 68, 0.3) 100%);
-}
-
 .pain-card-severity-high {
 	border-color: rgba(239, 68, 68, 0.4);
-	box-shadow: 0 0 20px rgba(239, 68, 68, 0.1);
 }
 
 .pain-card-severity-medium {
 	background: linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, transparent 60%);
 	border-color: rgba(245, 158, 11, 0.2);
-}
-
-.pain-card-severity-medium::before {
-	background: linear-gradient(180deg, var(--color-warning) 0%, rgba(245, 158, 11, 0.3) 100%);
 }
 
 /* Timeline Styling */

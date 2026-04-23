@@ -58,28 +58,29 @@ class TestThemeCategory:
         assert "anchor_keywords" in str(exc_info.value)
 
     def test_theme_category_anchor_keywords_max_length(self):
-        """Test that ThemeCategory allows max 10 anchor_keywords."""
-        # This should succeed with exactly 10
+        """Test that ThemeCategory accepts up to 12 anchor_keywords and truncates extras."""
+        # Exactly 12 is the hard cap
         theme = ThemeCategory(
             category_name="Test",
             definition="Test definition",
             frequency="Medium",
             mention_count=10,
             primary_user_segments=["Users"],
-            anchor_keywords=[f"keyword{i}" for i in range(10)],
+            anchor_keywords=[f"keyword{i}" for i in range(12)],
         )
-        assert len(theme.anchor_keywords) == 10
+        assert len(theme.anchor_keywords) == 12
 
-        # This should fail with 11
-        with pytest.raises(ValidationError):
-            ThemeCategory(
-                category_name="Test",
-                definition="Test definition",
-                frequency="Medium",
-                mention_count=10,
-                primary_user_segments=["Users"],
-                anchor_keywords=[f"keyword{i}" for i in range(11)],  # 11 exceeds max
-            )
+        # Over-cap input is silently truncated to 12 so one LLM overshoot doesn't crash the pipeline
+        theme_truncated = ThemeCategory(
+            category_name="Test",
+            definition="Test definition",
+            frequency="Medium",
+            mention_count=10,
+            primary_user_segments=["Users"],
+            anchor_keywords=[f"keyword{i}" for i in range(15)],
+        )
+        assert len(theme_truncated.anchor_keywords) == 12
+        assert theme_truncated.anchor_keywords == [f"keyword{i}" for i in range(12)]
 
     def test_theme_category_no_representative_quotes(self):
         """Confirm representative_quotes is not a field on ThemeCategory."""

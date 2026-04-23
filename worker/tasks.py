@@ -14,6 +14,8 @@ from typing import Optional
 from loguru import logger
 from rq import get_current_job
 
+from nicheiq.config.settings import settings
+
 from .progress import (
     create_progress_callback,
     publish_job_completed,
@@ -310,8 +312,8 @@ def run_interactive_research(
         # Materialize discovery data for frontend evidence UI
         discovery_data_path = ""
         preview_report_path = ""
+        output_dir = str(settings.checkpoint_dir)
         try:
-            output_dir = str(flow.checkpoint_mgr.checkpoint_folder.parent) if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder else "output"
             result = flow._materialize_discovery_data(output_dir)
             if result:
                 discovery_data_path = result
@@ -321,7 +323,6 @@ def run_interactive_research(
 
         # Materialize preview report for frontend preview page
         try:
-            output_dir = str(flow.checkpoint_mgr.checkpoint_folder.parent) if flow.checkpoint_mgr and flow.checkpoint_mgr.checkpoint_folder else "output"
             result = flow._materialize_preview_report(output_dir)
             if result:
                 preview_report_path = result

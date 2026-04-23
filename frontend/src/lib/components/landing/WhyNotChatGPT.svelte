@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import {
     Globe,
     Database,
@@ -10,7 +9,6 @@
     ArrowRight,
   } from "lucide-svelte";
 
-  let isVisible = $state(false);
   let activeTab = $state(0);
 
   const problems = [
@@ -55,12 +53,11 @@
   ];
 </script>
 
-<section id="why-not-chatgpt" class="section-alt" use:intersect={{ threshold: 0.2, onIntersect: () => isVisible = true }}>
+<section id="why-not-chatgpt" class="section-alt">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
       <!-- Section Header -->
       <div class="mb-16">
-        <span class="section-label animate-fade-in">The Gap</span>
+        <span class="text-sm text-text-muted animate-fade-in">The gap</span>
         <h2
           class="animate-fade-in delay-100 font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
         >
@@ -172,6 +169,5 @@
           "Deep Research tools search the web. NicheIQ researches with APIs."
         </p>
       </div>
-    {/if}
   </div>
 </section>

@@ -7,6 +7,7 @@ import json
 import math
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -94,7 +95,8 @@ class ResearchFlow(Flow[ResearchState]):
         # Store niche description for use in flow methods
         self.niche_description = niche_description
         self.allowed_project_types = allowed_project_types
-        self.job_id = job_id
+        self.job_id = job_id or str(uuid.uuid4())
+        self.state.job_id = self.job_id
         self.entry_mode = entry_mode
 
         # Track Knowledge objects created during the run for cleanup
@@ -1405,7 +1407,11 @@ RULES:
             }
 
             # Write to file
-            out_path = Path(output_dir) / f"discovery_data_{state.job_id}.json"
+            job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)
+            if not job_id:
+                logger.error("[Discovery Data] job_id missing on flow and state; refusing to materialize")
+                return None
+            out_path = Path(output_dir) / f"discovery_data_{job_id}.json"
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(discovery_data, indent=2, default=str))
             logger.info(f"[Discovery Data] Materialized to {out_path} ({out_path.stat().st_size} bytes)")
@@ -1714,7 +1720,10 @@ RULES:
                 report["research_metadata"] = None
 
             # ── Write to file ──
-            job_id = getattr(state, "job_id", "unknown")
+            job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)
+            if not job_id:
+                logger.error("[Preview Report] job_id missing on flow and state; refusing to materialize")
+                return None
             out_path = Path(output_dir) / f"preview_report_{job_id}.json"
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(json.dumps(report, indent=2, default=str))
@@ -2097,10 +2106,6 @@ RULES:
         logger.info(f"[OK] Niche validated: {niche[:100]}...")
         logger.info(f"[OK] Target location: {settings.target_location}")
         logger.info(f"[OK] Target language: {settings.target_language}")
-
-        # Assign job_id to state (generate UUID if not provided)
-        import uuid as _uuid
-        self.state.job_id = self.job_id or str(_uuid.uuid4())
 
         # Store user constraints in state for persistence
         self.state.allowed_project_types = self.allowed_project_types

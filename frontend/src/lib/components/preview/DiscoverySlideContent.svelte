@@ -283,7 +283,37 @@
   /* ── Responsive ── */
   @media (max-width: 600px) {
     .slide-content {
-      padding: 88px 24px 52px;
+      padding: 48px 24px 40px;
+    }
+
+    .spinner {
+      width: 36px;
+      height: 36px;
+      margin-bottom: 20px;
+    }
+
+    .niche-pill {
+      margin-bottom: 16px;
+    }
+
+    .heading {
+      margin-bottom: 14px;
+    }
+
+    .heading--phase {
+      margin-bottom: 18px;
+    }
+
+    .step-indicator {
+      margin-bottom: 16px;
+    }
+
+    .body {
+      margin: 0 auto 24px;
+    }
+
+    .body--waiting {
+      margin-bottom: 24px;
     }
   }
 </style>

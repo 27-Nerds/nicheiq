@@ -332,6 +332,7 @@
   .selection-bar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border: 1px solid var(--color-border);
@@ -381,6 +382,11 @@
   .validate-btn:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  @media (max-width: 639px) {
+    .selection-count { white-space: normal; }
+    .validate-btn { margin-left: 0; width: 100%; }
   }
 
   .fallback {

@@ -95,8 +95,7 @@
     left: 0;
     right: 0;
     z-index: 50;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-elevated);
     border-bottom: 1px solid var(--color-border);
     transform: translateY(-100%);
     transition: transform 0.3s var(--ease-out);

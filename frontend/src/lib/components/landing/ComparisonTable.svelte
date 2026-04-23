@@ -1,6 +1,5 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import { intersect } from "$lib/actions/intersect";
   import {
     Check,
     X,
@@ -21,7 +20,6 @@
     MessageSquare,
   } from "lucide-svelte";
 
-  let isVisible = $state(false);
   let expandedFeature = $state<number | null>(null);
 
   function toggleFeature(index: number) {
@@ -136,17 +134,12 @@
   }
 </script>
 
-<section id="comparison" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="comparison" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-16">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">05</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">The Comparison</span>
         </div>
         <h2
           class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
@@ -479,7 +472,5 @@
           Everything in the table above ships in a single report — full niche validation for one price.
         </p>
       </div>
-      </div>
-    {/if}
   </div>
 </section>

@@ -161,8 +161,7 @@
     flex-direction: column;
     gap: 0.5rem;
     padding: 0.75rem;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 1rem;
     box-shadow: var(--shadow-md);
@@ -263,8 +262,7 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.75rem 1.5rem;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 2rem;
     color: var(--color-text-primary);
@@ -310,8 +308,7 @@
     grid-template-columns: repeat(2, 1fr);
     gap: 0.25rem;
     padding: 0.5rem;
-    background: rgba(255, 255, 255, 0.95);
-    backdrop-filter: blur(12px);
+    background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
     border-radius: 1rem;
     box-shadow: var(--shadow-lg);

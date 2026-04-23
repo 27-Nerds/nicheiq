@@ -13,6 +13,7 @@ When YOUTUBE_API_KEY is set, enriches posts with:
 from __future__ import annotations
 
 import re
+import threading
 import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -22,11 +23,12 @@ from typing import TYPE_CHECKING, Any
 import requests
 from crewai.tools import BaseTool
 from loguru import logger
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 
 from ..config.settings import settings
 from ..models.social_content import SocialPost, SocialResponse
 from ..utils.snippet_extraction import best_evidence_window
+from .webshare_client import WebshareProxy, WebshareProxyPool, _sanitize_proxy_url
 
 if TYPE_CHECKING:
     from ..models.research_state import SearchResultItem
@@ -56,6 +58,9 @@ _COMMENT_FETCH_DELAY = 0.5
 
 # Abort transcript collection after this many IP-block signals
 _IP_BLOCK_ABORT_THRESHOLD = 3
+
+# Distinct proxies to try per video before declaring ip_blocked
+_PROXY_RETRY_ATTEMPTS = 3
 
 # Message patterns that indicate YouTube is blocking the worker's IP
 _IP_BLOCK_PATTERNS = re.compile(
@@ -95,7 +100,12 @@ class YouTubeCollectorTool(BaseTool):
     )
 
     # Instance flag to disable API mid-run on auth/quota errors
-    _api_disabled: bool = False
+    _api_disabled: bool = PrivateAttr(default=False)
+
+    # Webshare proxy pool (lazy-init once per tool instance)
+    _proxy_pool: WebshareProxyPool | None = PrivateAttr(default=None)
+    _proxy_pool_init: bool = PrivateAttr(default=False)
+    _proxy_init_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
 
     def search_and_collect(
         self,
@@ -163,6 +173,12 @@ class YouTubeCollectorTool(BaseTool):
                     if len(candidates) < before:
                         logger.info(f"[YouTube] Filtered {before - len(candidates)} videos below {min_views} views (API-accurate)")
 
+        # Pre-init proxy pool once (serialized) before kicking off workers
+        pool = self._get_proxy_pool()
+        pool_start_size = pool.size() if pool is not None else 0
+        if pool is not None:
+            logger.info(f"[YouTube] Using Webshare proxy pool ({pool_start_size} proxies)")
+
         # Step 3: Parallel transcript fetching
         posts: list[SocialPost] = []
         reason_counts: Counter[str] = Counter()
@@ -190,11 +206,20 @@ class YouTubeCollectorTool(BaseTool):
                         if ip_block_count >= _IP_BLOCK_ABORT_THRESHOLD and not aborted_ip_block:
                             aborted_ip_block = True
                             pending = sum(1 for f in futures if not f.done())
-                            logger.warning(
-                                f"[YouTube] IP block detected ({ip_block_count} transcript requests "
-                                f"refused). Aborting {pending} pending fetches — configure a residential "
-                                "proxy (youtube-transcript-api supports proxy_config) to fix this."
-                            )
+                            if self._proxy_pool is not None:
+                                retired = pool_start_size - self._proxy_pool.size()
+                                logger.warning(
+                                    f"[YouTube] Webshare proxy pool exhausted "
+                                    f"({ip_block_count} videos burned all retry slots). "
+                                    f"Aborting {pending} pending fetches. "
+                                    f"Pool retired {retired} of {pool_start_size} proxies."
+                                )
+                            else:
+                                logger.warning(
+                                    f"[YouTube] IP block detected ({ip_block_count} transcript "
+                                    f"requests refused). Aborting {pending} pending fetches — "
+                                    "configure WEBSHARE_API_KEY to route through a proxy pool."
+                                )
                             executor.shutdown(wait=False, cancel_futures=True)
                             break
                     errors = 0  # reset on any non-exception result (including None)
@@ -219,6 +244,16 @@ class YouTubeCollectorTool(BaseTool):
             log_fn = logger.warning if len(posts) == 0 else logger.info
             log_fn(
                 f"[YouTube] Transcript failures: {failures}/{len(candidates)} ({breakdown})"
+            )
+
+        # Pool-health summary (proxy mode only)
+        if self._proxy_pool is not None:
+            survivors = self._proxy_pool.size()
+            retired = pool_start_size - survivors
+            level = logger.warning if survivors == 0 else logger.info
+            level(
+                f"[Webshare] Pool health: {survivors}/{pool_start_size} proxies survived "
+                f"({retired} retired this batch)"
             )
 
         # Step 4: Sequential comment fetching via API (if key set)
@@ -526,52 +561,165 @@ class YouTubeCollectorTool(BaseTool):
             pass
         return None
 
+    def _get_proxy_pool(self) -> WebshareProxyPool | None:
+        """Lazy-init Webshare proxy pool (once per tool instance).
+
+        Double-checked locking: fast path is lock-free after first init.
+        Slow path serializes the one-time Webshare API call across workers.
+        """
+        if self._proxy_pool_init:
+            return self._proxy_pool
+        with self._proxy_init_lock:
+            if self._proxy_pool_init:
+                return self._proxy_pool
+            self._proxy_pool_init = True
+            if not settings.webshare_api_key:
+                return None
+            pool = WebshareProxyPool(
+                api_key=settings.webshare_api_key,
+                country_codes=settings.webshare_proxy_country_codes,
+            )
+            if pool.ensure_loaded():
+                self._proxy_pool = pool
+                return pool
+            logger.warning(
+                "[YouTube] Webshare pool empty or API unavailable — falling back to direct fetch"
+            )
+            return None
+
+    def _build_transcript_api(self, proxy: WebshareProxy | None):
+        """Construct a YouTubeTranscriptApi instance, optionally via proxy."""
+        from youtube_transcript_api import YouTubeTranscriptApi
+        if proxy is None:
+            return YouTubeTranscriptApi()
+        from youtube_transcript_api.proxies import GenericProxyConfig
+        url = proxy.as_url()
+        return YouTubeTranscriptApi(
+            proxy_config=GenericProxyConfig(http_url=url, https_url=url)
+        )
+
+    def _process_transcript_result(
+        self,
+        result,
+        niche_keywords: list[str] | None,
+    ) -> str | None:
+        """Strip tags, sanitize, window transcript text. None if empty after cleanup."""
+        from ..crews.pain_point_crew import _sanitize_social_content
+        text = " ".join(snippet.text for snippet in result)
+        text = _TRANSCRIPT_TAGS.sub("", text)
+        text = _sanitize_social_content(text)
+        if not text.strip():
+            return None
+        if len(text) > _MAX_TRANSCRIPT_CHARS and niche_keywords:
+            text = best_evidence_window(text, niche_keywords, window_words=700)
+        elif len(text) > _MAX_TRANSCRIPT_CHARS:
+            text = text[:_MAX_TRANSCRIPT_CHARS]
+        return text.strip()
+
     def _fetch_transcript(
         self,
         video_id: str,
         niche_keywords: list[str] | None = None,
     ) -> tuple[str | None, str]:
-        """Fetch and process transcript for a YouTube video.
+        """Dispatch to proxy-pool path or direct path based on config.
 
-        Returns (text, reason). On success: (sanitized_text, "ok"). On failure:
-        (None, one of "disabled", "unavailable", "no_transcript", "ip_blocked",
-        "fetch_error", "empty"). Reasons are aggregated by the caller so a 100%
-        failure batch produces a single diagnostic WARNING instead of silent
-        DEBUG-level drops.
+        Returns (text, reason). Reasons: "ok", "disabled", "unavailable",
+        "no_transcript", "ip_blocked", "fetch_error", "empty".
         """
-        from youtube_transcript_api import YouTubeTranscriptApi
+        pool = self._get_proxy_pool()
+        if pool is not None:
+            return self._fetch_transcript_via_pool(video_id, niche_keywords, pool)
+        return self._fetch_transcript_direct(video_id, niche_keywords)
+
+    def _fetch_transcript_via_pool(
+        self,
+        video_id: str,
+        niche_keywords: list[str] | None,
+        pool: WebshareProxyPool,
+    ) -> tuple[str | None, str]:
+        """Try up to _PROXY_RETRY_ATTEMPTS DISTINCT proxies.
+
+        A tried-set ensures the single-proxy-remaining case (pool of 1)
+        doesn't burn 3 attempts on the same proxy. _build_transcript_api
+        is inside the try so construct failures fall through to fetch_error.
+        """
         from youtube_transcript_api._errors import (
             NoTranscriptFound,
             TranscriptsDisabled,
             VideoUnavailable,
         )
 
-        from ..crews.pain_point_crew import _sanitize_social_content
+        tried: set[WebshareProxy] = set()
+        last_exc: Exception | None = None
+
+        for _ in range(_PROXY_RETRY_ATTEMPTS):
+            proxy = pool.next_proxy()
+            if proxy is None or proxy in tried:
+                logger.debug(
+                    f"[YouTube] Exhausted unique proxies for {video_id} "
+                    f"({len(tried)} tried)"
+                )
+                return None, "ip_blocked"
+            tried.add(proxy)
+
+            try:
+                api = self._build_transcript_api(proxy)
+                try:
+                    result = api.fetch(video_id, languages=["en"])
+                except NoTranscriptFound:
+                    transcript_list = api.list(video_id)
+                    result = transcript_list.find_generated_transcript(["en"]).fetch()
+
+                text = self._process_transcript_result(result, niche_keywords)
+                return (text, "ok") if text else (None, "empty")
+
+            except TranscriptsDisabled:
+                return None, "disabled"
+            except VideoUnavailable:
+                return None, "unavailable"
+            except NoTranscriptFound:
+                return None, "no_transcript"
+            except Exception as exc:
+                last_exc = exc
+                if _looks_like_ip_block(exc):
+                    pool.mark_blocked(proxy)
+                    continue
+                logger.debug(
+                    f"[YouTube] Pool fetch error for {video_id} via "
+                    f"{proxy.address}:{proxy.port}: {_sanitize_proxy_url(str(exc))}"
+                )
+                return None, "fetch_error"
+
+        logger.debug(
+            f"[YouTube] All {len(tried)} proxies blocked for {video_id}: "
+            f"{_sanitize_proxy_url(str(last_exc))}"
+        )
+        return None, "ip_blocked"
+
+    def _fetch_transcript_direct(
+        self,
+        video_id: str,
+        niche_keywords: list[str] | None = None,
+    ) -> tuple[str | None, str]:
+        """Direct fetch: no proxy, exponential backoff on transient errors."""
+        from youtube_transcript_api._errors import (
+            NoTranscriptFound,
+            TranscriptsDisabled,
+            VideoUnavailable,
+        )
 
         last_exc: Exception | None = None
         for attempt in range(_MAX_RETRIES + 1):
             try:
-                api = YouTubeTranscriptApi()
+                api = self._build_transcript_api(None)
                 try:
                     result = api.fetch(video_id, languages=["en"])
                 except NoTranscriptFound:
-                    # Fallback: try auto-generated English transcript
                     transcript_list = api.list(video_id)
                     result = transcript_list.find_generated_transcript(["en"]).fetch()
 
-                text = " ".join(snippet.text for snippet in result)
-                text = _TRANSCRIPT_TAGS.sub("", text)
-                text = _sanitize_social_content(text)
-
-                if not text.strip():
-                    return None, "empty"
-
-                if len(text) > _MAX_TRANSCRIPT_CHARS and niche_keywords:
-                    text = best_evidence_window(text, niche_keywords, window_words=700)
-                elif len(text) > _MAX_TRANSCRIPT_CHARS:
-                    text = text[:_MAX_TRANSCRIPT_CHARS]
-
-                return text.strip(), "ok"
+                text = self._process_transcript_result(result, niche_keywords)
+                return (text, "ok") if text else (None, "empty")
 
             except TranscriptsDisabled:
                 logger.debug(f"[YouTube] Transcripts disabled for {video_id}")
@@ -584,8 +732,6 @@ class YouTubeCollectorTool(BaseTool):
                 return None, "no_transcript"
             except Exception as exc:
                 last_exc = exc
-                # IP blocks won't recover on retry — short-circuit so the caller
-                # can abort before hammering the blocked IP with 24 more requests.
                 if _looks_like_ip_block(exc):
                     logger.debug(
                         f"[YouTube] IP-block signal for {video_id}: "

@@ -1,17 +1,11 @@
-<script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
+<script lang="ts"></script>
 
-  let isVisible = $state(false);
-</script>
-
-<section id="about-maker" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="about-maker" class="section-alt">
   <div class="max-w-4xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
-        <!-- Simple, personal intro - Mobile optimized -->
-        <div
-          class="flex flex-col md:flex-row items-start gap-6 sm:gap-8 md:gap-12"
-        >
+    <!-- Simple, personal intro - Mobile optimized -->
+    <div
+      class="flex flex-col md:flex-row items-start gap-6 sm:gap-8 md:gap-12"
+    >
           <!-- Avatar placeholder -->
           <div class="flex-shrink-0">
             <div
@@ -26,7 +20,7 @@
 
           <!-- Content -->
           <div class="flex-1">
-            <span class="section-label mb-3 sm:mb-4 block">About the Maker</span
+            <span class="text-sm text-text-muted mb-3 sm:mb-4 block">About the maker</span
             >
 
             <h2
@@ -60,7 +54,5 @@
             </div>
           </div>
         </div>
-      </div>
-    {/if}
   </div>
 </section>

@@ -1,7 +1,6 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
   import { SvelteSet } from "svelte/reactivity";
-  import { intersect } from "$lib/actions/intersect";
   import {
     Search,
     Radar,
@@ -14,7 +13,6 @@
     ScrollText,
     Eye,
     ChevronDown,
-    ChevronRight,
     Clock,
     Users,
     DollarSign,
@@ -22,7 +20,6 @@
 
   } from "lucide-svelte";
 
-  let isVisible = $state(false);
   let showStages = $state(false);
   let expandedStages = new SvelteSet<number>();
 
@@ -219,17 +216,12 @@
   {@html `<script type="application/ld+json">${JSON.stringify(howToSchema)}</script>`}
 </svelte:head>
 
-<section id="how-it-works" class="section-alt" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="how-it-works" class="section-alt">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-10 sm:mb-16">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">02</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">The Process</span>
         </div>
         <h2
           class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
@@ -243,83 +235,49 @@
         </p>
       </div>
 
-      <!-- Desktop: Horizontal flexbox track (md+) -->
-      <ol
-        class="hidden md:flex mb-10 sm:mb-16"
-      >
-        {#each steps as step, i}
-          <!-- Step column -->
-          <li class="flex-1 flex flex-col items-center">
-            <!-- Circle -->
-            <div
-              class="w-12 h-12 rounded-full border-2 border-accent bg-bg-elevated
-                     flex items-center justify-center font-display text-lg font-bold text-accent"
-            >
-              {i + 1}
-            </div>
-            <!-- Vertical stub -->
-            <div class="w-0.5 h-6 bg-border" aria-hidden="true"></div>
-            <!-- Card -->
-            <div
-              class="flex flex-col flex-1 rounded-xl border bg-bg-elevated p-6 text-center w-full
-                     {step.dashed
-                ? 'border-dashed border-accent/40'
-                : 'border-border'}
-                     {step.cardClass}"
-            >
-              <!-- Icon -->
-              <div
-                class="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30
-                       flex items-center justify-center mx-auto mb-4"
-              >
-                <step.icon class="w-6 h-6 text-accent" />
-              </div>
-              <!-- Title -->
-              <h3
-                class="font-display font-semibold text-xl text-text-primary mb-2"
-              >
-                {step.title}
-              </h3>
-              <!-- Description -->
-              <p
-                class="text-text-secondary leading-relaxed text-sm mb-4 flex-1"
-              >
-                {step.description}
-              </p>
-              <!-- Time badge pinned to bottom -->
-              {#if step.timePill}
-                <div class="mt-auto pt-2">
-                  <span
-                    class="inline-flex px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-widest
-                           bg-accent/10 text-accent border border-accent/20 font-medium"
-                  >
-                    {step.time}
-                  </span>
-                </div>
-              {:else}
-                <div
-                  class="mt-auto pt-2 flex items-center justify-center gap-1.5"
-                >
-                  <Clock class="w-3.5 h-3.5 text-text-muted" />
-                  <span class="text-sm text-accent font-medium"
-                    >{step.time}</span
-                  >
-                </div>
-              {/if}
-            </div>
-          </li>
+      <!-- Desktop: unified card series (md+) -->
+      <ol class="hidden md:grid md:grid-cols-3 md:gap-6 mb-10 sm:mb-16">
+        <!-- Step 1 -->
+        <li class="flex flex-col rounded-xl border border-border bg-bg-elevated p-6">
+          <div class="font-mono text-xs text-text-muted tracking-wide mb-3">01</div>
+          <h3 class="font-display text-xl font-semibold text-text-primary mb-3">
+            Discover Pain Points &amp; Ideas
+          </h3>
+          <p class="text-text-secondary leading-relaxed text-sm mb-5 flex-1">
+            We scan Reddit, Twitter, and online communities to find pain points people will actually pay to solve. You get 5&ndash;10 solution concepts, each backed by real discussions you can verify.
+          </p>
+          <p class="font-mono text-xs text-text-muted">
+            89+ discussions · 5 pain points · 5&ndash;10 ideas · Source links · ~15 min
+          </p>
+        </li>
 
-          <!-- Connector (not after last step) -->
-          {#if i < steps.length - 1}
-            <div
-              class="flex items-center self-start h-12 shrink-0 w-12 lg:w-20"
-              aria-hidden="true"
-            >
-              <div class="flex-1 h-0.5 bg-accent/30"></div>
-              <ChevronRight class="w-4 h-4 text-accent/50 -ml-1" />
-            </div>
-          {/if}
-        {/each}
+        <!-- Step 2 (dashed border preserves the "your call" semantic) -->
+        <li class="flex flex-col rounded-xl border border-dashed border-accent/40 bg-bg-elevated p-6">
+          <div class="font-mono text-xs text-text-muted tracking-wide mb-3">02</div>
+          <h3 class="font-display text-xl font-semibold text-text-primary mb-3">
+            Pick Your Opportunity
+          </h3>
+          <p class="text-text-secondary leading-relaxed text-sm mb-5 flex-1">
+            Review the pain points and solution concepts we found. Pick the one that excites you, or let us recommend the strongest signal.
+          </p>
+          <p class="font-mono text-xs text-text-muted">
+            Your call.
+          </p>
+        </li>
+
+        <!-- Step 3 -->
+        <li class="flex flex-col rounded-xl border border-border bg-bg-elevated p-6">
+          <div class="font-mono text-xs text-text-muted tracking-wide mb-3">03</div>
+          <h3 class="font-display text-xl font-semibold text-text-primary mb-3">
+            Get Your Business Blueprint
+          </h3>
+          <p class="text-text-secondary leading-relaxed text-sm mb-5 flex-1">
+            Competitive analysis, 100+ ranked SEO keywords, market sizing, and pricing strategy. You also get a clear GO or NO-GO verdict and an optional landing page to start capturing leads.
+          </p>
+          <p class="font-mono text-xs text-text-muted">
+            Competitors · SEO · Market sizing · Pricing · GO/NO-GO · ~30 min
+          </p>
+        </li>
       </ol>
 
       <!-- Mobile: Vertical timeline (<md) -->
@@ -521,7 +479,5 @@
           </div>
         {/if}
       </div>
-      </div>
-    {/if}
   </div>
 </section>

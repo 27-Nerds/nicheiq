@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { intersect } from "$lib/actions/intersect";
   import {
     Compass,
     Zap,
@@ -9,15 +8,11 @@
     X,
   } from "lucide-svelte";
 
-  let isVisible = $state(false);
-
   const personas = [
     {
       icon: Compass,
       title: "Opportunity Hunters",
       tagline: "Find what people will actually pay for",
-      accentGradient:
-        "linear-gradient(to right, var(--color-accent), var(--color-accent-hover))",
       description:
         "You know your niche but not what to build. NicheIQ scans thousands of real discussions to surface pain points and solution ideas, so you start with proof instead of hunches.",
       before: "Scrolling Reddit for weeks, hoping to spot a gap",
@@ -32,8 +27,6 @@
       icon: Zap,
       title: "Serial Builders",
       tagline: "Explore more niches, faster",
-      accentGradient:
-        "linear-gradient(to right, var(--color-accent-light), var(--color-accent))",
       description:
         "You explore multiple niches per month. The faster you find a winner, the sooner you ship. NicheIQ compresses weeks of research into an afternoon.",
       before: "Explore one niche for weeks, hope you picked right",
@@ -48,8 +41,6 @@
       icon: BarChart3,
       title: "Data-Driven Teams",
       tagline: "Gut feelings don't impress stakeholders",
-      accentGradient:
-        "linear-gradient(to right, var(--color-accent-dark), var(--color-accent-light))",
       description:
         "You need proof before you pivot. Your stakeholders need sources. Walk into meetings with market data, a competitive landscape, and a clear verdict instead of opinions.",
       before: "Pitch niche ideas with hunches, debate for weeks",
@@ -69,17 +60,12 @@
   ];
 </script>
 
-<section id="who-its-for" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="who-its-for" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-12 sm:mb-16">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">03</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">Who It's For</span>
         </div>
         <h2
           class="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-text-primary mt-4 mb-4 sm:mb-6"
@@ -102,9 +88,6 @@
             class="relative flex flex-col bg-bg-elevated border border-border rounded-xl overflow-hidden"
             style="animation-delay: {300 + i * 120}ms"
           >
-            <!-- Top accent gradient bar -->
-            <div class="h-1.5" style="background: {persona.accentGradient}"></div>
-
             <!-- Card content -->
             <div class="relative flex flex-col flex-1 p-6 sm:p-8">
               <!-- Icon + Title + Tagline -->
@@ -135,7 +118,7 @@
                 >
                   <X class="w-4 h-4 text-text-muted/50 flex-shrink-0 mt-0.5" />
                   <span
-                    class="font-mono text-[10px] uppercase tracking-widest text-text-muted flex-shrink-0 mt-0.5"
+                    class="text-[10px] font-medium text-text-muted flex-shrink-0 mt-0.5"
                     >Before</span
                   >
                   <span class="text-sm text-text-muted line-through"
@@ -159,7 +142,7 @@
                 >
                   <Check class="w-4 h-4 text-accent flex-shrink-0 mt-0.5" />
                   <span
-                    class="font-mono text-[10px] uppercase tracking-widest text-accent flex-shrink-0 mt-0.5"
+                    class="text-[10px] font-medium text-accent flex-shrink-0 mt-0.5"
                     >After</span
                   >
                   <span class="text-sm text-text-primary font-semibold"
@@ -213,8 +196,6 @@
           </ul>
         </div>
       </div>
-      </div>
-    {/if}
   </div>
 </section>
 

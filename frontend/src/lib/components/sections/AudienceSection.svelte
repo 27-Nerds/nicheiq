@@ -344,10 +344,11 @@
   }
 
   /* Zero the bottom margin on the last nested subsection inside Audience
-     so the parent flex-gap is the only spacing between AudienceSection and
-     the next top-level section. Without this the default mb-md (1rem) on
-     the last nested ExpandableSection stacks on top of the flex gap. */
-  :global(.report-section .section-content > :last-child) {
+     only in flex-gap parents (shared discovery view). On the job page the
+     parent uses block layout with no gap, so we keep the default mb-md
+     to produce spacing between AudienceSection and the next top-level
+     section. */
+  :global(.shared-discovery-root .report-section .section-content > :last-child) {
     margin-bottom: 0;
   }
 
@@ -502,6 +503,16 @@
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 200px;
+  }
+
+  @media (max-width: 639px) {
+    .segment-channel-tag {
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      max-width: 100%;
+      word-break: break-word;
+    }
   }
 
   .segment-channel-more {

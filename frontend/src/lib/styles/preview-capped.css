@@ -15,6 +15,20 @@
   max-height: 340px;
 }
 
+/* Mobile: the clipped content (UnifiedHero, Competitors) reflows taller as
+ * grids wrap to 2 columns. The desktop cap lands mid-stat-row and the
+ * absolute-positioned "Unlocks" badge overlays the numbers. Raise the cap
+ * so the teaser completes above the fade/badge. */
+@media (max-width: 639px) {
+  .preview-capped {
+    max-height: 960px;
+  }
+
+  .preview-capped--sm {
+    max-height: 520px;
+  }
+}
+
 .preview-capped-fade {
   position: absolute;
   bottom: 0;

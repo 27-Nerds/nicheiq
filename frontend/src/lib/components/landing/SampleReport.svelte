@@ -1,6 +1,5 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
-  import { intersect } from "$lib/actions/intersect";
   import PainAnalysis from "$lib/components/sections/PainAnalysis.svelte";
   import SEOKeywords from "$lib/components/sections/SEOKeywords.svelte";
   import Competitors from "$lib/components/sections/Competitors.svelte";
@@ -26,7 +25,6 @@
 
   let { hasSampleReport = false, ctaTexts }: Props = $props();
 
-  let isVisible = $state(false);
   let activeTab = $state<
     "pain_points" | "seo_keywords" | "competitors" | "market_size"
   >("pain_points");
@@ -427,17 +425,12 @@
   };
 </script>
 
-<section id="sample-report" class="section" use:intersect={{ threshold: 0.1, onIntersect: () => isVisible = true }}>
+<section id="sample-report" class="section">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">
-    {#if isVisible}
-      <div class="animate-fade-in">
       <!-- Section Header -->
       <div class="mb-12">
         <div class="section-header-meta">
-          <div class="section-header-bar"></div>
           <span class="section-counter">[ <span class="section-counter-active">01</span> / 07 ]</span>
-          <span class="section-header-dot">·</span>
-          <span class="section-label">Inside the Report</span>
         </div>
         <h2
           class="font-display text-4xl sm:text-5xl font-bold text-text-primary mt-4 mb-6"
@@ -596,8 +589,6 @@
           </p>
         </div>
       {/if}
-      </div>
-    {/if}
   </div>
 </section>
 
