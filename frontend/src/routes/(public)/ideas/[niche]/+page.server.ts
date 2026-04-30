@@ -1,0 +1,126 @@
+import type { PageServerLoad } from './$types';
+import { error } from '@sveltejs/kit';
+import { env } from '$env/dynamic/private';
+import {
+  categoryTitle,
+  categoryDescription,
+  categoryNoindex,
+  categoryLongDescriptionFallback,
+  buildCategoryJsonLd,
+  buildProgrammaticJsonLd,
+  categoryCanonical,
+} from '$lib/seo/catalogSeo';
+import { buildMeta } from '$lib/seo/meta';
+import type { CategoryLandingPayload, IdeaPreview } from '$lib/types/catalog-landing';
+import { findProgrammaticIdeaPage } from '$lib/data/programmaticIdeaPages';
+
+const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
+const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
+
+const HEADERS = (): Record<string, string> => ({
+  'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
+});
+
+async function fetchLanding(slug: string): Promise<
+  | { kind: 'ok'; payload: CategoryLandingPayload }
+  | { kind: 'gone' }
+  | { kind: 'missing' }
+  | { kind: 'error' }
+> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/public/catalog/landing/${encodeURIComponent(slug)}`,
+      { headers: HEADERS() },
+    );
+    if (res.status === 200) return { kind: 'ok', payload: await res.json() };
+    if (res.status === 404) return { kind: 'missing' };
+    if (res.status === 410) return { kind: 'gone' };
+    return { kind: 'error' };
+  } catch (err) {
+    console.error('landing fetch failed', err);
+    return { kind: 'error' };
+  }
+}
+
+async function fetchIdeaBySlug(slug: string): Promise<IdeaPreview | null> {
+  try {
+    const res = await fetch(
+      `${BACKEND_URL}/api/public/catalog/idea-by-slug/${encodeURIComponent(slug)}`,
+      { headers: HEADERS() },
+    );
+    if (!res.ok) return null;
+    return (await res.json()) as IdeaPreview;
+  } catch {
+    return null;
+  }
+}
+
+export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
+  setHeaders({
+    'Cache-Control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
+  });
+
+  // 1. Try real category landing.
+  const landing = await fetchLanding(params.niche);
+
+  if (landing.kind === 'gone') throw error(410, 'Gone');
+  if (landing.kind === 'error') throw error(500, 'Failed to load');
+
+  if (landing.kind === 'ok') {
+    const { payload } = landing;
+    const canonical = categoryCanonical(payload.category.slug, null, url.searchParams);
+    const description = categoryDescription(payload.category, payload.totalIdeas, payload.totalPainPoints);
+
+    const meta = buildMeta({
+      title: categoryTitle(payload.category, payload.parent),
+      description,
+      canonical,
+      type: 'website',
+      noindex: categoryNoindex({ payload, searchParams: url.searchParams, launchGateOn: LAUNCH_GATE_ON }),
+    });
+
+    const jsonld = buildCategoryJsonLd(payload, canonical, description);
+
+    return {
+      kind: 'category' as const,
+      meta,
+      jsonld,
+      payload,
+      longDescription:
+        payload.category.longDescription ??
+        categoryLongDescriptionFallback(
+          payload.category.name,
+          payload.totalIdeas,
+          payload.totalPainPoints,
+        ),
+    };
+  }
+
+  // 2. Real category not found — try programmatic SEO fallback.
+  const pseo = findProgrammaticIdeaPage(params.niche);
+  if (!pseo) throw error(404, 'Not found');
+
+  // Resolve featured idea slugs (best-effort; nulls filtered out).
+  const featuredIdeas = (
+    await Promise.all(pseo.featuredIdeaSlugs.map((s) => fetchIdeaBySlug(s)))
+  ).filter((i): i is IdeaPreview => i !== null);
+
+  const canonical = categoryCanonical(pseo.slug, null, url.searchParams);
+  const meta = buildMeta({
+    title: pseo.seoTitle,
+    description: pseo.seoDescription,
+    canonical,
+    type: 'website',
+    noindex: LAUNCH_GATE_ON,
+  });
+
+  const jsonld = buildProgrammaticJsonLd(pseo, featuredIdeas, canonical);
+
+  return {
+    kind: 'pseo' as const,
+    meta,
+    jsonld,
+    pseo,
+    featuredIdeas,
+  };
+};

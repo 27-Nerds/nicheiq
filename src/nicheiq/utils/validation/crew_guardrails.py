@@ -6,7 +6,7 @@ Most validation has been migrated to Pydantic model validators (the recommended 
 Only complex cross-solution comparisons remain here as guardrails.
 
 Guardrail Return Convention:
-- (True, task_output.raw) - Validation passed, return raw for CrewAI to re-parse
+- (True, raw_string) - Validation passed, return a string for CrewAI to re-parse
 - (False, error_message) - Validation failed, CrewAI will retry up to guardrail_max_retries times
 """
 
@@ -44,6 +44,29 @@ from ...models.solution_refinement import SolutionRefinement
 from ...models.solution_selection import SolutionSelection
 from ...models.technical_blueprint import SiteStructure, UserFlowsSection
 from ..parsing.json_extractor import clean_llm_response, extract_json_object_from_text
+
+
+def _guardrail_success_payload(task_output, parsed_result: Any | None = None) -> str:
+    """Return a string payload that CrewAI can store in TaskOutput.raw."""
+    raw = getattr(task_output, "raw", None)
+
+    if isinstance(raw, str):
+        return raw
+
+    payload = raw if raw is not None else parsed_result
+    if payload is None:
+        return ""
+
+    if hasattr(payload, "model_dump_json"):
+        return payload.model_dump_json()
+
+    if isinstance(payload, (dict, list, tuple, int, float, bool)):
+        return json.dumps(payload, default=str)
+
+    logger.warning(
+        f"Guardrail success payload was {type(payload).__name__}, not str; coercing to string"
+    )
+    return str(payload)
 
 
 def validate_diversity(
@@ -154,7 +177,7 @@ def validate_diversity(
 
         logger.info(f"✓ Diversity guardrail passed: {len(ideas)} unique solutions")
         # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Diversity validation error: {str(e)}")
@@ -361,7 +384,7 @@ def validate_competitive_analysis(task_output) -> tuple[bool, Any]:
 
         logger.info(f"✓ Competitive analysis guardrail passed: {len(result.solution_landscapes)} landscapes")
         # CrewAI 1.7.0: Return raw string for CrewAI to re-parse
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Competitive analysis validation error: {str(e)}")
@@ -402,7 +425,7 @@ def validate_competitive_enhancements(task_output) -> tuple[bool, Any]:
         return (False, "overall_competitive_insights too short (min 100 chars).")
 
     logger.info(f"[OK] Competitive enhancements: {len(result.solution_enhancements)} solutions")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -481,7 +504,7 @@ def validate_category_tier_output(task_output) -> tuple[bool, Any]:
             )
 
         logger.info(f"✓ Category tier guardrail passed: {len(result.tier_4_category_groups)} groups")
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Category tier validation error: {str(e)}")
@@ -536,12 +559,12 @@ def validate_geographic_tier_output(task_output) -> tuple[bool, Any]:
             if len(all_keywords) > 5 and len(unique_keywords) < len(all_keywords) * 0.8:
                 return (
                     False,
-                    f"Too many duplicate keywords in geographic groups. "
+                    "Too many duplicate keywords in geographic groups. "
                     "Each location keyword should appear in only ONE region."
                 )
 
         logger.info(f"✓ Geographic tier guardrail passed: {len(result.tier_3_geographic_groups or [])} regions")
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Geographic tier validation error: {str(e)}")
@@ -586,7 +609,7 @@ def validate_strategic_tier_output(task_output) -> tuple[bool, Any]:
 
         # Strategic keywords are filtered by opp_score 50-100, may be empty
         logger.info(f"✓ Strategic tier guardrail passed: {len(result.tier_2_keywords or [])} keywords")
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Strategic tier validation error: {str(e)}")
@@ -847,7 +870,7 @@ def validate_content_strategy_output(task_output) -> tuple[bool, Any]:
             f"{len(result.keyword_based_page_types or [])} page types, "
             f"{len(tech_seo)} chars technical SEO ({found_sections}/5 sections)"
         )
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Content strategy validation error: {str(e)}")
@@ -910,7 +933,7 @@ def validate_implementation_plan_output(task_output) -> tuple[bool, Any]:
             f"✓ Implementation plan guardrail passed: "
             f"roadmap has {len(result.implementation_roadmap)} chars"
         )
-        return (True, task_output.raw)
+        return (True, _guardrail_success_payload(task_output, result))
 
     except Exception as e:
         return (False, f"Implementation plan validation error: {str(e)}")
@@ -1027,7 +1050,7 @@ def validate_content_categorization(task_output) -> tuple[bool, Any]:
         f"✓ Content categorization guardrail passed: "
         f"{len(result.theme_categories)} themes, {len(result.user_segments)} segments"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -1136,7 +1159,7 @@ def validate_raw_concepts(task_output) -> tuple[bool, Any]:
         )
 
     logger.info(f"✓ Raw concepts guardrail passed: {len(result.concepts)} concepts")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -1195,7 +1218,7 @@ def validate_filtered_concepts(task_output) -> tuple[bool, Any]:
         f"✓ Filtered concepts guardrail passed: "
         f"{len(result.concepts)} kept, {len(result.removed_concepts or [])} removed"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -1258,7 +1281,7 @@ def validate_audience_mapping(task_output) -> tuple[bool, Any]:
         f"✓ Audience mapping guardrail passed: "
         f"{len(result.audience_segments)} segments, {len(result.key_influencers)} influencers"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -1327,7 +1350,7 @@ def validate_data_source_evaluation(task_output) -> tuple[bool, Any]:
         f"✓ Data source evaluation guardrail passed: "
         f"{len(result.high_priority_sources)} high priority, {total_sources} total sources"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -1433,7 +1456,7 @@ def validate_html_page_result(task_output) -> tuple[bool, Any]:
         f"✓ HTML page guardrail passed: "
         f"{len(result.html_content)} chars, {len(result.sections_included)} sections"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_animated_html_result(task_output) -> tuple[bool, Any]:
@@ -1487,7 +1510,7 @@ def validate_animated_html_result(task_output) -> tuple[bool, Any]:
         f"✓ Animated HTML guardrail passed: "
         f"{len(result.html_content)} chars, animations: {result.animations_added}"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_qa_review_result(task_output) -> tuple[bool, Any]:
@@ -1543,7 +1566,7 @@ def validate_qa_review_result(task_output) -> tuple[bool, Any]:
         f"{len(result.html_content)} chars, score: {result.quality_score}/100, "
         f"issues fixed: {result.issues_fixed_count}"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 # ========================================
@@ -1597,7 +1620,7 @@ def validate_quote_enrichment(task_output) -> tuple[bool, Any]:
     if invalid_quotes:
         return (
             False,
-            f"Quotes missing post_id:\n  - " + "\n  - ".join(invalid_quotes[:5]) +
+            "Quotes missing post_id:\n  - " + "\n  - ".join(invalid_quotes[:5]) +
             "\n\nGet post_id from the search result header: '(post_id: xyz123)'. "
             "DO NOT fabricate post_ids - extract them from search results."
         )
@@ -1606,7 +1629,7 @@ def validate_quote_enrichment(task_output) -> tuple[bool, Any]:
         # Only fail if many quotes are too short (allow some short quotes)
         return (
             False,
-            f"Too many short quotes (< 15 chars):\n  - " + "\n  - ".join(short_quotes[:5]) +
+            "Too many short quotes (< 15 chars):\n  - " + "\n  - ".join(short_quotes[:5]) +
             "\n\nSkip very short quotes like 'me too' or 'same'. "
             "Extract substantive quotes (15+ words) that express the pain point."
         )
@@ -1624,7 +1647,7 @@ def validate_quote_enrichment(task_output) -> tuple[bool, Any]:
         f"✓ Quote enrichment guardrail passed: "
         f"{total_quotes} quotes for {len(result.enriched_pain_points)} pain points"
     )
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_solution_selection(task_output) -> tuple[bool, Any]:
@@ -1659,7 +1682,7 @@ def validate_solution_selection(task_output) -> tuple[bool, Any]:
         return (False, "recommended_focus is required.")
 
     logger.info(f"✓ Solution selection guardrail passed: '{result.selected_solution_name}'")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_traffic_monetization(task_output) -> tuple[bool, Any]:
@@ -1692,7 +1715,7 @@ def validate_traffic_monetization(task_output) -> tuple[bool, Any]:
         return (False, "recommended_affiliate_programs must contain at least 1 entry.")
 
     logger.info(f"✓ Traffic monetization guardrail passed: '{result.solution_name}'")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_pricing_strategy(task_output) -> tuple[bool, Any]:
@@ -1729,7 +1752,7 @@ def validate_pricing_strategy(task_output) -> tuple[bool, Any]:
         return (False, "estimated_ltv is required (e.g., '$384 - $960').")
 
     logger.info(f"✓ Pricing strategy guardrail passed: '{result.solution_name}'")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_solution_refinement(task_output) -> tuple[bool, Any]:
@@ -1762,7 +1785,7 @@ def validate_solution_refinement(task_output) -> tuple[bool, Any]:
         )
 
     logger.info(f"✓ Solution refinement guardrail passed: {len(result.strategic_insights)} insights")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_trend_narrative(task_output) -> tuple[bool, Any]:
@@ -1803,7 +1826,7 @@ def validate_trend_narrative(task_output) -> tuple[bool, Any]:
         )
 
     logger.info(f"✓ Trend narrative guardrail passed: verdict='{result.longevity_verdict}'")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_site_structure(task_output) -> tuple[bool, Any]:
@@ -1836,7 +1859,7 @@ def validate_site_structure(task_output) -> tuple[bool, Any]:
         return (False, "mvp_page_count must be >= 1.")
 
     logger.info(f"✓ Site structure guardrail passed: {len(result.sections)} sections, {result.mvp_page_count} MVP pages")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_user_flows(task_output) -> tuple[bool, Any]:
@@ -1866,7 +1889,7 @@ def validate_user_flows(task_output) -> tuple[bool, Any]:
             )
 
     logger.info(f"✓ User flows guardrail passed: {len(result.flows)} flows")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_data_implementation_plan(task_output) -> tuple[bool, Any]:
@@ -1899,7 +1922,7 @@ def validate_data_implementation_plan(task_output) -> tuple[bool, Any]:
         )
 
     logger.info(f"✓ Data implementation plan guardrail passed: {len(result.implementation_phases)} phases")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))
 
 
 def validate_keyword_summary(task_output) -> tuple[bool, Any]:
@@ -1929,4 +1952,4 @@ def validate_keyword_summary(task_output) -> tuple[bool, Any]:
         )
 
     logger.info(f"✓ Keyword summary guardrail passed: {len(result.key_findings)} findings")
-    return (True, task_output.raw)
+    return (True, _guardrail_success_payload(task_output, result))

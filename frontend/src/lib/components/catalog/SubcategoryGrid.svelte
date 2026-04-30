@@ -37,7 +37,7 @@
       ? MAX_COLS - (populated.length % MAX_COLS)
       : 0;
     // Ensure at least one full row is always visible
-    const minFill = Math.max(MAX_COLS - populated.length, 0);
+    const minFill = populated.length > 0 ? Math.max(MAX_COLS - populated.length, 0) : 0;
     return Math.min(Math.max(rowFill, minFill), empty.length);
   });
 

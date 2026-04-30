@@ -1,0 +1,501 @@
+import { existsSync, readFileSync } from 'fs';
+import { AssetType, Prisma, type CatalogResearchContext } from '@prisma/client';
+import { prisma } from './db.js';
+import { getJobAsset } from './jobService.js';
+import { resolveAssetPath } from '../utils/assetPath.js';
+
+// =============================================================================
+// CatalogResearchContext extraction — INGESTION ONLY
+//
+// THIS MODULE MUST NEVER BE IMPORTED FROM PUBLIC CATALOG ROUTES.
+// Public catalog runtime is DB-only; the projected `CatalogResearchContext`
+// row IS the public surface. Worker/admin/backfill flows are the only
+// callers permitted to invoke `extractOrCreateResearchContext` /
+// `loadReportJson`. ESLint `no-restricted-imports` enforces this for
+// `routes/publicCatalog.ts`; a guardrail test enforces it for the public
+// rendering exports of `catalogService.ts`.
+//
+// Design notes:
+// - The customer's literal `report.niche` query string is NEVER projected
+//   for `commissioned` source. Catalog flows pass `sourceKind: 'catalog'`
+//   to suppress this scrub since their niche IS a public category name.
+// - Prose summaries (executive_summary, etc.) are NEVER projected — they
+//   contain personal pronouns aimed at the customer who ran the research.
+// - Each Json subtree flows through `rejectIfContainsBannedContent` as a
+//   defense-in-depth pass. Privacy-leakage patterns are always active;
+//   AI-marketing patterns are tone-scrubs and only active for `commissioned`.
+// =============================================================================
+
+/** Active for ALL source kinds — these phrases leak customer-facing prose. */
+const PRIVACY_LEAKAGE_PATTERNS: RegExp[] = [
+  /your business/i,
+  /we recommend/i,
+];
+
+/** Tone scrub for commissioned reports only — legitimate in catalog products. */
+const AI_MARKETING_PATTERNS: RegExp[] = [
+  /AI-powered/i,
+  /AI-generated/i,
+  /powered by AI/i,
+];
+
+export type SourceKind = 'commissioned' | 'catalog';
+
+interface RejectOptions {
+  sourceKind?: SourceKind;
+  /**
+   * When true, the niche-literal substring scrub does not run. Catalog jobs
+   * use public category names as niche; suppressing the literal scrub is
+   * correct because the phrase is intentionally public. Banned-pattern
+   * scrubs still apply.
+   */
+  suppressNicheLiteralScrub?: boolean;
+}
+
+/**
+ * Defense-in-depth content guard. Each Json subtree is stringified and scanned
+ * for the customer's literal niche query (case-insensitive) and known
+ * privacy-leakage / AI-marketing phrases. A subtree that fails any check is
+ * nulled — adjacent columns still persist.
+ */
+export function rejectIfContainsBannedContent(
+  value: unknown,
+  fieldName: string,
+  niche: string,
+  options: RejectOptions = {},
+): unknown {
+  if (value == null) return null;
+
+  const sourceKind: SourceKind = options.sourceKind ?? 'commissioned';
+  const serialized = JSON.stringify(value);
+  const serializedLower = serialized.toLowerCase();
+
+  // Niche-literal scrub: only when not suppressed.
+  if (!options.suppressNicheLiteralScrub) {
+    const nicheLower = (niche ?? '').toLowerCase().trim();
+    if (nicheLower.length >= 4 && serializedLower.includes(nicheLower)) {
+      console.warn(`[researchContext] field=${fieldName} contains report.niche — scrubbing`);
+      return null;
+    }
+  }
+
+  for (const pattern of PRIVACY_LEAKAGE_PATTERNS) {
+    if (pattern.test(serialized)) {
+      console.warn(`[researchContext] field=${fieldName} matched ${pattern} — scrubbing`);
+      return null;
+    }
+  }
+  if (sourceKind === 'commissioned') {
+    for (const pattern of AI_MARKETING_PATTERNS) {
+      if (pattern.test(serialized)) {
+        console.warn(`[researchContext] field=${fieldName} matched ${pattern} — scrubbing`);
+        return null;
+      }
+    }
+  }
+  return value;
+}
+
+// =============================================================================
+// Empty / projected helpers
+// =============================================================================
+
+export function isJsonEmpty(value: unknown): boolean {
+  if (value == null) return true;
+  if (Array.isArray(value)) return value.length === 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length === 0;
+  return false;
+}
+
+/**
+ * "Did extraction write anything renderable OR audit-relevant?"
+ *
+ * Used as a write-guard in the `forceRefreshAll` downgrade path: if the
+ * existing row has any projected data (including timestamps, zero metrics)
+ * and the loader returned null, preserve the row rather than overwriting
+ * with `emptyProjection()`. Zero counts DO count here — they prove
+ * extraction RAN against a real report.
+ */
+export function hasProjectedData(ctx: CatalogResearchContext): boolean {
+  return (
+    !isJsonEmpty(ctx.audienceMapping) ||
+    !isJsonEmpty(ctx.painPointAnalytics) ||
+    !isJsonEmpty(ctx.detailedPainPoints) ||
+    !isJsonEmpty(ctx.marketSizing) ||
+    !isJsonEmpty(ctx.trendLongevity) ||
+    !isJsonEmpty(ctx.competitiveAnalytics) ||
+    !isJsonEmpty(ctx.competitorProfiles) ||
+    !isJsonEmpty(ctx.competitiveAnalysis) ||
+    !isJsonEmpty(ctx.alternativeSolutions) ||
+    !isJsonEmpty(ctx.selectedSolution) ||
+    !isJsonEmpty(ctx.topSubreddits) ||
+    !isJsonEmpty(ctx.goToMarketBlueprint) ||
+    !isJsonEmpty(ctx.pricingStrategy) ||
+    !isJsonEmpty(ctx.trafficMonetization) ||
+    ctx.competitiveSummary != null ||
+    ctx.selectedSolutionName != null ||
+    ctx.redditPostsAnalyzed != null ||
+    ctx.redditCommentsAnalyzed != null ||
+    ctx.twitterThreadsAnalyzed != null ||
+    ctx.genericPostsAnalyzed != null ||
+    ctx.collectionDate != null ||
+    ctx.goNoGoVerdict != null ||
+    ctx.reportGeneratedAt != null
+  );
+}
+
+/**
+ * "Is there RENDERABLE content?" — used for placeholder detection AND public
+ * landing-page gating. Excludes timestamps, zero-value metrics, and tier
+ * alone. Without this distinction, every preview-derived row would lock as
+ * "real" forever (materializer always writes `generated_at` + `collection_date`).
+ */
+export function hasMeaningfulResearchContext(ctx: CatalogResearchContext): boolean {
+  return (
+    !isJsonEmpty(ctx.audienceMapping) ||
+    !isJsonEmpty(ctx.painPointAnalytics) ||
+    !isJsonEmpty(ctx.detailedPainPoints) ||
+    !isJsonEmpty(ctx.marketSizing) ||
+    !isJsonEmpty(ctx.trendLongevity) ||
+    !isJsonEmpty(ctx.competitiveAnalytics) ||
+    !isJsonEmpty(ctx.competitorProfiles) ||
+    !isJsonEmpty(ctx.competitiveAnalysis) ||
+    !isJsonEmpty(ctx.alternativeSolutions) ||
+    !isJsonEmpty(ctx.selectedSolution) ||
+    !isJsonEmpty(ctx.topSubreddits) ||
+    !isJsonEmpty(ctx.goToMarketBlueprint) ||
+    !isJsonEmpty(ctx.pricingStrategy) ||
+    !isJsonEmpty(ctx.trafficMonetization) ||
+    (ctx.competitiveSummary?.trim() ?? '') !== '' ||
+    (ctx.selectedSolutionName?.trim() ?? '') !== '' ||
+    (ctx.redditPostsAnalyzed ?? 0) > 0 ||
+    (ctx.redditCommentsAnalyzed ?? 0) > 0 ||
+    (ctx.twitterThreadsAnalyzed ?? 0) > 0 ||
+    (ctx.genericPostsAnalyzed ?? 0) > 0 ||
+    ctx.goNoGoVerdict != null
+  );
+}
+
+// =============================================================================
+// Verdict / tier normalization
+// =============================================================================
+
+function normalizeVerdict(verdict: unknown): string | null {
+  if (typeof verdict !== 'string') return null;
+  const v = verdict.trim().toLowerCase();
+  if (v === 'go') return 'GO';
+  if (v === 'no-go' || v === 'no_go' || v === 'nogo') return 'NO_GO';
+  if (v === 'conditional' || v === 'maybe') return 'MAYBE';
+  return null;
+}
+
+function normalizeQualityTier(tier: unknown): string | null {
+  if (typeof tier !== 'string') return null;
+  const t = tier.trim().toUpperCase();
+  if (t === 'GOLD' || t === 'SILVER' || t === 'BRONZE' || t === 'INSUFFICIENT') return t;
+  return null;
+}
+
+function safeInt(val: unknown): number | null {
+  if (val == null) return null;
+  const n = Number(val);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+function safeDate(val: unknown): Date | null {
+  if (val == null || typeof val !== 'string') return null;
+  const d = new Date(val);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+
+// =============================================================================
+// Projection — the allow-list of fields that survive into the public surface.
+// =============================================================================
+
+type JsonInput = Prisma.InputJsonValue | typeof Prisma.JsonNull;
+
+interface ProjectedFields {
+  audienceMapping: JsonInput;
+  marketSizing: JsonInput;
+  trendLongevity: JsonInput;
+  painPointAnalytics: JsonInput;
+  competitiveAnalytics: JsonInput;
+  competitorProfiles: JsonInput;
+  competitiveAnalysis: JsonInput;
+  competitiveSummary: string | null;
+  goToMarketBlueprint: JsonInput;
+  pricingStrategy: JsonInput;
+  trafficMonetization: JsonInput;
+  detailedPainPoints: JsonInput;
+  alternativeSolutions: JsonInput;
+  selectedSolution: JsonInput;
+  selectedSolutionName: string | null;
+  contentCategorization: JsonInput;
+  redditPostsAnalyzed: number | null;
+  redditCommentsAnalyzed: number | null;
+  twitterThreadsAnalyzed: number | null;
+  genericPostsAnalyzed: number | null;
+  topSubreddits: JsonInput;
+  collectionDate: Date | null;
+  dataQualityTier: string | null;
+  goNoGoVerdict: string | null;
+  reportGeneratedAt: Date | null;
+}
+
+function toJsonInput(value: unknown): JsonInput {
+  if (value == null) return Prisma.JsonNull;
+  return value as Prisma.InputJsonValue;
+}
+
+function projectReport(
+  report: Record<string, unknown>,
+  sourceKind: SourceKind = 'commissioned',
+): ProjectedFields {
+  const niche = typeof report.niche === 'string' ? report.niche : '';
+  const guardOptions: RejectOptions = {
+    sourceKind,
+    suppressNicheLiteralScrub: sourceKind === 'catalog',
+  };
+  const guard = (value: unknown, fieldName: string) =>
+    rejectIfContainsBannedContent(value, fieldName, niche, guardOptions);
+
+  // Scalar string fields also pass through the banned-pattern guard.
+  const guardString = (value: unknown, fieldName: string): string | null => {
+    if (typeof value !== 'string') return null;
+    if (value.trim() === '') return null;
+    return guard(value, fieldName) == null ? null : value;
+  };
+
+  const meta = (report.research_metadata as Record<string, unknown> | undefined) ?? {};
+  const dashboard = (report.executive_dashboard as Record<string, unknown> | undefined) ?? {};
+  const verdictBlock = (dashboard.go_no_go_verdict as Record<string, unknown> | undefined) ?? {};
+  const dataQuality = (report.data_quality_summary as Record<string, unknown> | undefined) ?? {};
+
+  const selectedSolution = report.selected_solution_details as
+    | Record<string, unknown>
+    | undefined
+    | null;
+  const rawSelectedName =
+    (selectedSolution?.solution_name as string | undefined) ??
+    (typeof report.selected_solution_name === 'string' ? report.selected_solution_name : null) ??
+    null;
+  const selectedSolutionName = guardString(rawSelectedName, 'selectedSolutionName');
+
+  const tierCandidate =
+    normalizeQualityTier(dataQuality.pain_point_quality_tier) ??
+    normalizeQualityTier(dataQuality.overall_data_quality);
+
+  return {
+    audienceMapping: toJsonInput(guard(report.audience_mapping, 'audienceMapping')),
+    marketSizing: toJsonInput(guard(report.market_sizing, 'marketSizing')),
+    trendLongevity: toJsonInput(guard(report.trend_longevity, 'trendLongevity')),
+    painPointAnalytics: toJsonInput(guard(report.pain_point_analytics, 'painPointAnalytics')),
+    competitiveAnalytics: toJsonInput(guard(report.competitive_analytics, 'competitiveAnalytics')),
+    competitorProfiles: toJsonInput(guard(report.competitor_profiles, 'competitorProfiles')),
+    competitiveAnalysis: toJsonInput(guard(report.competitive_analysis, 'competitiveAnalysis')),
+    competitiveSummary: guardString(report.competitive_summary, 'competitiveSummary'),
+    goToMarketBlueprint: toJsonInput(guard(report.go_to_market_blueprint, 'goToMarketBlueprint')),
+    pricingStrategy: toJsonInput(guard(report.pricing_strategy, 'pricingStrategy')),
+    trafficMonetization: toJsonInput(guard(report.traffic_monetization, 'trafficMonetization')),
+    detailedPainPoints: toJsonInput(guard(report.detailed_pain_points, 'detailedPainPoints')),
+    alternativeSolutions: toJsonInput(guard(report.alternative_solutions, 'alternativeSolutions')),
+    selectedSolution: toJsonInput(guard(selectedSolution, 'selectedSolution')),
+    selectedSolutionName,
+    contentCategorization: toJsonInput(guard(report.content_categorization, 'contentCategorization')),
+    redditPostsAnalyzed: safeInt(meta.reddit_posts_analyzed),
+    redditCommentsAnalyzed: safeInt(meta.reddit_comments_analyzed),
+    twitterThreadsAnalyzed: safeInt(meta.twitter_threads_analyzed),
+    genericPostsAnalyzed: safeInt(meta.generic_posts_analyzed),
+    topSubreddits: toJsonInput(guard(meta.top_subreddits, 'topSubreddits')),
+    collectionDate: safeDate(meta.collection_date),
+    // Tier never null on disk — placeholder rows get 'INSUFFICIENT'. Real
+    // rows extracted from a report without quality metadata also fall back
+    // to 'INSUFFICIENT'. Tier is a quality label, NOT a placeholder signal —
+    // use `hasMeaningfulResearchContext` for that.
+    dataQualityTier: tierCandidate ?? 'INSUFFICIENT',
+    goNoGoVerdict: normalizeVerdict(verdictBlock.verdict),
+    reportGeneratedAt: safeDate(report.generated_at),
+  };
+}
+
+function emptyProjection(): ProjectedFields {
+  return {
+    audienceMapping: Prisma.JsonNull,
+    marketSizing: Prisma.JsonNull,
+    trendLongevity: Prisma.JsonNull,
+    painPointAnalytics: Prisma.JsonNull,
+    competitiveAnalytics: Prisma.JsonNull,
+    competitorProfiles: Prisma.JsonNull,
+    competitiveAnalysis: Prisma.JsonNull,
+    competitiveSummary: null,
+    goToMarketBlueprint: Prisma.JsonNull,
+    pricingStrategy: Prisma.JsonNull,
+    trafficMonetization: Prisma.JsonNull,
+    detailedPainPoints: Prisma.JsonNull,
+    alternativeSolutions: Prisma.JsonNull,
+    selectedSolution: Prisma.JsonNull,
+    selectedSolutionName: null,
+    contentCategorization: Prisma.JsonNull,
+    redditPostsAnalyzed: null,
+    redditCommentsAnalyzed: null,
+    twitterThreadsAnalyzed: null,
+    genericPostsAnalyzed: null,
+    topSubreddits: Prisma.JsonNull,
+    collectionDate: null,
+    dataQualityTier: 'INSUFFICIENT',
+    goNoGoVerdict: null,
+    reportGeneratedAt: null,
+  };
+}
+
+// =============================================================================
+// Public API
+// =============================================================================
+
+export interface ExtractOptions {
+  /**
+   * When true, an existing PLACEHOLDER row is re-extracted if its report
+   * asset is now available on disk. Real (non-placeholder) rows are still
+   * returned unchanged.
+   *
+   * Placeholder is defined as `!hasMeaningfulResearchContext(row)` — a row
+   * with only timestamps + zero metrics still counts as a placeholder.
+   */
+  forceRefreshPlaceholders?: boolean;
+  /**
+   * When true, re-projects ALL existing rows from the report asset regardless
+   * of placeholder status — except when the loader returns null AND the row
+   * has any projected data (downgrade guard, see implementation below).
+   */
+  forceRefreshAll?: boolean;
+  /** 'catalog' suppresses niche-literal scrub + AI-marketing scrub. */
+  sourceKind?: SourceKind;
+}
+
+/**
+ * INGESTION ONLY. Read & parse a report asset for a given sourceJobId.
+ *
+ * Precedence: REPORT_JSON wins over PREVIEW_REPORT. If REPORT_JSON exists
+ * but is corrupt/missing AND the caller is in `forceRefreshAll` mode, we
+ * return null without falling back — so the caller's downgrade guard can
+ * preserve the existing row instead of nuking it with `emptyProjection()`.
+ *
+ * MUST NOT be called from public catalog runtime paths.
+ */
+async function loadReportJson(
+  sourceJobId: string,
+  options: { forceRefreshAll?: boolean } = {},
+): Promise<Record<string, unknown> | null> {
+  type LoadResult = Record<string, unknown> | null | 'corrupt';
+  const tryLoad = (asset: { filePath: string } | null): LoadResult => {
+    if (!asset) return null;
+    try {
+      const resolvedPath = resolveAssetPath(asset.filePath);
+      if (!existsSync(resolvedPath)) return 'corrupt';
+      const raw = readFileSync(resolvedPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object'
+        ? (parsed as Record<string, unknown>)
+        : 'corrupt';
+    } catch (err) {
+      console.warn(`[researchContext] failed to load asset for ${sourceJobId}:`, err);
+      return 'corrupt';
+    }
+  };
+
+  const reportAsset = await getJobAsset(sourceJobId, AssetType.REPORT_JSON);
+  if (reportAsset) {
+    const result = tryLoad(reportAsset);
+    if (result && result !== 'corrupt') return result;
+    if (result === 'corrupt' && options.forceRefreshAll) {
+      console.error(
+        `[researchContext] REPORT_JSON unloadable for ${sourceJobId} during forceRefreshAll; returning null to preserve existing row`,
+      );
+      return null;
+    }
+    // No REPORT_JSON content: fall through to PREVIEW_REPORT.
+  }
+
+  const previewAsset = await getJobAsset(sourceJobId, AssetType.PREVIEW_REPORT);
+  const previewResult = tryLoad(previewAsset);
+  return previewResult && previewResult !== 'corrupt' ? previewResult : null;
+}
+
+/**
+ * INGESTION ONLY. Idempotent. Always returns a row — extraction failures
+ * produce a placeholder row instead of null (so callers can rely on
+ * FK-target existence). Safe to call before the related CatalogIdea /
+ * CatalogPainPoint insert.
+ *
+ * MUST NOT be called from public catalog runtime paths. Public routes read
+ * `CatalogResearchContext` only via Prisma relations on `getCategoryLanding`,
+ * `getIdeaBySlug`, and `getPainPointBySlug`.
+ *
+ * Behavior:
+ * - Real (non-placeholder) row exists → return unchanged.
+ * - Placeholder row exists, `forceRefreshPlaceholders` false → return unchanged.
+ * - Placeholder row exists, `forceRefreshPlaceholders` true → re-attempt
+ *   extraction. If a report asset is now available, upsert; otherwise
+ *   return the placeholder unchanged.
+ * - `forceRefreshAll` true: re-project regardless, but with a DOWNGRADE
+ *   GUARD — if the loader returns null and the existing row has any
+ *   projected data, return existing unchanged. Never overwrite real data
+ *   with `emptyProjection()`.
+ * - No row exists → attempt extraction. On success, persist the projection.
+ *   On failure, persist a placeholder row.
+ */
+export async function extractOrCreateResearchContext(
+  sourceJobId: string,
+  options: ExtractOptions = {},
+): Promise<CatalogResearchContext> {
+  const existing = await prisma.catalogResearchContext.findUnique({
+    where: { sourceJobId },
+  });
+
+  // Placeholder = no MEANINGFUL data. A row with only timestamps + zero
+  // metrics IS a placeholder (refresh-eligible). hasProjectedData is used
+  // ONLY in the downgrade-preservation guard below.
+  const isPlaceholder = existing != null && !hasMeaningfulResearchContext(existing);
+
+  if (existing && !isPlaceholder && !options.forceRefreshAll) {
+    return existing;
+  }
+  if (
+    existing &&
+    isPlaceholder &&
+    !options.forceRefreshPlaceholders &&
+    !options.forceRefreshAll
+  ) {
+    return existing;
+  }
+
+  const report = await loadReportJson(sourceJobId, {
+    forceRefreshAll: options.forceRefreshAll,
+  });
+
+  // Downgrade guard: never overwrite a row that has projected data with
+  // an empty projection. If the loader returned null but the row already
+  // exists with any extraction-stamped fields, preserve it.
+  if (existing && report == null && hasProjectedData(existing)) {
+    return existing;
+  }
+
+  const projection = report
+    ? projectReport(report, options.sourceKind ?? 'commissioned')
+    : emptyProjection();
+
+  return prisma.catalogResearchContext.upsert({
+    where: { sourceJobId },
+    create: { sourceJobId, ...projection },
+    update: { ...projection, extractedAt: new Date() },
+  });
+}
+
+/**
+ * Admin tool, rare; not wired into any automatic flow. Use to manually nuke a
+ * row (e.g., a placeholder that should be re-extracted from a now-available
+ * report) so the next call rebuilds it from scratch.
+ */
+export async function deleteResearchContext(sourceJobId: string): Promise<void> {
+  await prisma.catalogResearchContext.deleteMany({ where: { sourceJobId } });
+}

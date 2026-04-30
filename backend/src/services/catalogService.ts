@@ -2,8 +2,10 @@ import { readFileSync, existsSync } from 'fs';
 import { z } from 'zod';
 import { prisma } from './db.js';
 import { getJobAsset } from './jobService.js';
-import { AssetType } from '@prisma/client';
+import { AssetType, Prisma } from '@prisma/client';
 import { resolveAssetPath } from '../utils/assetPath.js';
+import { getRedis } from './redis.js';
+import { extractOrCreateResearchContext, hasMeaningfulResearchContext } from './researchContextService.js';
 
 // ============================================
 // Slug helpers
@@ -17,14 +19,105 @@ function slugify(text: string): string {
     .slice(0, 120);
 }
 
-async function generateUniqueSlug(name: string, parentSlug?: string): Promise<string> {
-  const base = parentSlug ? `${parentSlug}-${slugify(name)}` : slugify(name);
-  const existing = await prisma.catalogCategory.findUnique({ where: { slug: base } });
+// Idea/pain-point slugs: [descriptor]-[niche]-[format], capped at 8 segments,
+// with numeric collision suffix. Mirrors what scripts/migrateCatalogSlugs.ts
+// uses so backfilled and newly-published content share the same slug shape.
+const IDEA_PAIN_SLUG_MAX_SEGMENTS = 8;
+
+function capSlugSegments(slug: string, max: number): string {
+  return slug.split('-').filter(Boolean).slice(0, max).join('-');
+}
+
+async function nicheSlugForCategory(categoryId: string): Promise<string> {
+  const cat = await prisma.catalogCategory.findUnique({
+    where: { id: categoryId },
+    select: { slug: true, parent: { select: { slug: true } } },
+  });
+  // Parent slug is the niche for nested categories; otherwise the category's own slug.
+  return cat?.parent?.slug ?? cat?.slug ?? 'misc';
+}
+
+/**
+ * Build a unique slug for a freshly-published CatalogIdea.
+ * Pattern: `<descriptor>-<niche>-<format>` (capped at 8 segments).
+ */
+export async function generateIdeaSlug(
+  args: {
+    name: string;
+    categoryId: string;
+    format?: string | null;
+  },
+  tx?: Prisma.TransactionClient,
+): Promise<string> {
+  const client = tx ?? prisma;
+  const descriptor = slugify(args.name);
+  if (!descriptor) throw new Error('Cannot generate idea slug from empty name');
+  const niche = await nicheSlugForCategory(args.categoryId);
+  const format = (args.format && slugify(args.format)) || 'saas';
+  const base = capSlugSegments(`${descriptor}-${niche}-${format}`, IDEA_PAIN_SLUG_MAX_SEGMENTS);
+
+  let candidate = base;
+  let i = 2;
+  while (await client.catalogIdea.findFirst({ where: { slug: candidate } })) {
+    candidate = `${base}-${i}`;
+    i++;
+    if (i > 200) throw new Error(`Could not generate unique idea slug for base "${base}"`);
+  }
+  return candidate;
+}
+
+/**
+ * Build a unique slug for a freshly-published CatalogPainPoint.
+ * Pattern: `<descriptor>-<niche>-pain` (capped at 8 segments).
+ *
+ * Pass `tx` when called inside `prisma.$transaction` so uniqueness is
+ * checked against the tx snapshot rather than the global client.
+ */
+export async function generatePainPointSlug(
+  args: {
+    title: string;
+    categoryId: string;
+  },
+  tx?: Prisma.TransactionClient,
+): Promise<string> {
+  const client = tx ?? prisma;
+  const descriptor = slugify(args.title);
+  if (!descriptor) throw new Error('Cannot generate pain-point slug from empty title');
+  const niche = await nicheSlugForCategory(args.categoryId);
+  const base = capSlugSegments(`${descriptor}-${niche}-pain`, IDEA_PAIN_SLUG_MAX_SEGMENTS);
+
+  let candidate = base;
+  let i = 2;
+  while (await client.catalogPainPoint.findFirst({ where: { slug: candidate } })) {
+    candidate = `${base}-${i}`;
+    i++;
+    if (i > 200) throw new Error(`Could not generate unique pain-point slug for base "${base}"`);
+  }
+  return candidate;
+}
+
+/**
+ * Generate a slug that's unique scoped to the given parent.
+ *
+ * Top-level categories (parentId=null) share a global namespace via the
+ * partial unique index; child categories share a per-parent namespace via
+ * @@unique([parentId, slug]). The slug stays in local form (no parent
+ * prefix) so it produces clean nested URLs like /ideas/saas/b2b-tools.
+ */
+async function generateUniqueSlug(name: string, parentId: string | null = null): Promise<string> {
+  const base = slugify(name);
+  if (!base) throw new Error('Could not slugify name');
+
+  const existing = await prisma.catalogCategory.findFirst({
+    where: { parentId, slug: base },
+  });
   if (!existing) return base;
-  // Append numeric suffix
+
   for (let i = 2; i <= 100; i++) {
     const candidate = `${base}-${i}`;
-    const exists = await prisma.catalogCategory.findUnique({ where: { slug: candidate } });
+    const exists = await prisma.catalogCategory.findFirst({
+      where: { parentId, slug: candidate },
+    });
     if (!exists) return candidate;
   }
   throw new Error('Could not generate unique slug');
@@ -74,20 +167,18 @@ export async function createCategory(data: {
   }
 
   let slug: string;
+  const parentId = data.parentId ?? null;
   if (data.slug) {
-    const existing = await prisma.catalogCategory.findUnique({ where: { slug: data.slug } });
-    if (existing) throw new Error('Slug already exists');
+    const existing = await prisma.catalogCategory.findFirst({
+      where: { parentId, slug: data.slug },
+    });
+    if (existing) throw new Error('Slug already exists at this level');
     slug = data.slug;
   } else {
-    let parentSlug: string | undefined;
-    if (data.parentId) {
-      const parent = await prisma.catalogCategory.findUnique({ where: { id: data.parentId } });
-      parentSlug = parent?.slug;
-    }
-    slug = await generateUniqueSlug(data.name, parentSlug);
+    slug = await generateUniqueSlug(data.name, parentId);
   }
 
-  return prisma.catalogCategory.create({
+  const created = await prisma.catalogCategory.create({
     data: {
       name: data.name,
       slug,
@@ -96,6 +187,14 @@ export async function createCategory(data: {
       sortOrder: data.sortOrder ?? 0,
     },
   });
+
+  if (created.parentId) {
+    await invalidateCategoryLanding(created.parentId);
+  } else {
+    await invalidatePublicCategoryTree();
+  }
+
+  return created;
 }
 
 export async function updateCategory(id: string, data: {
@@ -106,6 +205,11 @@ export async function updateCategory(id: string, data: {
   superGroupId?: string | null;
   sortOrder?: number;
   isActive?: boolean;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  longDescription?: string | null;
+  faqJson?: unknown;
+  tags?: string[];
 }) {
   // Two-level validation if changing parent
   if (data.parentId !== undefined && data.parentId !== null) {
@@ -115,16 +219,63 @@ export async function updateCategory(id: string, data: {
     if (parent.id === id) throw new Error('Cannot set category as its own parent');
   }
 
-  // Check slug uniqueness if changing
+  // Check slug uniqueness if changing — slugs are now scoped to parent.
+  // Look up the target row to know its parent context (or new parent if changing).
   if (data.slug) {
-    const existing = await prisma.catalogCategory.findUnique({ where: { slug: data.slug } });
-    if (existing && existing.id !== id) throw new Error('Slug already exists');
+    const targetParentId =
+      data.parentId !== undefined
+        ? data.parentId
+        : (await prisma.catalogCategory.findUnique({ where: { id }, select: { parentId: true } }))
+            ?.parentId ?? null;
+
+    const conflict = await prisma.catalogCategory.findFirst({
+      where: { parentId: targetParentId, slug: data.slug, id: { not: id } },
+    });
+    if (conflict) throw new Error('Slug already exists at this level');
   }
 
-  return prisma.catalogCategory.update({
+  // Capture the previous URL location so stale Redis entries for renamed/moved
+  // categories are removed immediately instead of lingering until TTL expiry.
+  const before = await prisma.catalogCategory.findUnique({
     where: { id },
-    data,
+    select: {
+      slug: true,
+      legacySlug: true,
+      parentId: true,
+      parent: { select: { slug: true } },
+    },
   });
+
+  // Prisma's strict types reject `unknown` for Json columns; cast at the boundary.
+  const updated = await prisma.catalogCategory.update({
+    where: { id },
+    data: data as never,
+  });
+
+  const after = await prisma.catalogCategory.findUnique({
+    where: { id },
+    select: {
+      slug: true,
+      legacySlug: true,
+      parentId: true,
+      parent: { select: { slug: true } },
+    },
+  });
+
+  await invalidateCategoryLandingLocations([before, after]);
+
+  // Invalidate legacy-redirect cache for both the old and new slug + legacySlug
+  // forms so the resolver re-queries Postgres on next crawl hit.
+  if (before) {
+    const keys = new Set<string>();
+    if (before.slug) keys.add(before.slug);
+    if (before.legacySlug) keys.add(before.legacySlug);
+    if (updated.slug) keys.add(updated.slug);
+    if (updated.legacySlug) keys.add(updated.legacySlug);
+    await invalidateLegacyCategoryRedirect([...keys]);
+  }
+
+  return updated;
 }
 
 export async function deleteCategory(id: string) {
@@ -138,7 +289,18 @@ export async function deleteCategory(id: string) {
     throw new Error(`Category has ${ideaCount} ideas and ${painPointCount} pain points. Reassign or delete them first.`);
   }
 
-  return prisma.catalogCategory.delete({ where: { id } });
+  const before = await prisma.catalogCategory.findUnique({
+    where: { id },
+    select: {
+      slug: true,
+      parentId: true,
+      parent: { select: { slug: true } },
+    },
+  });
+
+  const deleted = await prisma.catalogCategory.delete({ where: { id } });
+  await invalidateCategoryLandingLocations([before]);
+  return deleted;
 }
 
 // ============================================
@@ -473,14 +635,31 @@ export async function publishIdea(params: {
   }
 
   const solutionName = (solution.solution_name as string) || 'Unknown Solution';
+  const projectType = (solution.project_type as string) ?? null;
   const verdict = report.executive_dashboard?.go_no_go_verdict?.verdict || null;
   const generatedAt = report.generated_at ? new Date(report.generated_at) : null;
+
+  // Generate the public slug + format outside the transaction (the slug
+  // uniqueness check needs to read committed data).
+  const slug = await generateIdeaSlug({
+    name: solutionName,
+    categoryId: params.categoryId,
+    format: projectType,
+  });
+  const format = projectType ? slugify(projectType) || 'saas' : 'saas';
+
+  // Phase 5: ensure CatalogResearchContext row exists BEFORE the idea insert
+  // so the FK target is in place. Idempotent — first publish for a sourceJobId
+  // does the projection work, subsequent publishes short-circuit.
+  await extractOrCreateResearchContext(params.sourceJobId);
 
   try {
     const idea = await prisma.$transaction(async (tx) => {
       const created = await tx.catalogIdea.create({
         data: {
           categoryId: params.categoryId,
+          slug,
+          format,
           sourceJobId: params.sourceJobId,
           sourceNiche: report.niche || '',
           sourceVerdict: verdict,
@@ -489,7 +668,7 @@ export async function publishIdea(params: {
           solutionName,
           description: (solution.description as string) || '',
           valueProposition: (solution.value_proposition as string) ?? null,
-          projectType: (solution.project_type as string) ?? null,
+          projectType,
           coreFeatures: safeStringArray(solution.core_features) || undefined,
           targetPersonas: safeStringArray(solution.target_personas) || undefined,
           technicalApproach: (solution.technical_approach as string) ?? null,
@@ -521,6 +700,7 @@ export async function publishIdea(params: {
       return created;
     });
 
+    await invalidateCategoryLanding(params.categoryId);
     return idea;
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -549,17 +729,27 @@ export async function publishPainPoint(params: {
 
   const pp = report.detailed_pain_points[params.itemIndex];
   const generatedAt = report.generated_at ? new Date(report.generated_at) : null;
+  const ppTitle = pp.title || `Pain Point ${params.itemIndex + 1}`;
+  const ppSlug = await generatePainPointSlug({
+    title: ppTitle,
+    categoryId: params.categoryId,
+  });
+
+  // Phase 5: ensure CatalogResearchContext row exists BEFORE the pain-point
+  // insert so the FK target is in place. Idempotent.
+  await extractOrCreateResearchContext(params.sourceJobId);
 
   try {
     const painPoint = await prisma.$transaction(async (tx) => {
       const created = await tx.catalogPainPoint.create({
         data: {
           categoryId: params.categoryId,
+          slug: ppSlug,
           sourceJobId: params.sourceJobId,
           sourceNiche: report.niche || '',
           sourceGeneratedAt: generatedAt,
           sourceItemIndex: params.itemIndex,
-          title: pp.title || `Pain Point ${params.itemIndex + 1}`,
+          title: ppTitle,
           description: pp.description || '',
           mentionCount: pp.mention_count ?? 0,
           severityScore: pp.severity_score ?? 0,
@@ -587,6 +777,7 @@ export async function publishPainPoint(params: {
       return created;
     });
 
+    await invalidateCategoryLanding(params.categoryId);
     return painPoint;
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -601,7 +792,13 @@ export async function updateCatalogIdea(id: string, data: {
   isFeatured?: boolean;
   isActive?: boolean;
 }) {
-  return prisma.$transaction(async (tx) => {
+  // Capture original categoryId so we can invalidate both old and new on category change.
+  const before = await prisma.catalogIdea.findUnique({
+    where: { id },
+    select: { categoryId: true },
+  });
+
+  const result = await prisma.$transaction(async (tx) => {
     const idea = await tx.catalogIdea.update({
       where: { id },
       data,
@@ -625,6 +822,14 @@ export async function updateCatalogIdea(id: string, data: {
 
     return idea;
   });
+
+  // Invalidate landing for current category and original (if moved).
+  await invalidateCategoryLanding(result.categoryId);
+  if (before && before.categoryId !== result.categoryId) {
+    await invalidateCategoryLanding(before.categoryId);
+  }
+
+  return result;
 }
 
 export async function updateCatalogPainPoint(id: string, data: {
@@ -632,7 +837,12 @@ export async function updateCatalogPainPoint(id: string, data: {
   isFeatured?: boolean;
   isActive?: boolean;
 }) {
-  return prisma.$transaction(async (tx) => {
+  const before = await prisma.catalogPainPoint.findUnique({
+    where: { id },
+    select: { categoryId: true },
+  });
+
+  const result = await prisma.$transaction(async (tx) => {
     const pp = await tx.catalogPainPoint.update({
       where: { id },
       data,
@@ -655,6 +865,13 @@ export async function updateCatalogPainPoint(id: string, data: {
 
     return pp;
   });
+
+  await invalidateCategoryLanding(result.categoryId);
+  if (before && before.categoryId !== result.categoryId) {
+    await invalidateCategoryLanding(before.categoryId);
+  }
+
+  return result;
 }
 
 // ============================================
@@ -664,6 +881,8 @@ export async function updateCatalogPainPoint(id: string, data: {
 export async function depublishIdea(id: string) {
   const idea = await prisma.catalogIdea.findUnique({ where: { id } });
   if (!idea) return null;
+
+  const categoryIdToInvalidate = idea.categoryId;
 
   await prisma.$transaction(async (tx) => {
     await tx.catalogIdea.update({ where: { id }, data: { isActive: false } });
@@ -710,12 +929,15 @@ export async function depublishIdea(id: string) {
     }
   });
 
+  await invalidateCategoryLanding(categoryIdToInvalidate);
   return idea;
 }
 
 export async function depublishPainPoint(id: string) {
   const pp = await prisma.catalogPainPoint.findUnique({ where: { id } });
   if (!pp) return null;
+
+  const categoryIdToInvalidate = pp.categoryId;
 
   await prisma.$transaction(async (tx) => {
     await tx.catalogPainPoint.update({ where: { id }, data: { isActive: false } });
@@ -761,6 +983,7 @@ export async function depublishPainPoint(id: string) {
     }
   });
 
+  await invalidateCategoryLanding(categoryIdToInvalidate);
   return pp;
 }
 
@@ -771,10 +994,12 @@ export async function depublishPainPoint(id: string) {
 function toIdeaPreview(idea: Record<string, any>) {
   return {
     id: idea.id,
+    slug: idea.slug,
     solution_name: idea.solutionName,
     description: idea.description,
     value_proposition: idea.valueProposition,
     project_type: idea.projectType,
+    format: idea.format,
     core_features: idea.coreFeatures,
     target_personas: idea.targetPersonas,
     differentiation_factors: idea.differentiationFactors,
@@ -795,6 +1020,7 @@ function toIdeaPreview(idea: Record<string, any>) {
     is_featured: idea.isFeatured,
     category: idea.category,
     created_at: idea.createdAt,
+    updated_at: idea.updatedAt,
   };
 }
 
@@ -825,13 +1051,17 @@ export async function listPublishedIdeas(params: {
   const where: Record<string, unknown> = { isActive: true };
 
   if (params.categorySlug) {
-    const category = await prisma.catalogCategory.findUnique({
-      where: { slug: params.categorySlug },
+    // Slug lookups must tolerate both the new local form (post-Phase-2.5) and
+    // the legacy globally-unique form (preserved in `legacySlug`) so existing
+    // /api/catalog/ideas?category=saas-b2b-tools links continue to work.
+    const category = await prisma.catalogCategory.findFirst({
+      where: {
+        OR: [{ slug: params.categorySlug }, { legacySlug: params.categorySlug }],
+      },
       include: { children: { select: { id: true } } },
     });
     if (category) {
-      // Include parent and all children
-      const categoryIds = [category.id, ...category.children.map(c => c.id)];
+      const categoryIds = [category.id, ...category.children.map((c) => c.id)];
       where.categoryId = { in: categoryIds };
     }
   }
@@ -869,12 +1099,14 @@ export async function listPublishedPainPoints(params: {
   const where: Record<string, unknown> = { isActive: true };
 
   if (params.categorySlug) {
-    const category = await prisma.catalogCategory.findUnique({
-      where: { slug: params.categorySlug },
+    const category = await prisma.catalogCategory.findFirst({
+      where: {
+        OR: [{ slug: params.categorySlug }, { legacySlug: params.categorySlug }],
+      },
       include: { children: { select: { id: true } } },
     });
     if (category) {
-      const categoryIds = [category.id, ...category.children.map(c => c.id)];
+      const categoryIds = [category.id, ...category.children.map((c) => c.id)];
       where.categoryId = { in: categoryIds };
     }
   }
@@ -948,6 +1180,8 @@ export async function searchCatalog(query: string, limit = 5) {
         name: true,
         slug: true,
         parentId: true,
+        // Parent slug needed by frontend to build nested URLs (/ideas/{parent}/{child})
+        parent: { select: { slug: true } },
         _count: { select: { ideas: { where: { isActive: true } }, painPoints: { where: { isActive: true } }, children: true } },
       },
       take: limit,
@@ -960,10 +1194,11 @@ export async function searchCatalog(query: string, limit = 5) {
       },
       select: {
         id: true,
+        slug: true,
         solutionName: true,
         description: true,
         marketFitScore: true,
-        category: { select: { name: true, slug: true } },
+        category: { select: { name: true, slug: true, parent: { select: { slug: true } } } },
       },
       take: limit,
       orderBy: { createdAt: 'desc' },
@@ -975,10 +1210,11 @@ export async function searchCatalog(query: string, limit = 5) {
       },
       select: {
         id: true,
+        slug: true,
         title: true,
         description: true,
         severityScore: true,
-        category: { select: { name: true, slug: true } },
+        category: { select: { name: true, slug: true, parent: { select: { slug: true } } } },
       },
       take: limit,
       orderBy: { createdAt: 'desc' },
@@ -990,6 +1226,7 @@ export async function searchCatalog(query: string, limit = 5) {
       id: c.id,
       name: c.name,
       slug: c.slug,
+      parentSlug: c.parent?.slug ?? null,
       isParent: !c.parentId,
       ideaCount: c._count.ideas,
       painPointCount: c._count.painPoints,
@@ -997,6 +1234,7 @@ export async function searchCatalog(query: string, limit = 5) {
     })),
     ideas: ideas.map(i => ({
       id: i.id,
+      slug: i.slug,
       solution_name: i.solutionName,
       description: i.description,
       market_fit_score: i.marketFitScore,
@@ -1004,6 +1242,7 @@ export async function searchCatalog(query: string, limit = 5) {
     })),
     painPoints: painPoints.map(pp => ({
       id: pp.id,
+      slug: pp.slug,
       title: pp.title,
       description: pp.description,
       severity_score: pp.severityScore,
@@ -1032,4 +1271,599 @@ export async function getDiscoverPainPoints(count: number = 4): Promise<Discover
     ORDER BY RANDOM()
     LIMIT ${count}
   `;
+}
+
+// ============================================
+// Landing-page payload, slug-based detail lookups, sitemap entries
+// (Phase 2 — public catalog SEO restructure)
+// ============================================
+
+const LANDING_CACHE_PREFIX = 'catalog:landing:v1';
+const LANDING_CACHE_TTL_BASE = 600; // seconds; ±10% jitter applied per write
+const TREE_CACHE_KEY = 'catalog:tree:v1';
+const TREE_CACHE_TTL = 300;
+
+function landingCacheKey(parentSlug: string, childSlug?: string | null): string {
+  return childSlug
+    ? `${LANDING_CACHE_PREFIX}:${parentSlug}:${childSlug}`
+    : `${LANDING_CACHE_PREFIX}:${parentSlug}`;
+}
+
+function jitteredTtl(): number {
+  const jitter = Math.floor(LANDING_CACHE_TTL_BASE * 0.1);
+  return LANDING_CACHE_TTL_BASE + Math.floor(Math.random() * (2 * jitter + 1)) - jitter;
+}
+
+interface CategoryLandingLocation {
+  slug: string;
+  parentId: string | null;
+  parent: { slug: string } | null;
+}
+
+function landingKeysForLocation(location: CategoryLandingLocation | null | undefined): string[] {
+  if (!location) return [];
+  if (location.parentId && location.parent) {
+    return [
+      landingCacheKey(location.parent.slug, location.slug),
+      landingCacheKey(location.parent.slug),
+    ];
+  }
+  return [landingCacheKey(location.slug)];
+}
+
+async function invalidateCategoryLandingLocations(
+  locations: Array<CategoryLandingLocation | null | undefined>,
+): Promise<void> {
+  try {
+    const keys = new Set<string>([TREE_CACHE_KEY]);
+    for (const location of locations) {
+      for (const key of landingKeysForLocation(location)) {
+        keys.add(key);
+      }
+    }
+    await getRedis().del(...keys);
+  } catch (err) {
+    console.error('Failed to invalidate landing cache:', err);
+  }
+}
+
+/**
+ * Invalidate the landing-page cache for a category. Always invalidates the
+ * category itself; if the category is a child, also invalidates its parent
+ * (since the parent landing aggregates ideas/pain-points from all its children).
+ */
+export async function invalidateCategoryLanding(categoryId: string): Promise<void> {
+  try {
+    const cat = await prisma.catalogCategory.findUnique({
+      where: { id: categoryId },
+      select: { slug: true, parentId: true, parent: { select: { slug: true } } },
+    });
+    if (!cat) return;
+
+    await invalidateCategoryLandingLocations([cat]);
+  } catch (err) {
+    console.error('Failed to invalidate landing cache:', err);
+  }
+}
+
+interface CategoryLandingPayload {
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    seoTitle: string | null;
+    seoDescription: string | null;
+    longDescription: string | null;
+    faqJson: unknown;
+    tags: string[];
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+  };
+  parent: { id: string; name: string; slug: string } | null;
+  superGroup: { id: string; name: string; slug: string } | null;
+  children: Array<{
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    ideaCount: number;
+    painPointCount: number;
+  }>;
+  siblings: Array<{ id: string; name: string; slug: string }>;
+  topIdeas: Array<Record<string, unknown>>;
+  topPainPoints: Array<Record<string, unknown>>;
+  totalIdeas: number;
+  totalPainPoints: number;
+  sources: string[];
+  // Phase 5: research context from the most-recent published item's source job.
+  // Null when the category has zero published items, or when the item's
+  // sourceJobId still maps to a placeholder context row (report.json missing).
+  // Frontend renders this as "Analysis from latest research in this niche."
+  researchContext: Record<string, unknown> | null;
+}
+
+const TOP_PREVIEW_LIMIT = 6;
+
+async function buildCategoryLandingPayload(
+  categoryId: string,
+): Promise<CategoryLandingPayload | null> {
+  const category = await prisma.catalogCategory.findUnique({
+    where: { id: categoryId },
+    include: {
+      parent: { select: { id: true, name: true, slug: true, parentId: true } },
+      superGroup: { select: { id: true, name: true, slug: true } },
+      children: {
+        where: { isActive: true },
+        orderBy: { sortOrder: 'asc' },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          _count: {
+            select: {
+              ideas: { where: { isActive: true } },
+              painPoints: { where: { isActive: true } },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!category) return null;
+
+  const childIds = category.children.map((c) => c.id);
+  const aggregateIds = [category.id, ...childIds];
+
+  const [topIdeasRaw, topPainPointsRaw, totalIdeas, totalPainPoints, siblingsRaw] = await Promise.all([
+    prisma.catalogIdea.findMany({
+      where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
+      include: { category: { select: { id: true, name: true, slug: true } } },
+      orderBy: [{ marketFitScore: 'desc' }, { createdAt: 'desc' }],
+      take: TOP_PREVIEW_LIMIT,
+    }),
+    prisma.catalogPainPoint.findMany({
+      where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
+      include: { category: { select: { id: true, name: true, slug: true } } },
+      orderBy: [{ severityScore: 'desc' }, { createdAt: 'desc' }],
+      take: TOP_PREVIEW_LIMIT,
+    }),
+    prisma.catalogIdea.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
+    prisma.catalogPainPoint.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
+    category.parentId
+      ? prisma.catalogCategory.findMany({
+          where: {
+            isActive: true,
+            parentId: category.parentId,
+            id: { not: category.id },
+          },
+          select: { id: true, name: true, slug: true },
+          orderBy: { sortOrder: 'asc' },
+          take: 12,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const topIdeas = topIdeasRaw.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => toIdeaPreview(rest));
+  const topPainPoints = topPainPointsRaw.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => rest);
+
+  // Phase 5: Attach the most-recent published item's research context so the
+  // category landing renders the same Audience/Market/Trend sections as
+  // detail pages, framed as "Analysis from latest research in this niche."
+  const recentItem = await findMostRecentItemSourceJobId(aggregateIds);
+  const researchContext = recentItem
+    ? await prisma.catalogResearchContext.findUnique({ where: { sourceJobId: recentItem } })
+    : null;
+  // Phase 5.4: render only when there's meaningful (non-timestamp-only)
+  // projected data. Materializer always writes timestamps so we can't gate
+  // on tier or single-field presence alone.
+  const researchContextOrNull =
+    researchContext && hasMeaningfulResearchContext(researchContext)
+      ? (researchContext as unknown as Record<string, unknown>)
+      : null;
+
+  return {
+    category: {
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      description: category.description,
+      seoTitle: category.seoTitle,
+      seoDescription: category.seoDescription,
+      longDescription: category.longDescription,
+      faqJson: category.faqJson,
+      tags: category.tags ?? [],
+      isActive: category.isActive,
+      createdAt: category.createdAt.toISOString(),
+      updatedAt: category.updatedAt.toISOString(),
+    },
+    parent: category.parent
+      ? { id: category.parent.id, name: category.parent.name, slug: category.parent.slug }
+      : null,
+    superGroup: category.superGroup,
+    children: category.children.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      description: c.description,
+      ideaCount: c._count.ideas,
+      painPointCount: c._count.painPoints,
+    })),
+    siblings: siblingsRaw,
+    topIdeas,
+    topPainPoints,
+    totalIdeas,
+    totalPainPoints,
+    // v1: hardcode the source platforms NicheIQ currently ingests from. Per
+    // plan, dynamic derivation from sourceJobId lineage is deferred — the data
+    // isn't trivially reachable from the catalog tables.
+    sources: ['Reddit', 'Hacker News'],
+    researchContext: researchContextOrNull,
+  };
+}
+
+/**
+ * Phase 5 helper: returns the sourceJobId of the most-recently-published
+ * active CatalogIdea or CatalogPainPoint inside the given category subtree
+ * (categoryId or any of its child categoryIds), or null if there are no
+ * active items.
+ *
+ * Pragmatic over precise — top-level categories aggregate "the most recent
+ * research in this niche" rather than blending analysis from every job. The
+ * frontend frames it as such ("Analysis from latest research in this niche").
+ */
+async function findMostRecentItemSourceJobId(
+  categoryIds: string[],
+): Promise<string | null> {
+  if (categoryIds.length === 0) return null;
+
+  // Raw SQL because Prisma's orderBy can't COALESCE. Lineage timestamp is
+  // sourceGeneratedAt (set by worker), with updatedAt + createdAt fallbacks
+  // for legacy rows. Postgres preserves camelCase column names when quoted.
+  const rows = await prisma.$queryRaw<{ source_job_id: string }[]>`
+    SELECT source_job_id
+    FROM (
+      SELECT
+        "sourceJobId" AS source_job_id,
+        COALESCE("sourceGeneratedAt", "updatedAt", "createdAt") AS effective_ts
+      FROM "CatalogIdea"
+      WHERE "isActive" = true AND "categoryId" IN (${Prisma.join(categoryIds)})
+      UNION ALL
+      SELECT
+        "sourceJobId" AS source_job_id,
+        COALESCE("sourceGeneratedAt", "updatedAt", "createdAt") AS effective_ts
+      FROM "CatalogPainPoint"
+      WHERE "isActive" = true AND "categoryId" IN (${Prisma.join(categoryIds)})
+    ) AS combined
+    ORDER BY effective_ts DESC
+    LIMIT 1
+  `;
+
+  return rows[0]?.source_job_id ?? null;
+}
+
+/**
+ * Resolve a public landing-page payload by URL slug tuple.
+ *
+ * - parentSlug only → top-level category (parentId IS NULL).
+ * - parentSlug + childSlug → nested category with that (parent, child) tuple.
+ *
+ * Returns `null` for unknown slug, `{ inactive: true }` for an inactive category
+ * (caller should respond 410 Gone).
+ */
+export async function getCategoryLanding(args: {
+  parentSlug: string;
+  childSlug?: string | null;
+}): Promise<CategoryLandingPayload | { inactive: true } | null> {
+  const cacheKey = landingCacheKey(args.parentSlug, args.childSlug);
+  const redis = getRedis();
+
+  try {
+    const cached = await redis.get(cacheKey);
+    if (cached) {
+      return JSON.parse(cached) as CategoryLandingPayload;
+    }
+  } catch (err) {
+    console.error('Landing cache read failed:', err);
+  }
+
+  let category: { id: string; isActive: boolean } | null;
+  if (args.childSlug) {
+    const parent = await prisma.catalogCategory.findFirst({
+      where: { parentId: null, slug: args.parentSlug },
+      select: { id: true },
+    });
+    if (!parent) return null;
+    category = await prisma.catalogCategory.findFirst({
+      where: { parentId: parent.id, slug: args.childSlug },
+      select: { id: true, isActive: true },
+    });
+  } else {
+    category = await prisma.catalogCategory.findFirst({
+      where: { parentId: null, slug: args.parentSlug },
+      select: { id: true, isActive: true },
+    });
+  }
+
+  if (!category) return null;
+  if (!category.isActive) return { inactive: true };
+
+  const payload = await buildCategoryLandingPayload(category.id);
+  if (!payload) return null;
+
+  try {
+    await redis.setex(cacheKey, jitteredTtl(), JSON.stringify(payload));
+  } catch (err) {
+    console.error('Landing cache write failed:', err);
+  }
+
+  return payload;
+}
+
+export async function getIdeaBySlug(slug: string) {
+  const idea = await prisma.catalogIdea.findFirst({
+    where: { slug, isActive: true },
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { name: true, slug: true } },
+        },
+      },
+      researchContext: true,
+    },
+  });
+  if (!idea) return null;
+  const { sourceJobId: _s, publishedById: _p, researchContext, ...rest } = idea;
+  const preview = toIdeaPreview(rest);
+  return { ...preview, researchContext };
+}
+
+export async function getPainPointBySlug(slug: string) {
+  const pp = await prisma.catalogPainPoint.findFirst({
+    where: { slug, isActive: true },
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { name: true, slug: true } },
+        },
+      },
+      researchContext: true,
+    },
+  });
+  if (!pp) return null;
+  const { sourceJobId: _s, publishedById: _p, ...rest } = pp;
+  return rest;
+}
+
+interface SitemapEntry {
+  slug: string;
+  parentSlug: string | null;
+  updatedAt: string;
+  ideaCount: number;
+  painPointCount: number;
+}
+
+/**
+ * Sitemap data for active categories. Frontend `sitemap.xml/+server.ts` consumes
+ * this to emit `/ideas/{niche}` and `/ideas/{niche}/{sub}` URLs.
+ */
+export async function getCategorySitemapEntries(): Promise<SitemapEntry[]> {
+  const categories = await prisma.catalogCategory.findMany({
+    where: { isActive: true },
+    select: {
+      slug: true,
+      updatedAt: true,
+      parent: { select: { slug: true } },
+      _count: {
+        select: {
+          ideas: { where: { isActive: true } },
+          painPoints: { where: { isActive: true } },
+        },
+      },
+    },
+    orderBy: [{ parentId: 'asc' }, { sortOrder: 'asc' }],
+  });
+
+  return categories.map((c) => ({
+    slug: c.slug,
+    parentSlug: c.parent?.slug ?? null,
+    updatedAt: c.updatedAt.toISOString(),
+    ideaCount: c._count.ideas,
+    painPointCount: c._count.painPoints,
+  }));
+}
+
+interface IdeaSitemapEntry {
+  slug: string;
+  updatedAt: string;
+}
+
+export async function getIdeaSitemapEntries(): Promise<IdeaSitemapEntry[]> {
+  const ideas = await prisma.catalogIdea.findMany({
+    where: { isActive: true, slug: { not: null } },
+    select: { slug: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  return ideas
+    .filter((i): i is { slug: string; updatedAt: Date } => typeof i.slug === 'string')
+    .map((i) => ({ slug: i.slug, updatedAt: i.updatedAt.toISOString() }));
+}
+
+export async function getPainPointSitemapEntries(): Promise<IdeaSitemapEntry[]> {
+  const pps = await prisma.catalogPainPoint.findMany({
+    where: { isActive: true, slug: { not: null } },
+    select: { slug: true, updatedAt: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  return pps
+    .filter((p): p is { slug: string; updatedAt: Date } => typeof p.slug === 'string')
+    .map((p) => ({ slug: p.slug, updatedAt: p.updatedAt.toISOString() }));
+}
+
+/**
+ * Public categories tree (top-level + children with active counts) for the
+ * `(public)/ideas/+layout.server.ts` loader. Wraps `listCategories(true)` with
+ * a 5-minute Redis cache (`catalog:tree:v1`) so concurrent crawler hits don't
+ * stampede Postgres.
+ */
+export async function getPublicCategoryTree() {
+  const redis = getRedis();
+  try {
+    const cached = await redis.get(TREE_CACHE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch (err) {
+    console.error('Tree cache read failed:', err);
+  }
+
+  const tree = await listCategories(true);
+
+  try {
+    await redis.setex(TREE_CACHE_KEY, TREE_CACHE_TTL, JSON.stringify(tree));
+  } catch (err) {
+    console.error('Tree cache write failed:', err);
+  }
+  return tree;
+}
+
+export async function invalidatePublicCategoryTree(): Promise<void> {
+  try {
+    await getRedis().del(TREE_CACHE_KEY);
+  } catch (err) {
+    console.error('Tree cache invalidate failed:', err);
+  }
+}
+
+// =====================================================================
+// Legacy URL → new URL redirect resolvers (Phase 3.4)
+//
+// Used by the SvelteKit `hooks.server.ts` 301-redirect layer to map every
+// legacy `/catalog/*` URL to its new `/ideas/*` (or `/idea/*`,
+// `/pain-point/*`) equivalent. Cached in Redis (24h positive / 1h negative)
+// because crawler traffic is read-mostly. Cache invalidation lives inside
+// `invalidateCategoryLanding` for category renames.
+// =====================================================================
+
+const LEGACY_REDIRECT_PREFIX = 'redirect:legacy:v1';
+const LEGACY_TTL_HIT = 24 * 60 * 60; // 24 hours
+const LEGACY_TTL_MISS = 60 * 60; // 1 hour (negative cache)
+
+type LegacyKind = 'category' | 'idea' | 'pain-point';
+
+function legacyKey(kind: LegacyKind, key: string): string {
+  return `${LEGACY_REDIRECT_PREFIX}:${kind}:${key}`;
+}
+
+async function readLegacyCache(kind: LegacyKind, key: string): Promise<string | null | undefined> {
+  try {
+    const raw = await getRedis().get(legacyKey(kind, key));
+    if (raw === null) return undefined; // cache miss (not yet looked up)
+    if (raw === '') return null; // negative cache hit (looked up, no result)
+    return raw;
+  } catch (err) {
+    console.error('legacy redirect cache read failed:', err);
+    return undefined;
+  }
+}
+
+async function writeLegacyCache(
+  kind: LegacyKind,
+  key: string,
+  target: string | null,
+): Promise<void> {
+  try {
+    const ttl = target ? LEGACY_TTL_HIT : LEGACY_TTL_MISS;
+    await getRedis().setex(legacyKey(kind, key), ttl, target ?? '');
+  } catch (err) {
+    console.error('legacy redirect cache write failed:', err);
+  }
+}
+
+/**
+ * Resolve a legacy category slug to a new path.
+ *
+ * Order matters because the slug column is now parent-scoped (post-Phase-2.5):
+ *  1. Prefer `legacySlug` — these were globally unique by construction, so
+ *     a hit unambiguously identifies one category.
+ *  2. Fall back to `slug` for top-level (`parentId IS NULL`) only — top-level
+ *     slugs share a global namespace via the partial unique index. Bare
+ *     child slug lookup is deliberately not attempted (would be ambiguous).
+ *
+ * Returns `null` for unknown / inactive categories.
+ */
+export async function resolveLegacyCategory(legacyKey: string): Promise<string | null> {
+  const cached = await readLegacyCache('category', legacyKey);
+  if (cached !== undefined) return cached;
+
+  let cat = await prisma.catalogCategory.findFirst({
+    where: { legacySlug: legacyKey, isActive: true },
+    include: { parent: { select: { slug: true } } },
+  });
+  if (!cat) {
+    cat = await prisma.catalogCategory.findFirst({
+      where: { slug: legacyKey, parentId: null, isActive: true },
+      include: { parent: { select: { slug: true } } },
+    });
+  }
+
+  const target = cat
+    ? cat.parent
+      ? `/ideas/${cat.parent.slug}/${cat.slug}`
+      : `/ideas/${cat.slug}`
+    : null;
+
+  await writeLegacyCache('category', legacyKey, target);
+  return target;
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function resolveLegacyIdea(idOrSlug: string): Promise<string | null> {
+  const cached = await readLegacyCache('idea', idOrSlug);
+  if (cached !== undefined) return cached;
+
+  const isUuid = UUID_RE.test(idOrSlug);
+  const idea = await prisma.catalogIdea.findFirst({
+    where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), isActive: true },
+    select: { slug: true },
+  });
+  const target = idea?.slug ? `/idea/${idea.slug}` : null;
+  await writeLegacyCache('idea', idOrSlug, target);
+  return target;
+}
+
+export async function resolveLegacyPainPoint(idOrSlug: string): Promise<string | null> {
+  const cached = await readLegacyCache('pain-point', idOrSlug);
+  if (cached !== undefined) return cached;
+
+  const isUuid = UUID_RE.test(idOrSlug);
+  const pp = await prisma.catalogPainPoint.findFirst({
+    where: { ...(isUuid ? { id: idOrSlug } : { slug: idOrSlug }), isActive: true },
+    select: { slug: true },
+  });
+  const target = pp?.slug ? `/pain-point/${pp.slug}` : null;
+  await writeLegacyCache('pain-point', idOrSlug, target);
+  return target;
+}
+
+/**
+ * Invalidate legacy-redirect cache entries for a category. Called when an
+ * admin renames a category — both the old and new lookup keys must be evicted
+ * so the redirect resolver re-queries the DB.
+ */
+export async function invalidateLegacyCategoryRedirect(keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  try {
+    await getRedis().del(...keys.map((k) => legacyKey('category', k)));
+  } catch (err) {
+    console.error('legacy redirect cache invalidate failed:', err);
+  }
 }

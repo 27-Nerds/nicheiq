@@ -206,7 +206,11 @@ def publish_report_ready(job_id: str, report_path: str, winner_name: str = None)
         logger.info(f"[Progress] Report ready notification sent for job {job_id}")
 
     except requests.exceptions.RequestException as e:
+        # Phase 5.4: re-raise so the RQ task fails and retries. /report-ready
+        # is now idempotent (asset upsert + first-delivery email gate +
+        # extraction with downgrade guard), so retries are safe.
         logger.error(f"[Progress] Failed to publish report-ready: {e}")
+        raise
 
 
 def publish_job_completed(
@@ -357,24 +361,38 @@ def notify_regeneration_failed(job_id: str, error_message: str) -> None:
         logger.error(f"[Progress] Failed to notify regeneration failed: {e}")
 
 
-def notify_catalog_pain_points_ready(job_id: str, category_id: str, pain_points: list[dict], niche: str) -> None:
+def notify_catalog_pain_points_ready(
+    job_id: str,
+    category_id: str,
+    pain_points: list[dict],
+    niche: str,
+    preview_report_path: Optional[str] = None,
+) -> None:
     """
     Notify backend that catalog pain points are ready for merge/insert.
+
+    Phase 5.4: re-raises POST failures so the RQ task fails and gets retried.
+    The backend handler is idempotent (status guard + transactional mutation),
+    so retry is safe.
 
     Args:
         job_id: The job UUID
         category_id: The catalog category UUID
         pain_points: List of pain point dicts (from PainPoint.model_dump())
         niche: The niche description used for generation
+        preview_report_path: Path to the materialized preview report file.
+            Required for catalog flow — backend rejects requests without it.
     """
     try:
-        payload = {
+        payload: dict = {
             "worker_id": _get_worker_id(),
             "job_id": job_id,
             "category_id": category_id,
             "pain_points": pain_points,
             "niche": niche,
         }
+        if preview_report_path:
+            payload["preview_report_path"] = preview_report_path
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/catalog-pain-points-ready",
@@ -387,26 +405,40 @@ def notify_catalog_pain_points_ready(job_id: str, category_id: str, pain_points:
 
     except requests.exceptions.RequestException as e:
         logger.error(f"[Progress] Failed to notify catalog pain points ready: {e}")
+        raise
 
 
-def notify_catalog_ideas_ready(job_id: str, category_id: str, ideas: list[dict], niche: str) -> None:
+def notify_catalog_ideas_ready(
+    job_id: str,
+    category_id: str,
+    ideas: list[dict],
+    niche: str,
+    parent_source_job_id: Optional[str] = None,
+) -> None:
     """
     Notify backend that catalog ideas are ready for insert.
+
+    Phase 5.4: re-raises POST failures so the RQ task fails and gets retried.
 
     Args:
         job_id: The job UUID
         category_id: The catalog category UUID
         ideas: List of idea dicts (from BaseSolutionIdea via _solution_to_preview_dict)
         niche: The niche description used for generation
+        parent_source_job_id: Optional sourceJobId of the pain-points-job
+            these ideas were generated from. When set, backend uses it as
+            effectiveSourceJobId so ideas FK into the same context row.
     """
     try:
-        payload = {
+        payload: dict = {
             "worker_id": _get_worker_id(),
             "job_id": job_id,
             "category_id": category_id,
             "ideas": ideas,
             "niche": niche,
         }
+        if parent_source_job_id:
+            payload["parent_source_job_id"] = parent_source_job_id
 
         response = requests.post(
             f"{_get_backend_url()}/api/workers/catalog-ideas-ready",
@@ -419,6 +451,7 @@ def notify_catalog_ideas_ready(job_id: str, category_id: str, ideas: list[dict],
 
     except requests.exceptions.RequestException as e:
         logger.error(f"[Progress] Failed to notify catalog ideas ready: {e}")
+        raise
 
 
 def notify_job_quality_gate_stop(

@@ -1,19 +1,44 @@
 <script lang="ts">
+  import type { ComponentType } from "svelte";
   import { onMount } from "svelte";
+  import { Hash } from "lucide-svelte";
   import { REPORT_SECTIONS } from "$lib/config/report-sections";
   import type { ReportSectionInfo } from "$lib/config/report-sections";
   import type { Report } from "$lib/types/report";
 
-  interface Props {
-    report?: Report | null;
+  // Phase 5: catalog pages compose their own section list and pass it via the
+  // `sections` prop. Existing in-app `/shared/[shareToken]` consumer keeps
+  // passing only `report` and gets the Report-derived behavior.
+  interface SectionEntry {
+    id: string;
+    label: string;
+    icon?: ComponentType;
   }
 
-  let { report = null }: Props = $props();
+  interface Props {
+    report?: Report | null;
+    sections?: SectionEntry[];
+    /** Phase 5.3: when true, labels are visible by default (no hover-reveal
+     *  collapse). Default false preserves the icon-collapsed rail behavior
+     *  used at /shared/[shareToken] and on catalog detail pages. Category
+     *  pages pass true to match the reference design's always-visible
+     *  "On This Page" rail. */
+    expanded?: boolean;
+  }
+
+  let {
+    report = null,
+    sections: explicitSections,
+    expanded = false,
+  }: Props = $props();
 
   const allSections: ReportSectionInfo[] = REPORT_SECTIONS;
 
-  // Filter sections based on report data availability
-  const sections = $derived.by(() => {
+  // Filter sections based on report data availability when no explicit list
+  // was passed. Catalog callers always pass `sections` so this branch is
+  // skipped for them.
+  const sections = $derived.by<SectionEntry[]>(() => {
+    if (explicitSections) return explicitSections;
     if (!report) return allSections;
 
     return allSections.filter((section) => {
@@ -90,7 +115,7 @@
 <svelte:window onscroll={handleScroll} />
 
 <!-- Desktop Sidebar -->
-<nav class="section-nav-desktop">
+<nav class="section-nav-desktop" class:expanded>
   <!-- Progress bar -->
   <div class="nav-progress-track">
     <div class="nav-progress-fill" style:height="{scrollProgress * 100}%"></div>
@@ -98,7 +123,7 @@
 
   <div class="nav-items">
     {#each sections as section}
-      {@const Icon = section.icon}
+      {@const Icon = section.icon ?? Hash}
       {@const isActive = activeSection === section.id}
       <button
         class="nav-item"
@@ -134,7 +159,7 @@
   {#if isOpen}
     <div class="nav-mobile-menu">
       {#each sections as section}
-        {@const Icon = section.icon}
+        {@const Icon = section.icon ?? Hash}
         {@const isActive = activeSection === section.id}
         <button
           class="nav-mobile-item"
@@ -235,6 +260,14 @@
   .section-nav-desktop:hover .nav-item-label {
     opacity: 1;
     max-width: 100px;
+    margin-left: 0.25rem;
+  }
+
+  /* Phase 5.3 expanded mode: labels visible by default. Category pages opt
+     into this; detail pages keep the hover-reveal default. */
+  .section-nav-desktop.expanded .nav-item-label {
+    opacity: 1;
+    max-width: 160px;
     margin-left: 0.25rem;
   }
 

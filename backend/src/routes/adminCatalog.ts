@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
-import { Redis } from 'ioredis';
 import { CONFIG } from '../config.js';
 import { AuthenticatedRequest } from '../middleware/auth.js';
 import {
@@ -21,15 +20,12 @@ import {
 import { categorizeBatch } from '../services/categorizationService.js';
 import { enqueueCatalogPainPointsJob, enqueueCatalogIdeasJob } from '../services/queueService.js';
 import { prisma } from '../services/db.js';
+import { getRedis } from '../services/redis.js';
 import { JobStatus } from '@prisma/client';
 
 export const adminCatalogRouter = Router();
 
-// Redis for rate limiting
-const redis = new Redis(CONFIG.redisUrl, {
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-  maxRetriesPerRequest: 3,
-});
+const redis = getRedis();
 
 // ============================================
 // Zod Schemas
@@ -43,6 +39,15 @@ const CreateCategorySchema = z.object({
   sortOrder: z.number().int().min(0).max(1000).optional(),
 });
 
+// Reject HTML/script-injection patterns so admin-entered prose can't escape into
+// a public landing page. We only allow plain text + a small punctuation set.
+const NO_HTML_RE = /<[^>]*>/;
+
+const FaqEntrySchema = z.object({
+  q: z.string().min(5).max(200).refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' }),
+  a: z.string().min(10).max(1000).refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' }),
+});
+
 const UpdateCategorySchema = z.object({
   name: z.string().min(1).max(100).optional(),
   slug: z.string().min(1).max(120).regex(/^[a-z0-9-]+$/).optional(),
@@ -51,6 +56,34 @@ const UpdateCategorySchema = z.object({
   superGroupId: z.string().uuid().nullable().optional(),
   sortOrder: z.number().int().min(0).max(1000).optional(),
   isActive: z.boolean().optional(),
+  // Phase 2 SEO fields. longDescription rejects HTML to prevent stored XSS on
+  // the public landing page; FAQ entries are individually validated above.
+  seoTitle: z
+    .string()
+    .min(10)
+    .max(160)
+    .refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' })
+    .nullable()
+    .optional(),
+  seoDescription: z
+    .string()
+    .min(20)
+    .max(320)
+    .refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' })
+    .nullable()
+    .optional(),
+  longDescription: z
+    .string()
+    .min(50)
+    .max(2000)
+    .refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' })
+    .nullable()
+    .optional(),
+  faqJson: z.array(FaqEntrySchema).max(15).nullable().optional(),
+  tags: z
+    .array(z.string().min(1).max(40).regex(/^[a-zA-Z0-9 +&\-_/]+$/))
+    .max(8)
+    .optional(),
 }).refine(d => Object.keys(d).length > 0, { message: 'At least one field required' });
 
 const PublishIdeaSchema = z.object({
@@ -581,6 +614,32 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       affectedSegments: pp.affectedSegments,
     }));
 
+    // Phase 5.4 — pick the parent sourceJobId so generated ideas FK into the
+    // most-recent pain-points-job's CatalogResearchContext. Group selected
+    // pain points by sourceJobId, take the max effective timestamp per group
+    // (sourceGeneratedAt ?? updatedAt ?? createdAt — sourceGeneratedAt drives
+    // lineage, updatedAt catches merge-bumped rows, createdAt is the fallback
+    // for legacy rows). Pick the group with the latest timestamp.
+    const groups = new Map<string, number>();
+    for (const pp of painPoints) {
+      if (!pp.sourceJobId) continue;
+      const ts = (pp.sourceGeneratedAt ?? pp.updatedAt ?? pp.createdAt).getTime();
+      const existing = groups.get(pp.sourceJobId);
+      if (existing == null || ts > existing) {
+        groups.set(pp.sourceJobId, ts);
+      }
+    }
+    if (groups.size === 0) {
+      res.status(400).json({ error: 'Selected pain points have no valid sourceJobId' });
+      return;
+    }
+    const parentSourceJobId = [...groups.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    if (groups.size > 1) {
+      console.warn(
+        `[adminCatalog] generate-ideas: pain points span ${groups.size} sourceJobIds; using latest=${parentSourceJobId}`,
+      );
+    }
+
     // Query existing ideas for this category to avoid regenerating duplicates
     const existingIdeas = await prisma.catalogIdea.findMany({
       where: { categoryId },
@@ -591,7 +650,25 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       description: i.description || '',
     }));
 
-    await enqueueCatalogIdeasJob(job.id, categoryId, painPointData, niche, category.parent?.name || '', existingIdeasMapped);
+    // Pull contentCategorization from the parent pain-points-job's research
+    // context. UnifiedSolutionCrew uses theme_categories + user_segments to
+    // sharpen segment targeting; without it the pipeline logs a warning and
+    // ideates without the enrichment. Null for legacy rows pre-migration.
+    const parentContext = await prisma.catalogResearchContext.findUnique({
+      where: { sourceJobId: parentSourceJobId },
+      select: { contentCategorization: true },
+    });
+
+    await enqueueCatalogIdeasJob(
+      job.id,
+      categoryId,
+      painPointData,
+      niche,
+      category.parent?.name || '',
+      existingIdeasMapped,
+      parentSourceJobId,
+      parentContext?.contentCategorization ?? undefined,
+    );
 
     res.json({ jobId: job.id });
   } catch (error) {

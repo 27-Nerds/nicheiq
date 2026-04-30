@@ -27,6 +27,7 @@ import {
 } from '../types/job.js';
 import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/notificationService.js';
 import { AssetType } from '@prisma/client';
+import type { JobStatus as JobStatusType } from '@prisma/client';
 import { requireInternalService } from '../middleware/auth.js';
 import { StageStatus } from '@prisma/client';
 import { PIPELINE_STAGES } from '../types/job.js';
@@ -345,8 +346,22 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
   try {
     const data = ReportReadySchema.parse(req.body);
 
-    // Add report asset
+    // Phase 5.4 — pre-check asset existence so the user-facing notification
+    // fires exactly once even if the worker re-delivers (publish_report_ready
+    // now re-raises on POST failure). Asset upsert is naturally idempotent;
+    // the notification is the side-effect that needs gating.
+    const existingAsset = await getJobAsset(data.job_id, AssetType.REPORT_JSON);
+    const isFirstDelivery = existingAsset == null;
+
     await addJobAsset(data.job_id, AssetType.REPORT_JSON, data.report_path);
+
+    // Phase 5.4 — pre-project sanitized context for the SAME sourceJobId.
+    // For catalog jobs that already have a preview-derived row, this upgrades
+    // it to the richer REPORT_JSON projection (forceRefreshAll). For /new
+    // jobs without an existing context row, this pre-projects context that
+    // future publish hooks will short-circuit on. NOT a no-op.
+    const { extractOrCreateResearchContext } = await import('../services/researchContextService.js');
+    await extractOrCreateResearchContext(data.job_id, { forceRefreshAll: true });
 
     // Send "report ready" notification
     const { prisma } = await import('../services/db.js');
@@ -363,7 +378,7 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       });
     }
 
-    if (job?.userId) {
+    if (isFirstDelivery && job?.userId) {
       const user = await prisma.user.findUnique({
         where: { id: job.userId },
         select: { email: true },
@@ -383,7 +398,7 @@ workersRouter.post('/report-ready', async (req: Request, res: Response) => {
       report_path: data.report_path,
     });
 
-    console.log(`[Workers] Report ready for job ${data.job_id}: ${data.report_path}`);
+    console.log(`[Workers] Report ready for job ${data.job_id}: ${data.report_path} (firstDelivery=${isFirstDelivery})`);
     res.json({ status: 'ok' });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -1008,129 +1023,275 @@ const CatalogPainPointsReadySchema = z.object({
   category_id: z.string().uuid(),
   pain_points: z.array(z.record(z.unknown())),
   niche: z.string(),
+  // Phase 5.4 — load-bearing: catalog flow must materialize a preview report
+  // before notifying. Worker raises if materialization fails. Optional in
+  // schema for forward compat but rejected at handler level when absent.
+  preview_report_path: z.string().min(1).max(500).optional(),
 });
 
 /**
  * POST /api/workers/catalog-pain-points-ready
  * Worker reports catalog pain points are ready. Merges similar and inserts new.
+ *
+ * Phase 5.4 invariants:
+ * - Three-tier status guard at entry (404 / already_processed / 409 / process)
+ * - preview_report_path required (load-bearing for projection)
+ * - Asset registration + extraction run OUTSIDE the transaction (idempotent)
+ * - hasMeaningfulResearchContext assertion before any catalog mutations
+ * - Merge/insert loop + status flip wrapped in a transaction with a
+ *   `FOR UPDATE` row lock on the Job row to serialize concurrent duplicates
+ * - P2002 on lineage advance → merge data into the conflicting new-source
+ *   row and deactivate the old-lineage row (preserves "latest wins")
+ * - SSE broadcast + cache invalidation run outside the transaction
  */
 workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Response) => {
   try {
     const data = CatalogPainPointsReadySchema.parse(req.body);
     const { prisma } = await import('../services/db.js');
-    const { JobStatus } = await import('@prisma/client');
+    const { JobStatus, AssetType } = await import('@prisma/client');
 
-    // Fetch existing active pain points for this category
-    const existing = await prisma.catalogPainPoint.findMany({
-      where: { categoryId: data.category_id, isActive: true },
+    // ─── Three-tier status guard ─────────────────────────────────────────
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { status: true },
+    });
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    if (job.status === JobStatus.COMPLETED) {
+      console.log(`[Workers] catalog-pain-points-ready: job ${data.job_id} already COMPLETED — skipping reprocess`);
+      res.json({ status: 'already_processed' });
+      return;
+    }
+    if (job.status !== JobStatus.RUNNING && job.status !== JobStatus.QUEUED) {
+      console.warn(`[Workers] catalog-pain-points-ready: job ${data.job_id} in status ${job.status} — refusing to mutate`);
+      res.status(409).json({ error: `Job not in RUNNING/QUEUED state (current: ${job.status})` });
+      return;
+    }
+
+    // ─── Reject missing preview path (load-bearing) ──────────────────────
+    if (!data.preview_report_path) {
+      res.status(400).json({ error: 'preview_report_path required for catalog pain-points' });
+      return;
+    }
+
+    // ─── Asset registration + extraction OUTSIDE transaction ─────────────
+    // Both are idempotent. Reading the preview file is sync I/O and must
+    // not hold a transactional connection.
+    const { addJobAsset } = await import('../services/jobService.js');
+    await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
+
+    const { extractOrCreateResearchContext, hasMeaningfulResearchContext } = await import(
+      '../services/researchContextService.js'
+    );
+    const ctx = await extractOrCreateResearchContext(data.job_id, {
+      forceRefreshPlaceholders: true,
+      sourceKind: 'catalog',
     });
 
-    const existingNormalized = existing.map(pp => ({
-      ...pp,
-      normalized: normalizeTitle(pp.title),
-    }));
+    // Meaningfulness gate. Applies to both pain-points-present and -empty
+    // paths: the preview must yield renderable content for the catalog row
+    // to be useful. Otherwise fail → RQ retry.
+    if (!hasMeaningfulResearchContext(ctx)) {
+      console.error(
+        `[Workers] Catalog research context for ${data.job_id} has no meaningful data; aborting for RQ retry`,
+      );
+      res.status(500).json({ error: 'Research context not meaningful; will retry' });
+      return;
+    }
 
-    let merged = 0;
-    let created = 0;
+    // ─── Transactional mutation block ────────────────────────────────────
+    const buildMergeData = (
+      bestMatch: { mentionCount: number; severityScore: number; willingnessToPayScore: number; representativeQuotes: unknown; sourcePlatforms: unknown; affectedSegments: unknown; opportunityLevel: string },
+      newPp: Record<string, unknown>,
+    ) => {
+      const existingQuotes = (bestMatch.representativeQuotes as string[] | null) || [];
+      const newQuotes = (newPp.representative_quotes as string[] | null) || [];
+      const mergedQuotes = [...new Set([...existingQuotes, ...newQuotes])].slice(0, 12);
 
-    for (let ppIdx = 0; ppIdx < data.pain_points.length; ppIdx++) {
-      const newPp = data.pain_points[ppIdx];
-      const newTitle = String(newPp.title || '');
-      const newNorm = normalizeTitle(newTitle);
+      const existingPlatforms = (bestMatch.sourcePlatforms as string[] | null) || [];
+      const newPlatforms = (newPp.source_platforms as string[] | null) || [];
+      const mergedPlatforms = [...new Set([...existingPlatforms, ...newPlatforms])];
 
-      // Find best match among existing
-      let bestMatch: (typeof existingNormalized)[0] | null = null;
-      let bestScore = 0;
-      for (const ex of existingNormalized) {
-        const score = bigramSimilarity(newNorm, ex.normalized);
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = ex;
-        }
+      const existingSegments = (bestMatch.affectedSegments as string[] | null) || [];
+      const newSegments = (newPp.affected_segments as string[] | null) || [];
+      const mergedSegments = [...new Set([...existingSegments, ...newSegments])];
+
+      const newOppLevel = String(newPp.opportunity_level || 'medium');
+      const existingOppRank = OPPORTUNITY_RANK[bestMatch.opportunityLevel] || 0;
+      const newOppRank = OPPORTUNITY_RANK[newOppLevel] || 0;
+
+      return {
+        mentionCount: bestMatch.mentionCount + (Number(newPp.mention_count) || 0),
+        severityScore: Math.max(bestMatch.severityScore, Number(newPp.severity_score) || 0),
+        willingnessToPayScore: Math.max(bestMatch.willingnessToPayScore, Number(newPp.willingness_to_pay) || 0),
+        representativeQuotes: mergedQuotes,
+        sourcePlatforms: mergedPlatforms,
+        affectedSegments: mergedSegments,
+        opportunityLevel: newOppRank > existingOppRank ? newOppLevel : bestMatch.opportunityLevel,
+      };
+    };
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Row-level lock serializes concurrent duplicate callbacks. Second
+      // caller waits; when it gets through, status check below short-circuits.
+      const lockedJob = await tx.$queryRaw<{ id: string; status: JobStatusType }[]>`
+        SELECT id, status FROM "Job" WHERE id = ${data.job_id} FOR UPDATE
+      `;
+      if (lockedJob.length === 0) {
+        throw new Error(`Job ${data.job_id} not found inside tx`);
+      }
+      if (lockedJob[0].status === JobStatus.COMPLETED) {
+        return { alreadyProcessed: true as const };
+      }
+      if (lockedJob[0].status !== JobStatus.RUNNING && lockedJob[0].status !== JobStatus.QUEUED) {
+        throw new Error(`Job ${data.job_id} in status ${lockedJob[0].status} inside tx`);
       }
 
-      if (bestMatch && bestScore >= 0.7) {
-        // MERGE: update existing record
-        const existingQuotes = (bestMatch.representativeQuotes as string[] | null) || [];
-        const newQuotes = (newPp.representative_quotes as string[] | null) || [];
-        const mergedQuotes = [...new Set([...existingQuotes, ...newQuotes])].slice(0, 12);
+      const existing = await tx.catalogPainPoint.findMany({
+        where: { categoryId: data.category_id, isActive: true },
+      });
+      const existingNormalized = existing.map(pp => ({
+        ...pp,
+        normalized: normalizeTitle(pp.title),
+      }));
 
-        const existingPlatforms = (bestMatch.sourcePlatforms as string[] | null) || [];
-        const newPlatforms = (newPp.source_platforms as string[] | null) || [];
-        const mergedPlatforms = [...new Set([...existingPlatforms, ...newPlatforms])];
+      const { generatePainPointSlug } = await import('../services/catalogService.js');
 
-        const existingSegments = (bestMatch.affectedSegments as string[] | null) || [];
-        const newSegments = (newPp.affected_segments as string[] | null) || [];
-        const mergedSegments = [...new Set([...existingSegments, ...newSegments])];
+      let merged = 0;
+      let created = 0;
 
-        const newOppLevel = String(newPp.opportunity_level || 'medium');
-        const existingOppRank = OPPORTUNITY_RANK[bestMatch.opportunityLevel] || 0;
-        const newOppRank = OPPORTUNITY_RANK[newOppLevel] || 0;
+      for (let ppIdx = 0; ppIdx < data.pain_points.length; ppIdx++) {
+        const newPp = data.pain_points[ppIdx];
+        const newTitle = String(newPp.title || '');
+        const newNorm = normalizeTitle(newTitle);
 
-        await prisma.catalogPainPoint.update({
-          where: { id: bestMatch.id },
-          data: {
-            mentionCount: bestMatch.mentionCount + (Number(newPp.mention_count) || 0),
-            severityScore: Math.max(bestMatch.severityScore, Number(newPp.severity_score) || 0),
-            willingnessToPayScore: Math.max(bestMatch.willingnessToPayScore, Number(newPp.willingness_to_pay) || 0),
-            representativeQuotes: mergedQuotes,
-            sourcePlatforms: mergedPlatforms,
-            affectedSegments: mergedSegments,
-            opportunityLevel: newOppRank > existingOppRank ? newOppLevel : bestMatch.opportunityLevel,
-          },
-        });
-        merged++;
-      } else {
-        // INSERT new pain point
-        try {
-          await prisma.catalogPainPoint.create({
-            data: {
-              categoryId: data.category_id,
-              sourceJobId: data.job_id,
-              sourceNiche: data.niche,
-              sourceGeneratedAt: new Date(),
-              sourceItemIndex: ppIdx,
-              title: newTitle,
-              description: String(newPp.description || ''),
-              mentionCount: Number(newPp.mention_count) || 0,
-              severityScore: Number(newPp.severity_score) || 0,
-              willingnessToPayScore: Number(newPp.willingness_to_pay) || 0,
-              opportunityLevel: String(newPp.opportunity_level || 'medium'),
-              representativeQuotes: (newPp.representative_quotes as string[]) || [],
-              sourcePlatforms: (newPp.source_platforms as string[]) || [],
-              categories: (newPp.categories as string[]) || [],
-              affectedSegments: (newPp.affected_segments as string[]) || [],
-              publishedById: 'system',
-              isActive: true,
-            },
-          });
-          created++;
-        } catch (createErr: any) {
-          // Skip duplicates (unique constraint on sourceJobId + title)
-          if (createErr?.code === 'P2002') {
-            console.log(`[Workers] Skipping duplicate pain point: ${newTitle}`);
-          } else {
-            throw createErr;
+        let bestMatch: (typeof existingNormalized)[0] | null = null;
+        let bestScore = 0;
+        for (const ex of existingNormalized) {
+          const score = bigramSimilarity(newNorm, ex.normalized);
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = ex;
+          }
+        }
+
+        if (bestMatch && bestScore >= 0.7) {
+          const mergeData = buildMergeData(bestMatch, newPp);
+          try {
+            await tx.catalogPainPoint.update({
+              where: { id: bestMatch.id },
+              data: {
+                ...mergeData,
+                // Phase 5.4 — advance lineage. Latest research wins.
+                sourceJobId: data.job_id,
+                sourceGeneratedAt: new Date(),
+              },
+            });
+            merged++;
+          } catch (err: unknown) {
+            const code = (err as { code?: string } | null)?.code;
+            if (code === 'P2002') {
+              // Conflict: another row already has (data.job_id, bestMatch.title).
+              // Merge bestMatch's accumulated data INTO that row (preserves
+              // latest-wins) and deactivate bestMatch.
+              const conflicting = await tx.catalogPainPoint.findUnique({
+                where: { sourceJobId_title: { sourceJobId: data.job_id, title: bestMatch.title } },
+              });
+              if (conflicting) {
+                await tx.catalogPainPoint.update({
+                  where: { id: conflicting.id },
+                  data: buildMergeData(conflicting, newPp),
+                });
+                await tx.catalogPainPoint.update({
+                  where: { id: bestMatch.id },
+                  data: { isActive: false },
+                });
+                console.warn(
+                  `[Workers] P2002 on lineage advance for "${bestMatch.title}"; merged into ${conflicting.id} and deactivated ${bestMatch.id}`,
+                );
+                merged++;
+              } else {
+                console.error(
+                  `[Workers] P2002 fired but no conflicting (sourceJobId, title) row found for "${bestMatch.title}"; skipping`,
+                );
+              }
+            } else {
+              throw err;
+            }
+          }
+        } else {
+          // INSERT — uniqueness check threaded through tx so it sees the
+          // tx snapshot.
+          try {
+            const slug = await generatePainPointSlug(
+              { title: newTitle, categoryId: data.category_id },
+              tx,
+            );
+            await tx.catalogPainPoint.create({
+              data: {
+                categoryId: data.category_id,
+                slug,
+                sourceJobId: data.job_id,
+                sourceNiche: data.niche,
+                sourceGeneratedAt: new Date(),
+                sourceItemIndex: ppIdx,
+                title: newTitle,
+                description: String(newPp.description || ''),
+                mentionCount: Number(newPp.mention_count) || 0,
+                severityScore: Number(newPp.severity_score) || 0,
+                willingnessToPayScore: Number(newPp.willingness_to_pay) || 0,
+                opportunityLevel: String(newPp.opportunity_level || 'medium'),
+                representativeQuotes: (newPp.representative_quotes as string[]) || [],
+                sourcePlatforms: (newPp.source_platforms as string[]) || [],
+                categories: (newPp.categories as string[]) || [],
+                affectedSegments: (newPp.affected_segments as string[]) || [],
+                publishedById: 'system',
+                isActive: true,
+              },
+            });
+            created++;
+          } catch (createErr: unknown) {
+            const code = (createErr as { code?: string } | null)?.code;
+            if (code === 'P2002') {
+              console.log(`[Workers] Skipping duplicate pain point: ${newTitle}`);
+            } else {
+              throw createErr;
+            }
           }
         }
       }
-    }
 
-    // Update job status to COMPLETED
-    await prisma.job.updateMany({
-      where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
-      data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+      // Status flip inside tx — atomic with merge/insert.
+      await tx.job.updateMany({
+        where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
+        data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+      });
+
+      return { alreadyProcessed: false as const, merged, created, totalExisting: existing.length };
     });
 
-    // Broadcast completion via SSE
+    if (result.alreadyProcessed) {
+      res.json({ status: 'already_processed' });
+      return;
+    }
+
+    // SSE + cache invalidation outside tx (idempotent).
     broadcastProgress(data.job_id, {
       stage: 3,
       name: 'Pain Point Analysis',
       status: 'completed',
     });
+    if (result.created > 0 || result.merged > 0) {
+      const { invalidateCategoryLanding } = await import('../services/catalogService.js');
+      await invalidateCategoryLanding(data.category_id);
+    }
 
-    console.log(`[Workers] Catalog pain points for job ${data.job_id}: ${created} created, ${merged} merged`);
-    res.json({ merged, created, total: existing.length + created });
+    console.log(
+      `[Workers] Catalog pain points for job ${data.job_id}: ${result.created} created, ${result.merged} merged`,
+    );
+    res.json({ merged: result.merged, created: result.created, total: result.totalExisting + result.created });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });
@@ -1147,11 +1308,20 @@ const CatalogIdeasReadySchema = z.object({
   category_id: z.string().uuid(),
   ideas: z.array(z.record(z.unknown())),
   niche: z.string(),
+  // Phase 5.4 — when admin generates ideas from existing pain points, the
+  // ideas inherit the parent pain-points-job's sourceJobId so they share
+  // one CatalogResearchContext row. NOT .uuid() — legacy rows may have
+  // non-UUID-shaped sourceJobIds. .max(100) matches schema VarChar.
+  parent_source_job_id: z.string().min(1).max(100).optional(),
 });
 
 /**
  * POST /api/workers/catalog-ideas-ready
  * Worker reports catalog ideas are ready. Insert new, skip duplicates.
+ *
+ * Phase 5.4: ideas inherit parent_source_job_id when set so they FK into
+ * the same CatalogResearchContext row as the pain points they were
+ * generated from.
  */
 workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) => {
   try {
@@ -1159,83 +1329,163 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
     const { prisma } = await import('../services/db.js');
     const { JobStatus } = await import('@prisma/client');
 
-    // Fetch existing idea names for this category (case-insensitive check)
-    const existingIdeas = await prisma.catalogIdea.findMany({
-      where: { categoryId: data.category_id, isActive: true },
-      select: { solutionName: true },
+    // ─── Three-tier status guard ─────────────────────────────────────────
+    const job = await prisma.job.findUnique({
+      where: { id: data.job_id },
+      select: { status: true },
     });
-    const existingNames = new Set(existingIdeas.map(i => i.solutionName.toLowerCase()));
-
-    let created = 0;
-    let skipped = 0;
-
-    for (let ideaIdx = 0; ideaIdx < data.ideas.length; ideaIdx++) {
-      const idea = data.ideas[ideaIdx];
-      const name = String(idea.solution_name || idea.name || '');
-      if (!name) { skipped++; continue; }
-
-      // Check case-insensitive duplicate
-      if (existingNames.has(name.toLowerCase())) {
-        skipped++;
-        continue;
-      }
-
-      try {
-        await prisma.catalogIdea.create({
-          data: {
-            categoryId: data.category_id,
-            sourceJobId: data.job_id,
-            sourceNiche: data.niche,
-            sourceGeneratedAt: new Date(),
-            sourceItemIndex: ideaIdx,
-            solutionName: name,
-            description: String(idea.description || ''),
-            valueProposition: idea.value_proposition ? String(idea.value_proposition) : null,
-            projectType: idea.project_type ? String(idea.project_type) : null,
-            coreFeatures: (idea.core_features as string[]) || null,
-            targetPersonas: (idea.target_personas as string[]) || null,
-            technicalApproach: idea.technical_approach ? String(idea.technical_approach) : null,
-            differentiationFactors: (idea.differentiation_factors as string[]) || null,
-            pricingStrategy: idea.pricing_strategy ? String(idea.pricing_strategy) : null,
-            estimatedDevTime: idea.estimated_development_time ? String(idea.estimated_development_time) : null,
-            marketFitScore: idea.market_fit_score != null ? Number(idea.market_fit_score) : null,
-            technicalFeasibility: idea.technical_feasibility_score != null ? Number(idea.technical_feasibility_score) : null,
-            seoScalabilityScore: idea.seo_scalability_score != null ? Number(idea.seo_scalability_score) : null,
-            noveltyScore: idea.novelty_score != null ? Number(idea.novelty_score) : null,
-            soloDevFeasibility: idea.solo_dev_feasibility != null ? Number(idea.solo_dev_feasibility) : null,
-            estimatedCacOrganic: idea.estimated_cac_organic ? String(idea.estimated_cac_organic) : null,
-            estimatedIndexablePages: idea.estimated_indexable_pages != null ? Number(idea.estimated_indexable_pages) : null,
-            programmaticSeoOpp: idea.programmatic_seo_opportunity ? String(idea.programmatic_seo_opportunity) : null,
-            publishedById: 'system',
-            isActive: true,
-          },
-        });
-        created++;
-        existingNames.add(name.toLowerCase());
-      } catch (createErr: any) {
-        if (createErr?.code === 'P2002') {
-          skipped++;
-        } else {
-          throw createErr;
-        }
-      }
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+    if (job.status === JobStatus.COMPLETED) {
+      console.log(`[Workers] catalog-ideas-ready: job ${data.job_id} already COMPLETED — skipping reprocess`);
+      res.json({ status: 'already_processed' });
+      return;
+    }
+    if (job.status !== JobStatus.RUNNING && job.status !== JobStatus.QUEUED) {
+      console.warn(`[Workers] catalog-ideas-ready: job ${data.job_id} in status ${job.status} — refusing to mutate`);
+      res.status(409).json({ error: `Job not in RUNNING/QUEUED state (current: ${job.status})` });
+      return;
     }
 
-    // Update job status to COMPLETED
-    await prisma.job.updateMany({
-      where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
-      data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+    const effectiveSourceJobId = data.parent_source_job_id ?? data.job_id;
+
+    // Defensive idempotent extraction. If parent_source_job_id is set, the
+    // pain-points run already populated context — this is a no-op real-row
+    // short-circuit. If absent (no parent), this creates a placeholder row
+    // for the ideas job itself.
+    const { extractOrCreateResearchContext, hasMeaningfulResearchContext } = await import(
+      '../services/researchContextService.js'
+    );
+    const ctx = await extractOrCreateResearchContext(effectiveSourceJobId, {
+      sourceKind: 'catalog',
     });
 
-    // Broadcast completion via SSE
+    // Generated ideas should not point at an empty parent context.
+    if (!hasMeaningfulResearchContext(ctx)) {
+      console.error(
+        `[Workers] Ideas job ${data.job_id} parent context ${effectiveSourceJobId} is not meaningful; aborting`,
+      );
+      res.status(500).json({ error: 'Parent research context not meaningful; will retry' });
+      return;
+    }
+
+    // ─── Transactional mutation block ────────────────────────────────────
+    const result = await prisma.$transaction(async (tx) => {
+      const lockedJob = await tx.$queryRaw<{ id: string; status: JobStatusType }[]>`
+        SELECT id, status FROM "Job" WHERE id = ${data.job_id} FOR UPDATE
+      `;
+      if (lockedJob.length === 0) {
+        throw new Error(`Job ${data.job_id} not found inside tx`);
+      }
+      if (lockedJob[0].status === JobStatus.COMPLETED) {
+        return { alreadyProcessed: true as const };
+      }
+      if (lockedJob[0].status !== JobStatus.RUNNING && lockedJob[0].status !== JobStatus.QUEUED) {
+        throw new Error(`Job ${data.job_id} in status ${lockedJob[0].status} inside tx`);
+      }
+
+      const existingIdeas = await tx.catalogIdea.findMany({
+        where: { categoryId: data.category_id, isActive: true },
+        select: { solutionName: true },
+      });
+      const existingNames = new Set(existingIdeas.map(i => i.solutionName.toLowerCase()));
+
+      const { generateIdeaSlug } = await import('../services/catalogService.js');
+
+      let created = 0;
+      let skipped = 0;
+
+      for (let ideaIdx = 0; ideaIdx < data.ideas.length; ideaIdx++) {
+        const idea = data.ideas[ideaIdx];
+        const name = String(idea.solution_name || idea.name || '');
+        if (!name) { skipped++; continue; }
+
+        if (existingNames.has(name.toLowerCase())) {
+          skipped++;
+          continue;
+        }
+
+        try {
+          const projectType = idea.project_type ? String(idea.project_type) : null;
+          const slug = await generateIdeaSlug(
+            { name, categoryId: data.category_id, format: projectType },
+            tx,
+          );
+          const formatSlug = projectType
+            ? projectType.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'saas'
+            : 'saas';
+          await tx.catalogIdea.create({
+            data: {
+              categoryId: data.category_id,
+              slug,
+              format: formatSlug,
+              sourceJobId: effectiveSourceJobId,
+              sourceNiche: data.niche,
+              sourceGeneratedAt: new Date(),
+              sourceItemIndex: ideaIdx,
+              solutionName: name,
+              description: String(idea.description || ''),
+              valueProposition: idea.value_proposition ? String(idea.value_proposition) : null,
+              projectType,
+              coreFeatures: (idea.core_features as string[]) || null,
+              targetPersonas: (idea.target_personas as string[]) || null,
+              technicalApproach: idea.technical_approach ? String(idea.technical_approach) : null,
+              differentiationFactors: (idea.differentiation_factors as string[]) || null,
+              pricingStrategy: idea.pricing_strategy ? String(idea.pricing_strategy) : null,
+              estimatedDevTime: idea.estimated_development_time ? String(idea.estimated_development_time) : null,
+              marketFitScore: idea.market_fit_score != null ? Number(idea.market_fit_score) : null,
+              technicalFeasibility: idea.technical_feasibility_score != null ? Number(idea.technical_feasibility_score) : null,
+              seoScalabilityScore: idea.seo_scalability_score != null ? Number(idea.seo_scalability_score) : null,
+              noveltyScore: idea.novelty_score != null ? Number(idea.novelty_score) : null,
+              soloDevFeasibility: idea.solo_dev_feasibility != null ? Number(idea.solo_dev_feasibility) : null,
+              estimatedCacOrganic: idea.estimated_cac_organic ? String(idea.estimated_cac_organic) : null,
+              estimatedIndexablePages: idea.estimated_indexable_pages != null ? Number(idea.estimated_indexable_pages) : null,
+              programmaticSeoOpp: idea.programmatic_seo_opportunity ? String(idea.programmatic_seo_opportunity) : null,
+              publishedById: 'system',
+              isActive: true,
+            },
+          });
+          created++;
+          existingNames.add(name.toLowerCase());
+        } catch (createErr: unknown) {
+          const code = (createErr as { code?: string } | null)?.code;
+          if (code === 'P2002') {
+            skipped++;
+          } else {
+            throw createErr;
+          }
+        }
+      }
+
+      await tx.job.updateMany({
+        where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
+        data: { status: JobStatus.COMPLETED, completedAt: new Date() },
+      });
+
+      return { alreadyProcessed: false as const, created, skipped, totalExisting: existingNames.size };
+    });
+
+    if (result.alreadyProcessed) {
+      res.json({ status: 'already_processed' });
+      return;
+    }
+
     broadcastProgress(data.job_id, {
       stage: 5,
       name: 'Solution Pipeline',
       status: 'completed',
     });
+    if (result.created > 0) {
+      const { invalidateCategoryLanding } = await import('../services/catalogService.js');
+      await invalidateCategoryLanding(data.category_id);
+    }
 
-    console.log(`[Workers] Catalog ideas for job ${data.job_id}: ${created} created, ${skipped} skipped`);
-    res.json({ created, skipped, total: existingNames.size });
+    console.log(
+      `[Workers] Catalog ideas for job ${data.job_id}: ${result.created} created, ${result.skipped} skipped`,
+    );
+    res.json({ created: result.created, skipped: result.skipped, total: result.totalExisting });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });

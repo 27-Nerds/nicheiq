@@ -134,13 +134,6 @@
                     {creditBalance} credits
                   </span>
                 </a>
-                <!-- <a -->
-                <!--   href="/catalog" -->
-                <!--   class="w-full flex items-center gap-2 px-4 py-2 text-sm text-text-secondary hover:bg-bg-elevated transition-colors" -->
-                <!-- > -->
-                <!--   <Library class="w-4 h-4" /> -->
-                <!--   Catalog -->
-                <!-- </a> -->
                 {#if session?.user?.role === "ADMIN"}
                   <a
                     href="/admin"

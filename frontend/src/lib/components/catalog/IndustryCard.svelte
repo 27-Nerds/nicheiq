@@ -2,10 +2,12 @@
   import { ArrowRight, Folder, FolderOpen } from "lucide-svelte";
   import { fly } from "svelte/transition";
   import { formatItemCounts } from "$lib/utils/catalog-utils";
+  import { categoryPath } from "$lib/utils/urls";
 
   interface Category {
     name: string;
     slug: string;
+    parentSlug?: string | null;
     children?: any[];
     _count?: { ideas: number; painPoints: number };
   }
@@ -18,12 +20,14 @@
   const painPointCount = $derived(category._count?.painPoints ?? 0);
   const computedTotalItems = $derived(totalItems || (ideaCount + painPointCount));
   const isEmpty = $derived(computedTotalItems === 0);
-  const resolvedHref = $derived(href ?? `/catalog/categories/${category.slug}`);
+  const resolvedHref = $derived(
+    href ?? categoryPath({ slug: category.slug, parentSlug: category.parentSlug ?? null }),
+  );
 </script>
 
 <a
   href={resolvedHref}
-  class="block card card-interactive card-sm group {isEmpty ? 'industry-card-empty' : 'industry-card'}"
+  class="block card card-sm group {isEmpty ? 'industry-card-empty' : 'industry-card'}"
   in:fly={{ y: 12, duration: 400, delay: index * 30 }}
 >
   <div class="flex items-start gap-3">
@@ -63,14 +67,3 @@
   </div>
 </a>
 
-<style>
-  .industry-card:hover {
-    transform: translateY(-1px);
-    border-bottom: 1px solid var(--color-accent);
-  }
-
-  .industry-card-empty:hover {
-    transform: none;
-    border-bottom-color: var(--color-border);
-  }
-</style>

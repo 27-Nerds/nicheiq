@@ -170,6 +170,11 @@ def process_job(job_data: dict) -> None:
                 niche=job_data.get("niche", ""),
                 parent_category_name=job_data.get("parent_category_name", ""),
                 existing_ideas=job_data.get("existing_ideas", []),
+                # Phase 5.4 — when the admin generated ideas from existing
+                # pain points, this is the pain-points-job's sourceJobId so
+                # ideas inherit the same CatalogResearchContext.
+                parent_source_job_id=job_data.get("parent_source_job_id"),
+                content_categorization=job_data.get("content_categorization"),
             )
         else:
             # Default research task

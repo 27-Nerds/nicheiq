@@ -162,6 +162,16 @@ INTERNAL_SERVICE_SECRET=your-32-char-secret-key-here
 AUTH_SECRET=your-auth-secret-32-chars-minimum
 # Used for: Session encryption in Auth.js
 # Generate: openssl rand -base64 32
+
+# Public catalog launch gate (Phase 4.5)
+SEO_LAUNCH_GATE=true
+# When 'true' (default): every /ideas/*, /idea/[slug], /pain-point/[slug] page
+# ships with `<meta name="robots" content="noindex,follow">` and is omitted
+# from sitemap.xml.
+# When 'false': pages are indexable and emit in sitemap.
+# Flip to 'false' once Phase 4.5 baseline copy curation completes (≥20
+# top-traffic categories have hand-written longDescription + faqJson).
+# Avoids Google's thin-content penalty during the rollout window.
 ```
 
 **OAuth Setup Steps:**
@@ -553,6 +563,22 @@ MIN_YOUTUBE_COMMENT_LIKES=5
 
 MIN_YOUTUBE_COMMENT_LENGTH=50
 # Minimum character length for YouTube comments (default: 50)
+
+WEBSHARE_API_KEY=
+# Webshare API key (optional). When set, YouTube transcript fetching routes
+# through direct-mode residential proxies fetched dynamically from
+# /api/v2/proxy/list. Bypasses YouTube's datacenter-IP blocks which cause
+# IpBlocked errors in production worker deployments.
+# Get a key at: https://proxy2.webshare.io/userapi/keys
+#
+# Plan compatibility: this integration uses mode=direct (per-proxy static IPs
+# and credentials). Residential/backbone plans (pool_filter=residential) are
+# NOT supported by this integration — they return no proxies from
+# /api/v2/proxy/list?mode=direct and will fall back to direct fetching.
+
+WEBSHARE_PROXY_COUNTRY_CODES=
+# Optional ISO country code filter for the Webshare proxy pool
+# (comma-separated, e.g. "US,GB"). Leave empty for no filter (all countries).
 
 # Hacker News quality filters
 MIN_HN_POINTS=5

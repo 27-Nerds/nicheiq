@@ -508,32 +508,54 @@ model CatalogSuperGroup {
 }
 
 model CatalogCategory {
-  id            String   @id @default(uuid())
-  name          String   @db.VarChar(100)
-  slug          String   @unique @db.VarChar(120)
-  description   String?  @db.VarChar(500)
-  parentId      String?
-  parent        CatalogCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children      CatalogCategory[] @relation("CategoryHierarchy")
-  superGroupId  String?
-  superGroup    CatalogSuperGroup? @relation(fields: [superGroupId], references: [id], onDelete: SetNull)
-  sortOrder     Int      @default(0)
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  ideas         CatalogIdea[]
-  painPoints    CatalogPainPoint[]
-  jobs          Job[]
+  id              String   @id @default(uuid())
+  name            String   @db.VarChar(100)
+  // Slug is unique scoped to parent (b2b-tools can exist under both saas and enterprise).
+  // Top-level uniqueness (parentId IS NULL) enforced via partial unique index in migration SQL.
+  slug            String   @db.VarChar(120)
+  // Preserves the old globally-unique slug for 301-redirect lookup during the URL migration window.
+  legacySlug      String?  @db.VarChar(120)
+  description     String?  @db.VarChar(500)
+  // SEO fields (Phase 2)
+  seoTitle        String?  @db.VarChar(160)
+  seoDescription  String?  @db.VarChar(320)
+  longDescription String?  @db.Text
+  faqJson         Json?
+  tags            String[] @default([])
+  parentId        String?
+  parent          CatalogCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        CatalogCategory[] @relation("CategoryHierarchy")
+  superGroupId    String?
+  superGroup      CatalogSuperGroup? @relation(fields: [superGroupId], references: [id], onDelete: SetNull)
+  sortOrder       Int      @default(0)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  ideas           CatalogIdea[]
+  painPoints      CatalogPainPoint[]
+  jobs            Job[]
 
+  @@unique([parentId, slug])
   @@index([parentId])
   @@index([superGroupId])
   @@index([isActive, sortOrder])
+  @@index([legacySlug])
 }
 
 model CatalogIdea {
   id                    String   @id @default(uuid())
   categoryId            String
   category              CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  // Phase 5: research context backing this item. REQUIRED — every sourceJobId
+  // is guaranteed by the backfill + worker/publish hooks to have a context row
+  // present before insert.
+  researchContext       CatalogResearchContext @relation(fields: [sourceJobId], references: [sourceJobId])
+  // Public slug for /idea/[slug] URL — pattern: [descriptor]-[niche]-[format].
+  // Initially nullable; backfilled by migrateCatalogSlugs.ts; set NOT NULL + @unique in follow-up migration.
+  slug                  String?  @db.VarChar(160)
+  // Solution typology (saas | marketplace | tool | app | service | platform | extension | template).
+  // Drives the slug suffix; defaults to 'saas' if unset during backfill.
+  format                String?  @db.VarChar(40)
   // Source context (plain strings, not FKs)
   sourceJobId           String   @db.VarChar(100)
   sourceNiche           String   @db.Text
@@ -569,16 +591,27 @@ model CatalogIdea {
   updatedAt             DateTime @updatedAt
 
   @@unique([sourceJobId, solutionName])
+  @@unique([slug])
   @@index([categoryId])
   @@index([sourceJobId])
   @@index([isActive])
   @@index([createdAt])
+  // Composite indexes for top-N queries on the landing page
+  @@index([categoryId, createdAt(sort: Desc)])
+  @@index([categoryId, marketFitScore(sort: Desc)])
 }
 
 model CatalogPainPoint {
   id                    String   @id @default(uuid())
   categoryId            String
   category              CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  // Phase 5: research context backing this item. REQUIRED — every sourceJobId
+  // is guaranteed by the backfill + worker/publish hooks to have a context row
+  // present before insert.
+  researchContext       CatalogResearchContext @relation(fields: [sourceJobId], references: [sourceJobId])
+  // Public slug for /pain-point/[slug] URL — pattern: [descriptor]-[niche]-[format].
+  // Initially nullable; backfilled by migrateCatalogSlugs.ts.
+  slug                  String?  @db.VarChar(160)
   sourceJobId           String   @db.VarChar(100)
   sourceNiche           String   @db.Text
   sourceGeneratedAt     DateTime?
@@ -601,11 +634,15 @@ model CatalogPainPoint {
   updatedAt             DateTime @updatedAt
 
   @@unique([sourceJobId, title])
+  @@unique([slug])
   @@index([categoryId])
   @@index([sourceJobId])
   @@index([isActive])
   @@index([severityScore])
   @@index([createdAt])
+  // Composite indexes for top-N queries on the landing page
+  @@index([categoryId, createdAt(sort: Desc)])
+  @@index([categoryId, severityScore(sort: Desc)])
 }
 
 // ============================================
@@ -631,6 +668,81 @@ model RedditThread {
   @@index([fetchedAt])
   @@index([redditCreatedAt])
   @@index([score])
+}
+
+// ============================================
+// Catalog Research Context (Phase 5)
+// ============================================
+//
+// Persisted projection of source-job report.json data, keyed by sourceJobId so
+// every CatalogIdea / CatalogPainPoint generated from a single research run
+// shares one context row. The DB row IS the public-safe projection — anything
+// not projected here cannot leak through the public catalog API.
+//
+// Migration A: table + indexes (already applied).
+// Backfill: backend/scripts/backfillResearchContexts.ts ensures every existing
+// sourceJobId has a row before Migration B lands.
+// Migration B (this commit): adds the required FK relations on CatalogIdea /
+// CatalogPainPoint plus the reverse relations here.
+model CatalogResearchContext {
+  sourceJobId            String   @id @db.VarChar(100)
+
+  // Reverse relations. No cascade — depublishing an idea or deleting a Job
+  // doesn't delete this row; context outlives its referencing items by design
+  // (a different job might re-publish from the same sourceJobId in the future).
+  ideas                  CatalogIdea[]
+  painPoints             CatalogPainPoint[]
+
+  // Structured analysis (Json columns; shapes mirror frontend Report types).
+  audienceMapping        Json?
+  marketSizing           Json?
+  trendLongevity         Json?
+  painPointAnalytics     Json?
+  competitiveAnalytics   Json?
+  competitorProfiles     Json?
+  // Phase 5.3: Competitors section requires `analysis` prop separately from
+  // `analytics`. Keep nullable; not all reports project it.
+  competitiveAnalysis    Json?
+  competitiveSummary     String?  @db.Text
+  // Phase 5.3: Locked sections (GTM, Monetization). Stored to allow rendering
+  // a summary description; the full payload is gated by the lock UI.
+  goToMarketBlueprint    Json?
+  pricingStrategy        Json?
+  trafficMonetization    Json?
+
+  // Reused-section data feeds. Listed as separate columns so the projection can
+  // scrub each subtree independently — missing data on one column doesn't
+  // poison adjacent ones.
+  detailedPainPoints     Json?
+  alternativeSolutions   Json?
+  selectedSolution       Json?
+  // Theme categories + user segments produced by Stage 3 PainPointCrew. Fed
+  // forward into catalog idea generation (UnifiedSolutionCrew) and rendered
+  // on category landing pages. Nullable for legacy rows produced before this
+  // column existed.
+  contentCategorization  Json?
+  // Pulled out of selectedSolution for fast lookup. Text (not VarChar) because
+  // LLM-generated solution names occasionally exceed 200 chars.
+  selectedSolutionName   String?  @db.Text
+
+  // Aggregated metrics for the hero metric strip.
+  redditPostsAnalyzed    Int?
+  redditCommentsAnalyzed Int?
+  twitterThreadsAnalyzed Int?
+  genericPostsAnalyzed   Int?
+  topSubreddits          Json?
+  collectionDate         DateTime?
+
+  // Status signals — typed for query/index, drive UI conditionals.
+  dataQualityTier        String?  @db.VarChar(20)  // GOLD | SILVER | BRONZE | INSUFFICIENT
+  goNoGoVerdict          String?  @db.VarChar(20)  // GO | NO_GO | MAYBE
+
+  // Audit.
+  extractedAt            DateTime @default(now())
+  reportGeneratedAt      DateTime?
+
+  @@index([dataQualityTier])
+  @@index([reportGeneratedAt])
 }
 
 model CatalogItemCache {

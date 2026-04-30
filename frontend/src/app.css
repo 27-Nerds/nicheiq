@@ -112,6 +112,9 @@
 	html {
 		scroll-behavior: smooth;
 		background-color: var(--color-bg-base);
+		/* Prevent faux bold/italic when a weight/style isn't loaded */
+		font-synthesis: none;
+		text-rendering: optimizeLegibility;
 	}
 
 	body {
@@ -124,6 +127,10 @@
 		line-height: 1.65;
 		-webkit-font-smoothing: antialiased;
 		-moz-osx-font-smoothing: grayscale;
+		/* Contextual alternates on; keep lining/proportional figures by default
+		   so dashboards/data UIs render correctly. Prose contexts can opt into
+		   oldstyle figures via .prose-body. */
+		font-feature-settings: "calt" 1;
 		overflow-x: hidden;
 	}
 
@@ -133,6 +140,8 @@
 		line-height: 1.1;
 		letter-spacing: -0.03em;
 		color: var(--color-text-primary);
+		/* Even, balanced lines on multi-line headings */
+		text-wrap: balance;
 	}
 
 	h1 {
@@ -158,6 +167,8 @@
 
 	code, pre {
 		font-family: var(--font-mono);
+		/* Slashed zero, I/l/1 disambiguation, tabular numerals always-on for code/data */
+		font-feature-settings: "calt" 1, "zero" 1, "ss01" 1, "ss02" 1, "tnum" 1;
 	}
 
 	::selection {
@@ -169,10 +180,43 @@
 		color: var(--color-accent);
 		text-decoration: none;
 		transition: color 0.2s ease;
+		/* When text-decoration: underline is applied (e.g., in prose contexts),
+		   keep underlines clear of descenders. */
+		text-underline-offset: 0.2em;
+		text-decoration-thickness: 1px;
 	}
 
 	a:hover {
 		color: var(--color-accent-light);
+	}
+
+	/* Prose body opts into oldstyle figures (numbers blend into letterforms)
+	   and pretty wrapping (reduces orphans on long paragraphs). */
+	.prose-body {
+		font-feature-settings: "calt" 1, "onum" 1;
+		text-wrap: pretty;
+	}
+
+	/* Tabular figures for data tables/dashboards/stat tiles */
+	.font-mono,
+	.tabular-nums {
+		font-feature-settings: "calt" 1, "zero" 1, "ss01" 1, "ss02" 1, "tnum" 1;
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* Editorial accent rule used below the H1 on /ideas/* landing pages.
+	   80px wide × 2px tall accent stroke, sitting close beneath the headline.
+	   Single-accent system — built from existing --color-accent (no new token). */
+	.marker-rule {
+		position: relative;
+	}
+	.marker-rule::after {
+		content: '';
+		display: block;
+		width: 80px;
+		height: 2px;
+		margin-top: 0.5rem;
+		background-color: var(--color-accent);
 	}
 }
 
@@ -888,7 +932,6 @@
 
 .blueprint-metric:hover {
 	border-color: var(--color-border-emphasis);
-	transform: translateY(-2px);
 }
 
 .blueprint-metric-label {

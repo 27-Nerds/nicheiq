@@ -154,3 +154,9 @@ catalogRouter.get('/discover', async (_req: AuthenticatedRequest, res: Response)
     res.status(500).json({ error: 'Failed to get discover items' });
   }
 });
+
+// Public-rendering endpoints (landing, idea-by-slug, pain-point-by-slug,
+// sitemap, tree) live in `routes/publicCatalog.ts` mounted at
+// `/api/public/catalog/*` under `requireInternalService` (no `X-User-ID`
+// required). The endpoints in this file run under `requireInternalAuth` for
+// in-app callers that already carry a session.

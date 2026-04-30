@@ -127,26 +127,6 @@ export function computeCategoryTotalItems(category: CategoryGroup, countField?: 
 }
 
 /**
- * Builds a cross-navigation URL between Ideas and Pain Points pages,
- * preserving category but resetting sort/page (sorts differ between the two).
- */
-export function buildCrossNavUrl(targetPath: string, category: string): string {
-  const params = new URLSearchParams();
-  if (category) params.set('category', category);
-  const qs = params.toString();
-  return qs ? `${targetPath}?${qs}` : targetPath;
-}
-
-/**
- * Builds a listing URL for a leaf category (no children).
- * Routes to pain-points if painPointCount > ideaCount, otherwise ideas.
- */
-export function buildLeafCategoryListingUrl(slug: string, ideaCount: number, painPointCount: number): string {
-  const target = painPointCount > ideaCount ? '/catalog/pain-points' : '/catalog/ideas';
-  return buildCrossNavUrl(target, slug);
-}
-
-/**
  * Formats item counts for display, e.g. "3 ideas · 5 pain points" or "No items yet".
  */
 export function formatItemCounts(ideas: number, painPoints: number): string {

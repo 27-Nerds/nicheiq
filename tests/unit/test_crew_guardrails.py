@@ -10,10 +10,10 @@ Tests:
 import json
 from unittest.mock import MagicMock
 
-import pytest
-
+from nicheiq.models.seo_strategy import CategoryLightResult
 from nicheiq.utils.validation.crew_guardrails import (
     _normalize_technique,
+    validate_category_tier_output,
     validate_content_categorization,
     validate_quote_enrichment,
     validate_raw_concepts,
@@ -153,6 +153,34 @@ class TestValidateContentCategorization:
 
         assert not success
         assert "at least 3" in result.lower() or "user_segments" in result.lower()
+
+
+class TestSeoKeywordGuardrails:
+    """Tests for SEO keyword analysis guardrail return compatibility."""
+
+    def test_category_tier_guardrail_serializes_model_raw(self):
+        """CrewAI TaskOutput.raw requires a string even when raw contains a model."""
+        category_result = CategoryLightResult(
+            tier_4_category_groups=[
+                {
+                    "category_name": "Automation",
+                    "keywords": [{"keyword_name": "workflow automation tool"}],
+                    "strategy_recommendation": "Target workflow automation comparisons.",
+                }
+            ],
+            category_strategy_notes="Build programmatic pages around automation use cases.",
+        )
+        output = MagicMock()
+        output.pydantic = category_result
+        output.raw = category_result
+
+        success, result = validate_category_tier_output(output)
+
+        assert success
+        assert isinstance(result, str)
+        reparsed = CategoryLightResult.model_validate_json(result)
+        assert reparsed.tier_4_category_groups is not None
+        assert reparsed.tier_4_category_groups[0].category_name == "Automation"
 
 
 class TestValidateQuoteEnrichment:

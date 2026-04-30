@@ -5,5 +5,9 @@ Disallow: /dashboard/
 Disallow: /jobs/
 Disallow: /settings/
 Disallow: /billing/
+Allow: /catalog/
+Allow: /ideas/
+Allow: /idea/
+Allow: /pain-point/
 
 Sitemap: https://nicheiq.dev/sitemap.xml

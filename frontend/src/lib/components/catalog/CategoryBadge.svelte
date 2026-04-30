@@ -1,8 +1,9 @@
 <script lang="ts">
   import { Folder } from "lucide-svelte";
+  import { categoryPath } from "$lib/utils/urls";
 
   interface Props {
-    category: { name: string; slug: string };
+    category: { name: string; slug: string; parentSlug?: string | null };
     type: "pain-points" | "ideas";
     size?: "sm" | "md";
     light?: boolean;
@@ -11,7 +12,10 @@
 
   let { category, type, size = "sm", light = false, asLink = true }: Props = $props();
 
-  const href = $derived(`/catalog/${type}?category=${category.slug}`);
+  const href = $derived(categoryPath({
+    slug: category.slug,
+    parentSlug: category.parentSlug ?? null,
+  }));
   const sizeClass = $derived(size === "sm" ? "cat-badge-sm" : "");
 </script>
 

@@ -19,7 +19,8 @@ import { statsRouter } from './routes/stats.js';
 import { sitemapRouter } from './routes/sitemap.js';
 import { adminCatalogRouter } from './routes/adminCatalog.js';
 import { catalogRouter } from './routes/catalog.js';
-import { requireInternalAdmin, requireInternalAuth } from './middleware/auth.js';
+import { publicCatalogRouter } from './routes/publicCatalog.js';
+import { requireInternalAdmin, requireInternalAuth, requireInternalService } from './middleware/auth.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
@@ -69,6 +70,10 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/sitemap', sitemapRouter);
 app.use('/api/admin/catalog', requireInternalAdmin, adminCatalogRouter);
+// Public-rendering surface: service secret only, no userId required (used by
+// SvelteKit (public) SSR loaders that have no session cookie).
+app.use('/api/public/catalog', requireInternalService, publicCatalogRouter);
+// In-app catalog surface: requires both service secret and X-User-ID.
 app.use('/api/catalog', requireInternalAuth, catalogRouter);
 app.use('/api', healthRouter);
 

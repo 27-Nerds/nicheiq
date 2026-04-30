@@ -9,9 +9,10 @@
     index?: number;
     href: string;
     onclick?: (e: MouseEvent) => void;
+    hideCategory?: boolean;
   }
 
-  let { idea, index = 0, href, onclick }: Props = $props();
+  let { idea, index = 0, href, onclick, hideCategory = false }: Props = $props();
 </script>
 
 <SolutionCard
@@ -20,5 +21,5 @@
   {onclick}
   {index}
   isFeatured={idea.is_featured}
-  category={idea.category}
+  category={hideCategory ? null : idea.category}
 />

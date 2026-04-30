@@ -33,6 +33,13 @@ vi.mock('../../services/jobService.js', () => ({
   addJobAsset: (...args: any[]) => mockAddJobAsset(...args),
 }));
 
+// Phase 5.4 — /report-ready now calls extractOrCreateResearchContext after
+// asset registration. Mock to keep the route behavior under test.
+const mockExtractOrCreate = vi.fn();
+vi.mock('../../services/researchContextService.js', () => ({
+  extractOrCreateResearchContext: (...args: any[]) => mockExtractOrCreate(...args),
+}));
+
 const mockBroadcastProgress = vi.fn();
 
 vi.mock('../../services/progressBroadcastService.js', () => ({
@@ -94,6 +101,10 @@ beforeEach(async () => {
   vi.clearAllMocks();
 
   mockAddJobAsset.mockResolvedValue({});
+  // Default: this is the FIRST delivery (no existing asset). Tests that need
+  // to simulate re-delivery override mockGetJobAsset.
+  mockGetJobAsset.mockResolvedValue(null);
+  mockExtractOrCreate.mockResolvedValue({});
 
   app = express();
   app.use(express.json());
@@ -206,6 +217,34 @@ describe('POST /api/workers/report-ready', () => {
       .send(validPayload);
 
     expect(res.status).toBe(200);
+    expect(mockNotifyJobComplete).not.toHaveBeenCalled();
+  });
+
+  // Phase 5.4
+  it('calls extractOrCreateResearchContext with forceRefreshAll after asset registration', async () => {
+    mockJobFindUnique.mockResolvedValue({ userId: 'user-1', niche: 'test niche' });
+    mockUserFindUnique.mockResolvedValue({ email: 'user@example.com' });
+
+    await request(app)
+      .post('/api/workers/report-ready')
+      .send(validPayload);
+
+    expect(mockExtractOrCreate).toHaveBeenCalledWith(JOB_ID, { forceRefreshAll: true });
+  });
+
+  it('skips notification email on re-delivery (asset already exists)', async () => {
+    mockJobFindUnique.mockResolvedValue({ userId: 'user-1', niche: 'test niche' });
+    mockUserFindUnique.mockResolvedValue({ email: 'user@example.com' });
+    // Simulate re-delivery: REPORT_JSON asset already exists.
+    mockGetJobAsset.mockResolvedValue({ filePath: 'outputs/job-1/report.json' });
+
+    const res = await request(app)
+      .post('/api/workers/report-ready')
+      .send(validPayload);
+
+    expect(res.status).toBe(200);
+    // Asset re-registered (idempotent upsert) but no duplicate email.
+    expect(mockAddJobAsset).toHaveBeenCalled();
     expect(mockNotifyJobComplete).not.toHaveBeenCalled();
   });
 });

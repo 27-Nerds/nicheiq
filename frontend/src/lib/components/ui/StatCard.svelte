@@ -58,7 +58,7 @@
     </div>
     <div>
       <p
-        class="text-4xl font-display font-bold text-text-primary tracking-tight"
+        class="text-4xl font-display font-bold text-text-primary tracking-tight tabular-nums"
       >
         {value}
       </p>

@@ -760,12 +760,37 @@ def run_catalog_pain_points(
         # Stage 3: Pain point analysis (PainPointCrew + AudienceMappingCrew)
         flow.stage_3_analyze_pain_points()
 
+        # Phase 5.4 — materialize preview report BEFORE the no-pain-points
+        # early-return. Backend projection layer reads this asset to populate
+        # CatalogResearchContext. Load-bearing: if materialization fails, we
+        # raise so RQ retries the job.
+        output_dir = os.path.join("output", "jobs", job_id)
+        os.makedirs(output_dir, exist_ok=True)
+        try:
+            preview_path = flow._materialize_preview_report(output_dir)
+        except Exception as mat_err:
+            logger.error(
+                f"[Worker] Preview materialization raised for job {job_id}: {mat_err}\n"
+                f"{traceback.format_exc()}"
+            )
+            raise RuntimeError(
+                f"[Worker] Preview report materialization failed for job {job_id}; "
+                f"aborting so RQ retries"
+            ) from mat_err
+        if not preview_path:
+            raise RuntimeError(
+                f"[Worker] Preview report materialization returned None for job {job_id}; "
+                f"aborting so RQ retries"
+            )
+
         # Extract pain points
         state = flow.state
         pain_analysis = getattr(state, "pain_point_analysis", None)
         if not pain_analysis or not pain_analysis.pain_points:
             logger.warning(f"[Worker] No pain points generated for job {job_id}")
-            notify_catalog_pain_points_ready(job_id, category_id, [], niche)
+            notify_catalog_pain_points_ready(
+                job_id, category_id, [], niche, preview_report_path=preview_path
+            )
             return {"status": "completed", "job_id": job_id, "pain_point_count": 0}
 
         # Serialize pain points
@@ -778,7 +803,9 @@ def run_catalog_pain_points(
             pain_point_dicts.append(d)
 
         # Notify backend
-        notify_catalog_pain_points_ready(job_id, category_id, pain_point_dicts, niche)
+        notify_catalog_pain_points_ready(
+            job_id, category_id, pain_point_dicts, niche, preview_report_path=preview_path
+        )
 
         logger.info(f"[Worker] Catalog pain points complete for job {job_id}: {len(pain_point_dicts)} pain points")
         return {"status": "completed", "job_id": job_id, "pain_point_count": len(pain_point_dicts)}
@@ -818,6 +845,8 @@ def run_catalog_ideas(
     niche: str,
     parent_category_name: str = "",
     existing_ideas: list[dict[str, str]] | None = None,
+    parent_source_job_id: str | None = None,
+    content_categorization: dict | None = None,
 ) -> dict:
     """
     Generate solution ideas from admin-selected pain points for a catalog category.
@@ -832,6 +861,10 @@ def run_catalog_ideas(
         parent_category_name: Parent category name for hierarchy context
         existing_ideas: Optional list of dicts with "name" and "description" keys
             for previously generated ideas to avoid duplicating
+        parent_source_job_id: Phase 5.4 — sourceJobId of the pain-points-job
+            the ideas were generated from. Forwarded to backend so generated
+            ideas FK into the same CatalogResearchContext row as the pain
+            points. None for legacy callers (ideas use their own job_id).
 
     Returns:
         Dict with status and idea count
@@ -841,7 +874,11 @@ def run_catalog_ideas(
     logger.info(f"[Worker] Generating catalog ideas for job {job_id} from {len(pain_points)} pain points")
 
     try:
-        from nicheiq.models.pain_point import PainPoint, PainPointAnalysisResult
+        from nicheiq.models.pain_point import (
+            ContentCategorizationReport,
+            PainPoint,
+            PainPointAnalysisResult,
+        )
         from nicheiq.crews.unified_solution_crew import UnifiedSolutionCrew
 
         progress_callback = create_progress_callback(job_id)
@@ -864,6 +901,19 @@ def run_catalog_ideas(
                 affected_segments=pp_data.get("affectedSegments", pp_data.get("affected_segments")) or [],
             ))
 
+        # Rehydrate ContentCategorizationReport from the pain-points-job's
+        # research context, if present. UnifiedSolutionCrew uses themes +
+        # user_segments to sharpen segment targeting. min_length validators
+        # may reject older payloads — degrade silently instead of failing.
+        content_cat = None
+        if content_categorization:
+            try:
+                content_cat = ContentCategorizationReport.model_validate(content_categorization)
+            except Exception as e:
+                logger.warning(
+                    f"[Worker] Failed to rehydrate content_categorization for job {job_id}: {e}"
+                )
+
         # Build PainPointAnalysisResult
         total_mentions = sum(pp.mention_count for pp in reconstructed)
         pain_analysis = PainPointAnalysisResult(
@@ -872,6 +922,7 @@ def run_catalog_ideas(
             total_mentions=total_mentions,
             top_categories=[],
             analysis_summary=f"Catalog pain point analysis for {niche}",
+            content_categorization=content_cat,
         )
 
         # Create UnifiedSolutionCrew with pain points and existing ideas blacklist
@@ -890,7 +941,10 @@ def run_catalog_ideas(
 
         if not idea_gen or not hasattr(idea_gen, "solution_ideas"):
             logger.warning(f"[Worker] No ideas generated for job {job_id}")
-            notify_catalog_ideas_ready(job_id, category_id, [], niche)
+            notify_catalog_ideas_ready(
+                job_id, category_id, [], niche,
+                parent_source_job_id=parent_source_job_id,
+            )
             return {"status": "completed", "job_id": job_id, "idea_count": 0}
 
         # Post-hoc safety-net: filter out ideas whose names match existing ones (case-insensitive)
@@ -912,7 +966,10 @@ def run_catalog_ideas(
         progress_callback(5, "Solution Pipeline", "completed")
 
         # Notify backend
-        notify_catalog_ideas_ready(job_id, category_id, idea_previews, niche)
+        notify_catalog_ideas_ready(
+            job_id, category_id, idea_previews, niche,
+            parent_source_job_id=parent_source_job_id,
+        )
 
         logger.info(f"[Worker] Catalog ideas complete for job {job_id}: {len(idea_previews)} ideas")
         return {"status": "completed", "job_id": job_id, "idea_count": len(idea_previews)}

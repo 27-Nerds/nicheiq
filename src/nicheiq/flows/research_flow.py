@@ -1585,6 +1585,19 @@ RULES:
                 report["detailed_pain_points"] = None
                 report["pain_point_analytics"] = None
 
+            # ── Stage 3 (cont.): Content Categorization (themes + user segments) ──
+            # Persisted so catalog_ideas worker can rehydrate it (avoids the
+            # "No user segments available" warning in unified_solution_crew),
+            # and so catalog landing pages can render themes/segments.
+            try:
+                if pain_analysis and pain_analysis.content_categorization:
+                    report["content_categorization"] = pain_analysis.content_categorization.model_dump()
+                else:
+                    report["content_categorization"] = None
+            except Exception as e:
+                logger.debug(f"[Preview Report] Content categorization section failed: {e}")
+                report["content_categorization"] = None
+
             # ── Stage 4: Audience Mapping (direct pass-through) ──
             try:
                 am = getattr(state, "audience_mapping", None)
@@ -1702,22 +1715,58 @@ RULES:
                 fs = getattr(state, "filtering_stats", None) or {}
                 reddit_count = 0
                 twitter_count = 0
+                generic_count = 0
+                reddit_comments_count = 0
+                top_subreddits: list[dict] = []
                 social = getattr(state, "social_content", None)
                 if social:
-                    reddit_count = len(social.reddit_posts)
-                    twitter_count = len(social.twitter_threads)
+                    # Defensive: pydantic models default to [], but treat None
+                    # the same to be safe.
+                    reddit_posts = getattr(social, "reddit_posts", []) or []
+                    twitter_threads = getattr(social, "twitter_threads", []) or []
+                    generic_posts = getattr(social, "generic_posts", []) or []
+                    reddit_count = len(reddit_posts)
+                    twitter_count = len(twitter_threads)
+                    generic_count = len(generic_posts)
+                    reddit_comments_count = sum(
+                        getattr(p, "num_comments", 0) or 0 for p in reddit_posts
+                    )
+                    from collections import Counter
+                    sub_counter = Counter(
+                        getattr(p, "subreddit", "") for p in reddit_posts
+                        if getattr(p, "subreddit", "")
+                    )
+                    # Shape matches frontend SubredditBreakdown
+                    # (frontend/src/lib/types/report.ts:637-640).
+                    top_subreddits = [
+                        {"name": name, "post_count": count}
+                        for name, count in sub_counter.most_common(10)
+                    ]
 
                 report["research_metadata"] = {
                     "reddit_posts_analyzed": reddit_count,
+                    "reddit_comments_analyzed": reddit_comments_count,
                     "twitter_threads_analyzed": twitter_count,
+                    "generic_posts_analyzed": generic_count,
+                    "top_subreddits": top_subreddits,
+                    # Materializer-write timestamp (no upstream scrape time).
+                    "collection_date": datetime.utcnow().isoformat(),
                     "filtering_stats": fs,
                     "started_at": state.started_at.isoformat() if getattr(state, "started_at", None) else None,
                     "completed_stages": getattr(state, "completed_stages", []),
+                }
+
+                # Phase 5.4 — surface pain-point quality tier when state has
+                # one. Backend projection reads this for `dataQualityTier`.
+                pain_point_quality_tier = getattr(state, "pain_point_quality_tier", None)
+                report["data_quality_summary"] = {
+                    "pain_point_quality_tier": pain_point_quality_tier,
                 }
             except Exception as e:
                 logger.debug(f"[Preview Report] Metadata section failed: {e}")
                 report["generated_at"] = datetime.utcnow().isoformat()
                 report["research_metadata"] = None
+                report["data_quality_summary"] = None
 
             # ── Write to file ──
             job_id = getattr(self, "job_id", None) or getattr(state, "job_id", None)

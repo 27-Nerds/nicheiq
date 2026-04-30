@@ -1,10 +1,9 @@
 <script lang="ts">
   import ProgressRing from "$lib/components/ui/ProgressRing.svelte";
   import CategoryBadge from "$lib/components/catalog/CategoryBadge.svelte";
-  import { ArrowRight } from "lucide-svelte";
   import { fly } from "svelte/transition";
 
-  let { painPoint, index = 0, href, onclick }: { painPoint: any; index?: number; href: string; onclick?: (e: MouseEvent) => void } = $props();
+  let { painPoint, index = 0, href, onclick, hideCategory = false }: { painPoint: any; index?: number; href: string; onclick?: (e: MouseEvent) => void; hideCategory?: boolean } = $props();
 
   const wtpPercent = $derived(
     painPoint.willingnessToPayScore != null
@@ -16,7 +15,7 @@
 <a
   {href}
   {onclick}
-  class="block w-full text-left card card-interactive card-sm group pp-card"
+  class="block w-full text-left card card-sm group"
   in:fly={{ y: 12, duration: 400, delay: index * 40 }}
 >
   <div class="flex gap-3">
@@ -46,21 +45,11 @@
         </div>
       {/if}
 
-      {#if painPoint.category}
+      {#if painPoint.category && !hideCategory}
         <div class="mt-1.5">
           <CategoryBadge category={painPoint.category} type="pain-points" light asLink={false} />
         </div>
       {/if}
-
-      <span class="mt-1.5 inline-flex items-center gap-1 text-xs text-text-muted opacity-0 group-hover:opacity-100 transition-opacity">
-        View details <ArrowRight class="w-3 h-3" />
-      </span>
     </div>
   </div>
 </a>
-
-<style>
-  .pp-card:hover {
-    border-bottom-color: var(--color-accent);
-  }
-</style>

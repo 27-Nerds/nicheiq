@@ -1,16 +1,8 @@
 import rateLimit from 'express-rate-limit';
-import { Redis } from 'ioredis';
 import { CONFIG } from '../config.js';
+import { getRedis } from '../services/redis.js';
 
-// Redis client for rate limiting (suggestion endpoints)
-const redis = new Redis(CONFIG.redisUrl, {
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-  maxRetriesPerRequest: 3,
-});
-
-redis.on('error', (err: Error) => {
-  console.error('Rate limit Redis error:', err.message);
-});
+const redis = getRedis();
 
 /**
  * Rate limiter for authentication endpoints (login, register)
@@ -65,6 +57,22 @@ export const jobCreationLimiter = rateLimit({
   max: CONFIG.nodeEnv === 'production' ? 10 : 100, // 10 jobs per hour in production
   message: {
     error: 'Job creation limit reached, please try again later',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+/**
+ * Crawl-friendly rate limiter for the public catalog endpoints used by the
+ * SvelteKit SSR loaders that render `/ideas/*`. Set high enough that Googlebot
+ * and the SvelteKit edge cache can warm without 429s, but low enough to
+ * shield Postgres from a misconfigured crawler.
+ */
+export const catalogCrawlLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: CONFIG.nodeEnv === 'production' ? 100 : 1000,
+  message: {
+    error: 'Catalog crawl rate exceeded, please slow down',
   },
   standardHeaders: true,
   legacyHeaders: false,

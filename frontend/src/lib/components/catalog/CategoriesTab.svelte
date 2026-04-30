@@ -19,6 +19,7 @@
     Check,
     Search,
     Eye,
+    FileText,
   } from "lucide-svelte";
 
   let { categories }: {
@@ -964,6 +965,13 @@
                         {/if}
                       </button>
                       <div class="flex items-center gap-1 flex-shrink-0">
+                        <a
+                          class="p-1.5 rounded hover:bg-bg-elevated transition-colors {parent.longDescription ? 'text-success' : 'text-text-muted hover:text-accent'}"
+                          href="/admin/catalog/{parent.id}/seo"
+                          title={parent.longDescription ? 'SEO copy curated' : 'Edit SEO copy'}
+                        >
+                          <FileText class="w-3.5 h-3.5" />
+                        </a>
                         <button
                           class="p-1.5 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary"
                           onclick={() => startEdit(parent)}
@@ -1104,6 +1112,13 @@
                                   <Lightbulb class="w-3 h-3" />
                                 </button>
                               {/if}
+                              <a
+                                class="p-1 rounded hover:bg-bg-elevated transition-colors {child.longDescription ? 'text-success' : 'text-text-muted hover:text-accent'}"
+                                href="/admin/catalog/{child.id}/seo"
+                                title={child.longDescription ? 'SEO copy curated' : 'Edit SEO copy'}
+                              >
+                                <FileText class="w-3 h-3" />
+                              </a>
                               <button
                                 class="p-1 rounded hover:bg-bg-elevated text-text-muted hover:text-text-primary"
                                 onclick={() => startEdit(child)}

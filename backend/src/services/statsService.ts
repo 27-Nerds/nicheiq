@@ -1,19 +1,10 @@
-import { Redis } from 'ioredis';
 import { prisma } from './db.js';
-import { CONFIG } from '../config.js';
+import { getRedis } from './redis.js';
 
 const CACHE_KEY = 'public_stats:completed_jobs';
 const CACHE_TTL = 300; // 5 minutes
 
-// Redis client for stats caching
-const redis = new Redis(CONFIG.redisUrl, {
-  retryStrategy: (times: number) => Math.min(times * 100, 3000),
-  maxRetriesPerRequest: 3,
-});
-
-redis.on('error', (err: Error) => {
-  console.error('Stats Redis connection error:', err.message);
-});
+const redis = getRedis();
 
 export async function getPublicStats(): Promise<{ completedJobs: number }> {
   try {

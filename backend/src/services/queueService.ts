@@ -148,6 +148,8 @@ export async function enqueueCatalogIdeasJob(
   niche: string,
   parentCategoryName: string,
   existingIdeas: Array<{name: string, description: string}> = [],
+  parentSourceJobId?: string,
+  contentCategorization?: unknown,
 ): Promise<void> {
   const jobData = JSON.stringify({
     job_id: jobId,
@@ -158,10 +160,17 @@ export async function enqueueCatalogIdeasJob(
     existing_ideas: existingIdeas,
     task_type: 'catalog_ideas',
     created_at: new Date().toISOString(),
+    // Phase 5.4 — when the admin generates ideas from existing pain points,
+    // the ideas should inherit the pain-points-job's sourceJobId so they FK
+    // into the same CatalogResearchContext row.
+    ...(parentSourceJobId && { parent_source_job_id: parentSourceJobId }),
+    ...(contentCategorization != null
+      ? { content_categorization: contentCategorization }
+      : {}),
   });
 
   await redis.lpush(QUEUE_NAME, jobData);
-  console.log(`Enqueued catalog ideas job ${jobId} to ${QUEUE_NAME}`);
+  console.log(`Enqueued catalog ideas job ${jobId} to ${QUEUE_NAME}` + (parentSourceJobId ? ` (parent=${parentSourceJobId})` : ''));
 }
 
 /**
