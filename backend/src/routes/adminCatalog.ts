@@ -19,6 +19,16 @@ import {
 } from '../services/catalogService.js';
 import { categorizeBatch } from '../services/categorizationService.js';
 import { enqueueCatalogPainPointsJob, enqueueCatalogIdeasJob } from '../services/queueService.js';
+import {
+  listCollectionsAdmin,
+  getCollectionAdmin,
+  createCollection,
+  updateCollection,
+  deleteCollection,
+  addItemToCollection,
+  removeItemFromCollection,
+  reorderItems,
+} from '../services/catalogCollectionService.js';
 import { prisma } from '../services/db.js';
 import { getRedis } from '../services/redis.js';
 import { JobStatus } from '@prisma/client';
@@ -819,5 +829,145 @@ adminCatalogRouter.get('/categories/:id/ideas', async (req: AuthenticatedRequest
   } catch (error) {
     console.error('Failed to list ideas:', error);
     res.status(500).json({ error: 'Failed to list ideas' });
+  }
+});
+
+// ============================================
+// Phase 5.4 — Featured Collections admin CRUD
+// ============================================
+
+const SlugRegex = /^[a-z0-9-]+$/;
+const CollectionCreateSchema = z.object({
+  slug: z.string().min(1).max(120).regex(SlugRegex),
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).nullable().optional(),
+  tagline: z.string().max(160).nullable().optional(),
+  colorAccent: z.string().max(20).nullable().optional(),
+  sortOrder: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+});
+const CollectionUpdateSchema = CollectionCreateSchema.partial();
+const ItemAddSchema = z
+  .object({
+    ideaId: z.string().uuid().nullable().optional(),
+    painPointId: z.string().uuid().nullable().optional(),
+    position: z.number().int().min(0).optional(),
+  })
+  .refine(
+    (a) => Boolean(a.ideaId) !== Boolean(a.painPointId),
+    'Exactly one of ideaId or painPointId must be provided',
+  );
+const ReorderSchema = z.object({
+  orderedIds: z.array(z.string().uuid()).min(1),
+});
+
+adminCatalogRouter.get('/collections', async (_req, res: Response) => {
+  try {
+    const collections = await listCollectionsAdmin();
+    res.json({ collections });
+  } catch (err) {
+    console.error('Failed to list collections:', err);
+    res.status(500).json({ error: 'Failed to list collections' });
+  }
+});
+
+adminCatalogRouter.get('/collections/:id', async (req, res: Response) => {
+  try {
+    const collection = await getCollectionAdmin(req.params.id);
+    if (!collection) {
+      res.status(404).json({ error: 'Collection not found' });
+      return;
+    }
+    res.json({ collection });
+  } catch (err) {
+    console.error('Failed to fetch collection:', err);
+    res.status(500).json({ error: 'Failed to fetch collection' });
+  }
+});
+
+adminCatalogRouter.post('/collections', async (req, res: Response) => {
+  try {
+    const parse = CollectionCreateSchema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: 'Validation error', details: parse.error.flatten() });
+      return;
+    }
+    const created = await createCollection(parse.data);
+    res.status(201).json({ collection: created });
+  } catch (err) {
+    console.error('Failed to create collection:', err);
+    res.status(500).json({ error: 'Failed to create collection' });
+  }
+});
+
+adminCatalogRouter.patch('/collections/:id', async (req, res: Response) => {
+  try {
+    const parse = CollectionUpdateSchema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: 'Validation error', details: parse.error.flatten() });
+      return;
+    }
+    const updated = await updateCollection(req.params.id, parse.data);
+    res.json({ collection: updated });
+  } catch (err) {
+    console.error('Failed to update collection:', err);
+    res.status(500).json({ error: 'Failed to update collection' });
+  }
+});
+
+adminCatalogRouter.delete('/collections/:id', async (req, res: Response) => {
+  try {
+    await deleteCollection(req.params.id);
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to delete collection:', err);
+    res.status(500).json({ error: 'Failed to delete collection' });
+  }
+});
+
+adminCatalogRouter.post('/collections/:id/items', async (req, res: Response) => {
+  try {
+    const parse = ItemAddSchema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: 'Validation error', details: parse.error.flatten() });
+      return;
+    }
+    const created = await addItemToCollection({
+      collectionId: req.params.id,
+      ideaId: parse.data.ideaId ?? null,
+      painPointId: parse.data.painPointId ?? null,
+      position: parse.data.position,
+    });
+    res.status(201).json({ item: created });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to add item';
+    console.error('Failed to add collection item:', err);
+    res.status(400).json({ error: message });
+  }
+});
+
+adminCatalogRouter.delete('/collections/:id/items/:itemId', async (req, res: Response) => {
+  try {
+    await removeItemFromCollection(req.params.itemId);
+    res.status(204).end();
+  } catch (err) {
+    console.error('Failed to remove collection item:', err);
+    res.status(500).json({ error: 'Failed to remove item' });
+  }
+});
+
+adminCatalogRouter.post('/collections/:id/reorder', async (req, res: Response) => {
+  try {
+    const parse = ReorderSchema.safeParse(req.body);
+    if (!parse.success) {
+      res.status(400).json({ error: 'Validation error', details: parse.error.flatten() });
+      return;
+    }
+    await reorderItems(req.params.id, parse.data.orderedIds);
+    res.status(204).end();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to reorder';
+    console.error('Failed to reorder collection:', err);
+    res.status(400).json({ error: message });
   }
 });

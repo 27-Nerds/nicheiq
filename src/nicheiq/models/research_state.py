@@ -19,7 +19,7 @@ from .executive_summary import ExecutiveDashboard
 from .keyword_data import CrewKeywordValidationResult, KeywordValidationResult
 from .marketing_blueprint import GTMBlueprint
 from .pain_point import ContentCategorizationReport, PainPoint, PainPointAnalysisResult
-from .seo_strategy import SEOStrategyReport
+from .seo_strategy import SEOStrategyReport, TopicCluster
 from .social_content import SocialContentCollection
 from .solution_idea import (
     CompetitiveEnhancements,
@@ -305,6 +305,17 @@ class CompetitorCard(BaseModel):
     pricing_model: Optional[str] = Field(default=None, description="Pricing model if available")
     strengths: list[str] = Field(default_factory=list, description="Competitor strengths")
     weaknesses: list[str] = Field(default_factory=list, description="Competitor weaknesses")
+    # Catalog rebuild (Phase 5.4): market position relative to the niche.
+    # Distinct from `competitor_type` (which describes feature overlap with
+    # OUR proposed solution) — `position` describes the competitor's standing
+    # in the market itself. Optional for back-compat with existing reports.
+    #   leader     = dominant brand recognition or market share
+    #   challenger = mid-market with focused traction, scaling
+    #   niche      = vertical-specific or limited footprint
+    position: Optional[str] = Field(
+        default=None,
+        description="Market position: leader | challenger | niche",
+    )
 
 class CompetitiveIntensityEntry(BaseModel):
     """Competitive intensity for a single solution."""
@@ -646,6 +657,23 @@ class FinalReport(BaseModel):
     competitor_profiles: list[CompetitorCard] = Field(
         default_factory=list,
         description="Detailed competitor profiles with features, pricing, strengths, weaknesses"
+    )
+
+    # Catalog rebuild (Phase 5.4): keyword clusters for the public catalog UI.
+    # Sourced by report_generator._assemble_base_report directly from
+    # state.seo_strategy_report.topic_clusters — that is the canonical
+    # population path in the current pipeline (KeywordCluster in keyword_data.py
+    # is defined but never instantiated; KeywordResearchReport is unused).
+    # Optional because legacy reports + reports where SEO crew failed don't
+    # have it; the projection logs a warning and the catalog UI hides the
+    # section gracefully.
+    #
+    # Per-keyword volume/difficulty enrichment deferred — TopicCluster currently
+    # carries supporting_keywords as `list[str]`. Frontend renders cluster
+    # name + primary keyword + total volume + content recommendation.
+    keyword_clusters: Optional[list[TopicCluster]] = Field(
+        default=None,
+        description="Topic clusters for the selected solution (Phase 5.4 catalog UI)"
     )
 
     # REMOVED: ideation_process - not reliably populated, transparency not needed in final report

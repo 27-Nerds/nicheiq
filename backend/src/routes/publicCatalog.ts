@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import {
   getCategoryLanding,
+  getCatalogTotals,
   getIdeaBySlug,
   getPainPointBySlug,
   getCategorySitemapEntries,
@@ -12,6 +13,10 @@ import {
   resolveLegacyIdea,
   resolveLegacyPainPoint,
 } from '../services/catalogService.js';
+import {
+  listCollectionSummaries,
+  getCollectionDetail,
+} from '../services/catalogCollectionService.js';
 import { catalogCrawlLimiter } from '../middleware/rateLimit.js';
 
 /**
@@ -162,6 +167,65 @@ publicCatalogRouter.get(
     } catch (error) {
       console.error('Failed to get catalog tree:', error);
       res.status(500).json({ error: 'Failed to get tree' });
+    }
+  },
+);
+
+// Phase 5.4 — public catalog index aggregate stats. Cached 5 min server-side
+// AND via Cache-Control to amortize the COUNT() + SUM() Prisma queries.
+publicCatalogRouter.get(
+  '/totals',
+  catalogCrawlLimiter,
+  async (_req: Request, res: Response) => {
+    try {
+      const totals = await getCatalogTotals();
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(totals);
+    } catch (error) {
+      console.error('Failed to get catalog totals:', error);
+      res.status(500).json({ error: 'Failed to get totals' });
+    }
+  },
+);
+
+// Phase 5.4 — featured collection summaries (for the public index page).
+// Returns active collections only, sorted by sortOrder. Items NOT hydrated.
+publicCatalogRouter.get(
+  '/collections',
+  catalogCrawlLimiter,
+  async (_req: Request, res: Response) => {
+    try {
+      const summaries = await listCollectionSummaries();
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json({ collections: summaries });
+    } catch (error) {
+      console.error('Failed to list catalog collections:', error);
+      res.status(500).json({ error: 'Failed to list collections' });
+    }
+  },
+);
+
+// Phase 5.4 — single collection detail with items hydrated as previews.
+publicCatalogRouter.get(
+  '/collections/:slug',
+  catalogCrawlLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const slugParse = SlugParam.safeParse(req.params.slug);
+      if (!slugParse.success) {
+        res.status(400).json({ error: 'Invalid slug' });
+        return;
+      }
+      const detail = await getCollectionDetail(slugParse.data);
+      if (!detail) {
+        res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(detail);
+    } catch (error) {
+      console.error('Failed to get collection detail:', error);
+      res.status(500).json({ error: 'Failed to get collection' });
     }
   },
 );

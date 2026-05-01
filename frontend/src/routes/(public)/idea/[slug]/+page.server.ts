@@ -7,7 +7,7 @@ import {
   ideaDetailCanonical,
 } from '$lib/seo/catalogSeo';
 import { buildMeta } from '$lib/seo/meta';
-import type { IdeaPreview } from '$lib/types/catalog-landing';
+import type { IdeaDetailResponse } from '$lib/types/catalog-landing';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
@@ -31,7 +31,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   if (res.status === 404) throw error(404, 'Not found');
   if (!res.ok) throw error(500, 'Failed to load');
 
-  const idea = (await res.json()) as IdeaPreview;
+  const idea = (await res.json()) as IdeaDetailResponse;
   const canonical = ideaDetailCanonical(idea.slug, url.searchParams);
 
   const description =

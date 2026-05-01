@@ -74,6 +74,9 @@ export interface CatalogResearchContext {
   selectedSolution: unknown | null;
   selectedSolutionName: string | null;
   contentCategorization: unknown | null;
+  // Phase 5.4 — catalog rebuild additions.
+  keywordClusters: unknown | null;
+  themeSeverityScores: unknown | null;
   redditPostsAnalyzed: number | null;
   redditCommentsAnalyzed: number | null;
   twitterThreadsAnalyzed: number | null;
@@ -90,6 +93,15 @@ export interface IdeaPreview {
   id: string;
   slug: string;
   solution_name: string;
+  /** Human-readable display title (Pydantic BaseSolutionIdea.headline).
+   *  Null on legacy rows — UI must fall back to `solution_name` (the code
+   *  name). Use `solutionDisplayTitle()` from solution-utils.ts. */
+  headline: string | null;
+  /** Punchy 1-2 sentence card-friendly summary (Pydantic
+   *  BaseSolutionIdea.short_description). Null on legacy rows — UI must
+   *  fall back to `description`. Use `solutionCardDescription()` from
+   *  solution-utils.ts. */
+  short_description: string | null;
   description: string;
   value_proposition: string | null;
   project_type: string | null;
@@ -146,6 +158,33 @@ export interface PainPointPreview {
   researchContext?: CatalogResearchContext | null;
 }
 
+/**
+ * Phase 5.4 — response shape for `/api/public/catalog/idea-by-slug/:slug` and
+ * `/api/public/catalog/pain-point-by-slug/:slug`. Extends the preview with
+ * flattened summaries (camelCase) appended by the backend's getIdeaBySlug /
+ * getPainPointBySlug. Each summary field is null when the underlying
+ * researchContext lacks it.
+ */
+export interface CatalogDetailExtras {
+  themes: import('./publicCatalog.js').Theme[] | null;
+  audienceSegments: import('./publicCatalog.js').AudienceSegment[] | null;
+  competitors: import('./publicCatalog.js').Competitor[] | null;
+  keywordClusters: import('./publicCatalog.js').KeywordCluster[] | null;
+  subredditSources: import('./publicCatalog.js').SubredditSource[] | null;
+  contentItemsMined: number;
+  sourceCommunities: number;
+  // Phase 5.5 — catalog page enrichment.
+  nicheContext: import('./publicCatalog.js').NicheContext | null;
+  audienceSignals: import('./publicCatalog.js').AudienceSignals | null;
+  qualitySignals: import('./publicCatalog.js').QualitySignals | null;
+  categorizationSummary: string | null;
+  painAnalysisSummary: string | null;
+  topPainCategories: string[] | null;
+}
+
+export type IdeaDetailResponse = IdeaPreview & CatalogDetailExtras;
+export type PainPointDetailResponse = PainPointPreview & CatalogDetailExtras;
+
 export interface CategoryLandingPayload {
   category: CategoryLandingCategory;
   parent: CategoryLandingParent | null;
@@ -157,6 +196,28 @@ export interface CategoryLandingPayload {
   totalIdeas: number;
   totalPainPoints: number;
   sources: string[];
+  // Phase 5.4 — flattened summaries derived from the most-recent
+  // researchContext for the category subtree. All nullable; frontend hides
+  // sections when null. See `frontend/src/lib/types/publicCatalog.ts` for
+  // shape definitions.
+  themes: import('./publicCatalog.js').Theme[] | null;
+  audienceSegments: import('./publicCatalog.js').AudienceSegment[] | null;
+  competitors: import('./publicCatalog.js').Competitor[] | null;
+  keywordClusters: import('./publicCatalog.js').KeywordCluster[] | null;
+  subredditSources: import('./publicCatalog.js').SubredditSource[] | null;
+  // Two-track sources metric (NOT a single mixed total — see scope rule).
+  contentItemsMined: number;
+  sourceCommunities: number;
+  // Always null until pipeline produces per-category growth signal.
+  growthPercent: number | null;
+  // Phase 5.5 — catalog page enrichment. All null-safe; components hide
+  // sections when data absent.
+  nicheContext: import('./publicCatalog.js').NicheContext | null;
+  audienceSignals: import('./publicCatalog.js').AudienceSignals | null;
+  qualitySignals: import('./publicCatalog.js').QualitySignals | null;
+  categorizationSummary: string | null;
+  painAnalysisSummary: string | null;
+  topPainCategories: string[] | null;
   // Phase 5: research context from the most-recent published item's source
   // job. Null when the category has zero published items, or when the source
   // job's report.json is missing (placeholder context row).

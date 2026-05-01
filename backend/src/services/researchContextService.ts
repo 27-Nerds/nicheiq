@@ -132,8 +132,15 @@ export function hasProjectedData(ctx: CatalogResearchContext): boolean {
     !isJsonEmpty(ctx.goToMarketBlueprint) ||
     !isJsonEmpty(ctx.pricingStrategy) ||
     !isJsonEmpty(ctx.trafficMonetization) ||
+    !isJsonEmpty(ctx.keywordClusters) ||
+    !isJsonEmpty(ctx.themeSeverityScores) ||
+    !isJsonEmpty(ctx.nicheContext) ||
+    !isJsonEmpty(ctx.qualitySignals) ||
+    !isJsonEmpty(ctx.topPainCategories) ||
     ctx.competitiveSummary != null ||
     ctx.selectedSolutionName != null ||
+    ctx.categorizationSummary != null ||
+    ctx.painAnalysisSummary != null ||
     ctx.redditPostsAnalyzed != null ||
     ctx.redditCommentsAnalyzed != null ||
     ctx.twitterThreadsAnalyzed != null ||
@@ -166,8 +173,15 @@ export function hasMeaningfulResearchContext(ctx: CatalogResearchContext): boole
     !isJsonEmpty(ctx.goToMarketBlueprint) ||
     !isJsonEmpty(ctx.pricingStrategy) ||
     !isJsonEmpty(ctx.trafficMonetization) ||
+    !isJsonEmpty(ctx.keywordClusters) ||
+    !isJsonEmpty(ctx.themeSeverityScores) ||
+    !isJsonEmpty(ctx.nicheContext) ||
+    !isJsonEmpty(ctx.qualitySignals) ||
+    !isJsonEmpty(ctx.topPainCategories) ||
     (ctx.competitiveSummary?.trim() ?? '') !== '' ||
     (ctx.selectedSolutionName?.trim() ?? '') !== '' ||
+    (ctx.categorizationSummary?.trim() ?? '') !== '' ||
+    (ctx.painAnalysisSummary?.trim() ?? '') !== '' ||
     (ctx.redditPostsAnalyzed ?? 0) > 0 ||
     (ctx.redditCommentsAnalyzed ?? 0) > 0 ||
     (ctx.twitterThreadsAnalyzed ?? 0) > 0 ||
@@ -231,6 +245,9 @@ interface ProjectedFields {
   selectedSolution: JsonInput;
   selectedSolutionName: string | null;
   contentCategorization: JsonInput;
+  // Catalog rebuild (Phase 5.4) — new projected fields for the public catalog UI.
+  keywordClusters: JsonInput;
+  themeSeverityScores: JsonInput;
   redditPostsAnalyzed: number | null;
   redditCommentsAnalyzed: number | null;
   twitterThreadsAnalyzed: number | null;
@@ -240,6 +257,143 @@ interface ProjectedFields {
   dataQualityTier: string | null;
   goNoGoVerdict: string | null;
   reportGeneratedAt: Date | null;
+  // Phase 5.5 — catalog page enrichment.
+  nicheContext: JsonInput;
+  qualitySignals: JsonInput;
+  categorizationSummary: string | null;
+  painAnalysisSummary: string | null;
+  topPainCategories: JsonInput;
+}
+
+/**
+ * Extract a flattened theme-severity summary from the content_categorization
+ * subtree. Returns `[{title, severity, mention_count, sources}]` or null when
+ * the source isn't available. Used to populate `themeSeverityScores` for fast
+ * read access without unwrapping the full content_categorization JSON.
+ *
+ * Logs a warning when content_categorization exists but no theme has a
+ * numeric severity_score (likely a legacy report or a crew that didn't
+ * populate the new field).
+ */
+function extractThemeSeverityScores(
+  contentCategorization: unknown,
+  jobId: string,
+): unknown {
+  if (!contentCategorization || typeof contentCategorization !== 'object') return null;
+  const themes = (contentCategorization as Record<string, unknown>).theme_categories;
+  if (!Array.isArray(themes) || themes.length === 0) return null;
+
+  const result: Array<{
+    title: string;
+    severity: number | null;
+    mention_count: number | null;
+    sources: string[];
+    // Phase 5.5 — additional fields for ThemeCard render.
+    description: string | null;
+    frequency: string | null;
+    primary_user_segments: string[];
+  }> = [];
+  let hasAnySeverity = false;
+
+  for (const theme of themes) {
+    if (!theme || typeof theme !== 'object') continue;
+    const t = theme as Record<string, unknown>;
+    const title = typeof t.category_name === 'string' ? t.category_name : null;
+    if (!title) continue;
+    const severity = typeof t.severity_score === 'number' ? t.severity_score : null;
+    if (severity != null) hasAnySeverity = true;
+    const mention = typeof t.mention_count === 'number' ? t.mention_count : null;
+    const segments = Array.isArray(t.primary_user_segments)
+      ? (t.primary_user_segments as unknown[]).filter((s): s is string => typeof s === 'string')
+      : [];
+    const description = typeof t.definition === 'string' ? t.definition : null;
+    const frequency = typeof t.frequency === 'string' ? t.frequency : null;
+    result.push({
+      title,
+      severity,
+      mention_count: mention,
+      // `sources` retained for backward-compat; same value as primary_user_segments today.
+      // Tracked for cleanup once frontend consumers migrate to primary_user_segments.
+      sources: segments,
+      description,
+      frequency,
+      primary_user_segments: segments,
+    });
+  }
+
+  if (result.length === 0) return null;
+  if (!hasAnySeverity) {
+    console.warn(
+      `[projectReport] missing field=themeSeverityScores.severity jobId=${jobId} ` +
+        `(content_categorization present but no numeric severity_score on any theme — legacy report?)`,
+    );
+  }
+  return result;
+}
+
+/**
+ * Phase 5.5 — flatten niche_context into a small projected blob for the
+ * landing payload's hero lede + boundary chips. Pydantic NicheContext fields
+ * (research_state.py:35-43): niche_input, niche_description, market_segments
+ * (list[str]), industry_boundaries (str — NOT a list).
+ */
+function extractNicheContext(nicheContext: unknown): unknown {
+  if (!nicheContext || typeof nicheContext !== 'object') return null;
+  const c = nicheContext as Record<string, unknown>;
+  const description = typeof c.niche_description === 'string' ? c.niche_description : null;
+  const industryBoundaries = typeof c.industry_boundaries === 'string' ? c.industry_boundaries : null;
+  const marketSegments = Array.isArray(c.market_segments)
+    ? (c.market_segments as unknown[]).filter((s): s is string => typeof s === 'string')
+    : null;
+  if (!description && !industryBoundaries && !marketSegments) return null;
+  return { description, industryBoundaries, marketSegments };
+}
+
+/**
+ * Phase 5.5 — flatten data_quality_summary + research_metadata.social_content_metrics
+ * into a single qualitySignals blob. All sub-fields are optional and null-safe.
+ *   contentTier         ← social_content_quality_tier ('EXCELLENT'|'GOOD'|'MINIMAL'|'INSUFFICIENT')
+ *   painPointTier       ← pain_point_quality_tier      ('GOLD'|'SILVER'|'BRONZE'|'INSUFFICIENT')
+ *   confidenceScore     ← pain_point_confidence_score (number 0-1)
+ *   overallDataQuality  ← overall_data_quality        ('HIGH'|'MEDIUM'|'LOW') — FinalReport-only
+ *   engagementMetrics   ← social_content_metrics      ({ totalEngagement, avgEngagementPerSource })
+ */
+function extractQualitySignals(
+  dataQuality: unknown,
+  researchMetadata: unknown,
+): unknown {
+  const d = (dataQuality && typeof dataQuality === 'object')
+    ? dataQuality as Record<string, unknown>
+    : {};
+  const contentTier = typeof d.social_content_quality_tier === 'string' ? d.social_content_quality_tier : null;
+  const painPointTier = typeof d.pain_point_quality_tier === 'string' ? d.pain_point_quality_tier : null;
+  const confidenceScore = typeof d.pain_point_confidence_score === 'number' ? d.pain_point_confidence_score : null;
+  const overallDataQuality = typeof d.overall_data_quality === 'string' ? d.overall_data_quality : null;
+
+  // social_content_metrics may live on dataQuality (newer materializer) or
+  // research_metadata (legacy). Try both.
+  let metrics: Record<string, unknown> | null = null;
+  if (d.social_content_metrics && typeof d.social_content_metrics === 'object') {
+    metrics = d.social_content_metrics as Record<string, unknown>;
+  } else if (researchMetadata && typeof researchMetadata === 'object') {
+    const rm = researchMetadata as Record<string, unknown>;
+    if (rm.social_content_metrics && typeof rm.social_content_metrics === 'object') {
+      metrics = rm.social_content_metrics as Record<string, unknown>;
+    }
+  }
+  let engagementMetrics: { totalEngagement: number; avgEngagementPerSource: number } | null = null;
+  if (metrics) {
+    const total = typeof metrics.total_engagement === 'number' ? metrics.total_engagement : null;
+    const avg = typeof metrics.avg_engagement_per_source === 'number' ? metrics.avg_engagement_per_source : null;
+    if (total != null) {
+      engagementMetrics = { totalEngagement: total, avgEngagementPerSource: avg ?? 0 };
+    }
+  }
+
+  if (!contentTier && !painPointTier && confidenceScore == null && !overallDataQuality && !engagementMetrics) {
+    return null;
+  }
+  return { contentTier, painPointTier, confidenceScore, overallDataQuality, engagementMetrics };
 }
 
 function toJsonInput(value: unknown): JsonInput {
@@ -250,6 +404,7 @@ function toJsonInput(value: unknown): JsonInput {
 function projectReport(
   report: Record<string, unknown>,
   sourceKind: SourceKind = 'commissioned',
+  jobId: string = 'unknown',
 ): ProjectedFields {
   const niche = typeof report.niche === 'string' ? report.niche : '';
   const guardOptions: RejectOptions = {
@@ -258,6 +413,40 @@ function projectReport(
   };
   const guard = (value: unknown, fieldName: string) =>
     rejectIfContainsBannedContent(value, fieldName, niche, guardOptions);
+
+  // Catalog rebuild (Phase 5.4): warn when expected new fields are absent so
+  // silent regressions in the pipeline surface as grep-able log lines.
+  // Pre-compute presence here so warnings fire BEFORE the privacy scrub may
+  // null the field for content reasons.
+  const warnIfMissing = (value: unknown, fieldName: string): void => {
+    const empty =
+      value == null ||
+      (Array.isArray(value) && value.length === 0) ||
+      (typeof value === 'object' && Object.keys(value as Record<string, unknown>).length === 0);
+    if (empty) {
+      console.warn(`[projectReport] missing field=${fieldName} jobId=${jobId}`);
+    }
+  };
+  warnIfMissing(report.keyword_clusters, 'keyword_clusters');
+  warnIfMissing(report.content_categorization, 'content_categorization');
+  // marketSizing.total_addressable_market is the catalog-UI TAM string; warn
+  // when the broader market_sizing object is present but the TAM string isn't.
+  if (report.market_sizing && typeof report.market_sizing === 'object') {
+    const tam = (report.market_sizing as Record<string, unknown>).total_addressable_market;
+    if (tam == null || (typeof tam === 'string' && tam.trim() === '')) {
+      console.warn(`[projectReport] missing field=market_sizing.total_addressable_market jobId=${jobId}`);
+    }
+  }
+  // competitor_profiles[*].position warning — counts profiles with null position.
+  if (Array.isArray(report.competitor_profiles)) {
+    const profiles = report.competitor_profiles as Array<Record<string, unknown>>;
+    const missingPos = profiles.filter(p => p && p.position == null).length;
+    if (missingPos > 0) {
+      console.warn(
+        `[projectReport] missing field=competitor_profiles[*].position jobId=${jobId} count=${missingPos}/${profiles.length}`,
+      );
+    }
+  }
 
   // Scalar string fields also pass through the banned-pattern guard.
   const guardString = (value: unknown, fieldName: string): string | null => {
@@ -302,6 +491,12 @@ function projectReport(
     selectedSolution: toJsonInput(guard(selectedSolution, 'selectedSolution')),
     selectedSolutionName,
     contentCategorization: toJsonInput(guard(report.content_categorization, 'contentCategorization')),
+    // Catalog rebuild (Phase 5.4) — new fields. Both flow through the same
+    // privacy scrub as the rest of the projection; null is the safe default.
+    keywordClusters: toJsonInput(guard(report.keyword_clusters, 'keywordClusters')),
+    themeSeverityScores: toJsonInput(
+      guard(extractThemeSeverityScores(report.content_categorization, jobId), 'themeSeverityScores'),
+    ),
     redditPostsAnalyzed: safeInt(meta.reddit_posts_analyzed),
     redditCommentsAnalyzed: safeInt(meta.reddit_comments_analyzed),
     twitterThreadsAnalyzed: safeInt(meta.twitter_threads_analyzed),
@@ -315,6 +510,21 @@ function projectReport(
     dataQualityTier: tierCandidate ?? 'INSUFFICIENT',
     goNoGoVerdict: normalizeVerdict(verdictBlock.verdict),
     reportGeneratedAt: safeDate(report.generated_at),
+    // Phase 5.5 — catalog page enrichment.
+    nicheContext: toJsonInput(guard(extractNicheContext(report.niche_context), 'nicheContext')),
+    qualitySignals: toJsonInput(guard(extractQualitySignals(report.data_quality_summary, meta), 'qualitySignals')),
+    categorizationSummary: typeof (report.content_categorization as Record<string, unknown> | null)?.executive_summary === 'string'
+      ? ((report.content_categorization as Record<string, unknown>).executive_summary as string)
+      : null,
+    painAnalysisSummary: typeof report.pain_analysis_summary === 'string' ? report.pain_analysis_summary : null,
+    topPainCategories: toJsonInput(
+      guard(
+        Array.isArray(report.top_pain_categories)
+          ? (report.top_pain_categories as unknown[]).filter((s): s is string => typeof s === 'string')
+          : null,
+        'topPainCategories',
+      ),
+    ),
   };
 }
 
@@ -336,6 +546,9 @@ function emptyProjection(): ProjectedFields {
     selectedSolution: Prisma.JsonNull,
     selectedSolutionName: null,
     contentCategorization: Prisma.JsonNull,
+    // Catalog rebuild (Phase 5.4) defaults.
+    keywordClusters: Prisma.JsonNull,
+    themeSeverityScores: Prisma.JsonNull,
     redditPostsAnalyzed: null,
     redditCommentsAnalyzed: null,
     twitterThreadsAnalyzed: null,
@@ -345,6 +558,12 @@ function emptyProjection(): ProjectedFields {
     dataQualityTier: 'INSUFFICIENT',
     goNoGoVerdict: null,
     reportGeneratedAt: null,
+    // Phase 5.5 defaults.
+    nicheContext: Prisma.JsonNull,
+    qualitySignals: Prisma.JsonNull,
+    categorizationSummary: null,
+    painAnalysisSummary: null,
+    topPainCategories: Prisma.JsonNull,
   };
 }
 
@@ -481,9 +700,32 @@ export async function extractOrCreateResearchContext(
   }
 
   const projection = report
-    ? projectReport(report, options.sourceKind ?? 'commissioned')
+    ? projectReport(report, options.sourceKind ?? 'commissioned', sourceJobId)
     : emptyProjection();
 
+  return prisma.catalogResearchContext.upsert({
+    where: { sourceJobId },
+    create: { sourceJobId, ...projection },
+    update: { ...projection, extractedAt: new Date() },
+  });
+}
+
+/**
+ * Phase 5.5 — backfill helper for the `--from-checkpoints` script. Takes a
+ * pre-synthesized report blob (built by the script from
+ * `output/checkpoints/checkpoint_<jobId>...` stage_*.json files) and projects
+ * + upserts it like the asset-driven path does. Bypasses the asset loader
+ * because checkpoint dirs aren't first-class job assets.
+ *
+ * BACKFILL ONLY. Do NOT call from production runtime — it can overwrite real
+ * data with synthesized blobs of unknown completeness.
+ */
+export async function projectFromBlob(
+  sourceJobId: string,
+  report: Record<string, unknown>,
+  options: { sourceKind?: SourceKind } = {},
+): Promise<CatalogResearchContext> {
+  const projection = projectReport(report, options.sourceKind ?? 'catalog', sourceJobId);
   return prisma.catalogResearchContext.upsert({
     where: { sourceJobId },
     create: { sourceJobId, ...projection },

@@ -564,6 +564,15 @@ model CatalogIdea {
   sourceItemIndex       Int
   // Solution fields
   solutionName          String   @db.Text
+  // Human-readable headline (5-12 words) shown as the display title in
+  // listings (e.g. "Real-time eviction risk scores by neighborhood").
+  // Mirrors Pydantic BaseSolutionIdea.headline. Frontend cards fall back
+  // to `solutionName` (the code name) when null on legacy rows.
+  headline              String?  @db.Text
+  // Punchy 1-2 sentence card-friendly summary (under ~180 chars).
+  // Mirrors Pydantic BaseSolutionIdea.short_description. Frontend cards
+  // fall back to `description` when this is null (legacy rows).
+  shortDescription      String?  @db.Text
   description           String   @db.Text
   valueProposition      String?  @db.Text
   projectType           String?  @db.Text
@@ -589,6 +598,9 @@ model CatalogIdea {
   isFeatured            Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  // Reverse relation — featured-collection memberships. Cascade on idea
+  // delete cleans up join rows automatically.
+  collectionItems       CatalogCollectionItem[]
 
   @@unique([sourceJobId, solutionName])
   @@unique([slug])
@@ -632,6 +644,8 @@ model CatalogPainPoint {
   isFeatured            Boolean  @default(false)
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
+  // Reverse relation — featured-collection memberships.
+  collectionItems       CatalogCollectionItem[]
 
   @@unique([sourceJobId, title])
   @@unique([slug])
@@ -733,6 +747,31 @@ model CatalogResearchContext {
   topSubreddits          Json?
   collectionDate         DateTime?
 
+  // Catalog rebuild (Phase 5.4): keyword clusters extracted from
+  // FinalReport.keyword_clusters (sourced via report_generator from the selected
+  // solution's keyword_validation_results entry). Shape mirrors KeywordCluster
+  // (Pydantic keyword_data.py:122). Surfaced to public idea-detail page.
+  keywordClusters        Json?
+  // Theme severity scores (0-100 scale, NOT 0-1). Sourced from
+  // ContentCategorizationReport.theme_categories[].severity_score.
+  // Stored as `[{title, severity, mention_count, sources, description, frequency, primary_user_segments}]`.
+  // Phase 5.5: extended shape includes definition/frequency/primary_user_segments for the new ThemeCard render.
+  themeSeverityScores    Json?
+
+  // Phase 5.5 — catalog page enrichment fields. All optional; backfilled from
+  // checkpoint stage_3/stage_4 files when missing in preview reports.
+  // Niche context: { description, industryBoundaries, marketSegments } from niche_context.
+  nicheContext           Json?
+  // Quality signals: { contentTier, painPointTier, confidenceScore, overallDataQuality, engagementMetrics }
+  // from data_quality_summary + research_metadata.social_content_metrics.
+  qualitySignals         Json?
+  // Section 1 prose lede source — content_categorization.executive_summary.
+  categorizationSummary  String?  @db.Text
+  // Pain analysis prose summary — pain_point_analysis.analysis_summary (50/50 in checkpoints, 0/11 in preview pre-Phase 5.5).
+  painAnalysisSummary    String?  @db.Text
+  // Top pain categories ranked list — pain_point_analysis.top_categories (string[]).
+  topPainCategories      Json?
+
   // Status signals — typed for query/index, drive UI conditionals.
   dataQualityTier        String?  @db.VarChar(20)  // GOLD | SILVER | BRONZE | INSUFFICIENT
   goNoGoVerdict          String?  @db.VarChar(20)  // GO | NO_GO | MAYBE
@@ -766,4 +805,58 @@ model CatalogItemCache {
   @@index([userId])
   @@index([itemType])
   @@index([isPublished])
+}
+
+// ============================================
+// Featured Collections (Phase 5.4)
+// ============================================
+//
+// Curated groupings of catalog ideas/pain-points, manually managed via the
+// admin catalog UI and rendered on the public `/ideas` index page. Each
+// CatalogCollectionItem references EXACTLY ONE of CatalogIdea or
+// CatalogPainPoint — the XOR is enforced by:
+//   1. A CHECK constraint added in the migration SQL (DB-level guarantee).
+//   2. Service-level validation in catalogCollectionService.ts (clear errors).
+// `position` is stable + unique per collection for deterministic ordering.
+
+model CatalogCollection {
+  id           String   @id @default(uuid())
+  slug         String   @unique @db.VarChar(120)
+  name         String   @db.VarChar(120)
+  description  String?  @db.Text
+  // Short tagline shown on the collection card (e.g. "Collection · 24 ideas").
+  tagline      String?  @db.VarChar(160)
+  // Optional CSS hex/named token for the card accent stripe.
+  colorAccent  String?  @db.VarChar(20)
+  sortOrder    Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  items        CatalogCollectionItem[]
+
+  @@index([isActive, sortOrder])
+}
+
+model CatalogCollectionItem {
+  id           String   @id @default(uuid())
+  collectionId String
+  collection   CatalogCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  // Exactly one of ideaId / painPointId is set (DB CHECK + service validation).
+  ideaId       String?
+  idea         CatalogIdea? @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  painPointId  String?
+  painPoint    CatalogPainPoint? @relation(fields: [painPointId], references: [id], onDelete: Cascade)
+  position     Int
+  createdAt    DateTime @default(now())
+
+  // No duplicate idea/painPoint within a collection. Postgres treats NULLs as
+  // distinct in unique indexes, so these constraints only fire when the
+  // respective FK is non-null — which is exactly what we want given the XOR.
+  @@unique([collectionId, ideaId])
+  @@unique([collectionId, painPointId])
+  // Stable, unique ordering within a collection.
+  @@unique([collectionId, position])
+  @@index([collectionId])
+  @@index([ideaId])
+  @@index([painPointId])
 }

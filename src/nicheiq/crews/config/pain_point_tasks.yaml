@@ -127,6 +127,18 @@ categorize_content:
        - **definition**: What this category represents (2-3 sentences)
        - **frequency**: "High", "Medium", or "Low"
        - **mention_count**: Number of distinct discussions (integer)
+       - **severity_score**: Integer 0-100 capturing how acute / urgent this theme is
+         based on emotional language, frustration intensity, and willingness-to-pay
+         signals. Use the following anchors:
+           80-100 = users actively losing money/customers/sleep over this; "this is
+                    killing me", "I'd pay anything to fix this"
+           60-79  = significant friction with workarounds in place; "such a hassle",
+                    "wastes hours of my week"
+           40-59  = moderate annoyance, no urgent willingness to pay
+           20-39  = mild inconvenience, mostly positive sentiment about workarounds
+           0-19   = barely a complaint, just a wish-list item
+         This is INDEPENDENT of mention_count — a small number of intensely
+         negative discussions can score higher than a large number of mild ones.
        - **primary_user_segments**: User types discussing this theme
        - **anchor_keywords**: 3-8 short phrases (2-6 words each) that users say when
          discussing this theme. EXACT phrases from content for Task 4 vector search.

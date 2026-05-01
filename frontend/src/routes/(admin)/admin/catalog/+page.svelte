@@ -2,6 +2,7 @@
   import { goto } from "$app/navigation";
   import CurateTab from "$lib/components/catalog/CurateTab.svelte";
   import CategoriesTab from "$lib/components/catalog/CategoriesTab.svelte";
+  import CollectionsTab from "$lib/components/catalog/CollectionsTab.svelte";
 
   let { data } = $props();
 
@@ -15,7 +16,13 @@
 </script>
 
 <svelte:head>
-  <title>{tab === "categories" ? "Catalog Categories" : "Curate Catalog"} | Admin | NicheIQ</title>
+  <title>
+    {tab === "categories"
+      ? "Catalog Categories"
+      : tab === "collections"
+        ? "Featured Collections"
+        : "Curate Catalog"} | Admin | NicheIQ
+  </title>
 </svelte:head>
 
 <div class="max-w-6xl">
@@ -44,11 +51,24 @@
     >
       Categories
     </button>
+    <button
+      class="px-5 py-2.5 text-sm font-medium transition-colors {tab === 'collections'
+        ? 'bg-accent text-white'
+        : 'bg-bg-surface text-text-secondary hover:bg-bg-elevated'}"
+      onclick={() => switchTab("collections")}
+    >
+      Collections
+    </button>
   </div>
 
   {#if tab === "curate"}
     <CurateTab {data} categories={data.categories || []} />
   {:else if tab === "categories"}
     <CategoriesTab categories={data.categories || []} />
+  {:else if tab === "collections"}
+    <CollectionsTab
+      collections={data.collections || []}
+      categories={data.categories || []}
+    />
   {/if}
 </div>

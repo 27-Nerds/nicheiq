@@ -54,6 +54,17 @@ class ThemeCategory(BaseModel):
         ...,
         description="Number of distinct discussions mentioning this theme"
     )
+    # Catalog rebuild (Phase 5.4): numeric severity score 0-100 for the public
+    # catalog UI. Optional for backward compatibility — legacy reports produced
+    # before this field existed have None and the catalog UI uses the
+    # `frequency` string as a fallback (High=85, Medium=55, Low=25 mapping
+    # in the frontend's scaleSeverity helper).
+    severity_score: Optional[int] = Field(
+        default=None,
+        ge=0,
+        le=100,
+        description="Severity score 0-100 (NOT 0-1). Combines mention frequency with pain weight.",
+    )
     primary_user_segments: list[str] = Field(
         ..., description="User types in this category"
     )

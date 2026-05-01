@@ -1426,6 +1426,8 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
               sourceGeneratedAt: new Date(),
               sourceItemIndex: ideaIdx,
               solutionName: name,
+              headline: idea.headline ? String(idea.headline) : null,
+              shortDescription: idea.short_description ? String(idea.short_description) : null,
               description: String(idea.description || ''),
               valueProposition: idea.value_proposition ? String(idea.value_proposition) : null,
               projectType,

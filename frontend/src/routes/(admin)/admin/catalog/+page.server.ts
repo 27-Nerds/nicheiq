@@ -24,6 +24,12 @@ export const load: PageServerLoad = async ({ parent, url }) => {
       return { tab, categories };
     }
 
+    if (tab === 'collections') {
+      const collectionsRes = await fetch(`${BACKEND_URL}/api/admin/catalog/collections`, { headers });
+      const collectionsData = collectionsRes.ok ? await collectionsRes.json() : null;
+      return { tab, categories, collections: collectionsData?.collections || [] };
+    }
+
     // Curate tab: also fetch items + owners
     const type = url.searchParams.get('type') || 'ideas';
     const userId = url.searchParams.get('userId') || '';

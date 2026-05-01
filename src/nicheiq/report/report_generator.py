@@ -769,6 +769,17 @@ class ReportGenerator:
             # Stage 9: Full SEO Strategy (full object, not just analytics)
             seo_strategy_report=self.state.seo_strategy_report,
 
+            # Catalog rebuild (Phase 5.4): pass-through topic clusters from the
+            # SEO strategy report. Sourced top-level on FinalReport so the
+            # catalog projection layer can read it without unwrapping the
+            # broader seo_strategy_report. None when SEO crew failed or the
+            # strategy report has no clusters yet.
+            keyword_clusters=(
+                self.state.seo_strategy_report.topic_clusters
+                if self.state.seo_strategy_report
+                else None
+            ),
+
             # Stage 13: Full Data Source Research (full object, not just string summary)
             data_source_research_full=self.state.data_source_research,
 
@@ -1957,6 +1968,19 @@ It differentiates through {diff_text}.
                     else:
                         comp_type = str(comp_type)
 
+                    # Normalize position to lowercase one of leader/challenger/niche.
+                    raw_pos = getattr(comp, 'position', None)
+                    position = None
+                    if isinstance(raw_pos, str):
+                        normalized = raw_pos.strip().lower()
+                        if normalized in {'leader', 'challenger', 'niche'}:
+                            position = normalized
+                        else:
+                            logger.warning(
+                                f"Competitor '{comp.name}' has unrecognized position "
+                                f"'{raw_pos}' — dropping. Expected leader/challenger/niche."
+                            )
+
                     competitor_profiles.append(CompetitorCard(
                         name=comp.name,
                         url=comp.url,
@@ -1965,7 +1989,8 @@ It differentiates through {diff_text}.
                         key_features=comp.key_features or [],
                         pricing_model=comp.pricing_model,
                         strengths=comp.strengths or [],
-                        weaknesses=comp.weaknesses or []
+                        weaknesses=comp.weaknesses or [],
+                        position=position,
                     ))
 
             return competitor_profiles

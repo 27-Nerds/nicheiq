@@ -261,6 +261,100 @@ describe('extractOrCreateResearchContext — projection & privacy', () => {
     const call = mockUpsert.mock.calls[0]?.[0] as { create: Record<string, unknown> };
     expect(call.create.goNoGoVerdict).toBe('MAYBE');
   });
+
+  // Phase 5.4 — catalog rebuild
+  it('persists keywordClusters from report.keyword_clusters', async () => {
+    const report: any = buildPoisonedReport();
+    report.keyword_clusters = [
+      {
+        cluster_name: 'Bottom-funnel queries',
+        primary_keyword: 'bnpl medical purchases',
+        supporting_keywords: ['affirm rejected', 'klarna alternative'],
+        total_monthly_volume: 18400,
+        content_recommendation: 'Build a comparison page for vertical BNPL providers.',
+        estimated_traffic_potential: '500-1000 visits',
+        priority: 1,
+      },
+    ];
+    mockReadFileSync.mockReturnValue(JSON.stringify(report));
+
+    await extractOrCreateResearchContext('test-job-id');
+    const call = mockUpsert.mock.calls[0]?.[0] as { create: Record<string, unknown> };
+    expect(call.create.keywordClusters).toEqual([
+      expect.objectContaining({
+        cluster_name: 'Bottom-funnel queries',
+        primary_keyword: 'bnpl medical purchases',
+        total_monthly_volume: 18400,
+      }),
+    ]);
+  });
+
+  it('extracts themeSeverityScores from content_categorization.theme_categories', async () => {
+    const report: any = buildPoisonedReport();
+    // Add severity_score to the existing theme.
+    report.content_categorization.theme_categories[0].severity_score = 88;
+    report.content_categorization.theme_categories.push({
+      category_name: 'Refund disputes',
+      definition: 'Slow refund flows damage customer trust.',
+      frequency: 'Medium',
+      mention_count: 27,
+      severity_score: 64,
+      primary_user_segments: ['Mid-market merchants'],
+      anchor_keywords: ['refund slow', 'dispute flow', 'wait weeks'],
+    });
+    mockReadFileSync.mockReturnValue(JSON.stringify(report));
+
+    await extractOrCreateResearchContext('test-job-id');
+    const call = mockUpsert.mock.calls[0]?.[0] as { create: Record<string, unknown> };
+    expect(call.create.themeSeverityScores).toEqual([
+      expect.objectContaining({
+        title: 'Manual data entry',
+        severity: 88,
+        mention_count: 42,
+      }),
+      expect.objectContaining({
+        title: 'Refund disputes',
+        severity: 64,
+        mention_count: 27,
+      }),
+    ]);
+  });
+
+  it('themeSeverityScores is null when content_categorization missing', async () => {
+    const report: any = buildPoisonedReport();
+    delete report.content_categorization;
+    mockReadFileSync.mockReturnValue(JSON.stringify(report));
+
+    await extractOrCreateResearchContext('test-job-id');
+    const call = mockUpsert.mock.calls[0]?.[0] as { create: Record<string, unknown> };
+    // Prisma.JsonNull serializes to a sentinel; nulls show as the JsonNull marker.
+    // Check that the field is present but represents null.
+    expect(call.create.themeSeverityScores).toBeDefined();
+  });
+
+  it('keyword_clusters flows through privacy scrub (poisoned cluster nulled)', async () => {
+    const report: any = buildPoisonedReport();
+    // Inject a poisoned keyword cluster — should be nulled.
+    report.keyword_clusters = [
+      {
+        cluster_name: 'AI-powered keyword cluster',
+        primary_keyword: 'something we recommend',
+        supporting_keywords: [],
+        total_monthly_volume: 100,
+        content_recommendation: 'irrelevant',
+        estimated_traffic_potential: '0',
+        priority: 5,
+      },
+    ];
+    mockReadFileSync.mockReturnValue(JSON.stringify(report));
+
+    await extractOrCreateResearchContext('test-job-id');
+    const call = mockUpsert.mock.calls[0]?.[0] as { create: Record<string, unknown> };
+    // Whole keywordClusters subtree nulled because it matches privacy-leakage pattern.
+    const serialized = JSON.stringify(call.create);
+    expect(serialized).not.toMatch(/we recommend/i);
+    expect(serialized).not.toMatch(/AI-powered/i);
+  });
 });
 
 describe('extractOrCreateResearchContext — placeholder behavior', () => {

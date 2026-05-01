@@ -1,21 +1,20 @@
 <script lang="ts">
-  import { ArrowRight, BarChart3, UserCheck, TrendingUp, FileText } from "lucide-svelte";
+  import { ArrowRight } from "lucide-svelte";
   import { page } from "$app/state";
   import { SeoHead, JsonLd } from "$lib/components/seo";
   import {
     CategoryBreadcrumbs,
-    CategoryHero,
-    CategoryLandingView,
-    CatalogReportShell,
+    CategoryHeroV2,
+    SectionDivider,
+    ThemeCard,
+    AudienceSegmentCard,
+    AudienceSignalsSection,
+    TopPainTable,
+    SubNicheCell,
+    IdeaCardV2,
+    AllIdeasSection,
   } from "$lib/components/catalog/seo";
-  import AudienceSection from "$lib/components/sections/AudienceSection.svelte";
-  import MarketSizing from "$lib/components/sections/MarketSizing.svelte";
-  import TrendSection from "$lib/components/sections/TrendSection.svelte";
-  import type {
-    AudienceMapping,
-    MarketSizing as MarketSizingData,
-    TrendLongevity,
-  } from "$lib/types/report";
+  import { categoryPath } from "$lib/utils/urls";
 
   let { data } = $props();
 
@@ -25,7 +24,7 @@
   // Build breadcrumb trail per route kind.
   const trail = $derived.by(() => {
     if (data.kind === "category") {
-      const stops = [
+      const stops: Array<{ label: string; href?: string }> = [
         { label: "Home", href: "/" },
         { label: "Ideas", href: "/ideas" },
       ];
@@ -35,8 +34,8 @@
           href: `/ideas/${data.payload.parent.slug}`,
         });
       }
-      stops.push({ label: data.payload.category.name, href: '' });
-      return stops.map(({ label, href }) => (href ? { label, href } : { label }));
+      stops.push({ label: data.payload.category.name });
+      return stops;
     }
     return [
       { label: "Home", href: "/" },
@@ -45,23 +44,46 @@
     ];
   });
 
-  const r = $derived(data.kind === "category" ? data.payload.researchContext : null);
-
-  const navSections = $derived.by(() => {
-    if (data.kind !== "category") return [
-      { id: "overview", label: "Overview", icon: FileText },
+  // Hero stat tiles. GO count is computed from topIdeas verdict labels — a
+  // best-effort visible-set count, not the database aggregate (which would
+  // require a backend change). Sources stat uses contentItemsMined (Phase 5.4).
+  // Phase 5.5: 4th tile shows "Engagement" when metrics present.
+  const heroStats = $derived.by(() => {
+    if (data.kind !== "category") return [];
+    const p = data.payload;
+    const goCount = p.topIdeas.filter((i) => i.source_verdict === "GO").length;
+    const itemsMined = p.contentItemsMined;
+    const formatK = (n: number) =>
+      n >= 1000
+        ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`
+        : n.toLocaleString();
+    const engagement = p.qualitySignals?.engagementMetrics?.totalEngagement;
+    const fourth =
+      engagement != null && engagement > 0
+        ? {
+            value: formatK(engagement),
+            label: `Engagement · ${itemsMined} discussions`,
+            tone: "amber" as const,
+          }
+        : {
+            value: formatK(itemsMined),
+            label: "Sources mined",
+            tone: "amber" as const,
+          };
+    return [
+      { value: p.totalIdeas.toLocaleString(), label: "Ideas tracked" },
+      { value: goCount.toLocaleString(), label: "Verdict: GO", tone: "go" as const },
+      { value: p.totalPainPoints.toLocaleString(), label: "Pain points" },
+      fourth,
     ];
-    const sections: Array<{ id: string; label: string; icon: typeof BarChart3 }> = [
-      { id: "overview", label: "Overview", icon: FileText },
-    ];
-    if (r?.audienceMapping)
-      sections.push({ id: "audience", label: "Audience", icon: UserCheck });
-    if (r?.marketSizing)
-      sections.push({ id: "market", label: "Market", icon: BarChart3 });
-    if (r?.trendLongevity)
-      sections.push({ id: "trend", label: "Trend", icon: TrendingUp });
-    return sections;
   });
+
+  // Section 1 prose lede — see sub-category route for fallback rationale.
+  const sectionOneLede = $derived(
+    data.kind === "category"
+      ? (data.payload.categorizationSummary ?? data.payload.painAnalysisSummary)
+      : null,
+  );
 </script>
 
 <SeoHead {...data.meta} />
@@ -70,144 +92,221 @@
 <CategoryBreadcrumbs {trail} />
 
 {#if data.kind === "category"}
-  <CatalogReportShell sections={navSections} variant="catalog" railExpanded={true}>
-    <CategoryHero
-      name={data.payload.category.name}
-      dek={data.payload.category.description}
-      tags={data.payload.category.tags ?? []}
-      sources={data.payload.sources}
-      publishedAt={data.payload.category.createdAt}
-      updatedAt={data.payload.category.updatedAt}
-      totalIdeas={data.payload.totalIdeas}
-      totalPainPoints={data.payload.totalPainPoints}
-      subscribeHref={ctaHref}
+  <CategoryHeroV2
+    name={data.payload.category.name}
+    slug={data.payload.category.slug}
+    description={data.payload.category.description}
+    parentChip={data.payload.parent}
+    growthPercent={data.payload.growthPercent}
+    stats={heroStats}
+    nicheContext={data.payload.nicheContext}
+    qualitySignals={data.payload.qualitySignals}
+  />
+
+  <!-- Section 1: Themes -->
+  {#if data.payload.themes && data.payload.themes.length > 0}
+    <SectionDivider num={1} label="Themes & audience signals" />
+    {#if sectionOneLede}
+      <p class="section-lede">{sectionOneLede}</p>
+    {/if}
+    <div class="themes-list">
+      {#each data.payload.themes as t, i}
+        <ThemeCard theme={t} index={i + 1} />
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Section 2: Audience segments -->
+  {#if data.payload.audienceSegments && data.payload.audienceSegments.length > 0}
+    {@const segments = data.payload.audienceSegments}
+    {#snippet segCount()}
+      <span>{segments.length} segments identified</span>
+    {/snippet}
+    <SectionDivider num={2} label="Audience segments" right={segCount} />
+    <div class="segments-grid">
+      {#each segments as s}
+        <AudienceSegmentCard segment={s} />
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Section 3: Audience signals (Phase 5.5) -->
+  {#if data.payload.audienceSignals}
+    <SectionDivider num={3} label="Audience signals" />
+    <AudienceSignalsSection signals={data.payload.audienceSignals} />
+  {/if}
+
+  <!-- Section 4: Top pain points -->
+  {#if data.payload.topPainPoints.length > 0}
+    {#snippet painCount()}
+      <span>ranked by mention volume × severity</span>
+    {/snippet}
+    <SectionDivider num={4} label="Top pain points" right={painCount} />
+    <TopPainTable painPoints={data.payload.topPainPoints} />
+  {/if}
+
+  <!-- Section 5: Sub-niches -->
+  {#if data.payload.children.length > 0}
+    {#snippet subCount()}
+      <span>{data.payload.children.length} sub-categories</span>
+    {/snippet}
+    <SectionDivider num={5} label="Sub-niches" right={subCount} />
+    <div class="subniche-grid">
+      {#each data.payload.children as sub}
+        <SubNicheCell
+          name={sub.name}
+          href={categoryPath({ slug: sub.slug, parentSlug: data.payload.category.slug })}
+          count={sub.ideaCount + sub.painPointCount}
+        />
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Section 6: Top ideas -->
+  {#if data.payload.topIdeas.length > 0}
+    {#snippet topIdeasRight()}
+      <a href="#all-ideas" class="view-all-link">View all ↓</a>
+    {/snippet}
+    <SectionDivider num={6} label="Top ideas in this category" right={topIdeasRight} />
+    <div class="ideas-grid">
+      {#each data.payload.topIdeas as idea}
+        <IdeaCardV2 {idea} />
+      {/each}
+    </div>
+  {/if}
+
+  <!-- Section 6: All ideas (filterable) -->
+  <section id="all-ideas">
+    {#snippet totalRight()}
+      <span>{data.payload.totalIdeas} total</span>
+    {/snippet}
+    <SectionDivider label="Browse all ideas" right={totalRight} />
+    <AllIdeasSection
+      ideas={data.payload.topIdeas}
+      subNiches={data.payload.children}
     />
+  </section>
 
-    <CategoryLandingView
-      longDescription={data.longDescription}
-      children={data.payload.children}
-      topIdeas={data.payload.topIdeas}
-      topPainPoints={data.payload.topPainPoints}
-      totalIdeas={data.payload.totalIdeas}
-      totalPainPoints={data.payload.totalPainPoints}
-      faq={data.payload.category.faqJson}
-      siblings={data.payload.siblings.map((s) => ({
-        name: s.name,
-        slug: s.slug,
-        parentSlug: data.payload.parent?.slug ?? null,
-      }))}
-      viewAllSlug={data.payload.category.slug}
-      researchContext={data.payload.researchContext}
-    />
-
-    {#if r?.audienceMapping}
-      <section id="audience" class="section-anchor">
-        <p class="research-disclaimer">
-          Analysis from latest research published in this niche.
-        </p>
-        <AudienceSection data={r.audienceMapping as AudienceMapping} />
-      </section>
-    {/if}
-
-    {#if r?.marketSizing}
-      <section id="market" class="section-anchor">
-        <MarketSizing data={r.marketSizing as MarketSizingData} />
-      </section>
-    {/if}
-
-    {#if r?.trendLongevity}
-      <section id="trend" class="section-anchor">
-        <TrendSection data={r.trendLongevity as TrendLongevity} />
-      </section>
-    {/if}
-
-    <section class="section-anchor cat-close" aria-label="Commission a research file">
-      <p>
-        Don't see what you need?
-        <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
-          <span class="inline-cta-label">Commission a research file</span>
-          <ArrowRight class="inline-arrow" aria-hidden="true" />
-        </a>
-      </p>
-    </section>
-  </CatalogReportShell>
+  <!-- Inline CTA close -->
+  <section class="inline-close" aria-label="Commission a research file">
+    <p>
+      Don't see what you need?
+      <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
+        <span class="inline-cta-label">Commission a research file</span>
+        <ArrowRight class="inline-arrow" aria-hidden="true" />
+      </a>
+    </p>
+  </section>
 {:else}
-  <CatalogReportShell sections={navSections} variant="catalog" railExpanded={true}>
-    <CategoryHero
-      name={data.pseo.title}
-      tags={data.pseo.tags}
-      sources={["Reddit", "Hacker News"]}
-      totalIdeas={data.featuredIdeas.length}
-      subscribeHref={ctaHref}
-    />
+  <!-- Programmatic SEO landing-page variant (existing behavior, lighter render). -->
+  <CategoryHeroV2
+    name={data.pseo.title}
+    slug={data.pseo.slug}
+    description={data.pseo.seoDescription}
+    parentChip={null}
+    stats={[
+      { value: data.featuredIdeas.length.toLocaleString(), label: "Ideas tracked" },
+    ]}
+  />
 
-    <CategoryLandingView
-      longDescription={data.pseo.longDescription}
-      topIdeas={data.featuredIdeas}
-      totalIdeas={data.featuredIdeas.length}
-      faq={data.pseo.faqJson}
-    />
+  {#if data.featuredIdeas.length > 0}
+    <SectionDivider num={1} label="Featured ideas" />
+    <div class="ideas-grid">
+      {#each data.featuredIdeas as idea}
+        <IdeaCardV2 {idea} />
+      {/each}
+    </div>
+  {/if}
 
-    <section class="section-anchor cat-close" aria-label="Commission a research file">
-      <p>
-        Don't see what you need?
-        <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
-          <span class="inline-cta-label">Commission a research file</span>
-          <ArrowRight class="inline-arrow" aria-hidden="true" />
-        </a>
-      </p>
-    </section>
-  </CatalogReportShell>
+  <section class="inline-close" aria-label="Commission a research file">
+    <p>
+      Don't see what you need?
+      <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
+        <span class="inline-cta-label">Commission a research file</span>
+        <ArrowRight class="inline-arrow" aria-hidden="true" />
+      </a>
+    </p>
+  </section>
 {/if}
 
 <style>
-  .research-disclaimer {
-    font-family:
-      ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-    font-size: 0.6875rem;
-    color: var(--color-text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    margin: 0 0 1rem 0;
+  /* Section 1 prose lede sits between the divider and the theme list. */
+  .section-lede {
+    font-size: 14px;
+    color: var(--color-text-secondary, var(--color-text-primary));
+    line-height: 1.65;
+    max-width: 780px;
+    margin: 0 0 12px;
+  }
+  .themes-list {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1px;
+    background: var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .segments-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 768px) {
+    .segments-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .subniche-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1px;
+    background: var(--color-border);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .ideas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+  }
+  .view-all-link {
+    color: var(--color-text-secondary, var(--color-text-primary));
+    font-size: 12px;
+    text-decoration: none;
+    padding: 5px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    transition: border-color 0.12s;
+  }
+  .view-all-link:hover {
+    border-color: var(--color-border-emphasis);
   }
 
-  /* ============================================================
-     Inline editorial close (page-bottom, last `.section-anchor`).
-     CSS copied from /ideas/+page.svelte — Svelte component-scoped
-     styles can't be reused cross-file.
-     ============================================================ */
-  .cat-close {
-    /* The shell's `:global(.catalog-shell > .section-anchor + .section-anchor)`
-       rule already provides a top hairline + var(--space-12) padding-top,
-       so this section just needs to handle its own internal layout. */
-    padding-top: 0; /* handled by the shell rule */
+  .inline-close {
+    margin-top: 4rem;
+    padding: 2.5rem 0;
+    border-top: 1px solid var(--color-border);
     text-align: center;
   }
-
-  .cat-close p {
+  .inline-close p {
     margin: 0;
-    padding: 1.5rem 0;
-    font-family:
-      ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-family: var(--font-mono);
     font-size: 0.8125rem;
     color: var(--color-text-muted);
-    letter-spacing: 0.02em;
   }
-
   .inline-cta {
     display: inline-flex;
     align-items: baseline;
     gap: 0.375rem;
     margin-left: 0.5rem;
-    font-family: var(--font-display);
     font-size: 0.9375rem;
     font-weight: 600;
     color: var(--color-text-primary);
     text-decoration: none;
-    letter-spacing: -0.005em;
     transition: color 140ms ease;
   }
-
   .inline-cta-label {
     background-image: linear-gradient(currentColor, currentColor);
     background-position: 0 100%;
@@ -215,15 +314,12 @@
     background-repeat: no-repeat;
     transition: background-size 200ms ease;
   }
-
   .inline-cta:hover {
     color: var(--color-accent);
   }
-
   .inline-cta:hover .inline-cta-label {
     background-size: 100% 1px;
   }
-
   :global(.inline-arrow) {
     width: 0.875rem;
     height: 0.875rem;

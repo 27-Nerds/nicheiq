@@ -718,6 +718,14 @@ competitive_analysis:
           - Positioning (from tagline/messaging)
           - Customer feedback (from reviews/social mentions)
           - Strengths & weaknesses (evidence-based)
+          - **position** (REQUIRED for catalog UI): one of "leader", "challenger", or "niche"
+            describing the competitor's standing in the market. NOT the same as competitor_type.
+              "leader"     = dominant brand recognition, market share, or category-defining product
+                             (e.g. Stripe in payments, Shopify in commerce platforms)
+              "challenger" = mid-market with focused traction, actively scaling, often
+                             differentiated on product or pricing
+              "niche"      = vertical-specific, geographically focused, or limited footprint;
+                             serves a narrow segment well
 
        d. **Gap Analysis**:
           - Market gaps: What are users complaining about? What's missing?

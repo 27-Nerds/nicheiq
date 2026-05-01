@@ -41,6 +41,17 @@ class Competitor(BaseModel):
     )
     strengths: Optional[list[str]] = Field(default=None, description="Competitor strengths")
     weaknesses: Optional[list[str]] = Field(default=None, description="Competitor weaknesses")
+    # Catalog rebuild (Phase 5.4): market position relative to the niche.
+    # Distinct from `competitor_type` (which describes feature overlap with our
+    # solution) — `position` describes the competitor's standing in the market.
+    # Optional for back-compat; legacy reports have None.
+    #   leader     = dominant brand recognition or market share
+    #   challenger = mid-market with focused traction, scaling
+    #   niche      = vertical-specific or limited footprint
+    position: Optional[str] = Field(
+        default=None,
+        description="Market position: leader | challenger | niche",
+    )
 
 class CompetitiveLandscape(BaseModel):
     """Complete competitive analysis for a solution idea."""

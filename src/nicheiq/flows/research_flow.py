@@ -1577,13 +1577,28 @@ RULES:
                         "top_pain_point_title": top_title,
                         "category_distribution": category_counts,
                     }
+
+                    # Phase 5.5 — carry pain-analysis prose + ranked categories.
+                    # These three sibling fields on PainPointAnalysisResult are
+                    # always populated by the analyzer crew but were never
+                    # surfaced into the preview report (50/50 checkpoints have
+                    # them, 0/11 historical previews did).
+                    report["pain_analysis_summary"] = getattr(pain_analysis, "analysis_summary", None)
+                    report["top_pain_categories"] = list(getattr(pain_analysis, "top_categories", None) or [])
+                    report["pain_total_mentions"] = getattr(pain_analysis, "total_mentions", None)
                 else:
                     report["detailed_pain_points"] = None
                     report["pain_point_analytics"] = None
+                    report["pain_analysis_summary"] = None
+                    report["top_pain_categories"] = []
+                    report["pain_total_mentions"] = None
             except Exception as e:
                 logger.debug(f"[Preview Report] Pain points section failed: {e}")
                 report["detailed_pain_points"] = None
                 report["pain_point_analytics"] = None
+                report["pain_analysis_summary"] = None
+                report["top_pain_categories"] = []
+                report["pain_total_mentions"] = None
 
             # ── Stage 3 (cont.): Content Categorization (themes + user segments) ──
             # Persisted so catalog_ideas worker can rehydrate it (avoids the
@@ -1756,11 +1771,18 @@ RULES:
                     "completed_stages": getattr(state, "completed_stages", []),
                 }
 
-                # Phase 5.4 — surface pain-point quality tier when state has
-                # one. Backend projection reads this for `dataQualityTier`.
+                # Phase 5.5 — full quality-signal panel. pain_point_quality_tier
+                # already projected as `dataQualityTier`; the rest power the
+                # qualitySignals payload (hero badge + engagement-metric tile).
+                # `overall_data_quality` is intentionally NOT synthesized here —
+                # it's a FinalReport-only field; preview-backed catalog rows
+                # leave it null and let the projection default to INSUFFICIENT.
                 pain_point_quality_tier = getattr(state, "pain_point_quality_tier", None)
                 report["data_quality_summary"] = {
                     "pain_point_quality_tier": pain_point_quality_tier,
+                    "social_content_quality_tier": getattr(state, "social_content_quality_tier", None),
+                    "pain_point_confidence_score": getattr(state, "pain_point_confidence_score", None),
+                    "social_content_metrics": getattr(state, "social_content_metrics", None),
                 }
             except Exception as e:
                 logger.debug(f"[Preview Report] Metadata section failed: {e}")

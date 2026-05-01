@@ -666,6 +666,8 @@ export async function publishIdea(params: {
           sourceGeneratedAt: generatedAt,
           sourceItemIndex: params.itemIndex,
           solutionName,
+          headline: (solution.headline as string) ?? null,
+          shortDescription: (solution.short_description as string) ?? null,
           description: (solution.description as string) || '',
           valueProposition: (solution.value_proposition as string) ?? null,
           projectType,
@@ -996,6 +998,8 @@ function toIdeaPreview(idea: Record<string, any>) {
     id: idea.id,
     slug: idea.slug,
     solution_name: idea.solutionName,
+    headline: idea.headline ?? null,
+    short_description: idea.shortDescription ?? null,
     description: idea.description,
     value_proposition: idea.valueProposition,
     project_type: idea.projectType,
@@ -1278,7 +1282,10 @@ export async function getDiscoverPainPoints(count: number = 4): Promise<Discover
 // (Phase 2 — public catalog SEO restructure)
 // ============================================
 
-const LANDING_CACHE_PREFIX = 'catalog:landing:v1';
+// v2 — Phase 5.5 enrichment adds nicheContext/qualitySignals/categorizationSummary/
+// painAnalysisSummary/topPainCategories + audienceSignals + extended Theme shape.
+// Stale v1 entries age out via TTL (~5 min); no manual flush needed.
+const LANDING_CACHE_PREFIX = 'catalog:landing:v2';
 const LANDING_CACHE_TTL_BASE = 600; // seconds; ±10% jitter applied per write
 const TREE_CACHE_KEY = 'catalog:tree:v1';
 const TREE_CACHE_TTL = 300;
@@ -1346,6 +1353,96 @@ export async function invalidateCategoryLanding(categoryId: string): Promise<voi
   }
 }
 
+// ============================================
+// Phase 5.4 — Catalog rebuild summary types
+// ============================================
+//
+// These flattened summaries live on top-level landing/detail payloads so the
+// public catalog UI doesn't have to unwrap researchContext JSON columns.
+// All shapes use camelCase to match landing-payload convention. Fields are
+// always nullable — the frontend's degradation contract requires `{#if}`
+// guards everywhere.
+
+interface CatalogThemeSummary {
+  title: string;
+  severity: number | null;       // 0-100 (NOT scaled by frontend)
+  mentionCount: number | null;
+  sources: string[];             // deprecated alias of primaryUserSegments — see Risks in plan
+  // Phase 5.5 — extended ThemeCard render fields.
+  description: string | null;    // from theme.definition
+  frequency: string | null;      // 'High' | 'Medium' | 'Low' (verbatim from crew)
+  primaryUserSegments: string[]; // same source as `sources` for now
+}
+
+interface CatalogAudienceSegmentSummary {
+  name: string;
+  sizeLabel: string | null;
+  bullets: string[];
+  // Phase 5.5 — surfaced for AudienceSegmentCard's `.seg-meta` footer.
+  expertiseLevel: string | null;     // 'Beginner' | 'Intermediate' | 'Advanced'
+  budgetSensitivity: string | null;  // 'High' | 'Medium' | 'Low'
+}
+
+// Phase 5.5 — flattened blobs for the catalog landing payload.
+interface CatalogNicheContextSummary {
+  description: string | null;
+  industryBoundaries: string | null;  // STRING — not a list (Pydantic NicheContext.industry_boundaries: str)
+  marketSegments: string[] | null;
+}
+
+interface CatalogAudienceSignalsSummary {
+  vocabulary: string[];                // common_vocabulary
+  frustrations: string[];              // frustrations_with_existing
+  currentTools: string[];              // tools_currently_used
+  communityHubs: string[];
+  recommendedChannels: string[];
+  messagingFrameworks: string[];
+  contentPreferences: string | null;   // STRING — not list
+  earlyAdopterTactics: string | null;  // Optional[str]
+}
+
+interface CatalogQualitySignalsSummary {
+  contentTier: string | null;          // EXCELLENT | GOOD | MINIMAL | INSUFFICIENT
+  painPointTier: string | null;        // GOLD | SILVER | BRONZE | INSUFFICIENT
+  confidenceScore: number | null;      // 0-1
+  overallDataQuality: string | null;   // HIGH | MEDIUM | LOW (FinalReport-only; null on preview rows)
+  engagementMetrics: { totalEngagement: number; avgEngagementPerSource: number } | null;
+}
+
+interface CatalogCompetitorSummary {
+  name: string;
+  url: string | null;
+  competitorType: string | null;   // DIRECT | PARTIAL | INDIRECT (verbatim)
+  description: string;
+  keyFeatures: string[];
+  pricingModel: string | null;
+  strengths: string[];
+  weaknesses: string[];
+  position: 'leader' | 'challenger' | 'niche' | null;  // new in Phase 5.4
+}
+
+interface CatalogKeywordClusterSummary {
+  name: string;
+  primaryKeyword: string | null;
+  totalSearchVolume: number;
+  contentRecommendation: string | null;
+  estimatedTrafficPotential: string | null;
+  priority: number | null;
+  // Per-keyword volume/difficulty enrichment deferred — supporting_keywords
+  // are strings until pipeline ships per-keyword metrics. Each becomes
+  // `{ term, volume: 0, difficulty: 'medium' }` placeholder in v1.
+  keywords: Array<{
+    term: string;
+    volume: number;
+    difficulty: 'easy' | 'medium' | 'hard';
+  }>;
+}
+
+interface CatalogSubredditSource {
+  name: string;
+  postCount: number;
+}
+
 interface CategoryLandingPayload {
   category: {
     id: string;
@@ -1377,11 +1474,306 @@ interface CategoryLandingPayload {
   totalIdeas: number;
   totalPainPoints: number;
   sources: string[];
+  // Phase 5.4 — flattened summaries for the new public catalog UI. All sourced
+  // from the most-recent research context for the category subtree (same row
+  // that backs `researchContext` below). Every field nullable — the frontend
+  // hides sections when null.
+  themes: CatalogThemeSummary[] | null;
+  audienceSegments: CatalogAudienceSegmentSummary[] | null;
+  competitors: CatalogCompetitorSummary[] | null;
+  keywordClusters: CatalogKeywordClusterSummary[] | null;
+  subredditSources: CatalogSubredditSource[] | null;
+  // Two-track sources metric per scope rule (NOT a single mixed total).
+  contentItemsMined: number;       // posts/threads analyzed (sum)
+  sourceCommunities: number;       // distinct platform communities (count)
+  // Always null until pipeline produces per-category growth data. Reserved.
+  growthPercent: number | null;
+  // Phase 5.5 — catalog page enrichment.
+  nicheContext: CatalogNicheContextSummary | null;
+  audienceSignals: CatalogAudienceSignalsSummary | null;
+  qualitySignals: CatalogQualitySignalsSummary | null;
+  categorizationSummary: string | null;
+  painAnalysisSummary: string | null;
+  topPainCategories: string[] | null;
   // Phase 5: research context from the most-recent published item's source job.
   // Null when the category has zero published items, or when the item's
   // sourceJobId still maps to a placeholder context row (report.json missing).
   // Frontend renders this as "Analysis from latest research in this niche."
   researchContext: Record<string, unknown> | null;
+}
+
+// ============================================
+// Phase 5.4 — flatten / extract helpers
+// ============================================
+
+/** Difficulty 0-100 (raw DataForSEO scale) → 3-bucket label for the catalog UI. */
+function bucketKeywordDifficulty(score: number | null | undefined): 'easy' | 'medium' | 'hard' {
+  if (score == null || !Number.isFinite(score)) return 'medium';
+  if (score <= 33) return 'easy';
+  if (score <= 66) return 'medium';
+  return 'hard';
+}
+
+/** Pull theme severity summary from researchContext.themeSeverityScores (Phase 5.4 column). */
+function flattenThemes(ctx: { themeSeverityScores?: unknown } | null): CatalogThemeSummary[] | null {
+  if (!ctx?.themeSeverityScores || !Array.isArray(ctx.themeSeverityScores)) return null;
+  const out: CatalogThemeSummary[] = [];
+  for (const t of ctx.themeSeverityScores as Array<Record<string, unknown>>) {
+    if (!t || typeof t !== 'object') continue;
+    const title = typeof t.title === 'string' ? t.title : null;
+    if (!title) continue;
+    const segments = Array.isArray(t.primary_user_segments)
+      ? (t.primary_user_segments as unknown[]).filter((s): s is string => typeof s === 'string')
+      : Array.isArray(t.sources)
+        ? (t.sources as unknown[]).filter((s): s is string => typeof s === 'string')
+        : [];
+    out.push({
+      title,
+      severity: typeof t.severity === 'number' ? t.severity : null,
+      mentionCount: typeof t.mention_count === 'number' ? t.mention_count : null,
+      sources: segments,
+      description: typeof t.description === 'string' ? t.description : null,
+      frequency: typeof t.frequency === 'string' ? t.frequency : null,
+      primaryUserSegments: segments,
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/** Pull audience segment summary from researchContext.audienceMapping. */
+function flattenAudienceSegments(
+  ctx: { audienceMapping?: unknown } | null,
+): CatalogAudienceSegmentSummary[] | null {
+  if (!ctx?.audienceMapping || typeof ctx.audienceMapping !== 'object') return null;
+  const segments = (ctx.audienceMapping as Record<string, unknown>).audience_segments;
+  if (!Array.isArray(segments) || segments.length === 0) return null;
+  const out: CatalogAudienceSegmentSummary[] = [];
+  for (const s of segments as Array<Record<string, unknown>>) {
+    if (!s || typeof s !== 'object') continue;
+    const name = typeof s.segment_name === 'string' ? s.segment_name : null;
+    if (!name) continue;
+    // Mirror the Pydantic AudienceSegment shape (research_state.py:986).
+    // pain_point_alignment is the most actionable; fall back to motivation_drivers.
+    const bullets: string[] = [];
+    for (const key of ['pain_point_alignment', 'motivation_drivers', 'discovery_channels']) {
+      const arr = (s as Record<string, unknown>)[key];
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (typeof item === 'string' && bullets.length < 3) bullets.push(item);
+        }
+      }
+      if (bullets.length >= 3) break;
+    }
+    const sizeLabel =
+      typeof s.size_estimate === 'string'
+        ? s.size_estimate
+        : typeof s.size_label === 'string'
+          ? s.size_label
+          : null;
+    const expertiseLevel = typeof s.expertise_level === 'string' ? s.expertise_level : null;
+    const budgetSensitivity = typeof s.budget_sensitivity === 'string' ? s.budget_sensitivity : null;
+    out.push({ name, sizeLabel, bullets, expertiseLevel, budgetSensitivity });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/** Pull competitor summaries from researchContext.competitorProfiles. */
+function flattenCompetitors(
+  ctx: { competitorProfiles?: unknown } | null,
+): CatalogCompetitorSummary[] | null {
+  if (!ctx?.competitorProfiles || !Array.isArray(ctx.competitorProfiles)) return null;
+  const out: CatalogCompetitorSummary[] = [];
+  for (const c of ctx.competitorProfiles as Array<Record<string, unknown>>) {
+    if (!c || typeof c !== 'object') continue;
+    const name = typeof c.name === 'string' ? c.name : null;
+    if (!name) continue;
+    // Normalize position to one of leader/challenger/niche; null if unrecognized.
+    let position: 'leader' | 'challenger' | 'niche' | null = null;
+    if (typeof c.position === 'string') {
+      const p = c.position.trim().toLowerCase();
+      if (p === 'leader' || p === 'challenger' || p === 'niche') position = p;
+    }
+    out.push({
+      name,
+      url: typeof c.url === 'string' ? c.url : null,
+      competitorType: typeof c.competitor_type === 'string' ? c.competitor_type : null,
+      description: typeof c.description === 'string' ? c.description : '',
+      keyFeatures: Array.isArray(c.key_features)
+        ? (c.key_features as unknown[]).filter((f): f is string => typeof f === 'string')
+        : [],
+      pricingModel: typeof c.pricing_model === 'string' ? c.pricing_model : null,
+      strengths: Array.isArray(c.strengths)
+        ? (c.strengths as unknown[]).filter((f): f is string => typeof f === 'string')
+        : [],
+      weaknesses: Array.isArray(c.weaknesses)
+        ? (c.weaknesses as unknown[]).filter((f): f is string => typeof f === 'string')
+        : [],
+      position,
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/** Pull keyword clusters from researchContext.keywordClusters (Phase 5.4 column). */
+function flattenKeywordClusters(
+  ctx: { keywordClusters?: unknown } | null,
+): CatalogKeywordClusterSummary[] | null {
+  if (!ctx?.keywordClusters || !Array.isArray(ctx.keywordClusters)) return null;
+  const out: CatalogKeywordClusterSummary[] = [];
+  for (const c of ctx.keywordClusters as Array<Record<string, unknown>>) {
+    if (!c || typeof c !== 'object') continue;
+    const name = typeof c.cluster_name === 'string' ? c.cluster_name : null;
+    if (!name) continue;
+    const supporting = Array.isArray(c.supporting_keywords)
+      ? (c.supporting_keywords as unknown[]).filter((k): k is string => typeof k === 'string')
+      : [];
+    out.push({
+      name,
+      primaryKeyword: typeof c.primary_keyword === 'string' ? c.primary_keyword : null,
+      totalSearchVolume: typeof c.total_monthly_volume === 'number' ? c.total_monthly_volume : 0,
+      contentRecommendation: typeof c.content_recommendation === 'string' ? c.content_recommendation : null,
+      estimatedTrafficPotential:
+        typeof c.estimated_traffic_potential === 'string' ? c.estimated_traffic_potential : null,
+      priority: typeof c.priority === 'number' ? c.priority : null,
+      // Per-keyword volume/difficulty placeholders — pipeline doesn't yet
+      // populate per-keyword metrics on TopicCluster. Reserved for future.
+      keywords: supporting.map((term) => ({
+        term,
+        volume: 0,
+        difficulty: bucketKeywordDifficulty(null),
+      })),
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/** Pull per-subreddit source counts from researchContext.topSubreddits. */
+function flattenSubredditSources(
+  ctx: { topSubreddits?: unknown } | null,
+): CatalogSubredditSource[] | null {
+  if (!ctx?.topSubreddits || !Array.isArray(ctx.topSubreddits)) return null;
+  const out: CatalogSubredditSource[] = [];
+  for (const s of ctx.topSubreddits as Array<Record<string, unknown>>) {
+    if (!s || typeof s !== 'object') continue;
+    const name = typeof s.name === 'string' ? s.name : null;
+    if (!name) continue;
+    const postCount = typeof s.post_count === 'number' ? s.post_count : 0;
+    out.push({ name, postCount });
+  }
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * Two-track sources metric. `contentItemsMined` is total posts/threads
+ * analyzed; `sourceCommunities` is the count of distinct platform communities.
+ * Per scope rule, these are NOT summed into one number.
+ */
+function deriveSourcesMetric(ctx: {
+  redditPostsAnalyzed?: number | null;
+  twitterThreadsAnalyzed?: number | null;
+  genericPostsAnalyzed?: number | null;
+  topSubreddits?: unknown;
+} | null): { contentItemsMined: number; sourceCommunities: number } {
+  if (!ctx) return { contentItemsMined: 0, sourceCommunities: 0 };
+  const reddit = ctx.redditPostsAnalyzed ?? 0;
+  const twitter = ctx.twitterThreadsAnalyzed ?? 0;
+  const generic = ctx.genericPostsAnalyzed ?? 0;
+  const subreddits = Array.isArray(ctx.topSubreddits) ? ctx.topSubreddits.length : 0;
+  return {
+    contentItemsMined: reddit + twitter + generic,
+    sourceCommunities: subreddits,
+  };
+}
+
+// ============================================
+// Phase 5.5 — niche / audience-signals / quality flatten helpers
+// ============================================
+
+/** Pull niche-context blob from researchContext.nicheContext column. */
+function flattenNicheContext(
+  ctx: { nicheContext?: unknown } | null,
+): CatalogNicheContextSummary | null {
+  if (!ctx?.nicheContext || typeof ctx.nicheContext !== 'object') return null;
+  const c = ctx.nicheContext as Record<string, unknown>;
+  const description = typeof c.description === 'string' ? c.description : null;
+  const industryBoundaries = typeof c.industryBoundaries === 'string' ? c.industryBoundaries : null;
+  const marketSegments = Array.isArray(c.marketSegments)
+    ? (c.marketSegments as unknown[]).filter((s): s is string => typeof s === 'string')
+    : null;
+  if (!description && !industryBoundaries && !marketSegments) return null;
+  return { description, industryBoundaries, marketSegments };
+}
+
+/**
+ * Pull rich audience-signal sub-fields from the EXISTING `audienceMapping`
+ * column (no new projection needed — these 8 fields are already inside the
+ * full AudienceMappingResult.model_dump() blob, 11/11 in real preview reports).
+ *
+ * Pydantic types per research_state.py:1042-1057:
+ *   - common_vocabulary, frustrations_with_existing, tools_currently_used,
+ *     community_hubs, recommended_channels, messaging_frameworks: list[str] (required)
+ *   - content_preferences: str (required)
+ *   - early_adopter_tactics: Optional[str]
+ */
+function flattenAudienceSignals(
+  ctx: { audienceMapping?: unknown } | null,
+): CatalogAudienceSignalsSummary | null {
+  if (!ctx?.audienceMapping || typeof ctx.audienceMapping !== 'object') return null;
+  const am = ctx.audienceMapping as Record<string, unknown>;
+  const stringList = (key: string): string[] =>
+    Array.isArray(am[key])
+      ? (am[key] as unknown[]).filter((s): s is string => typeof s === 'string')
+      : [];
+  const stringOrNull = (key: string): string | null =>
+    typeof am[key] === 'string' ? (am[key] as string) : null;
+
+  const out: CatalogAudienceSignalsSummary = {
+    vocabulary: stringList('common_vocabulary'),
+    frustrations: stringList('frustrations_with_existing'),
+    currentTools: stringList('tools_currently_used'),
+    communityHubs: stringList('community_hubs'),
+    recommendedChannels: stringList('recommended_channels'),
+    messagingFrameworks: stringList('messaging_frameworks'),
+    contentPreferences: stringOrNull('content_preferences'),
+    earlyAdopterTactics: stringOrNull('early_adopter_tactics'),
+  };
+  // Return null when every field is empty (legacy rows without audienceMapping).
+  const hasAny =
+    out.vocabulary.length > 0 ||
+    out.frustrations.length > 0 ||
+    out.currentTools.length > 0 ||
+    out.communityHubs.length > 0 ||
+    out.recommendedChannels.length > 0 ||
+    out.messagingFrameworks.length > 0 ||
+    !!out.contentPreferences ||
+    !!out.earlyAdopterTactics;
+  return hasAny ? out : null;
+}
+
+/**
+ * Pull quality signals from the projected `qualitySignals` column. Shape was
+ * built by extractQualitySignals in researchContextService.
+ */
+function flattenQualitySignals(
+  ctx: { qualitySignals?: unknown } | null,
+): CatalogQualitySignalsSummary | null {
+  if (!ctx?.qualitySignals || typeof ctx.qualitySignals !== 'object') return null;
+  const q = ctx.qualitySignals as Record<string, unknown>;
+  const contentTier = typeof q.contentTier === 'string' ? q.contentTier : null;
+  const painPointTier = typeof q.painPointTier === 'string' ? q.painPointTier : null;
+  const confidenceScore = typeof q.confidenceScore === 'number' ? q.confidenceScore : null;
+  const overallDataQuality = typeof q.overallDataQuality === 'string' ? q.overallDataQuality : null;
+  let engagementMetrics: { totalEngagement: number; avgEngagementPerSource: number } | null = null;
+  if (q.engagementMetrics && typeof q.engagementMetrics === 'object') {
+    const em = q.engagementMetrics as Record<string, unknown>;
+    const total = typeof em.totalEngagement === 'number' ? em.totalEngagement : null;
+    const avg = typeof em.avgEngagementPerSource === 'number' ? em.avgEngagementPerSource : null;
+    if (total != null) engagementMetrics = { totalEngagement: total, avgEngagementPerSource: avg ?? 0 };
+  }
+  if (!contentTier && !painPointTier && confidenceScore == null && !overallDataQuality && !engagementMetrics) {
+    return null;
+  }
+  return { contentTier, painPointTier, confidenceScore, overallDataQuality, engagementMetrics };
 }
 
 const TOP_PREVIEW_LIMIT = 6;
@@ -1465,6 +1857,28 @@ async function buildCategoryLandingPayload(
       ? (researchContext as unknown as Record<string, unknown>)
       : null;
 
+  // Phase 5.4 — derive flattened summaries from the same researchContext that
+  // backs the heavy researchContext field below. The researchContextOrNull
+  // gate above means: when there's no meaningful context, all summary fields
+  // are null. This keeps the contract simple — components do `{#if themes}`
+  // and never need to inspect researchContext directly.
+  const ctxForSummaries = researchContextOrNull ? (researchContext ?? null) : null;
+  const themes = flattenThemes(ctxForSummaries);
+  const audienceSegments = flattenAudienceSegments(ctxForSummaries);
+  const competitors = flattenCompetitors(ctxForSummaries);
+  const keywordClusters = flattenKeywordClusters(ctxForSummaries);
+  const subredditSources = flattenSubredditSources(ctxForSummaries);
+  const { contentItemsMined, sourceCommunities } = deriveSourcesMetric(ctxForSummaries);
+  // Phase 5.5 — niche / audience-signals / quality / pain-analysis prose.
+  const nicheContext = flattenNicheContext(ctxForSummaries);
+  const audienceSignals = flattenAudienceSignals(ctxForSummaries);
+  const qualitySignals = flattenQualitySignals(ctxForSummaries);
+  const categorizationSummary = ctxForSummaries?.categorizationSummary ?? null;
+  const painAnalysisSummary = ctxForSummaries?.painAnalysisSummary ?? null;
+  const topPainCategories = Array.isArray(ctxForSummaries?.topPainCategories)
+    ? (ctxForSummaries?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
+    : null;
+
   return {
     category: {
       id: category.id,
@@ -1497,10 +1911,26 @@ async function buildCategoryLandingPayload(
     topPainPoints,
     totalIdeas,
     totalPainPoints,
-    // v1: hardcode the source platforms NicheIQ currently ingests from. Per
-    // plan, dynamic derivation from sourceJobId lineage is deferred — the data
-    // isn't trivially reachable from the catalog tables.
+    // v1: hardcode the source platforms NicheIQ currently ingests from. Kept
+    // for back-compat with existing landing-payload consumers — new UI uses
+    // contentItemsMined + sourceCommunities below.
     sources: ['Reddit', 'Hacker News'],
+    // Phase 5.4 — flattened summaries.
+    themes,
+    audienceSegments,
+    competitors,
+    keywordClusters,
+    subredditSources,
+    contentItemsMined,
+    sourceCommunities,
+    growthPercent: null,  // Reserved — pipeline doesn't compute per-category growth yet.
+    // Phase 5.5 — catalog page enrichment.
+    nicheContext,
+    audienceSignals,
+    qualitySignals,
+    categorizationSummary,
+    painAnalysisSummary,
+    topPainCategories,
     researchContext: researchContextOrNull,
   };
 }
@@ -1621,7 +2051,29 @@ export async function getIdeaBySlug(slug: string) {
   if (!idea) return null;
   const { sourceJobId: _s, publishedById: _p, researchContext, ...rest } = idea;
   const preview = toIdeaPreview(rest);
-  return { ...preview, researchContext };
+  // Phase 5.4 — surface flattened summaries alongside the full researchContext.
+  // Detail pages get BOTH (the heavy nested object AND the flat summaries) so
+  // components can read either depending on what they need.
+  const ctx = researchContext;
+  return {
+    ...preview,
+    researchContext,
+    themes: flattenThemes(ctx),
+    audienceSegments: flattenAudienceSegments(ctx),
+    competitors: flattenCompetitors(ctx),
+    keywordClusters: flattenKeywordClusters(ctx),
+    subredditSources: flattenSubredditSources(ctx),
+    ...deriveSourcesMetric(ctx),
+    // Phase 5.5 — catalog page enrichment.
+    nicheContext: flattenNicheContext(ctx),
+    audienceSignals: flattenAudienceSignals(ctx),
+    qualitySignals: flattenQualitySignals(ctx),
+    categorizationSummary: ctx?.categorizationSummary ?? null,
+    painAnalysisSummary: ctx?.painAnalysisSummary ?? null,
+    topPainCategories: Array.isArray(ctx?.topPainCategories)
+      ? (ctx?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
+      : null,
+  };
 }
 
 export async function getPainPointBySlug(slug: string) {
@@ -1640,8 +2092,30 @@ export async function getPainPointBySlug(slug: string) {
     },
   });
   if (!pp) return null;
-  const { sourceJobId: _s, publishedById: _p, ...rest } = pp;
-  return rest;
+  const { sourceJobId: _s, publishedById: _p, researchContext, ...rest } = pp;
+  // Phase 5.4 — same flattened summaries as the idea detail endpoint. Pain-point
+  // preview shape is camelCase already (legacy convention) so summaries fit
+  // alongside without case mixing.
+  const ctx = researchContext;
+  return {
+    ...rest,
+    researchContext,
+    themes: flattenThemes(ctx),
+    audienceSegments: flattenAudienceSegments(ctx),
+    competitors: flattenCompetitors(ctx),
+    keywordClusters: flattenKeywordClusters(ctx),
+    subredditSources: flattenSubredditSources(ctx),
+    ...deriveSourcesMetric(ctx),
+    // Phase 5.5 — catalog page enrichment.
+    nicheContext: flattenNicheContext(ctx),
+    audienceSignals: flattenAudienceSignals(ctx),
+    qualitySignals: flattenQualitySignals(ctx),
+    categorizationSummary: ctx?.categorizationSummary ?? null,
+    painAnalysisSummary: ctx?.painAnalysisSummary ?? null,
+    topPainCategories: Array.isArray(ctx?.topPainCategories)
+      ? (ctx?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
+      : null,
+  };
 }
 
 interface SitemapEntry {
@@ -1739,6 +2213,85 @@ export async function invalidatePublicCategoryTree(): Promise<void> {
     await getRedis().del(TREE_CACHE_KEY);
   } catch (err) {
     console.error('Tree cache invalidate failed:', err);
+  }
+}
+
+// =====================================================================
+// Phase 5.4 — Catalog totals (index-page hero stat strip)
+// =====================================================================
+
+const TOTALS_CACHE_KEY = 'catalog:totals:v1';
+const TOTALS_CACHE_TTL = 300;  // 5 min — same cadence as tree cache
+
+interface CatalogTotals {
+  totalIdeas: number;
+  totalCategories: number;     // top-level (parentId IS NULL) — for the "Categories" tile
+  totalSubcategories: number;  // child categories — for the "Sub-niches" tile
+  // Per scope rule, this is content items (posts/threads) NOT communities.
+  // Communities are per-niche on landing payloads, not aggregable globally.
+  contentItemsMined: number;
+}
+
+/**
+ * Aggregate counts shown on the public catalog index page hero stat strip.
+ *
+ * - `totalIdeas`         = active CatalogIdea rows
+ * - `totalCategories`    = active top-level CatalogCategory rows (parentId IS NULL)
+ * - `totalSubcategories` = active child CatalogCategory rows (parentId set)
+ * - `contentItemsMined`  = sum of redditPostsAnalyzed + twitterThreadsAnalyzed
+ *                          + genericPostsAnalyzed across all CatalogResearchContext rows
+ *
+ * Cached in Redis 5 min. Cache key invalidates on the same triggers as the
+ * tree cache (category create/update/delete) — see invalidatePublicCategoryTree
+ * callers.
+ */
+export async function getCatalogTotals(): Promise<CatalogTotals> {
+  const redis = getRedis();
+  try {
+    const cached = await redis.get(TOTALS_CACHE_KEY);
+    if (cached) return JSON.parse(cached) as CatalogTotals;
+  } catch (err) {
+    console.error('Totals cache read failed:', err);
+  }
+
+  const [totalIdeas, totalCategories, totalSubcategories, sumAgg] = await Promise.all([
+    prisma.catalogIdea.count({ where: { isActive: true } }),
+    prisma.catalogCategory.count({ where: { isActive: true, parentId: null } }),
+    prisma.catalogCategory.count({ where: { isActive: true, parentId: { not: null } } }),
+    prisma.catalogResearchContext.aggregate({
+      _sum: {
+        redditPostsAnalyzed: true,
+        twitterThreadsAnalyzed: true,
+        genericPostsAnalyzed: true,
+      },
+    }),
+  ]);
+
+  const contentItemsMined =
+    (sumAgg._sum.redditPostsAnalyzed ?? 0) +
+    (sumAgg._sum.twitterThreadsAnalyzed ?? 0) +
+    (sumAgg._sum.genericPostsAnalyzed ?? 0);
+
+  const totals: CatalogTotals = {
+    totalIdeas,
+    totalCategories,
+    totalSubcategories,
+    contentItemsMined,
+  };
+
+  try {
+    await redis.setex(TOTALS_CACHE_KEY, TOTALS_CACHE_TTL, JSON.stringify(totals));
+  } catch (err) {
+    console.error('Totals cache write failed:', err);
+  }
+  return totals;
+}
+
+export async function invalidateCatalogTotals(): Promise<void> {
+  try {
+    await getRedis().del(TOTALS_CACHE_KEY);
+  } catch (err) {
+    console.error('Totals cache invalidate failed:', err);
   }
 }
 

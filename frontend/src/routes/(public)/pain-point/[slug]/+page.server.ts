@@ -7,7 +7,7 @@ import {
   painPointDetailCanonical,
 } from '$lib/seo/catalogSeo';
 import { buildMeta } from '$lib/seo/meta';
-import type { PainPointPreview } from '$lib/types/catalog-landing';
+import type { PainPointDetailResponse } from '$lib/types/catalog-landing';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
@@ -31,7 +31,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   if (res.status === 404) throw error(404, 'Not found');
   if (!res.ok) throw error(500, 'Failed to load');
 
-  const pp = (await res.json()) as PainPointPreview;
+  const pp = (await res.json()) as PainPointDetailResponse;
   const canonical = painPointDetailCanonical(pp.slug, url.searchParams);
 
   const description = (pp.description ?? '').slice(0, 200);
