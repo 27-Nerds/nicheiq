@@ -14,7 +14,11 @@ const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
 
 export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   setHeaders({
-    'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+    // Aligned with [niche] and [niche]/[sub] catalog routes (s-maxage=900) so a
+    // user can't see a stale category page next to a fresh idea detail page (or
+    // vice versa) for the same job. stale-while-revalidate keeps perceived
+    // latency low while the cache refreshes in the background.
+    'Cache-Control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
   });
 
   let res: Response;

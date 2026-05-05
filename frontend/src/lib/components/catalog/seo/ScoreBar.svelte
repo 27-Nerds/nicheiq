@@ -2,7 +2,7 @@
   // Horizontal labeled progress bar — alt for the Trifecta dial in dense
   // layouts (e.g., idea-detail dashboard variant). 0-100 input.
 
-  type BarType = "demand" | "feasibility" | "opportunity";
+  type BarType = "demand" | "feasibility" | "opportunity" | "novelty" | "soloDev";
 
   interface Props {
     label: string;
@@ -16,13 +16,15 @@
   const safe = $derived(
     value == null || !Number.isFinite(value) ? 0 : Math.max(0, Math.min(100, value)),
   );
-  const tone = $derived(
-    type === "demand"
-      ? "var(--color-accent)"
-      : type === "feasibility"
-        ? "var(--color-info)"
-        : "var(--color-success)",
-  );
+  const tone = $derived.by(() => {
+    switch (type) {
+      case "demand": return "var(--color-accent)";
+      case "feasibility": return "var(--color-info)";
+      case "opportunity": return "var(--color-success)";
+      case "novelty": return "var(--color-secondary, #6366F1)";
+      case "soloDev": return "var(--color-text-secondary, #52525B)";
+    }
+  });
 </script>
 
 <div class="score-bar">

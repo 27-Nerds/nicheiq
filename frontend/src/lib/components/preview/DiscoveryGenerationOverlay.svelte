@@ -259,7 +259,7 @@
     --dg-bg2: var(--color-bg-surface, #F5F5F5);
     --dg-text: var(--color-text-primary, #18181B);
     --dg-muted: var(--color-text-muted, #71717A);
-    --dg-accent: var(--color-accent, #F06030);
+    --dg-accent: var(--color-accent, #EA580C);
     --dg-green-bg: var(--color-success-subtle, rgba(34, 197, 94, 0.08));
     --dg-green-text: var(--color-success-dark, #16A34A);
     --dg-border: var(--color-border, rgba(0, 0, 0, 0.07));

@@ -124,6 +124,11 @@ categorize_content:
 
     **theme_categories**: Comprehensive list of ThemeCategory objects (include every theme supported by evidence — do not artificially limit):
        - **category_name**: Clear, descriptive name (niche-specific)
+       - **theme_id**: DO NOT generate this. The system auto-derives a stable slug
+         from `category_name` after parsing. The slug is what Task 2 references in
+         each pain point's `parent_theme_id` to link the pain point back to its
+         source theme. (For example: category_name="Bidirectional Charging (V2H)"
+         becomes theme_id="bidirectional-charging-v2h" automatically.)
        - **definition**: What this category represents (2-3 sentences)
        - **frequency**: "High", "Medium", or "Low"
        - **mention_count**: Number of distinct discussions (integer)
@@ -172,24 +177,54 @@ extract_pain_points:
 
     Do NOT transform these themes into pain points. Proceed only with niche-specific themes.
 
-    **WORKFLOW** (Theme-to-Pain-Point Transformation):
+    **WORKFLOW** (Theme → Granular Pain Point Atoms):
 
     1. **Parse Task 1 Output** → Read ContentCategorizationReport from context:
-       - Each theme_category's category_name, definition, mention_count, anchor_keywords
-    2. **Transform Themes → Pain Points** → For each theme category:
-       - **Focused themes**: Map 1:1 to a pain point
-       - **Broad themes**: Split into 2-3 specific pain points
-       - Example: "Housing Challenges" → "Affordability Crisis", "Safety Concerns", "Housing Instability"
-       - Write a **short_summary** (1-2 punchy sentences, under 180 chars) for each pain point.
-         Focuses on the core user problem and its impact. Must differ from the title.
-    3. **Extract Anchor Keywords** → For each pain point:
-       - Select 2-6 anchor_keywords from Task 1's theme keywords
-       - These are SHORT PHRASES (2-6 words) for Task 4 vector search
-       - Must be EXACT user phrases, not paraphrased
-    4. **Set mention_count** → From Task 1's theme mention_count:
-       - For 1:1 mappings: carry over directly
-       - For split themes: distribute proportionally
-    5. **Identify categories and platforms** from Task 1 data
+       - Each theme_category exposes: category_name, theme_id (auto-generated slug),
+         definition, mention_count, anchor_keywords, primary_user_segments
+
+    2. **For each theme, identify distinct user goals or workflows the theme blocks.**
+       Output ONE pain point per distinct blocked goal:
+       - **Focused theme** (one identifiable blocked goal) → produce **1 pain point**.
+       - **Broad theme** (multiple distinguishable goals) → produce up to **5 pain
+         points** — one per goal. Hard cap at 5; if a theme genuinely contains more
+         than 5 distinct workflows, pick the top 5 by mention frequency.
+       - **DO NOT** rephrase the theme title and call it a pain point. The pain
+         point must name a SPECIFIC blocked workflow, not the category.
+         ✗ Bad (theme rename):  "Bidirectional Charging Hardware Issues"
+         ✓ Good (workflow):     "Cannot match a CCS bidirectional charger to a 2024 Ioniq 5's spec sheet"
+         ✗ Bad (theme rename):  "Electric Vehicle Software and Service Reliability Issues"
+         ✓ Good (workflow):     "Tesla infotainment freezes when plugged into Supercharger v3"
+
+    3. **Set parent_theme_id** on EVERY pain point to the source theme's `theme_id`
+       (the auto-generated slug). This is REQUIRED — it's how the catalog UI groups
+       pain points under their source theme. A pain point with no `parent_theme_id`
+       or a `parent_theme_id` that doesn't match any Task 1 theme will be rejected
+       by the guardrail.
+
+    4. **Title uniqueness — MANDATORY.** Every pain point title must be unique
+       within this entire job (DB constraint `@@unique([sourceJobId, title])`).
+       Two themes producing similar generic titles like "Poor Documentation" will
+       fail ingestion. Always scope the title to its theme's domain:
+         ✗ "Poor Documentation"
+         ✓ "Poor API Documentation for Bidirectional Charging Spec"
+
+    5. **Extract Anchor Keywords** → 2-6 anchor_keywords per pain point.
+       At least ONE anchor_keyword per pain point MUST appear in (or be a substring
+       of) the parent theme's anchor_keywords. This proves the pain point is grounded
+       in the theme's evidence rather than invented. Other anchor_keywords may be
+       narrower phrases pulled directly from the discussions.
+
+    6. **Set mention_count** — count of distinct discussions specifically blocking
+       THIS workflow. For a theme with mention_count=20 split into 4 atoms, the
+       atoms typically sum to ≤20 (some discussions may mention multiple workflows
+       and be double-counted; do not artificially redistribute exact fractions).
+
+    7. **Write short_summary** (1-2 punchy sentences, under 180 chars) for each
+       pain point. Focuses on the core blocked workflow and its concrete impact.
+       Must differ from the title.
+
+    8. **Identify categories and platforms** from Task 1 data.
 
     **CRITICAL CONSTRAINTS:**
     - anchor_keywords: 2-10 short phrases (2-6 words each) - exact user language
@@ -197,41 +232,67 @@ extract_pain_points:
       BAD: "setup", "hours building" (too generic, matches unrelated topics)
       GOOD: "software setup", "hours configuring settings" (specific to the niche)
     - DO NOT include full quotes - Task 4 will find them via vector search
-    - mention_count from Task 1 theme data (don't fabricate)
+    - mention_count grounded in Task 1 theme data; don't fabricate
 
     **CATEGORY COVERAGE REQUIREMENT:**
-    ✓ Extract at least ONE pain point from EVERY high-frequency category (≥10 mentions)
+    ✓ Extract at least ONE pain point from EVERY theme with frequency != "Low".
+      A high/medium-frequency theme with zero pain points fails the guardrail.
     ✓ Financial pain points often have HIGHEST WTP potential - prioritize them
 
     ═══ CRITICAL RULES ═══
 
     **DATA ACCURACY:**
-    ✗ anchor_keywords must be EXACT phrases from Task 1 - NO paraphrasing
+    ✗ anchor_keywords must be EXACT phrases from Task 1 or content - NO paraphrasing
     ✗ Pain point descriptions must use exact user language
-    ✗ mention_count from Task 1's theme data - NOT fabricated
+    ✗ mention_count grounded in Task 1's theme data - NOT fabricated
 
     **OUTPUT REQUIREMENTS:**
     - Return ONLY raw JSON (no markdown, no text before/after)
     - Each pain point has 2-10 anchor_keywords (short phrases)
-    - Minimum 3 pain points if sufficient data exists
+    - Each pain point has a non-null parent_theme_id matching a Task 1 theme_id
+    - All titles unique within the extraction
+    - Minimum 3 pain points if sufficient data exists; max 5 per theme
 
   expected_output: >
-    Return a single JSON object with this exact structure:
+    Return a single JSON object with this exact structure. Below shows two example
+    themes — one focused (1 atom) and one broad (3 atoms). Real output will have
+    one or more pain points per theme depending on theme breadth.
 
     {
-      "niche": "the niche being analyzed",
+      "niche": "Connected Car & V2X",
       "extracted_pain_points": [
         {
-          "title": "Short descriptive name",
-          "description": "2-3 sentence problem articulation in user language",
-          "short_summary": "Punchy 1-2 sentence card summary under 180 chars",
-          "mention_count": 18,
-          "anchor_keywords": ["took 3 hours", "no documentation", "gave up"],
+          "title": "Cannot match a CCS bidirectional charger to a 2024 Ioniq 5 spec sheet",
+          "parent_theme_id": "bidirectional-charging-v2h-v2x-implementation-challenges",
+          "description": "Owners of 2024 model EVs report inability to verify hardware compatibility before purchase. Spec sheets list V2H support but charger vendors have not published matching certification matrices.",
+          "short_summary": "Buyers can't confirm bidirectional charger compatibility before $3K+ purchase. Returns are common.",
+          "mention_count": 8,
+          "anchor_keywords": ["bidirectional charging", "V2H compatibility", "spec sheet", "CCS connector"],
           "source_platforms": ["Reddit"],
-          "categories": ["Category Name"]
+          "categories": ["Hardware Compatibility"]
+        },
+        {
+          "title": "Hidden installer permits delay V2H commissioning by 6+ weeks",
+          "parent_theme_id": "bidirectional-charging-v2h-v2x-implementation-challenges",
+          "description": "Local utilities require interconnection paperwork that is not standardized. Homeowners report 6-12 week delays between hardware install and V2H activation.",
+          "short_summary": "Permit paperwork adds weeks of delay between install and V2H activation. Process not standardized.",
+          "mention_count": 5,
+          "anchor_keywords": ["interconnection permit", "utility approval", "V2H commissioning", "weeks delayed"],
+          "source_platforms": ["Reddit"],
+          "categories": ["Installation"]
+        },
+        {
+          "title": "Tesla infotainment freezes when plugged into Supercharger v3",
+          "parent_theme_id": "electric-vehicle-user-experience-and-reliability-issues",
+          "description": "Owners report center screen freezes mid-charge specifically at v3 stations. Workaround is hard reboot, but it interrupts navigation and audio.",
+          "short_summary": "Center screen freezes on v3 Superchargers. Hard reboot breaks navigation and audio mid-trip.",
+          "mention_count": 7,
+          "anchor_keywords": ["infotainment freeze", "Supercharger v3", "screen reboot", "lost navigation"],
+          "source_platforms": ["Reddit"],
+          "categories": ["Software Reliability"]
         }
       ],
-      "extraction_summary": "3-4 sentences overview of pain point landscape"
+      "extraction_summary": "Across 8 themes, 6 produced atomic pain points (15 total). Themes 7 and 8 (low frequency, ≤2 mentions each) were excluded. Bidirectional charging split into 3 distinct workflow blockers; software reliability split into 4."
     }
 
     **short_summary examples:**
@@ -243,11 +304,15 @@ extract_pain_points:
 
     Rules:
     - Return ONLY raw JSON starting with { and ending with }
+    - parent_theme_id REQUIRED on every pain point; must match a theme_id from Task 1
+    - All titles MUST be unique within the extraction (DB constraint)
     - short_summary: 1-2 punchy sentences, under 180 characters, different from title
     - 2-10 anchor_keywords per pain point (short phrases, 2-6 words each)
+    - At least one anchor_keyword per pain point should appear in the parent theme's keywords
     - anchor_keywords must be EXACT user phrases for Task 4 vector search
-    - mention_count from Task 1 theme data
+    - mention_count grounded in actual theme/discussion data
     - DO NOT include representative_quotes - Task 4 handles quote extraction
+    - Max 5 pain points per theme; min 3 total pain points
 
 validate_pain_points:
   description: >

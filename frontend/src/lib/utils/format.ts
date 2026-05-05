@@ -1,6 +1,7 @@
 // Formatting utilities for report data
 
 import { marked } from 'marked';
+import DOMPurify from 'isomorphic-dompurify';
 
 // Configure marked for safe rendering
 marked.setOptions({
@@ -8,9 +9,39 @@ marked.setOptions({
 	breaks: true
 });
 
+/**
+ * Phase 15.0 — strict allow-list for sanitizing rendered markdown HTML before
+ * `{@html ...}`. Tags not on this list are stripped; attributes other than
+ * `class` are stripped. Disallows: <script>, <style>, <iframe>, <form>,
+ * <input>, event-handler attributes (onclick=, etc.), javascript: URLs.
+ *
+ * Used by `renderMarkdown` and `renderTechnicalContent` — both render through
+ * `{@html ...}` in catalog SEO pages and must not allow XSS payloads from
+ * LLM output or future ingest paths.
+ */
+const SANITIZER_ALLOWED_TAGS = [
+	'p', 'br', 'span', 'em', 'strong', 'b', 'i',
+	'ul', 'ol', 'li',
+	'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+	'code', 'pre', 'blockquote',
+	'hr',
+];
+const SANITIZER_ALLOWED_ATTR = ['class'];
+
+function sanitizeHtml(html: string): string {
+	return DOMPurify.sanitize(html, {
+		ALLOWED_TAGS: SANITIZER_ALLOWED_TAGS,
+		ALLOWED_ATTR: SANITIZER_ALLOWED_ATTR,
+		// Defense-in-depth: strip any data-* / aria-* not on allow-list.
+		ALLOW_DATA_ATTR: false,
+		ALLOW_ARIA_ATTR: false,
+	});
+}
+
 export function renderMarkdown(content: string | undefined | null): string {
 	if (!content) return '';
-	return marked.parse(content, { async: false }) as string;
+	const html = marked.parse(content, { async: false }) as string;
+	return sanitizeHtml(html);
 }
 
 /** Strip markdown syntax from raw text, returning clean plain text. */
@@ -97,8 +128,18 @@ export function renderTechnicalContent(content: string | undefined | null): stri
 	// Technical SEO recommendations contain code examples (JSON-LD, URLs) that shouldn't be clickable
 	html = html.replace(/<a[^>]*>([^<]*)<\/a>/gi, '$1');
 
+	// Phase 15.0 — strict-allow-list sanitize BEFORE week-highlight insertion
+	// (DOMPurify would otherwise strip the <span class="week-highlight"> we
+	// add next). Anything not on SANITIZER_ALLOWED_TAGS — including <script>,
+	// <iframe>, event-handler attributes, javascript: URLs — gets stripped.
+	html = sanitizeHtml(html);
+
 	// 4. Post-process HTML: highlight week references inline (simple color only)
 	// Handles: "Sprint-zero", "Week 1", "Week 1:", "Weeks 1–4", "Weeks 5–8", etc.
+	// Re-injected AFTER sanitize because the <span class="week-highlight"> is
+	// trusted (we generate it; it's not from user input). The substituted
+	// content is the original matched text, which is plain alphanumerics and
+	// punctuation — no XSS surface.
 	html = html.replace(
 		/(Sprint-zero|Weeks?\s*\d+(?:[–-]\d+)?:?)/gi,
 		'<span class="week-highlight">$1</span>'

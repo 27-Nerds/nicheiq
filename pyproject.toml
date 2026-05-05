@@ -20,8 +20,8 @@ classifiers = [
 ]
 
 dependencies = [
-    "crewai>=1.8.1,<1.11",
-    "crewai-tools>=1.8.1,<1.11",
+    "crewai>=1.8.1,<1.9",
+    "crewai-tools>=1.8.1,<1.9",
     "openai>=1.50.0",
     "langchain-openai>=0.3.0",
     "pydantic>=2.11.9,<2.12",

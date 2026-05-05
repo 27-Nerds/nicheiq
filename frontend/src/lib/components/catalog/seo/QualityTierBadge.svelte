@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { QualitySignals } from "$lib/types/publicCatalog.js";
 
-  // Phase 5.5 — small pill in the category hero showing the data quality
-  // tier alongside the confidence percent. Hidden when no usable signal.
-  // Pain-point tier (GOLD/SILVER/BRONZE) takes precedence over content tier
+  // Small pill in the category hero showing the data quality tier alongside
+  // the confidence percent. Hidden when no usable signal. Pain-point tier
+  // (GOLD/SILVER/BRONZE) takes precedence over content tier
   // (EXCELLENT/GOOD/MINIMAL/INSUFFICIENT) because it's the more user-facing
   // grade. Confidence percent is appended when present.
 

@@ -40,7 +40,7 @@
 
 <style>
   .billboard {
-    background: radial-gradient(circle at 15% 30%, rgba(240, 96, 48, 0.06) 0%, transparent 50%);
+    background: radial-gradient(circle at 15% 30%, rgba(234, 88, 12, 0.06) 0%, transparent 50%);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-xl);
     padding: var(--space-8) var(--space-6);

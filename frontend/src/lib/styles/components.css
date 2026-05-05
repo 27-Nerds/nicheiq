@@ -32,7 +32,7 @@
 .badge-accent {
 	color: var(--color-accent-dark);
 	background-color: var(--color-accent-subtle);
-	border-color: rgba(240, 96, 48, 0.2);
+	border-color: rgba(234, 88, 12, 0.2);
 }
 
 .badge-success {
@@ -574,7 +574,7 @@
 .verdict-go {
 	color: var(--color-success);
 	background-color: var(--color-accent-glow);
-	border: 2px solid rgba(240, 96, 48, 0.4);
+	border: 2px solid rgba(234, 88, 12, 0.4);
 	padding: var(--space-2) var(--space-6);
 	font-family: var(--font-display);
 	font-weight: var(--font-bold);
@@ -599,8 +599,8 @@
 }
 
 .verdict-banner-go {
-	background: linear-gradient(135deg, rgba(240, 96, 48, 0.15) 0%, rgba(240, 96, 48, 0.05) 100%);
-	border: 1px solid rgba(240, 96, 48, 0.3);
+	background: linear-gradient(135deg, rgba(234, 88, 12, 0.15) 0%, rgba(234, 88, 12, 0.05) 100%);
+	border: 1px solid rgba(234, 88, 12, 0.3);
 }
 
 .verdict-banner-no-go {
@@ -633,8 +633,8 @@
 }
 
 .verdict-icon-go {
-	background: rgba(240, 96, 48, 0.15);
-	border: 1px solid rgba(240, 96, 48, 0.4);
+	background: rgba(234, 88, 12, 0.15);
+	border: 1px solid rgba(234, 88, 12, 0.4);
 	color: var(--color-success);
 }
 
@@ -719,7 +719,7 @@
 	height: 2.75rem;
 	border-radius: var(--radius-lg);
 	background: var(--color-accent-subtle);
-	border: 1px solid rgba(240, 96, 48, 0.2);
+	border: 1px solid rgba(234, 88, 12, 0.2);
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -728,7 +728,7 @@
 
 .icon-container-success {
 	background: var(--color-accent-subtle);
-	border-color: rgba(240, 96, 48, 0.2);
+	border-color: rgba(234, 88, 12, 0.2);
 }
 
 .icon-container-error {
@@ -784,8 +784,8 @@
 }
 
 .pricing-tier-recommended {
-	background: rgba(240, 96, 48, 0.06);
-	border: 2px solid rgba(240, 96, 48, 0.3);
+	background: rgba(234, 88, 12, 0.06);
+	border: 2px solid rgba(234, 88, 12, 0.3);
 	box-shadow: var(--shadow-md);
 	position: relative;
 }
@@ -805,8 +805,8 @@
 }
 
 .pricing-tier-pro {
-	background: rgba(240, 96, 48, 0.04);
-	border-color: rgba(240, 96, 48, 0.3);
+	background: rgba(234, 88, 12, 0.04);
+	border-color: rgba(234, 88, 12, 0.3);
 }
 
 /* ========================================
@@ -952,8 +952,8 @@
 }
 
 .opportunity-badge-high {
-	background: rgba(240, 96, 48, 0.15);
-	border: 1px solid rgba(240, 96, 48, 0.3);
+	background: rgba(234, 88, 12, 0.15);
+	border: 1px solid rgba(234, 88, 12, 0.3);
 	color: var(--color-success);
 }
 

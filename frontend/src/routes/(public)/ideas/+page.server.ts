@@ -13,10 +13,9 @@ const HEADERS = (): Record<string, string> => ({
   'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
 });
 
-// Phase 5.4 — fetch aggregate counts for the index hero stat strip.
-// Defensive: if the endpoint is unavailable (rare — backend is required to
-// boot the frontend), fall back to derive-from-tree zero counts. The page
-// still renders; the strip just shows 0s.
+// Aggregate counts for the index hero stat strip. Defensive: if the endpoint
+// is unavailable (rare — the backend is required to boot the frontend),
+// fall back to zero counts so the page still renders.
 async function fetchTotals(): Promise<CatalogTotals> {
   try {
     const res = await fetch(`${BACKEND_URL}/api/public/catalog/totals`, {
@@ -34,8 +33,8 @@ async function fetchTotals(): Promise<CatalogTotals> {
   };
 }
 
-// Phase 5.2 — featured collections (admin-curated). Endpoint returns active
-// collections ordered by sortOrder. Empty array → section hides on the page.
+// Featured collections (admin-curated). Endpoint returns active collections
+// ordered by sortOrder; empty array hides the section on the page.
 async function fetchCollections(): Promise<CatalogCollectionSummary[]> {
   try {
     const res = await fetch(`${BACKEND_URL}/api/public/catalog/collections`, {
@@ -73,8 +72,8 @@ export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
     noindex: LAUNCH_GATE_ON,
   });
 
-  // Phase 5.1: ItemList schema signals to crawlers that this hub aggregates
-  // 50+ niche entry points. Each top-level CatalogCategory becomes a ListItem.
+  // ItemList schema signals to crawlers that this hub aggregates 50+ niche
+  // entry points; each top-level CatalogCategory becomes a ListItem.
   const niches = (categoriesTree as Array<{ name: string; slug: string }>).map(
     (n) => ({
       name: n.name,

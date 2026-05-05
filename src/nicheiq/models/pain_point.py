@@ -4,8 +4,9 @@ Pydantic models for pain point analysis (Stage 6).
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..utils.slugify import slugify
 from .keyword_data import OpportunityLevel
 
 
@@ -15,6 +16,16 @@ class UnvalidatedPainPoint(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     title: str = Field(..., description="Short title of the pain point")
+    parent_theme_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stable slug of the parent ThemeCategory.theme_id this pain point "
+            "derives from. Optional in the model so unit-test fixtures don't have "
+            "to fabricate theme linkage; in production the Task-2 guardrail "
+            "(crew_guardrails.py) enforces non-null + matches a real theme_id "
+            "from Task 1."
+        ),
+    )
     description: str = Field(..., description="Detailed description of the problem")
     short_summary: Optional[str] = Field(
         default=None,
@@ -48,6 +59,15 @@ class ThemeCategory(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     category_name: str = Field(..., description="Theme category name")
+    theme_id: str = Field(
+        default="",
+        description=(
+            "Stable slug auto-derived from category_name via slugify(). "
+            "LLMs do NOT author this — it's set by a model_validator after init. "
+            "Used by Task 2 pain points to set parent_theme_id and by the catalog "
+            "frontend to group pain points under their source theme."
+        ),
+    )
     definition: str = Field(..., description="What this category represents")
     frequency: str = Field(..., description="High/Medium/Low based on mention count")
     mention_count: int = Field(
@@ -81,6 +101,14 @@ class ThemeCategory(BaseModel):
         if isinstance(v, list) and len(v) > 12:
             return v[:12]
         return v
+
+    @model_validator(mode='after')
+    def auto_populate_theme_id(self) -> 'ThemeCategory':
+        """Always derive theme_id from category_name. LLM-supplied values are ignored."""
+        derived = slugify(self.category_name)
+        if self.theme_id != derived:
+            object.__setattr__(self, 'theme_id', derived)
+        return self
 
 class UserSegment(BaseModel):
     """User segment identified in categorization."""
@@ -130,6 +158,31 @@ class PainPointExtraction(BaseModel):
     extracted_pain_points: list[UnvalidatedPainPoint] = Field(
         ..., min_length=3, description="Pain points extracted from discussions (minimum 3)"
     )
+
+    @field_validator('extracted_pain_points')
+    @classmethod
+    def validate_unique_titles(cls, v: list[UnvalidatedPainPoint]) -> list[UnvalidatedPainPoint]:
+        """Reject duplicate titles within an extraction.
+
+        The DB enforces @@unique([sourceJobId, title]) on CatalogPainPoint, so
+        duplicates would fail at ingest. Catching them here surfaces a friendlier
+        error and preserves Task 3 scoring (which matches by title).
+        """
+        seen: set[str] = set()
+        dupes: list[str] = []
+        for pp in v:
+            key = pp.title.strip().lower()
+            if key in seen:
+                dupes.append(pp.title)
+            seen.add(key)
+        if dupes:
+            raise ValueError(
+                f"Duplicate pain point titles in extraction: {dupes}. "
+                f"Each title must be unique within a job; scope titles to their theme "
+                f"(e.g. 'Poor API Documentation for Bidirectional Charging' not 'Poor Documentation')."
+            )
+        return v
+
     extraction_summary: str = Field(
         ..., description="Summary of extraction process and key findings"
     )
@@ -237,6 +290,15 @@ class PainPoint(BaseModel):
     model_config = ConfigDict(extra='ignore')
 
     title: str = Field(..., description="Short title of the pain point")
+    parent_theme_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stable slug of the parent ThemeCategory.theme_id this pain point "
+            "derives from. Carried through merge from UnvalidatedPainPoint so the "
+            "backend can group pain points under their source theme. Optional for "
+            "backward compatibility with reports generated before this field existed."
+        ),
+    )
     description: str = Field(..., description="Detailed description of the problem")
     short_summary: Optional[str] = Field(
         default=None,

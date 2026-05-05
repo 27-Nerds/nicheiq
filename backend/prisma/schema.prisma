@@ -12,33 +12,33 @@ datasource db {
 
 // Job lifecycle states
 enum JobStatus {
-  PENDING            // Job created, not yet queued
-  QUEUED             // Added to Redis queue
-  RUNNING            // Worker is processing
+  PENDING // Job created, not yet queued
+  QUEUED // Added to Redis queue
+  RUNNING // Worker is processing
   AWAITING_SELECTION // Ideas ready, waiting for user selection
-  REGENERATING       // User requested new ideas, regenerating
-  RUNNING_PHASE2     // User selected solution, running deep investigation
-  COMPLETED          // Successfully finished
-  FAILED             // Error occurred
-  CANCELLED          // User cancelled
+  REGENERATING // User requested new ideas, regenerating
+  RUNNING_PHASE2 // User selected solution, running deep investigation
+  COMPLETED // Successfully finished
+  FAILED // Error occurred
+  CANCELLED // User cancelled
 }
 
 // Stage execution states
 enum StageStatus {
-  PENDING    // Not started
-  RUNNING    // Currently executing
-  COMPLETED  // Finished successfully
-  SKIPPED    // Skipped (e.g., optional stage)
-  FAILED     // Error during execution
+  PENDING // Not started
+  RUNNING // Currently executing
+  COMPLETED // Finished successfully
+  SKIPPED // Skipped (e.g., optional stage)
+  FAILED // Error during execution
 }
 
 // Types of generated assets
 enum AssetType {
-  REPORT_JSON      // Final report (JSON)
-  REPORT_RAW       // Raw research state
-  LANDING_PAGE     // Generated HTML landing page
-  DISCOVERY_DATA   // Materialized discovery evidence (quotes, audience, influencers)
-  PREVIEW_REPORT   // Phase 1 preview report (lightweight summary for selection screen)
+  REPORT_JSON // Final report (JSON)
+  REPORT_RAW // Raw research state
+  LANDING_PAGE // Generated HTML landing page
+  DISCOVERY_DATA // Materialized discovery evidence (quotes, audience, influencers)
+  PREVIEW_REPORT // Phase 1 preview report (lightweight summary for selection screen)
 }
 
 // User roles
@@ -49,13 +49,12 @@ enum UserRole {
 
 // Credit transaction types
 enum CreditTransactionType {
-  PURCHASE          // Stripe purchase
-  JOB_DEDUCTION     // Used for research job
-  PROMO_REDEMPTION  // Promo code redeemed
-  REFUND            // Job failed - tokens refunded
-  ADMIN_ADJUSTMENT  // Manual admin adjustment
+  PURCHASE // Stripe purchase
+  JOB_DEDUCTION // Used for research job
+  PROMO_REDEMPTION // Promo code redeemed
+  REFUND // Job failed - tokens refunded
+  ADMIN_ADJUSTMENT // Manual admin adjustment
 }
-
 
 // ============================================
 // Authentication Models (Auth.js compatible)
@@ -70,20 +69,20 @@ model User {
   emailVerified DateTime?
 
   // For email/password auth (nullable for OAuth-only users)
-  passwordHash  String?   @db.VarChar(255)
+  passwordHash String? @db.VarChar(255)
 
   // Role
-  role          UserRole  @default(USER)
+  role UserRole @default(USER)
 
   // Timestamps
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  accounts      Account[]
-  sessions      Session[]
-  jobs          Job[]
-  credits       UserCredits?
+  accounts                Account[]
+  sessions                Session[]
+  jobs                    Job[]
+  credits                 UserCredits?
   notificationPreferences NotificationPreferences?
 
   @@index([email])
@@ -92,44 +91,44 @@ model User {
 
 // User notification preferences (one-to-one with User)
 model NotificationPreferences {
-  id                    String   @id @default(uuid())
-  userId                String   @unique
-  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Master toggle
-  emailEnabled          Boolean  @default(true)
+  emailEnabled Boolean @default(true)
 
   // Notification types
-  emailOnJobStart           Boolean  @default(true)    // Notify when job starts processing
-  emailOnJobComplete        Boolean  @default(true)    // Notify when job completes successfully
-  emailOnJobError           Boolean  @default(true)    // Notify when job fails
-  emailOnSolutionsReady     Boolean  @default(true)    // Notify when solution ideas are ready for review
+  emailOnJobStart       Boolean @default(true) // Notify when job starts processing
+  emailOnJobComplete    Boolean @default(true) // Notify when job completes successfully
+  emailOnJobError       Boolean @default(true) // Notify when job fails
+  emailOnSolutionsReady Boolean @default(true) // Notify when solution ideas are ready for review
 
   // Timestamps
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
 
 // OAuth accounts (one user can have multiple providers)
 model Account {
-  id                 String  @id @default(uuid())
-  userId             String
-  user               User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  type               String  // "oauth" | "credentials"
-  provider           String  // "google" | "github" | "credentials"
-  providerAccountId  String
+  type              String // "oauth" | "credentials"
+  provider          String // "google" | "github" | "credentials"
+  providerAccountId String
 
   // OAuth tokens
-  refresh_token      String? @db.Text
-  access_token       String? @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String? @db.Text
-  session_state      String?
+  refresh_token String? @db.Text
+  access_token  String? @db.Text
+  expires_at    Int?
+  token_type    String?
+  scope         String?
+  id_token      String? @db.Text
+  session_state String?
 
   @@unique([provider, providerAccountId])
   @@index([userId])
@@ -161,74 +160,74 @@ model VerificationToken {
 
 // Main job tracking table
 model Job {
-  id                   String      @id @default(uuid())
+  id String @id @default(uuid())
 
   // User relationship (nullable for backward compatibility with existing jobs)
-  userId               String?
-  user                 User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  niche                String      @db.Text
-  allowedProjectTypes  Json?       // Optional list of project types
-  generateLandingPage  Boolean     @default(false)
+  niche               String  @db.Text
+  allowedProjectTypes Json? // Optional list of project types
+  generateLandingPage Boolean @default(false)
 
   // Interactive job flow
-  jobMode              String?     @db.VarChar(20)   // 'interactive' or null (legacy one-shot)
-  entryMode            String?     @db.VarChar(20)   // 'idea' | 'audience' | 'discovery'
-  solutionIdeas        Json?                          // Array of solution preview objects
-  selectedSolution     String?     @db.VarChar(255)   // Name of winning solution (set by Phase 2 re-ranking)
-  selectedSolutions    String[]    @default([])         // User's 1-3 selected solution names
-  selectionRationale   String?     @db.Text           // User's reason for selection
-  ideasRegeneratedAt   DateTime?                      // When ideas were last regenerated (null = not regenerated)
-  regenerationCount    Int       @default(0)           // Number of times ideas have been regenerated
-  awaitingSelectionAt  DateTime?                      // When job entered AWAITING_SELECTION
-  ideasShownAt         DateTime?                      // When ideas were first shown to user
-  phase1CheckpointPath String?     @db.VarChar(500)   // Path to phase 1 checkpoint for resuming phase 2
-  selectionReminderCount Int       @default(0)        // Number of selection reminders sent
-  lastReminderSentAt   DateTime?                      // When last reminder was sent
+  jobMode                String?   @db.VarChar(20) // 'interactive' or null (legacy one-shot)
+  entryMode              String?   @db.VarChar(20) // 'idea' | 'audience' | 'discovery'
+  solutionIdeas          Json? // Array of solution preview objects
+  selectedSolution       String?   @db.VarChar(255) // Name of winning solution (set by Phase 2 re-ranking)
+  selectedSolutions      String[]  @default([]) // User's 1-3 selected solution names
+  selectionRationale     String?   @db.Text // User's reason for selection
+  ideasRegeneratedAt     DateTime? // When ideas were last regenerated (null = not regenerated)
+  regenerationCount      Int       @default(0) // Number of times ideas have been regenerated
+  awaitingSelectionAt    DateTime? // When job entered AWAITING_SELECTION
+  ideasShownAt           DateTime? // When ideas were first shown to user
+  phase1CheckpointPath   String?   @db.VarChar(500) // Path to phase 1 checkpoint for resuming phase 2
+  selectionReminderCount Int       @default(0) // Number of selection reminders sent
+  lastReminderSentAt     DateTime? // When last reminder was sent
 
   // Status tracking
-  status               JobStatus   @default(PENDING)
-  currentStage         Float       @default(1)
-  currentStageName     String?     @db.VarChar(100)
-  stagesCompleted      Int         @default(0)
-  totalStages          Int         @default(14)
-  progressPercent      Float       @default(0)
+  status           JobStatus @default(PENDING)
+  currentStage     Float     @default(1)
+  currentStageName String?   @db.VarChar(100)
+  stagesCompleted  Int       @default(0)
+  totalStages      Int       @default(14)
+  progressPercent  Float     @default(0)
 
   // Error tracking
-  errorMessage         String?     @db.Text
-  errorStage           Float?
-  errorCode            String?     @db.VarChar(50)  // Classified error code (e.g., 'RATE_LIMIT', 'NETWORK_ERROR')
-  errorDetails         Json?                        // Structured error info with user-friendly message
+  errorMessage String? @db.Text
+  errorStage   Float?
+  errorCode    String? @db.VarChar(50) // Classified error code (e.g., 'RATE_LIMIT', 'NETWORK_ERROR')
+  errorDetails Json? // Structured error info with user-friendly message
 
   // Quality gate stop tracking (intentional stops vs errors)
-  stopReason           String?     @db.VarChar(50)  // e.g., 'INSUFFICIENT_DATA'
-  stopReasonDetails    Json?                        // Quality metrics, recommendation
+  stopReason        String? @db.VarChar(50) // e.g., 'INSUFFICIENT_DATA'
+  stopReasonDetails Json? // Quality metrics, recommendation
 
   // Landing page lifecycle (independent of main job status)
-  landingPageStatus    String?     @db.VarChar(20)   // null, QUEUED, RUNNING, COMPLETED, FAILED
+  landingPageStatus String? @db.VarChar(20) // null, QUEUED, RUNNING, COMPLETED, FAILED
 
   // Worker crash recovery tracking
-  workerId             String?     @db.VarChar(100)  // Which worker is processing this job
-  lastHeartbeat        DateTime?   // Last heartbeat from worker for this job
-  retryCount           Int         @default(0)       // Number of times job has been retried due to worker crash
+  workerId      String?   @db.VarChar(100) // Which worker is processing this job
+  lastHeartbeat DateTime? // Last heartbeat from worker for this job
+  retryCount    Int       @default(0) // Number of times job has been retried due to worker crash
 
   // Catalog category link (only for catalog_pain_points / catalog_ideas jobs)
-  catalogCategoryId    String?
-  catalogCategory      CatalogCategory? @relation(fields: [catalogCategoryId], references: [id], onDelete: SetNull)
+  catalogCategoryId String?
+  catalogCategory   CatalogCategory? @relation(fields: [catalogCategoryId], references: [id], onDelete: SetNull)
 
   // Timestamps
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
-  queuedAt             DateTime?   // When job entered queue
-  startedAt            DateTime?
-  completedAt          DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  queuedAt    DateTime? // When job entered queue
+  startedAt   DateTime?
+  completedAt DateTime?
 
   // Relations
-  progress             JobProgress[]
-  assets               JobAsset[]
-  creditTransactions   CreditTransaction[]
-  share                ReportShare?
-  discoveryShare       DiscoveryShare?
+  progress           JobProgress[]
+  assets             JobAsset[]
+  creditTransactions CreditTransaction[]
+  share              ReportShare?
+  discoveryShare     DiscoveryShare?
 
   // Indexes for common queries
   @@index([userId])
@@ -240,20 +239,20 @@ model Job {
 
 // Worker heartbeat tracking (for detecting crashed workers)
 model WorkerHeartbeat {
-  id              String    @id @default(uuid())
-  workerId        String    @unique @db.VarChar(100)  // Unique worker instance ID
+  id       String @id @default(uuid())
+  workerId String @unique @db.VarChar(100) // Unique worker instance ID
 
   // Current state
-  currentJobId    String?   // Job currently being processed (null if idle)
-  status          String    @default("active") @db.VarChar(20)  // active, idle, shutdown
+  currentJobId String? // Job currently being processed (null if idle)
+  status       String  @default("active") @db.VarChar(20) // active, idle, shutdown
 
   // Heartbeat timing
-  lastHeartbeat   DateTime  @default(now())
-  startedAt       DateTime  @default(now())  // When worker started
+  lastHeartbeat DateTime @default(now())
+  startedAt     DateTime @default(now()) // When worker started
 
   // Metadata
-  hostname        String?   @db.VarChar(255)
-  processId       Int?      // OS process ID
+  hostname  String? @db.VarChar(255)
+  processId Int? // OS process ID
 
   @@index([lastHeartbeat])
   @@index([currentJobId])
@@ -262,14 +261,14 @@ model WorkerHeartbeat {
 
 // Detailed progress tracking per stage
 model JobProgress {
-  id              Int         @id @default(autoincrement())
-  jobId           String
-  job             Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id    Int    @id @default(autoincrement())
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   // Stage info
-  stageNumber     Float
-  stageName       String      @db.VarChar(100)
-  status          StageStatus @default(PENDING)
+  stageNumber Float
+  stageName   String      @db.VarChar(100)
+  status      StageStatus @default(PENDING)
 
   // Timing
   startedAt       DateTime?
@@ -277,18 +276,18 @@ model JobProgress {
   durationSeconds Float?
 
   // Additional details
-  details         Json?       // Stage-specific metadata
-  errorMessage    String?     @db.Text
+  details      Json? // Stage-specific metadata
+  errorMessage String? @db.Text
 
-  @@index([jobId])
   @@unique([jobId, stageNumber])
+  @@index([jobId])
 }
 
 // Generated assets (reports, landing pages)
 model JobAsset {
-  id            Int       @id @default(autoincrement())
-  jobId         String
-  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id    Int    @id @default(autoincrement())
+  jobId String
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   // Asset info
   assetType     AssetType
@@ -296,10 +295,10 @@ model JobAsset {
   fileSizeBytes Int?
 
   // Timestamps
-  createdAt     DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  @@index([jobId])
   @@unique([jobId, assetType])
+  @@index([jobId])
 }
 
 // ============================================
@@ -308,67 +307,67 @@ model JobAsset {
 
 // User credit balance (one-to-one with User)
 model UserCredits {
-  id              String   @id @default(uuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  balance         Int      @default(0)    // Current available credits
-  totalPurchased  Int      @default(0)    // Lifetime purchased
-  totalUsed       Int      @default(0)    // Lifetime used
+  balance        Int @default(0) // Current available credits
+  totalPurchased Int @default(0) // Lifetime purchased
+  totalUsed      Int @default(0) // Lifetime used
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  transactions    CreditTransaction[]
+  transactions CreditTransaction[]
 
   @@index([userId])
 }
 
 // Credit transaction audit trail
 model CreditTransaction {
-  id              String                @id @default(uuid())
-  userId          String
-  userCredits     UserCredits           @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  id          String      @id @default(uuid())
+  userId      String
+  userCredits UserCredits @relation(fields: [userId], references: [userId], onDelete: Cascade)
 
-  type            CreditTransactionType
-  amount          Int                   // Positive = add, Negative = deduct
-  balanceBefore   Int
-  balanceAfter    Int
+  type          CreditTransactionType
+  amount        Int // Positive = add, Negative = deduct
+  balanceBefore Int
+  balanceAfter  Int
 
-  description     String?               @db.VarChar(500)
-  stage           String                @default("unknown") @db.VarChar(50)
-  cycle           Int                   @default(0) // 0 = original, 1+ = resume attempts
-  relatedJobId    String?               // Link to job that used credits
-  relatedJob      Job?                  @relation(fields: [relatedJobId], references: [id], onDelete: SetNull)
-  promoCodeId     String?               // Link to promo code if redeemed
+  description  String? @db.VarChar(500)
+  stage        String  @default("unknown") @db.VarChar(50)
+  cycle        Int     @default(0) // 0 = original, 1+ = resume attempts
+  relatedJobId String? // Link to job that used credits
+  relatedJob   Job?    @relation(fields: [relatedJobId], references: [id], onDelete: SetNull)
+  promoCodeId  String? // Link to promo code if redeemed
 
-  createdAt       DateTime              @default(now())
+  createdAt DateTime @default(now())
 
+  @@unique([relatedJobId, type, stage, cycle], name: "unique_job_stage_cycle_transaction")
   @@index([userId])
   @@index([createdAt])
   @@index([type])
-  @@unique([relatedJobId, type, stage, cycle], name: "unique_job_stage_cycle_transaction")
 }
 
 // Admin-generated promo codes
 model PromoCode {
-  id              String            @id @default(uuid())
-  code            String            @unique @db.VarChar(50)
+  id   String @id @default(uuid())
+  code String @unique @db.VarChar(50)
 
-  creditAmount    Int               // Credits granted when redeemed
-  maxRedemptions  Int               @default(1)   // How many times can be used
-  currentUses     Int               @default(0)   // Current usage count
+  creditAmount   Int // Credits granted when redeemed
+  maxRedemptions Int @default(1) // How many times can be used
+  currentUses    Int @default(0) // Current usage count
 
-  expiresAt       DateTime?         // Optional expiration
-  isActive        Boolean           @default(true)
+  expiresAt DateTime? // Optional expiration
+  isActive  Boolean   @default(true)
 
-  description     String?           @db.VarChar(500)  // Admin notes
-  createdBy       String?           // Admin who created it
+  description String? @db.VarChar(500) // Admin notes
+  createdBy   String? // Admin who created it
 
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  redemptions     PromoRedemption[]
+  redemptions PromoRedemption[]
 
   @@index([code])
   @@index([isActive])
@@ -376,15 +375,15 @@ model PromoCode {
 
 // Track promo code redemptions
 model PromoRedemption {
-  id              String     @id @default(uuid())
-  promoCodeId     String
-  promoCode       PromoCode  @relation(fields: [promoCodeId], references: [id])
-  userId          String
+  id          String    @id @default(uuid())
+  promoCodeId String
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id])
+  userId      String
 
-  creditsGranted  Int
-  redeemedAt      DateTime   @default(now())
+  creditsGranted Int
+  redeemedAt     DateTime @default(now())
 
-  @@unique([promoCodeId, userId])  // User can only redeem each code once
+  @@unique([promoCodeId, userId]) // User can only redeem each code once
   @@index([userId])
   @@index([redeemedAt])
 }
@@ -395,32 +394,32 @@ model PromoRedemption {
 
 // Token packages available for purchase
 model TokenPackage {
-  id            String   @id @default(uuid())
-  name          String   @db.VarChar(100)     // "Starter", "Pro", "Enterprise"
-  description   String?  @db.VarChar(500)     // Package description
-  credits       Int                           // Number of credits in package
-  priceInCents  Int                           // Price in cents (e.g., 999 = $9.99)
-  stripePriceId String   @unique @db.VarChar(255)  // Stripe Price ID
+  id            String  @id @default(uuid())
+  name          String  @db.VarChar(100) // "Starter", "Pro", "Enterprise"
+  description   String? @db.VarChar(500) // Package description
+  credits       Int // Number of credits in package
+  priceInCents  Int // Price in cents (e.g., 999 = $9.99)
+  stripePriceId String  @unique @db.VarChar(255) // Stripe Price ID
 
-  isActive      Boolean  @default(true)       // Whether package is available
-  isPopular     Boolean  @default(false)      // Highlight as "Most Popular"
-  sortOrder     Int      @default(0)          // Display order
+  isActive  Boolean @default(true) // Whether package is available
+  isPopular Boolean @default(false) // Highlight as "Most Popular"
+  sortOrder Int     @default(0) // Display order
 
   // Rich pricing card fields
-  tagline           String?  @db.VarChar(200)     // "Plan how to build & profit"
-  includesLabel     String?  @db.VarChar(200)     // "Includes: Discovery + Deep Research"
-  features          Json?                         // JSON array of feature items
-  creditsInfo       String?  @db.VarChar(200)     // "~1 Discovery run + extras"
-  ctaText           String?  @db.VarChar(100)     // "Get Your Blueprint →"
-  badgeLabel        String?  @db.VarChar(50)      // Custom badge text (overrides "Most Popular")
-  promoLine         String?  @db.VarChar(200)     // "+1 FREE Discovery" — bottom of card
-  promoPriceInCents Int?                          // Discounted price in cents
-  promoBadge        String?  @db.VarChar(50)      // "35% Off" badge
-  ctaSubText        String?  @db.VarChar(100)     // "See sample Discovery →"
-  ctaSubUrl         String?  @db.VarChar(500)     // URL the ctaSubText links to
+  tagline           String? @db.VarChar(200) // "Plan how to build & profit"
+  includesLabel     String? @db.VarChar(200) // "Includes: Discovery + Deep Research"
+  features          Json? // JSON array of feature items
+  creditsInfo       String? @db.VarChar(200) // "~1 Discovery run + extras"
+  ctaText           String? @db.VarChar(100) // "Get Your Blueprint →"
+  badgeLabel        String? @db.VarChar(50) // Custom badge text (overrides "Most Popular")
+  promoLine         String? @db.VarChar(200) // "+1 FREE Discovery" — bottom of card
+  promoPriceInCents Int? // Discounted price in cents
+  promoBadge        String? @db.VarChar(50) // "35% Off" badge
+  ctaSubText        String? @db.VarChar(100) // "See sample Discovery →"
+  ctaSubUrl         String? @db.VarChar(500) // URL the ctaSubText links to
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive])
   @@index([sortOrder])
@@ -431,17 +430,17 @@ model TokenPackage {
 // ============================================
 
 model ReportShare {
-  id             String    @id @default(uuid())
-  jobId          String    @unique
-  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  userId         String
-  shareToken     String    @unique
-  isActive       Boolean   @default(true)
-  allowIndexing  Boolean   @default(false)
-  viewCount      Int       @default(0)
-  lastViewedAt   DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id            String    @id @default(uuid())
+  jobId         String    @unique
+  job           Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId        String
+  shareToken    String    @unique
+  isActive      Boolean   @default(true)
+  allowIndexing Boolean   @default(false)
+  viewCount     Int       @default(0)
+  lastViewedAt  DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 // ============================================
@@ -449,29 +448,29 @@ model ReportShare {
 // ============================================
 
 model DiscoveryShare {
-  id             String    @id @default(uuid())
-  jobId          String    @unique
-  job            Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  userId         String
-  shareToken     String    @unique
-  isActive       Boolean   @default(true)
-  allowIndexing  Boolean   @default(false)
-  viewCount      Int       @default(0)
-  lastViewedAt   DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  votes          DiscoveryVote[]
+  id            String          @id @default(uuid())
+  jobId         String          @unique
+  job           Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userId        String
+  shareToken    String          @unique
+  isActive      Boolean         @default(true)
+  allowIndexing Boolean         @default(false)
+  viewCount     Int             @default(0)
+  lastViewedAt  DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  votes         DiscoveryVote[]
 }
 
 model DiscoveryVote {
-  id            String         @id @default(uuid())
-  shareId       String
-  share         DiscoveryShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
-  solutionName  String         @db.VarChar(255)
-  viewerToken   String         @db.VarChar(64)
-  ipHash        String         @db.VarChar(64)
-  comment       String?        @db.VarChar(500)
-  createdAt     DateTime       @default(now())
+  id           String         @id @default(uuid())
+  shareId      String
+  share        DiscoveryShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  solutionName String         @db.VarChar(255)
+  viewerToken  String         @db.VarChar(64)
+  ipHash       String         @db.VarChar(64)
+  comment      String?        @db.VarChar(500)
+  createdAt    DateTime       @default(now())
 
   @@unique([shareId, viewerToken])
   @@index([shareId])
@@ -494,43 +493,43 @@ model AppSettings {
 // ============================================
 
 model CatalogSuperGroup {
-  id          String   @id @default(uuid())
-  name        String   @db.VarChar(100)
-  slug        String   @unique @db.VarChar(120)
-  description String?  @db.VarChar(500)
-  sortOrder   Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id          String            @id @default(uuid())
+  name        String            @db.VarChar(100)
+  slug        String            @unique @db.VarChar(120)
+  description String?           @db.VarChar(500)
+  sortOrder   Int               @default(0)
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
   categories  CatalogCategory[]
 
   @@index([isActive, sortOrder])
 }
 
 model CatalogCategory {
-  id              String   @id @default(uuid())
-  name            String   @db.VarChar(100)
+  id              String             @id @default(uuid())
+  name            String             @db.VarChar(100)
   // Slug is unique scoped to parent (b2b-tools can exist under both saas and enterprise).
   // Top-level uniqueness (parentId IS NULL) enforced via partial unique index in migration SQL.
-  slug            String   @db.VarChar(120)
+  slug            String             @db.VarChar(120)
   // Preserves the old globally-unique slug for 301-redirect lookup during the URL migration window.
-  legacySlug      String?  @db.VarChar(120)
-  description     String?  @db.VarChar(500)
+  legacySlug      String?            @db.VarChar(120)
+  description     String?            @db.VarChar(500)
   // SEO fields (Phase 2)
-  seoTitle        String?  @db.VarChar(160)
-  seoDescription  String?  @db.VarChar(320)
-  longDescription String?  @db.Text
+  seoTitle        String?            @db.VarChar(160)
+  seoDescription  String?            @db.VarChar(320)
+  longDescription String?            @db.Text
   faqJson         Json?
-  tags            String[] @default([])
+  tags            String[]           @default([])
   parentId        String?
-  parent          CatalogCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
-  children        CatalogCategory[] @relation("CategoryHierarchy")
+  parent          CatalogCategory?   @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children        CatalogCategory[]  @relation("CategoryHierarchy")
   superGroupId    String?
   superGroup      CatalogSuperGroup? @relation(fields: [superGroupId], references: [id], onDelete: SetNull)
-  sortOrder       Int      @default(0)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  sortOrder       Int                @default(0)
+  isActive        Boolean            @default(true)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
   ideas           CatalogIdea[]
   painPoints      CatalogPainPoint[]
   jobs            Job[]
@@ -543,64 +542,70 @@ model CatalogCategory {
 }
 
 model CatalogIdea {
-  id                    String   @id @default(uuid())
-  categoryId            String
-  category              CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  id                      String                  @id @default(uuid())
+  categoryId              String
+  category                CatalogCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   // Phase 5: research context backing this item. REQUIRED — every sourceJobId
   // is guaranteed by the backfill + worker/publish hooks to have a context row
   // present before insert.
-  researchContext       CatalogResearchContext @relation(fields: [sourceJobId], references: [sourceJobId])
+  researchContext         CatalogResearchContext  @relation(fields: [sourceJobId], references: [sourceJobId])
   // Public slug for /idea/[slug] URL — pattern: [descriptor]-[niche]-[format].
   // Initially nullable; backfilled by migrateCatalogSlugs.ts; set NOT NULL + @unique in follow-up migration.
-  slug                  String?  @db.VarChar(160)
+  slug                    String?                 @db.VarChar(160)
   // Solution typology (saas | marketplace | tool | app | service | platform | extension | template).
   // Drives the slug suffix; defaults to 'saas' if unset during backfill.
-  format                String?  @db.VarChar(40)
+  format                  String?                 @db.VarChar(40)
   // Source context (plain strings, not FKs)
-  sourceJobId           String   @db.VarChar(100)
-  sourceNiche           String   @db.Text
-  sourceVerdict         String?  @db.VarChar(20)
-  sourceGeneratedAt     DateTime?
-  sourceItemIndex       Int
+  sourceJobId             String                  @db.VarChar(100)
+  sourceNiche             String                  @db.Text
+  sourceVerdict           String?                 @db.VarChar(20)
+  sourceGeneratedAt       DateTime?
+  sourceItemIndex         Int
   // Solution fields
-  solutionName          String   @db.Text
+  solutionName            String                  @db.Text
   // Human-readable headline (5-12 words) shown as the display title in
   // listings (e.g. "Real-time eviction risk scores by neighborhood").
   // Mirrors Pydantic BaseSolutionIdea.headline. Frontend cards fall back
   // to `solutionName` (the code name) when null on legacy rows.
-  headline              String?  @db.Text
+  headline                String?                 @db.Text
   // Punchy 1-2 sentence card-friendly summary (under ~180 chars).
   // Mirrors Pydantic BaseSolutionIdea.short_description. Frontend cards
   // fall back to `description` when this is null (legacy rows).
-  shortDescription      String?  @db.Text
-  description           String   @db.Text
-  valueProposition      String?  @db.Text
-  projectType           String?  @db.Text
-  coreFeatures          Json?    // string[]
-  targetPersonas        Json?    // string[]
-  technicalApproach     String?  @db.Text
-  differentiationFactors Json?   // string[]
-  pricingStrategy       String?  @db.Text
-  estimatedDevTime      String?  @db.Text
+  shortDescription        String?                 @db.Text
+  description             String                  @db.Text
+  valueProposition        String?                 @db.Text
+  projectType             String?                 @db.Text
+  coreFeatures            Json? // string[]
+  targetPersonas          Json? // string[]
+  technicalApproach       String?                 @db.Text
+  differentiationFactors  Json? // string[]
+  pricingStrategy         String?                 @db.Text
+  estimatedDevTime        String?                 @db.Text
   // Scores (Float?, 0-1)
-  marketFitScore        Float?
-  technicalFeasibility  Float?
-  seoScalabilityScore   Float?
-  noveltyScore          Float?
-  soloDevFeasibility    Float?
+  marketFitScore          Float?
+  technicalFeasibility    Float?
+  seoScalabilityScore     Float?
+  noveltyScore            Float?
+  soloDevFeasibility      Float?
   // SEO data
-  estimatedCacOrganic   String?  @db.Text
+  estimatedCacOrganic     String?                 @db.Text
+  estimatedCacPaid        String?                 @db.Text
   estimatedIndexablePages Int?
-  programmaticSeoOpp    String?  @db.Text
+  programmaticSeoOpp      String?                 @db.Text
+  whyItWorks              String?                 @db.Text
+  conventionalApproach    String?                 @db.Text
+  innovationAngle         String?                 @db.Text
+  organicDiscoveryQueries String[]                @default([])
+  addressedPainTitles     String[]                @default([])
   // Publication metadata
-  publishedById         String   @db.VarChar(100)
-  isActive              Boolean  @default(true)
-  isFeatured            Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  publishedById           String                  @db.VarChar(100)
+  isActive                Boolean                 @default(true)
+  isFeatured              Boolean                 @default(false)
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
   // Reverse relation — featured-collection memberships. Cascade on idea
   // delete cleans up join rows automatically.
-  collectionItems       CatalogCollectionItem[]
+  collectionItems         CatalogCollectionItem[]
 
   @@unique([sourceJobId, solutionName])
   @@unique([slug])
@@ -611,39 +616,45 @@ model CatalogIdea {
   // Composite indexes for top-N queries on the landing page
   @@index([categoryId, createdAt(sort: Desc)])
   @@index([categoryId, marketFitScore(sort: Desc)])
+  @@index([addressedPainTitles], type: Gin)
 }
 
 model CatalogPainPoint {
-  id                    String   @id @default(uuid())
+  id                    String                  @id @default(uuid())
   categoryId            String
-  category              CatalogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category              CatalogCategory         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   // Phase 5: research context backing this item. REQUIRED — every sourceJobId
   // is guaranteed by the backfill + worker/publish hooks to have a context row
   // present before insert.
-  researchContext       CatalogResearchContext @relation(fields: [sourceJobId], references: [sourceJobId])
+  researchContext       CatalogResearchContext  @relation(fields: [sourceJobId], references: [sourceJobId])
   // Public slug for /pain-point/[slug] URL — pattern: [descriptor]-[niche]-[format].
   // Initially nullable; backfilled by migrateCatalogSlugs.ts.
-  slug                  String?  @db.VarChar(160)
-  sourceJobId           String   @db.VarChar(100)
-  sourceNiche           String   @db.Text
+  slug                  String?                 @db.VarChar(160)
+  sourceJobId           String                  @db.VarChar(100)
+  sourceNiche           String                  @db.Text
   sourceGeneratedAt     DateTime?
   sourceItemIndex       Int
-  title                 String   @db.Text
-  description           String   @db.Text
-  mentionCount          Int      @default(0)
+  title                 String                  @db.Text
+  description           String                  @db.Text
+  mentionCount          Int                     @default(0)
   severityScore         Float
   willingnessToPayScore Float
-  opportunityLevel      String   @db.Text
-  representativeQuotes  Json?    // string[]
-  sourcePlatforms       Json?    // string[]
-  categories            Json?    // string[] (original report categories)
-  affectedSegments      Json?    // string[]
-  solutionApproach      String?  @db.Text
-  publishedById         String   @db.VarChar(100)
-  isActive              Boolean  @default(true)
-  isFeatured            Boolean  @default(false)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  opportunityLevel      String                  @db.Text
+  representativeQuotes  Json? // string[]
+  sourcePlatforms       Json? // string[]
+  categories            Json? // string[] (original report categories)
+  affectedSegments      Json? // string[]
+  solutionApproach      String?                 @db.Text
+  // Stable theme slug from research pipeline (PainPoint.parent_theme_id).
+  // Catalog UI groups pain points under their parent theme using this column.
+  // Nullable for legacy rows ingested before the field existed — those render
+  // in the "Other pain points" Unclassified bucket on the landing page.
+  themeId               String?                 @db.VarChar(160)
+  publishedById         String                  @db.VarChar(100)
+  isActive              Boolean                 @default(true)
+  isFeatured            Boolean                 @default(false)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
   // Reverse relation — featured-collection memberships.
   collectionItems       CatalogCollectionItem[]
 
@@ -654,6 +665,7 @@ model CatalogPainPoint {
   @@index([isActive])
   @@index([severityScore])
   @@index([createdAt])
+  @@index([themeId])
   // Composite indexes for top-N queries on the landing page
   @@index([categoryId, createdAt(sort: Desc)])
   @@index([categoryId, severityScore(sort: Desc)])
@@ -699,45 +711,45 @@ model RedditThread {
 // Migration B (this commit): adds the required FK relations on CatalogIdea /
 // CatalogPainPoint plus the reverse relations here.
 model CatalogResearchContext {
-  sourceJobId            String   @id @db.VarChar(100)
+  sourceJobId String @id @db.VarChar(100)
 
   // Reverse relations. No cascade — depublishing an idea or deleting a Job
   // doesn't delete this row; context outlives its referencing items by design
   // (a different job might re-publish from the same sourceJobId in the future).
-  ideas                  CatalogIdea[]
-  painPoints             CatalogPainPoint[]
+  ideas      CatalogIdea[]
+  painPoints CatalogPainPoint[]
 
   // Structured analysis (Json columns; shapes mirror frontend Report types).
-  audienceMapping        Json?
-  marketSizing           Json?
-  trendLongevity         Json?
-  painPointAnalytics     Json?
-  competitiveAnalytics   Json?
-  competitorProfiles     Json?
+  audienceMapping      Json?
+  marketSizing         Json?
+  trendLongevity       Json?
+  painPointAnalytics   Json?
+  competitiveAnalytics Json?
+  competitorProfiles   Json?
   // Phase 5.3: Competitors section requires `analysis` prop separately from
   // `analytics`. Keep nullable; not all reports project it.
-  competitiveAnalysis    Json?
-  competitiveSummary     String?  @db.Text
+  competitiveAnalysis  Json?
+  competitiveSummary   String? @db.Text
   // Phase 5.3: Locked sections (GTM, Monetization). Stored to allow rendering
   // a summary description; the full payload is gated by the lock UI.
-  goToMarketBlueprint    Json?
-  pricingStrategy        Json?
-  trafficMonetization    Json?
+  goToMarketBlueprint  Json?
+  pricingStrategy      Json?
+  trafficMonetization  Json?
 
   // Reused-section data feeds. Listed as separate columns so the projection can
   // scrub each subtree independently — missing data on one column doesn't
   // poison adjacent ones.
-  detailedPainPoints     Json?
-  alternativeSolutions   Json?
-  selectedSolution       Json?
+  detailedPainPoints    Json?
+  alternativeSolutions  Json?
+  selectedSolution      Json?
   // Theme categories + user segments produced by Stage 3 PainPointCrew. Fed
   // forward into catalog idea generation (UnifiedSolutionCrew) and rendered
   // on category landing pages. Nullable for legacy rows produced before this
   // column existed.
-  contentCategorization  Json?
+  contentCategorization Json?
   // Pulled out of selectedSolution for fast lookup. Text (not VarChar) because
   // LLM-generated solution names occasionally exceed 200 chars.
-  selectedSolutionName   String?  @db.Text
+  selectedSolutionName  String? @db.Text
 
   // Aggregated metrics for the hero metric strip.
   redditPostsAnalyzed    Int?
@@ -751,55 +763,61 @@ model CatalogResearchContext {
   // FinalReport.keyword_clusters (sourced via report_generator from the selected
   // solution's keyword_validation_results entry). Shape mirrors KeywordCluster
   // (Pydantic keyword_data.py:122). Surfaced to public idea-detail page.
-  keywordClusters        Json?
+  keywordClusters     Json?
   // Theme severity scores (0-100 scale, NOT 0-1). Sourced from
   // ContentCategorizationReport.theme_categories[].severity_score.
   // Stored as `[{title, severity, mention_count, sources, description, frequency, primary_user_segments}]`.
   // Phase 5.5: extended shape includes definition/frequency/primary_user_segments for the new ThemeCard render.
-  themeSeverityScores    Json?
+  themeSeverityScores Json?
 
   // Phase 5.5 — catalog page enrichment fields. All optional; backfilled from
   // checkpoint stage_3/stage_4 files when missing in preview reports.
   // Niche context: { description, industryBoundaries, marketSegments } from niche_context.
-  nicheContext           Json?
+  nicheContext          Json?
   // Quality signals: { contentTier, painPointTier, confidenceScore, overallDataQuality, engagementMetrics }
   // from data_quality_summary + research_metadata.social_content_metrics.
-  qualitySignals         Json?
+  qualitySignals        Json?
   // Section 1 prose lede source — content_categorization.executive_summary.
-  categorizationSummary  String?  @db.Text
+  categorizationSummary String? @db.Text
   // Pain analysis prose summary — pain_point_analysis.analysis_summary (50/50 in checkpoints, 0/11 in preview pre-Phase 5.5).
-  painAnalysisSummary    String?  @db.Text
+  painAnalysisSummary   String? @db.Text
   // Top pain categories ranked list — pain_point_analysis.top_categories (string[]).
-  topPainCategories      Json?
+  topPainCategories     Json?
+  // Phase 14 — source-grounded evidence projected from evidence_appendix.
+  // painPointQuoteSources: Map<index, { pain_point_title, quotes_with_sources: [{quote, post_id, subreddit, score:number}] }>
+  // topRedditThreads:      [{ post_id, title, subreddit, score, num_comments, url, key_insight }]
+  // Both nullable; legacy contexts before Phase 14 stay null until backfill.
+  painPointQuoteSources Json?
+  topRedditThreads      Json?
 
   // Status signals — typed for query/index, drive UI conditionals.
-  dataQualityTier        String?  @db.VarChar(20)  // GOLD | SILVER | BRONZE | INSUFFICIENT
-  goNoGoVerdict          String?  @db.VarChar(20)  // GO | NO_GO | MAYBE
+  dataQualityTier String? @db.VarChar(20) // GOLD | SILVER | BRONZE | INSUFFICIENT
+  goNoGoVerdict   String? @db.VarChar(20) // GO | NO_GO | MAYBE
 
   // Audit.
-  extractedAt            DateTime @default(now())
-  reportGeneratedAt      DateTime?
+  extractedAt       DateTime  @default(now())
+  reportGeneratedAt DateTime?
 
   @@index([dataQualityTier])
   @@index([reportGeneratedAt])
 }
 
 model CatalogItemCache {
-  id                String   @id @default(uuid())
-  jobId             String   @db.VarChar(100)
-  userId            String   @db.VarChar(100)
-  niche             String   @db.Text
-  itemType          String   @db.VarChar(20)  // 'idea' | 'painPoint'
-  itemIndex         Int      // -1=selected solution, 0+=alternative/pain point index
-  itemName          String   @db.VarChar(255)
-  itemDescription   String   @db.Text
-  itemScores        Json?    // key scores for display
-  verdict           String?  @db.VarChar(20)
-  isPublished       Boolean  @default(false)
-  categoryId        String?  @db.VarChar(100)
+  id                String    @id @default(uuid())
+  jobId             String    @db.VarChar(100)
+  userId            String    @db.VarChar(100)
+  niche             String    @db.Text
+  itemType          String    @db.VarChar(20) // 'idea' | 'painPoint'
+  itemIndex         Int // -1=selected solution, 0+=alternative/pain point index
+  itemName          String    @db.VarChar(255)
+  itemDescription   String    @db.Text
+  itemScores        Json? // key scores for display
+  verdict           String?   @db.VarChar(20)
+  isPublished       Boolean   @default(false)
+  categoryId        String?   @db.VarChar(100)
   reportGeneratedAt DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@unique([jobId, itemType, itemIndex])
   @@index([userId])
@@ -820,34 +838,34 @@ model CatalogItemCache {
 // `position` is stable + unique per collection for deterministic ordering.
 
 model CatalogCollection {
-  id           String   @id @default(uuid())
-  slug         String   @unique @db.VarChar(120)
-  name         String   @db.VarChar(120)
-  description  String?  @db.Text
+  id          String                  @id @default(uuid())
+  slug        String                  @unique @db.VarChar(120)
+  name        String                  @db.VarChar(120)
+  description String?                 @db.Text
   // Short tagline shown on the collection card (e.g. "Collection · 24 ideas").
-  tagline      String?  @db.VarChar(160)
+  tagline     String?                 @db.VarChar(160)
   // Optional CSS hex/named token for the card accent stripe.
-  colorAccent  String?  @db.VarChar(20)
-  sortOrder    Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  items        CatalogCollectionItem[]
+  colorAccent String?                 @db.VarChar(20)
+  sortOrder   Int                     @default(0)
+  isActive    Boolean                 @default(true)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  items       CatalogCollectionItem[]
 
   @@index([isActive, sortOrder])
 }
 
 model CatalogCollectionItem {
-  id           String   @id @default(uuid())
+  id           String            @id @default(uuid())
   collectionId String
   collection   CatalogCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
   // Exactly one of ideaId / painPointId is set (DB CHECK + service validation).
   ideaId       String?
-  idea         CatalogIdea? @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  idea         CatalogIdea?      @relation(fields: [ideaId], references: [id], onDelete: Cascade)
   painPointId  String?
   painPoint    CatalogPainPoint? @relation(fields: [painPointId], references: [id], onDelete: Cascade)
   position     Int
-  createdAt    DateTime @default(now())
+  createdAt    DateTime          @default(now())
 
   // No duplicate idea/painPoint within a collection. Postgres treats NULLs as
   // distinct in unique indexes, so these constraints only fire when the

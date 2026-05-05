@@ -184,8 +184,8 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--dg-accent);
-    background: rgba(240, 96, 48, 0.1);
-    border: 1px solid rgba(240, 96, 48, 0.2);
+    background: rgba(234, 88, 12, 0.1);
+    border: 1px solid rgba(234, 88, 12, 0.2);
     padding: 3px 10px;
     border-radius: 20px;
     display: inline-block;

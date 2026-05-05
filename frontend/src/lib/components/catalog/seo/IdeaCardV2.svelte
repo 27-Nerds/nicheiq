@@ -3,6 +3,7 @@
   import { solutionDisplayTitle, solutionCardDescription } from "$lib/utils/solution-utils.js";
   import Trifecta from "./Trifecta.svelte";
   import VerdictBadge from "./VerdictBadge.svelte";
+  import Chip from "./Chip.svelte";
   import ArrowRight from "lucide-svelte/icons/arrow-right";
 
   // Replaces CatalogIdeaCard. Mockup `.idea-card`: meta + title + Trifecta
@@ -60,7 +61,7 @@
     <div class="ic-tags">
       <VerdictBadge verdict={idea.source_verdict} />
       {#each tags as t}
-        <span class="badge">{t.replace(/-/g, " ")}</span>
+        <Chip label={t.replace(/-/g, " ")} />
       {/each}
     </div>
     <span class="ic-arrow"><ArrowRight size={14} /></span>
@@ -82,9 +83,20 @@
     color: inherit;
     text-decoration: none;
   }
+  /* Two-layer neutral shadow on hover only — flat at rest, subtle elevation
+     on hover. Same idiom as RelatedPainCard so the two interactive card types
+     read as a class. No translateY lift (project anti-slop convention). */
   .idea-card:hover {
     border-color: var(--color-border-emphasis);
     background: var(--color-surface-elevated, var(--color-surface, #fafafa));
+    box-shadow:
+      0 1px 2px rgba(24, 24, 27, 0.04),
+      0 4px 12px rgba(24, 24, 27, 0.06);
+  }
+  .idea-card:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-color: var(--color-border-emphasis);
   }
   .ic-meta {
     font-size: 10px;
@@ -133,17 +145,6 @@
     gap: 5px;
     flex-wrap: wrap;
     align-items: center;
-  }
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    padding: 2px 7px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary, var(--color-text-primary));
-    background: var(--color-surface, #fff);
   }
   .ic-arrow {
     color: var(--color-text-muted);

@@ -1,6 +1,6 @@
 /* ========================================
    NicheIQ Color System — Extended Palette
-   Unified Light Theme with Orange (#F06030) Accent
+   Unified Light Theme with Orange (#EA580C) Accent
 
    Core tokens (--color-bg-*, --color-text-*, --color-accent/-hover/-light/-dark/-glow,
    --color-secondary/-dark, --color-success/-dark, --color-warning, --color-error/-dark,
@@ -13,7 +13,7 @@
 	/* ========================================
 	   Accent — subtle tint
 	   ======================================== */
-	--color-accent-subtle: rgba(240, 96, 48, 0.08);
+	--color-accent-subtle: rgba(234, 88, 12, 0.08);
 
 	/* ========================================
 	   Secondary (Indigo) — subtle tint
@@ -75,9 +75,9 @@
 	/* ========================================
 	   Tier Colors — keyword tiers, priority levels
 	   ======================================== */
-	--tier-0-color: #F06030;
-	--tier-0-bg: rgba(240, 96, 48, 0.1);
-	--tier-0-border: rgba(240, 96, 48, 0.3);
+	--tier-0-color: #EA580C;
+	--tier-0-bg: rgba(234, 88, 12, 0.1);
+	--tier-0-border: rgba(234, 88, 12, 0.3);
 
 	--tier-1-color: #3B82F6;
 	--tier-1-bg: rgba(59, 130, 246, 0.1);

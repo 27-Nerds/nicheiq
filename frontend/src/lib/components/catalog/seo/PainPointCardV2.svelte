@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PainPointPreview } from "$lib/types/catalog-landing.js";
   import { scaleSeverity } from "$lib/types/publicCatalog.js";
+  import RepresentativeQuotesPanel from "./RepresentativeQuotesPanel.svelte";
 
   // Single pain card. Severity-tile + title + description + quote + meta.
   // Used inside PainPointsList (idea/pain-point detail) and link-mode on
@@ -22,10 +23,8 @@
     return "lo";
   });
 
-  const quote = $derived(
-    Array.isArray(pain.representativeQuotes) && pain.representativeQuotes.length > 0
-      ? pain.representativeQuotes[0]
-      : null,
+  const quotes = $derived(
+    Array.isArray(pain.representativeQuotes) ? pain.representativeQuotes : [],
   );
   const segments = $derived(
     Array.isArray(pain.affectedSegments) ? pain.affectedSegments.slice(0, 3) : [],
@@ -42,14 +41,12 @@
       <h4>{pain.title}</h4>
     </div>
     <p class="desc">{pain.description}</p>
-    {#if quote}
-      <div class="quote">
-        "{quote}"
-        {#if pain.mentionCount}
-          <span class="src-line">{pain.mentionCount} similar mentions</span>
-        {/if}
-      </div>
-    {/if}
+    <RepresentativeQuotesPanel
+      {quotes}
+      mentionCount={pain.mentionCount}
+      maxQuotes={1}
+      variant="compact"
+    />
     {#if segments.length > 0}
       <div class="meta">
         <span>{segments.join(" / ")}</span>
@@ -66,14 +63,12 @@
       <h4>{pain.title}</h4>
     </div>
     <p class="desc">{pain.description}</p>
-    {#if quote}
-      <div class="quote">
-        "{quote}"
-        {#if pain.mentionCount}
-          <span class="src-line">{pain.mentionCount} similar mentions</span>
-        {/if}
-      </div>
-    {/if}
+    <RepresentativeQuotesPanel
+      {quotes}
+      mentionCount={pain.mentionCount}
+      maxQuotes={1}
+      variant="compact"
+    />
     {#if segments.length > 0}
       <div class="meta">
         <span>{segments.join(" / ")}</span>
@@ -151,23 +146,7 @@
     line-height: 1.55;
     margin: 0;
   }
-  .quote {
-    border-left: 2px solid var(--color-border-emphasis);
-    padding: 10px 12px;
-    font-size: 13px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    line-height: 1.5;
-    background: var(--color-surface-elevated, #fafafa);
-    border-radius: 0 4px 4px 0;
-  }
-  .src-line {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-muted);
-    margin-top: 6px;
-    font-weight: 500;
-  }
+  /* .quote / .src-line styles moved to RepresentativeQuotesPanel.svelte */
   .meta {
     display: flex;
     gap: 6px;

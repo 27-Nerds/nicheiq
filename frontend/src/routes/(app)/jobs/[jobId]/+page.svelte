@@ -1239,8 +1239,8 @@
 
   /* ═══ Opportunities zone (warm wrapper during selection) ═══ */
   .opportunities-zone {
-    background: rgba(240, 96, 48, 0.04);
-    border: 1px solid rgba(240, 96, 48, 0.10);
+    background: rgba(234, 88, 12, 0.04);
+    border: 1px solid rgba(234, 88, 12, 0.10);
     border-radius: var(--radius-lg, 0.75rem);
     padding: var(--space-4);
     margin-bottom: var(--space-4);
@@ -1250,8 +1250,8 @@
   .action-banner {
     padding: var(--space-5) var(--space-6);
     margin-bottom: var(--space-3);
-    background: rgba(240, 96, 48, 0.10);
-    border: 1px solid rgba(240, 96, 48, 0.18);
+    background: rgba(234, 88, 12, 0.10);
+    border: 1px solid rgba(234, 88, 12, 0.18);
     border-radius: var(--radius-lg, 0.75rem);
   }
 

@@ -1700,6 +1700,9 @@ RULES:
                             "estimated_development_time": getattr(solution, "estimated_development_time", None),
                             "estimated_cac_organic": getattr(solution, "estimated_cac_organic", None),
                             "pricing_model": getattr(solution, "pricing_strategy", None),
+                            # Phase 8 of detail-page IA rework — copy through
+                            # so /pain-point/[slug] can cross-link to alts.
+                            "pain_points_addressed": list(getattr(solution, "pain_points_addressed", []) or []),
                         }
                         alternative_solutions.append(alt)
 

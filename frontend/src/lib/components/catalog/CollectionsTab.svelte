@@ -13,7 +13,7 @@
     GripVertical,
   } from "lucide-svelte";
 
-  // Phase 5.2 — Featured collections admin UI.
+  // Featured collections admin UI.
   //
   // One pane:
   //  - Top: list of all collections (active + inactive) with edit/activate/delete.

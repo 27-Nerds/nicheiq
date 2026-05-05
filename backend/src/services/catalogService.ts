@@ -685,6 +685,22 @@ export async function publishIdea(params: {
           estimatedCacOrganic: safeString(solution.estimated_cac_organic_refined) ?? safeString(solution.estimated_cac_organic),
           estimatedIndexablePages: safeFloat(solution.estimated_indexable_pages) != null ? Math.round(safeFloat(solution.estimated_indexable_pages)!) : null,
           programmaticSeoOpp: safeString(solution.programmatic_seo_opportunity_refined) ?? safeString(solution.programmatic_seo_opportunity),
+          // Phase 13 of detail-page IA rework: surface idea-specific BaseSolutionIdea
+          // fields on /idea/[slug]. AlternativeSolution Pydantic model lacks all of
+          // these except estimated_cac_paid, so alternative rows land with null/[].
+          whyItWorks: safeString(solution.why_it_works),
+          conventionalApproach: safeString(solution.conventional_approach),
+          innovationAngle: safeString(solution.innovation_angle),
+          estimatedCacPaid: safeString(solution.estimated_cac_paid),
+          organicDiscoveryQueries: safeStringArray(solution.organic_discovery_queries) ?? [],
+          // Phase 1 of detail-page IA rework: denormalize the selected solution's
+          // pain_points_addressed list onto each idea row so /pain-point/[slug]
+          // can do a fast `addressedPainTitles: { has: title }` lookup.
+          // Alternative-solution rows (itemIndex >= 0): the Pydantic
+          // AlternativeSolution model has no pain_points_addressed field
+          // (research_state.py:241-283), so safeStringArray returns undefined
+          // → falls through to []. Phase 8 of the plan extends the model.
+          addressedPainTitles: safeStringArray(solution.pain_points_addressed) ?? [],
           publishedById: params.publishedById,
         },
       });
@@ -761,6 +777,7 @@ export async function publishPainPoint(params: {
           sourcePlatforms: safeStringArray(pp.source_platforms) || undefined,
           categories: safeStringArray(pp.categories) || undefined,
           affectedSegments: safeStringArray(pp.affected_segments) || undefined,
+          themeId: typeof pp.parent_theme_id === 'string' && pp.parent_theme_id ? pp.parent_theme_id : null,
           solutionApproach: pp.solution_approach ?? null,
           publishedById: params.publishedById,
         },
@@ -993,6 +1010,41 @@ export async function depublishPainPoint(id: string) {
 // snake_case transform for SolutionPreview compat
 // ============================================
 
+// Phase 15.13 — explicit return type so `BackendIdeaPreview` (alias below)
+// stays in sync with the snake_case shape consumed by the frontend.
+type BackendIdeaPreview = ReturnType<typeof toIdeaPreview>;
+
+// Phase 15.13 — pain-point landing-payload shape. Mirrors what
+// `topPainPointsRaw.map(({ sourceJobId, publishedById, ...rest }) => rest)`
+// emits below; declared explicitly so dropping a field anywhere in the chain
+// is caught at the type level.
+interface BackendPainPointPreview {
+  id: string;
+  slug: string | null;
+  title: string;
+  description: string;
+  mentionCount: number;
+  severityScore: number;
+  willingnessToPayScore: number;
+  opportunityLevel: string;
+  // Prisma serializes JSON columns as `JsonValue`. Frontend coerces to the
+  // strict shapes (string[] | null) at parse time.
+  representativeQuotes: unknown;
+  sourcePlatforms: unknown;
+  categories: unknown;
+  affectedSegments: unknown;
+  themeId: string | null;
+  solutionApproach: string | null;
+  isFeatured: boolean;
+  isActive: boolean;
+  sourceNiche: string;
+  sourceItemIndex: number;
+  sourceGeneratedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  category: { id: string; name: string; slug: string };
+}
+
 function toIdeaPreview(idea: Record<string, any>) {
   return {
     id: idea.id,
@@ -1019,6 +1071,16 @@ function toIdeaPreview(idea: Record<string, any>) {
     // Catalog-specific fields
     technical_approach: idea.technicalApproach,
     estimated_indexable_pages: idea.estimatedIndexablePages,
+    // Phase 13 — idea-specific BaseSolutionIdea fields. Empty array → null
+    // so frontend can use truthy-check `{#if idea.organic_discovery_queries}`
+    // to hide the section without a length check.
+    why_it_works: idea.whyItWorks ?? null,
+    conventional_approach: idea.conventionalApproach ?? null,
+    innovation_angle: idea.innovationAngle ?? null,
+    estimated_cac_paid: idea.estimatedCacPaid ?? null,
+    organic_discovery_queries: Array.isArray(idea.organicDiscoveryQueries) && idea.organicDiscoveryQueries.length > 0
+      ? idea.organicDiscoveryQueries
+      : null,
     source_niche: idea.sourceNiche,
     source_verdict: idea.sourceVerdict,
     is_featured: idea.isFeatured,
@@ -1365,6 +1427,10 @@ export async function invalidateCategoryLanding(categoryId: string): Promise<voi
 
 interface CatalogThemeSummary {
   title: string;
+  // Stable slug (auto-generated from title via Pydantic ThemeCategory model_validator).
+  // Used by the catalog UI to group pain points (whose parent_theme_id matches this id)
+  // under their source theme. Null on legacy rows ingested before the field existed.
+  id: string | null;
   severity: number | null;       // 0-100 (NOT scaled by frontend)
   mentionCount: number | null;
   sources: string[];             // deprecated alias of primaryUserSegments — see Risks in plan
@@ -1443,6 +1509,40 @@ interface CatalogSubredditSource {
   postCount: number;
 }
 
+// Phase 2 of detail-page IA rework — cross-link return shapes for the
+// `getPainPointBySlug` and `getIdeaBySlug` extensions.
+interface SiblingPainSummary {
+  slug: string;             // Backend filters slug: { not: null }, so non-null here.
+  title: string;
+  description: string;      // CatalogPainPoint.description is @db.Text NOT NULL.
+  severityScore: number;
+  mentionCount: number;
+  opportunityLevel: string | null;
+}
+
+type AddressedPainLookup = Record<
+  string,
+  { slug: string; severityScore: number; mentionCount: number }
+>;
+
+// Phase 14 of detail-page IA rework — source-grounded evidence shapes.
+interface QuoteSource {
+  quote: string;
+  postId: string;
+  subreddit: string;
+  score: number;
+}
+
+interface CatalogTopRedditThread {
+  postId: string;
+  title: string;
+  subreddit: string;
+  score: number;
+  numComments: number;
+  url: string;
+  keyInsight: string;
+}
+
 interface CategoryLandingPayload {
   category: {
     id: string;
@@ -1469,8 +1569,11 @@ interface CategoryLandingPayload {
     painPointCount: number;
   }>;
   siblings: Array<{ id: string; name: string; slug: string }>;
-  topIdeas: Array<Record<string, unknown>>;
-  topPainPoints: Array<Record<string, unknown>>;
+  // Phase 15.13 — strict types replace `Record<string, unknown>`. `toIdeaPreview`'s
+  // return shape becomes the contract for `topIdeas`; the pain-point map below
+  // produces a similarly explicit shape (Prisma row minus internal-only fields).
+  topIdeas: BackendIdeaPreview[];
+  topPainPoints: BackendPainPointPreview[];
   totalIdeas: number;
   totalPainPoints: number;
   sources: string[];
@@ -1495,6 +1598,10 @@ interface CategoryLandingPayload {
   categorizationSummary: string | null;
   painAnalysisSummary: string | null;
   topPainCategories: string[] | null;
+  // Phase 14 — niche-wide top reddit threads (uncapped on niche page).
+  topRedditThreads: CatalogTopRedditThread[] | null;
+  // Phase 15.5 — count of GO-verdict ideas across the category subtree.
+  verdictGoCount: number;
   // Phase 5: research context from the most-recent published item's source job.
   // Null when the category has zero published items, or when the item's
   // sourceJobId still maps to a placeholder context row (report.json missing).
@@ -1529,6 +1636,7 @@ function flattenThemes(ctx: { themeSeverityScores?: unknown } | null): CatalogTh
         : [];
     out.push({
       title,
+      id: typeof t.theme_id === 'string' && t.theme_id ? t.theme_id : null,
       severity: typeof t.severity === 'number' ? t.severity : null,
       mentionCount: typeof t.mention_count === 'number' ? t.mention_count : null,
       sources: segments,
@@ -1810,7 +1918,7 @@ async function buildCategoryLandingPayload(
   const childIds = category.children.map((c) => c.id);
   const aggregateIds = [category.id, ...childIds];
 
-  const [topIdeasRaw, topPainPointsRaw, totalIdeas, totalPainPoints, siblingsRaw] = await Promise.all([
+  const [topIdeasRaw, topPainPointsRaw, totalIdeas, totalPainPoints, verdictGoCount, siblingsRaw] = await Promise.all([
     prisma.catalogIdea.findMany({
       where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
       include: { category: { select: { id: true, name: true, slug: true } } },
@@ -1825,6 +1933,11 @@ async function buildCategoryLandingPayload(
     }),
     prisma.catalogIdea.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
     prisma.catalogPainPoint.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
+    // Phase 15.5 — backend-aggregate count of GO-verdict ideas, not just visible
+    // top set. Frontend hides the tile when 0; non-zero render is truthful.
+    prisma.catalogIdea.count({
+      where: { isActive: true, categoryId: { in: aggregateIds }, sourceVerdict: 'GO' },
+    }),
     category.parentId
       ? prisma.catalogCategory.findMany({
           where: {
@@ -1878,6 +1991,9 @@ async function buildCategoryLandingPayload(
   const topPainCategories = Array.isArray(ctxForSummaries?.topPainCategories)
     ? (ctxForSummaries?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
     : null;
+  // Phase 14 — niche-wide top reddit threads. Niche page renders all 5
+  // (uncapped). Pain page caps at 3 separately in getPainPointBySlug.
+  const topRedditThreads = flattenTopRedditThreads(ctxForSummaries);
 
   return {
     category: {
@@ -1915,6 +2031,8 @@ async function buildCategoryLandingPayload(
     // for back-compat with existing landing-payload consumers — new UI uses
     // contentItemsMined + sourceCommunities below.
     sources: ['Reddit', 'Hacker News'],
+    // Phase 15.5 — backend-aggregate count (whole category subtree).
+    verdictGoCount,
     // Phase 5.4 — flattened summaries.
     themes,
     audienceSegments,
@@ -1931,6 +2049,8 @@ async function buildCategoryLandingPayload(
     categorizationSummary,
     painAnalysisSummary,
     topPainCategories,
+    // Phase 14 — top reddit threads (uncapped on niche page).
+    topRedditThreads,
     researchContext: researchContextOrNull,
   };
 }
@@ -2033,6 +2153,276 @@ export async function getCategoryLanding(args: {
   return payload;
 }
 
+// ============================================
+// Phase 2 — Detail-page cross-link helpers
+// ============================================
+
+/**
+ * Find pain points sharing the same parent theme as the current pain.
+ * Returns [] when themeId is null (legacy rows) — section hides gracefully.
+ */
+async function getSiblingPainPoints(
+  themeId: string | null,
+  excludeId: string,
+  categoryId: string,
+  limit = 5,
+): Promise<SiblingPainSummary[]> {
+  if (!themeId) return [];
+  const rows = await prisma.catalogPainPoint.findMany({
+    where: {
+      themeId,
+      id: { not: excludeId },
+      categoryId,
+      isActive: true,
+      slug: { not: null },           // schema:626 — slug is String?
+    },
+    orderBy: [{ severityScore: 'desc' }, { mentionCount: 'desc' }],
+    take: limit,
+    select: {
+      slug: true,
+      title: true,
+      description: true,
+      severityScore: true,
+      mentionCount: true,
+      opportunityLevel: true,
+    },
+  });
+  // After the slug-not-null filter, slug is still typed as `string | null` by
+  // Prisma. Coerce post-filter — guarantee non-null contract for SiblingPainSummary.
+  return rows
+    .filter((r): r is typeof r & { slug: string } => r.slug !== null)
+    .map((r) => ({
+      slug: r.slug,
+      title: r.title,
+      description: r.description,
+      severityScore: r.severityScore,
+      mentionCount: r.mentionCount,
+      opportunityLevel: r.opportunityLevel,
+    }));
+}
+
+/**
+ * Find catalog ideas whose addressedPainTitles array contains the given pain
+ * title. Scoped to a single sub-niche (categoryId) to prevent cross-niche bleed.
+ */
+async function getIdeasAddressingPain(
+  painTitle: string,
+  categoryId: string,
+  excludeIds: string[] = [],
+  limit = 5,
+) {
+  const rows = await prisma.catalogIdea.findMany({
+    where: {
+      isActive: true,
+      categoryId,
+      id: { notIn: excludeIds },
+      slug: { not: null },           // schema:555 — slug is String?
+      addressedPainTitles: { has: painTitle },  // GIN-indexed array contains
+    },
+    orderBy: [{ isFeatured: 'desc' }, { marketFitScore: 'desc' }],
+    take: limit,
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { name: true, slug: true } },
+        },
+      },
+    },
+  });
+  return rows
+    .filter((r): r is typeof r & { slug: string } => r.slug !== null)
+    .map((r) => toIdeaPreview(r));
+  // Note: `addressedPainTitles` is intentionally NOT included in the
+  // toIdeaPreview() whitelist (line ~997) — sibling/related idea cards don't
+  // display it. Silent drop is correct.
+}
+
+/**
+ * Find other catalog ideas in the same sub-niche.
+ */
+async function getSiblingIdeas(
+  categoryId: string,
+  excludeId: string,
+  limit = 5,
+) {
+  const rows = await prisma.catalogIdea.findMany({
+    where: {
+      categoryId,
+      id: { not: excludeId },
+      isActive: true,
+      slug: { not: null },           // schema:555
+    },
+    orderBy: [{ isFeatured: 'desc' }, { marketFitScore: 'desc' }],
+    take: limit,
+    include: {
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { name: true, slug: true } },
+        },
+      },
+    },
+  });
+  return rows
+    .filter((r): r is typeof r & { slug: string } => r.slug !== null)
+    .map((r) => toIdeaPreview(r));
+}
+
+/**
+ * Resolve a list of pain titles into their canonical CatalogPainPoint slugs +
+ * severity/mention metadata. Used by the idea page to upgrade
+ * `r.detailedPainPoints` entries into linked cards.
+ *
+ * v1 uses exact-title match scoped to the same categoryId. If logs show
+ * frequent unresolved titles, lift `normalizeTitle` from workers.ts and apply
+ * normalize-fallback (see plan Phase 2 risk note).
+ */
+async function resolvePainPointSlugs(
+  painTitles: string[],
+  categoryId: string,
+): Promise<AddressedPainLookup> {
+  if (!Array.isArray(painTitles) || painTitles.length === 0) return {};
+  const rows = await prisma.catalogPainPoint.findMany({
+    where: {
+      title: { in: painTitles },
+      categoryId,
+      isActive: true,
+      slug: { not: null },
+    },
+    select: { title: true, slug: true, severityScore: true, mentionCount: true },
+  });
+  const out: AddressedPainLookup = {};
+  for (const r of rows) {
+    if (r.slug == null) continue;
+    // Pick the FIRST match per title — collision is rare (same title within
+    // one categoryId). Log a guardrail when it happens so we can investigate.
+    if (out[r.title]) {
+      console.warn(
+        `[resolvePainPointSlugs] Title collision in categoryId=${categoryId}: "${r.title}" — picking first match`,
+      );
+      continue;
+    }
+    out[r.title] = {
+      slug: r.slug,
+      severityScore: r.severityScore,
+      mentionCount: r.mentionCount,
+    };
+  }
+  return out;
+}
+
+// =============================================================================
+// Phase 14 — source-grounded evidence + comparative ranking helpers.
+// =============================================================================
+
+/**
+ * Compute a pain point's rank within its sub-niche by severity. Returns
+ * { rank: 1..N, total: N }, or null when the pain doesn't appear in the
+ * category's active set (defensive — shouldn't happen).
+ */
+async function getPainPointRank(
+  painId: string,
+  categoryId: string,
+): Promise<{ rank: number; total: number } | null> {
+  const all = await prisma.catalogPainPoint.findMany({
+    where: { categoryId, isActive: true },
+    select: { id: true, severityScore: true, mentionCount: true },
+    orderBy: [{ severityScore: 'desc' }, { mentionCount: 'desc' }],
+  });
+  if (all.length === 0) return null;
+  const idx = all.findIndex((p) => p.id === painId);
+  if (idx === -1) return null;
+  return { rank: idx + 1, total: all.length };
+}
+
+/**
+ * Resolve the per-quote source-attribution for a given pain by matching its
+ * title against entries in researchContext.painPointQuoteSources.
+ *
+ * v1 uses exact match first, then a normalized fallback (lowercase + strip
+ * non-alphanumeric) to survive worker-merge title drift (same Phase 11 risk).
+ * Returns sources sorted by score desc — highest-upvote quotes first.
+ */
+function resolveQuoteSourcesForPain(
+  painPointQuoteSources: unknown,
+  painTitle: string,
+): QuoteSource[] | null {
+  if (!painPointQuoteSources || typeof painPointQuoteSources !== 'object') return null;
+  const sources = painPointQuoteSources as Record<string, unknown>;
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const target = painTitle.trim();
+  const targetNorm = normalize(target);
+
+  // Exact match first.
+  for (const entry of Object.values(sources)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.pain_point_title !== 'string') continue;
+    if (e.pain_point_title.trim() === target) {
+      return mapToQuoteSources(e.quotes_with_sources);
+    }
+  }
+  // Normalized fallback.
+  for (const entry of Object.values(sources)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    if (typeof e.pain_point_title !== 'string') continue;
+    if (normalize(e.pain_point_title) === targetNorm) {
+      return mapToQuoteSources(e.quotes_with_sources);
+    }
+  }
+  return null;
+}
+
+function mapToQuoteSources(raw: unknown): QuoteSource[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: QuoteSource[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const o = r as Record<string, unknown>;
+    if (typeof o.quote !== 'string' || typeof o.post_id !== 'string' || typeof o.subreddit !== 'string') continue;
+    out.push({
+      quote: o.quote,
+      postId: o.post_id,
+      subreddit: o.subreddit,
+      score: typeof o.score === 'number' ? o.score : Number(o.score) || 0,
+    });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out.length > 0 ? out : null;
+}
+
+/**
+ * Flatten researchContext.topRedditThreads (snake_case from projection) into
+ * camelCase shapes expected by the public API. Returns null when missing/empty.
+ */
+function flattenTopRedditThreads(
+  ctx: { topRedditThreads?: unknown } | null,
+): CatalogTopRedditThread[] | null {
+  if (!ctx?.topRedditThreads || !Array.isArray(ctx.topRedditThreads)) return null;
+  const out: CatalogTopRedditThread[] = [];
+  for (const t of ctx.topRedditThreads) {
+    if (!t || typeof t !== 'object') continue;
+    const o = t as Record<string, unknown>;
+    if (typeof o.post_id !== 'string' || typeof o.title !== 'string' || typeof o.url !== 'string') continue;
+    out.push({
+      postId: o.post_id,
+      title: o.title,
+      subreddit: typeof o.subreddit === 'string' ? o.subreddit : '',
+      score: typeof o.score === 'number' ? o.score : Number(o.score) || 0,
+      numComments: typeof o.num_comments === 'number' ? o.num_comments : Number(o.num_comments) || 0,
+      url: o.url,
+      keyInsight: typeof o.key_insight === 'string' ? o.key_insight : '',
+    });
+  }
+  return out.length > 0 ? out : null;
+}
+
 export async function getIdeaBySlug(slug: string) {
   const idea = await prisma.catalogIdea.findFirst({
     where: { slug, isActive: true },
@@ -2055,6 +2445,14 @@ export async function getIdeaBySlug(slug: string) {
   // Detail pages get BOTH (the heavy nested object AND the flat summaries) so
   // components can read either depending on what they need.
   const ctx = researchContext;
+
+  // Phase 2 of detail-page IA rework — cross-link joins.
+  // Run in parallel with a single Promise.all to keep request latency flat.
+  const [siblingIdeas, addressedPains] = await Promise.all([
+    getSiblingIdeas(idea.categoryId, idea.id),
+    resolvePainPointSlugs(idea.addressedPainTitles, idea.categoryId),
+  ]);
+
   return {
     ...preview,
     researchContext,
@@ -2073,6 +2471,9 @@ export async function getIdeaBySlug(slug: string) {
     topPainCategories: Array.isArray(ctx?.topPainCategories)
       ? (ctx?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
       : null,
+    // Phase 2 — detail-page IA cross-links.
+    siblingIdeas,
+    addressedPains,
   };
 }
 
@@ -2097,6 +2498,21 @@ export async function getPainPointBySlug(slug: string) {
   // preview shape is camelCase already (legacy convention) so summaries fit
   // alongside without case mixing.
   const ctx = researchContext;
+
+  // Phase 2 of detail-page IA rework — cross-link joins.
+  // Phase 14 adds rankInfo, source-grounded quote attribution, and top
+  // Reddit threads. All run in parallel so request latency stays flat.
+  const [siblingPains, relatedIdeas, rankInfo] = await Promise.all([
+    getSiblingPainPoints(pp.themeId, pp.id, pp.categoryId),
+    getIdeasAddressingPain(pp.title, pp.categoryId),
+    getPainPointRank(pp.id, pp.categoryId),
+  ]);
+
+  const quoteSources = resolveQuoteSourcesForPain(ctx?.painPointQuoteSources, pp.title);
+  const topRedditThreadsAll = flattenTopRedditThreads(ctx);
+  // Pain page caps the niche-wide threads to top 3 — niche page renders all 5.
+  const topRedditThreads = topRedditThreadsAll?.slice(0, 3) ?? null;
+
   return {
     ...rest,
     researchContext,
@@ -2115,6 +2531,13 @@ export async function getPainPointBySlug(slug: string) {
     topPainCategories: Array.isArray(ctx?.topPainCategories)
       ? (ctx?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
       : null,
+    // Phase 2 — detail-page IA cross-links.
+    siblingPains,
+    relatedIdeas,
+    // Phase 14 — source-grounded evidence + comparative ranking.
+    quoteSources,
+    rankInfo,
+    topRedditThreads,
   };
 }
 

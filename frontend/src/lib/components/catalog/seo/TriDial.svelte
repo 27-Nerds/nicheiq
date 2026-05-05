@@ -32,10 +32,18 @@
         ? "var(--color-info)"
         : "var(--color-success)",
   );
+
+  const typeLabel = $derived(
+    type === "demand" ? "Demand" : type === "feasibility" ? "Feasibility" : "Opportunity",
+  );
+  const a11yLabel = $derived(
+    value == null ? `${typeLabel}: not scored` : `${typeLabel} score: ${Math.round(safeValue)} out of 100`,
+  );
 </script>
 
-<div class="tri-dial size-{size}" data-type={type}>
-  <svg viewBox="0 0 44 44" aria-hidden="true">
+<div class="tri-dial size-{size}" data-type={type} title={a11yLabel}>
+  <svg viewBox="0 0 44 44" role="img" aria-label={a11yLabel}>
+    <title>{a11yLabel}</title>
     <circle cx="22" cy="22" r={radius} class="bg" />
     <circle
       cx="22"
@@ -51,8 +59,11 @@
 <style>
   .tri-dial {
     position: relative;
-    width: var(--s, 26px);
-    height: var(--s, 26px);
+    /* size="md" bumped from 26→40px (and font from 9→13px) so the score number
+       passes WCAG AA at glance distance. The 26px dial showed scores in 9px text
+       — illegible for the card-grid use case. lg/xl are unchanged. */
+    width: var(--s, 40px);
+    height: var(--s, 40px);
     flex-shrink: 0;
   }
   .size-lg {
@@ -87,9 +98,10 @@
     display: grid;
     place-items: center;
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 13px;
     font-weight: 600;
     color: var(--color-text-primary);
+    font-feature-settings: "tnum" 1;
   }
   .size-lg .v {
     font-size: 14px;

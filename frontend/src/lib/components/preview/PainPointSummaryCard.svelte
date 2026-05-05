@@ -111,7 +111,7 @@
   .pp-card--top {
     border-color: var(--color-border-accent);
     background:
-      linear-gradient(135deg, rgba(240, 96, 48, 0.05) 0%, transparent 50%),
+      linear-gradient(135deg, rgba(234, 88, 12, 0.05) 0%, transparent 50%),
       var(--color-bg-elevated);
   }
 

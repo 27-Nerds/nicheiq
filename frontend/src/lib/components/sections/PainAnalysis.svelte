@@ -917,7 +917,7 @@
   }
 
   .unlock-link:hover {
-    background: rgba(240, 96, 48, 0.06);
+    background: rgba(234, 88, 12, 0.06);
   }
 
   .wtp-insight {

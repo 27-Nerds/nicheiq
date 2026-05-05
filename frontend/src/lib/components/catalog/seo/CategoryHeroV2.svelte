@@ -1,141 +1,199 @@
 <script lang="ts">
-  import IconBadge from "./IconBadge.svelte";
   import StatStrip, { type Stat } from "./StatStrip.svelte";
-  import QualityTierBadge from "./QualityTierBadge.svelte";
-  import { categoryIcon } from "$lib/utils/categoryIcons";
-  import type { NicheContext, QualitySignals } from "$lib/types/publicCatalog.js";
+  import type { NicheContext } from "$lib/types/publicCatalog.js";
 
-  // Mockup `.page-hero` for category + sub-category pages.
-  // - icon-badge + optional growth pill (hidden until pipeline ships growth%)
-  // - H1 + lede
-  // - 4-tile stat strip
+  // Page hero for category + sub-category pages. Renders:
+  //   H1 + lede + niche-context (industry scope + primary segments) + stats.
+  // Optional right-rail aside (CategoryHeroAside / SubcategoryOpportunityPanel)
+  // sits beside the prose column on ≥920px.
 
   interface Props {
     name: string;
     slug: string;
     description?: string | null;
-    /** "Sub-niche of X" pill content. Pass null for top-level categories. */
+    /** "Sub-niche of X" pill content. Parent context now lives in the
+     *  breadcrumb only, so this prop renders nothing today. Kept on the
+     *  interface for backward compat with any caller still passing it. */
     parentChip?: { name: string; slug: string } | null;
-    /** Reserved — when backend ships growth%, render an accent pill. */
+    /** Reserved — when backend ships growth%, the accent pill can be
+     *  re-introduced inline above the H1. Currently unrendered. */
     growthPercent?: number | null;
-    /** 4 tiles for the stat strip. */
-    stats: Stat[];
-    /** Phase 5.5 — niche-context blob; nicheContext.description supersedes
-     *  `description` in the lede when present. industryBoundaries renders as a
-     *  single inline pill (Pydantic field is `str`, NOT an array). */
+    /** 4 tiles for the stat strip. Pass null when the page is in empty-research
+     *  mode so the strip is suppressed; the parent renders a one-line prose
+     *  note in its place. */
+    stats?: Stat[] | null;
+    /** Niche-context blob; nicheContext.description supersedes `description`
+     *  in the lede when present. industryBoundaries renders as a 3-line
+     *  clamped paragraph with a "Read more" toggle; marketSegments render
+     *  as a 2-column compact list with bullet prefixes — see `.niche-context`
+     *  block. */
     nicheContext?: NicheContext | null;
-    /** Phase 5.5 — quality tier pill in the meta row. */
-    qualitySignals?: QualitySignals | null;
+    /** Optional right-rail aside content (e.g. CategoryHeroAside). Renders
+     *  to the right of the prose column on ≥768px and stacks below on mobile. */
+    aside?: import('svelte').Snippet;
+    /** Distinguishes parent-category landing pages from leaf sub-niche pages.
+     *  On parent routes, `nicheContext` is sourced from the most-recent
+     *  published item's research context (typically a sub-niche), so its
+     *  `description` / `industryBoundaries` / `marketSegments` would bleed
+     *  sub-niche text onto the parent. When `kind === 'parent'`, prefer the
+     *  category's own `description` and suppress nicheContext fields. */
+    kind?: 'parent' | 'leaf';
+    /** Density of the stat strip. `tiles` (default) renders the 4-tile
+     *  StatStrip with first-tile emphasis; `inline` renders a single mono
+     *  line with `·` separators — used on sub-niche pages where the right-rail
+     *  opportunity panel already carries the heavy stat density. */
+    statsVariant?: 'tiles' | 'inline';
   }
 
   let {
     name,
-    slug,
+    slug: _slug,
     description = null,
-    parentChip = null,
-    growthPercent = null,
-    stats,
+    parentChip: _parentChip = null,
+    growthPercent: _growthPercent = null,
+    stats = null,
     nicheContext = null,
-    qualitySignals = null,
+    aside,
+    kind = 'leaf',
+    statsVariant = 'tiles',
   }: Props = $props();
 
-  const Icon = $derived(categoryIcon(slug));
-  // Prefer the LLM-generated niche_description; fall back to the catalog
-  // category's short description string for legacy rows.
-  const lede = $derived(nicheContext?.description ?? description);
-  const industryBoundaries = $derived(nicheContext?.industryBoundaries ?? null);
-  const marketSegments = $derived(nicheContext?.marketSegments ?? null);
+  // On parent-category pages, prefer the category's own description over the
+  // sub-niche's nicheContext.description (which would bleed wrong-niche copy
+  // onto the parent). On leaf pages, nicheContext is legitimate and supersedes
+  // the shorter category column.
+  const lede = $derived(
+    kind === 'parent'
+      ? (description ?? nicheContext?.description ?? null)
+      : (nicheContext?.description ?? description),
+  );
+  const industryBoundaries = $derived(
+    kind === 'parent' ? null : (nicheContext?.industryBoundaries ?? null),
+  );
+  const marketSegments = $derived(
+    kind === 'parent' ? null : (nicheContext?.marketSegments ?? null),
+  );
+
+  // 3-line clamp heuristic (~73 chars/line at 13.5px / line-height 1.65 /
+  // max-width 640px). False negatives (wraps >3 lines but ≤220 chars) are
+  // safe — the clamp class only applies when this is true, so failure mode
+  // is "show full text" not "hide content".
+  const industryNeedsClamp = $derived(
+    (industryBoundaries?.length ?? 0) > 220,
+  );
+  let industryExpanded = $state(false);
 </script>
 
 <header class="page-hero">
-  <div class="meta-row">
-    <IconBadge size={32}>
-      <Icon size={16} />
-    </IconBadge>
-    {#if parentChip}
-      <a class="badge" href={`/ideas/${parentChip.slug}`}>
-        <span class="badge-key">Sub-niche of</span>
-        {parentChip.name}
-      </a>
-    {/if}
-    {#if growthPercent != null}
-      <span class="badge accent">↗ {growthPercent}% this month</span>
-    {/if}
-    {#if qualitySignals}
-      <QualityTierBadge signals={qualitySignals} />
-    {/if}
-  </div>
-  <h1>{name}</h1>
-  {#if lede}
-    <p class="lede">{lede}</p>
-  {/if}
-  {#if industryBoundaries || (marketSegments && marketSegments.length > 0)}
-    <div class="boundary-row">
-      {#if industryBoundaries}
-        <span class="boundary-pill">
-          <span class="boundary-key">Industry</span>
-          {industryBoundaries}
-        </span>
+  <div class="hero-row">
+    <div class="hero-main">
+      <h1>{name}</h1>
+      {#if lede}
+        <p class="lede">{lede}</p>
       {/if}
-      {#if marketSegments && marketSegments.length > 0}
-        {#each marketSegments as seg}
-          <span class="boundary-chip">{seg}</span>
-        {/each}
+      {#if industryBoundaries || (marketSegments && marketSegments.length > 0)}
+        <section class="niche-context" aria-label="Niche context">
+          {#if industryBoundaries}
+            {#key industryBoundaries}
+              <div class="nc-block">
+                <span class="nc-kicker">Industry</span>
+                <div class="nc-prose-wrap" class:clamp={industryNeedsClamp && !industryExpanded}>
+                  <p class="nc-prose">{industryBoundaries}</p>
+                </div>
+                {#if industryNeedsClamp}
+                  <button
+                    type="button"
+                    class="nc-toggle"
+                    onclick={() => (industryExpanded = !industryExpanded)}
+                    aria-expanded={industryExpanded}
+                  >
+                    {industryExpanded ? "Show less" : "Read more"}
+                  </button>
+                {/if}
+              </div>
+            {/key}
+          {/if}
+          {#if marketSegments && marketSegments.length > 0}
+            <div class="nc-block">
+              <span class="nc-kicker">
+                Primary segments
+                <span class="nc-kicker-sep" aria-hidden="true">·</span>
+                <span class="nc-kicker-count">{marketSegments.length}</span>
+              </span>
+              <ul class="nc-segments">
+                {#each marketSegments as seg, i (seg)}
+                  <li
+                    class="nc-seg catalog-fade-in"
+                    style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
+                    title={seg}
+                  >
+                    <span class="nc-bullet" aria-hidden="true">·</span>
+                    <span class="nc-text">{seg}</span>
+                  </li>
+                {/each}
+              </ul>
+            </div>
+          {/if}
+        </section>
       {/if}
     </div>
-  {/if}
-  <div class="strip-wrap">
-    <StatStrip {stats} />
+    {#if aside}
+      <aside class="hero-aside">{@render aside()}</aside>
+    {/if}
   </div>
+  {#if stats && stats.length > 0}
+    {#if statsVariant === 'inline'}
+      <div class="quick-stats">
+        {#each stats as s, i}
+          {#if i > 0}<span class="dot-sep">·</span>{/if}
+          <span class="qs-stat">
+            <b>{s.value}</b> {s.label}
+          </span>
+        {/each}
+      </div>
+    {:else}
+      <div class="strip-wrap">
+        <StatStrip {stats} emphasis />
+      </div>
+    {/if}
+  {/if}
 </header>
 
 <style>
   .page-hero {
     padding: 32px 0;
   }
-  .meta-row {
+  /* Flex hero with optional right aside. Stacks on narrow viewports. */
+  .hero-row {
     display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 14px;
-    flex-wrap: wrap;
+    gap: 32px;
+    align-items: flex-start;
   }
-  .badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 9px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 500;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary, var(--color-text-primary));
-    background: var(--color-surface, #fff);
-    text-decoration: none;
-    transition: border-color 0.12s;
+  .hero-main {
+    flex: 1 1 auto;
+    min-width: 0;
   }
-  .badge:hover {
-    border-color: var(--color-border-emphasis);
+  .hero-aside {
+    flex: 0 0 360px;
+    min-width: 0;
   }
-  .badge-key {
-    color: var(--color-text-muted);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    font-weight: 600;
-  }
-  .badge.accent {
-    color: var(--color-accent);
-    border-color: var(--color-border-accent);
-    background: var(--color-accent-glow, rgba(240, 96, 48, 0.04));
+  @media (max-width: 920px) {
+    .hero-row {
+      flex-direction: column;
+    }
+    .hero-aside {
+      flex-basis: auto;
+      width: 100%;
+    }
   }
   h1 {
-    margin: 0 0 14px;
-    font-size: 36px;
+    margin: 6px 0 14px;
+    font-size: 40px;
     font-weight: 600;
-    letter-spacing: -0.025em;
-    line-height: 1.1;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
     color: var(--color-text-primary);
+    text-wrap: balance;
   }
   .lede {
     font-size: 15px;
@@ -144,35 +202,146 @@
     max-width: 620px;
     margin: 0 0 16px;
   }
-  /* Boundary row — industry pill + market-segment chips. Sits below the lede
-     so the prose lead has its own visual weight. */
-  .boundary-row {
+  /* Niche-context block — quiet editorial treatment for industry scope and
+     primary market segments. Replaces the prior chip-based `.boundary-row`
+     layout. Mono kickers + body text for scope, mono-numbered list for
+     segments. No cards / pills / per-row borders besides hairline dividers. */
+  .niche-context {
     display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
+    flex-direction: column;
+    gap: 22px;
     margin: 0 0 24px;
   }
-  .boundary-pill,
-  .boundary-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 8px;
-    border-radius: 4px;
-    font-size: 11px;
-    border: 1px solid var(--color-border);
-    color: var(--color-text-secondary, var(--color-text-primary));
-    background: var(--color-surface, #fff);
+  .nc-block {
+    min-width: 0;
   }
-  .boundary-key {
+  /* Block-level kicker — vertical margin behaves predictably here unlike
+     inline-flex. Letter-spacing 0.08em matches the .theme-num / .dt-label
+     kicker family used elsewhere in the catalog. */
+  .nc-kicker {
+    display: block;
     font-family: var(--font-mono);
-    font-size: 9px;
-    letter-spacing: 0.06em;
+    font-size: 10px;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
+    font-weight: 700;
     color: var(--color-text-muted);
-    font-weight: 600;
+    margin: 0 0 8px;
+  }
+  .nc-kicker-sep {
+    opacity: 0.55;
+    margin: 0 4px;
+  }
+  .nc-kicker-count {
+    color: var(--color-text-secondary);
+  }
+  .nc-prose-wrap {
+    position: relative;
+  }
+  .nc-prose-wrap.clamp .nc-prose {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+  }
+  .nc-prose {
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-text-secondary, var(--color-text-primary));
+    max-width: 640px;
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+  .nc-toggle {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color 0.12s;
+  }
+  .nc-toggle:hover {
+    color: var(--color-text-primary);
+  }
+  .nc-toggle:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .nc-segments {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+    row-gap: 4px;
+  }
+  .nc-seg {
+    display: grid;
+    grid-template-columns: 12px 1fr;
+    gap: 8px;
+    align-items: baseline;
+    padding: 4px 0;
+  }
+  .nc-bullet {
+    font-family: var(--font-mono);
+    color: var(--color-accent-muted, rgba(154, 52, 18, 0.7));
+    font-size: 14px;
+    line-height: 1;
+    align-self: center;
+  }
+  .nc-text {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-primary);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+  @media (max-width: 640px) {
+    .nc-segments {
+      grid-template-columns: 1fr;
+    }
+    .nc-prose {
+      font-size: 13.5px;
+    }
+    .nc-text {
+      font-size: 12.5px;
+      -webkit-line-clamp: 3;
+      line-clamp: 3;
+    }
   }
   .strip-wrap {
     margin-top: 28px;
+  }
+  /* Inline mono stat line — used on sub-niche pages where the right-rail
+     opportunity panel already carries primary stat density. */
+  .quick-stats {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 22px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--color-text-muted);
+  }
+  .quick-stats b {
+    color: var(--color-text-primary);
+    font-weight: 600;
+    font-size: 14px;
+  }
+  .quick-stats .dot-sep {
+    color: var(--color-text-muted);
+    opacity: 0.5;
   }
 </style>

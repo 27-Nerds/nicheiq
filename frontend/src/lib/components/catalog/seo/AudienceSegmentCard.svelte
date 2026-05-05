@@ -55,26 +55,23 @@
     color: var(--color-text-primary);
     margin: 0;
   }
+  /* Real list markers (not ::before pseudo-elements) so screen readers
+     announce "list of N items" — required for a11y. ::marker colors the dot. */
   ul {
-    list-style: none;
+    list-style: disc;
+    list-style-position: outside;
     display: grid;
     gap: 4px;
     margin: 2px 0 0;
-    padding: 0;
+    padding-left: 14px;
   }
   li {
     font-size: 12.5px;
     color: var(--color-text-secondary, var(--color-text-primary));
     line-height: 1.45;
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
   }
-  li::before {
-    content: "·";
+  li::marker {
     color: var(--color-text-muted);
-    flex-shrink: 0;
-    font-weight: 600;
   }
   /* Footer meta line — expertise level + budget sensitivity. Mono so it reads
      as a quiet badge rather than another bullet. */

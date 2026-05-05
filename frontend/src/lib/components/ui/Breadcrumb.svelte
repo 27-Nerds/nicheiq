@@ -19,7 +19,7 @@
   <ol class="hidden sm:flex items-center gap-1.5 text-sm text-text-muted mb-6">
     {#each items as item}
       <li class="flex items-center gap-1.5">
-        <a href={item.href} class="hover:text-text-primary transition-colors">{item.label}</a>
+        <a href={item.href} class="crumb-link hover:text-text-primary transition-colors">{item.label}</a>
         <ChevronRight class="w-3.5 h-3.5" />
       </li>
     {/each}
@@ -39,3 +39,17 @@
     </a>
   {/if}
 </nav>
+
+<style>
+  /* Phase 15.17 — Fitts hit-target expansion via pseudo-element. Visual
+     chip stays 14px-tall but the clickable region grows to ≥40px. The
+     position: relative on the anchor scopes the pseudo-element to it. */
+  .crumb-link {
+    position: relative;
+  }
+  .crumb-link::after {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+</style>

@@ -1,18 +1,19 @@
 <script lang="ts">
-  import { ArrowRight } from "lucide-svelte";
   import { page } from "$app/state";
   import { SeoHead, JsonLd } from "$lib/components/seo";
   import {
     CategoryBreadcrumbs,
     CategoryHeroV2,
     SectionDivider,
-    ThemeCard,
     AudienceSegmentCard,
     AudienceSignalsSection,
-    TopPainTable,
+    PainPointsByTheme,
+    PainPointRankTable,
     SubNicheCell,
     IdeaCardV2,
     AllIdeasSection,
+    BuildCTA,
+    CollectionTeaser,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
 
@@ -44,14 +45,13 @@
     ];
   });
 
-  // Hero stat tiles. GO count is computed from topIdeas verdict labels — a
-  // best-effort visible-set count, not the database aggregate (which would
-  // require a backend change). Sources stat uses contentItemsMined (Phase 5.4).
-  // Phase 5.5: 4th tile shows "Engagement" when metrics present.
+  // Hero stat tiles.
+  // - GO count uses the backend-aggregate `verdictGoCount` covering the entire
+  //   category subtree, NOT just the visible top set. Tile is hidden when 0.
+  // - 4th tile shows "Engagement" when metrics present, else "Sources mined".
   const heroStats = $derived.by(() => {
     if (data.kind !== "category") return [];
     const p = data.payload;
-    const goCount = p.topIdeas.filter((i) => i.source_verdict === "GO").length;
     const itemsMined = p.contentItemsMined;
     const formatK = (n: number) =>
       n >= 1000
@@ -60,22 +60,35 @@
     const engagement = p.qualitySignals?.engagementMetrics?.totalEngagement;
     const fourth =
       engagement != null && engagement > 0
-        ? {
-            value: formatK(engagement),
-            label: `Engagement · ${itemsMined} discussions`,
-            tone: "amber" as const,
-          }
+        ? itemsMined > 0
+          ? {
+              value: formatK(engagement),
+              label: `Engagement · ${itemsMined} discussions`,
+              tone: "amber" as const,
+            }
+          : {
+              value: formatK(engagement),
+              label: "Total engagement",
+              tone: "amber" as const,
+            }
         : {
             value: formatK(itemsMined),
             label: "Sources mined",
             tone: "amber" as const,
           };
-    return [
+    const tiles: Array<{ value: string; label: string; tone?: "go" | "amber" }> = [
       { value: p.totalIdeas.toLocaleString(), label: "Ideas tracked" },
-      { value: goCount.toLocaleString(), label: "Verdict: GO", tone: "go" as const },
-      { value: p.totalPainPoints.toLocaleString(), label: "Pain points" },
-      fourth,
     ];
+    if (p.verdictGoCount > 0) {
+      tiles.push({
+        value: p.verdictGoCount.toLocaleString(),
+        label: "Verdict: GO",
+        tone: "go" as const,
+      });
+    }
+    tiles.push({ value: p.totalPainPoints.toLocaleString(), label: "Pain points" });
+    tiles.push(fourth);
+    return tiles;
   });
 
   // Section 1 prose lede — see sub-category route for fallback rationale.
@@ -84,6 +97,56 @@
       ? (data.payload.categorizationSummary ?? data.payload.painAnalysisSummary)
       : null,
   );
+
+  // All section numbers are derived from running counters — do NOT hardcode
+  // literals here. Hidden sections leave the next visible section's number
+  // contiguous instead of skipping (e.g., "01 → 03 → 05").
+  function nextNum(prev: number, show: boolean): number {
+    return show ? prev + 1 : prev;
+  }
+  const hasThemesSection = $derived(
+    data.kind === "category" && !!data.payload.themes && data.payload.themes.length > 0,
+  );
+  const hasAudienceSection = $derived(
+    data.kind === "category" &&
+      !!data.payload.audienceSegments &&
+      data.payload.audienceSegments.length > 0,
+  );
+  const hasAudienceSignals = $derived(
+    data.kind === "category" && !!data.payload.audienceSignals,
+  );
+  const hasRankedPains = $derived(
+    data.kind === "category" && data.payload.topPainPoints.length > 0,
+  );
+  const hasSubNiches = $derived(
+    data.kind === "category" && data.payload.children.length > 0,
+  );
+  const hasIdeasSection = $derived(
+    data.kind === "category" && data.payload.topIdeas.length > 0,
+  );
+  // Top ideas anchor section only renders when there's a meaningful "best of"
+  // cut to surface above the dense filterable AllIdeasSection. Below 4, the
+  // all-ideas grid IS the top.
+  const hasTopIdeasSection = $derived(
+    data.kind === "category" && data.payload.topIdeas.length >= 4,
+  );
+  const topIdeasForAnchor = $derived(
+    data.kind === "category"
+      ? [...data.payload.topIdeas]
+          .sort(
+            (a, b) =>
+              (b.seo_scalability_score ?? 0) - (a.seo_scalability_score ?? 0),
+          )
+          .slice(0, 6)
+      : [],
+  );
+  const num1 = $derived(nextNum(0, hasThemesSection));
+  const num2 = $derived(nextNum(num1, hasAudienceSection));
+  const num3 = $derived(nextNum(num2, hasAudienceSignals));
+  const num4 = $derived(nextNum(num3, hasRankedPains));
+  const num5 = $derived(nextNum(num4, hasSubNiches));
+  const num6 = $derived(nextNum(num5, hasTopIdeasSection));
+  const num7 = $derived(nextNum(num6, hasIdeasSection));
 </script>
 
 <SeoHead {...data.meta} />
@@ -100,110 +163,127 @@
     growthPercent={data.payload.growthPercent}
     stats={heroStats}
     nicheContext={data.payload.nicheContext}
-    qualitySignals={data.payload.qualitySignals}
+    kind="parent"
   />
 
-  <!-- Section 1: Themes -->
-  {#if data.payload.themes && data.payload.themes.length > 0}
-    <SectionDivider num={1} label="Themes & audience signals" />
+  <!-- Section: Themes & audience signals (theme summaries only; pain rows
+       move to the dedicated ranked table below). -->
+  {#if hasThemesSection}
+    <SectionDivider num={num1} label="Themes & audience signals" />
     {#if sectionOneLede}
       <p class="section-lede">{sectionOneLede}</p>
     {/if}
-    <div class="themes-list">
-      {#each data.payload.themes as t, i}
-        <ThemeCard theme={t} index={i + 1} />
-      {/each}
-    </div>
+    <PainPointsByTheme
+      themes={data.payload.themes ?? []}
+      painPoints={data.payload.topPainPoints}
+      showPainRows={false}
+    />
   {/if}
 
-  <!-- Section 2: Audience segments -->
-  {#if data.payload.audienceSegments && data.payload.audienceSegments.length > 0}
-    {@const segments = data.payload.audienceSegments}
-    {#snippet segCount()}
-      <span>{segments.length} segments identified</span>
-    {/snippet}
-    <SectionDivider num={2} label="Audience segments" right={segCount} />
+  <!-- Section: Audience segments -->
+  {#if hasAudienceSection}
+    {@const segments = data.payload.audienceSegments ?? []}
+    <SectionDivider num={num2} label="Audience segments" />
     <div class="segments-grid">
-      {#each segments as s}
-        <AudienceSegmentCard segment={s} />
+      {#each segments as s, i}
+        <div
+          class="catalog-fade-in"
+          style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
+        >
+          <AudienceSegmentCard segment={s} />
+        </div>
       {/each}
     </div>
   {/if}
 
-  <!-- Section 3: Audience signals (Phase 5.5) -->
-  {#if data.payload.audienceSignals}
-    <SectionDivider num={3} label="Audience signals" />
-    <AudienceSignalsSection signals={data.payload.audienceSignals} />
+  <!-- Section: Audience signals -->
+  {#if hasAudienceSignals}
+    <SectionDivider num={num3} label="Audience signals" />
+    <AudienceSignalsSection signals={data.payload.audienceSignals!} />
   {/if}
 
-  <!-- Section 4: Top pain points -->
-  {#if data.payload.topPainPoints.length > 0}
-    {#snippet painCount()}
-      <span>ranked by mention volume × severity</span>
-    {/snippet}
-    <SectionDivider num={4} label="Top pain points" right={painCount} />
-    <TopPainTable painPoints={data.payload.topPainPoints} />
+  <!-- Section: Top pain points (ranked table — separated from theme summaries
+       above so the scanning anchor is independent of theme grouping). -->
+  {#if hasRankedPains}
+    <SectionDivider
+      num={num4}
+      label="Top pain points"
+      metaText="ranked by mention volume × severity"
+    />
+    <PainPointRankTable painPoints={data.payload.topPainPoints} />
   {/if}
 
-  <!-- Section 5: Sub-niches -->
-  {#if data.payload.children.length > 0}
-    {#snippet subCount()}
-      <span>{data.payload.children.length} sub-categories</span>
-    {/snippet}
-    <SectionDivider num={5} label="Sub-niches" right={subCount} />
+  <!-- Section: Sub-niches -->
+  {#if hasSubNiches}
+    <SectionDivider
+      num={num5}
+      label="Sub-niches"
+      metaText={`${data.payload.children.length} sub-niches`}
+    />
     <div class="subniche-grid">
       {#each data.payload.children as sub}
         <SubNicheCell
           name={sub.name}
           href={categoryPath({ slug: sub.slug, parentSlug: data.payload.category.slug })}
-          count={sub.ideaCount + sub.painPointCount}
+          count={sub.ideaCount}
         />
       {/each}
     </div>
   {/if}
 
-  <!-- Section 6: Top ideas -->
-  {#if data.payload.topIdeas.length > 0}
-    {#snippet topIdeasRight()}
-      <a href="#all-ideas" class="view-all-link">View all ↓</a>
+  <!-- Section: Top ideas (sorted by opportunity, ≤6 cards) — anchor before
+       the dense filterable AllIdeasSection. Hidden when totalIdeas < 4. -->
+  {#if hasTopIdeasSection}
+    {#snippet viewAll()}
+      <a class="view-all" href="#all-ideas">View all →</a>
     {/snippet}
-    <SectionDivider num={6} label="Top ideas in this category" right={topIdeasRight} />
-    <div class="ideas-grid">
-      {#each data.payload.topIdeas as idea}
-        <IdeaCardV2 {idea} />
+    <SectionDivider num={num6} label={`Top ideas in ${data.payload.category.name}`} right={viewAll} />
+    <div class="top-ideas-grid">
+      {#each topIdeasForAnchor as idea, i}
+        <div
+          class="catalog-fade-in"
+          style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
+        >
+          <IdeaCardV2 {idea} />
+        </div>
       {/each}
     </div>
   {/if}
 
-  <!-- Section 6: All ideas (filterable) -->
-  <section id="all-ideas">
-    {#snippet totalRight()}
-      <span>{data.payload.totalIdeas} total</span>
-    {/snippet}
-    <SectionDivider label="Browse all ideas" right={totalRight} />
-    <AllIdeasSection
-      ideas={data.payload.topIdeas}
-      subNiches={data.payload.children}
-    />
-  </section>
+  <!-- Featured collection teaser — only when current category appears in any
+       active collection's categorySlugs. Sits between Top ideas and All ideas
+       per the v2 mock IA. Skips silently when nothing maps. -->
+  {#if data.featuredCollection}
+    <CollectionTeaser collection={data.featuredCollection} />
+  {/if}
 
-  <!-- Inline CTA close -->
-  <section class="inline-close" aria-label="Commission a research file">
-    <p>
-      Don't see what you need?
-      <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
-        <span class="inline-cta-label">Commission a research file</span>
-        <ArrowRight class="inline-arrow" aria-hidden="true" />
-      </a>
-    </p>
-  </section>
+  <!-- Section: All ideas (filterable, with sub-niche chips) -->
+  {#if hasIdeasSection}
+    <div id="all-ideas">
+      <SectionDivider
+        num={num7}
+        label={`Ideas in ${data.payload.category.name}`}
+        metaText={`${data.payload.totalIdeas} total`}
+      />
+      <AllIdeasSection
+        ideas={data.payload.topIdeas}
+        subNiches={data.payload.children}
+      />
+    </div>
+  {/if}
+
+  <BuildCTA
+    headline="Don't see what you need?"
+    body="Commission a research file scoped to your exact niche. Get themes, pain points, audience segments, and SEO opportunities — all in one validated report."
+    ctaLabel="Commission a research file"
+    {ctaHref}
+  />
 {:else}
   <!-- Programmatic SEO landing-page variant (existing behavior, lighter render). -->
   <CategoryHeroV2
     name={data.pseo.title}
     slug={data.pseo.slug}
     description={data.pseo.seoDescription}
-    parentChip={null}
     stats={[
       { value: data.featuredIdeas.length.toLocaleString(), label: "Ideas tracked" },
     ]}
@@ -218,15 +298,12 @@
     </div>
   {/if}
 
-  <section class="inline-close" aria-label="Commission a research file">
-    <p>
-      Don't see what you need?
-      <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
-        <span class="inline-cta-label">Commission a research file</span>
-        <ArrowRight class="inline-arrow" aria-hidden="true" />
-      </a>
-    </p>
-  </section>
+  <BuildCTA
+    headline="Don't see what you need?"
+    body="Commission a research file scoped to your exact niche. Get themes, pain points, audience segments, and SEO opportunities — all in one validated report."
+    ctaLabel="Commission a research file"
+    {ctaHref}
+  />
 {/if}
 
 <style>
@@ -237,15 +314,6 @@
     line-height: 1.65;
     max-width: 780px;
     margin: 0 0 12px;
-  }
-  .themes-list {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 1px;
-    background: var(--color-border);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    overflow: hidden;
   }
   .segments-grid {
     display: grid;
@@ -271,65 +339,18 @@
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 12px;
   }
-  .view-all-link {
-    color: var(--color-text-secondary, var(--color-text-primary));
-    font-size: 12px;
-    text-decoration: none;
-    padding: 5px 10px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    transition: border-color 0.12s;
+  .top-ideas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
   }
-  .view-all-link:hover {
-    border-color: var(--color-border-emphasis);
-  }
-
-  .inline-close {
-    margin-top: 4rem;
-    padding: 2.5rem 0;
-    border-top: 1px solid var(--color-border);
-    text-align: center;
-  }
-  .inline-close p {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: 0.8125rem;
+  .view-all {
     color: var(--color-text-muted);
-  }
-  .inline-cta {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 0.375rem;
-    margin-left: 0.5rem;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
     text-decoration: none;
-    transition: color 140ms ease;
+    transition: color 0.12s;
   }
-  .inline-cta-label {
-    background-image: linear-gradient(currentColor, currentColor);
-    background-position: 0 100%;
-    background-size: 0% 1px;
-    background-repeat: no-repeat;
-    transition: background-size 200ms ease;
-  }
-  .inline-cta:hover {
-    color: var(--color-accent);
-  }
-  .inline-cta:hover .inline-cta-label {
-    background-size: 100% 1px;
-  }
-  :global(.inline-arrow) {
-    width: 0.875rem;
-    height: 0.875rem;
-    align-self: center;
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .inline-cta,
-    .inline-cta-label {
-      transition: none;
-    }
+  .view-all:hover {
+    color: var(--color-text-primary);
   }
 </style>

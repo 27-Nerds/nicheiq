@@ -1,13 +1,11 @@
 <script lang="ts">
   import { ArrowRight } from "lucide-svelte";
 
-  // Phase 5.3 lock pattern. Renders summary-only — NO real data behind blur.
+  // Lock pattern. Renders summary-only — NO real data behind blur.
   // Security boundary: filter:blur is cosmetic (DevTools leaks blurred text);
   // we render zero real-content DOM and lean on the typographic + accent-ring
-  // chrome to communicate "locked".
-  //
-  // No Lock icon: anti-slop call. The padlock glyph is the universal SaaS
-  // gating cliché; the badge copy + accent ring carry the signal alone.
+  // chrome to communicate "locked". No padlock icon by design — the badge
+  // copy + accent ring carry the signal without the SaaS-gating cliché.
   interface Props {
     title: string;        // e.g., "GTM Playbook"
     summary: string;      // 1–2 sentence value description

@@ -444,8 +444,8 @@
 
   /* Warm wrapper around vote banner + Opportunities section (mirrors job page) */
   .opportunities-zone {
-    background: rgba(240, 96, 48, 0.04);
-    border: 1px solid rgba(240, 96, 48, 0.10);
+    background: rgba(234, 88, 12, 0.04);
+    border: 1px solid rgba(234, 88, 12, 0.10);
     border-radius: var(--radius-lg, 0.75rem);
     padding: var(--space-4, 1rem);
     margin-bottom: var(--space-4, 1rem);
@@ -457,9 +457,9 @@
     gap: 0.75rem;
     padding: 0.875rem 1rem;
     margin-bottom: var(--space-3, 0.75rem);
-    border: 1px solid rgba(240, 96, 48, 0.18);
+    border: 1px solid rgba(234, 88, 12, 0.18);
     border-radius: var(--radius-lg, 0.75rem);
-    background: rgba(240, 96, 48, 0.10);
+    background: rgba(234, 88, 12, 0.10);
   }
 
   .action-banner-badge {

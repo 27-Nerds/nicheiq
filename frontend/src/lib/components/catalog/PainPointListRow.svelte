@@ -80,6 +80,6 @@
 
   .pp-list-row.selected {
     border-left-color: var(--color-accent);
-    background: linear-gradient(135deg, rgba(240, 96, 48, 0.08), transparent);
+    background: linear-gradient(135deg, rgba(234, 88, 12, 0.08), transparent);
   }
 </style>

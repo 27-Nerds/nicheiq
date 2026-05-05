@@ -2,7 +2,7 @@
   export type EntryMode = "idea" | "audience" | "discovery";
 
   export const MODE_COLORS: Record<EntryMode, { dot: string; c1: string; c2: string }> = {
-    idea: { dot: "bg-accent", c1: "#F06030", c2: "#F48060" },
+    idea: { dot: "bg-accent", c1: "#EA580C", c2: "#FB923C" },
     audience: { dot: "bg-indigo-500", c1: "#6366F1", c2: "#818CF8" },
     discovery: { dot: "bg-emerald-500", c1: "#10B981", c2: "#34D399" },
   };

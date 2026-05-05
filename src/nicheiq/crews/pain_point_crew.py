@@ -182,6 +182,7 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
 
         # Validate each pain point has required fields (anchor_keywords instead of quotes)
         failing_pain_points = []
+        missing_theme_links: list[str] = []
         for i, pp in enumerate(result.extracted_pain_points):
             if not pp.title or len(pp.title) < 5:
                 return (False, f"Pain point {i+1} missing or too short title")
@@ -191,6 +192,8 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
                 failing_pain_points.append(
                     f"  - '{pp.title}': {len(pp.anchor_keywords) if pp.anchor_keywords else 0} anchor_keywords (need 2+)"
                 )
+            if not pp.parent_theme_id or not pp.parent_theme_id.strip():
+                missing_theme_links.append(f"  - '{pp.title}'")
 
         if failing_pain_points:
             return (
@@ -201,7 +204,36 @@ def validate_pain_point_extraction(task_output) -> tuple[bool, Any]:
                 "when discussing this pain point. These will be used for Task 4 vector search."
             )
 
-        logger.info(f"✓ Pain point extraction guardrail passed: {len(result.extracted_pain_points)} pain points")
+        if missing_theme_links:
+            return (
+                False,
+                "Pain points missing parent_theme_id (required to link back to source theme):\n"
+                + "\n".join(missing_theme_links)
+                + "\n\nFix: For each pain point, set parent_theme_id to the slug of the "
+                "Task 1 theme it derives from. Theme slugs are auto-generated from "
+                "category_name (lowercase, dashes for non-alphanumerics)."
+            )
+
+        # Hard cap: no single theme should produce more than 5 pain points.
+        # This catches LLM run-away splitting on broad themes.
+        from collections import Counter as _Counter
+        per_theme_counts = _Counter(
+            pp.parent_theme_id for pp in result.extracted_pain_points if pp.parent_theme_id
+        )
+        over_cap = {tid: n for tid, n in per_theme_counts.items() if n > 5}
+        if over_cap:
+            cap_lines = "\n".join(f"  - parent_theme_id='{tid}': {n} pain points" for tid, n in over_cap.items())
+            return (
+                False,
+                f"Hard cap exceeded: a single theme produced more than 5 pain points.\n{cap_lines}"
+                "\n\nFix: For broad themes with many sub-issues, pick the top 5 distinct "
+                "blocked workflows by mention frequency. Do not exceed 5 atoms per theme."
+            )
+
+        logger.info(
+            f"✓ Pain point extraction guardrail passed: {len(result.extracted_pain_points)} pain points "
+            f"across {len(per_theme_counts)} themes"
+        )
         # Return task_output.raw for CrewAI to re-parse (guardrails cannot modify output)
         return (True, task_output.raw)
 
@@ -1607,6 +1639,65 @@ class PainPointCrew:
 
             logger.info(f"Phase 1 complete: Task 2 extracted {len(extraction_output.extracted_pain_points)} pain points")
 
+            # Cross-task linkage check: every pain point's parent_theme_id should
+            # match a Task 1 theme_id. If it doesn't, fuzzy-remap to the closest
+            # theme by title slug similarity (LLM may produce a slightly different
+            # slug pattern than the auto-generated one).
+            valid_theme_ids = {t.theme_id for t in categorization_output.theme_categories if t.theme_id}
+            orphans: list[tuple[str, str]] = []  # (pain_title, bad_parent_theme_id)
+            remapped: list[tuple[str, str, str]] = []  # (pain_title, from, to)
+            for pp in extraction_output.extracted_pain_points:
+                if not pp.parent_theme_id:
+                    continue
+                if pp.parent_theme_id in valid_theme_ids:
+                    continue
+                # Try fuzzy remap to the closest theme_id.
+                best_tid = None
+                best_ratio = 0.0
+                for tid in valid_theme_ids:
+                    ratio = SequenceMatcher(None, pp.parent_theme_id, tid).ratio()
+                    if ratio > best_ratio:
+                        best_ratio = ratio
+                        best_tid = tid
+                if best_tid and best_ratio >= 0.7:
+                    remapped.append((pp.title, pp.parent_theme_id, best_tid))
+                    pp.parent_theme_id = best_tid
+                else:
+                    orphans.append((pp.title, pp.parent_theme_id))
+            if remapped:
+                for title, src, dst in remapped:
+                    logger.warning(
+                        f"Theme linkage fuzzy-remapped: '{title}' "
+                        f"parent_theme_id='{src}' → '{dst}'"
+                    )
+            if orphans:
+                for title, bad in orphans:
+                    logger.warning(
+                        f"Theme linkage orphan (no fuzzy match ≥0.7): '{title}' "
+                        f"parent_theme_id='{bad}' has no matching theme; "
+                        "field cleared so frontend places it in the Unclassified bucket."
+                    )
+                # Clear the bad parent_theme_id so the row falls into the
+                # frontend's Unclassified bucket rather than carrying a dead pointer.
+                for pp in extraction_output.extracted_pain_points:
+                    if (pp.title, pp.parent_theme_id) in orphans:
+                        pp.parent_theme_id = None
+
+            # Coverage check (soft warning): every High/Medium theme should produce ≥1 pain point.
+            covered_theme_ids = {
+                pp.parent_theme_id for pp in extraction_output.extracted_pain_points if pp.parent_theme_id
+            }
+            uncovered = [
+                t for t in categorization_output.theme_categories
+                if t.theme_id and t.theme_id not in covered_theme_ids and (t.frequency or "").lower() != "low"
+            ]
+            if uncovered:
+                names = ", ".join(f"'{t.category_name}'" for t in uncovered)
+                logger.warning(
+                    f"Theme coverage gap: {len(uncovered)} non-Low theme(s) produced no pain points: {names}. "
+                    "Catalog UI will show them as empty groups."
+                )
+
             # Phase 2: Parallel quote enrichment (Python-driven, not LLM)
             logger.info("Phase 2: Starting parallel quote enrichment...")
             enrichment_output = self._run_parallel_quote_enrichment(
@@ -1692,6 +1783,7 @@ class PainPointCrew:
                 # Note: UnvalidatedPainPoint has anchor_keywords, not representative_quotes/source_post_ids
                 final_pain_points.append(PainPoint(
                     title=unvalidated.title,
+                    parent_theme_id=unvalidated.parent_theme_id,
                     description=unvalidated.description,
                     mention_count=unvalidated.mention_count,
                     representative_quotes=quotes,  # From Task 4

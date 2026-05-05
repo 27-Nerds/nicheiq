@@ -26,8 +26,8 @@
      *  layout (`.ideas-shell`, 56rem cap) for max-width + padding so we
      *  don't get double-padding inside an already-padded shell. */
     variant?: "detail" | "catalog";
-    /** Phase 5.3: when true, the rail renders with always-visible labels
-     *  (no hover-reveal collapse). Category pages pass true to match the
+    /** When true, the rail renders with always-visible labels (no
+     *  hover-reveal collapse). Category pages pass true to match the
      *  reference design's "On This Page" rail. */
     railExpanded?: boolean;
   }

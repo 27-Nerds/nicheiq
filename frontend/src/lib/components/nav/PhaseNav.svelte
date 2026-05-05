@@ -714,7 +714,7 @@
 
   .mobile-item.active {
     color: var(--color-accent);
-    background: var(--color-accent-subtle, rgba(240, 96, 48, 0.06));
+    background: var(--color-accent-subtle, rgba(234, 88, 12, 0.06));
   }
 
   .mobile-item.done {

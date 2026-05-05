@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
 	formatScorePercent,
 	formatScoreOutOf10,
-	formatScoreOn10
+	formatScoreOn10,
+	renderMarkdown,
+	renderTechnicalContent
 } from '$lib/utils/format';
 
 describe('formatScorePercent', () => {
@@ -69,5 +71,62 @@ describe('formatScoreOn10', () => {
 		expect(formatScoreOn10(null)).toBe('-');
 		expect(formatScoreOn10(undefined)).toBe('-');
 		expect(formatScoreOn10(NaN)).toBe('-');
+	});
+});
+
+// Phase 15.0 — sanitization regression tests. These guard against XSS
+// payloads in LLM-generated content (programmatic_seo_opportunity etc.)
+// that gets rendered through {@html ...} on catalog SEO pages.
+describe('renderMarkdown sanitization', () => {
+	it('strips <script> tags from input', () => {
+		const out = renderMarkdown('Hello **world** <script>alert(1)</script>');
+		expect(out).not.toContain('<script');
+		expect(out).not.toContain('alert(1)');
+		// Trusted markdown survives
+		expect(out).toContain('<strong>world</strong>');
+	});
+
+	it('strips event-handler attributes (onclick, onerror, etc.)', () => {
+		const out = renderMarkdown('Image: ![x](javascript:alert(1)) and <img src=x onerror="alert(1)">');
+		expect(out).not.toContain('onerror');
+		expect(out).not.toContain('javascript:');
+		// Note: <img> is not on the SANITIZER_ALLOWED_TAGS list — fully stripped
+		expect(out).not.toContain('<img');
+	});
+
+	it('strips <iframe>, <style>, <form>, and other dangerous tags', () => {
+		const dangerous = '<iframe src="evil.com"></iframe><style>body{}</style><form action="evil.com"></form>';
+		const out = renderMarkdown('Safe text\n\n' + dangerous);
+		expect(out).not.toContain('<iframe');
+		expect(out).not.toContain('<style');
+		expect(out).not.toContain('<form');
+		// Safe text + paragraph wrapping survives
+		expect(out).toContain('Safe text');
+	});
+});
+
+describe('renderTechnicalContent sanitization', () => {
+	it('preserves the trusted week-highlight span injected after sanitize', () => {
+		const out = renderTechnicalContent('Week 1: kickoff. Sprint-zero validation.');
+		// Both Week-N patterns wrapped in our trusted week-highlight span
+		expect(out).toContain('class="week-highlight"');
+		expect(out).toMatch(/week-highlight">Week 1:?</);
+		expect(out).toMatch(/week-highlight">Sprint-zero</);
+	});
+
+	it('strips <script> in technical SEO recommendations', () => {
+		const malicious = 'SEO plan:\n\n- Build pages\n\n<script>alert("xss")</script>\n\n- More pages';
+		const out = renderTechnicalContent(malicious);
+		expect(out).not.toContain('<script');
+		expect(out).not.toContain('alert');
+	});
+
+	it('strips javascript: URLs and event handlers from technical content', () => {
+		const malicious = 'Click [here](javascript:alert(1)) or <a href="javascript:alert(1)" onclick="alert(2)">link</a>';
+		const out = renderTechnicalContent(malicious);
+		// Existing <a>-stripping regex removes anchors; sanitize strips dangerous attrs from anything else
+		expect(out).not.toContain('javascript:');
+		expect(out).not.toContain('onclick');
+		expect(out).not.toContain('<a ');
 	});
 });

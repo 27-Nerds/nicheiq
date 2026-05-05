@@ -281,6 +281,13 @@ class AlternativeSolution(BaseModel):
     estimated_cac_organic: Optional[str] = Field(default=None, description="Estimated organic customer acquisition cost (e.g. '$15-30')")
     pricing_model: Optional[str] = Field(default=None, description="Recommended pricing model")
 
+    # Phase 8 of detail-page IA rework — same field as BaseSolutionIdea so
+    # alternatives can be cross-linked to specific pains on the catalog
+    # /pain-point/[slug] page. default_factory=list preserves backwards
+    # compatibility with old report.json files lacking the field.
+    pain_points_addressed: list[str] = Field(default_factory=list, description="Pain point titles this alternative directly addresses")
+
+
 class CompetitorMatrixEntry(BaseModel):
     """Single competitor entry showing which solutions it competes against."""
 

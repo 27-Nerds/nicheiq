@@ -263,6 +263,9 @@ interface ProjectedFields {
   categorizationSummary: string | null;
   painAnalysisSummary: string | null;
   topPainCategories: JsonInput;
+  // Phase 14 — source-grounded evidence projected from evidence_appendix.
+  painPointQuoteSources: JsonInput;
+  topRedditThreads: JsonInput;
 }
 
 /**
@@ -285,6 +288,7 @@ function extractThemeSeverityScores(
 
   const result: Array<{
     title: string;
+    theme_id: string | null;
     severity: number | null;
     mention_count: number | null;
     sources: string[];
@@ -300,6 +304,10 @@ function extractThemeSeverityScores(
     const t = theme as Record<string, unknown>;
     const title = typeof t.category_name === 'string' ? t.category_name : null;
     if (!title) continue;
+    // theme_id is auto-derived from category_name by the Pydantic ThemeCategory
+    // model_validator. Pass through verbatim so the catalog frontend can group
+    // pain points (whose parent_theme_id matches this slug) under their source theme.
+    const themeId = typeof t.theme_id === 'string' && t.theme_id ? t.theme_id : null;
     const severity = typeof t.severity_score === 'number' ? t.severity_score : null;
     if (severity != null) hasAnySeverity = true;
     const mention = typeof t.mention_count === 'number' ? t.mention_count : null;
@@ -310,6 +318,7 @@ function extractThemeSeverityScores(
     const frequency = typeof t.frequency === 'string' ? t.frequency : null;
     result.push({
       title,
+      theme_id: themeId,
       severity,
       mention_count: mention,
       // `sources` retained for backward-compat; same value as primary_user_segments today.
@@ -399,6 +408,63 @@ function extractQualitySignals(
 function toJsonInput(value: unknown): JsonInput {
   if (value == null) return Prisma.JsonNull;
   return value as Prisma.InputJsonValue;
+}
+
+/**
+ * Phase 14 — project per-pain quote sources from evidence_appendix.
+ * Normalizes `score` from string ("200") → number (200) — verified against
+ * preview_report shape. Returns the full map keyed by pain index, OR null
+ * when the appendix is absent / empty.
+ */
+function normalizeQuoteSources(evidenceAppendix: unknown): unknown {
+  if (!evidenceAppendix || typeof evidenceAppendix !== 'object') return null;
+  const sources = (evidenceAppendix as Record<string, unknown>).pain_point_quote_sources;
+  if (!sources || typeof sources !== 'object') return null;
+  const normalized: Record<string, unknown> = {};
+  for (const [idx, entry] of Object.entries(sources as Record<string, unknown>)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    const quotes = Array.isArray(e.quotes_with_sources) ? e.quotes_with_sources : [];
+    const cleaned = quotes
+      .filter((q): q is Record<string, unknown> => !!q && typeof q === 'object')
+      .map((q) => ({
+        quote: typeof q.quote === 'string' ? q.quote : '',
+        post_id: typeof q.post_id === 'string' ? q.post_id : '',
+        subreddit: typeof q.subreddit === 'string' ? q.subreddit : '',
+        score: typeof q.score === 'number' ? q.score : Number(q.score) || 0,
+      }))
+      .filter((q) => q.quote && q.post_id && q.subreddit);
+    if (cleaned.length === 0) continue;
+    normalized[idx] = {
+      pain_point_title: typeof e.pain_point_title === 'string' ? e.pain_point_title : '',
+      quotes_with_sources: cleaned,
+    };
+  }
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+/**
+ * Phase 14 — project top Reddit threads from evidence_appendix.
+ * URLs are full https://reddit.com/r/.../comments/... already; pass through.
+ * Returns array OR null when the appendix is absent / empty.
+ */
+function extractTopRedditThreads(evidenceAppendix: unknown): unknown {
+  if (!evidenceAppendix || typeof evidenceAppendix !== 'object') return null;
+  const threads = (evidenceAppendix as Record<string, unknown>).top_reddit_threads;
+  if (!Array.isArray(threads)) return null;
+  const cleaned = threads
+    .filter((t): t is Record<string, unknown> => !!t && typeof t === 'object')
+    .map((t) => ({
+      post_id: typeof t.post_id === 'string' ? t.post_id : '',
+      title: typeof t.title === 'string' ? t.title : '',
+      subreddit: typeof t.subreddit === 'string' ? t.subreddit : '',
+      score: typeof t.score === 'number' ? t.score : Number(t.score) || 0,
+      num_comments: typeof t.num_comments === 'number' ? t.num_comments : Number(t.num_comments) || 0,
+      url: typeof t.url === 'string' ? t.url : '',
+      key_insight: typeof t.key_insight === 'string' ? t.key_insight : '',
+    }))
+    .filter((t) => t.post_id && t.title && t.url);
+  return cleaned.length > 0 ? cleaned : null;
 }
 
 function projectReport(
@@ -525,6 +591,13 @@ function projectReport(
         'topPainCategories',
       ),
     ),
+    // Phase 14 — source-grounded evidence.
+    painPointQuoteSources: toJsonInput(
+      guard(normalizeQuoteSources(report.evidence_appendix), 'painPointQuoteSources'),
+    ),
+    topRedditThreads: toJsonInput(
+      guard(extractTopRedditThreads(report.evidence_appendix), 'topRedditThreads'),
+    ),
   };
 }
 
@@ -564,6 +637,9 @@ function emptyProjection(): ProjectedFields {
     categorizationSummary: null,
     painAnalysisSummary: null,
     topPainCategories: Prisma.JsonNull,
+    // Phase 14 defaults.
+    painPointQuoteSources: Prisma.JsonNull,
+    topRedditThreads: Prisma.JsonNull,
   };
 }
 

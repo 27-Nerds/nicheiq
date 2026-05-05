@@ -94,7 +94,7 @@
               <SubNicheCell
                 name={sub.name}
                 href={categoryPath({ slug: sub.slug, parentSlug: cat.slug })}
-                count={(sub._count?.ideas ?? 0) + (sub._count?.painPoints ?? 0)}
+                count={sub._count?.ideas ?? 0}
               />
             {/each}
           </div>

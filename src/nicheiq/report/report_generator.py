@@ -1811,6 +1811,12 @@ It differentiates through {diff_text}.
                     estimated_development_time=getattr(solution, 'estimated_development_time', None),
                     estimated_cac_organic=estimated_cac_organic_val,  # Pass-through string
                     pricing_model=getattr(solution, 'pricing_model', None),
+
+                    # Phase 8 of detail-page IA rework — copy pain_points_addressed
+                    # from the source BaseSolutionIdea so alternatives can be
+                    # cross-linked to specific pains on the catalog UI. Defaults
+                    # to [] when the source is missing the field (legacy reports).
+                    pain_points_addressed=list(getattr(solution, 'pain_points_addressed', []) or []),
                 ))
 
             return alternative_solutions if alternative_solutions else None

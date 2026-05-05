@@ -12,6 +12,7 @@ import {
 } from '$lib/seo/catalogSeo';
 import { buildMeta } from '$lib/seo/meta';
 import type { CategoryLandingPayload, IdeaPreview } from '$lib/types/catalog-landing';
+import type { CatalogCollectionSummary } from '$lib/types/publicCatalog';
 import { findProgrammaticIdeaPage } from '$lib/data/programmaticIdeaPages';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
@@ -55,13 +56,49 @@ async function fetchIdeaBySlug(slug: string): Promise<IdeaPreview | null> {
   }
 }
 
+// Best-effort fetch of active collections — used to surface a Featured
+// Collection Teaser on category pages whose slug is touched by a collection.
+// Failure is swallowed: the teaser silently disappears, the rest of the
+// category page renders normally.
+async function fetchCollections(): Promise<CatalogCollectionSummary[]> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/public/catalog/collections`, {
+      headers: HEADERS(),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data?.collections ?? []) as CatalogCollectionSummary[];
+  } catch (err) {
+    console.error('collections fetch failed', err);
+    return [];
+  }
+}
+
+// Pick the first collection (by sortOrder, since the backend already orders
+// them) whose categorySlugs include the current category. Returns null if
+// none match — the route hides the teaser silently.
+function pickFeaturedCollection(
+  collections: CatalogCollectionSummary[],
+  categorySlug: string,
+): CatalogCollectionSummary | null {
+  for (const c of collections) {
+    if (c.categorySlugs.includes(categorySlug)) return c;
+  }
+  return null;
+}
+
 export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   setHeaders({
     'Cache-Control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
   });
 
-  // 1. Try real category landing.
-  const landing = await fetchLanding(params.niche);
+  // 1. Try real category landing. Fetch collections in parallel — the
+  // featured-collection teaser is optional, so its failure shouldn't block
+  // the page (fetchCollections already returns [] on error).
+  const [landing, collections] = await Promise.all([
+    fetchLanding(params.niche),
+    fetchCollections(),
+  ]);
 
   if (landing.kind === 'gone') throw error(410, 'Gone');
   if (landing.kind === 'error') throw error(500, 'Failed to load');
@@ -81,11 +118,17 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 
     const jsonld = buildCategoryJsonLd(payload, canonical, description);
 
+    const featuredCollection = pickFeaturedCollection(
+      collections,
+      payload.category.slug,
+    );
+
     return {
       kind: 'category' as const,
       meta,
       jsonld,
       payload,
+      featuredCollection,
       longDescription:
         payload.category.longDescription ??
         categoryLongDescriptionFallback(

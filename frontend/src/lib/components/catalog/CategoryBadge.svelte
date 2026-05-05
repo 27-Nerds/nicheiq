@@ -50,7 +50,7 @@
 
   .cat-badge:hover {
     color: var(--color-accent);
-    border-color: rgba(240, 96, 48, 0.25);
+    border-color: rgba(234, 88, 12, 0.25);
   }
 
   .cat-badge-sm {

@@ -85,15 +85,38 @@
     font-weight: 500;
     text-decoration: none;
     border: 1px solid transparent;
-    transition: all 0.12s ease;
+    transition: background-color 140ms ease, box-shadow 140ms ease,
+      transform 140ms ease, color 140ms ease, border-color 140ms ease;
     white-space: nowrap;
+    will-change: transform;
   }
+  /* Three-layer shadow anatomy on the primary CTA. Brand-tinted ambient
+     ties depth to the accent identity rather than defaulting to neutral.
+     Active-state press compresses the stack and applies a 0.98 scale. */
   .btn-accent {
     background: var(--color-accent);
     color: var(--color-surface, #fff);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      0 1px 2px rgba(154, 52, 18, 0.18),
+      0 6px 14px rgba(154, 52, 18, 0.10);
   }
   .btn-accent:hover {
     background: var(--color-accent-hover, var(--color-accent-dark));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.20),
+      0 2px 4px rgba(154, 52, 18, 0.22),
+      0 8px 18px rgba(154, 52, 18, 0.12);
+  }
+  .btn-accent:active {
+    transform: scale(0.98);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.12),
+      0 1px 1px rgba(154, 52, 18, 0.20);
+  }
+  .btn-accent:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
   .btn-ghost {
     color: var(--color-text-secondary, var(--color-text-primary));

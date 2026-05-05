@@ -1103,7 +1103,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
 
     // ─── Transactional mutation block ────────────────────────────────────
     const buildMergeData = (
-      bestMatch: { mentionCount: number; severityScore: number; willingnessToPayScore: number; representativeQuotes: unknown; sourcePlatforms: unknown; affectedSegments: unknown; opportunityLevel: string },
+      bestMatch: { mentionCount: number; severityScore: number; willingnessToPayScore: number; representativeQuotes: unknown; sourcePlatforms: unknown; affectedSegments: unknown; opportunityLevel: string; themeId: string | null },
       newPp: Record<string, unknown>,
     ) => {
       const existingQuotes = (bestMatch.representativeQuotes as string[] | null) || [];
@@ -1122,6 +1122,13 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
       const existingOppRank = OPPORTUNITY_RANK[bestMatch.opportunityLevel] || 0;
       const newOppRank = OPPORTUNITY_RANK[newOppLevel] || 0;
 
+      // Latest research wins for themeId — same policy as sourceJobId/sourceGeneratedAt
+      // advance on lineage update. Fall back to the existing themeId if the new
+      // payload didn't supply one (defensive: don't lose linkage on partial reingest).
+      const newThemeId = typeof newPp.parent_theme_id === 'string' && newPp.parent_theme_id
+        ? newPp.parent_theme_id
+        : null;
+
       return {
         mentionCount: bestMatch.mentionCount + (Number(newPp.mention_count) || 0),
         severityScore: Math.max(bestMatch.severityScore, Number(newPp.severity_score) || 0),
@@ -1130,6 +1137,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
         sourcePlatforms: mergedPlatforms,
         affectedSegments: mergedSegments,
         opportunityLevel: newOppRank > existingOppRank ? newOppLevel : bestMatch.opportunityLevel,
+        themeId: newThemeId ?? bestMatch.themeId,
       };
     };
 
@@ -1247,6 +1255,9 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
                 sourcePlatforms: (newPp.source_platforms as string[]) || [],
                 categories: (newPp.categories as string[]) || [],
                 affectedSegments: (newPp.affected_segments as string[]) || [],
+                themeId: typeof newPp.parent_theme_id === 'string' && newPp.parent_theme_id
+                  ? newPp.parent_theme_id
+                  : null,
                 publishedById: 'system',
                 isActive: true,
               },
@@ -1445,6 +1456,23 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
               estimatedCacOrganic: idea.estimated_cac_organic ? String(idea.estimated_cac_organic) : null,
               estimatedIndexablePages: idea.estimated_indexable_pages != null ? Number(idea.estimated_indexable_pages) : null,
               programmaticSeoOpp: idea.programmatic_seo_opportunity ? String(idea.programmatic_seo_opportunity) : null,
+              // Phase 13 of detail-page IA rework — populate idea-specific
+              // BaseSolutionIdea fields from worker payload. Pydantic
+              // BaseSolutionIdea includes all of these (solution_idea.py:252+).
+              whyItWorks: idea.why_it_works ? String(idea.why_it_works) : null,
+              conventionalApproach: idea.conventional_approach ? String(idea.conventional_approach) : null,
+              innovationAngle: idea.innovation_angle ? String(idea.innovation_angle) : null,
+              estimatedCacPaid: idea.estimated_cac_paid ? String(idea.estimated_cac_paid) : null,
+              organicDiscoveryQueries: Array.isArray(idea.organic_discovery_queries)
+                ? (idea.organic_discovery_queries as unknown[]).filter((s): s is string => typeof s === 'string')
+                : [],
+              // Phase 1 of detail-page IA rework — denormalize pain titles
+              // for fast pain → ideas lookup. Pydantic BaseSolutionIdea includes
+              // pain_points_addressed (solution_idea.py:189), so worker payloads
+              // carry it. Cast loosely (consistent with coreFeatures above).
+              addressedPainTitles: Array.isArray(idea.pain_points_addressed)
+                ? (idea.pain_points_addressed as unknown[]).filter((s): s is string => typeof s === 'string')
+                : [],
               publishedById: 'system',
               isActive: true,
             },

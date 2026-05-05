@@ -39,6 +39,21 @@ export function scaleSeverity(value: number | null | undefined, source: 'pain' |
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
+/**
+ * Phase 14 — /job-page parity: derive Critical/High/Medium tier from a 0-1
+ * severity score. Mirrors the logic in
+ * frontend/src/lib/components/preview/PainPointSummaryCard.svelte:18-22.
+ * Pure frontend computation — no backend storage.
+ */
+export type SeverityTier = 'critical' | 'high' | 'medium';
+
+export function severityTier(score: number | null | undefined): SeverityTier | null {
+  if (score == null || !Number.isFinite(score)) return null;
+  if (score >= 0.7) return 'critical';
+  if (score >= 0.5) return 'high';
+  return 'medium';
+}
+
 /** Difficulty bucket assigned server-side by `bucketKeywordDifficulty`. */
 export type DifficultyBucket = 'easy' | 'medium' | 'hard';
 
@@ -47,6 +62,10 @@ export type DifficultyBucket = 'easy' | 'medium' | 'hard';
  *  as a deprecated alias of `primaryUserSegments`; remove after consumer audit. */
 export interface Theme {
   title: string;
+  /** Stable slug auto-derived from title in the Python pipeline. Used by the
+   *  catalog UI to group pain points (whose `themeId` matches this `id`) under
+   *  their source theme. Null on legacy rows ingested before the field existed. */
+  id: string | null;
   severity: number | null;
   mentionCount: number | null;
   sources: string[];                           // deprecated — same value as primaryUserSegments
@@ -156,6 +175,12 @@ export interface CatalogCollectionSummary {
   colorAccent: string | null;
   sortOrder: number;
   itemCount: number;
+  /** Distinct category slugs touched by the collection's items (server-computed
+   *  union of `idea.category.slug` and `painPoint.category.slug`). Drives the
+   *  "Featured collection" placement on category pages — the route picks the
+   *  first collection whose `categorySlugs.includes(currentCategory.slug)`.
+   *  Empty for collections with no items. */
+  categorySlugs: string[];
 }
 
 /** Item inside a collection — exactly one of `idea` or `painPoint` populated. */

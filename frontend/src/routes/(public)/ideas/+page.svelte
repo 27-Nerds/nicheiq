@@ -30,6 +30,10 @@
     niches: NicheTreeNode[];
   }
 
+  // Local catalog search query — bound from CatalogIndexHero. v1 is client-only;
+  // no URL sync. Filters category and sub-niche names case-insensitively.
+  let query = $state("");
+
   // Group top-level niches by their superGroup (e.g. "Software", "Industry").
   // Niches without a super-group fall into "Uncategorized" (sortOrder=999).
   // Sub-niches inside each top-level node remain attached to that node — the
@@ -59,6 +63,46 @@
         : a.name.localeCompare(b.name),
     );
   });
+
+  // Filter the grouped niche tree by the search query. If a category name
+  // matches, keep all its children. If only some children match, keep the
+  // category with just those children. Drop categories with zero matches.
+  const filteredGroups = $derived.by<NicheGroup[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return groupedNiches;
+    const out: NicheGroup[] = [];
+    for (const g of groupedNiches) {
+      const niches: NicheTreeNode[] = [];
+      for (const niche of g.niches) {
+        const nameMatch = niche.name.toLowerCase().includes(q);
+        if (nameMatch) {
+          niches.push(niche);
+          continue;
+        }
+        const matchedChildren = (niche.children ?? []).filter((c) =>
+          c.name.toLowerCase().includes(q),
+        );
+        if (matchedChildren.length > 0) {
+          niches.push({ ...niche, children: matchedChildren });
+        }
+      }
+      if (niches.length > 0) {
+        out.push({ ...g, niches });
+      }
+    }
+    return out;
+  });
+  const hasMatches = $derived(filteredGroups.length > 0);
+
+  // All section numbers are derived from running counters — do NOT hardcode
+  // literals here. Hidden sections leave numbering contiguous.
+  function nextNum(prev: number, show: boolean): number {
+    return show ? prev + 1 : prev;
+  }
+  const hasCollections = $derived(data.collections.length > 0);
+  const hasCategoriesTree = $derived(data.categoriesTree.length > 0);
+  const num1 = $derived(nextNum(0, hasCollections));
+  const num2 = $derived(nextNum(num1, hasCategoriesTree));
 </script>
 
 <SeoHead {...data.meta} />
@@ -68,13 +112,10 @@
   trail={[{ label: "Home", href: "/" }, { label: "Ideas" }]}
 />
 
-<CatalogIndexHero totals={data.totals} />
+<CatalogIndexHero totals={data.totals} bind:query />
 
-{#if data.collections.length > 0}
-  {#snippet collCount()}
-    <span>{data.collections.length} curated</span>
-  {/snippet}
-  <SectionDivider num={1} label="Featured collections" right={collCount} />
+{#if hasCollections}
+  <SectionDivider num={num1} label="Featured collections" />
   <ul class="collections-grid">
     {#each data.collections as c (c.slug)}
       <li><CollectionCard collection={c} /></li>
@@ -82,21 +123,26 @@
   </ul>
 {/if}
 
-{#if data.categoriesTree.length > 0}
-  {#snippet rightCount()}
-    <span>{data.totals.totalCategories} categories · {data.totals.totalSubcategories} sub-niches</span>
-  {/snippet}
-  <SectionDivider num={2} label="Browse by category" right={rightCount} />
+{#if hasCategoriesTree}
+  <SectionDivider
+    num={num2}
+    label="Browse by category"
+    metaText={`${data.totals.totalCategories} categories · ${data.totals.totalSubcategories} sub-niches`}
+  />
 
-  {#each groupedNiches as group}
-    <div class="niche-group">
-      <header class="group-header">
-        <h3 class="group-label">{group.name}</h3>
-        <span class="group-count">{group.niches.length} niches</span>
-      </header>
-      <CategoryAccordion categories={group.niches} defaultOpen={true} />
-    </div>
-  {/each}
+  {#if hasMatches}
+    {#each filteredGroups as group}
+      <div class="niche-group">
+        <header class="group-header">
+          <span class="group-label">{group.name}</span>
+          <span class="group-count">{group.niches.length} niches</span>
+        </header>
+        <CategoryAccordion categories={group.niches} defaultOpen={true} />
+      </div>
+    {/each}
+  {:else}
+    <p class="no-matches">No niches match "{query}". Try a broader term.</p>
+  {/if}
 {:else}
   <p class="hub-empty">Awaiting first findings. Re-checked weekly.</p>
 {/if}
@@ -131,10 +177,11 @@
     list-style: none;
   }
 
-  /* Niche group rail — preserved from V1 to keep super-group taxonomy
-     legible. CategoryAccordion handles the per-niche rows. */
+  /* Niche group rail — preserves super-group taxonomy as a quiet sub-divider
+     so the user can still read groups, without competing visually with
+     SectionDivider above. Reduced weight + padding per the v2 audit. */
   .niche-group {
-    margin-bottom: 24px;
+    margin-bottom: 16px;
   }
   .niche-group:last-child {
     margin-bottom: 0;
@@ -144,16 +191,15 @@
     justify-content: space-between;
     align-items: baseline;
     gap: 1rem;
-    padding: 16px 0 10px;
+    padding: 8px 0 4px;
   }
   .group-label {
-    margin: 0;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-text-primary);
-    font-weight: 600;
+    color: var(--color-text-muted);
+    font-weight: 500;
   }
   .group-count {
     font-family: var(--font-mono);
@@ -161,8 +207,10 @@
     color: var(--color-text-muted);
   }
 
-  .hub-empty {
+  .hub-empty,
+  .no-matches {
     font-family: var(--font-mono);
+    font-size: 0.8125rem;
     color: var(--color-text-muted);
     text-align: center;
     margin: 4rem 0;

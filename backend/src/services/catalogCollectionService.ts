@@ -17,7 +17,9 @@ import { Prisma } from '@prisma/client';
 import { prisma } from './db.js';
 import { getRedis } from './redis.js';
 
-const COLLECTIONS_CACHE_KEY = 'catalog:collections:v1';
+// Bumped to v2 when categorySlugs[] was added to the summary payload — old v1
+// entries lack the field and would cause undefined access on consumers.
+const COLLECTIONS_CACHE_KEY = 'catalog:collections:v2';
 const COLLECTIONS_CACHE_TTL = 300;
 
 export interface CatalogCollectionSummary {
@@ -28,6 +30,12 @@ export interface CatalogCollectionSummary {
   colorAccent: string | null;
   sortOrder: number;
   itemCount: number;
+  /** Distinct category slugs touched by the collection's items (idea.category +
+   *  painPoint.category, deduped). Drives "featured collection" placement on
+   *  category pages — the category route picks the first collection whose
+   *  categorySlugs include the current slug. Empty for collections with no
+   *  active items. */
+  categorySlugs: string[];
 }
 
 export interface CatalogCollectionItemPreview {
@@ -65,21 +73,41 @@ export async function listCollectionSummaries(): Promise<CatalogCollectionSummar
     console.error('Collections cache read failed:', err);
   }
 
+  // Pull each collection's items joined with the (idea|painPoint).category.slug
+  // path so we can compute `categorySlugs` in a single round trip. Only the
+  // category slug is needed — everything else is hydrated lazily by the
+  // detail endpoint.
   const rows = await prisma.catalogCollection.findMany({
     where: { isActive: true },
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
-    include: { _count: { select: { items: true } } },
+    include: {
+      _count: { select: { items: true } },
+      items: {
+        select: {
+          idea: { select: { category: { select: { slug: true } } } },
+          painPoint: { select: { category: { select: { slug: true } } } },
+        },
+      },
+    },
   });
 
-  const summaries: CatalogCollectionSummary[] = rows.map((c) => ({
-    slug: c.slug,
-    name: c.name,
-    description: c.description,
-    tagline: c.tagline,
-    colorAccent: c.colorAccent,
-    sortOrder: c.sortOrder,
-    itemCount: c._count.items,
-  }));
+  const summaries: CatalogCollectionSummary[] = rows.map((c) => {
+    const slugs = new Set<string>();
+    for (const it of c.items) {
+      const slug = it.idea?.category?.slug ?? it.painPoint?.category?.slug;
+      if (slug) slugs.add(slug);
+    }
+    return {
+      slug: c.slug,
+      name: c.name,
+      description: c.description,
+      tagline: c.tagline,
+      colorAccent: c.colorAccent,
+      sortOrder: c.sortOrder,
+      itemCount: c._count.items,
+      categorySlugs: [...slugs],
+    };
+  });
 
   try {
     await redis.setex(COLLECTIONS_CACHE_KEY, COLLECTIONS_CACHE_TTL, JSON.stringify(summaries));
@@ -127,12 +155,17 @@ export async function getCollectionDetail(slug: string): Promise<CatalogCollecti
 
   if (!collection || !collection.isActive) return null;
 
+  const categorySlugs = new Set<string>();
   const items: CatalogCollectionItemPreview[] = collection.items.map((it) => {
     if (it.idea) {
+      const slug = it.idea.category?.slug;
+      if (slug) categorySlugs.add(slug);
       const { sourceJobId: _s, publishedById: _p, ...rest } = it.idea;
       return { position: it.position, kind: 'idea', idea: rest };
     }
     if (it.painPoint) {
+      const slug = it.painPoint.category?.slug;
+      if (slug) categorySlugs.add(slug);
       const { sourceJobId: _s, publishedById: _p, ...rest } = it.painPoint;
       return { position: it.position, kind: 'pain-point', painPoint: rest };
     }
@@ -150,6 +183,7 @@ export async function getCollectionDetail(slug: string): Promise<CatalogCollecti
     colorAccent: collection.colorAccent,
     sortOrder: collection.sortOrder,
     itemCount: items.length,
+    categorySlugs: [...categorySlugs],
     items,
   };
 }

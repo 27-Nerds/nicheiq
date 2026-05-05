@@ -1,15 +1,15 @@
 <script lang="ts">
   import Search from "lucide-svelte/icons/search";
-  import Filter from "lucide-svelte/icons/filter";
-  import Bookmark from "lucide-svelte/icons/bookmark";
   import type { CatalogTotals } from "$lib/types/publicCatalog.js";
   import StatStrip, { type Stat } from "./StatStrip.svelte";
 
   interface Props {
     totals: CatalogTotals;
+    /** Two-way bound search query, lifted to /ideas/+page.svelte for filtering. */
+    query?: string;
   }
 
-  let { totals }: Props = $props();
+  let { totals, query = $bindable("") }: Props = $props();
 
   const stats = $derived<Stat[]>([
     { value: totals.totalIdeas.toLocaleString(), label: "Ideas tracked" },
@@ -35,30 +35,21 @@
   </p>
 
   <div class="strip-wrap">
-    <StatStrip {stats} />
+    <StatStrip {stats} emphasis />
   </div>
 
-  <!-- Search + filter row. Search is visual-only in v1 — wires up to a
-       global search route in a follow-up. The shape of the input matches
-       the mockup so the layout reads correctly today. -->
+  <!-- Local catalog search. Bound query filters category/sub-niche names in
+       the parent route. No URL sync in v1. -->
   <div class="tools-row">
     <label class="search-box">
       <span class="icon"><Search size={16} /></span>
       <input
         type="search"
-        placeholder="Search ideas, niches, pain points…"
+        placeholder="Search niches and sub-niches…"
         aria-label="Search the catalog"
+        bind:value={query}
       />
-      <span class="kbd" aria-hidden="true">⌘K</span>
     </label>
-    <button class="btn-ghost" type="button" disabled aria-disabled="true">
-      <Filter size={14} />
-      <span>Filter by score</span>
-    </button>
-    <button class="btn-ghost" type="button" disabled aria-disabled="true">
-      <Bookmark size={14} />
-      <span>Saved</span>
-    </button>
   </div>
 </header>
 
@@ -130,37 +121,5 @@
   .search-box input::placeholder {
     color: var(--color-text-muted);
     opacity: 0.7;
-  }
-  .kbd {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border-emphasis);
-    border-radius: 3px;
-    padding: 1px 5px;
-    background: var(--color-surface-elevated, #fafafa);
-  }
-  .btn-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 7px 12px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 500;
-    border: 1px solid var(--color-border-emphasis);
-    background: var(--color-surface, #fff);
-    color: var(--color-text-secondary, var(--color-text-primary));
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.12s ease;
-  }
-  .btn-ghost:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-  }
-  .btn-ghost:not(:disabled):hover {
-    color: var(--color-text-primary);
-    border-color: var(--color-text-muted);
   }
 </style>

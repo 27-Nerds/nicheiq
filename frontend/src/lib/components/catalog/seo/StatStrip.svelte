@@ -1,6 +1,9 @@
 <script lang="ts">
   // 4-column bordered stat strip used on index/category/idea hero blocks.
   // Tone optionally tints the number color (e.g., "go" green for GO count).
+  // `emphasis` widens the first tile (1.4fr vs 1fr) and gives it an alt
+  // background — matches the catalog v2 mock pattern where the totals anchor
+  // gets primary visual weight.
 
   type Tone = "default" | "go" | "amber" | "info";
 
@@ -12,12 +15,17 @@
 
   interface Props {
     stats: Stat[];
+    emphasis?: boolean;
   }
 
-  let { stats }: Props = $props();
+  let { stats, emphasis = false }: Props = $props();
 </script>
 
-<div class="stat-strip" style="--cols: {stats.length};">
+<div
+  class="stat-strip"
+  class:emphasis
+  style="--cols: {stats.length};"
+>
   {#each stats as s}
     <div class="stat">
       <div class="n tone-{s.tone ?? 'default'}">{s.value}</div>
@@ -34,6 +42,16 @@
     border-radius: 8px;
     background: var(--color-surface, #fff);
     overflow: hidden;
+  }
+  /* Emphasis: first column gets 1.4fr, alt bg, larger numeric. */
+  .stat-strip.emphasis {
+    grid-template-columns: 1.4fr repeat(calc(var(--cols, 4) - 1), 1fr);
+  }
+  .stat-strip.emphasis .stat:first-child {
+    background: var(--color-bg-elevated, #fafafa);
+  }
+  .stat-strip.emphasis .stat:first-child .n {
+    font-size: 28px;
   }
   .stat {
     padding: 16px 20px;

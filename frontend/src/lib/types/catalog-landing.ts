@@ -120,6 +120,14 @@ export interface IdeaPreview {
   programmatic_seo_opportunity: string | null;
   technical_approach: string | null;
   estimated_indexable_pages: number | null;
+  // Phase 13 — idea-specific BaseSolutionIdea fields surfaced on the catalog
+  // idea page. Null on alternative-published rows (Pydantic AlternativeSolution
+  // doesn't carry them); fully populated on selected + worker-generated ideas.
+  why_it_works: string | null;
+  conventional_approach: string | null;
+  innovation_angle: string | null;
+  estimated_cac_paid: string | null;
+  organic_discovery_queries: string[] | null;
   source_niche: string;
   source_verdict: string | null;
   is_featured: boolean;
@@ -144,6 +152,11 @@ export interface PainPointPreview {
   sourcePlatforms: string[] | null;
   categories: string[] | null;
   affectedSegments: string[] | null;
+  /** Stable parent-theme slug (matches a `Theme.id` in the same payload). Used
+   *  by the catalog UI to group pain points under their source theme. Null on
+   *  legacy rows ingested before the field existed → rendered in the
+   *  "Other pain points" Unclassified bucket. */
+  themeId: string | null;
   solutionApproach: string | null;
   isFeatured: boolean;
   isActive: boolean;
@@ -182,8 +195,83 @@ export interface CatalogDetailExtras {
   topPainCategories: string[] | null;
 }
 
-export type IdeaDetailResponse = IdeaPreview & CatalogDetailExtras;
-export type PainPointDetailResponse = PainPointPreview & CatalogDetailExtras;
+/**
+ * Phase 2 of detail-page IA rework — cross-link return shapes added by
+ * `getPainPointBySlug` / `getIdeaBySlug` in catalogService.ts. Backend
+ * guarantees `slug` is non-null via the `slug: { not: null }` filter — the
+ * IdeaPreview / PainPointPreview types here can keep their string-typed slugs.
+ */
+export interface SiblingPainSummary {
+  slug: string;
+  title: string;
+  /** Non-null at the DB level (CatalogPainPoint.description String @db.Text). */
+  description: string;
+  severityScore: number;
+  mentionCount: number;
+  opportunityLevel: string | null;
+}
+
+/**
+ * Per-idea map of pain-point title → resolved slug + metadata. Used by the
+ * idea page's PainPointsList to wrap entries in `<a href="/pain-point/{slug}">`.
+ * Object/Record (not Map) so it serializes through JSON cleanly.
+ */
+export type AddressedPainLookup = Record<
+  string,
+  { slug: string; severityScore: number; mentionCount: number }
+>;
+
+/**
+ * Phase 14 — source-grounded evidence types.
+ * `quoteSources` augments each representative quote with its Reddit thread
+ * provenance (subreddit + post_id + upvote score).
+ * `topRedditThreads` carries niche-wide thread metadata for the "Top
+ * discussions" section on both pain and niche pages.
+ * `rankInfo` derives a pain's position within its sub-niche by severity.
+ */
+export interface QuoteSource {
+  quote: string;
+  postId: string;
+  subreddit: string;
+  /** Normalized to number on backend projection (report stores some scores as strings). */
+  score: number;
+}
+
+export interface PainPointRankInfo {
+  rank: number;  // 1-based
+  total: number;
+}
+
+export interface TopRedditThread {
+  postId: string;
+  title: string;
+  subreddit: string;
+  score: number;
+  numComments: number;
+  url: string;       // Full https://reddit.com/r/.../comments/... — render directly
+  keyInsight: string;
+}
+
+export type IdeaDetailResponse = IdeaPreview & CatalogDetailExtras & {
+  /** Other catalog ideas in the same sub-niche (categoryId). Up to 5. */
+  siblingIdeas: IdeaPreview[];
+  /** Pain titles → CatalogPainPoint slug + metadata for cross-linking. */
+  addressedPains: AddressedPainLookup;
+};
+
+export type PainPointDetailResponse = PainPointPreview & CatalogDetailExtras & {
+  /** Other pain points in the same parent theme. Empty when themeId is null. */
+  siblingPains: SiblingPainSummary[];
+  /** Catalog ideas whose addressedPainTitles contains this pain's title. */
+  relatedIdeas: IdeaPreview[];
+  // Phase 14
+  /** Per-quote Reddit attribution; null on legacy contexts before Phase 14. */
+  quoteSources: QuoteSource[] | null;
+  /** Pain's rank in its sub-niche by severity. Null when computation fails. */
+  rankInfo: PainPointRankInfo | null;
+  /** Niche-wide top Reddit threads, capped at 3 on pain page. */
+  topRedditThreads: TopRedditThread[] | null;
+};
 
 export interface CategoryLandingPayload {
   category: CategoryLandingCategory;
@@ -218,6 +306,10 @@ export interface CategoryLandingPayload {
   categorizationSummary: string | null;
   painAnalysisSummary: string | null;
   topPainCategories: string[] | null;
+  // Phase 14 — niche-wide top Reddit threads (uncapped on niche page).
+  topRedditThreads: TopRedditThread[] | null;
+  // Phase 15.5 — count of GO-verdict ideas across the category subtree.
+  verdictGoCount: number;
   // Phase 5: research context from the most-recent published item's source
   // job. Null when the category has zero published items, or when the source
   // job's report.json is missing (placeholder context row).

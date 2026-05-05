@@ -83,6 +83,11 @@
   .body:hover {
     background: var(--color-surface-elevated, #fafafa);
   }
+  .body:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: -2px;
+    background: var(--color-surface-elevated, #fafafa);
+  }
   .num {
     font-family: var(--font-mono);
     font-size: 11px;

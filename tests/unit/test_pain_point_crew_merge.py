@@ -172,6 +172,7 @@ class TestValidatePainPointExtraction:
             pain_points=[
                 {
                     "title": f"Pain Point {i}",
+                    "parent_theme_id": "test-theme",
                     "description": f"Description for pain point {i}",
                     "mention_count": 10,
                     "anchor_keywords": ["kw1", "kw2"],
@@ -218,6 +219,7 @@ class TestValidatePainPointExtraction:
             extracted_pain_points=[
                 UnvalidatedPainPoint(
                     title=f"Pain Point Number {i}",
+                    parent_theme_id="test-theme",
                     description=f"This is a detailed description for pain point {i} that is long enough",
                     mention_count=10,
                     anchor_keywords=["kw1", "kw2"],
@@ -519,64 +521,41 @@ class TestMergeLogic:
         assert len(final_pain_points) == 1
         assert final_pain_points[0]["title"] == "Matched Pain Point"
 
-    def test_merge_duplicate_titles(self):
-        """Multiple pain points with identical titles (edge case)."""
-        task2_output = PainPointExtraction(
-            niche="test",
-            extracted_pain_points=[
-                UnvalidatedPainPoint(
-                    title="Duplicate Title",
-                    description="First instance",
-                    mention_count=10,
-                    anchor_keywords=["kw1", "kw2"],
-                ),
-                UnvalidatedPainPoint(
-                    title="Duplicate Title",
-                    description="Second instance",
-                    mention_count=5,
-                    anchor_keywords=["kw3", "kw4"],
-                ),
-                UnvalidatedPainPoint(
-                    title="Unique Title",
-                    description="Third",
-                    mention_count=8,
-                    anchor_keywords=["kw5", "kw6"],
-                ),
-            ],
-            extraction_summary="Summary",
-        )
+    def test_extraction_rejects_duplicate_titles(self):
+        """PainPointExtraction.validate_unique_titles rejects duplicates at the model boundary.
 
-        # One score entry for the duplicate title
-        task3_output = ValidationResult(
-            niche="test",
-            pain_point_scores=[
-                PainPointScoring(
-                    pain_point_title="Duplicate Title",
-                    severity_score=0.7,
-                    willingness_to_pay=0.6,
-                    opportunity_level=OpportunityLevel.MEDIUM,
-                ),
-                PainPointScoring(
-                    pain_point_title="Unique Title",
-                    severity_score=0.8,
-                    willingness_to_pay=0.7,
-                    opportunity_level=OpportunityLevel.HIGH,
-                ),
-            ],
-            validation_summary="Summary",
-        )
+        The DB enforces @@unique([sourceJobId, title]) on CatalogPainPoint, so the
+        merge layer never has to handle duplicate titles — they're caught upstream.
+        """
+        from pydantic import ValidationError as _VE
 
-        task4_output = QuoteEnrichmentResult(
-            niche="test",
-            enriched_pain_points=[],
-            total_quotes_found=0,
-            enrichment_summary="No quotes",
-        )
-
-        final_pain_points = _simulate_merge(task2_output, task3_output, task4_output)
-
-        # Both duplicate instances should match the same score
-        assert len(final_pain_points) == 3
+        with pytest.raises(_VE) as exc_info:
+            PainPointExtraction(
+                niche="test",
+                extracted_pain_points=[
+                    UnvalidatedPainPoint(
+                        title="Duplicate Title",
+                        description="First instance",
+                        mention_count=10,
+                        anchor_keywords=["kw1", "kw2"],
+                    ),
+                    UnvalidatedPainPoint(
+                        title="Duplicate Title",
+                        description="Second instance",
+                        mention_count=5,
+                        anchor_keywords=["kw3", "kw4"],
+                    ),
+                    UnvalidatedPainPoint(
+                        title="Unique Title",
+                        description="Third",
+                        mention_count=8,
+                        anchor_keywords=["kw5", "kw6"],
+                    ),
+                ],
+                extraction_summary="Summary",
+            )
+        assert "Duplicate pain point titles" in str(exc_info.value)
+        assert "Duplicate Title" in str(exc_info.value)
 
     def test_merge_task4_extra_pain_points(self):
         """Task 4 has enrichments not in Task 2 (should be ignored)."""
