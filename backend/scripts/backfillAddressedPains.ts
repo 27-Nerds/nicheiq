@@ -34,6 +34,7 @@
  */
 
 import { PrismaClient } from '@prisma/client';
+import { canonicalizeAddressedTitles } from '../src/services/titleMatching.js';
 
 const prisma = new PrismaClient();
 
@@ -71,6 +72,10 @@ async function main() {
           selectedSolution: true,
           selectedSolutionName: true,
           alternativeSolutions: true,
+          // Canonical pain list for the same job — used to validate +
+          // normalize extracted addressed-pain titles before write, mirroring
+          // the live publishIdea / catalog-ideas-ready behavior.
+          detailedPainPoints: true,
         },
       },
     },
@@ -142,10 +147,28 @@ async function main() {
       );
     }
 
+    // Canonicalize against the same job's pain list so the script produces the
+    // same output as live publish paths. Skips for empty `titles` (the
+    // workerCleared / unclassified branches) — empty in, empty out.
+    let canonicalTitles: string[] = titles;
+    if (titles.length > 0) {
+      const ctxPains = Array.isArray(ctx?.detailedPainPoints)
+        ? (ctx.detailedPainPoints as Array<{ title?: unknown }>)
+        : [];
+      const canon = canonicalizeAddressedTitles(titles, ctxPains);
+      canonicalTitles = canon.canonical;
+      if (canon.dropped.length > 0 || canon.corrected.length > 0) {
+        console.warn(
+          `[backfillAddressedPains] canonicalization for id=${idea.id} solutionName="${idea.solutionName}":`,
+          { dropped: canon.dropped, corrected: canon.corrected },
+        );
+      }
+    }
+
     if (!DRY_RUN) {
       await prisma.catalogIdea.update({
         where: { id: idea.id },
-        data: { addressedPainTitles: titles, ...phase13Fields },
+        data: { addressedPainTitles: canonicalTitles, ...phase13Fields },
       });
     }
   }

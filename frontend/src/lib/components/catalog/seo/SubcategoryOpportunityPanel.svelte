@@ -83,11 +83,18 @@
     {/if}
 
     {#if totalIdeas > 0}
-      <div class="op-go-row">
-        <span>
-          <b>{goCount}</b> of {totalIdeas} ideas verdict
-          <span class="go-pill">GO</span>
-        </span>
+      <div class="op-go-row" class:no-verdicts={goCount === 0}>
+        {#if goCount > 0}
+          <span>
+            <b>{goCount}</b> of {totalIdeas} ideas verdict
+            <span class="go-pill">GO</span>
+          </span>
+        {:else}
+          <!-- Most sub-niches don't have GO/NO-GO verdicts yet (those come from
+               commissioning a research file). Suppressing the "0 of N verdict GO"
+               line removes the empty zero-state; "See all" link still useful. -->
+          <span class="op-tracked"><b>{totalIdeas}</b> {totalIdeas === 1 ? 'idea' : 'ideas'} tracked</span>
+        {/if}
         <a class="see-all" href={seeAllHref}>
           See all
           <ArrowDown size={11} />
@@ -200,6 +207,9 @@
     color: var(--color-text-primary);
     font-weight: 700;
     font-family: var(--font-mono);
+  }
+  .op-tracked {
+    color: var(--color-text-secondary, var(--color-text-primary));
   }
   .go-pill {
     display: inline-block;

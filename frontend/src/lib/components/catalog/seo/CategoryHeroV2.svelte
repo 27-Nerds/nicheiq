@@ -43,6 +43,12 @@
      *  line with `·` separators — used on sub-niche pages where the right-rail
      *  opportunity panel already carries the heavy stat density. */
     statsVariant?: 'tiles' | 'inline';
+    /** Suppress the niche-context block (industry scope + primary segments)
+     *  on routes that prefer a focused hero. Sub-niche route passes `false`
+     *  to move that supporting copy to a methodology footer below the page.
+     *  Default `true` preserves the current parent / PSeo / generic behavior.
+     *  Lede logic is unaffected — `nicheContext.description` still flows in. */
+    showNicheContext?: boolean;
   }
 
   let {
@@ -56,6 +62,7 @@
     aside,
     kind = 'leaf',
     statsVariant = 'tiles',
+    showNicheContext = true,
   }: Props = $props();
 
   // On parent-category pages, prefer the category's own description over the
@@ -68,10 +75,14 @@
       : (nicheContext?.description ?? description),
   );
   const industryBoundaries = $derived(
-    kind === 'parent' ? null : (nicheContext?.industryBoundaries ?? null),
+    kind === 'parent' || !showNicheContext
+      ? null
+      : (nicheContext?.industryBoundaries ?? null),
   );
   const marketSegments = $derived(
-    kind === 'parent' ? null : (nicheContext?.marketSegments ?? null),
+    kind === 'parent' || !showNicheContext
+      ? null
+      : (nicheContext?.marketSegments ?? null),
   );
 
   // 3-line clamp heuristic (~73 chars/line at 13.5px / line-height 1.65 /
@@ -136,26 +147,29 @@
           {/if}
         </section>
       {/if}
+      <!-- Inline stats sit immediately under the lede / niche-context so the
+           line stays tied to the description column instead of floating below
+           the right-rail aside. The tiles variant is full-width and renders
+           outside .hero-row below. -->
+      {#if stats && stats.length > 0 && statsVariant === 'inline'}
+        <div class="quick-stats">
+          {#each stats as s, i}
+            {#if i > 0}<span class="dot-sep">·</span>{/if}
+            <span class="qs-stat">
+              <b>{s.value}</b> {s.label}
+            </span>
+          {/each}
+        </div>
+      {/if}
     </div>
     {#if aside}
       <aside class="hero-aside">{@render aside()}</aside>
     {/if}
   </div>
-  {#if stats && stats.length > 0}
-    {#if statsVariant === 'inline'}
-      <div class="quick-stats">
-        {#each stats as s, i}
-          {#if i > 0}<span class="dot-sep">·</span>{/if}
-          <span class="qs-stat">
-            <b>{s.value}</b> {s.label}
-          </span>
-        {/each}
-      </div>
-    {:else}
-      <div class="strip-wrap">
-        <StatStrip {stats} emphasis />
-      </div>
-    {/if}
+  {#if stats && stats.length > 0 && statsVariant === 'tiles'}
+    <div class="strip-wrap">
+      <StatStrip {stats} emphasis />
+    </div>
   {/if}
 </header>
 

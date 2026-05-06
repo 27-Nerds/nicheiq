@@ -213,7 +213,11 @@ export interface SiblingPainSummary {
 
 /**
  * Per-idea map of pain-point title → resolved slug + metadata. Used by the
- * idea page's PainPointsList to wrap entries in `<a href="/pain-point/{slug}">`.
+ * idea-detail page's pain-points section to enrich each addressed-pain row
+ * with its catalog slug (for `<a href="/pain-point/{slug}">`) plus
+ * canonical-from-DB severity/mention metadata. Title keys are the canonical
+ * `addressedPainTitles` values (validated at publish time). Rows whose title
+ * isn't a key here render as un-linked rows on /idea/[slug].
  * Object/Record (not Map) so it serializes through JSON cleanly.
  */
 export type AddressedPainLookup = Record<
@@ -257,6 +261,12 @@ export type IdeaDetailResponse = IdeaPreview & CatalogDetailExtras & {
   siblingIdeas: IdeaPreview[];
   /** Pain titles → CatalogPainPoint slug + metadata for cross-linking. */
   addressedPains: AddressedPainLookup;
+  /** Source-of-truth canonical pain titles this idea addresses (validated
+   *  against the same job's pain list at publish time). Drives the row set
+   *  rendered in the "Pain points addressed" section. May be empty for
+   *  alternative-solution ideas (Pydantic AlternativeSolution lacks the field)
+   *  and pre-canonicalization legacy rows. */
+  addressedPainTitles: string[];
 };
 
 export type PainPointDetailResponse = PainPointPreview & CatalogDetailExtras & {
@@ -314,6 +324,11 @@ export interface CategoryLandingPayload {
   // job. Null when the category has zero published items, or when the source
   // job's report.json is missing (placeholder context row).
   researchContext: CatalogResearchContext | null;
+  // Phase 16 — provenance for the themes / audience flattens. When non-null,
+  // those sections were drawn from this sub-niche's research; the parent
+  // route renders an attribution link to it. Null when no research exists or
+  // when the recent item belongs directly to the parent category.
+  researchSourceSubNiche: { slug: string; name: string } | null;
 }
 
 export interface FaqEntry {

@@ -1091,3 +1091,11 @@
 @media (prefers-reduced-motion: reduce) {
 	.catalog-fade-in { animation: none; }
 }
+
+/* Hash-link landing offset for catalog section anchors. Wrapper divs like
+   <div id="section-themes"> get a small breathing-room offset so links from
+   theme chips / "View ranked pain points →" / etc. don't land sections
+   flush against the page-top edge. */
+[id^="section-"] {
+	scroll-margin-top: 24px;
+}

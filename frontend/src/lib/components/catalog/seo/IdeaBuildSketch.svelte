@@ -1,39 +1,21 @@
 <script lang="ts">
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
-  import type { AudienceSignals } from "$lib/types/publicCatalog.js";
   import Chip from "./Chip.svelte";
 
   // Build sketch panel for /idea/[slug]. Surfaces idea-specific fields:
   // core_features, target_personas, pricing_strategy, estimated_development_time,
   // technical_approach, programmatic_seo_opp, estimated_cac_organic,
-  // estimated_indexable_pages, differentiation_factors. Optional GTM signals
-  // footer pulls from the niche-wide AudienceSignals payload (hidden when absent).
+  // estimated_indexable_pages, differentiation_factors, why_it_works,
+  // conventional_approach, innovation_angle. GTM signals (messaging /
+  // channels / content_preferences) live on the Audience section now —
+  // surfaced via AudienceSignalsSection so the build sketch stays purely
+  // operational + strategic, not GTM.
 
   interface Props {
     idea: IdeaPreview;
-    audienceSignals?: AudienceSignals | null;
   }
 
-  let { idea, audienceSignals = null }: Props = $props();
-
-  const messagingFrameworks = $derived(
-    Array.isArray(audienceSignals?.messagingFrameworks)
-      ? audienceSignals.messagingFrameworks.filter((s): s is string => typeof s === "string")
-      : [],
-  );
-  const recommendedChannels = $derived(
-    Array.isArray(audienceSignals?.recommendedChannels)
-      ? audienceSignals.recommendedChannels.filter((s): s is string => typeof s === "string")
-      : [],
-  );
-  const contentPreferences = $derived(
-    typeof audienceSignals?.contentPreferences === "string" && audienceSignals.contentPreferences.trim() !== ""
-      ? audienceSignals.contentPreferences
-      : null,
-  );
-  const hasGtm = $derived(
-    messagingFrameworks.length > 0 || recommendedChannels.length > 0 || contentPreferences !== null,
-  );
+  let { idea }: Props = $props();
 
   const formatPages = (n: number | null): string | null =>
     n == null ? null : new Intl.NumberFormat('en-US').format(n);
@@ -72,8 +54,7 @@
       !!idea.why_it_works ||
       !!idea.conventional_approach ||
       !!idea.innovation_angle ||
-      !!idea.estimated_cac_paid ||
-      hasGtm,
+      !!idea.estimated_cac_paid,
   );
 </script>
 
@@ -148,6 +129,13 @@
       </section>
     </div>
 
+    {#if idea.why_it_works}
+      <div class="why">
+        <h4 class="block-label">Why this works</h4>
+        <p class="why-prose">{idea.why_it_works}</p>
+      </div>
+    {/if}
+
     {#if idea.conventional_approach || idea.innovation_angle}
       <div class="innovation">
         <h4 class="block-label">Innovation breakdown</h4>
@@ -179,39 +167,6 @@
       </div>
     {/if}
 
-    {#if hasGtm}
-      <div class="gtm">
-        <h4 class="block-label">GTM signals</h4>
-        <div class="gtm-rows">
-          {#if messagingFrameworks.length > 0}
-            <div class="gtm-row">
-              <span class="gtm-key">Messaging angles</span>
-              <div class="gtm-chips">
-                {#each messagingFrameworks as m}
-                  <Chip label={m} />
-                {/each}
-              </div>
-            </div>
-          {/if}
-          {#if recommendedChannels.length > 0}
-            <div class="gtm-row">
-              <span class="gtm-key">Channels to win on</span>
-              <div class="gtm-chips">
-                {#each recommendedChannels as c}
-                  <Chip label={c} />
-                {/each}
-              </div>
-            </div>
-          {/if}
-          {#if contentPreferences}
-            <div class="gtm-row">
-              <span class="gtm-key">Content format</span>
-              <p class="gtm-prose">{contentPreferences}</p>
-            </div>
-          {/if}
-        </div>
-      </div>
-    {/if}
   </div>
 {/if}
 
@@ -392,45 +347,22 @@
     line-height: 1;
     color: var(--color-text-muted);
   }
-  /* GTM signals footer */
-  .gtm {
+  /* Why this works — strategic lead block before innovation breakdown.
+     Italic prose with a subtle accent left rail to signal "this is the
+     thesis", visually distinct from the operational kv rows above. */
+  .why {
     margin-top: 24px;
-    padding-top: 20px;
-    border-top: 1px solid var(--color-border);
+    padding: 14px 18px;
+    border-left: 3px solid var(--color-accent);
+    background: var(--color-bg-elevated, #fff);
+    border-radius: 0 4px 4px 0;
   }
-  .gtm-rows {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .gtm-row {
-    display: grid;
-    grid-template-columns: 160px 1fr;
-    gap: 14px;
-    align-items: baseline;
-  }
-  .gtm-key {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-weight: 600;
-    color: var(--color-text-muted);
-  }
-  .gtm-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-  }
-  .gtm-prose {
-    margin: 0;
-    font-size: 13px;
-    line-height: 1.5;
+  .why-prose {
+    margin: 6px 0 0;
+    font-size: 14px;
+    line-height: 1.6;
     color: var(--color-text-primary);
-  }
-  @media (max-width: 700px) {
-    .gtm-row {
-      grid-template-columns: 1fr;
-      gap: 4px;
-    }
+    font-style: italic;
+    text-wrap: pretty;
   }
 </style>

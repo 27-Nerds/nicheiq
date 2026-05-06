@@ -5,8 +5,8 @@
     CategoryBreadcrumbs,
     CategoryHeroV2,
     SectionDivider,
+    SectionAttribution,
     AudienceSegmentCard,
-    AudienceSignalsSection,
     PainPointsByTheme,
     PainPointRankTable,
     SubNicheCell,
@@ -14,6 +14,7 @@
     AllIdeasSection,
     BuildCTA,
     CollectionTeaser,
+    CatalogBand,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
 
@@ -45,10 +46,13 @@
     ];
   });
 
-  // Hero stat tiles.
-  // - GO count uses the backend-aggregate `verdictGoCount` covering the entire
-  //   category subtree, NOT just the visible top set. Tile is hidden when 0.
-  // - 4th tile shows "Engagement" when metrics present, else "Sources mined".
+  // Hero stat tiles. Four canonical facts in slot order:
+  //   1. Ideas tracked  — primary anchor (emphasized, larger, tinted bg)
+  //   2. Sub-niches     — depth indicator (count of category children)
+  //   3. Pain points    — research density
+  //   4. Engagement / Sources mined — content scale, accent (orange) tone
+  // GO/NO-GO verdicts aren't computed at this stage, so the GO tile is
+  // intentionally absent — Sub-niches replaces its slot.
   const heroStats = $derived.by(() => {
     if (data.kind !== "category") return [];
     const p = data.payload;
@@ -76,26 +80,26 @@
             label: "Sources mined",
             tone: "amber" as const,
           };
-    const tiles: Array<{ value: string; label: string; tone?: "go" | "amber" }> = [
+    return [
       { value: p.totalIdeas.toLocaleString(), label: "Ideas tracked" },
+      { value: p.children.length.toLocaleString(), label: "Sub-niches" },
+      { value: p.totalPainPoints.toLocaleString(), label: "Pain points" },
+      fourth,
     ];
-    if (p.verdictGoCount > 0) {
-      tiles.push({
-        value: p.verdictGoCount.toLocaleString(),
-        label: "Verdict: GO",
-        tone: "go" as const,
-      });
-    }
-    tiles.push({ value: p.totalPainPoints.toLocaleString(), label: "Pain points" });
-    tiles.push(fourth);
-    return tiles;
   });
 
-  // Section 1 prose lede — see sub-category route for fallback rationale.
-  const sectionOneLede = $derived(
-    data.kind === "category"
-      ? (data.payload.categorizationSummary ?? data.payload.painAnalysisSummary)
-      : null,
+  // Phase 16/17 provenance: themes still use the most-recent research source.
+  // Parent audience is now aggregated per sub-niche when possible. Multi-source
+  // audiences use per-card sourceSubNiche attribution; single-source audiences
+  // keep the quieter section-level attribution. Pain points are aggregated
+  // across the subtree and intentionally don't get this attribution.
+  const researchSource = $derived(
+    data.kind === "category" ? (data.payload.researchSourceSubNiche ?? null) : null,
+  );
+  const researchSourceHref = $derived(
+    researchSource && data.kind === "category"
+      ? categoryPath({ slug: researchSource.slug, parentSlug: data.payload.category.slug })
+      : "",
   );
 
   // All section numbers are derived from running counters — do NOT hardcode
@@ -107,14 +111,35 @@
   const hasThemesSection = $derived(
     data.kind === "category" && !!data.payload.themes && data.payload.themes.length > 0,
   );
-  const hasAudienceSection = $derived(
+  const hasAudienceSegments = $derived(
     data.kind === "category" &&
       !!data.payload.audienceSegments &&
       data.payload.audienceSegments.length > 0,
   );
-  const hasAudienceSignals = $derived(
-    data.kind === "category" && !!data.payload.audienceSignals,
-  );
+  const audienceSourceSlugs = $derived.by(() => {
+    if (data.kind !== "category") return new Set<string>();
+    return new Set(
+      (data.payload.audienceSegments ?? [])
+        .map((segment) => segment.sourceSubNiche?.slug)
+        .filter((slug): slug is string => !!slug),
+    );
+  });
+  const audienceMultiSource = $derived(audienceSourceSlugs.size > 1);
+  const showAudienceSectionAttribution = $derived(!!researchSource && !audienceMultiSource);
+  // Wave 3 — themes adaptive attribution mirrors audience. Backend's
+  // aggregation activation rule guarantees `theme.sourceSubNiche` is only set
+  // when ≥2 sub-niches contributed themes; the slug-set size derives multi-
+  // source state. Single-source falls back to the section-level attribution.
+  const themeSourceSlugs = $derived.by(() => {
+    if (data.kind !== "category") return new Set<string>();
+    return new Set(
+      (data.payload.themes ?? [])
+        .map((t) => t.sourceSubNiche?.slug)
+        .filter((slug): slug is string => !!slug),
+    );
+  });
+  const themeMultiSource = $derived(themeSourceSlugs.size > 1);
+  const showThemeSectionAttribution = $derived(!!researchSource && !themeMultiSource);
   const hasRankedPains = $derived(
     data.kind === "category" && data.payload.topPainPoints.length > 0,
   );
@@ -124,29 +149,15 @@
   const hasIdeasSection = $derived(
     data.kind === "category" && data.payload.topIdeas.length > 0,
   );
-  // Top ideas anchor section only renders when there's a meaningful "best of"
-  // cut to surface above the dense filterable AllIdeasSection. Below 4, the
-  // all-ideas grid IS the top.
-  const hasTopIdeasSection = $derived(
-    data.kind === "category" && data.payload.topIdeas.length >= 4,
-  );
-  const topIdeasForAnchor = $derived(
-    data.kind === "category"
-      ? [...data.payload.topIdeas]
-          .sort(
-            (a, b) =>
-              (b.seo_scalability_score ?? 0) - (a.seo_scalability_score ?? 0),
-          )
-          .slice(0, 6)
-      : [],
-  );
+  // Section numbers — Phase 16 drops <AudienceSignalsSection> on parent (it's
+  // sub-niche-specific depth content); audience section is gated on segments
+  // alone. Chain: themes → audience (segments only) → ranked pain → sub-niches
+  // → ideas.
   const num1 = $derived(nextNum(0, hasThemesSection));
-  const num2 = $derived(nextNum(num1, hasAudienceSection));
-  const num3 = $derived(nextNum(num2, hasAudienceSignals));
-  const num4 = $derived(nextNum(num3, hasRankedPains));
-  const num5 = $derived(nextNum(num4, hasSubNiches));
-  const num6 = $derived(nextNum(num5, hasTopIdeasSection));
-  const num7 = $derived(nextNum(num6, hasIdeasSection));
+  const num2 = $derived(nextNum(num1, hasAudienceSegments));
+  const num3 = $derived(nextNum(num2, hasRankedPains));
+  const num4 = $derived(nextNum(num3, hasSubNiches));
+  const num5 = $derived(nextNum(num4, hasIdeasSection));
 </script>
 
 <SeoHead {...data.meta} />
@@ -166,59 +177,70 @@
     kind="parent"
   />
 
-  <!-- Section: Themes & audience signals (theme summaries only; pain rows
-       move to the dedicated ranked table below). -->
+  <!-- Section: Top themes — themes are flattened from a single research
+       context (one sub-niche), so we surface a <SectionAttribution> line
+       linking to that sub-niche. The OVERVIEW deck (categorizationSummary
+       prose) is intentionally omitted on parent: that prose talks about the
+       source sub-niche specifically and reads as misleading at category
+       level. The hero description carries category-level orientation. -->
   {#if hasThemesSection}
-    <SectionDivider num={num1} label="Themes & audience signals" />
-    {#if sectionOneLede}
-      <p class="section-lede">{sectionOneLede}</p>
+    <SectionDivider num={num1} label="Top themes" />
+    {#if showThemeSectionAttribution}
+      <SectionAttribution source={researchSource!} href={researchSourceHref} />
     {/if}
     <PainPointsByTheme
       themes={data.payload.themes ?? []}
-      painPoints={data.payload.topPainPoints}
-      showPainRows={false}
+      painsHref={hasRankedPains ? "#section-ranked-pain" : undefined}
+      audienceHref={hasAudienceSegments ? "#section-audience" : undefined}
+      showSource={themeMultiSource}
     />
   {/if}
 
-  <!-- Section: Audience segments -->
-  {#if hasAudienceSection}
-    {@const segments = data.payload.audienceSegments ?? []}
-    <SectionDivider num={num2} label="Audience segments" />
-    <div class="segments-grid">
-      {#each segments as s, i}
-        <div
-          class="catalog-fade-in"
-          style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
-        >
-          <AudienceSegmentCard segment={s} />
+  <!-- Section: Audience — segments grid only on parent (signals are sub-niche-
+       specific depth content; aggregating them produces incoherent jumble).
+       Sub-niche route still renders both segments + signals. Multi-source
+       parent audience cards carry per-card source links; single-source
+       audience keeps the quieter section-level attribution. -->
+  {#if hasAudienceSegments}
+    <div id="section-audience">
+      <SectionDivider num={num2} label="Audience" />
+      {#if showAudienceSectionAttribution}
+        <SectionAttribution source={researchSource!} href={researchSourceHref} />
+      {/if}
+      <CatalogBand>
+        <div class="segments-grid">
+          {#each data.payload.audienceSegments ?? [] as s, i}
+            <div
+              class="catalog-fade-in"
+              style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
+            >
+              <AudienceSegmentCard segment={s} showSource={audienceMultiSource} />
+            </div>
+          {/each}
         </div>
-      {/each}
+      </CatalogBand>
     </div>
   {/if}
 
-  <!-- Section: Audience signals -->
-  {#if hasAudienceSignals}
-    <SectionDivider num={num3} label="Audience signals" />
-    <AudienceSignalsSection signals={data.payload.audienceSignals!} />
-  {/if}
-
-  <!-- Section: Top pain points (ranked table — separated from theme summaries
-       above so the scanning anchor is independent of theme grouping). -->
+  <!-- Section: Top pain points (ranked table). Wrapped in #section-ranked-pain
+       so theme-card "View ranked pain points →" links work. -->
   {#if hasRankedPains}
-    <SectionDivider
-      num={num4}
-      label="Top pain points"
-      metaText="ranked by mention volume × severity"
-    />
-    <PainPointRankTable painPoints={data.payload.topPainPoints} />
+    <div id="section-ranked-pain">
+      <SectionDivider
+        num={num3}
+        label="Top pain points"
+        metaText="ranked by mention volume × severity"
+      />
+      <PainPointRankTable painPoints={data.payload.topPainPoints} />
+    </div>
   {/if}
 
   <!-- Section: Sub-niches -->
   {#if hasSubNiches}
     <SectionDivider
-      num={num5}
+      num={num4}
       label="Sub-niches"
-      metaText={`${data.payload.children.length} sub-niches`}
+      metaText={`${data.payload.children.length} categories`}
     />
     <div class="subniche-grid">
       {#each data.payload.children as sub}
@@ -231,28 +253,9 @@
     </div>
   {/if}
 
-  <!-- Section: Top ideas (sorted by opportunity, ≤6 cards) — anchor before
-       the dense filterable AllIdeasSection. Hidden when totalIdeas < 4. -->
-  {#if hasTopIdeasSection}
-    {#snippet viewAll()}
-      <a class="view-all" href="#all-ideas">View all →</a>
-    {/snippet}
-    <SectionDivider num={num6} label={`Top ideas in ${data.payload.category.name}`} right={viewAll} />
-    <div class="top-ideas-grid">
-      {#each topIdeasForAnchor as idea, i}
-        <div
-          class="catalog-fade-in"
-          style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
-        >
-          <IdeaCardV2 {idea} />
-        </div>
-      {/each}
-    </div>
-  {/if}
-
   <!-- Featured collection teaser — only when current category appears in any
-       active collection's categorySlugs. Sits between Top ideas and All ideas
-       per the v2 mock IA. Skips silently when nothing maps. -->
+       active collection's categorySlugs. Sits between sub-niches and the
+       all-ideas section. Skips silently when nothing maps. -->
   {#if data.featuredCollection}
     <CollectionTeaser collection={data.featuredCollection} />
   {/if}
@@ -261,7 +264,7 @@
   {#if hasIdeasSection}
     <div id="all-ideas">
       <SectionDivider
-        num={num7}
+        num={num5}
         label={`Ideas in ${data.payload.category.name}`}
         metaText={`${data.payload.totalIdeas} total`}
       />
@@ -307,14 +310,6 @@
 {/if}
 
 <style>
-  /* Section 1 prose lede sits between the divider and the theme list. */
-  .section-lede {
-    font-size: 14px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    line-height: 1.65;
-    max-width: 780px;
-    margin: 0 0 12px;
-  }
   .segments-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -338,19 +333,5 @@
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 12px;
-  }
-  .top-ideas-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-  .view-all {
-    color: var(--color-text-muted);
-    text-decoration: none;
-    transition: color 0.12s;
-  }
-  .view-all:hover {
-    color: var(--color-text-primary);
   }
 </style>

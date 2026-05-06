@@ -28,6 +28,7 @@ import {
 import { notifyJobStart, notifyJobComplete, notifyJobError } from '../services/notificationService.js';
 import { AssetType } from '@prisma/client';
 import type { JobStatus as JobStatusType } from '@prisma/client';
+import { bigramSimilarity, canonicalizeAddressedTitles, normalizeTitle } from '../services/titleMatching.js';
 import { requireInternalService } from '../middleware/auth.js';
 import { StageStatus } from '@prisma/client';
 import { PIPELINE_STAGES } from '../types/job.js';
@@ -997,23 +998,9 @@ workersRouter.post('/regeneration-failed', async (req: Request, res: Response) =
 // Catalog Generation Worker Endpoints
 // ============================================
 
-/**
- * Bigram similarity (Dice coefficient) for fuzzy title matching.
- */
-function bigramSimilarity(a: string, b: string): number {
-  if (a.length < 2 || b.length < 2) return a === b ? 1 : 0;
-  const bigramsA = new Set(Array.from({ length: a.length - 1 }, (_, i) => a.slice(i, i + 2)));
-  const bigramsB = new Set(Array.from({ length: b.length - 1 }, (_, i) => b.slice(i, i + 2)));
-  const intersection = [...bigramsA].filter(bg => bigramsB.has(bg)).length;
-  return (2 * intersection) / (bigramsA.size + bigramsB.size) || 0;
-}
-
-/**
- * Normalize a title for fuzzy comparison: lowercase, strip punctuation, collapse whitespace.
- */
-function normalizeTitle(title: string): string {
-  return title.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
-}
+// `normalizeTitle` and `bigramSimilarity` now live in services/titleMatching.ts —
+// shared with publishIdea / catalog-ideas-ready / backfill so all sites apply
+// identical match semantics. Imported above.
 
 const OPPORTUNITY_RANK: Record<string, number> = { high: 3, medium: 2, low: 1 };
 
@@ -1427,6 +1414,30 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
           const formatSlug = projectType
             ? projectType.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'saas'
             : 'saas';
+
+          // Validate + canonicalize addressed pain titles against the parent
+          // research context's pain list. Drops titles with no plausible
+          // canonical counterpart; logs corrections for audit. Same fuzzy
+          // threshold (0.7 bigram) as the pain-points dedup above.
+          const llmAddressedTitles = Array.isArray(idea.pain_points_addressed)
+            ? (idea.pain_points_addressed as unknown[]).filter(
+                (s): s is string => typeof s === 'string',
+              )
+            : [];
+          const ctxPains = Array.isArray(ctx?.detailedPainPoints)
+            ? (ctx.detailedPainPoints as Array<{ title?: unknown }>)
+            : [];
+          const canon = canonicalizeAddressedTitles(llmAddressedTitles, ctxPains);
+          if (canon.dropped.length > 0 || canon.corrected.length > 0) {
+            console.warn('[catalog-ideas-ready] addressedPainTitles canonicalization', {
+              jobId: data.job_id,
+              effectiveSourceJobId,
+              ideaSlug: slug,
+              dropped: canon.dropped,
+              corrected: canon.corrected,
+            });
+          }
+
           await tx.catalogIdea.create({
             data: {
               categoryId: data.category_id,
@@ -1467,12 +1478,10 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
                 ? (idea.organic_discovery_queries as unknown[]).filter((s): s is string => typeof s === 'string')
                 : [],
               // Phase 1 of detail-page IA rework — denormalize pain titles
-              // for fast pain → ideas lookup. Pydantic BaseSolutionIdea includes
-              // pain_points_addressed (solution_idea.py:189), so worker payloads
-              // carry it. Cast loosely (consistent with coreFeatures above).
-              addressedPainTitles: Array.isArray(idea.pain_points_addressed)
-                ? (idea.pain_points_addressed as unknown[]).filter((s): s is string => typeof s === 'string')
-                : [],
+              // for fast pain → ideas lookup. Now validated + canonicalized
+              // against the parent research context's pain list before persist;
+              // see canonicalizeAddressedTitles call above.
+              addressedPainTitles: canon.canonical,
               publishedById: 'system',
               isActive: true,
             },

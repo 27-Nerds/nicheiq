@@ -6,6 +6,7 @@ import { AssetType, Prisma } from '@prisma/client';
 import { resolveAssetPath } from '../utils/assetPath.js';
 import { getRedis } from './redis.js';
 import { extractOrCreateResearchContext, hasMeaningfulResearchContext } from './researchContextService.js';
+import { canonicalizeAddressedTitles } from './titleMatching.js';
 
 // ============================================
 // Slug helpers
@@ -653,6 +654,24 @@ export async function publishIdea(params: {
   // does the projection work, subsequent publishes short-circuit.
   await extractOrCreateResearchContext(params.sourceJobId);
 
+  // Validate + canonicalize addressed pain titles against the same job's pain
+  // list. Drops titles with no plausible canonical counterpart; logs
+  // corrections for audit. Same fuzzy threshold (0.7 bigram) used by the pain-
+  // points dedup in workers.ts.
+  const llmAddressedTitles = safeStringArray(solution.pain_points_addressed) ?? [];
+  const reportPains = Array.isArray(report.detailed_pain_points)
+    ? (report.detailed_pain_points as Array<{ title?: unknown }>)
+    : [];
+  const canon = canonicalizeAddressedTitles(llmAddressedTitles, reportPains);
+  if (canon.dropped.length > 0 || canon.corrected.length > 0) {
+    console.warn('[publishIdea] addressedPainTitles canonicalization', {
+      jobId: params.sourceJobId,
+      ideaSlug: slug,
+      dropped: canon.dropped,
+      corrected: canon.corrected,
+    });
+  }
+
   try {
     const idea = await prisma.$transaction(async (tx) => {
       const created = await tx.catalogIdea.create({
@@ -696,11 +715,12 @@ export async function publishIdea(params: {
           // Phase 1 of detail-page IA rework: denormalize the selected solution's
           // pain_points_addressed list onto each idea row so /pain-point/[slug]
           // can do a fast `addressedPainTitles: { has: title }` lookup.
+          // Now validated + canonicalized against report.detailed_pain_points
+          // before persist; see canonicalizeAddressedTitles call above.
           // Alternative-solution rows (itemIndex >= 0): the Pydantic
           // AlternativeSolution model has no pain_points_addressed field
-          // (research_state.py:241-283), so safeStringArray returns undefined
-          // → falls through to []. Phase 8 of the plan extends the model.
-          addressedPainTitles: safeStringArray(solution.pain_points_addressed) ?? [],
+          // (research_state.py:241-283), so the input is empty → canonical is [].
+          addressedPainTitles: canon.canonical,
           publishedById: params.publishedById,
         },
       });
@@ -1344,10 +1364,11 @@ export async function getDiscoverPainPoints(count: number = 4): Promise<Discover
 // (Phase 2 — public catalog SEO restructure)
 // ============================================
 
-// v2 — Phase 5.5 enrichment adds nicheContext/qualitySignals/categorizationSummary/
-// painAnalysisSummary/topPainCategories + audienceSignals + extended Theme shape.
-// Stale v1 entries age out via TTL (~5 min); no manual flush needed.
-const LANDING_CACHE_PREFIX = 'catalog:landing:v2';
+// v5 — Phase 17 (continued) aggregates parent themes across sub-niches with
+// per-row source attribution, mirroring the audience aggregation pattern.
+// Bumped from v4 so the new theme shape is served fresh rather than waiting
+// on existing TTL. Older entries age out naturally.
+const LANDING_CACHE_PREFIX = 'catalog:landing:v5';
 const LANDING_CACHE_TTL_BASE = 600; // seconds; ±10% jitter applied per write
 const TREE_CACHE_KEY = 'catalog:tree:v1';
 const TREE_CACHE_TTL = 300;
@@ -1438,6 +1459,16 @@ interface CatalogThemeSummary {
   description: string | null;    // from theme.definition
   frequency: string | null;      // 'High' | 'Medium' | 'Low' (verbatim from crew)
   primaryUserSegments: string[]; // same source as `sources` for now
+  // Phase 17 — only set on parent payloads when themes are aggregated across
+  // multiple child sub-niches' research. Sub-niche payloads leave this null
+  // (sub-niche owns its themes; no attribution needed).
+  sourceSubNiche?: { slug: string; name: string; parentSlug: string } | null;
+}
+
+interface CatalogAudienceSourceSubNiche {
+  slug: string;
+  name: string;
+  parentSlug: string;
 }
 
 interface CatalogAudienceSegmentSummary {
@@ -1447,6 +1478,10 @@ interface CatalogAudienceSegmentSummary {
   // Phase 5.5 — surfaced for AudienceSegmentCard's `.seg-meta` footer.
   expertiseLevel: string | null;     // 'Beginner' | 'Intermediate' | 'Advanced'
   budgetSensitivity: string | null;  // 'High' | 'Medium' | 'Low'
+  // Phase 17 — parent payloads can aggregate audience segments across child
+  // sub-niches. In that case each segment carries its own source link data.
+  // Sub-niche payloads and direct category-owned fallback rows omit it.
+  sourceSubNiche?: CatalogAudienceSourceSubNiche | null;
 }
 
 // Phase 5.5 — flattened blobs for the catalog landing payload.
@@ -1577,10 +1612,11 @@ interface CategoryLandingPayload {
   totalIdeas: number;
   totalPainPoints: number;
   sources: string[];
-  // Phase 5.4 — flattened summaries for the new public catalog UI. All sourced
-  // from the most-recent research context for the category subtree (same row
-  // that backs `researchContext` below). Every field nullable — the frontend
-  // hides sections when null.
+  // Phase 5.4 — flattened summaries for the new public catalog UI. Most are
+  // sourced from the most-recent research context that backs `researchContext`.
+  // Phase 17 exception: parent-page `audienceSegments` can aggregate rows from
+  // multiple child sub-niches, each tagged with `sourceSubNiche`. Every field
+  // nullable — the frontend hides sections when null.
   themes: CatalogThemeSummary[] | null;
   audienceSegments: CatalogAudienceSegmentSummary[] | null;
   competitors: CatalogCompetitorSummary[] | null;
@@ -1607,6 +1643,12 @@ interface CategoryLandingPayload {
   // sourceJobId still maps to a placeholder context row (report.json missing).
   // Frontend renders this as "Analysis from latest research in this niche."
   researchContext: Record<string, unknown> | null;
+  // Phase 16 — provenance for the themes flatten. When non-null, themes were
+  // drawn from this sub-niche's research; the parent route renders an attribution
+  // link to it. Audience uses per-segment sourceSubNiche in Phase 17 when
+  // aggregated across sub-niches. Null when no research exists or when the
+  // recent item belongs directly to the parent category.
+  researchSourceSubNiche: { slug: string; name: string } | null;
 }
 
 // ============================================
@@ -1885,6 +1927,194 @@ function flattenQualitySignals(
 }
 
 const TOP_PREVIEW_LIMIT = 6;
+// Ideas list is a canonical "all ideas" home on category + sub-niche pages
+// (Phase 2 of the IA cleanup). The 6-cap is too aggressive — return the full
+// set up to a safety bound. If a single category ever exceeds this, add a
+// paginated endpoint instead.
+const IDEAS_LANDING_LIMIT = 500;
+
+interface AudienceAggregationChild {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+async function aggregateParentAudienceSegments(args: {
+  parentSlug: string;
+  children: AudienceAggregationChild[];
+}): Promise<CatalogAudienceSegmentSummary[] | null> {
+  if (args.children.length === 0) return null;
+
+  const recentSources = await findMostRecentItemSourcePerCategory(
+    args.children.map((child) => child.id),
+  );
+  if (recentSources.length === 0) return null;
+
+  const sourceByCategoryId = new Map(
+    recentSources.map((source) => [source.categoryId, source]),
+  );
+  const contexts = await prisma.catalogResearchContext.findMany({
+    where: {
+      sourceJobId: { in: [...new Set(recentSources.map((source) => source.sourceJobId))] },
+    },
+  });
+  const contextBySourceJobId = new Map(contexts.map((ctx) => [ctx.sourceJobId, ctx]));
+
+  const out: CatalogAudienceSegmentSummary[] = [];
+  for (const child of args.children) {
+    const source = sourceByCategoryId.get(child.id);
+    if (!source) continue;
+    const ctx = contextBySourceJobId.get(source.sourceJobId);
+    if (!ctx || !hasMeaningfulResearchContext(ctx)) continue;
+
+    const segments = flattenAudienceSegments(ctx);
+    if (!segments) continue;
+
+    for (const segment of segments.slice(0, 2)) {
+      out.push({
+        ...segment,
+        sourceSubNiche: {
+          slug: child.slug,
+          name: child.name,
+          parentSlug: args.parentSlug,
+        },
+      });
+      if (out.length >= TOP_PREVIEW_LIMIT) return out;
+    }
+  }
+
+  return out.length > 0 ? out : null;
+}
+
+const THEMES_PREVIEW_LIMIT = 5;
+
+interface ThemeAggregationChild {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+/**
+ * Phase 17 — themes aggregation across child sub-niches.
+ *
+ * Mirrors `aggregateParentAudienceSegments` but with stricter activation +
+ * dedup rules tailored to themes:
+ *
+ *   - Activation: require >=2 child sub-niches that produce non-empty
+ *     `flattenThemes` results. Counting `hasMeaningfulResearchContext`
+ *     alone is too broad (audience-only contexts wouldn't supply themes
+ *     and could fool frontend's multi-source check).
+ *   - Per-sub-niche cap: top 2 by `mentionCount` desc.
+ *   - Filter id-less legacy themes BEFORE the cap (legacy aside owns them).
+ *   - Dedup by `theme.id` (auto-derived from title) to avoid duplicate DOM
+ *     IDs / Svelte keys when two sub-niches surface the same theme topic.
+ *     Keep the highest-mention occurrence; attribution rides with it.
+ *   - Sort the deduped pool by `mentionCount` desc, with stable
+ *     children-order tiebreaker (children come pre-sorted by sortOrder).
+ *   - Total cap: THEMES_PREVIEW_LIMIT.
+ *
+ * Returns null when activation fails — caller falls back to the existing
+ * single-context `flattenThemes(ctxForSummaries)` path.
+ */
+async function aggregateParentThemes(args: {
+  parentSlug: string;
+  children: ThemeAggregationChild[];
+}): Promise<CatalogThemeSummary[] | null> {
+  if (args.children.length === 0) return null;
+
+  const recentSources = await findMostRecentItemSourcePerCategory(
+    args.children.map((child) => child.id),
+  );
+  if (recentSources.length === 0) return null;
+
+  const sourceByCategoryId = new Map(
+    recentSources.map((source) => [source.categoryId, source]),
+  );
+  const contexts = await prisma.catalogResearchContext.findMany({
+    where: {
+      sourceJobId: { in: [...new Set(recentSources.map((s) => s.sourceJobId))] },
+    },
+  });
+  const contextBySourceJobId = new Map(contexts.map((ctx) => [ctx.sourceJobId, ctx]));
+
+  // Collect candidates with attribution + a stable child-order index for
+  // deterministic tiebreaking on equal mention counts.
+  type Candidate = CatalogThemeSummary & {
+    sourceSubNiche: { slug: string; name: string; parentSlug: string };
+    _childOrder: number;
+  };
+  const candidates: Candidate[] = [];
+  const contributingChildIds = new Set<string>();
+
+  for (let i = 0; i < args.children.length; i++) {
+    const child = args.children[i]!;
+    const source = sourceByCategoryId.get(child.id);
+    if (!source) continue;
+    const ctx = contextBySourceJobId.get(source.sourceJobId);
+    if (!ctx || !hasMeaningfulResearchContext(ctx)) continue;
+
+    const themes = flattenThemes(ctx);
+    if (!themes || themes.length === 0) continue;
+
+    // Filter id-less legacy themes — they go to the .empty-themes aside,
+    // not the lead/roll table. Excluding them before the cap also
+    // guarantees post-dedup id uniqueness.
+    const idBearing = themes.filter((t): t is CatalogThemeSummary & { id: string } => !!t.id);
+    if (idBearing.length === 0) continue;
+
+    contributingChildIds.add(child.id);
+
+    // Per-sub-niche cap: top 2 by mention count.
+    const ranked = [...idBearing].sort(
+      (a, b) => (b.mentionCount ?? 0) - (a.mentionCount ?? 0),
+    );
+    for (const theme of ranked.slice(0, 2)) {
+      candidates.push({
+        ...theme,
+        sourceSubNiche: {
+          slug: child.slug,
+          name: child.name,
+          parentSlug: args.parentSlug,
+        },
+        _childOrder: i,
+      });
+    }
+  }
+
+  // Activation: only run aggregation when >=2 sub-niches actually contribute
+  // themes. With 0-1 contributors, the caller falls back to the single-
+  // context flatten — this keeps section-level vs per-row attribution
+  // mutually exclusive on the frontend.
+  if (contributingChildIds.size < 2) return null;
+
+  // Dedup by theme.id — keep the highest-mention occurrence. Two sub-niches
+  // surfacing the same theme title would otherwise produce duplicate DOM
+  // anchors and Svelte keys (theme_id is auto-derived from the title).
+  const dedupedById = new Map<string, Candidate>();
+  for (const c of candidates) {
+    if (!c.id) continue; // unreachable post-filter, but TS-narrows here
+    const existing = dedupedById.get(c.id);
+    if (!existing || (c.mentionCount ?? 0) > (existing.mentionCount ?? 0)) {
+      dedupedById.set(c.id, c);
+    }
+  }
+
+  // Sort by mention count desc; tiebreaker = child sortOrder (encoded as
+  // _childOrder during collection). Stable + deterministic.
+  const sorted = [...dedupedById.values()].sort((a, b) => {
+    const diff = (b.mentionCount ?? 0) - (a.mentionCount ?? 0);
+    if (diff !== 0) return diff;
+    return a._childOrder - b._childOrder;
+  });
+
+  // Strip the helper field; cap at the preview limit.
+  const out: CatalogThemeSummary[] = sorted.slice(0, THEMES_PREVIEW_LIMIT).map((c) => {
+    const { _childOrder: _drop, ...rest } = c;
+    return rest;
+  });
+
+  return out.length > 0 ? out : null;
+}
 
 async function buildCategoryLandingPayload(
   categoryId: string,
@@ -1923,7 +2153,7 @@ async function buildCategoryLandingPayload(
       where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
       include: { category: { select: { id: true, name: true, slug: true } } },
       orderBy: [{ marketFitScore: 'desc' }, { createdAt: 'desc' }],
-      take: TOP_PREVIEW_LIMIT,
+      take: IDEAS_LANDING_LIMIT,
     }),
     prisma.catalogPainPoint.findMany({
       where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
@@ -1958,10 +2188,28 @@ async function buildCategoryLandingPayload(
   // Phase 5: Attach the most-recent published item's research context so the
   // category landing renders the same Audience/Market/Trend sections as
   // detail pages, framed as "Analysis from latest research in this niche."
-  const recentItem = await findMostRecentItemSourceJobId(aggregateIds);
+  const recentItem = await findMostRecentItemSource(aggregateIds);
   const researchContext = recentItem
-    ? await prisma.catalogResearchContext.findUnique({ where: { sourceJobId: recentItem } })
+    ? await prisma.catalogResearchContext.findUnique({ where: { sourceJobId: recentItem.sourceJobId } })
     : null;
+  // Phase 16 — provenance attribution. Themes/audience are flattened from the
+  // single research context resolved above; on parent pages this can mislead
+  // (sub-niche prose labeled at category level). Expose the source sub-niche
+  // so the frontend can render an "↗ FROM <sub-niche> RESEARCH" attribution
+  // line under those sections. Null when:
+  //   - no recent item exists (no themes/audience anyway), or
+  //   - the recent item belongs directly to the parent category (no sub-niche
+  //     to attribute to — frontend hides the attribution line).
+  let researchSourceSubNiche: { slug: string; name: string } | null = null;
+  if (recentItem && recentItem.categoryId !== category.id) {
+    const sourceCategory = await prisma.catalogCategory.findUnique({
+      where: { id: recentItem.categoryId },
+      select: { slug: true, name: true },
+    });
+    if (sourceCategory) {
+      researchSourceSubNiche = { slug: sourceCategory.slug, name: sourceCategory.name };
+    }
+  }
   // Phase 5.4: render only when there's meaningful (non-timestamp-only)
   // projected data. Materializer always writes timestamps so we can't gate
   // on tier or single-field presence alone.
@@ -1976,8 +2224,25 @@ async function buildCategoryLandingPayload(
   // are null. This keeps the contract simple — components do `{#if themes}`
   // and never need to inspect researchContext directly.
   const ctxForSummaries = researchContextOrNull ? (researchContext ?? null) : null;
-  const themes = flattenThemes(ctxForSummaries);
-  const audienceSegments = flattenAudienceSegments(ctxForSummaries);
+  // Parent-path aggregation gate (Wave 2 audience + Wave 3 themes). Only runs
+  // for top-level categories with at least one child. Each aggregation falls
+  // back to the single-context flatten when its activation rule isn't met.
+  const isParentAggregationCandidate =
+    category.parentId === null && category.children.length > 0;
+  const parentAudienceSegments = isParentAggregationCandidate
+    ? await aggregateParentAudienceSegments({
+        parentSlug: category.slug,
+        children: category.children,
+      })
+    : null;
+  const audienceSegments = parentAudienceSegments ?? flattenAudienceSegments(ctxForSummaries);
+  const parentThemes = isParentAggregationCandidate
+    ? await aggregateParentThemes({
+        parentSlug: category.slug,
+        children: category.children,
+      })
+    : null;
+  const themes = parentThemes ?? flattenThemes(ctxForSummaries);
   const competitors = flattenCompetitors(ctxForSummaries);
   const keywordClusters = flattenKeywordClusters(ctxForSummaries);
   const subredditSources = flattenSubredditSources(ctxForSummaries);
@@ -2035,6 +2300,9 @@ async function buildCategoryLandingPayload(
     verdictGoCount,
     // Phase 5.4 — flattened summaries.
     themes,
+    // Phase 17 — parent audience may be aggregated across child sub-niches,
+    // with per-segment sourceSubNiche. Themes remain single-source via
+    // researchSourceSubNiche.
     audienceSegments,
     competitors,
     keywordClusters,
@@ -2052,38 +2320,47 @@ async function buildCategoryLandingPayload(
     // Phase 14 — top reddit threads (uncapped on niche page).
     topRedditThreads,
     researchContext: researchContextOrNull,
+    // Phase 16 — sub-niche provenance for themes on parent pages.
+    researchSourceSubNiche,
   };
 }
 
 /**
- * Phase 5 helper: returns the sourceJobId of the most-recently-published
- * active CatalogIdea or CatalogPainPoint inside the given category subtree
- * (categoryId or any of its child categoryIds), or null if there are no
- * active items.
+ * Phase 5 helper: returns the sourceJobId AND the categoryId of the most-
+ * recently-published active CatalogIdea or CatalogPainPoint inside the given
+ * category subtree (categoryId or any of its child categoryIds), or null if
+ * there are no active items.
+ *
+ * The categoryId enables provenance attribution on parent-niche pages — the
+ * landing payload exposes which sub-niche's research backed the themes /
+ * audience flattens (NOT the topPainPoints, which are aggregated separately
+ * across the whole subtree).
  *
  * Pragmatic over precise — top-level categories aggregate "the most recent
  * research in this niche" rather than blending analysis from every job. The
- * frontend frames it as such ("Analysis from latest research in this niche").
+ * frontend frames it as such ("From <sub-niche> research").
  */
-async function findMostRecentItemSourceJobId(
+async function findMostRecentItemSource(
   categoryIds: string[],
-): Promise<string | null> {
+): Promise<{ sourceJobId: string; categoryId: string } | null> {
   if (categoryIds.length === 0) return null;
 
   // Raw SQL because Prisma's orderBy can't COALESCE. Lineage timestamp is
   // sourceGeneratedAt (set by worker), with updatedAt + createdAt fallbacks
   // for legacy rows. Postgres preserves camelCase column names when quoted.
-  const rows = await prisma.$queryRaw<{ source_job_id: string }[]>`
-    SELECT source_job_id
+  const rows = await prisma.$queryRaw<{ source_job_id: string; category_id: string }[]>`
+    SELECT source_job_id, category_id
     FROM (
       SELECT
         "sourceJobId" AS source_job_id,
+        "categoryId" AS category_id,
         COALESCE("sourceGeneratedAt", "updatedAt", "createdAt") AS effective_ts
       FROM "CatalogIdea"
       WHERE "isActive" = true AND "categoryId" IN (${Prisma.join(categoryIds)})
       UNION ALL
       SELECT
         "sourceJobId" AS source_job_id,
+        "categoryId" AS category_id,
         COALESCE("sourceGeneratedAt", "updatedAt", "createdAt") AS effective_ts
       FROM "CatalogPainPoint"
       WHERE "isActive" = true AND "categoryId" IN (${Prisma.join(categoryIds)})
@@ -2092,7 +2369,37 @@ async function findMostRecentItemSourceJobId(
     LIMIT 1
   `;
 
-  return rows[0]?.source_job_id ?? null;
+  const row = rows[0];
+  if (!row) return null;
+  return { sourceJobId: row.source_job_id, categoryId: row.category_id };
+}
+
+async function findMostRecentItemSourcePerCategory(
+  categoryIds: string[],
+): Promise<Array<{ sourceJobId: string; categoryId: string }>> {
+  if (categoryIds.length === 0) return [];
+
+  const rows = await prisma.$queryRaw<{ source_job_id: string; category_id: string }[]>`
+    SELECT DISTINCT ON (category_id) source_job_id, category_id
+    FROM (
+      SELECT
+        "sourceJobId" AS source_job_id,
+        "categoryId" AS category_id,
+        COALESCE("sourceGeneratedAt", "updatedAt", "createdAt") AS effective_ts
+      FROM "CatalogIdea"
+      WHERE "isActive" = true AND "categoryId" IN (${Prisma.join(categoryIds)})
+      UNION ALL
+      SELECT
+        "sourceJobId" AS source_job_id,
+        "categoryId" AS category_id,
+        COALESCE("sourceGeneratedAt", "updatedAt", "createdAt") AS effective_ts
+      FROM "CatalogPainPoint"
+      WHERE "isActive" = true AND "categoryId" IN (${Prisma.join(categoryIds)})
+    ) AS combined
+    ORDER BY category_id, effective_ts DESC
+  `;
+
+  return rows.map((row) => ({ sourceJobId: row.source_job_id, categoryId: row.category_id }));
 }
 
 /**
@@ -2474,6 +2781,14 @@ export async function getIdeaBySlug(slug: string) {
     // Phase 2 — detail-page IA cross-links.
     siblingIdeas,
     addressedPains,
+    // Source-of-truth list for "Pain points addressed" rendering on
+    // /idea/[slug]. Now canonicalized at publish time (publishIdea +
+    // catalog-ideas-ready) so every entry is guaranteed to exact-match a
+    // pain-point title from the same job's research context. Frontend filters
+    // its display list against this. Note: toIdeaPreview() deliberately omits
+    // this field from the preview whitelist (sibling/related cards don't
+    // display it); the detail-page payload re-adds it explicitly.
+    addressedPainTitles: idea.addressedPainTitles ?? [],
   };
 }
 

@@ -12,11 +12,10 @@
     AllIdeasSection,
     BuildCTA,
     SubcategoryOpportunityPanel,
-    DominantTheme,
     CatalogBand,
+    NicheMethodology,
   } from "$lib/components/catalog/seo";
   import type { Theme } from "$lib/types/publicCatalog.js";
-  import type { PainPointPreview } from "$lib/types/catalog-landing.js";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils.js";
 
   let { data } = $props();
@@ -100,93 +99,42 @@
         (b.seo_scalability_score ?? 0) - (a.seo_scalability_score ?? 0),
     )[0];
   });
-  // Sub-page payload doesn't carry a backend-aggregate verdictGoCount the way
-  // the parent landing does — count from the visible top-N as a best-effort
-  // proxy. Underestimates total when payload.topIdeas is capped, but the
-  // panel's framing ("X of Y ideas") still reads correctly.
+  // Use the backend aggregate verdict-GO count when available (accurate across
+  // all ideas, not just the visible preview slice). Fall back to counting the
+  // visible top-N for older payloads without the field.
   const goCount = $derived(
-    data.payload.topIdeas.filter((i) => {
-      const v = (i.source_verdict ?? "").trim().toUpperCase();
-      return v === "GO";
-    }).length,
+    data.payload.verdictGoCount ??
+      data.payload.topIdeas.filter((i) => {
+        const v = (i.source_verdict ?? "").trim().toUpperCase();
+        return v === "GO";
+      }).length,
   );
 
-  // Dominant theme = highest-mention theme. Backend ordering isn't guaranteed,
-  // so sort defensively here.
-  const dominantTheme = $derived.by(() => {
-    const themes = data.payload.themes ?? [];
-    if (themes.length === 0) return null;
-    return [...themes].sort(
-      (a, b) => (b.mentionCount ?? 0) - (a.mentionCount ?? 0),
-    )[0];
-  });
-
-  // Themes minus the dominant one — passed to PainPointsByTheme so the
-  // dominant-theme callout (section 01) doesn't duplicate as the first row.
-  // Theme.id is nullable on legacy rows (publicCatalog.ts:63-75); fall back
-  // to object identity in that case (dominantTheme came from sorting the
-  // same themes array, so reference equality is reliable).
-  const themesWithoutDominant = $derived.by(() => {
-    const all = data.payload.themes ?? [];
-    if (!dominantTheme) return all;
-    if (dominantTheme.id != null) {
-      return all.filter((t) => t.id !== dominantTheme.id);
-    }
-    return all.filter((t) => t !== dominantTheme);
-  });
-
-  // Group visible top-pain-points by theme id. Used to (a) feed DominantTheme's
-  // mini-list with its own theme's pain points, (b) let PainPointsByTheme
-  // render a top-3 preview under each populated theme card. Only operates on
-  // the capped visible preview set — frontend cannot derive true per-theme
-  // totals from this slice (TOP_PREVIEW_LIMIT = 6 backend-side).
-  const painsByThemeId = $derived.by(() => {
-    const map = new Map<string, PainPointPreview[]>();
-    for (const pp of data.payload.topPainPoints ?? []) {
-      if (!pp.themeId) continue;
-      const arr = map.get(pp.themeId) ?? [];
-      arr.push(pp);
-      map.set(pp.themeId, arr);
-    }
-    for (const list of map.values()) {
-      list.sort((a, b) => b.severityScore - a.severityScore);
-    }
-    return map;
-  });
-
-  const dominantTopPains = $derived<PainPointPreview[]>(
-    dominantTheme?.id ? (painsByThemeId.get(dominantTheme.id) ?? []).slice(0, 3) : [],
-  );
-
-  // Unioned themes list for chip resolution in PainPointRankTable.
-  // Explicit predicate handles the (Theme | null) narrowing that filter(Boolean)
-  // does not perform.
-  const allThemesForChips = $derived<Theme[]>(
-    [dominantTheme, ...themesWithoutDominant].filter((t): t is Theme => t != null),
-  );
+  // Phase 2: themes render as a single unified section. PainPointsByTheme
+  // sorts by mentionCount desc internally and emphasizes the first card
+  // (most-cited). No more separate dominant-theme rendering.
+  const allThemes = $derived<Theme[]>(data.payload.themes ?? []);
 
   // Section numbers derived from running counters; do NOT hardcode literals.
   function nextNum(prev: number, show: boolean): number {
     return show ? prev + 1 : prev;
   }
-  const hasDominantTheme = $derived(hasResearch && !!dominantTheme);
-  const hasThemesSection = $derived(
-    hasResearch && themesWithoutDominant.length > 0,
-  );
-  const hasAudienceSection = $derived(
+  const hasThemesSection = $derived(hasResearch && allThemes.length > 0);
+  const hasAudienceSegments = $derived(
     !!data.payload.audienceSegments && data.payload.audienceSegments.length > 0,
   );
   const hasAudienceSignals = $derived(!!data.payload.audienceSignals);
+  // Phase 3: unified Audience section renders when EITHER segments or signals
+  // exist — so theme persona chips can always anchor to #section-audience.
+  const hasAudienceSection = $derived(hasAudienceSegments || hasAudienceSignals);
   const hasRankedPains = $derived(
     hasResearch && data.payload.topPainPoints.length > 0,
   );
   const hasIdeasSection = $derived(data.payload.topIdeas.length > 0);
-  const num1 = $derived(nextNum(0, hasDominantTheme));
-  const num2 = $derived(nextNum(num1, hasThemesSection));
-  const num3 = $derived(nextNum(num2, hasAudienceSection));
-  const num4 = $derived(nextNum(num3, hasAudienceSignals));
-  const num5 = $derived(nextNum(num4, hasRankedPains));
-  const num6 = $derived(nextNum(num5, hasIdeasSection));
+  const num1 = $derived(nextNum(0, hasThemesSection));
+  const num2 = $derived(nextNum(num1, hasAudienceSection));
+  const num3 = $derived(nextNum(num2, hasRankedPains));
+  const num4 = $derived(nextNum(num3, hasIdeasSection));
 </script>
 
 <SeoHead {...data.meta} />
@@ -202,6 +150,7 @@
   stats={heroStats}
   nicheContext={data.payload.nicheContext}
   statsVariant={hasResearch ? "inline" : "tiles"}
+  showNicheContext={false}
 >
   {#snippet aside()}
     {#if hasResearch}
@@ -226,75 +175,94 @@
   </p>
 {/if}
 
-<!-- Section: Dominant signal — featured callout for the highest-mention theme,
-     unique to sub-niche pages (mock differentiates sub from category). -->
-{#if hasDominantTheme}
-  <SectionDivider num={num1} label="Dominant signal" />
-  <DominantTheme theme={dominantTheme} topPainPoints={dominantTopPains} />
-{/if}
-
-<!-- Section: Other themes — theme summaries with the dominant theme sliced out
-     (it appears as the callout above). Per ideas-v2/page-subcategory.jsx:88. -->
+<!-- Section: Themes — unified list (Phase 2). Most-cited theme sorts first
+     and gets accent-rail emphasis + "Most-cited" badge. Pain text is
+     canonicalized to the ranked-pain table; theme cards link there via the
+     "View ranked pain points →" footer. Persona chips link to #section-audience. -->
 {#if hasThemesSection}
-  <SectionDivider num={num2} label="Other themes" />
-  {#if sectionOneLede}
-    <p class="section-lede">{sectionOneLede}</p>
-  {/if}
-  <PainPointsByTheme
-    themes={themesWithoutDominant}
-    painPoints={data.payload.topPainPoints}
-    showPainRows={false}
-    topPainRowsLimit={3}
-    displayOffset={1}
-  />
+  <div id="section-themes">
+    <SectionDivider num={num1} label="Themes" />
+    <PainPointsByTheme
+      themes={allThemes}
+      deck={sectionOneLede}
+      painsHref={hasRankedPains ? "#section-ranked-pain" : undefined}
+      audienceHref={hasAudienceSection ? "#section-audience" : undefined}
+    />
+  </div>
 {/if}
 
+<!-- Section: Audience — merged "Who's complaining" + "Audience signals" into
+     a single section per the IA restructure. The segments grid keeps its
+     CatalogBand tonal stripe; the signals panel sits below outside the band
+     on plain page surface. Anchor #section-audience used by theme persona
+     chips (Phase 2). -->
 {#if hasAudienceSection}
-  <SectionDivider num={num3} label="Who's complaining" />
-  <CatalogBand>
-    <div class="segments-grid sub-page-2col">
-      {#each data.payload.audienceSegments ?? [] as s, i}
-        <div
-          class="catalog-fade-in"
-          style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
-        >
-          <AudienceSegmentCard segment={s} />
+  <div id="section-audience">
+    <SectionDivider num={num2} label="Audience" />
+    {#if hasAudienceSegments}
+      <CatalogBand>
+        <div class="segments-grid sub-page-2col">
+          {#each data.payload.audienceSegments ?? [] as s, i}
+            <div
+              class="catalog-fade-in"
+              style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
+            >
+              <AudienceSegmentCard segment={s} />
+            </div>
+          {/each}
         </div>
-      {/each}
-    </div>
-  </CatalogBand>
-{/if}
-
-{#if hasAudienceSignals}
-  <SectionDivider num={num4} label="Audience signals" />
-  <AudienceSignalsSection signals={data.payload.audienceSignals!} />
+      </CatalogBand>
+    {/if}
+    {#if hasAudienceSignals}
+      <AudienceSignalsSection signals={data.payload.audienceSignals!} />
+    {/if}
+  </div>
 {/if}
 
 <!-- Section: Top pain points (ranked table) -->
 {#if hasRankedPains}
   <div id="section-ranked-pain">
     <SectionDivider
-      num={num5}
+      num={num3}
       label="Ranked pain points"
       metaText={`${data.payload.topPainPoints.length} ranked · mention volume × severity`}
     />
     <PainPointRankTable
       painPoints={data.payload.topPainPoints}
-      themes={allThemesForChips}
+      themes={allThemes}
     />
   </div>
 {/if}
 
 <!-- Section: Ideas — list view as anchor, differentiating sub-page from
-     category's grid view per the mock. -->
+     category's grid view per the mock. The verdict-GO half of the meta
+     copy renders only when goCount > 0 — most sub-niches don't have
+     verdicts at this stage (those come from a separate validation run). -->
 {#if hasIdeasSection}
   <div id="sub-ideas">
     <SectionDivider
-      num={num6}
+      num={num4}
       label={`Ideas in ${data.payload.category.name}`}
-      metaText={`${data.payload.totalIdeas} tracked · ${goCount} verdict GO`}
+      metaText={goCount > 0
+        ? `${data.payload.totalIdeas} tracked · ${goCount} verdict GO`
+        : `${data.payload.totalIdeas} tracked`}
     />
     <AllIdeasSection ideas={data.payload.topIdeas} defaultView="list" showRank />
+  </div>
+{/if}
+
+<!-- About this niche — methodology footer. Receives the scope/segments data
+     that used to live in the hero (Phase 1+5 paired commit). Editorial-quiet
+     section that reads as supplementary context after the main report. -->
+{#if hasResearch && data.payload.nicheContext}
+  <div id="section-about-niche">
+    <SectionDivider num={num4 + 1} label="About this niche" />
+    <NicheMethodology
+      nicheContext={data.payload.nicheContext}
+      contentItemsMined={data.payload.contentItemsMined}
+      sourceCommunities={data.payload.sourceCommunities}
+      qualitySignals={data.payload.qualitySignals}
+    />
   </div>
 {/if}
 
@@ -306,13 +274,6 @@
 />
 
 <style>
-  .section-lede {
-    font-size: 14px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    line-height: 1.65;
-    max-width: 780px;
-    margin: 0 0 12px;
-  }
   /* Empty-research one-liner — replaces both the EmptyResearchState block and
      the 4 voids that used to sit between hero and ideas grid. */
   .research-pending-note {

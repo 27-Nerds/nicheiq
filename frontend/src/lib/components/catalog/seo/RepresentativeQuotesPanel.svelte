@@ -1,8 +1,7 @@
 <script lang="ts">
-  // Extracted from PainPointCardV2.svelte:45-51 (and the article-variant clone
-  // at 69-75) so the standalone /pain-point/[slug] page can render full quote
-  // panels while the same component re-skins down to a compact single-quote
-  // chip inside cards.
+  // Renders representative-quote panels with two skins: full panels on the
+  // standalone /pain-point/[slug] page, and a compact single-quote chip
+  // inside other consumers.
   //
   // When quoteSources is present, each quote becomes a clickable link to its
   // actual Reddit thread with mono attribution `r/{subreddit} · {score}↑`.
@@ -160,7 +159,7 @@
 {/if}
 
 <style>
-  /* Compact card variant — preserves PainPointCardV2 .quote / .src-line look. */
+  /* Compact card variant — single-quote chip styling. */
   .quote {
     border-left: 2px solid var(--color-border-emphasis);
     padding: 10px 12px;

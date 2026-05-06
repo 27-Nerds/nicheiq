@@ -48,14 +48,18 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 11px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--color-text-muted);
-    font-weight: 500;
+    font-weight: 600;
   }
   header b {
     color: var(--color-text-primary);
-    font-weight: 600;
-    font-size: 12px;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.06em;
   }
   .primary {
     padding: 8px 14px;

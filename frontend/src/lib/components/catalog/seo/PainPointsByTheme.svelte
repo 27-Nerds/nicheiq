@@ -1,191 +1,200 @@
 <script lang="ts">
   import type { Theme } from "$lib/types/publicCatalog.js";
-  import type { PainPointPreview } from "$lib/types/catalog-landing.js";
   import ThemeCard from "./ThemeCard.svelte";
-  import PainPointMiniRow from "./PainPointMiniRow.svelte";
 
-  // List of theme cards. Pain points grouped under their parent theme via
-  // `themeId === theme.id`. Renders <ThemeCard> per populated theme; empty
-  // themes render in a muted footer aside; unclassified pain points (only
-  // when showPainRows=true) render in a simple "Other pain points" bucket.
+  // Themes section orchestrator: "lead headline + roll" pattern.
+  //
+  //   lead       → most-cited id-bearing theme, rendered as open editorial
+  //                prose (no chrome) via `<ThemeCard emphasis />`.
+  //   ─ rule ─   → 1px hairline separating lead from the roll, only when
+  //                the roll has > 0 themes.
+  //   roll       → remaining id-bearing themes, rendered as compact grid
+  //                rows inside a single bordered `.theme-table` container.
+  //   id-less    → legacy aside for themes without IDs (preserved from
+  //                prior implementation).
+  //   foot       → optional section-level cross-link pair to audience and
+  //                ranked-pain anchors. Replaces the broken per-row chips.
+  //
+  // Sorted by mentionCount desc; lead is the most-cited. Indexes are
+  // preserved across the split so display numbers and `.catalog-fade-in`
+  // delays read 01, 02, 03, ... in sequence.
 
   interface Props {
     themes: Theme[];
-    painPoints: PainPointPreview[];
-    /** When true, render every associated pain point under each theme card.
-     *  Used by category-page mode (currently unused on routes; kept for
-     *  forward compat). When false, behavior is governed by topPainRowsLimit. */
-    showPainRows?: boolean;
-    /** Sub-niche-page preview cap. When set with `showPainRows=false`,
-     *  each theme card renders the top-N pains by severity + a
-     *  "View all pain points →" link to the ranked-pain section. */
-    topPainRowsLimit?: number;
-    /** Offset added to each theme's display number. Defaults to 0 →
-     *  themes start at "THEME 01". Sub-niche page passes 1 so other-themes
-     *  start at "THEME 02" after the dominant theme. */
-    displayOffset?: number;
+    /** Optional section-overview prose (research summary). When provided
+     *  alongside a lead theme, the two render in an asymmetric 2-col intro:
+     *  deck in a narrow left sidebar, lead in the wide main column. This
+     *  prevents the section overview from competing with the lead theme's
+     *  description as adjacent prose blocks (magazine-spread pattern). When
+     *  omitted, the lead spans full width. */
+    deck?: string | null;
+    /** Cross-link to the ranked-pain section. When set, the section-level
+     *  footer renders a "Ranked pain points →" link. Caller should gate
+     *  this on whether the target anchor exists. */
+    painsHref?: string;
+    /** Cross-link to the audience section. When set, the section-level
+     *  footer renders a "See audience →" link. */
+    audienceHref?: string;
+    /** Wave 3 — when true, each <ThemeCard> renders a per-row source
+     *  attribution footer based on `theme.sourceSubNiche`. Parent route
+     *  passes `themeMultiSource` so this only fires when ≥2 sub-niches
+     *  contributed themes; sub-niche route always leaves it false. */
+    showSource?: boolean;
   }
 
-  let {
-    themes,
-    painPoints,
-    showPainRows = true,
-    topPainRowsLimit,
-    displayOffset = 0,
-  }: Props = $props();
+  let { themes, deck, painsHref, audienceHref, showSource = false }: Props = $props();
+  const hasDeck = $derived(!!deck && deck.trim().length > 0);
 
-  // Group pain points by themeId. Build the lookup once for O(1) access.
-  const grouped = $derived.by(() => {
-    const byTheme = new Map<string, PainPointPreview[]>();
-    const unclassified: PainPointPreview[] = [];
-    const themeIds = new Set(themes.map((t) => t.id).filter((id): id is string => !!id));
-    for (const pp of painPoints) {
-      if (pp.themeId && themeIds.has(pp.themeId)) {
-        const existing = byTheme.get(pp.themeId) ?? [];
-        existing.push(pp);
-        byTheme.set(pp.themeId, existing);
-      } else {
-        unclassified.push(pp);
-      }
-    }
-    for (const list of byTheme.values()) {
-      list.sort((a, b) => b.severityScore - a.severityScore);
-    }
-    unclassified.sort((a, b) => b.severityScore - a.severityScore);
-    return { byTheme, unclassified };
-  });
-
-  const populatedThemes = $derived(
-    themes.filter((t) => t.id && (grouped.byTheme.get(t.id)?.length ?? 0) > 0),
+  const sortedThemes = $derived(
+    [...themes]
+      .filter((t) => !!t.id)
+      .sort((a, b) => (b.mentionCount ?? 0) - (a.mentionCount ?? 0)),
   );
-  const emptyThemes = $derived(
-    themes.filter((t) => !t.id || (grouped.byTheme.get(t.id)?.length ?? 0) === 0),
-  );
+  const lead = $derived(sortedThemes[0] ?? null);
+  const rollThemes = $derived(sortedThemes.slice(1));
+  const idLessThemes = $derived(themes.filter((t) => !t.id));
 
-  /**
-   * Decide which pain points to pass to a ThemeCard based on the current
-   * mode (showPainRows + topPainRowsLimit). Caller-controlled slicing keeps
-   * ThemeCard simple — it just renders what it receives.
-   */
-  function painPointsForCard(themeId: string | null): {
-    rows: PainPointPreview[];
-    hasMore: boolean;
-  } {
-    if (!themeId) return { rows: [], hasMore: false };
-    const associated = grouped.byTheme.get(themeId) ?? [];
-    if (showPainRows) {
-      return { rows: associated, hasMore: false };
-    }
-    if (topPainRowsLimit && topPainRowsLimit > 0) {
-      return {
-        rows: associated.slice(0, topPainRowsLimit),
-        hasMore: associated.length > topPainRowsLimit,
-      };
-    }
-    return { rows: [], hasMore: false };
-  }
+  const showFoot = $derived(!!painsHref || !!audienceHref);
 </script>
 
-<div class="ppt">
-  {#each populatedThemes as theme, themeIndex (theme.id)}
-    {@const slice = painPointsForCard(theme.id)}
-    <ThemeCard
-      {theme}
-      index={themeIndex}
-      displayNumber={themeIndex + 1 + displayOffset}
-      painPoints={slice.rows}
-      viewAllHref={slice.hasMore ? "#section-ranked-pain" : undefined}
-    />
-  {/each}
+{#if hasDeck}
+  <aside class="theme-deck-note catalog-fade-in">
+    <span class="theme-deck-badge">Overview</span>
+    <p class="theme-deck-text">{deck}</p>
+  </aside>
+{/if}
 
-  {#if showPainRows && grouped.unclassified.length > 0}
-    <section class="unclassified-bucket">
-      <header class="ub-head">
-        <span class="ub-kicker">Other pain points</span>
-        <p class="ub-desc">
-          Pain points from earlier research runs without theme linkage.
-        </p>
-      </header>
-      <ul class="ub-rows">
-        {#each grouped.unclassified as pp (pp.id)}
-          <li><PainPointMiniRow painPoint={pp} /></li>
-        {/each}
-      </ul>
-    </section>
-  {/if}
+{#if lead || rollThemes.length > 0}
+  <div class="theme-table">
+    {#if lead}
+      <ThemeCard theme={lead} index={0} emphasis {showSource} />
+    {/if}
+    {#each rollThemes as theme, j (theme.id)}
+      <ThemeCard theme={theme} index={j + 1} emphasis={false} {showSource} />
+    {/each}
+  </div>
+{/if}
 
-  {#if emptyThemes.length > 0}
-    <aside class="empty-themes">
-      <span class="empty-label">Themes without surfaced pain points</span>
-      <ul class="empty-list">
-        {#each emptyThemes as theme}
-          <li>
-            <span class="empty-name">{theme.title}</span>
-            {#if theme.frequency}
-              <span class="empty-freq" data-frequency={theme.frequency.toLowerCase()}>
-                {theme.frequency}
-              </span>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    </aside>
-  {/if}
-</div>
+{#if idLessThemes.length > 0}
+  <aside class="empty-themes">
+    <span class="empty-label">Legacy themes without IDs</span>
+    <ul class="empty-list">
+      {#each idLessThemes as theme}
+        <li>
+          <span class="empty-name">{theme.title}</span>
+          {#if theme.frequency}
+            <span class="empty-freq" data-frequency={theme.frequency.toLowerCase()}>
+              {theme.frequency}
+            </span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
+  </aside>
+{/if}
+
+{#if showFoot && (lead || rollThemes.length > 0 || idLessThemes.length > 0)}
+  <nav class="theme-foot" aria-label="Related sections">
+    {#if audienceHref}
+      <a class="theme-foot-link" href={audienceHref}>
+        See audience <span aria-hidden="true">→</span>
+      </a>
+    {/if}
+    {#if painsHref && audienceHref}
+      <span class="theme-foot-sep" aria-hidden="true">·</span>
+    {/if}
+    {#if painsHref}
+      <a class="theme-foot-link" href={painsHref}>
+        Ranked pain points <span aria-hidden="true">→</span>
+      </a>
+    {/if}
+  </nav>
+{/if}
 
 <style>
-  .ppt {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  /* Unclassified-bucket — small inline section for pain points without a
-     matching theme. Uses PainPointMiniRow internally for visual parity. */
-  .unclassified-bucket {
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    background: var(--color-bg-elevated, #fff);
-    padding: 18px 20px;
-  }
-  .ub-head {
-    margin-bottom: 10px;
-  }
-  .ub-kicker {
+  /* Section overview rendered as a "data note" — a chip-badge labels the
+     block as supporting metadata, italic muted prose carries the content.
+     The badge is a real UI element (hairline border + padding) which puts
+     the deck in a different visual category than the lead's typographic
+     kickers. Same idiom as documentation-site minimal callouts (Quarto,
+     Mintlify) without the colored-border AI-slop pattern. */
+  .theme-deck-note {
     display: block;
+    max-width: 720px;
+    margin: 0 0 32px;
+  }
+  .theme-deck-badge {
+    display: inline-block;
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: 9.5px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-weight: 700;
     color: var(--color-text-muted);
-    margin-bottom: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    margin-bottom: 10px;
+    background: var(--color-bg-elevated);
+    white-space: nowrap;
   }
-  .ub-desc {
-    font-size: 12.5px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    line-height: 1.5;
+  .theme-deck-text {
+    font-style: italic;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-text-muted);
     margin: 0;
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
-  .ub-rows {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    border-top: 1px dashed var(--color-border);
+
+
+  /* Bordered container wrapping the lead + compact rows. Each item
+     contributes its own hairline border-bottom; we suppress it on the last
+     child regardless of variant. */
+  .theme-table {
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg-elevated, #fff);
+    overflow: hidden;
   }
-  .ub-rows li {
-    border-bottom: 1px dashed var(--color-border);
-  }
-  .ub-rows li:last-child {
+  .theme-table > :global(.theme-lead:last-child),
+  .theme-table > :global(.theme-row:last-child) {
     border-bottom: none;
   }
 
-  /* Empty-themes aside — muted footer chip strip. Preserved from prior impl. */
+  /* Section-level cross-link footer. Right-aligned mono links, replaces
+     the broken per-row persona chip + per-row pain link. */
+  .theme-foot {
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+  }
+  .theme-foot-link {
+    color: var(--color-text-muted);
+    text-decoration: none;
+    transition: color 0.12s;
+  }
+  .theme-foot-link:hover {
+    color: var(--color-accent);
+  }
+  .theme-foot-sep {
+    color: var(--color-text-muted);
+    opacity: 0.55;
+  }
+
+  /* Legacy id-less themes — preserved from prior implementation, unchanged. */
   .empty-themes {
     background: var(--color-bg-elevated, #fff);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     padding: 14px 20px;
+    margin-top: 18px;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -226,5 +235,15 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     opacity: 0.8;
+  }
+
+  @media (max-width: 640px) {
+    .theme-deck-note {
+      margin-bottom: 24px;
+    }
+    .theme-foot {
+      justify-content: flex-start;
+      flex-wrap: wrap;
+    }
   }
 </style>

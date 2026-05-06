@@ -1,8 +1,7 @@
 <script lang="ts">
   // Single solution direction card. Header lists pain titles it addresses
   // (sourced from SolutionIdea.pain_points_addressed: list[str]). Body lists
-  // core features as `+` bullets. Used in SolutionsList alongside (not paired
-  // with) PainPointsList per scope decision.
+  // core features as `+` bullets.
 
   interface Props {
     name: string;

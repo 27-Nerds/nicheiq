@@ -36,6 +36,14 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   if (!res.ok) throw error(500, 'Failed to load');
 
   const idea = (await res.json()) as IdeaDetailResponse;
+  // Rollout safety: cached responses from before `addressedPainTitles` shipped
+  // (s-maxage=900) may not carry the field. Default to [] so the page renders
+  // with the section gated off rather than throwing on undefined access.
+  // Removable once both backend + frontend have been deployed and the cache
+  // window has rolled.
+  if (!Array.isArray((idea as { addressedPainTitles?: unknown }).addressedPainTitles)) {
+    (idea as { addressedPainTitles: string[] }).addressedPainTitles = [];
+  }
   const canonical = ideaDetailCanonical(idea.slug, url.searchParams);
 
   const description =

@@ -9,9 +9,15 @@
 
   interface Props {
     signals: AudienceSignals;
+    /** Compact mode: lighter chrome, muted (non-accent) labels, tighter
+     *  padding. Used on consumer pages where the section sits next to other
+     *  bordered content (e.g. /idea/[slug]) and the dense bordered grid would
+     *  read as a control panel. Sub-niche page leaves this false (the section
+     *  IS the page meat there). */
+    compact?: boolean;
   }
 
-  let { signals }: Props = $props();
+  let { signals, compact = false }: Props = $props();
 
   const hasTools = $derived(signals.currentTools.length > 0);
   const hasFrustrations = $derived(signals.frustrations.length > 0);
@@ -38,7 +44,15 @@
 </script>
 
 {#if hasAny}
-  <div class="signals-list">
+  <div class="signals-list" class:compact>
+    {#if compact}
+      <div class="signals-deck">
+        <span class="signals-deck-badge">Audience signals</span>
+        <p class="signals-deck-text">
+          What this audience uses, where they are, and how to talk to them — pulled from the source research.
+        </p>
+      </div>
+    {/if}
     {#if hasTools}
       <div class="row half">
         <div class="row-head">
@@ -137,9 +151,9 @@
 {/if}
 
 <style>
-  /* 2-col grid on ≥768px. Chip rows (.half) take one column each; bullet and
-     prose rows (.full) span both. Hairline borders match the .themes-list
-     visual rhythm — 1px gap on a border-coloured background. */
+  /* DEFAULT — sub-niche page idiom. 2-col grid with 1px-gap-on-border-bg
+     trick so each row reads as a tile in a control panel. Accent-colored
+     mono labels work because the section IS the focal block on that page. */
   .signals-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -211,5 +225,89 @@
     line-height: 1.6;
     margin: 0;
     max-width: 780px;
+  }
+
+  /* COMPACT — consumer-page idiom (e.g. /idea/[slug]). Editorial cadence,
+     not control-panel. Single hairline-bordered container with internal
+     hairline dividers. Muted (non-accent) mono labels so 8 repetitions
+     don't oversaturate the page's accent color. The deck-note intro strip
+     frames the block as supplementary research notes, not a primary panel.
+
+     Layout: CSS grid 2-col on desktop. Deck and prose rows span both
+     columns (grid-column: 1 / -1); chip rows take their natural slot. */
+  .signals-list.compact {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  @media (max-width: 768px) {
+    .signals-list.compact {
+      grid-template-columns: 1fr;
+    }
+  }
+  .signals-list.compact > .signals-deck {
+    grid-column: 1 / -1;
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--color-border);
+    background: var(--color-bg-elevated, #fff);
+  }
+  .signals-list.compact > .signals-deck .signals-deck-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    border: 1px solid var(--color-border);
+    border-radius: 3px;
+    padding: 2px 8px;
+    margin-bottom: 8px;
+    background: var(--color-bg-base, #fafafa);
+    white-space: nowrap;
+  }
+  .signals-list.compact > .signals-deck .signals-deck-text {
+    margin: 0;
+    font-style: italic;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--color-text-muted);
+    max-width: 780px;
+  }
+  .signals-list.compact > .row {
+    background: var(--color-surface, #fff);
+    padding: 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px solid var(--color-border);
+  }
+  .signals-list.compact > .row.full {
+    grid-column: 1 / -1;
+  }
+  /* Vertical hairline between paired half rows on desktop. The right column
+     (odd-position half rows in 2-col grid) gets a left-border to create the
+     central divider, except for the first half row in each row-pair. */
+  @media (min-width: 768px) {
+    .signals-list.compact > .row.half:nth-of-type(odd) + .row.half {
+      border-left: 1px solid var(--color-border);
+    }
+  }
+  .signals-list.compact .row-label {
+    color: var(--color-text-muted);
+    letter-spacing: 0.06em;
+    font-size: 10px;
+  }
+  .signals-list.compact .row-count {
+    font-size: 10px;
+  }
+  .signals-list.compact .bullets li,
+  .signals-list.compact .prose {
+    font-size: 12.5px;
+    line-height: 1.55;
   }
 </style>

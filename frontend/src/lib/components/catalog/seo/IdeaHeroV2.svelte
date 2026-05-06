@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
+  import { mapVerdict } from "$lib/types/publicCatalog.js";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils.js";
   import IdeaHeroAside from "./IdeaHeroAside.svelte";
   import Chip from "./Chip.svelte";
@@ -48,9 +49,10 @@
       null,
   );
 
-  // Niche score panel renders 3 bars per ideas-v2/page-idea.jsx:81-95.
-  // Novelty and Solo-dev are still real Pydantic fields but live as part of the
-  // Build Sketch context, not the hero anchor.
+  // Niche score panel: 3 primary bars (demand/feasibility/opportunity) drive
+  // the composite + tier label. Novelty + solo-dev render as a secondary
+  // "Founder fit" pair beneath a hairline divider — surfaced but excluded
+  // from composite math so the niche score stays comparable across ideas.
   const scores = $derived({
     demand: idea.market_fit_score == null ? null : idea.market_fit_score * 100,
     feasibility:
@@ -59,7 +61,14 @@
         : idea.technical_feasibility_score * 100,
     opportunity:
       idea.seo_scalability_score == null ? null : idea.seo_scalability_score * 100,
+    novelty: idea.novelty_score == null ? null : idea.novelty_score * 100,
+    soloDev:
+      idea.solo_dev_feasibility == null ? null : idea.solo_dev_feasibility * 100,
   });
+
+  // GO / CONDITIONAL / NO-GO badge — pipeline-emitted source_verdict mapped
+  // through the canonical helper. Null when the report didn't produce a verdict.
+  const verdict = $derived(mapVerdict(idea.source_verdict));
 
   // Dedupe (case-insensitive) — `format` and `project_type` frequently hold
   // the same value, producing duplicate chips on the hero.
@@ -111,7 +120,7 @@
       <p class="source-line">Sourced from {sourceCount.toLocaleString()} discussions</p>
     {/if}
   </div>
-  <IdeaHeroAside {scores} {stats} />
+  <IdeaHeroAside {scores} {stats} {verdict} />
 </header>
 
 <style>

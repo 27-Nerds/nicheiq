@@ -17,14 +17,23 @@
       demand: number | null;
       feasibility: number | null;
       opportunity: number | null;
+      /** Optional 4th axis: how differentiated the idea is (BaseSolutionIdea.novelty_score). */
+      novelty?: number | null;
+      /** Optional 5th axis: can a solo dev ship it (BaseSolutionIdea.solo_dev_feasibility). */
+      soloDev?: number | null;
     };
-    /** Optional composite 0-100. When omitted, computed as mean of the 3 bars. */
+    /** Optional composite 0-100. When omitted, computed as mean of the 3 PRIMARY
+     *  bars (demand/feasibility/opportunity). Novelty + solo-dev are
+     *  personal-fit context, deliberately excluded from the niche-score composite. */
     composite?: number | null;
+    /** Optional verdict label (e.g. "GO" / "CONDITIONAL" / "NO-GO"). When set,
+     *  renders as a mono pill under the tier line. */
+    verdict?: 'GO' | 'CONDITIONAL' | 'NO-GO' | null;
     /** Footer renders the first 2 visible stats (mock spec). Extras truncated. */
     stats?: Stat[];
   }
 
-  let { scores, composite = null, stats = [] }: Props = $props();
+  let { scores, composite = null, verdict = null, stats = [] }: Props = $props();
 
   const computedComposite = $derived.by<number | null>(() => {
     if (composite != null && Number.isFinite(composite)) return composite;
@@ -34,6 +43,11 @@
     if (vals.length === 0) return null;
     return vals.reduce((s, v) => s + v, 0) / vals.length;
   });
+
+  const hasFitRow = $derived(
+    (scores.novelty != null && Number.isFinite(scores.novelty)) ||
+      (scores.soloDev != null && Number.isFinite(scores.soloDev)),
+  );
 
   const compositeRounded = $derived(
     computedComposite == null ? null : Math.round(computedComposite),
@@ -80,6 +94,9 @@
       {#if tierLabel}
         <div class="sp-tier">{tierLabel}</div>
       {/if}
+      {#if verdict}
+        <div class="sp-verdict" data-verdict={verdict.toLowerCase()}>{verdict}</div>
+      {/if}
     {/if}
   </header>
 
@@ -99,6 +116,25 @@
       <div class="bar"><span class="fill" style:width={`${pct(scores.opportunity)}%`}></span></div>
       <span class="val">{scores.opportunity == null ? "—" : Math.round(scores.opportunity)}</span>
     </div>
+    {#if hasFitRow}
+      <div class="sp-fit-divider" aria-hidden="true">
+        <span>Founder fit</span>
+      </div>
+      {#if scores.novelty != null && Number.isFinite(scores.novelty)}
+        <div class="sp-row" data-type="novelty">
+          <span class="nm">Novelty</span>
+          <div class="bar"><span class="fill" style:width={`${pct(scores.novelty)}%`}></span></div>
+          <span class="val">{Math.round(scores.novelty)}</span>
+        </div>
+      {/if}
+      {#if scores.soloDev != null && Number.isFinite(scores.soloDev)}
+        <div class="sp-row" data-type="solo-dev">
+          <span class="nm">Solo-dev</span>
+          <div class="bar"><span class="fill" style:width={`${pct(scores.soloDev)}%`}></span></div>
+          <span class="val">{Math.round(scores.soloDev)}</span>
+        </div>
+      {/if}
+    {/if}
   </div>
 
   {#if visibleStats.length > 0}
@@ -213,6 +249,55 @@
   }
   .sp-row[data-type="opportunity"] .bar .fill {
     background: var(--color-success);
+  }
+  /* Founder-fit axes — muted slate fill so they read as secondary signals
+     beneath the niche-score primary axes. */
+  .sp-row[data-type="novelty"] .bar .fill,
+  .sp-row[data-type="solo-dev"] .bar .fill {
+    background: var(--color-text-muted);
+  }
+  /* Mini-divider separating the 3 niche-score axes from the 2 founder-fit axes.
+     Keeps composite/tier semantically tied to the primary 3 above the divider. */
+  .sp-fit-divider {
+    margin: 4px 0 2px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border);
+    text-align: left;
+  }
+  .sp-fit-divider span {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+  }
+  /* Verdict pill under the tier label inside the score panel header. */
+  .sp-verdict {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    background: var(--color-bg-elevated, #fff);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 700;
+    color: var(--color-text-muted);
+  }
+  .sp-verdict[data-verdict="go"] {
+    color: var(--color-success-dark, #16a34a);
+    border-color: var(--color-success, #16a34a);
+  }
+  .sp-verdict[data-verdict="conditional"] {
+    color: var(--color-accent);
+    border-color: var(--color-accent-muted, var(--color-accent));
+  }
+  .sp-verdict[data-verdict="no-go"] {
+    color: var(--color-text-muted);
+    border-color: var(--color-border);
   }
   .sp-row .val {
     font-family: var(--font-mono);

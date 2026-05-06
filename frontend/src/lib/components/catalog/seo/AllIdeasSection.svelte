@@ -11,6 +11,14 @@
   // "Browse all ideas" coordinator — filter chips, sort + view toggle, then
   // either grid (<IdeaCardV2>) or list (<IdeasListTable>) view.
   // State is local; no URL sync v1.
+  //
+  // Filter chips:
+  //   [Top] (default) — top N by current sort
+  //   [All]           — full set
+  //   [<sub-niche>]   — per-sub-niche filter (one chip per child)
+  // Phase 2 of the IA cleanup: this section is the canonical "all ideas" home
+  // (the separate "Top ideas in {category}" teaser was retired). The "Top"
+  // filter restores the teaser-like default landing without a separate section.
 
   type SortKey = "opportunity" | "demand" | "feasibility" | "newest";
   type View = "grid" | "list";
@@ -27,14 +35,26 @@
      *  Rank reflects visible sorted/filtered position, not absolute idea rank.
      *  Hidden in grid view regardless. */
     showRank?: boolean;
+    /** Default-active filter. `"top"` shows top-N by current sort; `"all"`
+     *  shows the full set. Sub-niche pages skip the chip row entirely (no
+     *  subNiches passed) so they default to "all" effectively. */
+    defaultFilter?: "top" | "all";
   }
 
-  let { ideas, subNiches = [], defaultView = "grid", showRank = false }: Props = $props();
+  const TOP_LIMIT = 5;
+
+  let {
+    ideas,
+    subNiches = [],
+    defaultView = "grid",
+    showRank = false,
+    defaultFilter = "top",
+  }: Props = $props();
 
   // Local interactive state (per scope decision: client-only, no URL sync v1).
   let view = $state<View>(untrack(() => defaultView));
   let sort = $state<SortKey>("opportunity");
-  let activeSub = $state<string>("all");
+  let activeSub = $state<string>(untrack(() => defaultFilter));
 
   function scoreFor(idea: IdeaPreview, k: SortKey): number {
     if (k === "demand") return idea.market_fit_score ?? 0;
@@ -44,33 +64,79 @@
     return new Date(idea.created_at).getTime();
   }
 
+  // Filter: "top" + "all" share the full set; sub-niche chips filter by slug.
   const filtered = $derived(
-    activeSub === "all"
+    activeSub === "top" || activeSub === "all"
       ? ideas
       : ideas.filter((i) => i.category?.slug === activeSub),
   );
 
-  const sorted = $derived(
+  const sortedAll = $derived(
     [...filtered].sort((a, b) => scoreFor(b, sort) - scoreFor(a, sort)),
   );
+
+  // "Top" caps to TOP_LIMIT after sort. All other filters render the full
+  // sorted list — caller-controlled subset.
+  const sorted = $derived(
+    activeSub === "top" ? sortedAll.slice(0, TOP_LIMIT) : sortedAll,
+  );
+
+  // Two-axis filter row: scope (Top/All) is a segmented control; sub-niche is
+  // a chip row. Each axis only renders when it carries meaning, and the
+  // VIEW / SUB-NICHE kickers only appear when both axes coexist (otherwise
+  // the kicker is noise above a single control).
+  const hasScopeToggle = $derived(
+    subNiches.length > 0 || ideas.length > TOP_LIMIT,
+  );
+  const showAxisKickers = $derived(hasScopeToggle && subNiches.length > 0);
 </script>
 
-{#if subNiches.length > 0}
+{#if hasScopeToggle || subNiches.length > 0}
   <div class="filter-bar">
-    <FilterChip
-      label="All"
-      count={ideas.length}
-      active={activeSub === "all"}
-      onclick={() => (activeSub = "all")}
-    />
-    {#each subNiches as s}
-      <FilterChip
-        label={s.name}
-        count={s.ideaCount}
-        active={activeSub === s.slug}
-        onclick={() => (activeSub = s.slug)}
-      />
-    {/each}
+    {#if hasScopeToggle}
+      <div class="filter-axis">
+        {#if showAxisKickers}
+          <span class="filter-kicker">View</span>
+        {/if}
+        <div class="scope-toggle" role="group" aria-label="Idea scope">
+          <button
+            type="button"
+            class:active={activeSub === "top"}
+            onclick={() => (activeSub = "top")}
+            aria-pressed={activeSub === "top"}
+          >
+            <span>Top</span>
+            <span class="scope-count">{Math.min(TOP_LIMIT, ideas.length)}</span>
+          </button>
+          <button
+            type="button"
+            class:active={activeSub === "all"}
+            onclick={() => (activeSub = "all")}
+            aria-pressed={activeSub === "all"}
+          >
+            <span>All</span>
+            <span class="scope-count">{ideas.length}</span>
+          </button>
+        </div>
+      </div>
+    {/if}
+    {#if subNiches.length > 0}
+      <div class="filter-axis">
+        {#if showAxisKickers}
+          <span class="filter-kicker">Sub-niche</span>
+        {/if}
+        <div class="chip-row">
+          {#each subNiches as s}
+            <FilterChip
+              label={s.name}
+              count={s.ideaCount}
+              active={activeSub === s.slug}
+              onclick={() => (activeSub = s.slug)}
+            />
+          {/each}
+        </div>
+      </div>
+    {/if}
   </div>
 {/if}
 
@@ -124,12 +190,95 @@
 {/if}
 
 <style>
+  /* Two-axis filter row. Scope (Top/All) is a segmented control; sub-niche is
+     a chip row. Each axis is a column block — kicker above controls — so
+     both axes share the same shape regardless of how their controls wrap.
+     Kickers ("View", "Sub-niche") only appear when both axes coexist. */
   .filter-bar {
     display: flex;
-    align-items: center;
-    gap: 6px;
+    align-items: flex-start;
+    gap: 16px;
     flex-wrap: wrap;
-    padding: 14px 0;
+    padding: 10px 0;
+  }
+  .filter-axis {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    min-width: 0;
+  }
+  /* Mono kicker — same family used for `.nc-kicker`, `.theme-num`, etc.
+     `line-height: 1` is critical: default `normal` adds ~4px of baseline space
+     below the glyph that varies with font, making the kicker→control gap
+     visually unequal between axes. Pinning to 1 normalizes both axes. */
+  .filter-kicker {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+  }
+  /* Segmented scope toggle — mirrors `.view-toggle` (grid/list switch) below
+     so the page reads as one consistent system. */
+  .scope-toggle {
+    display: inline-flex;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .scope-toggle button {
+    padding: 5px 11px;
+    border: none;
+    background: transparent;
+    color: var(--color-text-secondary, var(--color-text-primary));
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1;
+    transition: background-color 0.12s, color 0.12s;
+  }
+  .scope-toggle button + button {
+    border-left: 1px solid var(--color-border);
+  }
+  .scope-toggle button:hover:not(.active) {
+    color: var(--color-text-primary);
+  }
+  .scope-toggle button.active {
+    background: var(--color-text-primary);
+    color: var(--color-bg-elevated, #fff);
+  }
+  .scope-toggle button:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .scope-count {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    opacity: 0.8;
+  }
+  .chip-row {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: center;
+    min-width: 0;
+  }
+  @media (max-width: 768px) {
+    .filter-bar {
+      flex-direction: column;
+      gap: 16px;
+    }
+    .filter-axis {
+      width: 100%;
+    }
   }
   .toolbar {
     display: flex;

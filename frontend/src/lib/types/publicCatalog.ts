@@ -72,6 +72,16 @@ export interface Theme {
   description: string | null;                  // NEW — from theme.definition
   frequency: 'High' | 'Medium' | 'Low' | string | null;  // NEW — verbatim from crew
   primaryUserSegments: string[];               // NEW — from theme.primary_user_segments
+  /** Phase 17 / Wave 3 — only set on parent payloads when themes are
+   *  aggregated across multiple child sub-niches' research. Sub-niche
+   *  payloads leave this null. */
+  sourceSubNiche?: AudienceSourceSubNiche | null;
+}
+
+export interface AudienceSourceSubNiche {
+  slug: string;
+  name: string;
+  parentSlug: string;
 }
 
 /** Audience segment summary entry. Phase 5.5 adds expertiseLevel + budgetSensitivity. */
@@ -81,6 +91,9 @@ export interface AudienceSegment {
   bullets: string[];
   expertiseLevel: string | null;     // 'Beginner' | 'Intermediate' | 'Advanced' (verbatim)
   budgetSensitivity: string | null;  // 'High' | 'Medium' | 'Low'
+  /** Present on parent payloads when audience segments are aggregated across
+   *  child sub-niches. Sub-niche payloads omit it. */
+  sourceSubNiche?: AudienceSourceSubNiche | null;
 }
 
 // ============================================

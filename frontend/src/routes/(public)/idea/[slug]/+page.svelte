@@ -5,18 +5,19 @@
     CategoryBreadcrumbs,
     IdeaHeroV2,
     SectionDivider,
-    PainPointsList,
+    PainPointRankTable,
     IdeaBuildSketch,
     IdeaCardV2,
     CompetitorTable,
     KeywordClusterPanel,
     SourceCommunityChips,
     AudienceSegmentCard,
+    AudienceSignalsSection,
     BuildCTA,
     CatalogBand,
     Chip,
   } from "$lib/components/catalog/seo";
-  import ArrowRight from "lucide-svelte/icons/arrow-right";
+  import type { PainPointPreview } from "$lib/types/catalog-landing";
   import { categoryPath } from "$lib/utils/urls";
   import { renderTechnicalContent } from "$lib/utils/format";
 
@@ -65,22 +66,94 @@
   // detail payload (also used by the "Other ideas in [niche]" section below).
   const nicheIdeasCount = $derived((data.idea.siblingIdeas?.length ?? 0) + 1);
 
+  // Source-of-truth row set for the "Pain points addressed" section: walk
+  // idea.addressedPainTitles (canonicalized at publish time), enriching each
+  // row from researchContext.detailedPainPoints (description / severity /
+  // mentions) and idea.addressedPains (slug + DB-backed metadata when
+  // available). Rows with no slug match render un-linked but still present —
+  // honest rendering when a canonical pain hasn't been published yet.
+  const addressedTitles = $derived(idea.addressedPainTitles ?? []);
+
+  const addressedPainsTable = $derived.by<PainPointPreview[]>(() => {
+    if (addressedTitles.length === 0) return [];
+
+    const detailByTitle = new Map<string, Record<string, unknown>>();
+    const raw = r?.detailedPainPoints;
+    if (Array.isArray(raw)) {
+      for (const p of raw as Array<Record<string, unknown>>) {
+        if (!p || typeof p !== "object") continue;
+        const t = p.title;
+        if (typeof t === "string" && t && !detailByTitle.has(t)) {
+          detailByTitle.set(t, p);
+        }
+      }
+    }
+
+    const lookup = idea.addressedPains;
+    const seen = new Set<string>();
+    const out: PainPointPreview[] = [];
+
+    for (const title of addressedTitles) {
+      if (!title || seen.has(title)) continue;
+      seen.add(title);
+      const detail = detailByTitle.get(title);
+      const resolved = lookup?.[title];
+      const severity =
+        typeof resolved?.severityScore === "number"
+          ? resolved.severityScore
+          : ((detail?.severity_score ?? detail?.severityScore ?? 0) as number);
+      const mentions =
+        typeof resolved?.mentionCount === "number"
+          ? resolved.mentionCount
+          : ((detail?.mention_count ?? detail?.mentionCount ?? 0) as number);
+      out.push({
+        // `id` is required by PainPointPreview but unused by the table renderer
+        // (PainPointRankTable.svelte uses an unkeyed each). Title is unique
+        // post-dedup so it satisfies the type without lying about identity.
+        id: title,
+        // Empty string disables the row link via the truthy guard inside
+        // PainPointRankTable; matches the intent without an `as never` cast.
+        slug: resolved?.slug ?? "",
+        title,
+        description: (detail?.description as string) ?? "",
+        severityScore: severity,
+        mentionCount: mentions,
+        themeId: null,
+        // Unused-by-renderer fields with safe defaults to satisfy the type.
+        willingnessToPayScore: 0,
+        opportunityLevel: "",
+        representativeQuotes: null,
+        sourcePlatforms: null,
+        categories: null,
+        affectedSegments: null,
+        solutionApproach: null,
+        isFeatured: false,
+        isActive: true,
+        category: idea.category as never,
+        sourceNiche: idea.source_niche,
+        sourceItemIndex: 0,
+        sourceGeneratedAt: null,
+        createdAt: "",
+        updatedAt: "",
+      });
+    }
+    // Order preserved from addressedPainTitles (pipeline-emitted priority,
+    // not severity desc — see plan note on order semantics).
+    return out;
+  });
+
   // Mock spec (ideas-v2/page-idea.jsx:97-100): niche-score panel footer shows
   // exactly 2 stats. TAM and source count render elsewhere (source count as
-  // the inline `Sourced from N discussions` line under the hero CTA).
+  // the inline `Sourced from N discussions` line under the hero CTA). The
+  // first tile reflects pains *this idea addresses*, not niche-wide.
   const heroStats = $derived<
     Array<{ value: string | number | null; label: string }>
   >([
-    {
-      value: Array.isArray(r?.detailedPainPoints) ? r!.detailedPainPoints.length : 0,
-      label: "Pain points",
-    },
+    { value: addressedPainsTable.length, label: "Pains addressed" },
     { value: nicheIdeasCount, label: "Niche ideas" },
   ]);
 
-  const hasPains = $derived(
-    Array.isArray(r?.detailedPainPoints) && r!.detailedPainPoints.length > 0,
-  );
+  const hasPains = $derived(addressedPainsTable.length > 0);
 
   // Filter the niche-wide audience grid to only the personas targeted by
   // THIS idea (case-insensitive substring match). Falls back to a chip strip
@@ -121,9 +194,11 @@
       idea.technical_approach
     ),
   );
-  const hasAudience = $derived(
-    filteredSegments.length > 0 || targetPersonaNames.length > 0,
-  );
+  // Persona-fallback path was removed — personas already render inside the
+  // Build sketch, and double-displaying them in Audience created visual
+  // repetition. So the section gate is now strictly: do we have segment
+  // cards or audience signals? Personas alone don't justify the section.
+  const hasAudience = $derived(filteredSegments.length > 0);
   const hasCompetitors = $derived(
     Array.isArray(data.idea.competitors) && data.idea.competitors.length > 0,
   );
@@ -138,43 +213,40 @@
   const hasSection5 = $derived(
     hasKeywordClusters || hasDiscoveryQueries || !!idea.programmatic_seo_opportunity,
   );
-  const hasSourceSignal = $derived(
+  // Source-of-truth communities for the addressed pains. Used as an
+  // attribution strip directly under the "Pain points addressed" divider,
+  // not as a standalone numbered section — same provenance idiom as
+  // SectionAttribution on /ideas pages.
+  const hasSourceStrip = $derived(
     Array.isArray(data.idea.subredditSources) && data.idea.subredditSources.length > 0,
+  );
+  const hasAudienceSignals = $derived(
+    !!data.idea.audienceSignals &&
+      ((data.idea.audienceSignals.vocabulary?.length ?? 0) > 0 ||
+        (data.idea.audienceSignals.frustrations?.length ?? 0) > 0 ||
+        (data.idea.audienceSignals.currentTools?.length ?? 0) > 0 ||
+        (data.idea.audienceSignals.communityHubs?.length ?? 0) > 0 ||
+        (data.idea.audienceSignals.recommendedChannels?.length ?? 0) > 0 ||
+        (data.idea.audienceSignals.messagingFrameworks?.length ?? 0) > 0 ||
+        !!data.idea.audienceSignals.contentPreferences ||
+        !!data.idea.audienceSignals.earlyAdopterTactics),
   );
   const hasSiblingIdeas = $derived(
     Array.isArray(data.idea.siblingIdeas) && data.idea.siblingIdeas.length > 0,
   );
 
-  // Solution-aside content for PainPointsList — value_proposition headline
-  // plus first 4 core_features. Pairs the pain narrative with a stable
-  // solution direction without forcing per-pain artificial mapping.
-  const solutionFeatures = $derived(
-    Array.isArray(idea.core_features)
-      ? idea.core_features
-          .filter((f): f is string => typeof f === "string" && f.trim() !== "")
-          .slice(0, 4)
-      : [],
-  );
-  const hasSolutionAside = $derived(
-    !!(idea.value_proposition?.trim() || solutionFeatures.length > 0),
-  );
-
   function nextNum(prev: number, show: boolean): number {
     return show ? prev + 1 : prev;
   }
-  // Section order — pain narrative leads the page, build metadata follows
-  // (mock IA: "this pain exists → here is the solution direction" before
-  // the build details). Source signal is now its own numbered section,
-  // promoted out of the muted footer it lived in previously.
-  // 1. Pain points addressed → 2. Build sketch → 3. Audience → 4. Competitors
-  // → 5. Keyword/SEO → 6. Source signal → 7. Sibling ideas
+  // Section order: pain points addressed (with source strip) → build sketch
+  // → audience (segments + signals) → competitors → search opportunity →
+  // sibling ideas. Source signal is no longer a numbered section.
   const num1 = $derived(nextNum(0, hasPains));
   const num2 = $derived(nextNum(num1, hasBuildSketch));
-  const num3 = $derived(nextNum(num2, hasAudience));
+  const num3 = $derived(nextNum(num2, hasAudience || hasAudienceSignals));
   const num4 = $derived(nextNum(num3, hasCompetitors));
   const num5 = $derived(nextNum(num4, hasSection5));
-  const num6 = $derived(nextNum(num5, hasSourceSignal));
-  const num7 = $derived(nextNum(num6, hasSiblingIdeas));
+  const num6 = $derived(nextNum(num5, hasSiblingIdeas));
 </script>
 
 <SeoHead {...data.meta} />
@@ -186,47 +258,27 @@
 
 {#if hasPains}
   {#snippet painCount()}
-    <span>{(r?.detailedPainPoints as unknown[])?.length ?? 0} ranked</span>
+    <span>{addressedPainsTable.length} ranked</span>
   {/snippet}
   <SectionDivider num={num1} label="Pain points addressed" right={painCount} />
-  {#snippet solutionAside()}
-    <article class="solution-card">
-      <span class="sc-label">
-        <ArrowRight size={11} aria-hidden="true" />
-        <span>Solution direction</span>
-      </span>
-      {#if idea.value_proposition}
-        <h4>{idea.value_proposition}</h4>
-      {/if}
-      {#if solutionFeatures.length > 0}
-        <ul>
-          {#each solutionFeatures as f}
-            <li>{f}</li>
-          {/each}
-        </ul>
-      {/if}
-    </article>
-  {/snippet}
-  {#if hasSolutionAside}
-    <PainPointsList
-      pains={r?.detailedPainPoints}
-      addressedPains={data.idea.addressedPains}
-      {solutionAside}
-    />
-  {:else}
-    <PainPointsList pains={r?.detailedPainPoints} addressedPains={data.idea.addressedPains} />
+  {#if hasSourceStrip}
+    <div class="source-strip">
+      <span class="source-strip-label">↗ Sourced from</span>
+      <SourceCommunityChips sources={data.idea.subredditSources ?? []} />
+    </div>
   {/if}
+  <PainPointRankTable painPoints={addressedPainsTable} />
 {/if}
 
 {#if hasBuildSketch}
   <SectionDivider num={num2} label="Build sketch" />
-  <IdeaBuildSketch {idea} audienceSignals={data.idea.audienceSignals} />
+  <IdeaBuildSketch {idea} />
 {/if}
 
-{#if hasAudience}
-  <SectionDivider num={num3} label="Audience segments" />
-  <CatalogBand>
-    {#if filteredSegments.length > 0}
+{#if hasAudience || hasAudienceSignals}
+  <SectionDivider num={num3} label="Audience" />
+  {#if filteredSegments.length > 0}
+    <CatalogBand>
       <div class="seg-grid">
         {#each filteredSegments as s, i}
           <div
@@ -237,18 +289,13 @@
           </div>
         {/each}
       </div>
-    {:else if targetPersonaNames.length > 0}
-      {@const rawPersonas = idea.target_personas ?? []}
-      <div class="persona-fallback">
-        <span class="persona-label">Target personas</span>
-        <div class="chip-strip muted">
-          {#each rawPersonas as p}
-            <Chip label={p} />
-          {/each}
-        </div>
-      </div>
-    {/if}
-  </CatalogBand>
+    </CatalogBand>
+  {/if}
+  {#if hasAudienceSignals && data.idea.audienceSignals}
+    <div class="audience-signals-wrap">
+      <AudienceSignalsSection signals={data.idea.audienceSignals} compact />
+    </div>
+  {/if}
 {/if}
 
 {#if hasCompetitors}
@@ -257,7 +304,10 @@
     <span>{comps.length} tracked</span>
   {/snippet}
   <SectionDivider num={num4} label="Competitive landscape" right={compCount} />
-  <p class="section-lede">Active players in {idea.category?.name ?? 'this niche'}.</p>
+  <aside class="catalog-deck-note">
+    <span class="catalog-deck-badge">Overview</span>
+    <p class="catalog-deck-text">Active players in {idea.category?.name ?? 'this niche'}.</p>
+  </aside>
   <CompetitorTable competitors={comps} />
 {/if}
 
@@ -267,15 +317,14 @@
       <span class="pages-pill">{indexablePagesFmt} pages</span>
     {/if}
   {/snippet}
-  <SectionDivider num={num5} label="Keyword clusters & SEO opportunity" right={pagesPill} />
+  <SectionDivider num={num5} label="Search opportunity" right={pagesPill} />
   {#if idea.programmatic_seo_opportunity}
-    {@const seoOnly = !hasKeywordClusters && !hasDiscoveryQueries}
-    <div
-      class="section-lede markdown-content"
-      class:seo-card={seoOnly}
-    >
-      {@html renderTechnicalContent(idea.programmatic_seo_opportunity)}
-    </div>
+    <aside class="catalog-deck-note markdown-content wide">
+      <span class="catalog-deck-badge">Programmatic SEO</span>
+      <div class="catalog-deck-text">
+        {@html renderTechnicalContent(idea.programmatic_seo_opportunity)}
+      </div>
+    </aside>
   {/if}
   {#if hasDiscoveryQueries}
     {@const queries = idea.organic_discovery_queries ?? []}
@@ -294,20 +343,12 @@
   {/if}
 {/if}
 
-{#if hasSourceSignal}
-  {@const sources = data.idea.subredditSources ?? []}
-  <SectionDivider num={num6} label="Source signal" />
-  <CatalogBand>
-    <SourceCommunityChips {sources} />
-  </CatalogBand>
-{/if}
-
 {#if hasSiblingIdeas}
   {@const siblings = data.idea.siblingIdeas ?? []}
   {#snippet sibCount()}
     <span>{siblings.length} more</span>
   {/snippet}
-  <SectionDivider num={num7} label={`Other ideas in ${idea.category?.name ?? 'this niche'}`} right={sibCount} />
+  <SectionDivider num={num6} label={`Other ideas in ${idea.category?.name ?? 'this niche'}`} right={sibCount} />
   <div class="idea-grid">
     {#each siblings as si}
       <IdeaCardV2 idea={si} />
@@ -336,81 +377,106 @@
       grid-template-columns: 1fr;
     }
   }
-  .chip-strip {
+  /* Source attribution strip — sits directly under the "Pain points addressed"
+     SectionDivider. Same idiom as <SectionAttribution> on /ideas pages: tells
+     the reader where the underlying pain evidence came from before they read
+     the table. Mono kicker + chip strip in one row. */
+  .source-strip {
     display: flex;
+    align-items: center;
+    gap: 12px;
     flex-wrap: wrap;
-    gap: 6px;
-    margin-bottom: 24px;
+    margin: -8px 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--color-border);
   }
-  .chip-strip.muted {
-    margin-top: 4px;
-  }
-  /* Audience-segments fallback path: when filteredSegments is empty but raw
-     target_personas exist, show them as a labeled chip-strip so the section
-     reads as deliberate content, not as floating remnants inside the band. */
-  .persona-fallback {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    margin-bottom: 24px;
-  }
-  .persona-label {
+  .source-strip-label {
     font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
     color: var(--color-text-muted);
+    flex-shrink: 0;
   }
-  .section-lede {
-    margin: 0 0 16px;
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--color-text-secondary, var(--color-text-primary));
+  /* Audience signals wrap — sits below the segments band in the audience
+     section. Adds top-margin so the two halves of the section read as
+     paired but distinct. */
+  .audience-signals-wrap {
+    margin-top: 24px;
+    margin-bottom: 32px;
+  }
+  /* Editorial deck-note — chip-badged italic prose used for section overviews
+     (Competitive landscape lede, Programmatic SEO summary). Mirrors the
+     `theme-deck-note` pattern from /ideas's PainPointsByTheme so the
+     prose-before-table cadence reads consistently across catalog pages. */
+  .catalog-deck-note {
+    display: block;
     max-width: 720px;
+    margin: 0 0 20px;
   }
-  /* When keyword clusters & discovery queries are both empty for this idea,
-     the section's only content is the programmatic-SEO markdown. Wrap it in
-     a hairline-bordered card so the section has visible density rather than
-     a floating prose blob between two H2s. */
-  .section-lede.seo-card {
+  .catalog-deck-note.wide {
     max-width: none;
-    padding: 18px 22px;
+  }
+  .catalog-deck-badge {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: var(--color-text-muted);
     border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-bg-elevated, #fff);
-    margin-bottom: 24px;
+    border-radius: 3px;
+    padding: 2px 8px;
+    margin-bottom: 10px;
+    background: var(--color-bg-elevated);
+    white-space: nowrap;
   }
-  /* Scoped markdown styles for `renderTechnicalContent()` output. `:global`
-     rules sit under the `.section-lede.markdown-content` ancestor so they
-     don't leak to other markdown instances elsewhere in the app. */
-  .section-lede.markdown-content :global(p) {
+  .catalog-deck-text {
+    font-style: italic;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-text-muted);
+    margin: 0;
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
+  }
+  /* Scoped markdown styles inside the deck-note's text container. Replaces
+     the old .section-lede.markdown-content block; same selectors, just
+     re-rooted under the new wrapper. */
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(p) {
     margin: 0 0 8px;
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--color-text-secondary, var(--color-text-primary));
+    font-style: italic;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-text-muted);
   }
-  .section-lede.markdown-content :global(p:last-child) { margin-bottom: 0; }
-  .section-lede.markdown-content :global(ul) {
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(p:last-child) { margin-bottom: 0; }
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(ul) {
     margin: 4px 0 8px;
     padding-left: 20px;
-    font-size: 14px;
-    line-height: 1.55;
-    color: var(--color-text-secondary, var(--color-text-primary));
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-text-muted);
+    font-style: italic;
   }
-  .section-lede.markdown-content :global(li) { margin-bottom: 2px; }
-  .section-lede.markdown-content :global(strong) {
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(li) { margin-bottom: 2px; }
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(strong) {
     color: var(--color-text-primary);
     font-weight: 600;
+    font-style: normal;
   }
-  .section-lede.markdown-content :global(h2),
-  .section-lede.markdown-content :global(h3) {
-    font-size: 13px;
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(h2),
+  .catalog-deck-note.markdown-content .catalog-deck-text :global(h3) {
+    font-size: 12px;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     color: var(--color-text-muted);
-    font-weight: 600;
+    font-weight: 700;
+    font-style: normal;
     margin: 12px 0 4px;
+    letter-spacing: 0.08em;
   }
   .discovery-block {
     margin: 18px 0 24px;
@@ -449,58 +515,5 @@
     .idea-grid {
       grid-template-columns: 1fr;
     }
-  }
-  /* Solution direction aside, paired with PainPointsList. Hairline-bordered
-     card with mono kicker, headline, and feature bullets — matches the mock's
-     `.solution-card` idiom (left rail accent + + bullet glyphs). */
-  .solution-card {
-    background: var(--color-surface, #fff);
-    border: 1px solid var(--color-border);
-    border-left: 3px solid var(--color-success-dark, #16a34a);
-    border-radius: 6px;
-    padding: 16px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-  .sc-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-success-dark, #16a34a);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-  .solution-card h4 {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: -0.005em;
-    line-height: 1.35;
-    color: var(--color-text-primary);
-    margin: 0;
-  }
-  .solution-card ul {
-    list-style: none;
-    display: grid;
-    gap: 6px;
-    margin: 2px 0 0;
-    padding: 0;
-  }
-  .solution-card li {
-    font-size: 13px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    line-height: 1.5;
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
-  }
-  .solution-card li::before {
-    content: "+";
-    color: var(--color-success-dark, #16a34a);
-    flex-shrink: 0;
-    font-weight: 700;
   }
 </style>
