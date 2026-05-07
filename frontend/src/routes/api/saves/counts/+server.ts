@@ -1,0 +1,4 @@
+import type { RequestHandler } from './$types';
+import { proxyToSaves } from '$lib/server/savesProxy';
+
+export const GET: RequestHandler = (event) => proxyToSaves(event, 'GET', '/counts');

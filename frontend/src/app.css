@@ -34,6 +34,14 @@
 	--color-bg-hover: #EBEBEB;
 	--color-bg-subtle: #F0F0F0;
 
+	/* Catalog v2 surface aliases. Many catalog components reference
+	   --color-surface and --color-surface-elevated with hardcoded fallbacks
+	   (#fff / #fafafa). Aliasing them to the canonical bg tokens makes those
+	   variables actually defined so themes can override them centrally,
+	   while preserving existing visual behavior exactly. */
+	--color-surface: var(--color-bg-elevated);
+	--color-surface-elevated: var(--color-bg-base);
+
 	/* Text */
 	--color-text-primary: #18181B;
 	--color-text-secondary: #52525B;

@@ -24,7 +24,7 @@
 <div
   class="stat-strip"
   class:emphasis
-  style="--cols: {stats.length};"
+  data-cols={stats.length}
 >
   {#each stats as s, i}
     <div
@@ -40,15 +40,35 @@
 <style>
   .stat-strip {
     display: grid;
-    grid-template-columns: repeat(var(--cols, 4), 1fr);
     border: 1px solid var(--color-border);
     border-radius: 8px;
     background: var(--color-bg-elevated, #fff);
     overflow: hidden;
   }
+  .stat-strip[data-cols="2"] {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .stat-strip[data-cols="3"] {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .stat-strip[data-cols="4"] {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .stat-strip[data-cols="5"] {
+    grid-template-columns: repeat(5, 1fr);
+  }
   /* Emphasis: first column gets 1.4fr, alt bg, larger numeric. */
-  .stat-strip.emphasis {
-    grid-template-columns: 1.4fr repeat(calc(var(--cols, 4) - 1), 1fr);
+  .stat-strip.emphasis[data-cols="2"] {
+    grid-template-columns: 1.4fr 1fr;
+  }
+  .stat-strip.emphasis[data-cols="3"] {
+    grid-template-columns: 1.4fr 1fr 1fr;
+  }
+  .stat-strip.emphasis[data-cols="4"] {
+    grid-template-columns: 1.4fr 1fr 1fr 1fr;
+  }
+  .stat-strip.emphasis[data-cols="5"] {
+    grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
   }
   /* First-tile tint: page-bg color (#FAFAFA) against the white container
      produces the subtle ~2% contrast the mock relies on. The previous token

@@ -172,6 +172,10 @@ SEO_LAUNCH_GATE=true
 # Flip to 'false' once Phase 4.5 baseline copy curation completes (≥20
 # top-traffic categories have hand-written longDescription + faqJson).
 # Avoids Google's thin-content penalty during the rollout window.
+#
+# NOTE: The gate only affects SEO (robots meta + sitemap). Pages remain fully
+# functional and authenticated features (Save, Validate, login flows) work
+# normally regardless of the gate state.
 ```
 
 **OAuth Setup Steps:**

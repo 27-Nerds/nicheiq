@@ -39,17 +39,71 @@
     defaultLimit = 5,
   }: Props = $props();
 
-  // Sources path takes priority when populated. Strings path is the legacy fallback.
+  // Strip a leading bullet marker + surface whitespace from a single quote.
+  // Used on both paths to keep the visible text clean even when upstream
+  // emits `* Some quote` instead of `Some quote`.
+  function cleanQuoteText(s: string): string {
+    if (typeof s !== 'string') return '';
+    return s.replace(/^\s*\*\s+/, '').trim();
+  }
+
+  // Fan a single multi-bullet markdown blob into N quote strings.
+  //
+  // Triggers split when ANY of these markdown signals appear:
+  //   1. Leading "* " — explicit markdown bullet at start.
+  //   2. Newline-anchored "\n* " — proper multi-line markdown bullets.
+  //   3. 2+ inline " * " separators — strongly suggests a concat'd bullet
+  //      list even when leading marker has been stripped upstream (e.g.
+  //      legacy DB rows where the first bullet's "* " was eaten and only
+  //      interior " * " separators remain).
+  //
+  // Tight guards on inline-only case (>=2 separators required) keep prose
+  // with sparse legitimate asterisks ("this *would* never split") safe —
+  // *foo* style emphasis has no spaces around the asterisks and wouldn't
+  // match the \s+\*\s+ pattern anyway.
+  function splitMarkdownBullets(s: string): string[] {
+    if (typeof s !== 'string') return [];
+    const trimmed = s.trim();
+    if (!trimmed) return [];
+    const startsWithBullet = /^\s*\*\s+/.test(trimmed);
+    const hasNewlineBullets = /\n\s*\*\s+/.test(trimmed);
+    const inlineBulletCount = (trimmed.match(/\s+\*\s+/g) ?? []).length;
+    if (!startsWithBullet && !hasNewlineBullets && inlineBulletCount < 2) {
+      return [trimmed];
+    }
+    return trimmed
+      .split(/\n\s*\*\s+|\s+\*\s+/)
+      .map((piece) => cleanQuoteText(piece))
+      .filter((piece) => piece.length > 0);
+  }
+
+  // Sources path takes priority when populated. Each quote string is fan-split
+  // when it's a multi-bullet blob, and the source's attribution
+  // (postId/subreddit/score) is replicated across all resulting pieces. The
+  // bullets ARE from the same Reddit comment originally — replicating the
+  // link target across bubbles is honest representation, not visual deception.
+  // The alternative (rendering the raw blob with visible "* " markers) was
+  // uglier than the duplicate-link cost.
   const fullSources = $derived.by<QuoteSource[] | null>(() => {
     if (!Array.isArray(quoteSources) || quoteSources.length === 0) return null;
-    return typeof maxQuotes === 'number' ? quoteSources.slice(0, Math.max(0, maxQuotes)) : quoteSources;
+    const expanded: QuoteSource[] = [];
+    for (const s of quoteSources) {
+      const pieces = splitMarkdownBullets(s.quote);
+      for (const piece of pieces) {
+        expanded.push({ ...s, quote: piece });
+      }
+    }
+    return typeof maxQuotes === 'number' ? expanded.slice(0, Math.max(0, maxQuotes)) : expanded;
   });
 
+  // Strings path is the legacy fallback. Apply splitMarkdownBullets via flatMap
+  // so legacy single-string-with-bullets blobs fan out into N separate quote
+  // bubbles instead of rendering literal "* " characters.
   const fullStrings = $derived.by<string[]>(() => {
     if (fullSources) return [];  // sources path takes over
     if (!Array.isArray(quotes)) return [];
-    const cleaned = quotes.filter((q) => typeof q === 'string' && q.trim().length > 0);
-    return typeof maxQuotes === 'number' ? cleaned.slice(0, Math.max(0, maxQuotes)) : cleaned;
+    const expanded = quotes.flatMap(splitMarkdownBullets);
+    return typeof maxQuotes === 'number' ? expanded.slice(0, Math.max(0, maxQuotes)) : expanded;
   });
 
   // Split visible (default-shown) vs deferred (behind details toggle).

@@ -4,13 +4,15 @@
   import {
     CategoryBreadcrumbs,
     PainPointHeroV2,
-    PainStatStrip,
     SectionDivider,
     RepresentativeQuotesPanel,
+    TopRedditThreads,
     AudienceSegmentCard,
+    AudienceSignalsSection,
     RelatedPainCard,
     IdeaCardV2,
     SourceCommunityChips,
+    CatalogBand,
     BuildCTA,
     Chip,
   } from "$lib/components/catalog/seo";
@@ -50,10 +52,21 @@
   const severity100 = $derived(scaleSeverity(pp.severityScore, "pain"));
   const wtp100 = $derived(scaleSeverity(pp.willingnessToPayScore, "pain"));
 
+  // Opportunity normalization moved from PainStatStrip → route level so the
+  // hero aside doesn't re-implement the high/med/low coercion.
+  const opportunityNorm = $derived.by<'high' | 'medium' | 'low' | null>(() => {
+    const raw = pp.opportunityLevel;
+    if (typeof raw !== 'string') return null;
+    const u = raw.trim().toLowerCase();
+    if (u === 'high') return 'high';
+    if (u === 'medium' || u === 'med') return 'medium';
+    if (u === 'low') return 'low';
+    return null;
+  });
+
   // Filter the niche-wide audience grid to only the segments affected by
   // THIS pain (case-insensitive substring match so minor naming differences
-  // between affected_segments and audience_segments still line up). Falls
-  // back to a chip-strip of raw affected_segments when no matches.
+  // between affected_segments and audience_segments still line up).
   const affectedSegmentNames = $derived(
     Array.isArray(pp.affectedSegments)
       ? pp.affectedSegments
@@ -86,38 +99,59 @@
       : [],
   );
 
-  // Section visibility flags — let `{#if}` wrap each section + its divider so
-  // numbered sections never orphan a header without body.
-  const hasQuotes = $derived(
+  // Audience signals: pass the whole object to the shared component instead
+  // of cherry-picking 4 of 8 fields inline. AudienceSignalsSection compact
+  // renders all 8 (vocabulary, frustrations, currentTools, communityHubs,
+  // recommendedChannels, messagingFrameworks, contentPreferences,
+  // earlyAdopterTactics) with consistent chrome.
+  const audienceSignals = $derived(data.painPoint.audienceSignals);
+  const hasAudienceSignals = $derived.by(() => {
+    const sig = audienceSignals;
+    if (!sig) return false;
+    return (
+      (sig.vocabulary?.length ?? 0) > 0 ||
+      (sig.frustrations?.length ?? 0) > 0 ||
+      (sig.currentTools?.length ?? 0) > 0 ||
+      (sig.communityHubs?.length ?? 0) > 0 ||
+      (sig.recommendedChannels?.length ?? 0) > 0 ||
+      (sig.messagingFrameworks?.length ?? 0) > 0 ||
+      !!sig.contentPreferences ||
+      !!sig.earlyAdopterTactics
+    );
+  });
+
+  // Section 01 evidence: now broader than the legacy hasQuotes gate.
+  // Section can carry value when ANY of representativeQuotes ∪ quoteSources
+  // ∪ topRedditThreads is populated.
+  const hasQuoteSources = $derived(
+    Array.isArray(data.painPoint.quoteSources) && data.painPoint.quoteSources.length > 0,
+  );
+  const hasRepresentativeQuotes = $derived(
     Array.isArray(pp.representativeQuotes) && pp.representativeQuotes.length > 0,
   );
-  const hasAudience = $derived(
-    filteredSegments.length > 0 || affectedSegmentNames.length > 0 || categoriesChips.length > 0,
+  const hasTopThreads = $derived(
+    Array.isArray(data.painPoint.topRedditThreads) && data.painPoint.topRedditThreads.length > 0,
   );
-  const hasSolutionApproach = $derived(
-    typeof pp.solutionApproach === "string" && pp.solutionApproach.trim().length > 0,
+  const hasEvidence = $derived(hasQuoteSources || hasRepresentativeQuotes || hasTopThreads);
+
+  // Subreddit sources surface as a community-level attribution strip directly
+  // under the section 01 divider. Distinct from sourcePlatformChips (which is
+  // platform-level: ["reddit", "hackernews"] etc.) — this is per-subreddit
+  // with post counts (r/3Dmodeling · 10).
+  const hasSubredditSources = $derived(
+    Array.isArray(data.painPoint.subredditSources) && data.painPoint.subredditSources.length > 0,
   );
 
-  // GTM-relevant audience signals on the pain page. The niche-wide
-  // AudienceSignals payload already rides on the response.
-  const sig = $derived(data.painPoint.audienceSignals);
-  const messagingFrameworks = $derived(
-    Array.isArray(sig?.messagingFrameworks) ? sig.messagingFrameworks.filter((s): s is string => typeof s === "string") : [],
-  );
-  const recommendedChannels = $derived(
-    Array.isArray(sig?.recommendedChannels) ? sig.recommendedChannels.filter((s): s is string => typeof s === "string") : [],
-  );
-  const contentPreferences = $derived(
-    typeof sig?.contentPreferences === "string" && sig.contentPreferences.trim() !== "" ? sig.contentPreferences : null,
-  );
-  const earlyAdopterTactics = $derived(
-    typeof sig?.earlyAdopterTactics === "string" && sig.earlyAdopterTactics.trim() !== "" ? sig.earlyAdopterTactics : null,
-  );
-  const hasGtmSignals = $derived(
-    messagingFrameworks.length > 0 ||
-      recommendedChannels.length > 0 ||
-      contentPreferences !== null ||
-      earlyAdopterTactics !== null,
+  // Section 02 audience: rebuilt gate. Categories (taxonomic broad) +
+  // segments (audience personas) + signals (behavioral details) — at least
+  // one must be populated. The legacy raw-affectedSegments fallback render
+  // is dropped; its information is carried by segments + signals.
+  const hasCategories = $derived(categoriesChips.length > 0);
+  const hasSegments = $derived(filteredSegments.length > 0);
+  const hasAudience = $derived(hasCategories || hasSegments || hasAudienceSignals);
+
+  const hasSolutionApproach = $derived(
+    typeof pp.solutionApproach === "string" && pp.solutionApproach.trim().length > 0,
   );
 
   const hasSiblingPains = $derived(
@@ -128,15 +162,14 @@
   );
 
   // Section numbering kept stable: increment only when a section actually
-  // renders. Build the running counter via $derived so adding/removing a
-  // section doesn't require manually re-numbering literals.
+  // renders. Hero score panel renders all pain stats; subreddit attribution
+  // is a strip under section 01, not a numbered section.
   function nextNum(prev: number, show: boolean): number {
     return show ? prev + 1 : prev;
   }
-  const num1 = $derived(nextNum(0, hasQuotes));
+  const num1 = $derived(nextNum(0, hasEvidence));
   const num2 = $derived(nextNum(num1, hasAudience));
-  // "Where it's reported" is folded into PainStatStrip — no top-level section.
-  const num3 = $derived(nextNum(num2, hasSolutionApproach || hasGtmSignals));
+  const num3 = $derived(nextNum(num2, hasSolutionApproach));
   const num4 = $derived(nextNum(num3, hasSiblingPains));
   const num5 = $derived(nextNum(num4, hasRelatedIdeas));
 </script>
@@ -147,108 +180,86 @@
 <CategoryBreadcrumbs {trail} />
 
 <PainPointHeroV2
+  painPointId={pp.id}
   title={pp.title}
   description={pp.description}
   categoryName={parent?.name ?? pp.category.name}
   subName={parent ? pp.category.name : null}
   rankInfo={data.painPoint.rankInfo}
-/>
-
-<PainStatStrip
   severity={severity100}
-  severityRaw={pp.severityScore}
   willingnessToPay={wtp100}
-  opportunityLevel={pp.opportunityLevel}
+  opportunity={opportunityNorm}
+  qualitySignals={data.painPoint.qualitySignals}
   mentionCount={pp.mentionCount}
   sourcePlatforms={sourcePlatformChips}
 />
 
-{#if hasQuotes}
+{#if hasEvidence}
   <SectionDivider num={num1} label="Voices of the audience" />
-  <RepresentativeQuotesPanel
-    quotes={pp.representativeQuotes ?? []}
-    sourcePlatforms={pp.sourcePlatforms ?? null}
-    mentionCount={pp.mentionCount}
-  />
+  {#if hasSubredditSources}
+    <div class="source-strip">
+      <span class="source-strip-label">↗ Sourced from</span>
+      <SourceCommunityChips sources={data.painPoint.subredditSources ?? []} />
+    </div>
+  {/if}
+  {#if hasQuoteSources || hasRepresentativeQuotes}
+    <RepresentativeQuotesPanel
+      quotes={pp.representativeQuotes ?? []}
+      quoteSources={data.painPoint.quoteSources ?? null}
+      sourcePlatforms={pp.sourcePlatforms ?? null}
+      mentionCount={pp.mentionCount}
+    />
+  {/if}
+  {#if hasTopThreads}
+    <div class="top-threads-wrap">
+      <span class="top-threads-label">Top threads</span>
+      <TopRedditThreads threads={data.painPoint.topRedditThreads ?? []} limit={3} />
+    </div>
+  {/if}
 {/if}
 
 {#if hasAudience}
   <SectionDivider num={num2} label="Who feels this pain" />
-  {#if categoriesChips.length > 0}
-    <div class="chip-strip">
-      {#each categoriesChips as c}
-        <Chip label={c} />
-      {/each}
+  {#if hasCategories}
+    <div class="type-strip">
+      <span class="type-label">Type</span>
+      <div class="type-chips">
+        {#each categoriesChips as c}
+          <Chip label={c} />
+        {/each}
+      </div>
     </div>
   {/if}
-  {#if filteredSegments.length > 0}
-    <div class="seg-grid">
-      {#each filteredSegments as s}
-        <AudienceSegmentCard segment={s} />
-      {/each}
-    </div>
-  {:else if affectedSegmentNames.length > 0}
-    {@const rawSegs = pp.affectedSegments ?? []}
-    <div class="chip-strip muted">
-      {#each rawSegs as s}
-        <Chip label={s} />
-      {/each}
+  {#if hasSegments}
+    <CatalogBand>
+      <div class="seg-grid">
+        {#each filteredSegments as s}
+          <AudienceSegmentCard segment={s} />
+        {/each}
+      </div>
+    </CatalogBand>
+  {/if}
+  {#if hasAudienceSignals && audienceSignals}
+    <div class="audience-signals-wrap">
+      <AudienceSignalsSection signals={audienceSignals} compact />
     </div>
   {/if}
 {/if}
 
-{#if hasSolutionApproach || hasGtmSignals}
+{#if hasSolutionApproach}
   <SectionDivider num={num3} label="Solution approach" />
-  {#if hasSolutionApproach}
-    <div class="approach-card">
-      <span class="approach-label">How to solve</span>
-      <p>{pp.solutionApproach}</p>
-    </div>
-  {/if}
-  {#if hasGtmSignals}
-    <div class="gtm-grid">
-      {#if messagingFrameworks.length > 0}
-        <div class="gtm-row">
-          <span class="gtm-label">How to message</span>
-          <div class="chip-strip inline">
-            {#each messagingFrameworks as m}
-              <Chip label={m} />
-            {/each}
-          </div>
-        </div>
-      {/if}
-      {#if recommendedChannels.length > 0}
-        <div class="gtm-row">
-          <span class="gtm-label">Where to reach them</span>
-          <div class="chip-strip inline">
-            {#each recommendedChannels as c}
-              <Chip label={c} />
-            {/each}
-          </div>
-        </div>
-      {/if}
-      {#if contentPreferences}
-        <div class="gtm-row">
-          <span class="gtm-label">Content they consume</span>
-          <p class="gtm-prose">{contentPreferences}</p>
-        </div>
-      {/if}
-      {#if earlyAdopterTactics}
-        <div class="gtm-row">
-          <span class="gtm-label">Early-adopter tactics</span>
-          <p class="gtm-prose">{earlyAdopterTactics}</p>
-        </div>
-      {/if}
-    </div>
-  {/if}
+  <div class="approach-card">
+    <span class="approach-label">How to solve</span>
+    <p>{pp.solutionApproach}</p>
+  </div>
 {/if}
 
 {#if hasSiblingPains}
   {@const siblings = data.painPoint.siblingPains}
   {#snippet sibCount()}
-    <span>{siblings.length} sibling{siblings.length === 1 ? "" : "s"}</span>
+    <span>{siblings.length} related</span>
   {/snippet}
-  <SectionDivider num={num4} label="Sibling pain points" right={sibCount} />
+  <SectionDivider num={num4} label="Related pains in this theme" right={sibCount} />
   <div class="sibling-list">
     {#each siblings as sp}
       <RelatedPainCard pain={sp} />
@@ -269,13 +280,6 @@
   </div>
 {/if}
 
-{#if data.painPoint.subredditSources && data.painPoint.subredditSources.length > 0}
-  <div class="niche-source">
-    <span class="niche-label">Niche source signal</span>
-    <SourceCommunityChips sources={data.painPoint.subredditSources} />
-  </div>
-{/if}
-
 <BuildCTA
   {ctaHref}
   headline="Build a solution for this pain?"
@@ -288,23 +292,77 @@
 />
 
 <style>
-  .chip-strip {
+  /* Source-attribution strip under section 01 — community chips appear
+     before the evidence they attribute, mirroring the /idea/[slug] pattern. */
+  .source-strip {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: -8px 0 18px;
+    padding-bottom: 12px;
+    border-bottom: 1px dashed var(--color-border);
+  }
+  .source-strip-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+  }
+
+  /* Top discussions sub-block within section 01 — small mono kicker before
+     the threads list. The list itself comes from <TopRedditThreads>. */
+  .top-threads-wrap {
+    margin-top: 20px;
+    margin-bottom: 36px;
+  }
+  .top-threads-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: 10px;
+  }
+
+  /* Categories chip strip at the top of section 02 — taxonomic tags,
+     editorially distinct from segments (which are personas) and signals
+     (which are behavioral). Reads as inline metadata. */
+  .type-strip {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin: 0 0 16px;
+  }
+  .type-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+  }
+  .type-chips {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
-    margin: 0 0 24px;
   }
-  .chip-strip.muted {
-    margin-top: 12px;
-  }
+
+  /* Segment grid inside CatalogBand — same pattern as /idea/[slug]
+     audience section. Three columns at desktop, collapsing on narrower
+     viewports. */
   .seg-grid {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px;
-    margin-bottom: 24px;
   }
-  /* Responsive sizing when filtered count is 1 or 2.
-     `:has()` is supported in Chrome 105+, Safari 15.4+, Firefox 121+. */
   .seg-grid:has(> :only-child) {
     grid-template-columns: 1fr;
     max-width: 600px;
@@ -318,6 +376,14 @@
       grid-template-columns: 1fr;
     }
   }
+
+  /* Audience signals card sits below the segments band with a small gap. */
+  .audience-signals-wrap {
+    margin-top: 24px;
+    margin-bottom: 36px;
+  }
+
+  /* Solution approach card — accent-rail prose block. */
   .approach-card {
     border: 1px solid var(--color-border);
     border-left: 3px solid var(--color-accent);
@@ -341,47 +407,7 @@
     line-height: 1.6;
     color: var(--color-text-primary);
   }
-  /* GTM signals grid below the solution approach card. */
-  .gtm-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 14px;
-    margin-bottom: 36px;
-  }
-  .gtm-row {
-    display: grid;
-    grid-template-columns: 160px 1fr;
-    gap: 14px;
-    align-items: baseline;
-    padding: 10px 0;
-    border-top: 1px solid var(--color-border);
-  }
-  .gtm-row:first-child {
-    border-top: none;
-    padding-top: 0;
-  }
-  .gtm-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 600;
-    color: var(--color-text-muted);
-  }
-  .gtm-prose {
-    margin: 0;
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--color-text-primary);
-  }
-  .chip-strip.inline {
-    margin: 0;
-  }
-  @media (max-width: 700px) {
-    .gtm-row {
-      grid-template-columns: 1fr;
-      gap: 6px;
-    }
-  }
+
   .sibling-list {
     display: flex;
     flex-direction: column;
@@ -398,20 +424,5 @@
     .idea-grid {
       grid-template-columns: 1fr;
     }
-  }
-  .niche-source {
-    margin-top: 32px;
-    padding-top: 18px;
-    border-top: 1px solid var(--color-border);
-    opacity: 0.78;
-  }
-  .niche-label {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-muted);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    margin-bottom: 8px;
   }
 </style>

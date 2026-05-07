@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { ArrowRight } from "lucide-svelte";
+  import { ArrowRight, X } from "lucide-svelte";
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
   import { SeoHead, JsonLd } from "$lib/components/seo";
   import { CategoryBreadcrumbs } from "$lib/components/catalog/seo";
   import CatalogIndexHero from "$lib/components/catalog/seo/CatalogIndexHero.svelte";
@@ -30,9 +31,59 @@
     niches: NicheTreeNode[];
   }
 
-  // Local catalog search query — bound from CatalogIndexHero. v1 is client-only;
-  // no URL sync. Filters category and sub-niche names case-insensitively.
-  let query = $state("");
+  // Catalog search query — bound from CatalogIndexHero. URL-synced via ?q=
+  // so search state survives reload and is shareable. Initialized once from
+  // the URL; the $effect below mirrors changes back to the URL with debounce.
+  let query = $state(page.url.searchParams.get("q") ?? "");
+
+  let queryDebounce: ReturnType<typeof setTimeout> | null = null;
+
+  $effect(() => {
+    // Reading `query` registers the dependency so this re-runs on input.
+    const value = query;
+    if (queryDebounce) clearTimeout(queryDebounce);
+    queryDebounce = setTimeout(() => {
+      const params = new URLSearchParams(page.url.searchParams);
+      if (value.trim()) params.set("q", value);
+      else params.delete("q");
+      const qs = params.toString();
+      const target = `/ideas${qs ? "?" + qs : ""}`;
+      // Avoid pushing a no-op navigation when the URL hasn't changed (e.g. on
+      // first paint where query already matches the URL).
+      if (target !== page.url.pathname + page.url.search) {
+        goto(target, {
+          replaceState: true,
+          keepFocus: true,
+          noScroll: true,
+        });
+      }
+    }, 200);
+    return () => {
+      if (queryDebounce) clearTimeout(queryDebounce);
+    };
+  });
+
+  // Active-collection filter — driven by ?collection=<slug>. When set, the
+  // accordion is restricted to categories whose slug (or any child's slug) is
+  // in the collection's categorySlugs set. Backend B4 ensures parent slugs
+  // are included, so a collection of sub-niche items still surfaces under the
+  // parent category.
+  const collectionCategorySet = $derived(
+    data.activeCollection
+      ? new Set(data.activeCollection.categorySlugs)
+      : null,
+  );
+
+  function clearCollectionFilter() {
+    const params = new URLSearchParams(page.url.searchParams);
+    params.delete("collection");
+    const qs = params.toString();
+    goto(`/ideas${qs ? "?" + qs : ""}`, {
+      replaceState: true,
+      keepFocus: true,
+      noScroll: true,
+    });
+  }
 
   // Group top-level niches by their superGroup (e.g. "Software", "Industry").
   // Niches without a super-group fall into "Uncategorized" (sortOrder=999).
@@ -64,14 +115,44 @@
     );
   });
 
-  // Filter the grouped niche tree by the search query. If a category name
-  // matches, keep all its children. If only some children match, keep the
-  // category with just those children. Drop categories with zero matches.
+  // Filter the grouped niche tree by (a) the active collection filter and
+  // (b) the text search query. Collection filter applies first, then query.
+  // If a category name matches the query, keep all its children. If only some
+  // children match, keep the category with just those children. Drop
+  // categories with zero matches under either filter.
   const filteredGroups = $derived.by<NicheGroup[]>(() => {
+    const collectionSet = collectionCategorySet;
     const q = query.trim().toLowerCase();
-    if (!q) return groupedNiches;
+
+    // Step 1: apply collection filter (if active).
+    const collectionFiltered: NicheGroup[] = collectionSet
+      ? groupedNiches
+          .map((g) => ({
+            ...g,
+            niches: g.niches
+              .filter(
+                (n) =>
+                  collectionSet.has(n.slug) ||
+                  (n.children ?? []).some((c) => collectionSet.has(c.slug)),
+              )
+              .map((n) =>
+                collectionSet.has(n.slug)
+                  ? n
+                  : {
+                      ...n,
+                      children: (n.children ?? []).filter((c) =>
+                        collectionSet.has(c.slug),
+                      ),
+                    },
+              ),
+          }))
+          .filter((g) => g.niches.length > 0)
+      : groupedNiches;
+
+    // Step 2: apply text query filter.
+    if (!q) return collectionFiltered;
     const out: NicheGroup[] = [];
-    for (const g of groupedNiches) {
+    for (const g of collectionFiltered) {
       const niches: NicheTreeNode[] = [];
       for (const niche of g.niches) {
         const nameMatch = niche.name.toLowerCase().includes(q);
@@ -130,6 +211,27 @@
     metaText={`${data.totals.totalCategories} categories · ${data.totals.totalSubcategories} sub-niches`}
   />
 
+  {#if data.activeCollection}
+    <div class="active-filter">
+      <span class="af-label">FILTERED</span>
+      <span class="af-name">{data.activeCollection.name}</span>
+      <button
+        type="button"
+        class="af-clear"
+        onclick={clearCollectionFilter}
+        aria-label="Clear collection filter"
+      >
+        <X size={12} aria-hidden="true" />
+        Clear
+      </button>
+    </div>
+  {:else if data.collectionSlug && !data.activeCollection}
+    <p class="no-matches">
+      Collection "{data.collectionSlug}" not found.
+      <a href="/ideas">Show all categories</a>.
+    </p>
+  {/if}
+
   {#if hasMatches}
     {#each filteredGroups as group}
       <div class="niche-group">
@@ -140,6 +242,11 @@
         <CategoryAccordion categories={group.niches} defaultOpen={true} />
       </div>
     {/each}
+  {:else if data.activeCollection}
+    <p class="no-matches">
+      No categories in this collection match
+      {query ? `"${query}"` : "the current view"}.
+    </p>
   {:else}
     <p class="no-matches">No niches match "{query}". Try a broader term.</p>
   {/if}
@@ -214,6 +321,63 @@
     color: var(--color-text-muted);
     text-align: center;
     margin: 4rem 0;
+  }
+  .no-matches a {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  /* Active-collection filter chip — sits above the accordion when
+     ?collection=<slug> is present. Mono "FILTERED" eyebrow + collection
+     name + clear button. Matches the catalog's chip vocabulary (rail,
+     mono accent label) without inventing new tokens. */
+  .active-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem 0.5rem 0.625rem;
+    margin: 0.5rem 0 1rem;
+    border: 1px solid var(--color-border-accent);
+    border-left: 3px solid var(--color-accent);
+    border-radius: 6px;
+    background: rgba(234, 88, 12, 0.04);
+  }
+  .af-label {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: var(--color-accent);
+    text-transform: uppercase;
+  }
+  .af-name {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    letter-spacing: -0.005em;
+  }
+  .af-clear {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    margin-left: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    background: var(--color-surface);
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition:
+      color 0.12s ease,
+      border-color 0.12s ease;
+  }
+  .af-clear:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-border-emphasis);
   }
 
   .inline-close {

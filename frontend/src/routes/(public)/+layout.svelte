@@ -19,6 +19,8 @@
           <img src="/niche-logo-beta.svg" alt="NicheIQ" class="h-11" />
         </a>
         <nav class="flex items-center space-x-4">
+          <!-- Catalog link hidden while the /ideas section is WIP. Restore
+               by uncommenting once the catalog UX is ready for public traffic. -->
           {#if session?.user}
             <a
               href="/dashboard"

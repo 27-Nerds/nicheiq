@@ -84,6 +84,8 @@ model User {
   jobs                    Job[]
   credits                 UserCredits?
   notificationPreferences NotificationPreferences?
+  savedIdeas              SavedIdea[]
+  savedPainPoints         SavedPainPoint[]
 
   @@index([email])
   @@index([role])
@@ -606,6 +608,9 @@ model CatalogIdea {
   // Reverse relation — featured-collection memberships. Cascade on idea
   // delete cleans up join rows automatically.
   collectionItems         CatalogCollectionItem[]
+  // User saves of this idea — cascade deletes saved rows when the idea
+  // is removed from the catalog.
+  savedBy                 SavedIdea[]
 
   @@unique([sourceJobId, solutionName])
   @@unique([slug])
@@ -657,6 +662,8 @@ model CatalogPainPoint {
   updatedAt             DateTime                @updatedAt
   // Reverse relation — featured-collection memberships.
   collectionItems       CatalogCollectionItem[]
+  // User saves of this pain point.
+  savedBy               SavedPainPoint[]
 
   @@unique([sourceJobId, title])
   @@unique([slug])
@@ -669,6 +676,49 @@ model CatalogPainPoint {
   // Composite indexes for top-N queries on the landing page
   @@index([categoryId, createdAt(sort: Desc)])
   @@index([categoryId, severityScore(sort: Desc)])
+}
+
+// ============================================
+// Saved Items (per-user bookmarks)
+// ============================================
+
+// Per-user save of a catalog idea, with optional free-text notes.
+// Idempotent on (userId, ideaId) — saving the same idea twice is a no-op
+// upsert. Cascade-delete from both directions: removing the user or the
+// idea cleans up the saved row.
+model SavedIdea {
+  id     String      @id @default(uuid())
+  userId String
+  ideaId String
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  idea   CatalogIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+
+  // Optional free-text annotation, edited from the /saved page.
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, ideaId])
+  @@index([userId, createdAt(sort: Desc)])
+}
+
+// Per-user save of a catalog pain point. Same shape and semantics as
+// SavedIdea — kept as a separate table because the UI renders them as
+// distinct sections on /saved (table for pains, cards for ideas), and
+// the codebase has no other polymorphic-via-discriminator patterns.
+model SavedPainPoint {
+  id          String           @id @default(uuid())
+  userId      String
+  painPointId String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  painPoint   CatalogPainPoint @relation(fields: [painPointId], references: [id], onDelete: Cascade)
+
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, painPointId])
+  @@index([userId, createdAt(sort: Desc)])
 }
 
 // ============================================

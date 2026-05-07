@@ -2,10 +2,11 @@
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import { mapVerdict } from "$lib/types/publicCatalog.js";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils.js";
+  import { page } from "$app/state";
   import IdeaHeroAside from "./IdeaHeroAside.svelte";
   import Chip from "./Chip.svelte";
   import Rocket from "lucide-svelte/icons/rocket";
-  import Bookmark from "lucide-svelte/icons/bookmark";
+  import SaveButton from "../SaveButton.svelte";
 
   // Two-column hero for the idea detail page.
   // Left: H1 + codename + long-form description + tag chips +
@@ -111,10 +112,7 @@
           <span>Validate this idea</span>
         </a>
       {/if}
-      <button class="btn-cta-ghost" type="button" aria-label="Save this idea">
-        <Bookmark size={14} />
-        <span>Save</span>
-      </button>
+      <SaveButton itemType="idea" itemId={idea.id} returnTo={page.url.pathname} />
     </div>
     {#if sourceCount != null && sourceCount > 0}
       <p class="source-line">Sourced from {sourceCount.toLocaleString()} discussions</p>
@@ -169,9 +167,9 @@
     flex-wrap: wrap;
     margin-top: 18px;
   }
-  /* Hero CTA cluster — strong primary in accent + ghost Save adjacent.
-     Save is intentionally non-functional (no backend bookmarking yet); the
-     button renders for layout completeness. Export PDF deliberately omitted. */
+  /* Hero CTA cluster — strong primary in accent + Save (ghost) adjacent.
+     The Save button is provided by SaveButton.svelte and matches this
+     cluster's btn-cta-ghost vocabulary internally. */
   .hero-actions {
     display: flex;
     flex-wrap: wrap;
@@ -208,30 +206,6 @@
     transform: scale(0.98);
   }
   .btn-cta-primary:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
-  }
-  .btn-cta-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 13px 18px;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: 500;
-    background: var(--color-bg-elevated, #fff);
-    color: var(--color-text-secondary, var(--color-text-primary));
-    border: 1px solid var(--color-border-emphasis);
-    cursor: pointer;
-    font-family: inherit;
-    transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
-  }
-  .btn-cta-ghost:hover {
-    color: var(--color-text-primary);
-    border-color: var(--color-text-muted);
-    background: var(--color-bg-base, #fafafa);
-  }
-  .btn-cta-ghost:focus-visible {
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }

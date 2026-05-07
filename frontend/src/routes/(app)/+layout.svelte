@@ -134,6 +134,10 @@
                     {creditBalance} credits
                   </span>
                 </a>
+                <!-- Saved link hidden while the catalog/saved section is
+                     WIP. Route at /saved remains live; restore this entry
+                     once the UX is ready. -->
+
                 {#if session?.user?.role === "ADMIN"}
                   <a
                     href="/admin"

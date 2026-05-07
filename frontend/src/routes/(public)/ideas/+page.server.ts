@@ -4,7 +4,11 @@ import { canonicalUrl } from '$lib/seo/canonical';
 import { buildMeta } from '$lib/seo/meta';
 import { organization, website, breadcrumbList, itemList } from '$lib/seo/jsonld';
 import { siteOrigin } from '$lib/seo/canonical';
-import type { CatalogTotals, CatalogCollectionSummary } from '$lib/types/publicCatalog';
+import type {
+  CatalogTotals,
+  CatalogCollectionSummary,
+  CatalogCollectionDetail,
+} from '$lib/types/publicCatalog';
 
 const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
@@ -50,15 +54,33 @@ async function fetchCollections(): Promise<CatalogCollectionSummary[]> {
   return [];
 }
 
+// Single collection detail — only fetched when ?collection=<slug> is present
+// in the URL. Used to filter the catalog accordion to categories the
+// collection's items live in (including descendants — see B4).
+async function fetchCollectionDetail(slug: string): Promise<CatalogCollectionDetail | null> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/public/catalog/collections/${slug}`, {
+      headers: HEADERS(),
+    });
+    if (res.ok) return (await res.json()) as CatalogCollectionDetail;
+  } catch (err) {
+    console.error('collection detail fetch failed', err);
+  }
+  return null;
+}
+
 export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
   setHeaders({
     'Cache-Control': 'public, max-age=60, s-maxage=300, stale-while-revalidate=86400',
   });
 
-  const [{ categoriesTree }, totals, collections] = await Promise.all([
+  const collectionSlug = url.searchParams.get('collection');
+
+  const [{ categoriesTree }, totals, collections, activeCollection] = await Promise.all([
     parent(),
     fetchTotals(),
     fetchCollections(),
+    collectionSlug ? fetchCollectionDetail(collectionSlug) : Promise.resolve(null),
   ]);
   const origin = siteOrigin();
   const canonical = canonicalUrl('/ideas', url.searchParams);
@@ -97,5 +119,7 @@ export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
     categoriesTree,
     totals,
     collections,
+    activeCollection,
+    collectionSlug,
   };
 };

@@ -84,18 +84,41 @@ export async function listCollectionSummaries(): Promise<CatalogCollectionSummar
       _count: { select: { items: true } },
       items: {
         select: {
-          idea: { select: { category: { select: { slug: true } } } },
-          painPoint: { select: { category: { select: { slug: true } } } },
+          idea: {
+            select: {
+              category: {
+                select: {
+                  slug: true,
+                  parent: { select: { slug: true } },
+                },
+              },
+            },
+          },
+          painPoint: {
+            select: {
+              category: {
+                select: {
+                  slug: true,
+                  parent: { select: { slug: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
   });
 
+  // Collect both the exact category slug and its parent slug (if any) so
+  // parent-category pages can match collections whose items only live in
+  // descendant sub-niches. Tree depth is currently 2 (parent niche + sub);
+  // if a third level is ever added, this needs to walk further up.
   const summaries: CatalogCollectionSummary[] = rows.map((c) => {
     const slugs = new Set<string>();
     for (const it of c.items) {
-      const slug = it.idea?.category?.slug ?? it.painPoint?.category?.slug;
-      if (slug) slugs.add(slug);
+      const cat = it.idea?.category ?? it.painPoint?.category;
+      if (cat?.slug) slugs.add(cat.slug);
+      if (cat?.parent?.slug) slugs.add(cat.parent.slug);
     }
     return {
       slug: c.slug,
@@ -155,17 +178,22 @@ export async function getCollectionDetail(slug: string): Promise<CatalogCollecti
 
   if (!collection || !collection.isActive) return null;
 
+  // Symmetric with summarizeCollections: include parent slugs so the
+  // categorySlugs set on the detail response matches what the summary
+  // exposes. Parent-category filter pages depend on this consistency.
   const categorySlugs = new Set<string>();
   const items: CatalogCollectionItemPreview[] = collection.items.map((it) => {
     if (it.idea) {
-      const slug = it.idea.category?.slug;
-      if (slug) categorySlugs.add(slug);
+      const cat = it.idea.category;
+      if (cat?.slug) categorySlugs.add(cat.slug);
+      if (cat?.parent?.slug) categorySlugs.add(cat.parent.slug);
       const { sourceJobId: _s, publishedById: _p, ...rest } = it.idea;
       return { position: it.position, kind: 'idea', idea: rest };
     }
     if (it.painPoint) {
-      const slug = it.painPoint.category?.slug;
-      if (slug) categorySlugs.add(slug);
+      const cat = it.painPoint.category;
+      if (cat?.slug) categorySlugs.add(cat.slug);
+      if (cat?.parent?.slug) categorySlugs.add(cat.parent.slug);
       const { sourceJobId: _s, publishedById: _p, ...rest } = it.painPoint;
       return { position: it.position, kind: 'pain-point', painPoint: rest };
     }
