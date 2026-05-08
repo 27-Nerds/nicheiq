@@ -5,7 +5,7 @@
   // Sub-niche › Pain title); the rank row carries pain ranking within the
   // sub-niche.
 
-  import type { QualitySignals } from "$lib/types/publicCatalog.js";
+  import type { QualitySignals, Theme } from "$lib/types/publicCatalog.js";
   import { page } from "$app/state";
   import PainPointHeroAside from "./PainPointHeroAside.svelte";
   import SaveButton from "../SaveButton.svelte";
@@ -24,6 +24,14 @@
     /** Comparative ranking within the sub-niche. Null on legacy rows
      *  or when computation fails. */
     rankInfo?: { rank: number; total: number } | null;
+    /** Parent theme this pain belongs to (matched at the route via pp.themeId
+     *  → data.painPoint.themes). When set, renders a sibling theme-row
+     *  beneath the rank-row as a lightweight discoverability hint. */
+    parentTheme?: Theme | null;
+    /** Pre-built href to the theme's anchor on the niche/sub-niche page
+     *  (e.g. /ideas/foo/bar#theme-{id}). When non-null, theme-row renders an
+     *  anchor; when null, plain text. Avoids href={x ?? '#'} fake-affordance. */
+    themeAnchorHref?: string | null;
     // Aside-panel props (passed through to PainPointHeroAside).
     severity: number | null;
     willingnessToPay: number | null;
@@ -40,6 +48,8 @@
     subName = null,
     categoryName = null,
     rankInfo = null,
+    parentTheme = null,
+    themeAnchorHref = null,
     severity,
     willingnessToPay,
     opportunity,
@@ -60,6 +70,15 @@
           <span class="rank-meta">pain #1 of {rankInfo.total} in {rankNiche}</span>
         {:else}
           <span class="rank-meta">pain #{rankInfo.rank} of {rankInfo.total} in {rankNiche}</span>
+        {/if}
+      </div>
+    {/if}
+    {#if parentTheme}
+      <div class="theme-row">
+        {#if themeAnchorHref}
+          <a class="theme-link" href={themeAnchorHref}>↗ Theme · {parentTheme.title}</a>
+        {:else}
+          <span class="theme-link static">Theme · {parentTheme.title}</span>
         {/if}
       </div>
     {/if}
@@ -118,6 +137,35 @@
   .rank-meta {
     color: var(--color-text-muted);
     font-weight: 600;
+  }
+  /* Theme discoverability hint — sibling to .rank-row, NOT a child. Lives on
+     its own line by virtue of being a separate block. Same mono uppercase
+     vocabulary as .rank-meta so it reads as a continuation of the kicker
+     block without competing with the rank text. */
+  .theme-row {
+    margin: 0 0 10px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .theme-link {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    text-decoration: none;
+    transition: color 120ms ease;
+  }
+  a.theme-link:hover,
+  a.theme-link:focus-visible {
+    color: var(--color-accent);
+    outline: none;
+  }
+  a.theme-link:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .theme-link.static {
+    cursor: default;
   }
   h1 {
     font-size: 32px;

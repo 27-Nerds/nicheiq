@@ -58,10 +58,7 @@
 </script>
 
 {#if hasDeck}
-  <aside class="theme-deck-note catalog-fade-in">
-    <span class="theme-deck-badge">Overview</span>
-    <p class="theme-deck-text">{deck}</p>
-  </aside>
+  <p class="theme-deck-note catalog-fade-in">{deck}</p>
 {/if}
 
 {#if lead || rollThemes.length > 0}
@@ -112,38 +109,20 @@
 {/if}
 
 <style>
-  /* Section overview rendered as a "data note" — a chip-badge labels the
-     block as supporting metadata, italic muted prose carries the content.
-     The badge is a real UI element (hairline border + padding) which puts
-     the deck in a different visual category than the lead's typographic
-     kickers. Same idiom as documentation-site minimal callouts (Quarto,
-     Mintlify) without the colored-border AI-slop pattern. */
+  /* Section lede — quiet roman caption under the section divider.
+     Roman (not italic) at 12px because italic at this size is harder to
+     scan AND barely registers as differentiation in a humanist body
+     font — color + size already carry the "this is meta, not body"
+     signal. Tight line-height (1.45) and wider max-width (720px)
+     collapse the block vertically: fewer wrapped lines = lower visual
+     volume, even though the character size is similar. */
   .theme-deck-note {
     display: block;
     max-width: 720px;
-    margin: 0 0 32px;
-  }
-  .theme-deck-badge {
-    display: inline-block;
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 700;
+    margin: 0 0 18px;
+    font-size: 12px;
+    line-height: 1.45;
     color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    padding: 2px 8px;
-    margin-bottom: 10px;
-    background: var(--color-bg-elevated);
-    white-space: nowrap;
-  }
-  .theme-deck-text {
-    font-style: italic;
-    font-size: 13.5px;
-    line-height: 1.65;
-    color: var(--color-text-muted);
-    margin: 0;
     text-wrap: pretty;
     overflow-wrap: anywhere;
   }
@@ -239,7 +218,7 @@
 
   @media (max-width: 640px) {
     .theme-deck-note {
-      margin-bottom: 24px;
+      margin-bottom: 16px;
     }
     .theme-foot {
       justify-content: flex-start;

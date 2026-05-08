@@ -161,6 +161,34 @@
     Array.isArray(data.painPoint.relatedIdeas) && data.painPoint.relatedIdeas.length > 0,
   );
 
+  // Parent theme: match pp.themeId against data.painPoint.themes[].id. The
+  // matched Theme carries `description` (mapped from Pydantic `definition`),
+  // `title`, and `id` — we use all three (link target, hero hint, section 04
+  // deck prose). Resolves on ~47% of pains in dev catalog; the rest see no
+  // theme content (purely additive).
+  const parentTheme = $derived.by(() => {
+    const themeId = pp.themeId;
+    if (typeof themeId !== "string" || !themeId) return null;
+    const themes = data.painPoint.themes;
+    if (!Array.isArray(themes)) return null;
+    return themes.find((t) => t.id === themeId) ?? null;
+  });
+
+  // Pre-build the cross-page anchor href. Uses categoryPath which handles
+  // both sub-niche (parent slug present) and top-level (parent null) cases —
+  // both render PainPointsByTheme with #theme-{id} anchors.
+  const themeAnchorHref = $derived.by<string | null>(() => {
+    if (!parentTheme || !parentTheme.id) return null;
+    return `${categoryPath({ slug: pp.category.slug, parentSlug: parent?.slug ?? null })}#theme-${parentTheme.id}`;
+  });
+
+  // Section 04 deck gates on theme + non-empty description. Trim-check
+  // mirrors the pattern in PainPointsByTheme.svelte:45-47 so whitespace-only
+  // descriptions don't render an empty deck.
+  const hasThemeDeck = $derived(
+    !!parentTheme && typeof parentTheme.description === "string" && parentTheme.description.trim().length > 0,
+  );
+
   // Section numbering kept stable: increment only when a section actually
   // renders. Hero score panel renders all pain stats; subreddit attribution
   // is a strip under section 01, not a numbered section.
@@ -186,6 +214,8 @@
   categoryName={parent?.name ?? pp.category.name}
   subName={parent ? pp.category.name : null}
   rankInfo={data.painPoint.rankInfo}
+  {parentTheme}
+  {themeAnchorHref}
   severity={severity100}
   willingnessToPay={wtp100}
   opportunity={opportunityNorm}
@@ -260,6 +290,17 @@
     <span>{siblings.length} related</span>
   {/snippet}
   <SectionDivider num={num4} label="Related pains in this theme" right={sibCount} />
+  {#if hasThemeDeck && parentTheme}
+    <aside class="theme-deck">
+      <span class="theme-deck-kicker">Theme</span>
+      {#if themeAnchorHref}
+        <a class="theme-deck-name" href={themeAnchorHref}>{parentTheme.title}</a>
+      {:else}
+        <span class="theme-deck-name static">{parentTheme.title}</span>
+      {/if}
+      <p class="theme-deck-prose">{parentTheme.description}</p>
+    </aside>
+  {/if}
   <div class="sibling-list">
     {#each siblings as sp}
       <RelatedPainCard pain={sp} />
@@ -406,6 +447,56 @@
     font-size: 14px;
     line-height: 1.6;
     color: var(--color-text-primary);
+  }
+
+  /* Editorial sub-heading inside section 04. Mono kicker → linked heading
+     → italic muted prose — frames the related-pains list with the theme
+     name + description. NOT a deck-note pill (that idiom is for overview
+     prose); this is a journalistic sub-section header. */
+  .theme-deck {
+    display: block;
+    max-width: 780px;
+    margin: 0 0 20px;
+  }
+  .theme-deck-kicker {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    margin-bottom: 4px;
+  }
+  .theme-deck-name {
+    display: inline-block;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    margin-bottom: 6px;
+    transition: color 120ms ease;
+  }
+  a.theme-deck-name:hover,
+  a.theme-deck-name:focus-visible {
+    color: var(--color-accent);
+    outline: none;
+  }
+  a.theme-deck-name:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .theme-deck-name.static {
+    cursor: default;
+  }
+  .theme-deck-prose {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--color-text-muted);
+    font-style: italic;
+    text-wrap: pretty;
   }
 
   .sibling-list {
