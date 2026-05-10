@@ -14,6 +14,7 @@
     SubcategoryOpportunityPanel,
     CatalogBand,
     NicheMethodology,
+    CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import type { Theme } from "$lib/types/publicCatalog.js";
   import { solutionDisplayTitle } from "$lib/utils/solution-utils.js";
@@ -171,7 +172,7 @@
     <span>
       {data.payload.totalIdeas.toLocaleString()} ideas tracked · Full theme + audience analysis populates after the next research run.
     </span>
-    <a class="rpn-cta" href={ctaHref} data-sveltekit-preload-data="hover">Commission a research file →</a>
+    <a class="rpn-cta" href={ctaHref} data-sveltekit-preload-data="hover">Run research now →</a>
   </p>
 {/if}
 
@@ -247,7 +248,7 @@
         ? `${data.payload.totalIdeas} tracked · ${goCount} verdict GO`
         : `${data.payload.totalIdeas} tracked`}
     />
-    <AllIdeasSection ideas={data.payload.topIdeas} defaultView="list" showRank />
+    <AllIdeasSection ideas={data.payload.topIdeas} showRank />
   </div>
 {/if}
 
@@ -266,10 +267,18 @@
   </div>
 {/if}
 
+<!-- FAQ supplements the methodology block: methodology establishes trust,
+     FAQs answer follow-up questions a founder would ask after reading. Both
+     visibly rendered here AND emitted as FAQPage JSON-LD by buildCategoryJsonLd
+     when faqJson.length >= 2 (same gate, structural visible-vs-schema match). -->
+{#if (data.payload.category.faqJson?.length ?? 0) >= 2}
+  <CategoryFAQ items={data.payload.category.faqJson ?? []} />
+{/if}
+
 <BuildCTA
-  headline="Don't see what you need?"
-  body="Commission a research file scoped to your exact niche. Get themes, pain points, audience segments, and SEO opportunities — all in one validated report."
-  ctaLabel="Commission a research file"
+  headline="Ready to validate your own niche?"
+  body="Run research on your exact niche. Get pain points, solution ideas, audience segments, and SEO keywords — all sourced from real community discussions."
+  ctaLabel="Run your own research"
   {ctaHref}
 />
 

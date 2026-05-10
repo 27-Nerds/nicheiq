@@ -1,6 +1,8 @@
 <script lang="ts">
   import { ArrowLeft, ExternalLink, Plus, Trash2 } from "lucide-svelte";
   import { invalidateAll } from "$app/navigation";
+  import FaqGenerator from "$lib/components/admin/FaqGenerator.svelte";
+  import type { FaqEntry as FaqEntryType, FaqJsonMeta } from "$lib/types/catalog-landing";
 
   interface FaqEntry {
     q: string;
@@ -12,7 +14,13 @@
   // Editable form state. Initialized empty and re-synced from `data.category`
   // when the route navigates to a different category, when `invalidateAll()`
   // refreshes the page data after save, or on first render.
-  let syncedFromCategoryId = $state<string | null>(null);
+  //
+  // The resync key combines the category id with `faqJsonMeta.updatedAt` so
+  // that a FAQ save (manual or via the FaqGenerator modal) bumps the key and
+  // triggers re-sync — without that, the guard would return early on the
+  // same-id refresh and the local `faq` array would stay stale until a hard
+  // reload.
+  let syncedKey = $state<string | null>(null);
   let seoTitle = $state("");
   let seoDescription = $state("");
   let longDescription = $state("");
@@ -20,9 +28,9 @@
   let faq = $state<FaqEntry[]>([]);
 
   $effect(() => {
-    // Re-sync only when the category id changes (not on every keystroke).
-    if (syncedFromCategoryId === data.category.id) return;
-    syncedFromCategoryId = data.category.id;
+    const key = `${data.category.id}:${data.category.faqJsonMeta?.updatedAt ?? ""}`;
+    if (syncedKey === key) return;
+    syncedKey = key;
     seoTitle = data.category.seoTitle ?? "";
     seoDescription = data.category.seoDescription ?? "";
     longDescription = data.category.longDescription ?? "";
@@ -244,10 +252,27 @@
         Add question
       </button>
     </div>
+    <!-- Admin-triggered LLM generator. Click runs OpenAI on the joined
+         category data, opens a preview modal, and persists faqJson +
+         faqJsonMeta on Save. After save, invalidateAll() reloads this
+         page so the chip and the table reflect the new state. -->
+    <div class="faq-generator-row">
+      <FaqGenerator
+        entityType="category"
+        entityId={data.category.id}
+        existingFaqs={(faq as FaqEntryType[]) ?? null}
+        meta={(data.category.faqJsonMeta as FaqJsonMeta | null) ?? null}
+        onSaved={async () => {
+          await invalidateAll();
+        }}
+      />
+    </div>
     {#if faq.length === 0}
       <p class="empty-faq">
-        No FAQ entries yet. Each entry becomes a <code>FAQPage</code> JSON-LD item;
-        leave the section empty to omit it from the public page entirely.
+        No FAQ entries yet. Generate one above, or add entries manually — both
+        flows persist <code>faqJson</code> and surface as a public
+        <code>&lt;CategoryFAQ&gt;</code> + <code>FAQPage</code> JSON-LD when at
+        least 2 entries exist.
       </p>
     {/if}
     <div class="faq-list">
@@ -425,6 +450,10 @@
   .add-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+  }
+
+  .faq-generator-row {
+    margin-bottom: 0.75rem;
   }
 
   .empty-faq {

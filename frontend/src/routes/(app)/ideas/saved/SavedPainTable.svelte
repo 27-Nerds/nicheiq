@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { SavedPainPointItem } from "$lib/types/saved";
-  import Bookmark from "lucide-svelte/icons/bookmark";
   import Pencil from "lucide-svelte/icons/pencil";
+  import X from "lucide-svelte/icons/x";
   import NoteEditor from "./NoteEditor.svelte";
   import { formatDistanceToNow } from "./formatRelative";
 
@@ -40,11 +40,12 @@
     <span role="columnheader" class="ar">Severity</span>
     <span role="columnheader" class="ar">Saved</span>
     <span role="columnheader">Note</span>
+    <span role="columnheader" class="ar" aria-label="Actions"></span>
   </div>
   {#each items as item, i (item.id)}
     {@const tier = severityTier(item.painPoint.severityScore)}
     {@const sevPct = severityPercent(item.painPoint.severityScore)}
-    <div class="pt-row t-{tier}" role="row">
+    <div class="pt-row t-{tier}" role="row" style="--i: {Math.min(i, 5)}">
       <span class="rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
       <a
         class="ttl"
@@ -67,16 +68,12 @@
         <span class="bar" style="--w: {sevPct}%"></span>
         <span class="num">{sevPct}</span>
       </span>
-      <button
-        type="button"
-        class="when"
-        role="cell"
-        onclick={() => onUnsave(item)}
-        aria-label="Remove pain point from saved"
-      >
-        <Bookmark size={11} fill="currentColor" />
-        <span>{formatDistanceToNow(item.createdAt)}</span>
-      </button>
+      <!-- Non-interactive timestamp cell (was a button — split into
+           passive metadata + an explicit remove button at the row end so
+           the affordance is unambiguous). -->
+      <span class="when" role="cell">
+        Saved {formatDistanceToNow(item.createdAt)} ago
+      </span>
       <span class="note-cell" role="cell">
         {#if editingId === item.id}
           <NoteEditor
@@ -90,9 +87,10 @@
             type="button"
             class="note-text"
             onclick={() => (editingId = item.id)}
-            aria-label="Edit note"
+            aria-label={`Edit note: ${item.notes.slice(0, 80)}${item.notes.length > 80 ? "…" : ""}`}
           >
-            <span>{item.notes}</span>
+            <span class="note-content"
+              ><span class="note-kicker" aria-hidden="true">NOTE</span>{item.notes}</span>
             <Pencil size={11} class="note-pencil" />
           </button>
         {:else}
@@ -107,6 +105,21 @@
           </button>
         {/if}
       </span>
+      <!-- Explicit "Remove from saved" button — replaces the older
+           bookmark+timestamp pattern that conflated metadata with action.
+           Same onUnsave callback as before, so the existing UndoToast
+           flow (5-second undo) keeps working unchanged. -->
+      <button
+        type="button"
+        class="pt-remove"
+        role="cell"
+        onclick={() => onUnsave(item)}
+        aria-label={`Remove "${item.painPoint.title}" from saved`}
+        title="Remove from saved"
+      >
+        <X size={11} aria-hidden="true" />
+        <span>Remove</span>
+      </button>
     </div>
   {/each}
 </div>
@@ -124,7 +137,7 @@
   }
   .pt-head {
     display: grid;
-    grid-template-columns: 44px 1fr 100px 160px 90px 220px;
+    grid-template-columns: 44px 1fr 100px 160px 110px 220px 88px;
     padding: 11px 18px;
     background: var(--color-bg-base, #fafafa);
     border-bottom: 1px solid var(--color-border);
@@ -142,7 +155,7 @@
   }
   .pt-row {
     display: grid;
-    grid-template-columns: 44px 1fr 100px 160px 90px 220px;
+    grid-template-columns: 44px 1fr 100px 160px 110px 220px 88px;
     padding: 14px 18px;
     border-bottom: 1px solid var(--color-border);
     gap: 14px;
@@ -173,6 +186,24 @@
   }
   .pt-row:hover {
     background: var(--color-bg-base, #fafafa);
+  }
+  /* Stagger reveal — each row sets `--i` (capped at 5) inline. Opacity-only
+     to match the editorial direction. Replays on optimistic remove → undo
+     and on filter changes; intentional, reads as ledger entries appearing. */
+  .pt-row {
+    opacity: 0;
+    animation: saved-row-in 240ms ease-out forwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  @keyframes saved-row-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .pt-row {
+      opacity: 1;
+      animation: none;
+    }
   }
   .rank {
     font-family: var(--font-mono);
@@ -248,22 +279,46 @@
     min-width: 28px;
     text-align: right;
   }
+  /* Saved-since timestamp — non-interactive metadata cell. The destructive
+     remove action lives in .pt-remove at the row end. */
   .when {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 6px;
-    border: none;
-    background: transparent;
     font-family: var(--font-mono);
     font-size: 11px;
     color: var(--color-text-muted);
-    cursor: pointer;
-    transition: color 120ms ease;
+    letter-spacing: 0.04em;
+    font-feature-settings: "tnum";
     justify-self: end;
+    text-align: right;
   }
-  .when:hover {
+
+  /* Explicit "× Remove" pill at the row end. Same shape as
+     SavedIdeaCard's .saved-remove for visual consistency across both
+     surfaces. Muted by default; accent on hover. */
+  .pt-remove {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 9px;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    transition:
+      color 0.12s ease,
+      border-color 0.12s ease,
+      background 0.12s ease;
+    justify-self: end;
+    white-space: nowrap;
+  }
+  .pt-remove:hover {
     color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated, #fff);
   }
   .note-cell {
     overflow: hidden;
@@ -286,10 +341,29 @@
     position: relative;
   }
   .note-text {
+    padding-right: 22px;
+  }
+  /* The visible span carries the existing nowrap+ellipsis treatment so
+     the truncation behavior is preserved when the NOTE kicker is prefixed
+     inline. Keeping it on .note-content (instead of the button) avoids
+     conflicts with the absolutely-positioned pencil icon. */
+  .note-text .note-content {
+    display: inline-block;
+    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    padding-right: 22px;
+    vertical-align: middle;
+  }
+  .note-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-right: 0.5rem;
+    font-style: normal;
   }
   .note-text :global(.note-pencil) {
     position: absolute;
@@ -330,36 +404,59 @@
     border-style: solid;
   }
 
+  /* Shared focus rule for every interactive control in the row. (.when is
+     no longer a button per the redesign — it's plain timestamp text.) */
+  .note-text:focus-visible,
+  .note-empty:focus-visible,
+  .pt-remove:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Mobile layout — switch to flex so each cell flows naturally. The
+     previous implementation collapsed three cells (.men, .sev, .when) to
+     the same `grid-area: meta` which caused them to overlap. The flex
+     layout below replaces that with explicit ordering and wrap so the
+     row reads top-to-bottom: rank + remove on the first line, title full
+     width, then a meta row, then notes. */
   @media (max-width: 900px) {
     .pt-head {
       display: none;
     }
     .pt-row {
-      grid-template-columns: 36px 1fr;
-      grid-template-areas:
-        "rank title"
-        ". meta"
-        ". note";
-      row-gap: 6px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      padding: 14px;
     }
     .rank {
-      grid-area: rank;
+      flex: 0 0 auto;
+      order: 0;
+    }
+    .pt-remove {
+      flex: 0 0 auto;
+      order: 1;
+      margin-left: auto;
     }
     .ttl {
-      grid-area: title;
+      flex: 1 1 100%;
+      order: 2;
+      min-width: 0;
     }
     .men,
     .sev,
     .when {
-      grid-area: meta;
-      justify-self: start;
+      flex: 0 0 auto;
+      order: 3;
     }
-    .men + .sev,
-    .sev + .when {
-      margin-left: 12px;
+    .sev {
+      justify-content: flex-start;
     }
     .note-cell {
-      grid-area: note;
+      flex: 1 1 100%;
+      order: 4;
     }
   }
 </style>

@@ -522,6 +522,9 @@ model CatalogCategory {
   seoDescription  String?            @db.VarChar(320)
   longDescription String?            @db.Text
   faqJson         Json?
+  // Provenance for faqJson — { source: 'generated'|'manual', model?, generatedAt?, tokensUsed?, updatedAt }.
+  // Written by both the manual category PATCH path and the new /faq/save admin route.
+  faqJsonMeta     Json?
   tags            String[]           @default([])
   parentId        String?
   parent          CatalogCategory?   @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
@@ -599,6 +602,10 @@ model CatalogIdea {
   innovationAngle         String?                 @db.Text
   organicDiscoveryQueries String[]                @default([])
   addressedPainTitles     String[]                @default([])
+  // FAQ stored alongside the idea — used both for visible <CategoryFAQ> rendering on
+  // the public detail page and for the FAQPage JSON-LD block (gated on length >= 2).
+  faqJson                 Json?
+  faqJsonMeta             Json?
   // Publication metadata
   publishedById           String                  @db.VarChar(100)
   isActive                Boolean                 @default(true)
@@ -655,6 +662,9 @@ model CatalogPainPoint {
   // Nullable for legacy rows ingested before the field existed — those render
   // in the "Other pain points" Unclassified bucket on the landing page.
   themeId               String?                 @db.VarChar(160)
+  // Same FAQ shape as CatalogIdea — see comments there.
+  faqJson               Json?
+  faqJsonMeta           Json?
   publishedById         String                  @db.VarChar(100)
   isActive              Boolean                 @default(true)
   isFeatured            Boolean                 @default(false)

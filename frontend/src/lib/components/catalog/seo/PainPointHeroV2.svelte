@@ -39,6 +39,12 @@
     qualitySignals?: QualitySignals | null;
     mentionCount?: number | null;
     sourcePlatforms?: string[] | null;
+    /** ISO date string used in the visible byline. Should match the schema's
+     *  `dateModified` so visible-vs-schema match holds for the Article block. */
+    updatedAt?: string | null;
+    /** Author label rendered in the byline. Should match the schema's
+     *  `Article.author.name`. */
+    authorName?: string;
   }
 
   let {
@@ -56,9 +62,24 @@
     qualitySignals = null,
     mentionCount = null,
     sourcePlatforms = null,
+    updatedAt = null,
+    authorName = "NicheIQ Research Team",
   }: Props = $props();
 
   const rankNiche = $derived(subName ?? categoryName ?? "this niche");
+
+  const updatedDisplay = $derived.by(() => {
+    if (!updatedAt) return null;
+    try {
+      return new Intl.DateTimeFormat("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      }).format(new Date(updatedAt));
+    } catch {
+      return null;
+    }
+  });
 </script>
 
 <header class="pp-hero">
@@ -83,6 +104,17 @@
       </div>
     {/if}
     <h1>{title}</h1>
+    {#if updatedDisplay}
+      <!-- Byline anchors the Article schema's author + dateModified visibly
+           on the page — required by Google's Article guidelines. -->
+      <p class="byline">
+        <span class="byline-author">By {authorName}</span>
+        <span class="byline-sep" aria-hidden="true">·</span>
+        <span class="byline-updated">
+          Updated <time datetime={updatedAt!}>{updatedDisplay}</time>
+        </span>
+      </p>
+    {/if}
     {#if description}
       <p class="lede">{description}</p>
     {/if}
@@ -182,6 +214,26 @@
     flex-wrap: wrap;
     gap: 8px;
     margin-top: 22px;
+  }
+  .byline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.5rem;
+    margin: 14px 0 16px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    letter-spacing: 0.06em;
+  }
+  .byline-author {
+    color: var(--color-text-secondary);
+  }
+  .byline-sep {
+    color: var(--color-border);
+  }
+  .byline-updated time {
+    font-feature-settings: "tnum";
   }
   .lede {
     font-size: 15px;

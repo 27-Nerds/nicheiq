@@ -331,6 +331,31 @@ MAX_JOB_RUNTIME_HOURS=4
 # Maximum hours a job can run before being killed
 # Safety net for stuck jobs
 # Worker sends heartbeats; jobs without heartbeat are marked failed
+
+# Catalog FAQ generation (Phase B — admin-triggered LLM Q&A)
+OPENAI_FAQ_MODEL=gpt-4o-mini
+# Model used by /api/admin/catalog/faq/generate to draft FAQs for sub-niche,
+# idea, and pain-point detail pages. Same model used across all three entity
+# types in v1. Per-deploy overridable without a code release.
+# Code-level fallback when unset: 'gpt-4o-mini'.
+# Recommended values:
+#   - gpt-4o-mini   (~$0.0008/regenerate — fast, decent quality, default)
+#   - gpt-4.1-mini  (similar cost, better instruction-following)
+#   - gpt-4o        (~$0.020/regenerate — best adherence to nuanced rules
+#                    like 'never use solution_name codename in idea-page
+#                    questions'; ~25× the per-call cost of mini variants but
+#                    still trivial at admin-trigger volume)
+# Production deploys should set this explicitly so SEO/ops can swap models
+# without redeploying the backend.
+
+FAQ_GENERATE_RATE_HOURLY=30
+# Per-admin per-hour cap on FAQ generation calls. Stops accidental loops
+# from running up OpenAI cost. 31st call within the hour returns 429 with
+# a Retry-After header; admin UI surfaces a friendly toast.
+
+FAQ_SAVE_RATE_HOURLY=60
+# Per-admin per-hour cap on FAQ save calls. Saves are cheap (Prisma update +
+# Redis cache bust) but kept gated as a defense-in-depth measure.
 ```
 
 ### Model Selection

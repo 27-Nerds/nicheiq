@@ -15,6 +15,7 @@
     BuildCTA,
     CollectionTeaser,
     CatalogBand,
+    CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
 
@@ -275,10 +276,14 @@
     </div>
   {/if}
 
+  {#if (data.payload.category.faqJson?.length ?? 0) >= 2}
+    <CategoryFAQ items={data.payload.category.faqJson ?? []} />
+  {/if}
+
   <BuildCTA
-    headline="Don't see what you need?"
-    body="Commission a research file scoped to your exact niche. Get themes, pain points, audience segments, and SEO opportunities — all in one validated report."
-    ctaLabel="Commission a research file"
+    headline="Ready to validate your own niche?"
+    body="Run research on your exact niche. Get pain points, solution ideas, audience segments, and SEO keywords — all sourced from real community discussions."
+    ctaLabel="Run your own research"
     {ctaHref}
   />
 {:else}
@@ -301,10 +306,14 @@
     </div>
   {/if}
 
+  {#if data.pseo.faqJson.length >= 2}
+    <CategoryFAQ items={data.pseo.faqJson} />
+  {/if}
+
   <BuildCTA
-    headline="Don't see what you need?"
-    body="Commission a research file scoped to your exact niche. Get themes, pain points, audience segments, and SEO opportunities — all in one validated report."
-    ctaLabel="Commission a research file"
+    headline="Ready to validate your own niche?"
+    body="Run research on your exact niche. Get pain points, solution ideas, audience segments, and SEO keywords — all sourced from real community discussions."
+    ctaLabel="Run your own research"
     {ctaHref}
   />
 {/if}

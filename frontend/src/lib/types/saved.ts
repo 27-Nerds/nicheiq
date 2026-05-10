@@ -1,5 +1,5 @@
 /**
- * Types for the saved-items surface (/saved page + SaveButton).
+ * Types for the saved-items surface (/ideas/saved page + SaveButton).
  *
  * Backend shapes mirror the Prisma SavedIdea / SavedPainPoint rows. The
  * embedded `idea` / `painPoint` fields use the same camelCase projections
@@ -93,7 +93,7 @@ export interface SavedCounts {
   painPoints: number;
 }
 
-/** Filter set for the /saved page query string. */
+/** Filter set for the /ideas/saved page query string. */
 export interface SavedItemFilters {
   hasNotes?: boolean;
   /** Only honoured for ideas; pain points don't carry verdict in v1. */

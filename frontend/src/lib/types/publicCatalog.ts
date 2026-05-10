@@ -173,6 +173,9 @@ export interface CatalogTotals {
   totalCategories: number;
   totalSubcategories: number;
   contentItemsMined: number;
+  /** ISO timestamp of the most recent active idea or pain-point update.
+   *  Drives the hero kicker dateline on /ideas. */
+  lastUpdated: string | null;
 }
 
 // ============================================

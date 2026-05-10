@@ -66,6 +66,14 @@ export const CONFIG = {
   categorizeModel: process.env.CATEGORIZE_LLM_MODEL || 'gpt-4.1-nano',
   categorizeItemRateHourly: parseInt(process.env.CATEGORIZE_ITEM_RATE_HOURLY || '500', 10),
 
+  // Catalog FAQ generation (admin-triggered LLM Q&A from page data; see
+  // plans/pure-giggling-beacon.md Phase B). Production deploys should set
+  // OPENAI_FAQ_MODEL explicitly so SEO/ops can swap models without a code
+  // release. Code-level fallback `gpt-4o-mini` keeps dev/local startup smooth.
+  faqGenerationModel: process.env.OPENAI_FAQ_MODEL || 'gpt-4o-mini',
+  faqGenerateRateHourly: parseInt(process.env.FAQ_GENERATE_RATE_HOURLY || '30', 10),
+  faqSaveRateHourly: parseInt(process.env.FAQ_SAVE_RATE_HOURLY || '60', 10),
+
   // Discovery sharing
   ipHashSalt: process.env.IP_HASH_SALT || 'nicheiq-vote-salt',
 } as const;

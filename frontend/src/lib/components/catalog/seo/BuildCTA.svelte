@@ -2,6 +2,25 @@
   import { ArrowRight } from "lucide-svelte";
   import Sparkles from "lucide-svelte/icons/sparkles";
 
+  // CTA voice cheat-sheet — read before adding new copy to BuildCTA callers
+  // anywhere in /ideas, /idea/[slug], or /pain-point/[slug]:
+  //
+  //   1. Lead with action, not deficit. "Ready to…?", "Want to…?", or direct
+  //      verbs (Run, Build, Validate, Research) — never "Don't see…?" framing.
+  //   2. Self-serve ownership. "your", "your own". Drop "commission", "file",
+  //      "report you'll receive". The user runs research; they don't buy a
+  //      pre-made deliverable.
+  //   3. Ground outputs in sourcing. "real community discussions",
+  //      "Reddit + HN", "go/no-go verdict" — concrete > abstract.
+  //   4. Match verb to visitor state. Index/category → "Run". Idea page →
+  //      "Validate" / "Start". Pain page → "Build for". Sub-niche pre-research
+  //      → "Run now". Hero buttons should be honest about what /new accepts
+  //      (a niche or audience description, NOT a specific idea name).
+  //   5. Keep labels 2-4 words, under ~22 chars. Sentence case throughout.
+  //
+  // Defaults below are deliberately neutral — they stand in only if a caller
+  // forgets to pass a field. Most callers should override headline+body+label.
+
   interface Props {
     headline?: string;
     body?: string;
@@ -13,8 +32,8 @@
 
   let {
     headline = "Ready to build?",
-    body = "Generate a 30-day GTM plan, landing-page copy, and outbound list — all tuned to this idea's audience and verdict.",
-    ctaLabel = "Generate plan",
+    body = "Run research on a niche or audience you're curious about. Get pain points, solution ideas, audience segments, and a 30-day launch plan — all sourced from real community discussions.",
+    ctaLabel = "Run your own research",
     ctaHref,
     secondaryLabel = null,
     secondaryHref = null,

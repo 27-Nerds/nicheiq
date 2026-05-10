@@ -4,6 +4,30 @@ import { env } from '$env/dynamic/private';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
+/**
+ * Proxy: GET /api/admin/catalog/pain-points/:id → backend GET
+ * /pain-points/:id. Returns the shaped DTO for the FAQ-only mini-editor.
+ */
+export const GET: RequestHandler = async ({ locals, params }) => {
+  const session = await locals.auth();
+  if (!session?.user) throw error(401, 'Unauthorized');
+  if (session.user.role !== 'ADMIN') throw error(403, 'Admin access required');
+
+  const response = await fetch(
+    `${BACKEND_URL}/api/admin/catalog/pain-points/${encodeURIComponent(params.id)}`,
+    {
+      headers: {
+        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
+        'X-User-ID': session.user.id,
+        'X-User-Role': session.user.role,
+      },
+    },
+  );
+
+  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  return json(data, { status: response.status });
+};
+
 export const PATCH: RequestHandler = async ({ request, locals, params }) => {
   const session = await locals.auth();
   if (!session?.user) throw error(401, 'Unauthorized');

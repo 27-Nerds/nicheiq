@@ -16,6 +16,7 @@
     BuildCTA,
     CatalogBand,
     Chip,
+    CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import type { PainPointPreview } from "$lib/types/catalog-landing";
   import { categoryPath } from "$lib/utils/urls";
@@ -135,6 +136,10 @@
         sourceGeneratedAt: null,
         createdAt: "",
         updatedAt: "",
+        // Synthetic row used only by the addressed-pain table renderer; the
+        // table doesn't read these so null defaults are safe.
+        faqJson: null,
+        faqJsonMeta: null,
       });
     }
     // Order preserved from addressedPainTitles (pipeline-emitted priority,
@@ -254,7 +259,13 @@
 
 <CategoryBreadcrumbs {trail} />
 
-<IdeaHeroV2 {idea} stats={heroStats} {ctaHref} sourceCount={data.idea.contentItemsMined} />
+<IdeaHeroV2
+  {idea}
+  stats={heroStats}
+  {ctaHref}
+  sourceCount={data.idea.contentItemsMined}
+  updatedAt={idea.updated_at ?? idea.created_at}
+/>
 
 {#if hasPains}
   {#snippet painCount()}
@@ -356,8 +367,17 @@
   </div>
 {/if}
 
+<!-- FAQ — visible accordion paired with FAQPage JSON-LD (gated identically on
+     idea.faqJson.length >= 2 in buildIdeaDetailJsonLd). Anchored on niche
+     name in the LLM prompt, never the solution_name codename. -->
+{#if (data.idea.faqJson?.length ?? 0) >= 2}
+  <CategoryFAQ items={data.idea.faqJson ?? []} />
+{/if}
+
 <BuildCTA
   {ctaHref}
+  body="Run research on a niche or audience you're curious about. Get pain points, solution ideas, audience segments, and a 30-day launch plan — all sourced from real community discussions."
+  ctaLabel="Run your market research"
   secondaryLabel={`More in ${idea.category?.name ?? 'catalog'}`}
   secondaryHref={categoryPath({
     slug: idea.category.slug,

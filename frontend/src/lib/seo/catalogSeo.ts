@@ -106,6 +106,23 @@ function ideasStop(): BreadcrumbStop {
   return { name: 'Ideas', url: `${ORIGIN}/ideas` };
 }
 
+/**
+ * Truncate an Article `description` to a SERP-friendly length. Google's
+ * Article rich-result truncates around 160 characters; longer payloads still
+ * validate but read awkwardly when AI search engines or SERPs surface them
+ * as standalone snippets. Cuts at the last word boundary inside the limit
+ * and appends an ellipsis only when the input was actually trimmed.
+ */
+function trimArticleDescription(text: string | null | undefined, max = 160): string {
+  if (!text) return '';
+  const clean = text.trim();
+  if (clean.length <= max) return clean;
+  const slice = clean.slice(0, max);
+  const lastSpace = slice.lastIndexOf(' ');
+  const cut = lastSpace > max * 0.6 ? slice.slice(0, lastSpace) : slice;
+  return `${cut.replace(/[\s.,;:—-]+$/, '')}…`;
+}
+
 function categoryStops(payload: CategoryLandingPayload): BreadcrumbStop[] {
   const stops: BreadcrumbStop[] = [homeStop(), ideasStop()];
   if (payload.parent) {
@@ -130,16 +147,14 @@ export function buildCategoryJsonLd(
   description: string,
 ): JsonLd[] {
   const stops = categoryStops(payload);
-  const items = [
-    ...payload.topIdeas.map((i) => ({
-      name: i.solution_name,
-      url: `${ORIGIN}${ideaPath(i.slug)}`,
-    })),
-    ...payload.topPainPoints.map((p) => ({
-      name: p.title,
-      url: `${ORIGIN}${painPointPath(p.slug)}`,
-    })),
-  ];
+  const ideaItems = payload.topIdeas.map((i) => ({
+    name: i.solution_name,
+    url: `${ORIGIN}${ideaPath(i.slug)}`,
+  }));
+  const painItems = payload.topPainPoints.map((p) => ({
+    name: p.title,
+    url: `${ORIGIN}${painPointPath(p.slug)}`,
+  }));
 
   const blocks: JsonLd[] = [
     breadcrumbList(stops),
@@ -150,9 +165,32 @@ export function buildCategoryJsonLd(
       about: payload.category.name,
     }),
   ];
-  if (items.length > 0) blocks.push(itemList(items));
-  if (payload.category.faqJson && payload.category.faqJson.length > 0) {
-    blocks.push(faqPage(payload.category.faqJson));
+  // Two distinct ItemLists rather than a flat combined list — ideas and
+  // pain-points are semantically different content types and the visible page
+  // already renders them as separate sections (`AllIdeasSection` +
+  // `PainPointRankTable`). Splitting matches the visible structure and gives
+  // crawlers a precise signal per type.
+  if (ideaItems.length > 0) {
+    blocks.push(
+      itemList(ideaItems, {
+        name: `Ideas in ${payload.category.name}`,
+        numberOfItems: payload.totalIdeas,
+      }),
+    );
+  }
+  if (painItems.length > 0) {
+    blocks.push(
+      itemList(painItems, {
+        name: `Pain points in ${payload.category.name}`,
+        numberOfItems: payload.totalPainPoints,
+      }),
+    );
+  }
+  // FAQPage gated on faqJson having >= 2 entries — same threshold as the
+  // visible <CategoryFAQ> render gate, so visible-vs-schema match holds by
+  // construction (both sides driven by the same field). See plan B10.
+  if ((payload.category.faqJson?.length ?? 0) >= 2) {
+    blocks.push(faqPage(payload.category.faqJson!));
   }
   return blocks;
 }
@@ -183,10 +221,19 @@ export function buildProgrammaticJsonLd(
           name: i.solution_name,
           url: `${ORIGIN}${ideaPath(i.slug)}`,
         })),
+        {
+          name: `Ideas — ${pseo.title}`,
+          numberOfItems: featuredIdeas.length,
+        },
       ),
     );
   }
-  if (pseo.faqJson.length > 0) blocks.push(faqPage(pseo.faqJson));
+  // PSEO faqJson is hardcoded in programmaticIdeaPages.ts and rendered visibly
+  // via <CategoryFAQ> on the PSEO branch of the public route, so the schema
+  // match is structural. Same gate as real-category and detail pages.
+  if (pseo.faqJson.length >= 2) {
+    blocks.push(faqPage(pseo.faqJson));
+  }
   return blocks;
 }
 
@@ -205,17 +252,31 @@ export function buildIdeaDetailJsonLd(idea: IdeaPreview, canonical: string): Jso
   });
   stops.push({ name: idea.solution_name, url: canonical });
 
-  return [
+  // Article description prefers `short_description` (the Pydantic
+  // BaseSolutionIdea.short_description — purpose-built 1-2 sentence card
+  // summary) when available, falling back to a trimmed `description` so SERP
+  // snippets and AI-search citations don't get a 600-char wall of text.
+  const articleDescription = idea.short_description?.trim()
+    ? idea.short_description.trim()
+    : trimArticleDescription(idea.description);
+
+  const blocks: JsonLd[] = [
     breadcrumbList(stops),
     article({
       headline: idea.solution_name,
-      description: idea.description,
+      description: articleDescription,
       datePublished: idea.created_at,
       dateModified: idea.updated_at ?? idea.created_at,
       url: canonical,
       author: 'NicheIQ Research Team',
     }),
   ];
+  // FAQPage gated on the same threshold as the visible <CategoryFAQ> render
+  // — both sides driven by the same idea.faqJson field.
+  if ((idea.faqJson?.length ?? 0) >= 2) {
+    blocks.push(faqPage(idea.faqJson!));
+  }
+  return blocks;
 }
 
 export function buildPainPointDetailJsonLd(pp: PainPointPreview, canonical: string): JsonLd[] {
@@ -233,17 +294,21 @@ export function buildPainPointDetailJsonLd(pp: PainPointPreview, canonical: stri
   });
   stops.push({ name: pp.title, url: canonical });
 
-  return [
+  const blocks: JsonLd[] = [
     breadcrumbList(stops),
     article({
       headline: pp.title,
-      description: pp.description,
+      description: trimArticleDescription(pp.description),
       datePublished: pp.createdAt,
       dateModified: pp.updatedAt ?? pp.createdAt,
       url: canonical,
       author: 'NicheIQ Research Team',
     }),
   ];
+  if ((pp.faqJson?.length ?? 0) >= 2) {
+    blocks.push(faqPage(pp.faqJson!));
+  }
+  return blocks;
 }
 
 // =====================================================================

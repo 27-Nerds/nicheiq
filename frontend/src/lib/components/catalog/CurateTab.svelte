@@ -10,6 +10,7 @@
     Sparkles,
     X,
     Check,
+    HelpCircle,
   } from "lucide-svelte";
 
   let { data, categories }: {
@@ -938,17 +939,33 @@
                     {/if}
                   </button>
                 {:else if item.publishedRecordId}
-                  <button
-                    class="text-xs px-3 py-1.5 rounded font-medium transition-colors border border-error/30 text-error hover:bg-error/10"
-                    onclick={() => (confirmDepublish = { id: item.id, name: item.itemName, type: currentType })}
-                    disabled={depublishing[item.id]}
-                  >
-                    {#if depublishing[item.id]}
-                      <Loader2 class="w-3 h-3 animate-spin inline" />
-                    {:else}
-                      Depublish
-                    {/if}
-                  </button>
+                  <div class="flex items-center justify-center gap-1.5">
+                    <!-- Direct link to the FAQ-only mini-editor for this
+                         published row. Available only on published items
+                         because draft items don't have a public-page URL
+                         (and so no SEO surface). -->
+                    <a
+                      href={currentType === "ideas"
+                        ? `/admin/catalog/ideas/${item.publishedRecordId}/faq`
+                        : `/admin/catalog/pain-points/${item.publishedRecordId}/faq`}
+                      class="inline-flex items-center gap-1 text-xs px-2 py-1.5 rounded font-medium transition-colors border border-border text-text-muted hover:text-accent hover:border-accent"
+                      title="Edit FAQ for this item"
+                    >
+                      <HelpCircle class="w-3 h-3" />
+                      FAQ
+                    </a>
+                    <button
+                      class="text-xs px-3 py-1.5 rounded font-medium transition-colors border border-error/30 text-error hover:bg-error/10"
+                      onclick={() => (confirmDepublish = { id: item.id, name: item.itemName, type: currentType })}
+                      disabled={depublishing[item.id]}
+                    >
+                      {#if depublishing[item.id]}
+                        <Loader2 class="w-3 h-3 animate-spin inline" />
+                      {:else}
+                        Depublish
+                      {/if}
+                    </button>
+                  </div>
                 {:else}
                   <span class="text-xs text-text-muted">—</span>
                 {/if}

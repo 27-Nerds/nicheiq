@@ -2,8 +2,8 @@
   import type { SavedIdeaItem } from "$lib/types/saved";
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import IdeaCardV2 from "$lib/components/catalog/seo/IdeaCardV2.svelte";
-  import Bookmark from "lucide-svelte/icons/bookmark";
   import Pencil from "lucide-svelte/icons/pencil";
+  import X from "lucide-svelte/icons/x";
   import NoteEditor from "./NoteEditor.svelte";
   import { formatDistanceToNow } from "./formatRelative";
 
@@ -95,6 +95,22 @@
 </script>
 
 <div class="saved-card {verdictClass}">
+  <!-- Explicit "Remove from saved" affordance — replaces the older
+       bookmark+timestamp button that conflated metadata with action. The
+       pill is muted by default, accent on hover, and the only interactive
+       element of its kind on the card. Click flows through onUnsave →
+       optimistic remove → UndoToast (5-second undo, no logic change). -->
+  <button
+    type="button"
+    class="saved-remove"
+    onclick={() => onUnsave(item)}
+    aria-label={`Remove "${item.idea.headline ?? item.idea.solutionName}" from saved`}
+    title="Remove from saved"
+  >
+    <X size={12} aria-hidden="true" />
+    <span>Remove</span>
+  </button>
+
   <IdeaCardV2 idea={preview} subLabel={nichePath} />
 
   <!-- Notes block — sits below the card in its own row so it doesn't
@@ -114,9 +130,10 @@
       type="button"
       class="saved-note"
       onclick={startEditNote}
-      aria-label="Edit note"
+      aria-label={`Edit note: ${item.notes.slice(0, 80)}${item.notes.length > 80 ? "…" : ""}`}
     >
-      <span class="saved-note-text">{item.notes}</span>
+      <span class="saved-note-text">
+        <span class="saved-note-kicker" aria-hidden="true">NOTE</span>{item.notes}</span>
       <span class="saved-note-pencil" aria-hidden="true">
         <Pencil size={11} />
       </span>
@@ -133,15 +150,15 @@
     </button>
   {/if}
 
-  <button
-    type="button"
-    class="saved-when"
-    onclick={() => onUnsave(item)}
-    aria-label="Remove this idea from saved"
-  >
-    <Bookmark size={11} fill="currentColor" />
-    <span>{formatDistanceToNow(item.createdAt)}</span>
-  </button>
+  <!-- Editorial metadata at the card's bottom edge. Both spans are
+       non-interactive — the folio is auto-numbered via CSS counter on the
+       parent .cards-grid; the timestamp is formatted by formatDistanceToNow.
+       The remove action lives in .saved-remove (top-right) so the bottom
+       edge stays calm. -->
+  <span class="folio" aria-hidden="true"></span>
+  <span class="saved-when" aria-hidden="true">
+    Saved {formatDistanceToNow(item.createdAt)} ago
+  </span>
 </div>
 
 <style>
@@ -149,6 +166,23 @@
     position: relative;
     /* The verdict rail rides on the IdeaCardV2 left edge. Add inset
        padding so the rail doesn't overlap the card's own border. */
+    /* Stagger reveal — each <li> in .cards-grid sets `--i` (capped at 5).
+       Opacity-only; movement-free per the editorial direction. Replays on
+       optimistic remove → undo and on filter changes; that's the intended
+       feel: gentle ledger entries appearing in your notebook. */
+    opacity: 0;
+    animation: saved-docket-in 240ms ease-out forwards;
+    animation-delay: calc(var(--i, 0) * 30ms);
+  }
+  @keyframes saved-docket-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .saved-card {
+      opacity: 1;
+      animation: none;
+    }
   }
   /* Verdict severity rail — 3px left border using the catalog's existing
      pain-table rail vocabulary, transposed to ideas. Maps verdict tier
@@ -206,6 +240,18 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
+  /* "NOTE" mono kicker prefixed inside the clamped span so it counts as
+     part of the visible text and the line-clamp continues to work. */
+  .saved-note-kicker {
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin-right: 0.5rem;
+    font-style: normal;
+  }
   .saved-note-pencil {
     position: absolute;
     top: 4px;
@@ -250,26 +296,78 @@
     margin-top: 8px;
   }
 
-  /* Saved-since glyph — bookmark + mono timestamp at the card's bottom-right.
-     Click unsaves (bubbles up to the page-level optimistic toggle). */
+  /* Saved-since timestamp — non-interactive metadata at the card's
+     bottom-right. The destructive remove action lives in .saved-remove
+     (top-right) so the bottom edge reads as a research-log byline. */
   .saved-when {
     position: absolute;
     bottom: 14px;
     right: 14px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    font-feature-settings: "tnum";
+  }
+
+  /* Folio number — auto-numbered via the .cards-grid `counter-reset: folio`
+     in +page.svelte. Mirrors the bottom-right .saved-when across to the
+     bottom-left, framing the card as a numbered docket entry. */
+  .folio {
+    position: absolute;
+    bottom: 14px;
+    left: 14px;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    font-feature-settings: "tnum";
+    counter-increment: folio;
+  }
+  .folio::before {
+    content: counter(folio, decimal-leading-zero);
+  }
+
+  /* Explicit "Remove from saved" pill at the top-right corner. Always
+     visible (no hover-reveal) so the affordance is unambiguous; muted by
+     default so it doesn't dominate the reading layout; accent on hover. */
+  .saved-remove {
+    position: absolute;
+    top: 12px;
+    right: 12px;
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    padding: 3px 6px;
-    border: none;
+    padding: 4px 8px;
     background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: 999px;
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
     color: var(--color-text-muted);
     cursor: pointer;
-    transition: color 120ms ease;
+    transition:
+      color 0.12s ease,
+      border-color 0.12s ease,
+      background 0.12s ease;
     z-index: 2;
   }
-  .saved-when:hover {
+  .saved-remove:hover {
     color: var(--color-accent);
+    border-color: var(--color-accent);
+    background: var(--color-bg-elevated, #fff);
+  }
+
+  /* Shared focus rule — accent ring on every interactive control inside
+     the card. (.saved-when is no longer a button per the redesign — it's
+     plain metadata text and intentionally NOT in this list.) */
+  .saved-note:focus-visible,
+  .saved-note-add:focus-visible,
+  .saved-remove:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 </style>

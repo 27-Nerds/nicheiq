@@ -1,6 +1,7 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
 import { env } from '$env/dynamic/private';
+import type { FaqJsonMeta } from '$lib/types/catalog-landing';
 
 const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
@@ -15,6 +16,7 @@ interface FullCategory {
   seoDescription: string | null;
   longDescription: string | null;
   faqJson: { q: string; a: string }[] | null;
+  faqJsonMeta: FaqJsonMeta | null;
   tags: string[];
   isActive: boolean;
   children?: FullCategory[];

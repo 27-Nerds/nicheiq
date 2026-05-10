@@ -15,6 +15,7 @@
     CatalogBand,
     BuildCTA,
     Chip,
+    CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
   import { scaleSeverity } from "$lib/types/publicCatalog.js";
@@ -222,6 +223,7 @@
   qualitySignals={data.painPoint.qualitySignals}
   mentionCount={pp.mentionCount}
   sourcePlatforms={sourcePlatformChips}
+  updatedAt={pp.updatedAt ?? pp.createdAt}
 />
 
 {#if hasEvidence}
@@ -321,10 +323,18 @@
   </div>
 {/if}
 
+<!-- FAQ — supplementary block before the CTA, paired with FAQPage JSON-LD
+     (gated on painPoint.faqJson.length >= 2). Anchored on the pain title
+     in the LLM prompt — that's a real search phrase. -->
+{#if (data.painPoint.faqJson?.length ?? 0) >= 2}
+  <CategoryFAQ items={data.painPoint.faqJson ?? []} />
+{/if}
+
 <BuildCTA
   {ctaHref}
   headline="Build a solution for this pain?"
-  body="Generate a 30-day GTM plan, landing-page copy, and outbound list — tuned to the audience that's already complaining."
+  body="Run research on a market you're exploring. Get pain points, audience segments, competitive landscape, and a launch plan — sourced from real Reddit and Hacker News conversations."
+  ctaLabel="Run your own research"
   secondaryLabel={`More in ${pp.category?.name ?? 'catalog'}`}
   secondaryHref={categoryPath({
     slug: pp.category.slug,

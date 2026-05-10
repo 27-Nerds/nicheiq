@@ -2,7 +2,7 @@ import type { PageServerLoad } from './$types';
 import { env } from '$env/dynamic/private';
 import { canonicalUrl } from '$lib/seo/canonical';
 import { buildMeta } from '$lib/seo/meta';
-import { organization, website, breadcrumbList, itemList } from '$lib/seo/jsonld';
+import { breadcrumbList, collectionPage, itemList } from '$lib/seo/jsonld';
 import { siteOrigin } from '$lib/seo/canonical';
 import type {
   CatalogTotals,
@@ -34,6 +34,7 @@ async function fetchTotals(): Promise<CatalogTotals> {
     totalCategories: 0,
     totalSubcategories: 0,
     contentItemsMined: 0,
+    lastUpdated: null,
   };
 }
 
@@ -96,6 +97,9 @@ export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
 
   // ItemList schema signals to crawlers that this hub aggregates 50+ niche
   // entry points; each top-level CatalogCategory becomes a ListItem.
+  // Organization + WebSite are emitted once at the root layout — the index
+  // page only contributes route-specific schema (Breadcrumb + Collection +
+  // ItemList).
   const niches = (categoriesTree as Array<{ name: string; slug: string }>).map(
     (n) => ({
       name: n.name,
@@ -104,13 +108,17 @@ export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
   );
 
   const jsonld = [
-    organization(),
-    website(),
     breadcrumbList([
       { name: 'Home', url: `${origin}/` },
       { name: 'Ideas', url: `${origin}/ideas` },
     ]),
-    itemList(niches),
+    collectionPage({
+      name: 'Ideas Catalog',
+      description:
+        'Curated startup ideas and pain points sourced from Reddit and Hacker News, organized by niche.',
+      url: canonical,
+    }),
+    itemList(niches, { numberOfItems: niches.length }),
   ];
 
   return {

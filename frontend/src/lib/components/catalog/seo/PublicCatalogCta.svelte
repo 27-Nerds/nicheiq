@@ -12,8 +12,8 @@
 
   let {
     variant = "bottom",
-    headline = "Commission a research file on your niche.",
-    subhead = "NicheIQ pulls real pain points from Reddit and Hacker News, scores founder-fit, and ships a 45-minute report with validated solutions.",
+    headline = "Run research on your niche.",
+    subhead = "NicheIQ scans real Reddit and Hacker News discussions, surfaces validated pain points and audience segments, and returns a launch-ready report in about 45 minutes.",
     href,
     ctaLabel,
   }: Props = $props();
@@ -21,7 +21,7 @@
   const session = $derived(page.data.session);
   const resolvedHref = $derived(href ?? (session?.user ? "/new" : "/register"));
   const resolvedLabel = $derived(
-    ctaLabel ?? (session?.user ? "Start a research job" : "Get started"),
+    ctaLabel ?? (session?.user ? "Run your own research" : "Get started"),
   );
 </script>
 

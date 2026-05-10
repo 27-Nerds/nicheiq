@@ -5,7 +5,7 @@
   import { SeoHead, JsonLd } from "$lib/components/seo";
   import { CategoryBreadcrumbs } from "$lib/components/catalog/seo";
   import CatalogIndexHero from "$lib/components/catalog/seo/CatalogIndexHero.svelte";
-  import CategoryAccordion from "$lib/components/catalog/seo/CategoryAccordion.svelte";
+  import CategoryGrid from "$lib/components/catalog/seo/CategoryGrid.svelte";
   import CollectionCard from "$lib/components/catalog/seo/CollectionCard.svelte";
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
 
@@ -174,6 +174,11 @@
     return out;
   });
   const hasMatches = $derived(filteredGroups.length > 0);
+  // Total niche count across all super-groups — distinct from
+  // `filteredGroups.length` (which is the number of super-groups).
+  const matchedNicheCount = $derived(
+    filteredGroups.reduce((sum, g) => sum + g.niches.length, 0),
+  );
 
   // All section numbers are derived from running counters — do NOT hardcode
   // literals here. Hidden sections leave numbering contiguous.
@@ -184,6 +189,33 @@
   const hasCategoriesTree = $derived(data.categoriesTree.length > 0);
   const num1 = $derived(nextNum(0, hasCollections));
   const num2 = $derived(nextNum(num1, hasCategoriesTree));
+
+  // Lightweight relative-time helper for the section-02 metaText. Reads the
+  // largest unit that fits ("3 days ago", "2 hours ago"). Falls back gracefully
+  // when the timestamp is null/unparseable.
+  function formatRelative(iso: string | null): string {
+    if (!iso) return "";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    const diffMs = Date.now() - d.getTime();
+    const diffSec = Math.max(0, Math.floor(diffMs / 1000));
+    if (diffSec < 60) return "just now";
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr} hour${diffHr === 1 ? "" : "s"} ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay < 30) return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
+    const diffMo = Math.floor(diffDay / 30);
+    if (diffMo < 12) return `${diffMo} month${diffMo === 1 ? "" : "s"} ago`;
+    const diffYr = Math.floor(diffMo / 12);
+    return `${diffYr} year${diffYr === 1 ? "" : "s"} ago`;
+  }
+  const browseMeta = $derived(
+    data.totals.lastUpdated
+      ? `last updated ${formatRelative(data.totals.lastUpdated)} · weekly cadence`
+      : "weekly cadence",
+  );
 </script>
 
 <SeoHead {...data.meta} />
@@ -193,7 +225,7 @@
   trail={[{ label: "Home", href: "/" }, { label: "Ideas" }]}
 />
 
-<CatalogIndexHero totals={data.totals} bind:query />
+<CatalogIndexHero totals={data.totals} bind:query {ctaHref} />
 
 {#if hasCollections}
   <SectionDivider num={num1} label="Featured collections" />
@@ -205,25 +237,41 @@
 {/if}
 
 {#if hasCategoriesTree}
-  <SectionDivider
-    num={num2}
-    label="Browse by category"
-    metaText={`${data.totals.totalCategories} categories · ${data.totals.totalSubcategories} sub-niches`}
-  />
+  <SectionDivider num={num2} label="Browse by category" metaText={browseMeta} />
 
-  {#if data.activeCollection}
-    <div class="active-filter">
-      <span class="af-label">FILTERED</span>
-      <span class="af-name">{data.activeCollection.name}</span>
-      <button
-        type="button"
-        class="af-clear"
-        onclick={clearCollectionFilter}
-        aria-label="Clear collection filter"
-      >
-        <X size={12} aria-hidden="true" />
-        Clear
-      </button>
+  {#if data.activeCollection || query.trim()}
+    <div class="filter-cluster">
+      {#if data.activeCollection}
+        <span class="filter-chip filter-chip--collection">
+          <span class="chip-label">FILTERED</span>
+          <span class="chip-name">{data.activeCollection.name}</span>
+          <button
+            type="button"
+            class="chip-clear"
+            onclick={clearCollectionFilter}
+            aria-label="Clear collection filter"
+          >
+            <X size={12} aria-hidden="true" />
+            Clear
+          </button>
+        </span>
+      {/if}
+      {#if query.trim()}
+        <span class="filter-chip filter-chip--results">
+          <span class="chip-label">RESULTS</span>
+          <span class="chip-name">"{query.trim()}"</span>
+          <span class="chip-count">{matchedNicheCount} {matchedNicheCount === 1 ? 'niche' : 'niches'}</span>
+          <button
+            type="button"
+            class="chip-clear"
+            onclick={() => (query = "")}
+            aria-label="Clear search query"
+          >
+            <X size={12} aria-hidden="true" />
+            Clear
+          </button>
+        </span>
+      {/if}
     </div>
   {:else if data.collectionSlug && !data.activeCollection}
     <p class="no-matches">
@@ -239,7 +287,7 @@
           <span class="group-label">{group.name}</span>
           <span class="group-count">{group.niches.length} niches</span>
         </header>
-        <CategoryAccordion categories={group.niches} defaultOpen={true} />
+        <CategoryGrid categories={group.niches} />
       </div>
     {/each}
   {:else if data.activeCollection}
@@ -254,11 +302,11 @@
   <p class="hub-empty">Awaiting first findings. Re-checked weekly.</p>
 {/if}
 
-<section class="inline-close" aria-label="Commission a research file">
+<section class="inline-close" aria-label="Run your own research">
   <p>
-    Don't see your niche?
+    Ready to explore a niche we haven't covered yet?
     <a class="inline-cta" href={ctaHref} data-sveltekit-preload-data="hover">
-      <span class="inline-cta-label">Commission a research file</span>
+      <span class="inline-cta-label">Run your own research</span>
       <ArrowRight class="inline-arrow" aria-hidden="true" />
     </a>
   </p>
@@ -328,36 +376,58 @@
     text-underline-offset: 2px;
   }
 
-  /* Active-collection filter chip — sits above the accordion when
-     ?collection=<slug> is present. Mono "FILTERED" eyebrow + collection
-     name + clear button. Matches the catalog's chip vocabulary (rail,
-     mono accent label) without inventing new tokens. */
-  .active-filter {
+  /* Filter cluster — wrapper that holds active-collection and search-results
+     chips above the niche groups. Both chips share shape; eyebrow color
+     differentiates state (accent = destination filter, muted = search). */
+  .filter-cluster {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0.5rem 0 1rem;
+  }
+  .filter-chip {
     display: inline-flex;
     align-items: center;
     gap: 0.625rem;
     padding: 0.5rem 0.75rem 0.5rem 0.625rem;
-    margin: 0.5rem 0 1rem;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface, #fff);
+  }
+  .filter-chip--collection {
     border: 1px solid var(--color-border-accent);
     border-left: 3px solid var(--color-accent);
-    border-radius: 6px;
     background: rgba(234, 88, 12, 0.04);
   }
-  .af-label {
+  .filter-chip--collection .chip-label {
+    color: var(--color-accent);
+  }
+  .filter-chip--results {
+    border-left: 3px solid var(--color-text-muted);
+  }
+  .filter-chip--results .chip-label {
+    color: var(--color-text-muted);
+  }
+  .chip-label {
     font-family: var(--font-mono);
     font-size: 0.625rem;
     font-weight: 700;
     letter-spacing: 0.08em;
-    color: var(--color-accent);
     text-transform: uppercase;
   }
-  .af-name {
+  .chip-name {
     font-size: 0.8125rem;
     font-weight: 600;
     color: var(--color-text-primary);
     letter-spacing: -0.005em;
   }
-  .af-clear {
+  .chip-count {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    color: var(--color-text-muted);
+    font-feature-settings: "tnum" 1, "calt" 1;
+  }
+  .chip-clear {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -375,9 +445,13 @@
       color 0.12s ease,
       border-color 0.12s ease;
   }
-  .af-clear:hover {
+  .chip-clear:hover {
     color: var(--color-text-primary);
     border-color: var(--color-border-emphasis);
+  }
+  .chip-clear:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
   }
 
   .inline-close {

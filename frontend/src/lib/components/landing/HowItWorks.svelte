@@ -185,36 +185,14 @@
     },
   ];
 
-  const howToSchema = {
-    "@context": "https://schema.org",
-    "@type": "HowTo",
-    name: "How to Validate Your SaaS Idea in 45 Minutes",
-    description:
-      "3-stage process to discover pain points and get a GO/NO-GO verdict",
-    totalTime: "PT45M",
-    step: [
-      {
-        "@type": "HowToStep",
-        name: "Discover Pain Points & Ideas",
-        text: "We scan Reddit, Twitter, and online communities to discover validated pain points. You get 5-10 solution concepts backed by real discussions.",
-      },
-      {
-        "@type": "HowToStep",
-        name: "Pick Your Opportunity",
-        text: "Review the pain points and solution concepts. Pick the one that excites you or let us recommend the strongest signal.",
-      },
-      {
-        "@type": "HowToStep",
-        name: "Get Your Business Blueprint",
-        text: "Full competitive analysis, 100+ ranked SEO keywords, market sizing, pricing strategy, GO/NO-GO verdict, and a ready-to-launch landing page.",
-      },
-    ],
-  };
+  // HowTo JSON-LD removed: Google fully deprecated HowTo rich results in
+  // 2024 (no SERP feature on any device, no AI-search benefit), so the
+  // markup was dead weight. The visible "how it works" UI below is
+  // unchanged. If this section needs structured data later, prefer
+  // ItemList of steps routed through the central `serializeJsonLd()` helper
+  // (frontend/src/lib/seo/jsonld.ts) — never inline raw `JSON.stringify`,
+  // which bypasses XSS escaping.
 </script>
-
-<svelte:head>
-  {@html `<script type="application/ld+json">${JSON.stringify(howToSchema)}</script>`}
-</svelte:head>
 
 <section id="how-it-works" class="section-alt">
   <div class="max-w-6xl mx-auto px-6 lg:px-12">

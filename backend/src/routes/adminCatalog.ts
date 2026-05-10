@@ -16,7 +16,14 @@ import {
   updateCatalogPainPoint,
   depublishIdea,
   depublishPainPoint,
+  invalidateCategoryLanding,
 } from '../services/catalogService.js';
+import {
+  generateForCategory,
+  generateForIdea,
+  generateForPainPoint,
+  FaqGenerationError,
+} from '../services/faqGeneratorService.js';
 import { categorizeBatch } from '../services/categorizationService.js';
 import { enqueueCatalogPainPointsJob, enqueueCatalogIdeasJob } from '../services/queueService.js';
 import {
@@ -32,6 +39,11 @@ import {
 import { prisma } from '../services/db.js';
 import { getRedis } from '../services/redis.js';
 import { JobStatus } from '@prisma/client';
+import {
+  FaqEntrySchema,
+  FaqArraySchema,
+  type FaqJsonMeta,
+} from '../types/faq.js';
 
 export const adminCatalogRouter = Router();
 
@@ -49,14 +61,12 @@ const CreateCategorySchema = z.object({
   sortOrder: z.number().int().min(0).max(1000).optional(),
 });
 
-// Reject HTML/script-injection patterns so admin-entered prose can't escape into
-// a public landing page. We only allow plain text + a small punctuation set.
+// FaqEntrySchema (and the NO_HTML_RE regex) live in `../types/faq.ts` so the
+// new /faq/save route and the legacy PATCH /categories/:id below can share
+// validation. We import per-entry only here — the legacy PATCH path keeps its
+// permissive bounds (0-15, no array-level dup or anchor checks). The new save
+// route uses the stricter `FaqArraySchema` from the same module.
 const NO_HTML_RE = /<[^>]*>/;
-
-const FaqEntrySchema = z.object({
-  q: z.string().min(5).max(200).refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' }),
-  a: z.string().min(10).max(1000).refine((s) => !NO_HTML_RE.test(s), { message: 'HTML not allowed' }),
-});
 
 const UpdateCategorySchema = z.object({
   name: z.string().min(1).max(100).optional(),
@@ -969,5 +979,279 @@ adminCatalogRouter.post('/collections/:id/reorder', async (req, res: Response) =
     const message = err instanceof Error ? err.message : 'Failed to reorder';
     console.error('Failed to reorder collection:', err);
     res.status(400).json({ error: message });
+  }
+});
+
+// ============================================
+// FAQ generation + save (admin-triggered LLM Q&A)
+// See plans/pure-giggling-beacon.md Phase B for the full design.
+// ============================================
+
+const FaqEntityTypeSchema = z.enum(['category', 'idea', 'pain-point']);
+
+const FaqGenerateBodySchema = z.object({
+  entityType: FaqEntityTypeSchema,
+  entityId: z.string().uuid(),
+});
+
+const FaqSaveBodySchema = z.object({
+  entityType: FaqEntityTypeSchema,
+  entityId: z.string().uuid(),
+  // Validated again per-entity-type below with FaqArraySchema(anchorTerms);
+  // here we just check the per-entry shape and array bounds.
+  faqs: z.array(FaqEntrySchema).min(2).max(10),
+  source: z.enum(['generated', 'manual']),
+  model: z.string().optional(),
+  generatedAt: z.string().datetime().optional(),
+  tokensUsed: z.number().int().nonnegative().optional(),
+});
+
+// Per-admin per-hour rate limits — one Redis key per (action, user). Limits
+// configured via FAQ_GENERATE_RATE_HOURLY / FAQ_SAVE_RATE_HOURLY env vars.
+async function checkFaqRateLimit(
+  action: 'generate' | 'save',
+  userId: string,
+): Promise<{ allowed: boolean; retryAfter?: number }> {
+  const key = `nicheiq:faq:${action}:${userId}:hourly`;
+  const limit =
+    action === 'generate' ? CONFIG.faqGenerateRateHourly : CONFIG.faqSaveRateHourly;
+  try {
+    const result = (await redis.eval(RATE_LIMIT_LUA, 1, key, '1', String(limit))) as number;
+    if (result === -1) {
+      const ttl = await redis.ttl(key);
+      return { allowed: false, retryAfter: ttl > 0 ? ttl : 3600 };
+    }
+    return { allowed: true };
+  } catch {
+    return { allowed: true }; // fail open — same posture as categorize limiter
+  }
+}
+
+// ----- GET /ideas/:id (shaped DTO for FAQ mini-editor) -----
+adminCatalogRouter.get('/ideas/:id', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const idea = await prisma.catalogIdea.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        slug: true,
+        solutionName: true,
+        headline: true,
+        faqJson: true,
+        faqJsonMeta: true,
+        updatedAt: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            parent: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!idea) {
+      res.status(404).json({ error: 'Idea not found' });
+      return;
+    }
+    res.json(idea);
+  } catch (err) {
+    console.error('Failed to fetch idea:', err);
+    res.status(500).json({ error: 'Failed to fetch idea' });
+  }
+});
+
+// ----- GET /pain-points/:id (shaped DTO for FAQ mini-editor) -----
+adminCatalogRouter.get('/pain-points/:id', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const painPoint = await prisma.catalogPainPoint.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        faqJson: true,
+        faqJsonMeta: true,
+        updatedAt: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            parent: { select: { name: true } },
+          },
+        },
+      },
+    });
+    if (!painPoint) {
+      res.status(404).json({ error: 'Pain point not found' });
+      return;
+    }
+    res.json(painPoint);
+  } catch (err) {
+    console.error('Failed to fetch pain point:', err);
+    res.status(500).json({ error: 'Failed to fetch pain point' });
+  }
+});
+
+// ----- POST /faq/generate (LLM call, no DB write) -----
+adminCatalogRouter.post('/faq/generate', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const parsed = FaqGenerateBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation error', details: parsed.error.errors });
+      return;
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Authenticated user required' });
+      return;
+    }
+
+    const limit = await checkFaqRateLimit('generate', userId);
+    if (!limit.allowed) {
+      res.set('Retry-After', String(limit.retryAfter ?? 3600));
+      res.status(429).json({
+        error: `Rate limit reached. Try again in ${Math.ceil((limit.retryAfter ?? 3600) / 60)} minutes.`,
+      });
+      return;
+    }
+
+    const { entityType, entityId } = parsed.data;
+    const result =
+      entityType === 'category'
+        ? await generateForCategory(entityId)
+        : entityType === 'idea'
+          ? await generateForIdea(entityId)
+          : await generateForPainPoint(entityId);
+
+    res.json(result);
+  } catch (err) {
+    if (err instanceof FaqGenerationError) {
+      res.status(422).json({
+        error: err.message,
+        rawOutput: err.rawOutput,
+      });
+      return;
+    }
+    console.error('FAQ generate failed:', err);
+    const message = err instanceof Error ? err.message : 'FAQ generation failed';
+    res.status(500).json({ error: message });
+  }
+});
+
+// ----- POST /faq/save (persist + bust cache) -----
+adminCatalogRouter.post('/faq/save', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const parsed = FaqSaveBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Validation error', details: parsed.error.errors });
+      return;
+    }
+
+    const userId = req.user?.id;
+    if (!userId) {
+      res.status(401).json({ error: 'Authenticated user required' });
+      return;
+    }
+
+    const limit = await checkFaqRateLimit('save', userId);
+    if (!limit.allowed) {
+      res.set('Retry-After', String(limit.retryAfter ?? 3600));
+      res.status(429).json({
+        error: `Rate limit reached. Try again in ${Math.ceil((limit.retryAfter ?? 3600) / 60)} minutes.`,
+      });
+      return;
+    }
+
+    const { entityType, entityId, faqs, source, model, generatedAt, tokensUsed } = parsed.data;
+
+    // Resolve the anchor term (entity name) for FaqArraySchema validation.
+    // For idea pages, anchor on category.name (NOT solution_name codename).
+    let anchorTerm: string;
+    let parentCategoryIdForCacheBust: string;
+
+    if (entityType === 'category') {
+      const cat = await prisma.catalogCategory.findUnique({
+        where: { id: entityId },
+        select: { id: true, name: true },
+      });
+      if (!cat) {
+        res.status(404).json({ error: 'Category not found' });
+        return;
+      }
+      anchorTerm = cat.name;
+      parentCategoryIdForCacheBust = cat.id;
+    } else if (entityType === 'idea') {
+      const idea = await prisma.catalogIdea.findUnique({
+        where: { id: entityId },
+        select: { categoryId: true, category: { select: { name: true } } },
+      });
+      if (!idea) {
+        res.status(404).json({ error: 'Idea not found' });
+        return;
+      }
+      anchorTerm = idea.category.name; // niche, NOT solution_name
+      parentCategoryIdForCacheBust = idea.categoryId;
+    } else {
+      const pp = await prisma.catalogPainPoint.findUnique({
+        where: { id: entityId },
+        select: { title: true, categoryId: true },
+      });
+      if (!pp) {
+        res.status(404).json({ error: 'Pain point not found' });
+        return;
+      }
+      anchorTerm = pp.title;
+      parentCategoryIdForCacheBust = pp.categoryId;
+    }
+
+    const arrayValidation = FaqArraySchema([anchorTerm]).safeParse(faqs);
+    if (!arrayValidation.success) {
+      res.status(422).json({
+        error: 'FAQ validation failed',
+        details: arrayValidation.error.errors,
+      });
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+    const meta: FaqJsonMeta = {
+      source,
+      ...(model ? { model } : {}),
+      ...(generatedAt ? { generatedAt } : {}),
+      ...(tokensUsed !== undefined ? { tokensUsed } : {}),
+      updatedAt,
+    };
+
+    if (entityType === 'category') {
+      await prisma.catalogCategory.update({
+        where: { id: entityId },
+        data: { faqJson: arrayValidation.data, faqJsonMeta: meta },
+      });
+    } else if (entityType === 'idea') {
+      await prisma.catalogIdea.update({
+        where: { id: entityId },
+        data: { faqJson: arrayValidation.data, faqJsonMeta: meta },
+      });
+    } else {
+      await prisma.catalogPainPoint.update({
+        where: { id: entityId },
+        data: { faqJson: arrayValidation.data, faqJsonMeta: meta },
+      });
+    }
+
+    // Cache invalidation: bust the parent category's landing cache. For
+    // category entities the entityId IS the categoryId. For idea/pain-point,
+    // the parent category landing aggregates these into top-N lists.
+    // No backend Redis cache exists for getIdeaBySlug/getPainPointBySlug —
+    // the SvelteKit s-maxage on those public routes is the only intermediate
+    // cache, surfaced to admins as a latency caveat in the editor UI.
+    await invalidateCategoryLanding(parentCategoryIdForCacheBust);
+
+    res.json({ ok: true, updatedAt });
+  } catch (err) {
+    console.error('FAQ save failed:', err);
+    const message = err instanceof Error ? err.message : 'FAQ save failed';
+    res.status(500).json({ error: message });
   }
 });
