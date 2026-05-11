@@ -13,6 +13,7 @@
   import { CategoryBreadcrumbs } from "$lib/components/catalog/seo";
   import SavedIdeaCard from "./SavedIdeaCard.svelte";
   import SavedPainTable from "./SavedPainTable.svelte";
+  import DocketEmpty from "./DocketEmpty.svelte";
   import UndoToast from "./UndoToast.svelte";
   import { formatDistanceToNow } from "./formatRelative";
 
@@ -82,18 +83,30 @@
     { value: lastAddedRelative ?? "—", label: "Last added" },
   ]);
 
-  // Section visibility — render the section frame whenever there's saved
-  // content OR a visible empty list. Section is only fully hidden when the
-  // unfiltered global count is zero AND the local list is empty (i.e. the
-  // user has truly nothing saved of that type). This guarantees the
-  // designed empty block renders in the filtered-empty case (?hasNotes=1
-  // with no notes on saved items).
+  // Visibility hierarchy:
+  //   1. isPageEmpty (truly nothing saved) → page-level <DocketEmpty
+  //      scope="page" /> renders, both sections are suppressed.
+  //   2. Otherwise both sections always render. Inside each, the inner
+  //      branch picks between populated cards, a `discover` empty (the
+  //      OTHER type has saves, this one doesn't), or a `filter` empty
+  //      (this type has saves globally but the Has-notes filter narrowed
+  //      to none).
+  // The 4-way AND on isPageEmpty guards against the +page.server.ts:45-65
+  // counts fallback — if the counts fetch fails and returns zeros while
+  // the list fetches succeed, the local arrays still have rows so the
+  // sections render correctly instead of being suppressed.
   const ideasEmpty = $derived(ideas.length === 0);
   const painsEmpty = $derived(painPoints.length === 0);
-  const showIdeas = $derived(!ideasEmpty || counts.ideas > 0);
-  const showPains = $derived(!painsEmpty || counts.painPoints > 0);
+  const isPageEmpty = $derived(
+    ideasEmpty &&
+      painsEmpty &&
+      counts.ideas === 0 &&
+      counts.painPoints === 0,
+  );
+  const showIdeas = $derived(!isPageEmpty);
+  const showPains = $derived(!isPageEmpty);
   const num1 = $derived(showIdeas ? 1 : 0);
-  const num2 = $derived(showPains ? num1 + 1 : num1);
+  const num2 = $derived(showPains ? 2 : 0);
 
   // ============================================
   // Optimistic mutations
@@ -226,6 +239,10 @@
     </div>
   </header>
 
+  {#if isPageEmpty}
+    <DocketEmpty scope="page" />
+  {/if}
+
   {#if showIdeas}
     <SectionDivider
       num={num1}
@@ -244,23 +261,15 @@
           </li>
         {/each}
       </ul>
+    {:else if counts.ideas === 0}
+      <DocketEmpty scope="section" subject="IDEAS" mode="discover" />
     {:else}
-      <aside class="docket-empty" role="status" aria-live="polite">
-        <span class="docket-empty-num" aria-hidden="true">00</span>
-        <h3>{hasNotesActive ? "No saved ideas with notes." : "No ideas saved yet."}</h3>
-        <p>
-          {hasNotesActive
-            ? "Add a note to a saved idea to make it visible here."
-            : "Bookmark ideas from the catalog to keep them here for review."}
-        </p>
-        {#if hasNotesActive}
-          <button type="button" class="docket-empty-cta" onclick={toggleHasNotesFilter}>
-            Show all saves →
-          </button>
-        {:else}
-          <a class="docket-empty-cta" href="/ideas">Browse the catalog →</a>
-        {/if}
-      </aside>
+      <DocketEmpty
+        scope="section"
+        subject="IDEAS"
+        mode="filter"
+        onClearFilter={toggleHasNotesFilter}
+      />
     {/if}
   {/if}
 
@@ -276,23 +285,15 @@
         onUnsave={unsavePainPoint}
         onNotesChange={patchPainNotes}
       />
+    {:else if counts.painPoints === 0}
+      <DocketEmpty scope="section" subject="PAIN POINTS" mode="discover" />
     {:else}
-      <aside class="docket-empty" role="status" aria-live="polite">
-        <span class="docket-empty-num" aria-hidden="true">00</span>
-        <h3>{hasNotesActive ? "No saved pain points with notes." : "No pain points saved yet."}</h3>
-        <p>
-          {hasNotesActive
-            ? "Add a note to a saved pain point to make it visible here."
-            : "Bookmark pain points from the catalog to keep them here for review."}
-        </p>
-        {#if hasNotesActive}
-          <button type="button" class="docket-empty-cta" onclick={toggleHasNotesFilter}>
-            Show all saves →
-          </button>
-        {:else}
-          <a class="docket-empty-cta" href="/ideas">Browse the catalog →</a>
-        {/if}
-      </aside>
+      <DocketEmpty
+        scope="section"
+        subject="PAIN POINTS"
+        mode="filter"
+        onClearFilter={toggleHasNotesFilter}
+      />
     {/if}
   {/if}
 </div>
@@ -407,59 +408,4 @@
     }
   }
 
-  /* Designed empty block — replaces the older single-line
-     "00 ideas saved." placeholder. Reads as a deliberate empty-state
-     artifact rather than a missing-data row. */
-  .docket-empty {
-    border: 1px dashed var(--color-border-emphasis);
-    border-radius: 8px;
-    padding: 2.5rem 2rem;
-    margin: 1.5rem 0 2.5rem;
-    text-align: center;
-  }
-  .docket-empty-num {
-    display: block;
-    font-family: var(--font-mono);
-    font-size: 2.25rem;
-    font-weight: 500;
-    letter-spacing: -0.02em;
-    color: var(--color-text-muted);
-    font-feature-settings: "tnum";
-    margin-bottom: 0.5rem;
-  }
-  .docket-empty h3 {
-    font-family: var(--font-display);
-    font-size: 1.0625rem;
-    font-weight: 600;
-    color: var(--color-text-primary);
-    margin: 0 0 0.375rem;
-  }
-  .docket-empty p {
-    font-size: 0.875rem;
-    color: var(--color-text-secondary);
-    line-height: 1.6;
-    max-width: 36ch;
-    margin: 0 auto 1rem;
-  }
-  .docket-empty-cta {
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--color-accent);
-    letter-spacing: 0.04em;
-    text-decoration: none;
-    border: 0;
-    border-bottom: 1px solid currentColor;
-    padding: 0 0 1px;
-    background: transparent;
-    cursor: pointer;
-  }
-  .docket-empty-cta:hover {
-    color: var(--color-accent-hover, var(--color-accent));
-  }
-  .docket-empty-cta:focus-visible {
-    outline: 2px solid var(--color-accent);
-    outline-offset: 4px;
-    border-radius: 2px;
-  }
 </style>
