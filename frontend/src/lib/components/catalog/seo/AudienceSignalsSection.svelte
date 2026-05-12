@@ -44,15 +44,12 @@
 </script>
 
 {#if hasAny}
+  {#if compact}
+    <p class="signals-deck-text">
+      What they use, where they gather, and how to talk to them, observed in source discussions.
+    </p>
+  {/if}
   <div class="signals-list" class:compact>
-    {#if compact}
-      <div class="signals-deck">
-        <span class="signals-deck-badge">Audience signals</span>
-        <p class="signals-deck-text">
-          What this audience uses, where they are, and how to talk to them — pulled from the source research.
-        </p>
-      </div>
-    {/if}
     {#if hasTools}
       <div class="row half">
         <div class="row-head">
@@ -186,15 +183,15 @@
   }
   .row-label {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     color: var(--color-accent-muted);
     font-weight: 600;
-    letter-spacing: 0.04em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
   .row-count {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: 10px;
     color: var(--color-text-muted);
     font-feature-settings: "tnum" 1;
   }
@@ -227,18 +224,23 @@
     max-width: 780px;
   }
 
-  /* COMPACT — consumer-page idiom (e.g. /idea/[slug]). Editorial cadence,
-     not control-panel. Single hairline-bordered container with internal
-     hairline dividers. Muted (non-accent) mono labels so 8 repetitions
-     don't oversaturate the page's accent color. The deck-note intro strip
-     frames the block as supplementary research notes, not a primary panel.
+  /* COMPACT — consumer-page idiom (e.g. /idea/[slug]). Flat row grid with
+     internal hairline dividers; no outer card chrome. The lede prose sits
+     OUTSIDE this container (rendered above it in the JSX) so audience
+     signals matches the Themes / Search-opportunity flat-lede pattern.
 
-     Layout: CSS grid 2-col on desktop. Deck and prose rows span both
-     columns (grid-column: 1 / -1); chip rows take their natural slot. */
+     Layout: CSS grid 2-col on desktop. Chip rows take their natural slot;
+     prose rows span both columns (grid-column: 1 / -1). */
+  /* Outer horizontal padding insets the dashed row-borders from the section
+     edges (matching the DataList pattern where rows sit inside a padded
+     parent). Row padding loses its horizontal component since the parent
+     now provides the inset; column-divider breathing room is added back
+     selectively on paired half-rows below. */
   .signals-list.compact {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0;
+    padding: 0 24px;
     background: var(--color-surface, #fff);
     border: 1px solid var(--color-border);
     border-radius: 8px;
@@ -247,63 +249,58 @@
   @media (max-width: 768px) {
     .signals-list.compact {
       grid-template-columns: 1fr;
+      padding: 0;
     }
   }
-  .signals-list.compact > .signals-deck {
-    grid-column: 1 / -1;
-    padding: 14px 20px 12px;
-    border-bottom: 1px solid var(--color-border);
-    background: var(--color-bg-elevated, #fff);
-  }
-  .signals-list.compact > .signals-deck .signals-deck-badge {
-    display: inline-block;
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 700;
+  /* Canonical lede — matches `.theme-deck-note` (PainPointsByTheme) and
+     `.catalog-deck-text` (idea-page Competitive + Search Opportunity decks). */
+  .signals-deck-text {
+    display: block;
+    max-width: 720px;
+    margin: 0 0 18px;
+    font-size: 12px;
+    line-height: 1.45;
     color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    padding: 2px 8px;
-    margin-bottom: 8px;
-    background: var(--color-bg-base, #fafafa);
-    white-space: nowrap;
-  }
-  .signals-list.compact > .signals-deck .signals-deck-text {
-    margin: 0;
-    font-style: italic;
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--color-text-muted);
-    max-width: 780px;
+    text-wrap: pretty;
+    overflow-wrap: anywhere;
   }
   .signals-list.compact > .row {
-    background: var(--color-surface, #fff);
-    padding: 14px 18px;
+    padding: 14px 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px dashed var(--color-border);
   }
   .signals-list.compact > .row.full {
     grid-column: 1 / -1;
   }
-  /* Vertical hairline between paired half rows on desktop. The right column
-     (odd-position half rows in 2-col grid) gets a left-border to create the
-     central divider, except for the first half row in each row-pair. */
-  @media (min-width: 768px) {
-    .signals-list.compact > .row.half:nth-of-type(odd) + .row.half {
-      border-left: 1px solid var(--color-border);
+  /* Mobile: restore row horizontal padding when grid collapses to 1-col
+     (parent padding is dropped above, so rows need to provide it). */
+  @media (max-width: 768px) {
+    .signals-list.compact > .row {
+      padding: 14px 18px;
     }
   }
-  .signals-list.compact .row-label {
-    color: var(--color-text-muted);
-    letter-spacing: 0.06em;
-    font-size: 10px;
+  /* Without the outer card, the top row-pair's border-top would read as a
+     stray rule above the content. Strip it: the first .row always; the
+     second .row only when it pairs with the first in the same visual
+     row-pair (both .half so they sit side-by-side at the grid top). */
+  .signals-list.compact > .row:first-of-type {
+    border-top: none;
   }
-  .signals-list.compact .row-count {
-    font-size: 10px;
+  .signals-list.compact > .row.half:first-of-type + .row.half {
+    border-top: none;
+  }
+  /* Column gutter between paired half rows on desktop. No vertical divider —
+     matches the gap-only pattern used by the build-sketch grid (which has
+     no internal vertical borders either). */
+  @media (min-width: 768px) {
+    .signals-list.compact > .row.half:nth-of-type(odd) {
+      padding-right: 18px;
+    }
+    .signals-list.compact > .row.half:nth-of-type(odd) + .row.half {
+      padding-left: 18px;
+    }
   }
   .signals-list.compact .bullets li,
   .signals-list.compact .prose {

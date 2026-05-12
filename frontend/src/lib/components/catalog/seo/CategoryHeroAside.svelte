@@ -2,6 +2,8 @@
   import type { PainPointPreview } from "$lib/types/catalog-landing.js";
   import { scaleSeverity } from "$lib/types/publicCatalog.js";
   import SeverityBar from "./SeverityBar.svelte";
+  import DataList from "./DataList.svelte";
+  import DataRow from "./DataRow.svelte";
   import { painPointPath } from "$lib/utils/urls";
 
   // Right-rail aside on the category landing hero: top pain point + a 3-tile
@@ -49,16 +51,15 @@
       </a>
     {/if}
     {#if stats.some((s) => !!s.value)}
-      <div class="stat-grid">
+      <DataList>
         {#each stats as s}
           {#if s.value}
-            <div class="stat">
-              <div class="l">{s.label}</div>
-              <div class="n">{s.value}</div>
-            </div>
+            <DataRow label={s.label} stack>
+              <span class="stat-num">{s.value}</span>
+            </DataRow>
           {/if}
         {/each}
-      </div>
+      </DataList>
     {/if}
   </aside>
 {/if}
@@ -106,26 +107,10 @@
     color: var(--color-text-primary);
     letter-spacing: -0.005em;
   }
-  .stat-grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding-top: 4px;
-  }
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .l {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-muted);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    font-weight: 600;
-  }
-  .n {
+  /* Stat value styling — preserves the existing 13px / 500 weight / 1.4
+     line-height treatment from the original .n class. Pairs with the
+     canonical DataRow label kicker (10px / 600 / accent-muted mono). */
+  .stat-num {
     font-size: 13px;
     font-weight: 500;
     color: var(--color-text-primary);

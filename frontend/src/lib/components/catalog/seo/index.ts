@@ -24,6 +24,8 @@ export { default as PositionChip } from './PositionChip.svelte';
 export { default as SourceChip } from './SourceChip.svelte';
 export { default as IconBadge } from './IconBadge.svelte';
 export { default as FilterChip } from './FilterChip.svelte';
+export { default as DataList } from './DataList.svelte';
+export { default as DataRow } from './DataRow.svelte';
 // Tier 2 compound widgets.
 export { default as IdeaCardV2 } from './IdeaCardV2.svelte';
 export { default as SolutionCard } from './SolutionCard.svelte';
@@ -33,6 +35,7 @@ export { default as KeywordClusterCard } from './KeywordClusterCard.svelte';
 export { default as ThemeCard } from './ThemeCard.svelte';
 export { default as AudienceSegmentCard } from './AudienceSegmentCard.svelte';
 export { default as AudienceSignalsSection } from './AudienceSignalsSection.svelte';
+export { default as AudienceSection } from './AudienceSection.svelte';
 export { default as QualityTierBadge } from './QualityTierBadge.svelte';
 export { default as SubNicheCell } from './SubNicheCell.svelte';
 export { default as CollectionCard } from './CollectionCard.svelte';

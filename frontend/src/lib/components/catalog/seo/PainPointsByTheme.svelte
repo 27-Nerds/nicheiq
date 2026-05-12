@@ -116,6 +116,10 @@
      signal. Tight line-height (1.45) and wider max-width (720px)
      collapse the block vertically: fewer wrapped lines = lower visual
      volume, even though the character size is similar. */
+  /* Canonical lede style — matches `.catalog-deck-text` on /idea/[slug] and
+     the `.signals-deck-text` lede inside AudienceSignalsSection compact card.
+     One typography for every "intro prose under section title" across the
+     catalog consumer pages. */
   .theme-deck-note {
     display: block;
     max-width: 720px;

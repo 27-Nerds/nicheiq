@@ -6,7 +6,7 @@
     CategoryHeroV2,
     SectionDivider,
     SectionAttribution,
-    AudienceSegmentCard,
+    AudienceSection,
     PainPointsByTheme,
     PainPointRankTable,
     SubNicheCell,
@@ -14,7 +14,6 @@
     AllIdeasSection,
     BuildCTA,
     CollectionTeaser,
-    CatalogBand,
     CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
@@ -150,15 +149,14 @@
   const hasIdeasSection = $derived(
     data.kind === "category" && data.payload.topIdeas.length > 0,
   );
-  // Section numbers — Phase 16 drops <AudienceSignalsSection> on parent (it's
-  // sub-niche-specific depth content); audience section is gated on segments
-  // alone. Chain: themes → audience (segments only) → ranked pain → sub-niches
-  // → ideas.
-  const num1 = $derived(nextNum(0, hasThemesSection));
-  const num2 = $derived(nextNum(num1, hasAudienceSegments));
-  const num3 = $derived(nextNum(num2, hasRankedPains));
+  // Section numbers — chain follows visual order:
+  // ideas → ranked pain → themes → sub-niches → audience.
+  // Audience on parent is segments-only (signals are sub-niche-specific depth).
+  const num1 = $derived(nextNum(0, hasIdeasSection));
+  const num2 = $derived(nextNum(num1, hasRankedPains));
+  const num3 = $derived(nextNum(num2, hasThemesSection));
   const num4 = $derived(nextNum(num3, hasSubNiches));
-  const num5 = $derived(nextNum(num4, hasIdeasSection));
+  const num5 = $derived(nextNum(num4, hasAudienceSegments));
 </script>
 
 <SeoHead {...data.meta} />
@@ -178,48 +176,18 @@
     kind="parent"
   />
 
-  <!-- Section: Top themes — themes are flattened from a single research
-       context (one sub-niche), so we surface a <SectionAttribution> line
-       linking to that sub-niche. The OVERVIEW deck (categorizationSummary
-       prose) is intentionally omitted on parent: that prose talks about the
-       source sub-niche specifically and reads as misleading at category
-       level. The hero description carries category-level orientation. -->
-  {#if hasThemesSection}
-    <SectionDivider num={num1} label="Top themes" />
-    {#if showThemeSectionAttribution}
-      <SectionAttribution source={researchSource!} href={researchSourceHref} />
-    {/if}
-    <PainPointsByTheme
-      themes={data.payload.themes ?? []}
-      painsHref={hasRankedPains ? "#section-ranked-pain" : undefined}
-      audienceHref={hasAudienceSegments ? "#section-audience" : undefined}
-      showSource={themeMultiSource}
-    />
-  {/if}
-
-  <!-- Section: Audience — segments grid only on parent (signals are sub-niche-
-       specific depth content; aggregating them produces incoherent jumble).
-       Sub-niche route still renders both segments + signals. Multi-source
-       parent audience cards carry per-card source links; single-source
-       audience keeps the quieter section-level attribution. -->
-  {#if hasAudienceSegments}
-    <div id="section-audience">
-      <SectionDivider num={num2} label="Audience" />
-      {#if showAudienceSectionAttribution}
-        <SectionAttribution source={researchSource!} href={researchSourceHref} />
-      {/if}
-      <CatalogBand>
-        <div class="segments-grid">
-          {#each data.payload.audienceSegments ?? [] as s, i}
-            <div
-              class="catalog-fade-in"
-              style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
-            >
-              <AudienceSegmentCard segment={s} showSource={audienceMultiSource} />
-            </div>
-          {/each}
-        </div>
-      </CatalogBand>
+  <!-- Section: All ideas (filterable, with sub-niche chips) — lead with the
+       concrete artifact a visitor came to see. -->
+  {#if hasIdeasSection}
+    <div id="all-ideas">
+      <SectionDivider
+        num={num1}
+        label={`Ideas in ${data.payload.category.name}`}
+      />
+      <AllIdeasSection
+        ideas={data.payload.topIdeas}
+        subNiches={data.payload.children}
+      />
     </div>
   {/if}
 
@@ -228,12 +196,33 @@
   {#if hasRankedPains}
     <div id="section-ranked-pain">
       <SectionDivider
-        num={num3}
+        num={num2}
         label="Top pain points"
         metaText="ranked by mention volume × severity"
       />
       <PainPointRankTable painPoints={data.payload.topPainPoints} />
     </div>
+  {/if}
+
+  <!-- Section: Top themes — themes are flattened from a single research
+       context (one sub-niche), so we surface a <SectionAttribution> line
+       linking to that sub-niche. The OVERVIEW deck (categorizationSummary
+       prose) is intentionally omitted on parent: that prose talks about the
+       source sub-niche specifically and reads as misleading at category
+       level. The hero description carries category-level orientation. -->
+  {#if hasThemesSection}
+    <SectionDivider
+      num={num3}
+      label="What people are talking about"
+      metaText="sorted by mention volume"
+    />
+    {#if showThemeSectionAttribution}
+      <SectionAttribution source={researchSource!} href={researchSourceHref} />
+    {/if}
+    <PainPointsByTheme
+      themes={data.payload.themes ?? []}
+      showSource={themeMultiSource}
+    />
   {/if}
 
   <!-- Section: Sub-niches -->
@@ -255,23 +244,26 @@
   {/if}
 
   <!-- Featured collection teaser — only when current category appears in any
-       active collection's categorySlugs. Sits between sub-niches and the
-       all-ideas section. Skips silently when nothing maps. -->
+       active collection's categorySlugs. Stays attached to the sub-niches
+       navigation surface. Skips silently when nothing maps. -->
   {#if data.featuredCollection}
     <CollectionTeaser collection={data.featuredCollection} />
   {/if}
 
-  <!-- Section: All ideas (filterable, with sub-niche chips) -->
-  {#if hasIdeasSection}
-    <div id="all-ideas">
-      <SectionDivider
-        num={num5}
-        label={`Ideas in ${data.payload.category.name}`}
-        metaText={`${data.payload.totalIdeas} total`}
-      />
-      <AllIdeasSection
-        ideas={data.payload.topIdeas}
-        subNiches={data.payload.children}
+  <!-- Section: Audience — segments grid only on parent (signals are sub-niche-
+       specific depth content; aggregating them produces incoherent jumble).
+       Sub-niche route still renders both segments + signals. Multi-source
+       parent audience cards carry per-card source links; single-source
+       audience keeps the quieter section-level attribution. -->
+  {#if hasAudienceSegments}
+    <div id="section-audience">
+      <SectionDivider num={num5} label="Audience" />
+      {#if showAudienceSectionAttribution}
+        <SectionAttribution source={researchSource!} href={researchSourceHref} />
+      {/if}
+      <AudienceSection
+        segments={data.payload.audienceSegments ?? []}
+        showSegmentSource={audienceMultiSource}
       />
     </div>
   {/if}
@@ -319,16 +311,6 @@
 {/if}
 
 <style>
-  .segments-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-  @media (max-width: 768px) {
-    .segments-grid {
-      grid-template-columns: 1fr;
-    }
-  }
   .subniche-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));

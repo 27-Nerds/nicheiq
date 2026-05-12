@@ -1,4 +1,7 @@
 <script lang="ts">
+  import DataList from "./DataList.svelte";
+  import DataRow from "./DataRow.svelte";
+
   // Right rail of IdeaHeroV2 — niche-score panel.
   // Three-tier layout per ideas-v2/page-idea.jsx:71-101 + styles.css:404-440:
   //   1. Top: composite anchor with `Niche score` kicker + tier label.
@@ -101,40 +104,47 @@
   </header>
 
   <div class="sp-rows">
-    <div class="sp-row" data-type="demand">
-      <span class="nm">Demand</span>
-      <div class="bar"><span class="fill" style:width={`${pct(scores.demand)}%`}></span></div>
-      <span class="val">{scores.demand == null ? "—" : Math.round(scores.demand)}</span>
-    </div>
-    <div class="sp-row" data-type="feasibility">
-      <span class="nm">Feasibility</span>
-      <div class="bar"><span class="fill" style:width={`${pct(scores.feasibility)}%`}></span></div>
-      <span class="val">{scores.feasibility == null ? "—" : Math.round(scores.feasibility)}</span>
-    </div>
-    <div class="sp-row" data-type="opportunity">
-      <span class="nm">Opportunity</span>
-      <div class="bar"><span class="fill" style:width={`${pct(scores.opportunity)}%`}></span></div>
-      <span class="val">{scores.opportunity == null ? "—" : Math.round(scores.opportunity)}</span>
-    </div>
-    {#if hasFitRow}
-      <div class="sp-fit-divider" aria-hidden="true">
-        <span>Founder fit</span>
-      </div>
-      {#if scores.novelty != null && Number.isFinite(scores.novelty)}
-        <div class="sp-row" data-type="novelty">
-          <span class="nm">Novelty</span>
-          <div class="bar"><span class="fill" style:width={`${pct(scores.novelty)}%`}></span></div>
-          <span class="val">{Math.round(scores.novelty)}</span>
+    <DataList>
+      <DataRow label="Demand" align="center">
+        <div class="sp-value" data-type="demand">
+          <div class="bar"><span class="fill" style:width={`${pct(scores.demand)}%`}></span></div>
+          <span class="val">{scores.demand == null ? "—" : Math.round(scores.demand)}</span>
         </div>
-      {/if}
-      {#if scores.soloDev != null && Number.isFinite(scores.soloDev)}
-        <div class="sp-row" data-type="solo-dev">
-          <span class="nm">Solo-dev</span>
-          <div class="bar"><span class="fill" style:width={`${pct(scores.soloDev)}%`}></span></div>
-          <span class="val">{Math.round(scores.soloDev)}</span>
+      </DataRow>
+      <DataRow label="Feasibility" align="center">
+        <div class="sp-value" data-type="feasibility">
+          <div class="bar"><span class="fill" style:width={`${pct(scores.feasibility)}%`}></span></div>
+          <span class="val">{scores.feasibility == null ? "—" : Math.round(scores.feasibility)}</span>
         </div>
+      </DataRow>
+      <DataRow label="Opportunity" align="center">
+        <div class="sp-value" data-type="opportunity">
+          <div class="bar"><span class="fill" style:width={`${pct(scores.opportunity)}%`}></span></div>
+          <span class="val">{scores.opportunity == null ? "—" : Math.round(scores.opportunity)}</span>
+        </div>
+      </DataRow>
+      {#if hasFitRow}
+        <div class="sp-fit-divider" aria-hidden="true">
+          <span>Founder fit</span>
+        </div>
+        {#if scores.novelty != null && Number.isFinite(scores.novelty)}
+          <DataRow label="Novelty" align="center">
+            <div class="sp-value" data-type="novelty">
+              <div class="bar"><span class="fill" style:width={`${pct(scores.novelty)}%`}></span></div>
+              <span class="val">{Math.round(scores.novelty)}</span>
+            </div>
+          </DataRow>
+        {/if}
+        {#if scores.soloDev != null && Number.isFinite(scores.soloDev)}
+          <DataRow label="Solo-dev" align="center">
+            <div class="sp-value" data-type="solo-dev">
+              <div class="bar"><span class="fill" style:width={`${pct(scores.soloDev)}%`}></span></div>
+              <span class="val">{Math.round(scores.soloDev)}</span>
+            </div>
+          </DataRow>
+        {/if}
       {/if}
-    {/if}
+    </DataList>
   </div>
 
   {#if visibleStats.length > 0}
@@ -208,52 +218,45 @@
     font-weight: 500;
   }
 
-  /* Middle — 3 horizontal score bars; dashed line between rows. */
+  /* Middle — 3 horizontal score bars rendered as <DataList> + <DataRow>.
+     `.sp-rows` provides horizontal padding around the dashed-row list;
+     `.sp-value` is the per-row [bar : numeric] layout inside each DataRow's
+     value cell. The data-type attribute carries the bar-fill color. */
   .sp-rows {
     padding: 14px 20px;
   }
-  .sp-row {
+  .sp-value {
     display: grid;
-    grid-template-columns: 1fr 70px 28px;
-    gap: 10px;
+    grid-template-columns: 1fr 28px;
+    gap: 8px;
     align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px dashed var(--color-border);
   }
-  .sp-row:last-child {
-    border-bottom: none;
-  }
-  .sp-row .nm {
-    font-size: 13px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    font-weight: 500;
-  }
-  .sp-row .bar {
+  .sp-value .bar {
     height: 6px;
     background: var(--color-border);
     border-radius: 3px;
     overflow: hidden;
     position: relative;
   }
-  .sp-row .bar .fill {
+  .sp-value .bar .fill {
     display: block;
     height: 100%;
     border-radius: 3px;
     transition: width 0.8s ease;
   }
-  .sp-row[data-type="demand"] .bar .fill {
+  .sp-value[data-type="demand"] .bar .fill {
     background: var(--color-accent);
   }
-  .sp-row[data-type="feasibility"] .bar .fill {
+  .sp-value[data-type="feasibility"] .bar .fill {
     background: var(--color-info);
   }
-  .sp-row[data-type="opportunity"] .bar .fill {
+  .sp-value[data-type="opportunity"] .bar .fill {
     background: var(--color-success);
   }
   /* Founder-fit axes — muted slate fill so they read as secondary signals
      beneath the niche-score primary axes. */
-  .sp-row[data-type="novelty"] .bar .fill,
-  .sp-row[data-type="solo-dev"] .bar .fill {
+  .sp-value[data-type="novelty"] .bar .fill,
+  .sp-value[data-type="solo-dev"] .bar .fill {
     background: var(--color-text-muted);
   }
   /* Mini-divider separating the 3 niche-score axes from the 2 founder-fit axes.
@@ -299,7 +302,7 @@
     color: var(--color-text-muted);
     border-color: var(--color-border);
   }
-  .sp-row .val {
+  .sp-value .val {
     font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 600;

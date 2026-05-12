@@ -138,8 +138,8 @@
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-weight: 700;
-    color: var(--color-text-muted);
+    font-weight: 600;
+    color: var(--color-accent-muted);
     margin: 0 0 8px;
   }
   .nm-kicker-sep {

@@ -7,14 +7,11 @@
     SectionDivider,
     RepresentativeQuotesPanel,
     TopRedditThreads,
-    AudienceSegmentCard,
-    AudienceSignalsSection,
+    AudienceSection,
     RelatedPainCard,
     IdeaCardV2,
     SourceCommunityChips,
-    CatalogBand,
     BuildCTA,
-    Chip,
     CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
@@ -230,7 +227,7 @@
   <SectionDivider num={num1} label="Voices of the audience" />
   {#if hasSubredditSources}
     <div class="source-strip">
-      <span class="source-strip-label">↗ Sourced from</span>
+      <span class="source-strip-label">Sourced from</span>
       <SourceCommunityChips sources={data.painPoint.subredditSources ?? []} />
     </div>
   {/if}
@@ -252,30 +249,11 @@
 
 {#if hasAudience}
   <SectionDivider num={num2} label="Who feels this pain" />
-  {#if hasCategories}
-    <div class="type-strip">
-      <span class="type-label">Type</span>
-      <div class="type-chips">
-        {#each categoriesChips as c}
-          <Chip label={c} />
-        {/each}
-      </div>
-    </div>
-  {/if}
-  {#if hasSegments}
-    <CatalogBand>
-      <div class="seg-grid">
-        {#each filteredSegments as s}
-          <AudienceSegmentCard segment={s} />
-        {/each}
-      </div>
-    </CatalogBand>
-  {/if}
-  {#if hasAudienceSignals && audienceSignals}
-    <div class="audience-signals-wrap">
-      <AudienceSignalsSection signals={audienceSignals} compact />
-    </div>
-  {/if}
+  <AudienceSection
+    segments={filteredSegments}
+    signals={audienceSignals}
+    categories={categoriesChips}
+  />
 {/if}
 
 {#if hasSolutionApproach}
@@ -354,6 +332,11 @@
     padding-bottom: 12px;
     border-bottom: 1px dashed var(--color-border);
   }
+  /* Exception to the "all kickers colored" rule: this kicker sits directly
+     next to SourceChip data that uses platform-identity accent colors
+     (orange for Reddit/HN, blue for Twitter/Discord). A colored kicker
+     would compete with the chips for the eye instead of introducing them.
+     Stays muted so the chips own the color hierarchy. */
   .source-strip-label {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -377,61 +360,8 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
-    color: var(--color-text-muted);
+    color: var(--color-accent-muted);
     margin-bottom: 10px;
-  }
-
-  /* Categories chip strip at the top of section 02 — taxonomic tags,
-     editorially distinct from segments (which are personas) and signals
-     (which are behavioral). Reads as inline metadata. */
-  .type-strip {
-    display: flex;
-    align-items: baseline;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin: 0 0 16px;
-  }
-  .type-label {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    font-weight: 600;
-    color: var(--color-text-muted);
-    flex-shrink: 0;
-  }
-  .type-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  /* Segment grid inside CatalogBand — same pattern as /idea/[slug]
-     audience section. Three columns at desktop, collapsing on narrower
-     viewports. */
-  .seg-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .seg-grid:has(> :only-child) {
-    grid-template-columns: 1fr;
-    max-width: 600px;
-  }
-  .seg-grid:has(> :nth-child(2):last-child) {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-width: 920px;
-  }
-  @media (max-width: 768px) {
-    .seg-grid {
-      grid-template-columns: 1fr;
-    }
-  }
-
-  /* Audience signals card sits below the segments band with a small gap. */
-  .audience-signals-wrap {
-    margin-top: 24px;
-    margin-bottom: 36px;
   }
 
   /* Solution approach card — accent-rail prose block. */
@@ -445,6 +375,7 @@
   }
   .approach-label {
     display: block;
+    font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -475,7 +406,7 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
-    color: var(--color-text-muted);
+    color: var(--color-accent-muted);
     margin-bottom: 4px;
   }
   .theme-deck-name {

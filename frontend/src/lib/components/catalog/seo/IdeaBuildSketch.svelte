@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import Chip from "./Chip.svelte";
+  import DataList from "./DataList.svelte";
+  import DataRow from "./DataRow.svelte";
 
   // Build sketch panel for /idea/[slug]. Surfaces idea-specific fields:
   // core_features, target_personas, pricing_strategy, estimated_development_time,
@@ -88,41 +90,30 @@
       {/if}
 
       <section class="right">
-        {#if idea.pricing_strategy}
-          <div class="kv">
-            <span class="k">Pricing</span>
-            <span class="v">{idea.pricing_strategy}</span>
-          </div>
-        {/if}
-        {#if idea.estimated_development_time}
-          <div class="kv">
-            <span class="k">Dev time</span>
-            <span class="v">{idea.estimated_development_time}</span>
-          </div>
-        {/if}
-        {#if idea.estimated_cac_organic}
-          <div class="kv">
-            <span class="k">CAC (organic)</span>
-            <span class="v">
+        <DataList>
+          {#if idea.pricing_strategy}
+            <DataRow label="Pricing">{idea.pricing_strategy}</DataRow>
+          {/if}
+          {#if idea.estimated_development_time}
+            <DataRow label="Dev time">{idea.estimated_development_time}</DataRow>
+          {/if}
+          {#if idea.estimated_cac_organic}
+            <DataRow label="CAC (organic)">
               {idea.estimated_cac_organic}
               {#if idea.estimated_cac_paid}
                 <span class="cac-paid">(vs {idea.estimated_cac_paid} paid)</span>
               {/if}
-            </span>
-          </div>
-        {/if}
-        {#if indexablePagesFmt !== null}
-          <div class="kv">
-            <span class="k">Indexable pages</span>
-            <span class="v mono">{indexablePagesFmt}</span>
-          </div>
-        {/if}
-        {#if idea.technical_approach}
-          <div class="kv stack">
-            <span class="k">Technical approach</span>
-            <span class="v">{idea.technical_approach}</span>
-          </div>
-        {/if}
+            </DataRow>
+          {/if}
+          {#if indexablePagesFmt !== null}
+            <DataRow label="Indexable pages">
+              <span class="v mono">{indexablePagesFmt}</span>
+            </DataRow>
+          {/if}
+          {#if idea.technical_approach}
+            <DataRow label="Technical approach" stack>{idea.technical_approach}</DataRow>
+          {/if}
+        </DataList>
         <!-- programmatic_seo_opportunity is rendered in the route's Section 5
              where it has room for the full markdown render. The build sketch
              keeps the SEO data tight (Indexable pages + Technical approach). -->
@@ -142,7 +133,7 @@
         <div class="innovation-grid">
           {#if idea.conventional_approach}
             <div class="innovation-box">
-              <span class="innovation-label muted">Conventional path</span>
+              <span class="innovation-label">Conventional path</span>
               <p>{idea.conventional_approach}</p>
             </div>
           {/if}
@@ -175,7 +166,7 @@
     border: 1px solid var(--color-border);
     border-radius: 8px;
     background: var(--color-surface, #fff);
-    padding: 24px 28px;
+    padding: 24px;
     margin: 0 0 36px;
   }
   .grid {
@@ -197,11 +188,12 @@
     min-width: 0;
   }
   .block-label {
+    font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
-    color: var(--color-text-muted);
+    color: var(--color-accent-muted);
     margin: 0 0 8px;
   }
   .features {
@@ -234,34 +226,9 @@
     flex-wrap: wrap;
     gap: 6px;
   }
-  .kv {
-    display: grid;
-    grid-template-columns: 110px 1fr;
-    gap: 10px;
-    align-items: baseline;
-    padding-bottom: 10px;
-    border-bottom: 1px dashed var(--color-border);
-  }
-  .kv:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
-  }
-  .kv.stack {
-    grid-template-columns: 1fr;
-    gap: 4px;
-  }
-  .k {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--color-text-muted);
-    font-weight: 600;
-  }
-  .v {
-    font-size: 13px;
-    line-height: 1.5;
-    color: var(--color-text-primary);
-  }
+  /* Indexable pages numeric — mono-styled value inside the Indexable-pages
+     DataRow. Kept as a scoped class because it overrides DataRow's default
+     value typography (13px / sans). */
   .v.mono {
     font-family: var(--font-mono);
     font-size: 14px;
@@ -278,7 +245,7 @@
   .innovation {
     margin-top: 24px;
     padding-top: 20px;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px dashed var(--color-border);
   }
   .innovation-grid {
     display: grid;
@@ -297,15 +264,13 @@
   }
   .innovation-label {
     display: block;
+    font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
     color: var(--color-accent-muted);
     margin-bottom: 6px;
-  }
-  .innovation-label.muted {
-    color: var(--color-text-muted);
   }
   .innovation-box p {
     margin: 0;
@@ -321,7 +286,7 @@
   .diff {
     margin-top: 24px;
     padding-top: 20px;
-    border-top: 1px solid var(--color-border);
+    border-top: 1px dashed var(--color-border);
   }
   .diff ul {
     list-style: none;

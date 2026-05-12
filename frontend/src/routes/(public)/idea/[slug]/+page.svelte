@@ -11,10 +11,8 @@
     CompetitorTable,
     KeywordClusterPanel,
     SourceCommunityChips,
-    AudienceSegmentCard,
-    AudienceSignalsSection,
+    AudienceSection,
     BuildCTA,
-    CatalogBand,
     Chip,
     CategoryFAQ,
   } from "$lib/components/catalog/seo";
@@ -274,7 +272,7 @@
   <SectionDivider num={num1} label="Pain points addressed" right={painCount} />
   {#if hasSourceStrip}
     <div class="source-strip">
-      <span class="source-strip-label">↗ Sourced from</span>
+      <span class="source-strip-label">Sourced from</span>
       <SourceCommunityChips sources={data.idea.subredditSources ?? []} />
     </div>
   {/if}
@@ -288,25 +286,10 @@
 
 {#if hasAudience || hasAudienceSignals}
   <SectionDivider num={num3} label="Audience" />
-  {#if filteredSegments.length > 0}
-    <CatalogBand>
-      <div class="seg-grid">
-        {#each filteredSegments as s, i}
-          <div
-            class="catalog-fade-in"
-            style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
-          >
-            <AudienceSegmentCard segment={s} />
-          </div>
-        {/each}
-      </div>
-    </CatalogBand>
-  {/if}
-  {#if hasAudienceSignals && data.idea.audienceSignals}
-    <div class="audience-signals-wrap">
-      <AudienceSignalsSection signals={data.idea.audienceSignals} compact />
-    </div>
-  {/if}
+  <AudienceSection
+    segments={filteredSegments}
+    signals={data.idea.audienceSignals}
+  />
 {/if}
 
 {#if hasCompetitors}
@@ -316,7 +299,6 @@
   {/snippet}
   <SectionDivider num={num4} label="Competitive landscape" right={compCount} />
   <aside class="catalog-deck-note">
-    <span class="catalog-deck-badge">Overview</span>
     <p class="catalog-deck-text">Active players in {idea.category?.name ?? 'this niche'}.</p>
   </aside>
   <CompetitorTable competitors={comps} />
@@ -330,8 +312,7 @@
   {/snippet}
   <SectionDivider num={num5} label="Search opportunity" right={pagesPill} />
   {#if idea.programmatic_seo_opportunity}
-    <aside class="catalog-deck-note markdown-content wide">
-      <span class="catalog-deck-badge">Programmatic SEO</span>
+    <aside class="catalog-deck-note markdown-content">
       <div class="catalog-deck-text">
         {@html renderTechnicalContent(idea.programmatic_seo_opportunity)}
       </div>
@@ -386,17 +367,6 @@
 />
 
 <style>
-  .seg-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-bottom: 24px;
-  }
-  @media (max-width: 768px) {
-    .seg-grid {
-      grid-template-columns: 1fr;
-    }
-  }
   /* Source attribution strip — sits directly under the "Pain points addressed"
      SectionDivider. Same idiom as <SectionAttribution> on /ideas pages: tells
      the reader where the underlying pain evidence came from before they read
@@ -410,6 +380,11 @@
     padding-bottom: 12px;
     border-bottom: 1px dashed var(--color-border);
   }
+  /* Exception to the "all kickers colored" rule: this kicker sits directly
+     next to SourceChip data that uses platform-identity accent colors
+     (orange for Reddit/HN, blue for Twitter/Discord). A colored kicker
+     would compete with the chips for the eye instead of introducing them.
+     Stays muted so the chips own the color hierarchy. */
   .source-strip-label {
     font-family: var(--font-mono);
     font-size: 10px;
@@ -419,84 +394,54 @@
     color: var(--color-text-muted);
     flex-shrink: 0;
   }
-  /* Audience signals wrap — sits below the segments band in the audience
-     section. Adds top-margin so the two halves of the section read as
-     paired but distinct. */
-  .audience-signals-wrap {
-    margin-top: 24px;
-    margin-bottom: 32px;
-  }
-  /* Editorial deck-note — chip-badged italic prose used for section overviews
-     (Competitive landscape lede, Programmatic SEO summary). Mirrors the
-     `theme-deck-note` pattern from /ideas's PainPointsByTheme so the
-     prose-before-table cadence reads consistently across catalog pages. */
+  /* Canonical lede — matches `.theme-deck-note` (PainPointsByTheme) and the
+     `.signals-deck-text` lede inside AudienceSignalsSection compact card.
+     One typography for every "intro prose under section title" across the
+     catalog consumer pages. */
   .catalog-deck-note {
     display: block;
     max-width: 720px;
     margin: 0 0 20px;
   }
-  .catalog-deck-note.wide {
-    max-width: none;
-  }
-  .catalog-deck-badge {
-    display: inline-block;
-    font-family: var(--font-mono);
-    font-size: 9.5px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 700;
-    color: var(--color-text-muted);
-    border: 1px solid var(--color-border);
-    border-radius: 3px;
-    padding: 2px 8px;
-    margin-bottom: 10px;
-    background: var(--color-bg-elevated);
-    white-space: nowrap;
-  }
   .catalog-deck-text {
-    font-style: italic;
-    font-size: 13.5px;
-    line-height: 1.65;
+    font-size: 12px;
+    line-height: 1.45;
     color: var(--color-text-muted);
     margin: 0;
     text-wrap: pretty;
     overflow-wrap: anywhere;
   }
-  /* Scoped markdown styles inside the deck-note's text container. Replaces
-     the old .section-lede.markdown-content block; same selectors, just
-     re-rooted under the new wrapper. */
+  /* Scoped markdown styles for the programmatic-SEO summary variant. Same
+     base typography as the simple deck-text; child elements (ul, li, strong,
+     h2/h3) inherit size/color and only override structural rules. */
   .catalog-deck-note.markdown-content .catalog-deck-text :global(p) {
     margin: 0 0 8px;
-    font-style: italic;
-    font-size: 13.5px;
-    line-height: 1.65;
+    font-size: 12px;
+    line-height: 1.45;
     color: var(--color-text-muted);
   }
   .catalog-deck-note.markdown-content .catalog-deck-text :global(p:last-child) { margin-bottom: 0; }
   .catalog-deck-note.markdown-content .catalog-deck-text :global(ul) {
     margin: 4px 0 8px;
     padding-left: 20px;
-    font-size: 13.5px;
-    line-height: 1.65;
+    font-size: 12px;
+    line-height: 1.45;
     color: var(--color-text-muted);
-    font-style: italic;
   }
   .catalog-deck-note.markdown-content .catalog-deck-text :global(li) { margin-bottom: 2px; }
   .catalog-deck-note.markdown-content .catalog-deck-text :global(strong) {
     color: var(--color-text-primary);
     font-weight: 600;
-    font-style: normal;
   }
   .catalog-deck-note.markdown-content .catalog-deck-text :global(h2),
   .catalog-deck-note.markdown-content .catalog-deck-text :global(h3) {
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--color-text-muted);
-    font-weight: 700;
-    font-style: normal;
-    margin: 12px 0 4px;
-    letter-spacing: 0.08em;
+    color: var(--color-accent-muted);
+    font-weight: 600;
+    margin: 12px 0 6px;
   }
   .discovery-block {
     margin: 18px 0 24px;
@@ -506,11 +451,12 @@
     background: var(--color-bg-elevated, #fff);
   }
   .discovery-label {
+    font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
-    color: var(--color-text-muted);
+    color: var(--color-accent-muted);
     margin: 0 0 10px;
   }
   .discovery-queries {

@@ -5,14 +5,12 @@
     CategoryBreadcrumbs,
     CategoryHeroV2,
     SectionDivider,
-    AudienceSegmentCard,
-    AudienceSignalsSection,
+    AudienceSection,
     PainPointsByTheme,
     PainPointRankTable,
     AllIdeasSection,
     BuildCTA,
     SubcategoryOpportunityPanel,
-    CatalogBand,
     NicheMethodology,
     CategoryFAQ,
   } from "$lib/components/catalog/seo";
@@ -132,10 +130,12 @@
     hasResearch && data.payload.topPainPoints.length > 0,
   );
   const hasIdeasSection = $derived(data.payload.topIdeas.length > 0);
-  const num1 = $derived(nextNum(0, hasThemesSection));
-  const num2 = $derived(nextNum(num1, hasAudienceSection));
-  const num3 = $derived(nextNum(num2, hasRankedPains));
-  const num4 = $derived(nextNum(num3, hasIdeasSection));
+  // Chain follows visual order: ideas → ranked pain → themes → audience.
+  // "About this niche" continues to use `num4 + 1` as the methodology footer.
+  const num1 = $derived(nextNum(0, hasIdeasSection));
+  const num2 = $derived(nextNum(num1, hasRankedPains));
+  const num3 = $derived(nextNum(num2, hasThemesSection));
+  const num4 = $derived(nextNum(num3, hasAudienceSection));
 </script>
 
 <SeoHead {...data.meta} />
@@ -176,18 +176,51 @@
   </p>
 {/if}
 
+<!-- Section: Ideas — lead with the concrete artifact. List view differentiates
+     the sub-page from the category's grid view per the mock. The verdict-GO
+     half of the meta copy renders only when goCount > 0 — most sub-niches
+     don't have verdicts at this stage (those come from a separate validation
+     run). Anchor #sub-ideas used by the hero's opportunity panel "see all" link. -->
+{#if hasIdeasSection}
+  <div id="sub-ideas">
+    <SectionDivider
+      num={num1}
+      label={`Ideas in ${data.payload.category.name}`}
+    />
+    <AllIdeasSection ideas={data.payload.topIdeas} showRank />
+  </div>
+{/if}
+
+<!-- Section: Top pain points (ranked table) — validating evidence for the
+     ideas above. -->
+{#if hasRankedPains}
+  <div id="section-ranked-pain">
+    <SectionDivider
+      num={num2}
+      label="Ranked pain points"
+      metaText={`${data.payload.topPainPoints.length} ranked · mention volume × severity`}
+    />
+    <PainPointRankTable
+      painPoints={data.payload.topPainPoints}
+      themes={allThemes}
+    />
+  </div>
+{/if}
+
 <!-- Section: Themes — unified list (Phase 2). Most-cited theme sorts first
      and gets accent-rail emphasis + "Most-cited" badge. Pain text is
      canonicalized to the ranked-pain table; theme cards link there via the
      "View ranked pain points →" footer. Persona chips link to #section-audience. -->
 {#if hasThemesSection}
   <div id="section-themes">
-    <SectionDivider num={num1} label="Themes" />
+    <SectionDivider
+      num={num3}
+      label="What people are talking about"
+      metaText="sorted by mention volume"
+    />
     <PainPointsByTheme
       themes={allThemes}
       deck={sectionOneLede}
-      painsHref={hasRankedPains ? "#section-ranked-pain" : undefined}
-      audienceHref={hasAudienceSection ? "#section-audience" : undefined}
     />
   </div>
 {/if}
@@ -199,56 +232,12 @@
      chips (Phase 2). -->
 {#if hasAudienceSection}
   <div id="section-audience">
-    <SectionDivider num={num2} label="Audience" />
-    {#if hasAudienceSegments}
-      <CatalogBand>
-        <div class="segments-grid sub-page-2col">
-          {#each data.payload.audienceSegments ?? [] as s, i}
-            <div
-              class="catalog-fade-in"
-              style:animation-delay={`${Math.min(i, 5) * 0.06}s`}
-            >
-              <AudienceSegmentCard segment={s} />
-            </div>
-          {/each}
-        </div>
-      </CatalogBand>
-    {/if}
-    {#if hasAudienceSignals}
-      <AudienceSignalsSection signals={data.payload.audienceSignals!} />
-    {/if}
-  </div>
-{/if}
-
-<!-- Section: Top pain points (ranked table) -->
-{#if hasRankedPains}
-  <div id="section-ranked-pain">
-    <SectionDivider
-      num={num3}
-      label="Ranked pain points"
-      metaText={`${data.payload.topPainPoints.length} ranked · mention volume × severity`}
+    <SectionDivider num={num4} label="Audience" />
+    <AudienceSection
+      segments={data.payload.audienceSegments ?? []}
+      signals={data.payload.audienceSignals}
+      segmentColumns={2}
     />
-    <PainPointRankTable
-      painPoints={data.payload.topPainPoints}
-      themes={allThemes}
-    />
-  </div>
-{/if}
-
-<!-- Section: Ideas — list view as anchor, differentiating sub-page from
-     category's grid view per the mock. The verdict-GO half of the meta
-     copy renders only when goCount > 0 — most sub-niches don't have
-     verdicts at this stage (those come from a separate validation run). -->
-{#if hasIdeasSection}
-  <div id="sub-ideas">
-    <SectionDivider
-      num={num4}
-      label={`Ideas in ${data.payload.category.name}`}
-      metaText={goCount > 0
-        ? `${data.payload.totalIdeas} tracked · ${goCount} verdict GO`
-        : `${data.payload.totalIdeas} tracked`}
-    />
-    <AllIdeasSection ideas={data.payload.topIdeas} showRank />
   </div>
 {/if}
 
@@ -305,7 +294,7 @@
     text-transform: uppercase;
     letter-spacing: 0.08em;
     font-weight: 600;
-    color: var(--color-text-muted);
+    color: var(--color-accent-muted);
     border-right: 1px solid var(--color-border);
     padding-right: 12px;
   }
@@ -318,20 +307,5 @@
   }
   .rpn-cta:hover {
     text-decoration: underline;
-  }
-  .segments-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-  }
-  /* Sub-page persona strip: 2-col, denser than category's 3-col, per mock. */
-  .segments-grid.sub-page-2col {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  @media (max-width: 768px) {
-    .segments-grid,
-    .segments-grid.sub-page-2col {
-      grid-template-columns: 1fr;
-    }
   }
 </style>

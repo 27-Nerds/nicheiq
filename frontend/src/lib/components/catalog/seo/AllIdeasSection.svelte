@@ -285,7 +285,6 @@
     align-items: center;
     justify-content: space-between;
     padding: 14px 0 20px;
-    border-top: 1px solid var(--color-border);
     gap: 16px;
     flex-wrap: wrap;
   }

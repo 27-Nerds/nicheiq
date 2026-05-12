@@ -9,6 +9,8 @@
 
   import type { QualitySignals } from "$lib/types/publicCatalog.js";
   import QualityTierBadge from "./QualityTierBadge.svelte";
+  import DataList from "./DataList.svelte";
+  import DataRow from "./DataRow.svelte";
 
   interface Props {
     /** 0-100 (already scaled at the route). */
@@ -93,22 +95,27 @@
   </header>
 
   <div class="sp-rows">
-    <div class="sp-row" data-type="severity">
-      <span class="nm">Severity</span>
-      <div class="bar"><span class="fill" style:width={`${pct(severity)}%`}></span></div>
-      <span class="val">{severity == null ? '—' : Math.round(severity)}</span>
-    </div>
-    <div class="sp-row" data-type="wtp">
-      <span class="nm">Willingness to pay</span>
-      <div class="bar"><span class="fill" style:width={`${pct(willingnessToPay)}%`}></span></div>
-      <span class="val">{willingnessToPay == null ? '—' : Math.round(willingnessToPay)}</span>
-    </div>
-    {#if opportunity}
-      <div class="sp-cat">
-        <span class="nm">Opportunity</span>
-        <span class="opp-pill" data-tier={opportunity}>{opportunity}</span>
-      </div>
-    {/if}
+    <DataList>
+      <DataRow label="Severity" align="center">
+        <div class="sp-value" data-type="severity">
+          <div class="bar"><span class="fill" style:width={`${pct(severity)}%`}></span></div>
+          <span class="val">{severity == null ? '—' : Math.round(severity)}</span>
+        </div>
+      </DataRow>
+      <DataRow label="Willingness to pay" align="center">
+        <div class="sp-value" data-type="wtp">
+          <div class="bar"><span class="fill" style:width={`${pct(willingnessToPay)}%`}></span></div>
+          <span class="val">{willingnessToPay == null ? '—' : Math.round(willingnessToPay)}</span>
+        </div>
+      </DataRow>
+      {#if opportunity}
+        <DataRow label="Opportunity" align="center">
+          <div class="sp-cat-value">
+            <span class="opp-pill" data-tier={opportunity}>{opportunity}</span>
+          </div>
+        </DataRow>
+      {/if}
+    </DataList>
   </div>
 
   {#if hasFooter}
@@ -198,39 +205,33 @@
   .sp-rows {
     padding: 14px 20px;
   }
-  .sp-row {
+  /* Per-row bar-and-numeric layout inside DataRow's value cell. */
+  .sp-value {
     display: grid;
-    grid-template-columns: 1fr 70px 28px;
-    gap: 10px;
+    grid-template-columns: 1fr 28px;
+    gap: 8px;
     align-items: center;
-    padding: 10px 0;
-    border-bottom: 1px dashed var(--color-border);
   }
-  .sp-row .nm {
-    font-size: 13px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    font-weight: 500;
-  }
-  .sp-row .bar {
+  .sp-value .bar {
     height: 6px;
     background: var(--color-border);
     border-radius: 3px;
     overflow: hidden;
     position: relative;
   }
-  .sp-row .bar .fill {
+  .sp-value .bar .fill {
     display: block;
     height: 100%;
     border-radius: 3px;
     transition: width 0.8s ease;
   }
-  .sp-row[data-type='severity'] .bar .fill {
+  .sp-value[data-type='severity'] .bar .fill {
     background: var(--color-error, #dc2626);
   }
-  .sp-row[data-type='wtp'] .bar .fill {
+  .sp-value[data-type='wtp'] .bar .fill {
     background: var(--color-accent);
   }
-  .sp-row .val {
+  .sp-value .val {
     font-family: var(--font-mono);
     font-size: 13px;
     font-weight: 600;
@@ -238,19 +239,10 @@
     text-align: right;
   }
 
-  /* Categorical row (Opportunity) — same vertical rhythm as bar rows but
-     right cell holds a pill instead of a numeric value. */
-  .sp-cat {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 10px;
-    align-items: center;
-    padding: 10px 0;
-  }
-  .sp-cat .nm {
-    font-size: 13px;
-    color: var(--color-text-secondary, var(--color-text-primary));
-    font-weight: 500;
+  /* Categorical row (Opportunity) — pill right-aligned inside the value cell. */
+  .sp-cat-value {
+    display: flex;
+    justify-content: flex-end;
   }
   .opp-pill {
     display: inline-flex;

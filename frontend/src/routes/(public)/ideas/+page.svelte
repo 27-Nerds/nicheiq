@@ -350,11 +350,11 @@
   }
   .group-label {
     font-family: var(--font-mono);
-    font-size: 0.6875rem;
+    font-size: 0.625rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--color-text-muted);
-    font-weight: 500;
+    color: var(--color-accent-muted);
+    font-weight: 600;
   }
   .group-count {
     font-family: var(--font-mono);
