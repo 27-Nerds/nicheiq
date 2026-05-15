@@ -53,6 +53,41 @@ export const adminCatalogRouter = Router();
 
 const redis = getRedis();
 
+// Narrow projection of the `researchContext` relation so list queries load only
+// the fields `hasMeaningfulResearchContext` actually reads. `CatalogResearchContext`
+// is heavy (JSON projection payloads), so admin list endpoints should avoid full
+// relation includes across many pain-point rows.
+const MEANINGFUL_SELECT = {
+  audienceMapping: true,
+  painPointAnalytics: true,
+  detailedPainPoints: true,
+  marketSizing: true,
+  trendLongevity: true,
+  competitiveAnalytics: true,
+  competitorProfiles: true,
+  competitiveAnalysis: true,
+  alternativeSolutions: true,
+  selectedSolution: true,
+  topSubreddits: true,
+  goToMarketBlueprint: true,
+  pricingStrategy: true,
+  trafficMonetization: true,
+  keywordClusters: true,
+  themeSeverityScores: true,
+  nicheContext: true,
+  qualitySignals: true,
+  topPainCategories: true,
+  competitiveSummary: true,
+  selectedSolutionName: true,
+  categorizationSummary: true,
+  painAnalysisSummary: true,
+  redditPostsAnalyzed: true,
+  redditCommentsAnalyzed: true,
+  twitterThreadsAnalyzed: true,
+  genericPostsAnalyzed: true,
+  goNoGoVerdict: true,
+} as const;
+
 // ============================================
 // Zod Schemas
 // ============================================
@@ -203,14 +238,57 @@ adminCatalogRouter.get('/categories', async (_req: AuthenticatedRequest, res: Re
       jobsByCategoryId.set(job.catalogCategoryId, existing);
     }
 
-    // Attach activeJobs to child categories
-    const enriched = categories.map((parent: any) => ({
-      ...parent,
-      children: (parent.children || []).map((child: any) => ({
+    const relevantCategoryIds = new Set<string>();
+    for (const parent of categories as any[]) {
+      relevantCategoryIds.add(parent.id);
+      for (const child of parent.children || []) {
+        relevantCategoryIds.add(child.id);
+      }
+    }
+
+    const legacyPainPointRows = relevantCategoryIds.size > 0
+      ? await prisma.catalogPainPoint.findMany({
+        where: {
+          categoryId: { in: [...relevantCategoryIds] },
+          isActive: true,
+        },
+        select: {
+          categoryId: true,
+          researchContext: { select: MEANINGFUL_SELECT },
+        },
+      })
+      : [];
+
+    const legacyPainPointsByCategoryId = new Map<string, number>();
+    for (const row of legacyPainPointRows) {
+      if (!row.researchContext || !hasMeaningfulResearchContext(row.researchContext)) {
+        legacyPainPointsByCategoryId.set(
+          row.categoryId,
+          (legacyPainPointsByCategoryId.get(row.categoryId) || 0) + 1,
+        );
+      }
+    }
+
+    // Attach activeJobs and legacy pain-point counts to child categories. Parent
+    // counts include direct parent-category pain points plus all child counts,
+    // because admin publish/change-category flows can assign pain points to either.
+    const enriched = categories.map((parent: any) => {
+      const children = (parent.children || []).map((child: any) => ({
         ...child,
         activeJobs: jobsByCategoryId.get(child.id) || [],
-      })),
-    }));
+        legacyPainPoints: legacyPainPointsByCategoryId.get(child.id) || 0,
+      }));
+      const directLegacyPainPoints = legacyPainPointsByCategoryId.get(parent.id) || 0;
+      const childLegacyPainPoints = children.reduce(
+        (sum: number, child: any) => sum + (child.legacyPainPoints || 0),
+        0,
+      );
+      return {
+        ...parent,
+        legacyPainPoints: directLegacyPainPoints + childLegacyPainPoints,
+        children,
+      };
+    });
 
     res.json({ categories: enriched });
   } catch (error) {
@@ -830,41 +908,6 @@ adminCatalogRouter.delete('/reddit-threads/cleanup', async (_req: AuthenticatedR
 // ============================================
 // Category pain points
 // ============================================
-
-// Narrow projection of the `researchContext` relation so the list query
-// loads only the fields `hasMeaningfulResearchContext` actually reads.
-// `CatalogResearchContext` is heavy (JSON projection payloads), so we avoid
-// the full include across many pain-point rows.
-const MEANINGFUL_SELECT = {
-  audienceMapping: true,
-  painPointAnalytics: true,
-  detailedPainPoints: true,
-  marketSizing: true,
-  trendLongevity: true,
-  competitiveAnalytics: true,
-  competitorProfiles: true,
-  competitiveAnalysis: true,
-  alternativeSolutions: true,
-  selectedSolution: true,
-  topSubreddits: true,
-  goToMarketBlueprint: true,
-  pricingStrategy: true,
-  trafficMonetization: true,
-  keywordClusters: true,
-  themeSeverityScores: true,
-  nicheContext: true,
-  qualitySignals: true,
-  topPainCategories: true,
-  competitiveSummary: true,
-  selectedSolutionName: true,
-  categorizationSummary: true,
-  painAnalysisSummary: true,
-  redditPostsAnalyzed: true,
-  redditCommentsAnalyzed: true,
-  twitterThreadsAnalyzed: true,
-  genericPostsAnalyzed: true,
-  goNoGoVerdict: true,
-} as const;
 
 adminCatalogRouter.get('/categories/:id/pain-points', async (req: AuthenticatedRequest, res: Response) => {
   try {

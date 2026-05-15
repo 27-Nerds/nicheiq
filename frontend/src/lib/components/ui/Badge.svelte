@@ -15,6 +15,7 @@
     variant?: BadgeVariant;
     size?: BadgeSize;
     class?: string;
+    title?: string;
     children: Snippet;
   }
 
@@ -22,6 +23,7 @@
     variant = "default",
     size = "md",
     class: className = "",
+    title,
     children,
   }: Props = $props();
 
@@ -38,6 +40,6 @@
   const sizeClass = $derived(size === "sm" ? "badge-sm" : "");
 </script>
 
-<span class="{variantClasses[variant]} {sizeClass} {className}">
+<span class="{variantClasses[variant]} {sizeClass} {className}" {title}>
   {@render children()}
 </span>

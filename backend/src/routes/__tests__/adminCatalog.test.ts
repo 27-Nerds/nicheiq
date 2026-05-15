@@ -12,7 +12,7 @@ const mockPrisma = {
   catalogCategory: { findUnique: vi.fn() },
   catalogIdea: { findMany: vi.fn() },
   catalogResearchContext: { findUnique: vi.fn() },
-  job: { findFirst: vi.fn(), create: vi.fn() },
+  job: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
 };
 vi.mock('../../services/db.js', () => ({ prisma: mockPrisma }));
 
@@ -89,6 +89,9 @@ const categoryId = '11111111-1111-1111-1111-111111111111';
 const painPointAId = '22222222-2222-2222-2222-222222222222';
 const painPointBId = '33333333-3333-3333-3333-333333333333';
 const sourceJobIdMeaningful = '44444444-4444-4444-4444-444444444444';
+const parentCategoryId = '55555555-5555-5555-5555-555555555555';
+const childCategoryAId = '66666666-6666-6666-6666-666666666666';
+const childCategoryBId = '77777777-7777-7777-7777-777777777777';
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -108,6 +111,103 @@ beforeEach(async () => {
 
   const { adminCatalogRouter } = await import('../adminCatalog.js');
   app.use('/api/admin/catalog', adminCatalogRouter);
+});
+
+// ============================================
+// GET /categories
+// ============================================
+describe('GET /api/admin/catalog/categories', () => {
+  it('returns active jobs and legacy pain-point counts without exposing researchContext', async () => {
+    const { listCategories } = await import('../../services/catalogService.js');
+    const categories = [
+      {
+        id: parentCategoryId,
+        name: 'Parent',
+        slug: 'parent',
+        isActive: true,
+        children: [
+          {
+            id: childCategoryAId,
+            name: 'Child A',
+            slug: 'child-a',
+            isActive: true,
+            _count: { ideas: 0, painPoints: 2 },
+          },
+          {
+            id: childCategoryBId,
+            name: 'Child B',
+            slug: 'child-b',
+            isActive: true,
+            _count: { ideas: 0, painPoints: 1 },
+          },
+        ],
+      },
+    ];
+    vi.mocked(listCategories).mockResolvedValueOnce(categories as never);
+    mockPrisma.job.findMany.mockResolvedValueOnce([
+      {
+        id: 'job-active',
+        catalogCategoryId: childCategoryAId,
+        jobMode: 'catalog_pain_points',
+        status: 'RUNNING',
+      },
+    ]);
+
+    const meaningfulCtx = { detailedPainPoints: [{ title: 'real' }] };
+    const placeholderCtx = { detailedPainPoints: [] };
+    mockPrisma.catalogPainPoint.findMany.mockResolvedValueOnce([
+      { categoryId: childCategoryAId, researchContext: meaningfulCtx },
+      { categoryId: childCategoryAId, researchContext: null },
+      { categoryId: childCategoryBId, researchContext: placeholderCtx },
+      { categoryId: parentCategoryId, researchContext: placeholderCtx },
+    ]);
+    mockHasMeaningfulResearchContext
+      .mockReturnValueOnce(true)
+      .mockReturnValueOnce(false)
+      .mockReturnValueOnce(false);
+
+    const res = await request(app)
+      .get('/api/admin/catalog/categories')
+      .expect(200);
+
+    expect(mockPrisma.job.findMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.catalogPainPoint.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        categoryId: { in: expect.arrayContaining([parentCategoryId, childCategoryAId, childCategoryBId]) },
+        isActive: true,
+      },
+      select: expect.objectContaining({
+        categoryId: true,
+        researchContext: expect.any(Object),
+      }),
+    }));
+
+    const [parent] = res.body.categories;
+    expect(parent).toMatchObject({
+      id: parentCategoryId,
+      legacyPainPoints: 3,
+    });
+    expect(parent).not.toHaveProperty('researchContext');
+    expect(parent.children[0]).toMatchObject({
+      id: childCategoryAId,
+      legacyPainPoints: 1,
+      activeJobs: [
+        {
+          id: 'job-active',
+          catalogCategoryId: childCategoryAId,
+          jobMode: 'catalog_pain_points',
+          status: 'RUNNING',
+        },
+      ],
+    });
+    expect(parent.children[0]).not.toHaveProperty('researchContext');
+    expect(parent.children[1]).toMatchObject({
+      id: childCategoryBId,
+      legacyPainPoints: 1,
+      activeJobs: [],
+    });
+    expect(parent.children[1]).not.toHaveProperty('researchContext');
+  });
 });
 
 // ============================================

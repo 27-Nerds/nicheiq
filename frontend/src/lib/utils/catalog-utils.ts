@@ -58,7 +58,13 @@ export function buildFilterUrl(basePath: string, category: string, sort?: string
 export interface CategoryGroup {
   name: string;
   slug: string;
-  children?: Array<{ name: string; slug: string; _count?: { ideas: number; painPoints: number } }>;
+  legacyPainPoints?: number;
+  children?: Array<{
+    name: string;
+    slug: string;
+    legacyPainPoints?: number;
+    _count?: { ideas: number; painPoints: number };
+  }>;
   _count?: { ideas: number; painPoints: number };
   superGroup?: { id: string; name: string; slug: string; sortOrder: number } | null;
   /** Enriched by page server load — total items across this category and all children */

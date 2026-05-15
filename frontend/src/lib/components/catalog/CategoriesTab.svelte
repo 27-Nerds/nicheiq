@@ -26,6 +26,9 @@
     categories: any[];
   } = $props();
 
+  const LEGACY_PAIN_POINTS_TITLE =
+    "Pain points from older research runs with no renderable context are not eligible for idea generation. Re-run pain points for this category to refresh.";
+
   // ============================================
   // Categories tab state
   // ============================================
@@ -980,6 +983,11 @@
                           <Badge variant={parent.isActive ? "success" : "default"} size="sm">
                             {parent.isActive ? "Active" : "Inactive"}
                           </Badge>
+                          {#if (parent.legacyPainPoints ?? 0) > 0}
+                            <Badge variant="warning" size="sm" title={LEGACY_PAIN_POINTS_TITLE}>
+                              {parent.legacyPainPoints} legacy
+                            </Badge>
+                          {/if}
 
                           <!-- Mini progress bar + summary -->
                           {#if stats.total > 0}
@@ -1091,6 +1099,11 @@
                                     {/if}
                                     <Eye class="w-3 h-3 text-text-muted" />
                                   </button>
+                                  {#if (child.legacyPainPoints ?? 0) > 0}
+                                    <Badge variant="warning" size="sm" title={LEGACY_PAIN_POINTS_TITLE}>
+                                      {child.legacyPainPoints} legacy
+                                    </Badge>
+                                  {/if}
                                 {/if}
                               {/if}
                             </div>
