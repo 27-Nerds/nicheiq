@@ -8,10 +8,10 @@ import request from 'supertest';
 
 // prisma — only the methods the routes under test reach.
 const mockPrisma = {
-  catalogPainPoint: { findMany: vi.fn() },
+  catalogPainPoint: { findMany: vi.fn(), groupBy: vi.fn() },
   catalogCategory: { findUnique: vi.fn() },
   catalogIdea: { findMany: vi.fn() },
-  catalogResearchContext: { findUnique: vi.fn() },
+  catalogResearchContext: { findUnique: vi.fn(), findMany: vi.fn() },
   job: { findFirst: vi.fn(), findMany: vi.fn(), create: vi.fn() },
 };
 vi.mock('../../services/db.js', () => ({ prisma: mockPrisma }));
@@ -40,6 +40,9 @@ vi.mock('../../services/researchContextService.js', () => ({
     mockExtractOrCreateResearchContext(...args),
   hasMeaningfulResearchContext: (...args: unknown[]) =>
     mockHasMeaningfulResearchContext(...args),
+  // Spread by callers via `select: { ...MEANINGFUL_SELECT }`. No test asserts
+  // the shape, so an empty object suffices.
+  MEANINGFUL_SELECT: {},
 }));
 
 // Other services adminCatalog imports — stub to no-ops so module load doesn't
@@ -153,34 +156,46 @@ describe('GET /api/admin/catalog/categories', () => {
       },
     ]);
 
-    const meaningfulCtx = { detailedPainPoints: [{ title: 'real' }] };
-    const placeholderCtx = { detailedPainPoints: [] };
-    mockPrisma.catalogPainPoint.findMany.mockResolvedValueOnce([
-      { categoryId: childCategoryAId, researchContext: meaningfulCtx },
-      { categoryId: childCategoryAId, researchContext: null },
-      { categoryId: childCategoryBId, researchContext: placeholderCtx },
-      { categoryId: parentCategoryId, researchContext: placeholderCtx },
+    // Three CRC rows: one meaningful (job-real), two placeholders (job-a, job-b).
+    // The route no longer pulls per-pain-point joins; it pulls CRC once and
+    // then asks Postgres for per-category counts of pain points whose
+    // sourceJobId is in the placeholder set.
+    mockPrisma.catalogResearchContext.findMany.mockResolvedValueOnce([
+      { sourceJobId: 'job-real', detailedPainPoints: [{ title: 'real' }] },
+      { sourceJobId: 'job-a', detailedPainPoints: [] },
+      { sourceJobId: 'job-b', detailedPainPoints: [] },
     ]);
     mockHasMeaningfulResearchContext
       .mockReturnValueOnce(true)
       .mockReturnValueOnce(false)
       .mockReturnValueOnce(false);
+    mockPrisma.catalogPainPoint.groupBy.mockResolvedValueOnce([
+      { categoryId: childCategoryAId, _count: { _all: 1 } },
+      { categoryId: childCategoryBId, _count: { _all: 1 } },
+      { categoryId: parentCategoryId, _count: { _all: 1 } },
+    ]);
 
     const res = await request(app)
       .get('/api/admin/catalog/categories')
       .expect(200);
 
     expect(mockPrisma.job.findMany).toHaveBeenCalledTimes(1);
-    expect(mockPrisma.catalogPainPoint.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: {
-        categoryId: { in: expect.arrayContaining([parentCategoryId, childCategoryAId, childCategoryBId]) },
-        isActive: true,
-      },
-      select: expect.objectContaining({
-        categoryId: true,
-        researchContext: expect.any(Object),
+    expect(mockPrisma.catalogResearchContext.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        select: expect.objectContaining({ sourceJobId: true }),
       }),
-    }));
+    );
+    expect(mockPrisma.catalogPainPoint.groupBy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        by: ['categoryId'],
+        where: expect.objectContaining({
+          isActive: true,
+          categoryId: { in: expect.arrayContaining([parentCategoryId, childCategoryAId, childCategoryBId]) },
+          sourceJobId: { in: expect.arrayContaining(['job-a', 'job-b']) },
+        }),
+        _count: { _all: true },
+      }),
+    );
 
     const [parent] = res.body.categories;
     expect(parent).toMatchObject({

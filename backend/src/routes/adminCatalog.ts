@@ -41,6 +41,7 @@ import { getRedis } from '../services/redis.js';
 import {
   extractOrCreateResearchContext,
   hasMeaningfulResearchContext,
+  MEANINGFUL_SELECT,
 } from '../services/researchContextService.js';
 import { JobStatus } from '@prisma/client';
 import {
@@ -52,41 +53,6 @@ import {
 export const adminCatalogRouter = Router();
 
 const redis = getRedis();
-
-// Narrow projection of the `researchContext` relation so list queries load only
-// the fields `hasMeaningfulResearchContext` actually reads. `CatalogResearchContext`
-// is heavy (JSON projection payloads), so admin list endpoints should avoid full
-// relation includes across many pain-point rows.
-const MEANINGFUL_SELECT = {
-  audienceMapping: true,
-  painPointAnalytics: true,
-  detailedPainPoints: true,
-  marketSizing: true,
-  trendLongevity: true,
-  competitiveAnalytics: true,
-  competitorProfiles: true,
-  competitiveAnalysis: true,
-  alternativeSolutions: true,
-  selectedSolution: true,
-  topSubreddits: true,
-  goToMarketBlueprint: true,
-  pricingStrategy: true,
-  trafficMonetization: true,
-  keywordClusters: true,
-  themeSeverityScores: true,
-  nicheContext: true,
-  qualitySignals: true,
-  topPainCategories: true,
-  competitiveSummary: true,
-  selectedSolutionName: true,
-  categorizationSummary: true,
-  painAnalysisSummary: true,
-  redditPostsAnalyzed: true,
-  redditCommentsAnalyzed: true,
-  twitterThreadsAnalyzed: true,
-  genericPostsAnalyzed: true,
-  goNoGoVerdict: true,
-} as const;
 
 // ============================================
 // Zod Schemas
@@ -246,28 +212,36 @@ adminCatalogRouter.get('/categories', async (_req: AuthenticatedRequest, res: Re
       }
     }
 
-    const legacyPainPointRows = relevantCategoryIds.size > 0
-      ? await prisma.catalogPainPoint.findMany({
+    // Step 1: resolve which CatalogResearchContext rows are placeholders.
+    // Each CRC backs many pain points via shared sourceJobId, so projecting
+    // the meaningful-fields JSON once per CRC (rather than once per pain
+    // point as the previous version did) is the actual win here.
+    const contexts = relevantCategoryIds.size > 0
+      ? await prisma.catalogResearchContext.findMany({
+        select: { sourceJobId: true, ...MEANINGFUL_SELECT },
+      })
+      : [];
+    const placeholderJobIds = contexts
+      .filter((c) => !hasMeaningfulResearchContext(c))
+      .map((c) => c.sourceJobId);
+
+    // Step 2: count legacy pain points per category in SQL. No row JSON
+    // leaves the database — Postgres returns one integer per category.
+    const legacyCounts = placeholderJobIds.length > 0
+      ? await prisma.catalogPainPoint.groupBy({
+        by: ['categoryId'],
         where: {
-          categoryId: { in: [...relevantCategoryIds] },
           isActive: true,
+          categoryId: { in: [...relevantCategoryIds] },
+          sourceJobId: { in: placeholderJobIds },
         },
-        select: {
-          categoryId: true,
-          researchContext: { select: MEANINGFUL_SELECT },
-        },
+        _count: { _all: true },
       })
       : [];
 
-    const legacyPainPointsByCategoryId = new Map<string, number>();
-    for (const row of legacyPainPointRows) {
-      if (!row.researchContext || !hasMeaningfulResearchContext(row.researchContext)) {
-        legacyPainPointsByCategoryId.set(
-          row.categoryId,
-          (legacyPainPointsByCategoryId.get(row.categoryId) || 0) + 1,
-        );
-      }
-    }
+    const legacyPainPointsByCategoryId = new Map<string, number>(
+      legacyCounts.map((c) => [c.categoryId, c._count._all]),
+    );
 
     // Attach activeJobs and legacy pain-point counts to child categories. Parent
     // counts include direct parent-category pain points plus all child counts,

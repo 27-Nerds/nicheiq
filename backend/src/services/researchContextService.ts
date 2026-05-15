@@ -152,6 +152,47 @@ export function hasProjectedData(ctx: CatalogResearchContext): boolean {
 }
 
 /**
+ * Prisma `select` projection matching the fields `hasMeaningfulResearchContext`
+ * reads. Callers that classify CRC rows as meaningful vs placeholder should
+ * use this so heavy JSON columns the predicate does NOT read stay server-side.
+ *
+ * `satisfies Prisma.CatalogResearchContextSelect` so removing a field from
+ * the predicate without also removing it here is a TS error.
+ */
+export const MEANINGFUL_SELECT = {
+  audienceMapping: true,
+  painPointAnalytics: true,
+  detailedPainPoints: true,
+  marketSizing: true,
+  trendLongevity: true,
+  competitiveAnalytics: true,
+  competitorProfiles: true,
+  competitiveAnalysis: true,
+  alternativeSolutions: true,
+  selectedSolution: true,
+  topSubreddits: true,
+  goToMarketBlueprint: true,
+  pricingStrategy: true,
+  trafficMonetization: true,
+  keywordClusters: true,
+  themeSeverityScores: true,
+  nicheContext: true,
+  qualitySignals: true,
+  topPainCategories: true,
+  competitiveSummary: true,
+  selectedSolutionName: true,
+  categorizationSummary: true,
+  painAnalysisSummary: true,
+  redditPostsAnalyzed: true,
+  redditCommentsAnalyzed: true,
+  twitterThreadsAnalyzed: true,
+  genericPostsAnalyzed: true,
+  collectionDate: true,
+  goNoGoVerdict: true,
+  reportGeneratedAt: true,
+} satisfies Prisma.CatalogResearchContextSelect;
+
+/**
  * Narrow structural type containing only the fields `hasMeaningfulResearchContext`
  * reads. Lets the predicate accept Prisma `select`-narrowed results (e.g. from
  * `adminCatalog.ts`'s pain-points list) without TS complaining about the

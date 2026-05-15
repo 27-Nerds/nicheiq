@@ -1069,7 +1069,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
     const { addJobAsset } = await import('../services/jobService.js');
     await addJobAsset(data.job_id, AssetType.PREVIEW_REPORT, data.preview_report_path);
 
-    const { extractOrCreateResearchContext, hasMeaningfulResearchContext } = await import(
+    const { extractOrCreateResearchContext, hasMeaningfulResearchContext, MEANINGFUL_SELECT } = await import(
       '../services/researchContextService.js'
     );
     const ctx = await extractOrCreateResearchContext(data.job_id, {
@@ -1154,6 +1154,25 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
 
       const { generatePainPointSlug } = await import('../services/catalogService.js');
 
+      // Legacy-sweep prep: load the CatalogResearchContext rows backing existing
+      // pain points (scoped to those sourceJobIds only — bounded by category
+      // size). Rows that fail the meaningfulness predicate are placeholder
+      // contexts; their pain points are "legacy" and eligible for sweep below
+      // if the new run doesn't match them.
+      const existingJobIds = [...new Set(existing.map(pp => pp.sourceJobId))];
+      const existingCtxs = existingJobIds.length > 0
+        ? await tx.catalogResearchContext.findMany({
+            where: { sourceJobId: { in: existingJobIds } },
+            select: { sourceJobId: true, ...MEANINGFUL_SELECT },
+          })
+        : [];
+      const legacyJobIds = new Set(
+        existingCtxs
+          .filter(c => !hasMeaningfulResearchContext(c))
+          .map(c => c.sourceJobId),
+      );
+      const matchedPpIds = new Set<string>();
+
       let merged = 0;
       let created = 0;
 
@@ -1184,6 +1203,7 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
                 sourceGeneratedAt: new Date(),
               },
             });
+            matchedPpIds.add(bestMatch.id);
             merged++;
           } catch (err: unknown) {
             const code = (err as { code?: string } | null)?.code;
@@ -1203,6 +1223,11 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
                   where: { id: bestMatch.id },
                   data: { isActive: false },
                 });
+                // Both rows are handled — don't let the legacy sweep below
+                // touch them. (bestMatch.id is already inactive; conflicting.id
+                // is the surviving merge target.)
+                matchedPpIds.add(conflicting.id);
+                matchedPpIds.add(bestMatch.id);
                 console.warn(
                   `[Workers] P2002 on lineage advance for "${bestMatch.title}"; merged into ${conflicting.id} and deactivated ${bestMatch.id}`,
                 );
@@ -1261,13 +1286,43 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
         }
       }
 
-      // Status flip inside tx — atomic with merge/insert.
+      // Legacy sweep — deactivate previously-active pain points whose source
+      // job's CRC is a placeholder AND that the new run did not match. Gated
+      // on data.pain_points.length > 0 so a run that returns no pain points
+      // (but otherwise meaningful context — e.g. only verdict / social counts)
+      // doesn't wipe the category. Acts only on legacy rows; non-legacy
+      // unmatched rows are preserved in case the new run simply re-prioritized.
+      let deactivated = 0;
+      if (data.pain_points.length > 0 && legacyJobIds.size > 0) {
+        const toDeactivateIds = existing
+          .filter(pp => !matchedPpIds.has(pp.id) && legacyJobIds.has(pp.sourceJobId))
+          .map(pp => pp.id);
+        if (toDeactivateIds.length > 0) {
+          const swept = await tx.catalogPainPoint.updateMany({
+            where: {
+              id: { in: toDeactivateIds },
+              categoryId: data.category_id,
+              isActive: true,
+            },
+            data: { isActive: false },
+          });
+          deactivated = swept.count;
+        }
+      }
+
+      // Status flip inside tx — atomic with merge/insert/sweep.
       await tx.job.updateMany({
         where: { id: data.job_id, status: { in: [JobStatus.RUNNING, JobStatus.QUEUED] } },
         data: { status: JobStatus.COMPLETED, completedAt: new Date() },
       });
 
-      return { alreadyProcessed: false as const, merged, created, totalExisting: existing.length };
+      return {
+        alreadyProcessed: false as const,
+        merged,
+        created,
+        deactivated,
+        totalExisting: existing.length,
+      };
     });
 
     if (result.alreadyProcessed) {
@@ -1281,15 +1336,31 @@ workersRouter.post('/catalog-pain-points-ready', async (req: Request, res: Respo
       name: 'Pain Point Analysis',
       status: 'completed',
     });
-    if (result.created > 0 || result.merged > 0) {
-      const { invalidateCategoryLanding } = await import('../services/catalogService.js');
+    if (result.created > 0 || result.merged > 0 || result.deactivated > 0) {
+      const {
+        invalidateCategoryLanding,
+        invalidateCatalogTotals,
+        invalidateTopCatalogPainPoints,
+      } = await import('../services/catalogService.js');
       await invalidateCategoryLanding(data.category_id);
+      // Sweep changes active row counts on global surfaces (catalog totals,
+      // /ideas top-pains list); invalidate those too so they don't lag.
+      if (result.deactivated > 0) {
+        await invalidateCatalogTotals();
+        await invalidateTopCatalogPainPoints();
+      }
     }
 
     console.log(
-      `[Workers] Catalog pain points for job ${data.job_id}: ${result.created} created, ${result.merged} merged`,
+      `[Workers] Catalog pain points for job ${data.job_id}: ${result.created} created, ${result.merged} merged, ${result.deactivated} deactivated`,
     );
-    res.json({ merged: result.merged, created: result.created, total: result.totalExisting + result.created });
+    res.json({
+      merged: result.merged,
+      created: result.created,
+      deactivated: result.deactivated,
+      // Active rows in the category after the operation.
+      total: result.totalExisting + result.created - result.deactivated,
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation error', details: error.errors });

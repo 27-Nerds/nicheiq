@@ -183,14 +183,13 @@
       display: none !important;
     }
     .ct-row {
-      grid-template-columns: auto auto;
+      grid-template-columns: minmax(0, 1fr) auto;
       grid-template-areas:
         "title title"
         "niche opp";
       column-gap: 12px;
       row-gap: 6px;
       padding: 14px 16px;
-      justify-content: start;
     }
     .cell-title {
       grid-area: title;
@@ -201,11 +200,13 @@
     .cell-niche {
       grid-area: niche;
       align-self: center;
+      min-width: 0;
     }
     .cell-opp {
       grid-area: opp;
       align-self: center;
-      text-align: left;
+      justify-self: end;
+      text-align: right;
     }
     .cell-mentions,
     .cell-severity {
