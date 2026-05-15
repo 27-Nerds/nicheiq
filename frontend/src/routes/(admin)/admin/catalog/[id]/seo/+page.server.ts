@@ -1,9 +1,8 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import type { FaqJsonMeta } from '$lib/types/catalog-landing';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 interface FullCategory {
   id: string;
@@ -44,12 +43,11 @@ export const load: PageServerLoad = async ({ parent, params }) => {
   const { session } = await parent();
 
   const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
     'X-User-ID': session.user.id,
     'X-User-Role': session.user.role || '',
   };
 
-  const res = await fetch(`${BACKEND_URL}/api/admin/catalog/categories`, { headers });
+  const res = await fetchBackend(`/api/admin/catalog/categories`, { headers });
   if (!res.ok) throw error(500, 'Failed to load categories');
 
   const data = (await res.json()) as { categories: FullCategory[] };

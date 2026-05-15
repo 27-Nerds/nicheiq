@@ -1,7 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
+import { fetchBackend } from '$lib/backend';
 
 interface Transaction {
   id: string;
@@ -39,7 +37,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
   // Fetch packages (public endpoint, no auth needed)
   let packages: TokenPackage[] = [];
   try {
-    const packagesResponse = await fetch(`${BACKEND_URL}/api/billing/packages`);
+    const packagesResponse = await fetchBackend('/api/billing/packages');
     if (packagesResponse.ok) {
       const data = await packagesResponse.json();
       packages = data.packages || [];
@@ -63,11 +61,8 @@ export const load: PageServerLoad = async ({ parent, url }) => {
   }
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/billing`, {
-      headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-        'X-User-ID': userId,
-      },
+    const response = await fetchBackend('/api/billing', {
+      headers: { 'X-User-ID': userId },
     });
 
     if (!response.ok) {

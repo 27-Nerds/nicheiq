@@ -14,6 +14,7 @@ Usage:
     python -m worker.queue_consumer
 """
 
+import gc
 import json
 import os
 import signal
@@ -62,6 +63,26 @@ STATUS_AWAITING_SELECTION = "awaiting_selection"
 shutdown_requested = False
 current_job_id = None
 _signal_count = 0
+
+# Post-job recycle — exit cleanly after N jobs so Docker restart: unless-stopped
+# brings up a fresh process. This is the load-bearing backstop for memory
+# leaks; recycle is post-job only (never signal-based), so in-flight jobs are
+# never interrupted.
+MAX_JOBS_PER_WORKER = int(os.environ.get("MAX_JOBS_PER_WORKER", "50"))
+_jobs_processed = 0
+
+
+def _current_rss_mb() -> float:
+    """Return current process RSS in MB. Linux-only; returns 0.0 elsewhere."""
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    # VmRSS:   123456 kB
+                    return int(line.split()[1]) / 1024
+    except OSError:
+        pass
+    return 0.0
 
 
 def signal_handler(signum, frame):
@@ -270,11 +291,18 @@ def process_job(job_data: dict) -> None:
         current_job_id = None
         from .heartbeat import set_current_job
         set_current_job(None)
+        # Force a collection cycle so glibc (with MALLOC_ARENA_MAX=2) can return
+        # arenas to the OS between jobs. Then log current RSS for leak-watching.
+        gc.collect()
+        logger.info(
+            f"Job {job_id} done | rss_mb={_current_rss_mb():.0f} | "
+            f"jobs={_jobs_processed + 1}/{MAX_JOBS_PER_WORKER}"
+        )
 
 
 def run_consumer():
     """Main consumer loop - blocks on Redis queue and processes jobs."""
-    global shutdown_requested
+    global shutdown_requested, _jobs_processed
 
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
@@ -310,6 +338,17 @@ def run_consumer():
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid job JSON: {e}")
                 continue
+
+            # Post-job recycle check. process_job() has returned (success,
+            # failure, or user-cancellation), so the in-flight job is done
+            # and it is safe to ask the loop to exit on its next iteration.
+            _jobs_processed += 1
+            if _jobs_processed >= MAX_JOBS_PER_WORKER:
+                logger.info(
+                    f"Reached MAX_JOBS_PER_WORKER={MAX_JOBS_PER_WORKER} — "
+                    "recycling worker via clean exit"
+                )
+                shutdown_requested = True
 
         except redis.ConnectionError as e:
             logger.error(f"Redis connection error: {e}")

@@ -1,8 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * POST /api/auth/register - Register a new user
@@ -11,7 +10,7 @@ const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 export const POST: RequestHandler = async ({ request }) => {
   const body = await request.json();
 
-  const response = await fetch(`${BACKEND_URL}/api/auth/register`, {
+  const response = await fetchBackend(`/api/auth/register`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

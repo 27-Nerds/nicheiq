@@ -1,11 +1,9 @@
 import { redirect } from '@sveltejs/kit';
 import type { LayoutServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import { DEFAULT_STAGE_COSTS } from '$lib/types/job';
 import type { StageCosts } from '$lib/types/job';
 import type { SavedCounts } from '$lib/types/saved';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: LayoutServerLoad = async (event) => {
   const session = await event.locals.auth?.();
@@ -26,16 +24,13 @@ export const load: LayoutServerLoad = async (event) => {
   let stageCosts: StageCosts = { ...DEFAULT_STAGE_COSTS };
   let savedCounts: SavedCounts = { ideas: 0, painPoints: 0 };
 
-  const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-    'X-User-ID': session.user.id,
-  };
+  const headers = { 'X-User-ID': session.user.id };
 
   try {
     const [balanceRes, costsRes, savedRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/billing/balance`, { headers }),
-      fetch(`${BACKEND_URL}/api/billing/stage-costs`, { headers }),
-      fetch(`${BACKEND_URL}/api/saves/counts`, { headers }),
+      fetchBackend('/api/billing/balance', { headers }),
+      fetchBackend('/api/billing/stage-costs', { headers }),
+      fetchBackend('/api/saves/counts', { headers }),
     ]);
 
     if (balanceRes.ok) {

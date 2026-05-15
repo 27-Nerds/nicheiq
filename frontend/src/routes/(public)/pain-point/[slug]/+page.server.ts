@@ -1,16 +1,14 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import {
   buildPainPointDetailJsonLd,
   detailNoindex,
   painPointDetailCanonical,
 } from '$lib/seo/catalogSeo';
 import { buildMeta } from '$lib/seo/meta';
+import { LAUNCH_GATE_ON } from '$lib/seo/launchGate';
 import type { PainPointDetailResponse } from '$lib/types/catalog-landing';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
-const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
 
 export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   setHeaders({
@@ -19,9 +17,8 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
 
   let res: Response;
   try {
-    res = await fetch(
-      `${BACKEND_URL}/api/public/catalog/pain-point-by-slug/${encodeURIComponent(params.slug)}`,
-      { headers: { 'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '' } },
+    res = await fetchBackend(
+      `/api/public/catalog/pain-point-by-slug/${encodeURIComponent(params.slug)}`,
     );
   } catch (err) {
     console.error('pain-point fetch failed', err);

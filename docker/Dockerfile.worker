@@ -3,19 +3,32 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies + uv (used for reproducible dependency install)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv
 
-# Copy project files
-COPY pyproject.toml README.md ./
+# uv config:
+#   UV_COMPILE_BYTECODE=1 — precompile .pyc files (faster cold start)
+#   UV_LINK_MODE=copy     — copy instead of hardlink (no cross-FS issues in Docker)
+ENV UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy
+
+# Copy lockfile + project sources
+COPY pyproject.toml uv.lock README.md ./
 COPY src ./src/
 COPY worker ./worker/
 
-# Install the package
-RUN pip install --no-cache-dir .
+# Install pinned dependencies + the project into /app/.venv.
+# --frozen     : fail if uv.lock is stale relative to pyproject.toml
+# --no-dev     : exclude the [project.optional-dependencies] dev group
+# --no-editable: install nicheiq as a regular package, not editable mode
+RUN uv sync --frozen --no-dev --no-editable
+
+# Put the venv on PATH so `python` resolves to the venv interpreter
+ENV PATH="/app/.venv/bin:$PATH"
 
 # Create output directory
 RUN mkdir -p /app/output/jobs /app/output/logs

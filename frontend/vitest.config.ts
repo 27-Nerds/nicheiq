@@ -18,6 +18,7 @@ export default defineConfig({
       '$app/state': '/src/test/mocks/app-state.ts',
       '$app/navigation': '/src/test/mocks/app-navigation.ts',
       '$env/dynamic/private': '/src/test/mocks/env.ts',
+      '$env/dynamic/public': '/src/test/mocks/env.ts',
     },
   },
 });

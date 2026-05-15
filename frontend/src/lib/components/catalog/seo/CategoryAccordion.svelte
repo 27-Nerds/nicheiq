@@ -7,8 +7,8 @@
   import SubNicheCell from "./SubNicheCell.svelte";
 
   // Sub-niches inside the body use SubNicheCell in its default compact
-  // single-line mode (name + count) — same shape the category page uses
-  // for its top-level sub-niche grid, so the visual rhythm carries.
+  // single-line mode (name + count) — keeps a dense editorial rhythm when
+  // many sub-niches are revealed at once in an expanded accordion body.
 
   // Accordion of categories with sub-niche grid inside each row.
   // Top-level (parentId IS NULL) categories are the accordion sections.

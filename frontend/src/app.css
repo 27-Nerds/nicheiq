@@ -122,7 +122,6 @@
 	}
 
 	html {
-		scroll-behavior: smooth;
 		background-color: var(--color-bg-base);
 		/* Prevent faux bold/italic when a weight/style isn't loaded */
 		font-synthesis: none;

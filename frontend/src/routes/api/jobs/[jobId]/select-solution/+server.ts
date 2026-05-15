@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * POST /api/jobs/:jobId/select-solution - Select a solution for Phase 2
@@ -16,11 +15,10 @@ export const POST: RequestHandler = async ({ params, locals, request }) => {
 
   const body = await request.json();
 
-  const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}/select-solution`, {
+  const response = await fetchBackend(`/api/jobs/${params.jobId}/select-solution`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
     body: JSON.stringify(body),

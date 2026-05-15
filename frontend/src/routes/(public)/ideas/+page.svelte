@@ -8,6 +8,8 @@
   import CategoryGrid from "$lib/components/catalog/seo/CategoryGrid.svelte";
   import CollectionCard from "$lib/components/catalog/seo/CollectionCard.svelte";
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
+  import TopPainsByDemand from "$lib/components/catalog/seo/TopPainsByDemand.svelte";
+  import { isFallbackEdition } from "$lib/seo/edition";
 
   let { data } = $props();
 
@@ -187,8 +189,18 @@
   }
   const hasCollections = $derived(data.collections.length > 0);
   const hasCategoriesTree = $derived(data.categoriesTree.length > 0);
+  const hasTopPains = $derived(data.topPainPoints.length > 0);
   const num1 = $derived(nextNum(0, hasCollections));
   const num2 = $derived(nextNum(num1, hasCategoriesTree));
+  const num3 = $derived(nextNum(num2, hasTopPains));
+  // Section label drops the month suffix when the freshness guardrail trips
+  // ("Latest edition" stand-in), so we don't end up with the awkward
+  // "Most In-Demand SaaS Niches — Latest edition" string.
+  const topPainsLabel = $derived(
+    isFallbackEdition(data.editionLabel)
+      ? "Most In-Demand SaaS Niches"
+      : `Most In-Demand SaaS Niches — ${data.editionLabel}`,
+  );
 
   // Lightweight relative-time helper for the section-02 metaText. Reads the
   // largest unit that fits ("3 days ago", "2 hours ago"). Falls back gracefully
@@ -300,6 +312,15 @@
   {/if}
 {:else}
   <p class="hub-empty">Awaiting first findings. Re-checked weekly.</p>
+{/if}
+
+{#if hasTopPains}
+  <SectionDivider num={num3} label={topPainsLabel} />
+  <TopPainsByDemand
+    painPoints={data.topPainPoints}
+    editionLabel={data.editionLabel}
+    totals={data.totals}
+  />
 {/if}
 
 <section class="inline-close" aria-label="Run your own research">

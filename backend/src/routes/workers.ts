@@ -1357,6 +1357,7 @@ workersRouter.post('/catalog-ideas-ready', async (req: Request, res: Response) =
       '../services/researchContextService.js'
     );
     const ctx = await extractOrCreateResearchContext(effectiveSourceJobId, {
+      forceRefreshPlaceholders: true,
       sourceKind: 'catalog',
     });
 

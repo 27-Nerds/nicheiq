@@ -1,10 +1,9 @@
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import { programmaticIdeaPages } from '$lib/data/programmaticIdeaPages';
+import { LAUNCH_GATE_ON } from '$lib/seo/launchGate';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
 
 let cachedXml: string | null = null;
 let cacheTimestamp = 0;
@@ -68,7 +67,6 @@ export const GET: RequestHandler = async ({ url }) => {
 
   const origin = url.origin;
   const today = new Date().toISOString().split('T')[0];
-  const headers = { 'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '' };
 
   // Static public pages. `/ideas` follows SEO_LAUNCH_GATE because its page
   // ships noindex while the public catalog rollout is gated.
@@ -95,7 +93,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
   // Existing share entries (unrelated to catalog migration; preserved as-is).
   try {
-    const response = await fetch(`${BACKEND_URL}/api/sitemap/entries`, { headers });
+    const response = await fetchBackend('/api/sitemap/entries');
     if (response.ok) {
       const data = await response.json();
       for (const share of data.reportShares ?? []) {
@@ -133,7 +131,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
     // Categories + ideas + pain-points from backend
     try {
-      const catalogRes = await fetch(`${BACKEND_URL}/api/public/catalog/sitemap`, { headers });
+      const catalogRes = await fetchBackend('/api/public/catalog/sitemap');
       if (catalogRes.ok) {
         const data = (await catalogRes.json()) as {
           categories: CategorySitemapEntry[];

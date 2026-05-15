@@ -4,6 +4,7 @@
   import Rocket from "lucide-svelte/icons/rocket";
   import { page } from "$app/state";
   import type { CatalogTotals } from "$lib/types/publicCatalog.js";
+  import { formatCompact } from "$lib/utils/format-numbers";
 
   interface Props {
     totals: CatalogTotals;
@@ -38,11 +39,9 @@
     }).format(d).toUpperCase();
   });
 
-  // Compact thousands formatter for `contentItemsMined` (e.g. 19,847 → 19.8K).
-  function compact(n: number): string {
-    if (n >= 1000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-    return n.toLocaleString();
-  }
+  // Compact thousands formatter is shared with the SEO description template
+  // and the bottom-of-page top-pain section. Single util keeps the hero
+  // ticker and meta description on identical numerals.
 </script>
 
 <header class="page-hero">
@@ -56,10 +55,10 @@
     <span class="k-dot" aria-hidden="true">·</span>
     <span class="k-stat"><span class="k-num">{totals.totalCategories.toLocaleString()}</span> CATEGORIES</span>
     <span class="k-dot" aria-hidden="true">·</span>
-    <span class="k-stat"><span class="k-num">{compact(totals.contentItemsMined)}</span> DISCUSSIONS MINED</span>
+    <span class="k-stat"><span class="k-num">{formatCompact(totals.contentItemsMined)}</span> DISCUSSIONS MINED</span>
   </div>
 
-  <h1>Startup Ideas <span class="accent">&</span> Validated Pain Points</h1>
+  <h1>Browse <span class="accent">SaaS</span> and software startup ideas</h1>
   <p class="lede">
     Hand-curated startup ideas and validated pain points, scored on demand,
     feasibility, and SEO opportunity.

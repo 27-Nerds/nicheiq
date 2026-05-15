@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const GET: RequestHandler = async ({ locals }) => {
   const session = await locals.auth();
@@ -13,9 +12,8 @@ export const GET: RequestHandler = async ({ locals }) => {
     throw error(403, 'Admin access required');
   }
 
-  const response = await fetch(`${BACKEND_URL}/api/admin/reports`, {
+  const response = await fetchBackend(`/api/admin/reports`, {
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
       'X-User-Role': session.user.role,
     },

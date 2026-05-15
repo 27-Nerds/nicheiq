@@ -1,8 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import type { Job } from '$lib/types/job';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: PageServerLoad = async ({ parent }) => {
   const { session } = await parent();
@@ -16,11 +14,8 @@ export const load: PageServerLoad = async ({ parent }) => {
 
   try {
     // Fetch jobs by userId from backend with internal service authentication
-    const response = await fetch(`${BACKEND_URL}/api/users/${userId}/jobs`, {
-      headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-        'X-User-ID': userId,
-      },
+    const response = await fetchBackend(`/api/users/${userId}/jobs`, {
+      headers: { 'X-User-ID': userId },
     });
 
     if (!response.ok) {

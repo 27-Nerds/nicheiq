@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * GET /api/users/[userId]/notification-preferences
@@ -19,10 +18,9 @@ export const GET: RequestHandler = async ({ locals, params }) => {
     throw error(403, 'Forbidden');
   }
 
-  const response = await fetch(`${BACKEND_URL}/api/users/${params.userId}/notification-preferences`, {
+  const response = await fetchBackend(`/api/users/${params.userId}/notification-preferences`, {
     method: 'GET',
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });
@@ -48,11 +46,10 @@ export const PUT: RequestHandler = async ({ locals, params, request }) => {
 
   const body = await request.json();
 
-  const response = await fetch(`${BACKEND_URL}/api/users/${params.userId}/notification-preferences`, {
+  const response = await fetchBackend(`/api/users/${params.userId}/notification-preferences`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
     body: JSON.stringify(body),

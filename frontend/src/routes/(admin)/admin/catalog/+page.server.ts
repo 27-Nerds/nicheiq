@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: PageServerLoad = async ({ parent, url }) => {
   const { session } = await parent();
@@ -9,14 +8,13 @@ export const load: PageServerLoad = async ({ parent, url }) => {
   const tab = url.searchParams.get('tab') || 'curate';
 
   const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
     'X-User-ID': session.user.id,
     'X-User-Role': session.user.role || '',
   };
 
   try {
     // Always fetch categories (needed by both tabs)
-    const categoriesRes = await fetch(`${BACKEND_URL}/api/admin/catalog/categories`, { headers });
+    const categoriesRes = await fetchBackend(`/api/admin/catalog/categories`, { headers });
     const categoriesData = categoriesRes.ok ? await categoriesRes.json() : null;
     const categories = categoriesData?.categories || [];
 
@@ -25,7 +23,7 @@ export const load: PageServerLoad = async ({ parent, url }) => {
     }
 
     if (tab === 'collections') {
-      const collectionsRes = await fetch(`${BACKEND_URL}/api/admin/catalog/collections`, { headers });
+      const collectionsRes = await fetchBackend(`/api/admin/catalog/collections`, { headers });
       const collectionsData = collectionsRes.ok ? await collectionsRes.json() : null;
       return { tab, categories, collections: collectionsData?.collections || [] };
     }
@@ -41,8 +39,8 @@ export const load: PageServerLoad = async ({ parent, url }) => {
     if (isPublished) itemParams.set('isPublished', isPublished);
 
     const [itemsRes, ownersRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/admin/catalog/items?${itemParams}`, { headers }),
-      fetch(`${BACKEND_URL}/api/admin/catalog/share-owners`, { headers }),
+      fetchBackend(`/api/admin/catalog/items?${itemParams}`, { headers }),
+      fetchBackend(`/api/admin/catalog/share-owners`, { headers }),
     ]);
 
     const itemsData = itemsRes.ok ? await itemsRes.json() : null;

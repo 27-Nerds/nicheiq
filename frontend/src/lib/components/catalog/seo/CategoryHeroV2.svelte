@@ -65,6 +65,14 @@
     showNicheContext = true,
   }: Props = $props();
 
+  // Parent-niche pages append a keyword-tuned suffix to the H1 so the headline
+  // reads `"{Category} — Startup Ideas & Pain Points"`. Leaf and programmatic-
+  // SEO pages (both default `kind === 'leaf'`) render the bare name so their
+  // existing headlines stay unchanged.
+  const headline = $derived(
+    kind === 'parent' ? `${name} — Startup Ideas & Pain Points` : name,
+  );
+
   // On parent-category pages, prefer the category's own description over the
   // sub-niche's nicheContext.description (which would bleed wrong-niche copy
   // onto the parent). On leaf pages, nicheContext is legitimate and supersedes
@@ -98,7 +106,7 @@
 <header class="page-hero">
   <div class="hero-row">
     <div class="hero-main">
-      <h1>{name}</h1>
+      <h1>{headline}</h1>
       {#if lede}
         <p class="lede">{lede}</p>
       {/if}
@@ -238,8 +246,8 @@
     font-size: 10px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    font-weight: 700;
-    color: var(--color-text-muted);
+    font-weight: 600;
+    color: var(--color-accent-muted);
     margin: 0 0 8px;
   }
   .nc-kicker-sep {

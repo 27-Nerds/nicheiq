@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * Proxy: GET /api/admin/catalog/ideas/:id → backend GET /ideas/:id.
@@ -14,11 +13,10 @@ export const GET: RequestHandler = async ({ locals, params }) => {
   if (!session?.user) throw error(401, 'Unauthorized');
   if (session.user.role !== 'ADMIN') throw error(403, 'Admin access required');
 
-  const response = await fetch(
-    `${BACKEND_URL}/api/admin/catalog/ideas/${encodeURIComponent(params.id)}`,
+  const response = await fetchBackend(
+    `/api/admin/catalog/ideas/${encodeURIComponent(params.id)}`,
     {
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
         'X-User-Role': session.user.role,
       },
@@ -35,11 +33,10 @@ export const PATCH: RequestHandler = async ({ request, locals, params }) => {
   if (session.user.role !== 'ADMIN') throw error(403, 'Admin access required');
 
   const body = await request.json();
-  const response = await fetch(`${BACKEND_URL}/api/admin/catalog/ideas/${params.id}`, {
+  const response = await fetchBackend(`/api/admin/catalog/ideas/${params.id}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
       'X-User-Role': session.user.role,
     },
@@ -55,10 +52,9 @@ export const DELETE: RequestHandler = async ({ locals, params }) => {
   if (!session?.user) throw error(401, 'Unauthorized');
   if (session.user.role !== 'ADMIN') throw error(403, 'Admin access required');
 
-  const response = await fetch(`${BACKEND_URL}/api/admin/catalog/ideas/${params.id}`, {
+  const response = await fetchBackend(`/api/admin/catalog/ideas/${params.id}`, {
     method: 'DELETE',
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
       'X-User-Role': session.user.role,
     },

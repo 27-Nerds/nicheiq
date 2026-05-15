@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * GET /api/jobs/:jobId/landingpage - View or download landing page HTML
@@ -18,9 +17,8 @@ export const GET: RequestHandler = async ({ params, locals, url }) => {
   const downloadParam = url.searchParams.get('download');
   const queryString = downloadParam ? `?download=${downloadParam}` : '';
 
-  const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}/landingpage${queryString}`, {
+  const response = await fetchBackend(`/api/jobs/${params.jobId}/landingpage${queryString}`, {
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });

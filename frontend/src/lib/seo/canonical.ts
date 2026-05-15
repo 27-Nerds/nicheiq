@@ -1,4 +1,10 @@
-const SITE_ORIGIN = 'https://nicheiq.dev';
+import { env } from '$env/dynamic/public';
+
+// PUBLIC_SITE_ORIGIN is optional — `$env/dynamic/public` reads at request time
+// and tolerates missing vars (unlike `$env/static/public`, which errors during
+// type-check if the var isn't defined in `.env`). Fallback keeps production
+// behavior identical when unset.
+const SITE_ORIGIN = env.PUBLIC_SITE_ORIGIN || 'https://nicheiq.dev';
 
 const TRACKING_PARAMS = new Set([
   'utm_source',

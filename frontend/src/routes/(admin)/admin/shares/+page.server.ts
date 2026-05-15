@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: PageServerLoad = async ({ parent, url }) => {
   const { session } = await parent();
@@ -10,9 +9,8 @@ export const load: PageServerLoad = async ({ parent, url }) => {
   const params = new URLSearchParams({ page, limit: '20' });
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/admin/shares?${params}`, {
+    const response = await fetchBackend(`/api/admin/shares?${params}`, {
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
         'X-User-Role': session.user.role || '',
       },

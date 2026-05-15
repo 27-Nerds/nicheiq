@@ -1,14 +1,13 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * GET /api/shared/:shareToken - Public proxy for shared report (no auth)
  */
 export const GET: RequestHandler = async ({ params }) => {
-  const response = await fetch(`${BACKEND_URL}/api/shared/${params.shareToken}`);
+  const response = await fetchBackend(`/api/shared/${params.shareToken}`);
 
   if (!response.ok) {
     const data = await response.json();

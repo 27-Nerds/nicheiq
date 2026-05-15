@@ -1,13 +1,11 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: PageServerLoad = async ({ parent, url }) => {
   const { session } = await parent();
 
   const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
     'X-User-ID': session.user.id,
     'X-User-Role': session.user.role || '',
   };
@@ -29,8 +27,8 @@ export const load: PageServerLoad = async ({ parent, url }) => {
 
   try {
     const [threadsRes, statsRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/admin/catalog/reddit-threads?${params}`, { headers }),
-      fetch(`${BACKEND_URL}/api/admin/catalog/reddit-threads/stats`, { headers }),
+      fetchBackend(`/api/admin/catalog/reddit-threads?${params}`, { headers }),
+      fetchBackend(`/api/admin/catalog/reddit-threads/stats`, { headers }),
     ]);
 
     const threadsData = threadsRes.ok ? await threadsRes.json() : null;

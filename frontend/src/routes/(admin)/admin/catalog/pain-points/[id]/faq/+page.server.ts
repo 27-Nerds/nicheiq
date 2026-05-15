@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 interface PainPointFaqEditorPayload {
   id: string;
@@ -23,11 +22,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
   if (!session?.user) throw error(401, 'Unauthorized');
   if (session.user.role !== 'ADMIN') throw error(403, 'Admin access required');
 
-  const res = await fetch(
-    `${BACKEND_URL}/api/admin/catalog/pain-points/${encodeURIComponent(params.id)}`,
+  const res = await fetchBackend(
+    `/api/admin/catalog/pain-points/${encodeURIComponent(params.id)}`,
     {
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
         'X-User-Role': session.user.role,
       },

@@ -46,6 +46,106 @@ export function categoryDescription(
   return `${totalIdeas} startup ideas and ${totalPainPoints} pain points in ${c.name}, sourced from Reddit and Hacker News. Updated weekly.`;
 }
 
+// =====================================================================
+// Parent-niche description / lede — richer dynamic templates for the
+// `/ideas/[niche]` route only. Leaf (`/ideas/[niche]/[sub]`) and
+// programmatic-SEO routes keep using `categoryDescription` above so a
+// signature change can't leak across route shapes.
+// =====================================================================
+
+// Helpers below are private — exported through the named helpers only.
+
+function subNicheNoun(n: number): string {
+  return n === 1 ? 'sub-niche' : 'sub-niches';
+}
+
+function discussionsNoun(n: number): string {
+  return n === 1 ? 'real community discussion' : 'real community discussions';
+}
+
+function pickTop3Children<T extends { name: string; ideaCount: number }>(
+  children: readonly T[],
+): T[] {
+  return [...children]
+    .sort((a, b) => {
+      const d = b.ideaCount - a.ideaCount;
+      if (d !== 0) return d;
+      return a.name.localeCompare(b.name);
+    })
+    .slice(0, 3);
+}
+
+function formatTop3List(
+  children: readonly { name: string; ideaCount: number }[],
+): string | null {
+  if (children.length === 0) return null;
+  const top = pickTop3Children(children).map((c) => c.name);
+  const base = top.join(', ');
+  return children.length > 3 ? `${base}, and more` : base;
+}
+
+/**
+ * Parent-niche meta-description template. Uses the full category name in
+ * the noun phrase (per the user-confirmed decision) so the wording reads
+ * naturally for every category (`Design & Creative Tools`, `FinTech &
+ * Banking`, `AI & Machine Learning`, …) without an awkward first-word
+ * adjective. Honors `seoDescription` admin override identically to
+ * `categoryDescription` so curated copy keeps the same escape hatch.
+ *
+ * Length note: ~177 chars at typical totals. Page is `noindex` until the
+ * launch gate flips; a shorter SERP-fit variant is sketched in the plan
+ * file under "Out of scope" for the follow-up PR.
+ */
+export function parentCategoryDescription(payload: CategoryLandingPayload): string {
+  if (payload.category.seoDescription) return payload.category.seoDescription;
+  const subCount = payload.children.length;
+  const top3 = formatTop3List(payload.children);
+  const subClause =
+    top3 === null
+      ? // No children — keep the sentence grammatical without a dangling em-dash.
+        `${subCount} ${subNicheNoun(subCount)} in ${payload.category.name}`
+      : `${subCount} ${payload.category.name} ${subNicheNoun(subCount)} — ${top3}`;
+  // Drop the "sourced from N discussions" tail when no source counts are
+  // projected (older research contexts predate the projection — see
+  // researchContextService.ts:604). Noun is unified with categoryLede() via
+  // discussionsNoun() so meta description and hero lede stay consistent.
+  const mined = payload.contentItemsMined;
+  const sourcedClause =
+    mined > 0 ? ` sourced from ${mined.toLocaleString()} ${discussionsNoun(mined)}` : '';
+  return (
+    `Explore ${payload.totalIdeas.toLocaleString()} startup ideas across ${subClause}. ` +
+    `${payload.totalPainPoints.toLocaleString()} validated pain points${sourcedClause}.`
+  );
+}
+
+/**
+ * Hero lede string for the parent-niche page. Embeds the same admin
+ * `category.description` (e.g. "UI/UX design, prototyping, and creative
+ * production software" for Design & Creative Tools) inside a totals-rich
+ * template. Falls back to the category name when `description` is null
+ * so we never render a dangling `in ` clause.
+ *
+ * Parent-only: callers must not invoke this on leaf or programmatic-SEO
+ * routes — the wording assumes a parent context (`across N sub-niches in
+ * …`) and breaks down at a leaf.
+ */
+export function categoryLede(payload: CategoryLandingPayload): string {
+  const subCount = payload.children.length;
+  const niche = payload.category.description?.trim()
+    ? payload.category.description.trim()
+    : payload.category.name;
+  const mined = payload.contentItemsMined;
+  // When the subtree has no projected source counts, end the lede at "in {niche}."
+  // instead of "— sourced from 0 real community discussions."
+  const tail =
+    mined > 0 ? ` — sourced from ${mined.toLocaleString()} ${discussionsNoun(mined)}.` : '.';
+  return (
+    `${payload.totalIdeas.toLocaleString()} startup ideas and ` +
+    `${payload.totalPainPoints.toLocaleString()} validated pain points across ` +
+    `${subCount} ${subNicheNoun(subCount)} in ${niche}${tail}`
+  );
+}
+
 export function categoryLongDescriptionFallback(
   name: string,
   totalIdeas: number,
@@ -141,6 +241,37 @@ function categoryStops(payload: CategoryLandingPayload): BreadcrumbStop[] {
   return stops;
 }
 
+// Date-only `YYYY-MM-DD` from any ISO 8601 timestamp. Relies on the prefix
+// `Date.toISOString()` always emits; date-format is also valid schema.org.
+function toDateOnly(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+// Suffix mirrors the H1 we ship on parent niches; applied uniformly to the
+// schema name across parent + leaf for SEO consistency. Visible H1 on leaf
+// pages stays bare per the previous round's decision.
+function categoryHeadlineName(payload: CategoryLandingPayload): string {
+  return `${payload.category.name} — Startup Ideas & Pain Points`;
+}
+
+// Canonical comma-separated keywords. Category name first for primary signal.
+export function categoryKeywords(payload: CategoryLandingPayload): string {
+  return `${payload.category.name}, startup ideas, pain points, saas niche, validated startup ideas`;
+}
+
+// Only emitted on sub-niche routes (where `payload.parent` is non-null) —
+// declares this page as `partOf` the parent CollectionPage. The wrapping
+// `@type: "CollectionPage"` is added by the `collectionPage()` helper.
+export function categoryIsPartOf(
+  payload: CategoryLandingPayload,
+): { name: string; url: string } | null {
+  if (!payload.parent) return null;
+  return {
+    name: `${payload.parent.name} — Startup Ideas & Pain Points`,
+    url: `${ORIGIN}${categoryPath({ slug: payload.parent.slug, parentSlug: null })}`,
+  };
+}
+
 export function buildCategoryJsonLd(
   payload: CategoryLandingPayload,
   canonical: string,
@@ -156,13 +287,20 @@ export function buildCategoryJsonLd(
     url: `${ORIGIN}${painPointPath(p.slug)}`,
   }));
 
+  const dateModified = toDateOnly(payload.latestModifiedAt);
+
   const blocks: JsonLd[] = [
     breadcrumbList(stops),
     collectionPage({
-      name: payload.category.name,
+      name: categoryHeadlineName(payload),
       description,
       url: canonical,
       about: payload.category.name,
+      datePublished: toDateOnly(payload.category.createdAt),
+      dateModified,
+      lastReviewed: dateModified,
+      keywords: categoryKeywords(payload),
+      isPartOf: categoryIsPartOf(payload),
     }),
   ];
   // Two distinct ItemLists rather than a flat combined list — ideas and

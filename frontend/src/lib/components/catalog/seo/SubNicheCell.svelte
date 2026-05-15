@@ -1,8 +1,9 @@
 <script lang="ts">
   // Single-line sub-niche cell. Matches the mockup `.cat-sub` shape:
   // compact `Name … <count>` with the count right-aligned in mono.
-  // Used inside CategoryAccordion bodies (index page) and SubNicheGrid
-  // (category page) — both want the dense editorial treatment.
+  // Used inside CategoryAccordion bodies on the index page. The category
+  // page (/ideas/[niche]) now uses SubNicheDirectory instead — its
+  // two-tier (researched + atlas) split needs richer cards than this cell.
 
   interface Props {
     name: string;

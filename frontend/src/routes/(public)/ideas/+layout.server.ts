@@ -1,7 +1,5 @@
 import type { LayoutServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
+import { fetchBackend } from '$lib/backend';
 
 interface NicheTreeNode {
   id: string;
@@ -24,9 +22,7 @@ interface NicheTreeNode {
  */
 export const load: LayoutServerLoad = async () => {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/public/catalog/tree`, {
-      headers: { 'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '' },
-    });
+    const res = await fetchBackend('/api/public/catalog/tree');
     if (!res.ok) {
       console.error('Failed to fetch catalog tree:', res.status);
       return { categoriesTree: [] as NicheTreeNode[] };

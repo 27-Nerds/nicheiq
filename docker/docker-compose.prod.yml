@@ -140,7 +140,19 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.worker
     restart: unless-stopped
+    mem_limit: 2g
+    memswap_limit: 2g          # block spillover to host swap
     environment:
+      # Telemetry kill switches — verified against installed package source:
+      #   crewai/telemetry/telemetry.py:144-151 → OTEL_SDK_DISABLED, CREWAI_DISABLE_TELEMETRY
+      #   chromadb/config.py:221-229            → anonymized_telemetry via pydantic-settings
+      OTEL_SDK_DISABLED: "true"
+      CREWAI_DISABLE_TELEMETRY: "true"
+      ANONYMIZED_TELEMETRY: "False"
+      # Glibc thread-arena cap — return freed memory to OS instead of caching per-thread
+      MALLOC_ARENA_MAX: "2"
+      # Recycle worker process after N jobs; restart: unless-stopped brings it back fresh
+      MAX_JOBS_PER_WORKER: "50"
       # Database & Redis (internal network)
       DATABASE_URL: postgresql://${POSTGRES_USER:-nicheiq}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nicheiq}
       REDIS_URL: redis://redis:6379

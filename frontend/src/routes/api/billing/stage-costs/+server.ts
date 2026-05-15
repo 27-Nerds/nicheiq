@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * GET /api/billing/stage-costs - Get per-stage credit costs
@@ -14,10 +13,9 @@ export const GET: RequestHandler = async ({ locals }) => {
     throw error(401, 'Unauthorized');
   }
 
-  const response = await fetch(`${BACKEND_URL}/api/billing/stage-costs`, {
+  const response = await fetchBackend(`/api/billing/stage-costs`, {
     method: 'GET',
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });

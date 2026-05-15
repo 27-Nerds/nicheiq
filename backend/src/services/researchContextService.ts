@@ -152,12 +152,50 @@ export function hasProjectedData(ctx: CatalogResearchContext): boolean {
 }
 
 /**
+ * Narrow structural type containing only the fields `hasMeaningfulResearchContext`
+ * reads. Lets the predicate accept Prisma `select`-narrowed results (e.g. from
+ * `adminCatalog.ts`'s pain-points list) without TS complaining about the
+ * absence of unselected fields.
+ */
+export type MeaningfulResearchContextFields = Pick<
+  CatalogResearchContext,
+  | 'audienceMapping'
+  | 'painPointAnalytics'
+  | 'detailedPainPoints'
+  | 'marketSizing'
+  | 'trendLongevity'
+  | 'competitiveAnalytics'
+  | 'competitorProfiles'
+  | 'competitiveAnalysis'
+  | 'alternativeSolutions'
+  | 'selectedSolution'
+  | 'topSubreddits'
+  | 'goToMarketBlueprint'
+  | 'pricingStrategy'
+  | 'trafficMonetization'
+  | 'keywordClusters'
+  | 'themeSeverityScores'
+  | 'nicheContext'
+  | 'qualitySignals'
+  | 'topPainCategories'
+  | 'competitiveSummary'
+  | 'selectedSolutionName'
+  | 'categorizationSummary'
+  | 'painAnalysisSummary'
+  | 'redditPostsAnalyzed'
+  | 'redditCommentsAnalyzed'
+  | 'twitterThreadsAnalyzed'
+  | 'genericPostsAnalyzed'
+  | 'goNoGoVerdict'
+>;
+
+/**
  * "Is there RENDERABLE content?" — used for placeholder detection AND public
  * landing-page gating. Excludes timestamps, zero-value metrics, and tier
  * alone. Without this distinction, every preview-derived row would lock as
  * "real" forever (materializer always writes `generated_at` + `collection_date`).
  */
-export function hasMeaningfulResearchContext(ctx: CatalogResearchContext): boolean {
+export function hasMeaningfulResearchContext(ctx: MeaningfulResearchContextFields): boolean {
   return (
     !isJsonEmpty(ctx.audienceMapping) ||
     !isJsonEmpty(ctx.painPointAnalytics) ||

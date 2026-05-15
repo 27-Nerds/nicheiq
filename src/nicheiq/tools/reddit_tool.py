@@ -3,6 +3,7 @@ Reddit content collection tool using PRAW.
 """
 
 import re
+import threading
 from collections import Counter
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -29,6 +30,36 @@ _SUBREDDIT_RE = re.compile(r"reddit\.com/r/([^/]+)")
 _cache = RedditThreadCache()
 
 
+# Process-wide PRAW client singleton. Each praw.Reddit() instance owns a
+# requests.Session + urllib3 PoolManager + TLS context; instantiating one
+# per fetch (as the previous _get_reddit_client did) was a major source of
+# allocation churn observed in production memory growth. PRAW 7.x is not
+# formally thread-safe, but every call site here is sequential within its
+# pipeline (collect_posts, search_subreddits) and ParallelCollector
+# parallelises *across* collector pipelines, not PRAW calls within one.
+# If Reddit URL fetches ever get parallelised inside a pipeline, revisit
+# this — either switch to threading.local() or guard reddit.submission()
+# access with an explicit lock.
+_reddit_client_lock = threading.Lock()
+_reddit_client: praw.Reddit | None = None
+
+
+def _get_shared_reddit_client() -> praw.Reddit:
+    """Return a process-wide PRAW client, creating it on first use."""
+    global _reddit_client
+    if _reddit_client is None:
+        with _reddit_client_lock:
+            if _reddit_client is None:
+                _reddit_client = praw.Reddit(
+                    client_id=settings.reddit_client_id,
+                    client_secret=settings.reddit_client_secret,
+                    user_agent=settings.reddit_user_agent,
+                    check_for_async=False,
+                    ratelimit_seconds=60,
+                )
+    return _reddit_client
+
+
 class RedditCollectorTool(BaseTool):
     """
     Tool for collecting Reddit posts and comments using PRAW.
@@ -43,19 +74,11 @@ class RedditCollectorTool(BaseTool):
 
     def _get_reddit_client(self) -> praw.Reddit:
         """
-        Get initialized PRAW Reddit client with built-in rate limiting.
-
-        Uses ratelimit_seconds=60 to automatically handle Reddit API rate limits:
-        - PRAW will sleep and retry if rate limited for ≤60 seconds
-        - PRAW will raise RedditAPIException if rate limited for >60 seconds
+        Return the process-wide PRAW client. Delegates to the module-level
+        singleton so we don't allocate a fresh requests.Session + urllib3
+        PoolManager + TLS context on every fetch.
         """
-        return praw.Reddit(
-            client_id=settings.reddit_client_id,
-            client_secret=settings.reddit_client_secret,
-            user_agent=settings.reddit_user_agent,
-            check_for_async=False,  # Suppress async environment warning
-            ratelimit_seconds=60,  # Automatically handle rate limits up to 60 seconds
-        )
+        return _get_shared_reddit_client()
 
     def _parse_comment(self, comment) -> tuple[RedditComment | None, int]:
         """
@@ -172,6 +195,10 @@ class RedditCollectorTool(BaseTool):
                 f"(score: {post.score}, substantial comments: {substantial_comment_count}, "
                 f"original total: {submission.num_comments})"
             )
+            # Drop the PRAW submission (and its CommentForest back-refs) now
+            # that the Pydantic copy is finalised. Marginal at function return
+            # but documents intent if anything is ever inserted before return.
+            del submission
             return post
 
         except (praw.exceptions.PRAWException, prawcore.exceptions.PrawcoreException) as e:

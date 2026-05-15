@@ -317,6 +317,16 @@
   let ideaModalPainPoints = $state<any[]>([]);
   let ideaModalLoading = $state(false);
   let ideaModalSelected = new SvelteSet<string>();
+  // Eligible = non-legacy. Drives Select-All comparison and footer count
+  // wording so legacy rows aren't counted against admins.
+  let eligibleIdeaModalPainPoints = $derived(
+    ideaModalPainPoints.filter((pp) => !pp.isLegacy),
+  );
+
+  // Recovery modal state — shown when the backend rejects generate-ideas
+  // because the parent research context is a legacy placeholder.
+  let showRerunPrompt = $state(false);
+  let rerunCategoryId = $state("");
 
   // ============================================
   // Category CRUD
@@ -579,7 +589,7 @@
       const data = await res.json();
       ideaModalPainPoints = data.painPoints || [];
       for (const pp of ideaModalPainPoints) {
-        ideaModalSelected.add(pp.id);
+        if (!pp.isLegacy) ideaModalSelected.add(pp.id);
       }
     } catch {
       catErrorMsg = "Failed to fetch pain points";
@@ -590,16 +600,18 @@
   }
 
   function toggleIdeaPpSelection(id: string) {
+    const pp = ideaModalPainPoints.find((p) => p.id === id);
+    if (pp?.isLegacy) return;
     if (ideaModalSelected.has(id)) ideaModalSelected.delete(id);
     else ideaModalSelected.add(id);
   }
 
   function toggleAllIdeaPp() {
-    if (ideaModalSelected.size === ideaModalPainPoints.length) {
+    if (ideaModalSelected.size === eligibleIdeaModalPainPoints.length) {
       ideaModalSelected.clear();
     } else {
       ideaModalSelected.clear();
-      for (const pp of ideaModalPainPoints) ideaModalSelected.add(pp.id);
+      for (const pp of eligibleIdeaModalPainPoints) ideaModalSelected.add(pp.id);
     }
   }
 
@@ -622,6 +634,16 @@
           subscribeToIdeasJob(err.jobId, categoryId);
           return;
         }
+        if (res.status === 409 && err.action === "rerun-pain-points") {
+          // Undo optimistic state so the category row doesn't get stuck
+          // "generating" while admin decides whether to refresh research.
+          generatingIdeasFor.delete(categoryId);
+          ideasProgressMsgs.delete(categoryId);
+          showIdeaModal = false;
+          rerunCategoryId = err.categoryId ?? categoryId;
+          showRerunPrompt = true;
+          return;
+        }
         catErrorMsg = err.error || "Failed to start idea generation";
         generatingIdeasFor.delete(categoryId);
         ideasProgressMsgs.delete(categoryId);
@@ -640,8 +662,15 @@
   async function generateIdeas() {
     if (ideaModalSelected.size === 0) return;
     const catId = ideaModalCategoryId;
+    // Defense in depth — any legacy ID that slipped into the selection
+    // (e.g. via state drift) is filtered out before POST.
+    const legacyIds = new Set(
+      ideaModalPainPoints.filter((pp) => pp.isLegacy).map((pp) => pp.id),
+    );
+    const eligibleIds = [...ideaModalSelected].filter((id) => !legacyIds.has(id));
+    if (eligibleIds.length === 0) return;
     showIdeaModal = false;
-    await startIdeaGenerationJob(catId, [...ideaModalSelected]);
+    await startIdeaGenerationJob(catId, eligibleIds);
   }
 
   async function autoGenerateIdeas(categoryId: string) {
@@ -660,7 +689,16 @@
         ideasProgressMsgs.delete(categoryId);
         return;
       }
-      await startIdeaGenerationJob(categoryId, painPoints.map((pp: any) => pp.id));
+      const eligibleIds = painPoints
+        .filter((pp: any) => !pp.isLegacy)
+        .map((pp: any) => pp.id);
+      if (eligibleIds.length === 0) {
+        catErrorMsg =
+          "All pain points come from a legacy research run — re-run pain-point research first";
+        ideasProgressMsgs.delete(categoryId);
+        return;
+      }
+      await startIdeaGenerationJob(categoryId, eligibleIds);
     } catch {
       catErrorMsg = "Failed to start idea generation";
       ideasProgressMsgs.delete(categoryId);
@@ -1186,29 +1224,32 @@
         {:else}
           <div class="mb-3 flex items-center justify-between">
             <span class="text-sm text-text-secondary">
-              Select pain points to generate ideas from ({ideaModalSelected.size}/{ideaModalPainPoints.length})
+              Select pain points to generate ideas from ({ideaModalSelected.size}/{eligibleIdeaModalPainPoints.length}{ideaModalPainPoints.length > eligibleIdeaModalPainPoints.length ? ` · ${ideaModalPainPoints.length - eligibleIdeaModalPainPoints.length} legacy` : ""})
             </span>
             <button
               class="text-xs text-accent hover:underline"
               onclick={toggleAllIdeaPp}
+              disabled={eligibleIdeaModalPainPoints.length === 0}
             >
-              {ideaModalSelected.size === ideaModalPainPoints.length ? "Deselect All" : "Select All"}
+              {ideaModalSelected.size === eligibleIdeaModalPainPoints.length && eligibleIdeaModalPainPoints.length > 0 ? "Deselect All" : "Select All"}
             </button>
           </div>
           <div class="space-y-2">
             {#each ideaModalPainPoints as pp}
               <button
-                class="w-full text-left p-3 rounded-lg border transition-colors {ideaModalSelected.has(pp.id) ? 'border-accent/50 bg-accent/5' : 'border-border hover:border-border-hover'}"
+                class="w-full text-left p-3 rounded-lg border transition-colors {pp.isLegacy ? 'border-border bg-bg-elevated opacity-60 cursor-not-allowed' : ideaModalSelected.has(pp.id) ? 'border-accent/50 bg-accent/5' : 'border-border hover:border-border-hover'}"
                 onclick={() => toggleIdeaPpSelection(pp.id)}
+                disabled={pp.isLegacy}
+                title={pp.isLegacy ? "Legacy research run — re-run pain-point research to refresh" : undefined}
               >
                 <div class="flex items-start gap-3">
-                  <div class="mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 {ideaModalSelected.has(pp.id) ? 'bg-accent border-accent' : 'border-border'}">
-                    {#if ideaModalSelected.has(pp.id)}
+                  <div class="mt-0.5 w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 {ideaModalSelected.has(pp.id) && !pp.isLegacy ? 'bg-accent border-accent' : 'border-border'}">
+                    {#if ideaModalSelected.has(pp.id) && !pp.isLegacy}
                       <Check class="w-3 h-3 text-white" />
                     {/if}
                   </div>
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
                       <span class="text-sm font-medium text-text-primary">{pp.title}</span>
                       <Badge variant={pp.severityScore >= 0.7 ? 'error' : pp.severityScore >= 0.4 ? 'warning' : 'default'} size="sm">
                         Sev {(pp.severityScore * 100).toFixed(0)}%
@@ -1216,6 +1257,9 @@
                       <Badge variant={pp.willingnessToPayScore >= 0.6 ? 'success' : 'default'} size="sm">
                         WTP {(pp.willingnessToPayScore * 100).toFixed(0)}%
                       </Badge>
+                      {#if pp.isLegacy}
+                        <Badge variant="warning" size="sm">Legacy — refresh first</Badge>
+                      {/if}
                       <span class="text-xs text-text-muted">{pp.mentionCount} {pp.mentionCount === 1 ? 'mention' : 'mentions'}</span>
                     </div>
                     <p class="text-xs text-text-muted line-clamp-2">{pp.description}</p>
@@ -1238,7 +1282,53 @@
           disabled={ideaModalSelected.size === 0 || generatingIdeasFor.has(ideaModalCategoryId)}
         >
           <Lightbulb class="w-4 h-4" />
-          Generate Ideas ({ideaModalSelected.size} pain points)
+          Generate Ideas ({ideaModalSelected.size} of {eligibleIdeaModalPainPoints.length} pain points)
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Recovery modal — surfaces when the backend rejects generate-ideas with
+     action: 'rerun-pain-points' because the parent research context is a
+     legacy placeholder. Reuses generatePainPoints() so SSE/progress wiring
+     is consistent with the normal "Generate pain points" flow. -->
+{#if showRerunPrompt}
+  <div class="fixed inset-0 z-50 flex items-center justify-center">
+    <div
+      class="fixed inset-0 bg-black/40"
+      onclick={() => (showRerunPrompt = false)}
+      role="button"
+      tabindex="-1"
+      onkeydown={(e) => { if (e.key === "Escape") showRerunPrompt = false; }}
+    ></div>
+    <div class="relative bg-bg-surface border border-border rounded-xl shadow-xl w-full max-w-md overflow-hidden flex flex-col z-50">
+      <div class="px-6 py-4 border-b border-border">
+        <h3 class="text-lg font-semibold text-text-primary">Refresh research first</h3>
+      </div>
+      <div class="px-6 py-4 text-sm text-text-secondary space-y-2">
+        <p>
+          These pain points come from an older research run with incomplete data.
+          To generate ideas, we'll first re-run pain-point research for this category.
+        </p>
+        <p class="text-text-muted">
+          Existing pain points will be refreshed (merged), not deleted.
+        </p>
+      </div>
+      <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-border">
+        <button class="text-sm text-text-secondary hover:text-text-primary" onclick={() => (showRerunPrompt = false)}>
+          Cancel
+        </button>
+        <button
+          class="btn-primary flex items-center gap-2"
+          onclick={() => {
+            const catId = rerunCategoryId;
+            showRerunPrompt = false;
+            generatePainPoints(catId);
+          }}
+        >
+          <Sparkles class="w-4 h-4" />
+          Re-run research
         </button>
       </div>
     </div>

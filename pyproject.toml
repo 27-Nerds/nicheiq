@@ -3,7 +3,7 @@ name = "nicheiq"
 version = "0.1.0"
 description = "Autonomous market research agent that transforms unstructured social discussions into validated SaaS opportunities"
 readme = "README.md"
-requires-python = ">=3.10,<=3.13"
+requires-python = ">=3.10.10,<=3.13"
 license = { text = "MIT" }
 authors = [
     { name = "NicheIQ Team" }

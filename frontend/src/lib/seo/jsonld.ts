@@ -63,6 +63,26 @@ export function collectionPage(args: {
   description: string;
   url: string;
   about?: string;
+  /** ISO 8601 timestamp or `YYYY-MM-DD` date-only — both accepted by
+   *  schema.org. Surfaces as `dateModified`, a concrete freshness signal
+   *  Google uses alongside sitemap lastmod. */
+  dateModified?: string | null;
+  /** First publish date — ISO 8601 or `YYYY-MM-DD`. Pairs with
+   *  `dateModified` so crawlers can compare freshness against age. */
+  datePublished?: string | null;
+  /** Human review timestamp — ISO 8601 or `YYYY-MM-DD`. Typically equal
+   *  to `dateModified` when the page is auto-refreshed alongside content. */
+  lastReviewed?: string | null;
+  /** Comma-separated keyword string for legacy `keywords` markup. */
+  keywords?: string | null;
+  /** Parent CollectionPage this page is part of. Helper wraps the value
+   *  with `@type: "CollectionPage"` automatically so callers only supply
+   *  `{name, url}`. */
+  isPartOf?: { name: string; url: string } | null;
+  /** Optional `@id` reference to another entity (typically an ItemList) that
+   *  this page is "about". Declares the page's primary subject for AI
+   *  Overviews / Knowledge Graph consumers. */
+  mainEntityId?: string | null;
 }): JsonLd {
   const result: JsonLd = {
     '@context': 'https://schema.org',
@@ -74,23 +94,59 @@ export function collectionPage(args: {
   if (args.about) {
     result.about = { '@type': 'Thing', name: args.about };
   }
+  if (args.datePublished) {
+    result.datePublished = args.datePublished;
+  }
+  if (args.dateModified) {
+    result.dateModified = args.dateModified;
+  }
+  if (args.lastReviewed) {
+    result.lastReviewed = args.lastReviewed;
+  }
+  if (args.keywords) {
+    result.keywords = args.keywords;
+  }
+  if (args.isPartOf) {
+    result.isPartOf = {
+      '@type': 'CollectionPage',
+      name: args.isPartOf.name,
+      url: args.isPartOf.url,
+    };
+  }
+  if (args.mainEntityId) {
+    result.mainEntity = { '@id': args.mainEntityId };
+  }
   return result;
 }
 
 export function itemList(
-  items: { name: string; url: string }[],
-  opts: { numberOfItems?: number; name?: string } = {},
+  items: { name: string; url: string; description?: string }[],
+  opts: { numberOfItems?: number; name?: string; id?: string } = {},
 ): JsonLd {
   const result: JsonLd = {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
-    itemListElement: items.map((item, index) => ({
-      '@type': 'ListItem',
-      position: index + 1,
-      url: item.url,
-      name: item.name,
-    })),
+    itemListElement: items.map((item, index) => {
+      const listItem: JsonLd = {
+        '@type': 'ListItem',
+        position: index + 1,
+        url: item.url,
+        name: item.name,
+      };
+      // Optional `description` flows into the ListItem — useful for pain-point
+      // rows where the row title carries the actual semantic payload that
+      // AI Overviews are likely to quote.
+      if (item.description) {
+        listItem.description = item.description;
+      }
+      return listItem;
+    }),
   };
+  // Stable `@id` lets a sibling entity (e.g. CollectionPage.mainEntity)
+  // reference this list rather than inlining it.
+  if (typeof opts.id === 'string' && opts.id.length > 0) {
+    result['@id'] = opts.id;
+  }
   // Optional `name` lets a page emit two distinct ItemLists ("Ideas in X",
   // "Pain points in X") so crawlers can tell semantically distinct
   // collections apart instead of seeing one flattened list.

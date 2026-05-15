@@ -38,6 +38,10 @@ import {
 } from '../services/catalogCollectionService.js';
 import { prisma } from '../services/db.js';
 import { getRedis } from '../services/redis.js';
+import {
+  extractOrCreateResearchContext,
+  hasMeaningfulResearchContext,
+} from '../services/researchContextService.js';
 import { JobStatus } from '@prisma/client';
 import {
   FaqEntrySchema,
@@ -588,6 +592,52 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       return;
     }
 
+    // Phase 5.4 — pick the parent sourceJobId so generated ideas FK into the
+    // most-recent pain-points-job's CatalogResearchContext. Group selected
+    // pain points by sourceJobId, take the max effective timestamp per group
+    // (sourceGeneratedAt ?? updatedAt ?? createdAt — sourceGeneratedAt drives
+    // lineage, updatedAt catches merge-bumped rows, createdAt is the fallback
+    // for legacy rows). Pick the group with the latest timestamp.
+    const groups = new Map<string, number>();
+    for (const pp of painPoints) {
+      if (!pp.sourceJobId) continue;
+      const ts = (pp.sourceGeneratedAt ?? pp.updatedAt ?? pp.createdAt).getTime();
+      const existing = groups.get(pp.sourceJobId);
+      if (existing == null || ts > existing) {
+        groups.set(pp.sourceJobId, ts);
+      }
+    }
+    if (groups.size === 0) {
+      res.status(400).json({ error: 'Selected pain points have no valid sourceJobId' });
+      return;
+    }
+    const parentSourceJobId = [...groups.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    if (groups.size > 1) {
+      console.warn(
+        `[adminCatalog] generate-ideas: pain points span ${groups.size} sourceJobIds; using latest=${parentSourceJobId}`,
+      );
+    }
+
+    // Meaningfulness gate. Runs BEFORE job.create so a legacy parent context
+    // never leaves an orphan QUEUED job that blocks future retries via the
+    // duplicate-active-job guard above. `forceRefreshPlaceholders: true`
+    // matches the symmetric worker callback at workers.ts:1075 — gives a
+    // race-safe second extraction attempt for rows whose report asset only
+    // just landed on disk.
+    const parentContext = await extractOrCreateResearchContext(parentSourceJobId, {
+      forceRefreshPlaceholders: true,
+      sourceKind: 'catalog',
+    });
+    if (!hasMeaningfulResearchContext(parentContext)) {
+      res.status(409).json({
+        error:
+          'Selected pain points come from a legacy research run with no renderable data. Re-run pain-point research for this category to refresh before generating ideas.',
+        action: 'rerun-pain-points',
+        categoryId,
+      });
+      return;
+    }
+
     // Create a Job record
     let job;
     try {
@@ -634,32 +684,6 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       affectedSegments: pp.affectedSegments,
     }));
 
-    // Phase 5.4 — pick the parent sourceJobId so generated ideas FK into the
-    // most-recent pain-points-job's CatalogResearchContext. Group selected
-    // pain points by sourceJobId, take the max effective timestamp per group
-    // (sourceGeneratedAt ?? updatedAt ?? createdAt — sourceGeneratedAt drives
-    // lineage, updatedAt catches merge-bumped rows, createdAt is the fallback
-    // for legacy rows). Pick the group with the latest timestamp.
-    const groups = new Map<string, number>();
-    for (const pp of painPoints) {
-      if (!pp.sourceJobId) continue;
-      const ts = (pp.sourceGeneratedAt ?? pp.updatedAt ?? pp.createdAt).getTime();
-      const existing = groups.get(pp.sourceJobId);
-      if (existing == null || ts > existing) {
-        groups.set(pp.sourceJobId, ts);
-      }
-    }
-    if (groups.size === 0) {
-      res.status(400).json({ error: 'Selected pain points have no valid sourceJobId' });
-      return;
-    }
-    const parentSourceJobId = [...groups.entries()].sort((a, b) => b[1] - a[1])[0][0];
-    if (groups.size > 1) {
-      console.warn(
-        `[adminCatalog] generate-ideas: pain points span ${groups.size} sourceJobIds; using latest=${parentSourceJobId}`,
-      );
-    }
-
     // Query existing ideas for this category to avoid regenerating duplicates
     const existingIdeas = await prisma.catalogIdea.findMany({
       where: { categoryId },
@@ -670,15 +694,6 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       description: i.description || '',
     }));
 
-    // Pull contentCategorization from the parent pain-points-job's research
-    // context. UnifiedSolutionCrew uses theme_categories + user_segments to
-    // sharpen segment targeting; without it the pipeline logs a warning and
-    // ideates without the enrichment. Null for legacy rows pre-migration.
-    const parentContext = await prisma.catalogResearchContext.findUnique({
-      where: { sourceJobId: parentSourceJobId },
-      select: { contentCategorization: true },
-    });
-
     await enqueueCatalogIdeasJob(
       job.id,
       categoryId,
@@ -687,7 +702,7 @@ adminCatalogRouter.post('/categories/:id/generate-ideas', async (req: Authentica
       category.parent?.name || '',
       existingIdeasMapped,
       parentSourceJobId,
-      parentContext?.contentCategorization ?? undefined,
+      parentContext.contentCategorization ?? undefined,
     );
 
     res.json({ jobId: job.id });
@@ -816,12 +831,52 @@ adminCatalogRouter.delete('/reddit-threads/cleanup', async (_req: AuthenticatedR
 // Category pain points
 // ============================================
 
+// Narrow projection of the `researchContext` relation so the list query
+// loads only the fields `hasMeaningfulResearchContext` actually reads.
+// `CatalogResearchContext` is heavy (JSON projection payloads), so we avoid
+// the full include across many pain-point rows.
+const MEANINGFUL_SELECT = {
+  audienceMapping: true,
+  painPointAnalytics: true,
+  detailedPainPoints: true,
+  marketSizing: true,
+  trendLongevity: true,
+  competitiveAnalytics: true,
+  competitorProfiles: true,
+  competitiveAnalysis: true,
+  alternativeSolutions: true,
+  selectedSolution: true,
+  topSubreddits: true,
+  goToMarketBlueprint: true,
+  pricingStrategy: true,
+  trafficMonetization: true,
+  keywordClusters: true,
+  themeSeverityScores: true,
+  nicheContext: true,
+  qualitySignals: true,
+  topPainCategories: true,
+  competitiveSummary: true,
+  selectedSolutionName: true,
+  categorizationSummary: true,
+  painAnalysisSummary: true,
+  redditPostsAnalyzed: true,
+  redditCommentsAnalyzed: true,
+  twitterThreadsAnalyzed: true,
+  genericPostsAnalyzed: true,
+  goNoGoVerdict: true,
+} as const;
+
 adminCatalogRouter.get('/categories/:id/pain-points', async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const painPoints = await prisma.catalogPainPoint.findMany({
+    const rows = await prisma.catalogPainPoint.findMany({
       where: { categoryId: req.params.id, isActive: true },
       orderBy: { severityScore: 'desc' },
+      include: { researchContext: { select: MEANINGFUL_SELECT } },
     });
+    const painPoints = rows.map(({ researchContext, ...pp }) => ({
+      ...pp,
+      isLegacy: !hasMeaningfulResearchContext(researchContext),
+    }));
     res.json({ painPoints });
   } catch (error) {
     console.error('Failed to list pain points:', error);

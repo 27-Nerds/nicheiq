@@ -12,6 +12,7 @@
     BuildCTA,
     SubcategoryOpportunityPanel,
     NicheMethodology,
+    NicheSeoSummary,
     CategoryFAQ,
   } from "$lib/components/catalog/seo";
   import type { Theme } from "$lib/types/publicCatalog.js";
@@ -270,6 +271,23 @@
   ctaLabel="Run your own research"
   {ctaHref}
 />
+
+{#if hasResearch}
+  <NicheSeoSummary
+    name={data.payload.category.name}
+    kind="sub-niche"
+    subredditSources={data.payload.subredditSources}
+    sourceCommunities={data.payload.sourceCommunities}
+    contentItemsMined={data.payload.contentItemsMined}
+    topPainPoints={data.payload.topPainPoints}
+    totalPainPoints={data.payload.totalPainPoints}
+    themes={data.payload.themes}
+    audienceSignals={data.payload.audienceSignals}
+    audienceSegments={data.payload.audienceSegments}
+    qualitySignals={data.payload.qualitySignals}
+    latestModifiedAt={data.payload.latestModifiedAt}
+  />
+{/if}
 
 <style>
   /* Empty-research one-liner — replaces both the EmptyResearchState block and

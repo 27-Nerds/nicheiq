@@ -16,6 +16,13 @@ from ..models.social_content import RedditComment, RedditPost
 
 _POST_ID_RE = re.compile(r"/comments/([a-z0-9]+)/")
 
+# Reuse a single Session across cache calls. Each raw requests.post()
+# instantiates a new urllib3 PoolManager + TLS context; on a busy worker
+# this is a noticeable source of allocation churn. Session is thread-safe
+# for top-level .get/.post; worker recycle (queue_consumer.py) restarts
+# the process every MAX_JOBS_PER_WORKER jobs and the OS reclaims the pool.
+_session = requests.Session()
+
 
 def _get_backend_url() -> str:
     return os.environ.get("BACKEND_URL", "http://localhost:3001")
@@ -64,7 +71,7 @@ class RedditThreadCache:
         for i in range(0, len(post_ids), BATCH_SIZE):
             chunk = post_ids[i:i + BATCH_SIZE]
             try:
-                resp = requests.post(
+                resp = _session.post(
                     f"{_get_backend_url()}/api/workers/reddit-threads/batch-lookup",
                     json={"postIds": chunk},
                     headers=_headers(),
@@ -120,7 +127,7 @@ class RedditThreadCache:
                 "redditCreatedAt": post.created_utc.isoformat(),
             }
 
-            resp = requests.post(
+            resp = _session.post(
                 f"{_get_backend_url()}/api/workers/reddit-threads",
                 json=payload,
                 headers=_headers(),

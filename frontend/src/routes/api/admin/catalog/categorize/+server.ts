@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
   const session = await locals.auth();
@@ -15,11 +14,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
   const timeout = setTimeout(() => controller.abort(), 90_000);
 
   try {
-    const response = await fetch(`${BACKEND_URL}/api/admin/catalog/categorize`, {
+    const response = await fetchBackend(`/api/admin/catalog/categorize`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
         'X-User-Role': session.user.role,
       },

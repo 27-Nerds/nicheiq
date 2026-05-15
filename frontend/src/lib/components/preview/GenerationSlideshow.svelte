@@ -52,14 +52,6 @@
     currentSlide = index;
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === "ArrowLeft") {
-      goToSlide((currentSlide - 1 + totalSlides) % totalSlides);
-    } else if (e.key === "ArrowRight") {
-      goToSlide((currentSlide + 1) % totalSlides);
-    }
-  }
-
   const activeSlide = $derived(slides[currentSlide]);
 </script>
 
@@ -68,8 +60,6 @@
   role="region"
   aria-label="Generation progress slideshow"
   aria-roledescription="carousel"
-  tabindex="-1"
-  onkeydown={handleKeydown}
 >
   <!-- Slide content area -->
   <div class="slide-viewport">

@@ -167,6 +167,24 @@ export interface SubredditSource {
   postCount: number;
 }
 
+/** Cross-catalog top pain point row for the /ideas SEO landing surface.
+ *  Mirrors `CatalogTopPainPoint` exposed by the backend's
+ *  `GET /api/public/catalog/top-pain-points` endpoint. */
+export interface CatalogTopPainPoint {
+  id: string;
+  slug: string;
+  title: string;
+  mentionCount: number;
+  severityScore: number;
+  opportunityLevel: string;
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    parent: { name: string; slug: string } | null;
+  };
+}
+
 /** Catalog index hero stat strip — total counts. */
 export interface CatalogTotals {
   totalIdeas: number;

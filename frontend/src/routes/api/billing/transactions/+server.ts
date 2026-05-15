@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * GET /api/billing/transactions - Get paginated transaction history
@@ -17,12 +16,11 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const page = url.searchParams.get('page') || '1';
   const limit = url.searchParams.get('limit') || '20';
 
-  const response = await fetch(
-    `${BACKEND_URL}/api/billing/transactions?page=${page}&limit=${limit}`,
+  const response = await fetchBackend(
+    `/api/billing/transactions?page=${page}&limit=${limit}`,
     {
       method: 'GET',
       headers: {
-        'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
         'X-User-ID': session.user.id,
       },
     }

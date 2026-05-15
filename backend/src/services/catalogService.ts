@@ -753,6 +753,7 @@ export async function publishIdea(params: {
 
     await invalidateCategoryLanding(params.categoryId);
     await invalidateCatalogTotals();
+  await invalidateTopCatalogPainPoints();
     return idea;
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -832,6 +833,7 @@ export async function publishPainPoint(params: {
 
     await invalidateCategoryLanding(params.categoryId);
     await invalidateCatalogTotals();
+  await invalidateTopCatalogPainPoints();
     return painPoint;
   } catch (error: unknown) {
     if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === 'P2002') {
@@ -883,6 +885,7 @@ export async function updateCatalogIdea(id: string, data: {
     await invalidateCategoryLanding(before.categoryId);
   }
   await invalidateCatalogTotals();
+  await invalidateTopCatalogPainPoints();
 
   return result;
 }
@@ -926,6 +929,7 @@ export async function updateCatalogPainPoint(id: string, data: {
     await invalidateCategoryLanding(before.categoryId);
   }
   await invalidateCatalogTotals();
+  await invalidateTopCatalogPainPoints();
 
   return result;
 }
@@ -987,6 +991,7 @@ export async function depublishIdea(id: string) {
 
   await invalidateCategoryLanding(categoryIdToInvalidate);
   await invalidateCatalogTotals();
+  await invalidateTopCatalogPainPoints();
   return idea;
 }
 
@@ -1042,6 +1047,7 @@ export async function depublishPainPoint(id: string) {
 
   await invalidateCategoryLanding(categoryIdToInvalidate);
   await invalidateCatalogTotals();
+  await invalidateTopCatalogPainPoints();
   return pp;
 }
 
@@ -1392,12 +1398,16 @@ export async function getDiscoverPainPoints(count: number = 4): Promise<Discover
 // (Phase 2 — public catalog SEO restructure)
 // ============================================
 
-// v5 — Phase 17 (continued) aggregates parent themes across sub-niches with
-// per-row source attribution, mirroring the audience aggregation pattern.
-// Bumped from v4 so the new theme shape is served fresh rather than waiting
-// on existing TTL. Older entries age out naturally.
-const LANDING_CACHE_PREFIX = 'catalog:landing:v5';
-const LANDING_CACHE_TTL_BASE = 600; // seconds; ±10% jitter applied per write
+// v6 — adds `latestModifiedAt` to the payload (max of category + active
+// children + active ideas + active pain-points in the subtree). Powers the
+// SEO `dateModified` / `lastReviewed` on CollectionPage. Bumped so the
+// deploy starts cold and every cached payload thereafter carries the new
+// field; old v5 keys age out via TTL.
+const LANDING_CACHE_PREFIX = 'catalog:landing:v6';
+// Matches the edge `Cache-Control: s-maxage=900` on the landing routes — so
+// Redis and the CDN expire in the same window. Freshness on writes is
+// preserved by invalidation hooks; this just trims redundant backend roundtrips.
+const LANDING_CACHE_TTL_BASE = 900; // seconds; ±10% jitter applied per write
 const TREE_CACHE_KEY = 'catalog:tree:v1';
 const TREE_CACHE_TTL = 300;
 
@@ -1677,6 +1687,11 @@ interface CategoryLandingPayload {
   // aggregated across sub-niches. Null when no research exists or when the
   // recent item belongs directly to the parent category.
   researchSourceSubNiche: { slug: string; name: string } | null;
+  // Phase 6 — most-recent content/metadata timestamp across the whole subtree
+  // (category row + active children + active ideas + active pain-points).
+  // Surfaced for the SEO CollectionPage `dateModified` / `lastReviewed` fields.
+  // ISO 8601 string; frontend converts to date-only at render.
+  latestModifiedAt: string;
 }
 
 // ============================================
@@ -2144,6 +2159,88 @@ async function aggregateParentThemes(args: {
   return out.length > 0 ? out : null;
 }
 
+/**
+ * Pure reducer for parent-page source counts. Takes a list of distinct
+ * research contexts (de-duped by sourceJobId upstream) and returns the
+ * aggregated metric pair.
+ *
+ *   - contentItemsMined = Σ (reddit + twitter + generic) across contexts.
+ *   - sourceCommunities = size of the UNION of distinct subreddit `name`
+ *     values across all contexts' `topSubreddits` arrays. Same name
+ *     validation as `flattenSubredditSources` — required string, non-empty
+ *     after trim. This is intentionally distinct from the leaf-page count
+ *     (`topSubreddits.length`): on parents, two children's `topSubreddits`
+ *     can overlap and summing lengths would double-count the same community.
+ *
+ * Exported for unit testing — keeps the SQL-fetching wrapper thin.
+ */
+export function reduceParentSourceMetric(
+  contexts: Array<{
+    redditPostsAnalyzed: number | null;
+    twitterThreadsAnalyzed: number | null;
+    genericPostsAnalyzed: number | null;
+    topSubreddits: unknown;
+  }>,
+): { contentItemsMined: number; sourceCommunities: number } {
+  let contentItemsMined = 0;
+  const subredditNames = new Set<string>();
+  for (const ctx of contexts) {
+    contentItemsMined +=
+      (ctx.redditPostsAnalyzed ?? 0) +
+      (ctx.twitterThreadsAnalyzed ?? 0) +
+      (ctx.genericPostsAnalyzed ?? 0);
+    if (Array.isArray(ctx.topSubreddits)) {
+      for (const raw of ctx.topSubreddits as unknown[]) {
+        if (!raw || typeof raw !== 'object') continue;
+        const name = (raw as Record<string, unknown>).name;
+        if (typeof name !== 'string') continue;
+        const trimmed = name.trim();
+        if (!trimmed) continue;
+        subredditNames.add(trimmed);
+      }
+    }
+  }
+  return { contentItemsMined, sourceCommunities: subredditNames.size };
+}
+
+/**
+ * Parent-page sources aggregator. Scope = parent + children (passed in via
+ * `categoryIds`, typically `[category.id, ...childIds]`). Returns null when
+ * no distinct research context contributes anything — caller falls back to
+ * the single-context `deriveSourcesMetric(ctxForSummaries)` path.
+ *
+ * Bypasses `hasMeaningfulResearchContext` on purpose. The gate exists for
+ * prose-grade content (audience / themes); raw source counts and subreddit
+ * lists are useful regardless of prose quality.
+ */
+async function aggregateParentSourcesMetric(args: {
+  categoryIds: string[];
+}): Promise<{ contentItemsMined: number; sourceCommunities: number } | null> {
+  if (args.categoryIds.length === 0) return null;
+
+  const recentSources = await findMostRecentItemSourcePerCategory(args.categoryIds);
+  if (recentSources.length === 0) return null;
+
+  // Dedup so a job published into multiple categories is counted once.
+  const distinctJobIds = [...new Set(recentSources.map((s) => s.sourceJobId))];
+  const contexts = await prisma.catalogResearchContext.findMany({
+    where: { sourceJobId: { in: distinctJobIds } },
+    select: {
+      redditPostsAnalyzed: true,
+      twitterThreadsAnalyzed: true,
+      genericPostsAnalyzed: true,
+      topSubreddits: true,
+    },
+  });
+  if (contexts.length === 0) return null;
+
+  const aggregated = reduceParentSourceMetric(contexts);
+  if (aggregated.contentItemsMined === 0 && aggregated.sourceCommunities === 0) {
+    return null;
+  }
+  return aggregated;
+}
+
 async function buildCategoryLandingPayload(
   categoryId: string,
 ): Promise<CategoryLandingPayload | null> {
@@ -2160,6 +2257,9 @@ async function buildCategoryLandingPayload(
           name: true,
           slug: true,
           description: true,
+          // Internal use only — feeds `latestModifiedAt` aggregation below.
+          // NOT surfaced on `children[]` in the public payload (kept lean).
+          updatedAt: true,
           _count: {
             select: {
               ideas: { where: { isActive: true } },
@@ -2176,7 +2276,16 @@ async function buildCategoryLandingPayload(
   const childIds = category.children.map((c) => c.id);
   const aggregateIds = [category.id, ...childIds];
 
-  const [topIdeasRaw, topPainPointsRaw, totalIdeas, totalPainPoints, verdictGoCount, siblingsRaw] = await Promise.all([
+  const [
+    topIdeasRaw,
+    topPainPointsRaw,
+    totalIdeas,
+    totalPainPoints,
+    verdictGoCount,
+    siblingsRaw,
+    ideaMaxAgg,
+    painMaxAgg,
+  ] = await Promise.all([
     prisma.catalogIdea.findMany({
       where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
       include: { category: { select: { id: true, name: true, slug: true } } },
@@ -2208,7 +2317,31 @@ async function buildCategoryLandingPayload(
           take: 12,
         })
       : Promise.resolve([]),
+    // Feeds `latestModifiedAt`. `category.updatedAt` only changes on metadata
+    // edits, so content freshness requires aggregating idea + pain-point
+    // timestamps across the whole subtree. Both columns are indexed (severity/
+    // mention orders use them too); the aggregate is cheap.
+    prisma.catalogIdea.aggregate({
+      _max: { updatedAt: true },
+      where: { isActive: true, categoryId: { in: aggregateIds } },
+    }),
+    prisma.catalogPainPoint.aggregate({
+      _max: { updatedAt: true },
+      where: { isActive: true, categoryId: { in: aggregateIds } },
+    }),
   ]);
+
+  // Most-recent timestamp across category metadata + sub-category metadata +
+  // active ideas + active pain-points. Persisted on the payload so the SEO
+  // CollectionPage gets an honest `dateModified` even when no category row
+  // has been touched but content has been added/refreshed beneath it.
+  const latestModifiedMs = Math.max(
+    category.updatedAt.getTime(),
+    ...category.children.map((c) => c.updatedAt.getTime()),
+    ideaMaxAgg._max.updatedAt?.getTime() ?? 0,
+    painMaxAgg._max.updatedAt?.getTime() ?? 0,
+  );
+  const latestModifiedAt = new Date(latestModifiedMs).toISOString();
 
   const topIdeas = topIdeasRaw.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => toIdeaPreview(rest));
   const topPainPoints = topPainPointsRaw.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => rest);
@@ -2274,7 +2407,16 @@ async function buildCategoryLandingPayload(
   const competitors = flattenCompetitors(ctxForSummaries);
   const keywordClusters = flattenKeywordClusters(ctxForSummaries);
   const subredditSources = flattenSubredditSources(ctxForSummaries);
-  const { contentItemsMined, sourceCommunities } = deriveSourcesMetric(ctxForSummaries);
+  // Parent pages: aggregate source counts across the whole subtree (parent +
+  // children) so a single stale "most recent" item doesn't zero out a parent
+  // whose siblings have data. Leaf and non-parent pages keep the single-
+  // context path. See `aggregateParentSourcesMetric` for semantics, including
+  // the intentional distinct-name semantic for `sourceCommunities`.
+  const parentSources = isParentAggregationCandidate
+    ? await aggregateParentSourcesMetric({ categoryIds: aggregateIds })
+    : null;
+  const { contentItemsMined, sourceCommunities } =
+    parentSources ?? deriveSourcesMetric(ctxForSummaries);
   // Phase 5.5 — niche / audience-signals / quality / pain-analysis prose.
   const nicheContext = flattenNicheContext(ctxForSummaries);
   const audienceSignals = flattenAudienceSignals(ctxForSummaries);
@@ -2315,6 +2457,10 @@ async function buildCategoryLandingPayload(
       ideaCount: c._count.ideas,
       painPointCount: c._count.painPoints,
     })),
+    // Most-recent content/metadata timestamp in the whole subtree. SEO
+    // CollectionPage threads this to `dateModified` / `lastReviewed` via the
+    // frontend helper; values are ISO and converted to date-only at render.
+    latestModifiedAt,
     siblings: siblingsRaw,
     topIdeas,
     topPainPoints,
@@ -3084,6 +3230,104 @@ export async function invalidateCatalogTotals(): Promise<void> {
     await getRedis().del(TOTALS_CACHE_KEY);
   } catch (err) {
     console.error('Totals cache invalidate failed:', err);
+  }
+}
+
+// =====================================================================
+// Phase 6 — Cross-catalog top pain points (SEO landing surface on /ideas)
+// =====================================================================
+//
+// Returns the N highest-severity active pain points across the entire
+// catalog (any niche), with the source category + parent for linking back
+// to /ideas/[parentSlug]/[childSlug]. Powers the "Most In-Demand SaaS
+// Niches — {month}" table on the public /ideas index. Schema is already
+// indexed for severityScore DESC; mention count breaks ties.
+
+export interface CatalogTopPainPoint {
+  id: string;
+  slug: string;
+  title: string;
+  mentionCount: number;
+  severityScore: number;
+  opportunityLevel: string; // 'high' | 'medium' | 'low' in current data
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    parent: { name: string; slug: string } | null;
+  };
+}
+
+// Cache the top 25 pain points (the upper bound of the limit param) under a
+// single key and slice on read. Limit is bounded 1–25, so worst-case storage
+// is small and a single key trivializes invalidation. Mirrors the totals/
+// landing/tree Redis pattern: defensive try/catch around read+write, fall
+// through to DB on Redis errors.
+const TOPPAIN_CACHE_KEY = 'catalog:top-pain-points:v1';
+const TOPPAIN_CACHE_TTL = 300; // 5 min, matches /top-pain-points Cache-Control header
+const TOPPAIN_CACHE_FETCH_SIZE = 25;
+
+export async function getTopCatalogPainPoints(limit = 10): Promise<CatalogTopPainPoint[]> {
+  const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 25);
+  const redis = getRedis();
+
+  try {
+    const cached = await redis.get(TOPPAIN_CACHE_KEY);
+    if (cached) {
+      const all = JSON.parse(cached) as CatalogTopPainPoint[];
+      return all.slice(0, safeLimit);
+    }
+  } catch (err) {
+    console.error('top-pain cache read failed:', err);
+  }
+
+  const rows = await prisma.catalogPainPoint.findMany({
+    where: { isActive: true, slug: { not: null } },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      mentionCount: true,
+      severityScore: true,
+      opportunityLevel: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          parent: { select: { name: true, slug: true } },
+        },
+      },
+    },
+    orderBy: [{ severityScore: 'desc' }, { mentionCount: 'desc' }],
+    take: TOPPAIN_CACHE_FETCH_SIZE,
+  });
+  // `slug` is nullable in the schema but filtered above; assert it for the
+  // return type so consumers don't have to null-check.
+  const all: CatalogTopPainPoint[] = rows.map((r) => ({
+    id: r.id,
+    slug: r.slug as string,
+    title: r.title,
+    mentionCount: r.mentionCount,
+    severityScore: r.severityScore,
+    opportunityLevel: r.opportunityLevel,
+    category: r.category,
+  }));
+
+  try {
+    await redis.setex(TOPPAIN_CACHE_KEY, TOPPAIN_CACHE_TTL, JSON.stringify(all));
+  } catch (err) {
+    console.error('top-pain cache write failed:', err);
+  }
+
+  return all.slice(0, safeLimit);
+}
+
+export async function invalidateTopCatalogPainPoints(): Promise<void> {
+  try {
+    await getRedis().del(TOPPAIN_CACHE_KEY);
+  } catch (err) {
+    console.error('top-pain cache invalidate failed:', err);
   }
 }
 

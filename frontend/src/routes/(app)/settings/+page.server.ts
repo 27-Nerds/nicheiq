@@ -1,7 +1,5 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
+import { fetchBackend } from '$lib/backend';
 
 interface NotificationPreferences {
   emailEnabled: boolean;
@@ -37,15 +35,12 @@ export const load: PageServerLoad = async ({ parent }) => {
     };
   }
 
-  const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-    'X-User-ID': userId,
-  };
+  const headers = { 'X-User-ID': userId };
 
   // Fetch notification preferences and user profile in parallel
   const [prefsResponse, profileResponse] = await Promise.all([
-    fetch(`${BACKEND_URL}/api/users/${userId}/notification-preferences`, { headers }).catch(() => null),
-    fetch(`${BACKEND_URL}/api/users/${userId}`, { headers }).catch(() => null),
+    fetchBackend(`/api/users/${userId}/notification-preferences`, { headers }).catch(() => null),
+    fetchBackend(`/api/users/${userId}`, { headers }).catch(() => null),
   ]);
 
   let notificationPreferences = defaultPreferences;

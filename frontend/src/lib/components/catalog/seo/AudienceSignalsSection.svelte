@@ -52,10 +52,11 @@
   <div class="signals-list" class:compact>
     {#if hasTools}
       <div class="row half">
-        <div class="row-head">
-          <span class="row-label">Tools they use today</span>
+        <span class="row-label">
+          Tools they use today
+          <span class="row-sep" aria-hidden="true">·</span>
           <span class="row-count">{signals.currentTools.length}</span>
-        </div>
+        </span>
         <div class="chips">
           {#each signals.currentTools as t}
             <Chip label={t} />
@@ -65,10 +66,11 @@
     {/if}
     {#if hasCommunityHubs}
       <div class="row half">
-        <div class="row-head">
-          <span class="row-label">Where they gather</span>
+        <span class="row-label">
+          Where they gather
+          <span class="row-sep" aria-hidden="true">·</span>
           <span class="row-count">{signals.communityHubs.length}</span>
-        </div>
+        </span>
         <div class="chips">
           {#each signals.communityHubs as c}
             <Chip label={c} />
@@ -78,10 +80,11 @@
     {/if}
     {#if hasVocabulary}
       <div class="row half">
-        <div class="row-head">
-          <span class="row-label">How they describe it</span>
+        <span class="row-label">
+          How they describe it
+          <span class="row-sep" aria-hidden="true">·</span>
           <span class="row-count">{signals.vocabulary.length}</span>
-        </div>
+        </span>
         <div class="chips vocab">
           {#each signals.vocabulary as v}
             <Chip label={v} mono />
@@ -91,10 +94,11 @@
     {/if}
     {#if hasRecommendedChannels}
       <div class="row half">
-        <div class="row-head">
-          <span class="row-label">Where to reach them</span>
+        <span class="row-label">
+          Where to reach them
+          <span class="row-sep" aria-hidden="true">·</span>
           <span class="row-count">{signals.recommendedChannels.length}</span>
-        </div>
+        </span>
         <div class="chips">
           {#each signals.recommendedChannels as c}
             <Chip label={c} />
@@ -104,10 +108,11 @@
     {/if}
     {#if hasFrustrations}
       <div class="row full">
-        <div class="row-head">
-          <span class="row-label">Frustrations with current tools</span>
+        <span class="row-label">
+          Frustrations with current tools
+          <span class="row-sep" aria-hidden="true">·</span>
           <span class="row-count">{signals.frustrations.length}</span>
-        </div>
+        </span>
         <ul class="bullets">
           {#each signals.frustrations as f}
             <li>{f}</li>
@@ -117,10 +122,11 @@
     {/if}
     {#if hasMessagingFrameworks}
       <div class="row full">
-        <div class="row-head">
-          <span class="row-label">Messaging that resonates</span>
+        <span class="row-label">
+          Messaging that resonates
+          <span class="row-sep" aria-hidden="true">·</span>
           <span class="row-count">{signals.messagingFrameworks.length}</span>
-        </div>
+        </span>
         <ul class="bullets">
           {#each signals.messagingFrameworks as m}
             <li>{m}</li>
@@ -130,17 +136,13 @@
     {/if}
     {#if hasContentPreferences}
       <div class="row full">
-        <div class="row-head">
-          <span class="row-label">Content they value</span>
-        </div>
+        <span class="row-label">Content they value</span>
         <p class="prose">{signals.contentPreferences}</p>
       </div>
     {/if}
     {#if hasEarlyAdopterTactics}
       <div class="row full">
-        <div class="row-head">
-          <span class="row-label">Early-adopter tactics</span>
-        </div>
+        <span class="row-label">Early-adopter tactics</span>
         <p class="prose">{signals.earlyAdopterTactics}</p>
       </div>
     {/if}
@@ -175,13 +177,8 @@
   .row.full {
     grid-column: 1 / -1;
   }
-  .row-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-  }
   .row-label {
+    display: block;
     font-family: var(--font-mono);
     font-size: 10px;
     color: var(--color-accent-muted);
@@ -189,10 +186,12 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
+  .row-sep {
+    opacity: 0.55;
+    margin: 0 4px;
+  }
   .row-count {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     font-feature-settings: "tnum" 1;
   }
   .chips {

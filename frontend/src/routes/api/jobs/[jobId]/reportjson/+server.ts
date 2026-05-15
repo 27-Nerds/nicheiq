@@ -1,8 +1,7 @@
 import { error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * GET /api/jobs/:jobId/reportjson - Download report JSON
@@ -14,9 +13,8 @@ export const GET: RequestHandler = async ({ params, locals }) => {
     throw error(401, 'Unauthorized');
   }
 
-  const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}/reportjson`, {
+  const response = await fetchBackend(`/api/jobs/${params.jobId}/reportjson`, {
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });

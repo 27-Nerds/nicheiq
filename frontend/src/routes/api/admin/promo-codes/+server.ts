@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const GET: RequestHandler = async ({ locals, url }) => {
   const session = await locals.auth();
@@ -16,9 +15,8 @@ export const GET: RequestHandler = async ({ locals, url }) => {
   const page = url.searchParams.get('page') || '1';
   const limit = url.searchParams.get('limit') || '20';
 
-  const response = await fetch(`${BACKEND_URL}/api/admin/promo-codes?page=${page}&limit=${limit}`, {
+  const response = await fetchBackend(`/api/admin/promo-codes?page=${page}&limit=${limit}`, {
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
       'X-User-Role': session.user.role,
     },
@@ -39,11 +37,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
   const body = await request.json();
 
-  const response = await fetch(`${BACKEND_URL}/api/admin/promo-codes`, {
+  const response = await fetchBackend(`/api/admin/promo-codes`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
       'X-User-Role': session.user.role,
     },

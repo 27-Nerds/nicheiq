@@ -1,8 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import type { TokenPackage } from '$lib/types/billing';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: PageServerLoad = async () => {
   let reportsDelivered: number | null = null;
@@ -11,13 +9,9 @@ export const load: PageServerLoad = async () => {
 
   try {
     const [statsRes, settingsRes, packagesRes] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/stats/public`, {
-        headers: { 'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '' },
-      }),
-      fetch(`${BACKEND_URL}/api/settings/sample-report-url`, {
-        headers: { 'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '' },
-      }),
-      fetch(`${BACKEND_URL}/api/billing/packages`, {
+      fetchBackend('/api/stats/public'),
+      fetchBackend('/api/settings/sample-report-url'),
+      fetchBackend('/api/billing/packages', {
         signal: AbortSignal.timeout(3000),
       }).catch(() => null),
     ]);

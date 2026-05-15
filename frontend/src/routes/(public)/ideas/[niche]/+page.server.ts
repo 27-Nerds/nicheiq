@@ -1,6 +1,6 @@
 import type { PageServerLoad } from './$types';
 import { error } from '@sveltejs/kit';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import {
   categoryTitle,
   categoryDescription,
@@ -9,18 +9,13 @@ import {
   buildCategoryJsonLd,
   buildProgrammaticJsonLd,
   categoryCanonical,
+  parentCategoryDescription,
 } from '$lib/seo/catalogSeo';
 import { buildMeta } from '$lib/seo/meta';
+import { LAUNCH_GATE_ON } from '$lib/seo/launchGate';
 import type { CategoryLandingPayload, IdeaPreview } from '$lib/types/catalog-landing';
 import type { CatalogCollectionSummary } from '$lib/types/publicCatalog';
 import { findProgrammaticIdeaPage } from '$lib/data/programmaticIdeaPages';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
-const LAUNCH_GATE_ON = (env.SEO_LAUNCH_GATE ?? 'true') !== 'false';
-
-const HEADERS = (): Record<string, string> => ({
-  'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-});
 
 async function fetchLanding(slug: string): Promise<
   | { kind: 'ok'; payload: CategoryLandingPayload }
@@ -29,9 +24,8 @@ async function fetchLanding(slug: string): Promise<
   | { kind: 'error' }
 > {
   try {
-    const res = await fetch(
-      `${BACKEND_URL}/api/public/catalog/landing/${encodeURIComponent(slug)}`,
-      { headers: HEADERS() },
+    const res = await fetchBackend(
+      `/api/public/catalog/landing/${encodeURIComponent(slug)}`,
     );
     if (res.status === 200) return { kind: 'ok', payload: await res.json() };
     if (res.status === 404) return { kind: 'missing' };
@@ -45,9 +39,8 @@ async function fetchLanding(slug: string): Promise<
 
 async function fetchIdeaBySlug(slug: string): Promise<IdeaPreview | null> {
   try {
-    const res = await fetch(
-      `${BACKEND_URL}/api/public/catalog/idea-by-slug/${encodeURIComponent(slug)}`,
-      { headers: HEADERS() },
+    const res = await fetchBackend(
+      `/api/public/catalog/idea-by-slug/${encodeURIComponent(slug)}`,
     );
     if (!res.ok) return null;
     return (await res.json()) as IdeaPreview;
@@ -62,9 +55,7 @@ async function fetchIdeaBySlug(slug: string): Promise<IdeaPreview | null> {
 // category page renders normally.
 async function fetchCollections(): Promise<CatalogCollectionSummary[]> {
   try {
-    const res = await fetch(`${BACKEND_URL}/api/public/catalog/collections`, {
-      headers: HEADERS(),
-    });
+    const res = await fetchBackend('/api/public/catalog/collections');
     if (!res.ok) return [];
     const data = await res.json();
     return (data?.collections ?? []) as CatalogCollectionSummary[];
@@ -106,7 +97,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
   if (landing.kind === 'ok') {
     const { payload } = landing;
     const canonical = categoryCanonical(payload.category.slug, null, url.searchParams);
-    const description = categoryDescription(payload.category, payload.totalIdeas, payload.totalPainPoints);
+    const description = parentCategoryDescription(payload);
 
     const meta = buildMeta({
       title: categoryTitle(payload.category, payload.parent),

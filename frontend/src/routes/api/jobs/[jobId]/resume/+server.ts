@@ -1,8 +1,7 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 /**
  * POST /api/jobs/:jobId/resume - Resume a failed job from checkpoint
@@ -15,10 +14,9 @@ export const POST: RequestHandler = async ({ params, locals }) => {
     throw error(401, 'Unauthorized');
   }
 
-  const response = await fetch(`${BACKEND_URL}/api/jobs/${params.jobId}/resume`, {
+  const response = await fetchBackend(`/api/jobs/${params.jobId}/resume`, {
     method: 'POST',
     headers: {
-      'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
       'X-User-ID': session.user.id,
     },
   });

@@ -341,6 +341,11 @@ export interface CategoryLandingPayload {
   // route renders an attribution link to it. Null when no research exists or
   // when the recent item belongs directly to the parent category.
   researchSourceSubNiche: { slug: string; name: string } | null;
+  /** Phase 6 — most-recent content/metadata timestamp across category + active
+   *  children + active ideas + active pain-points in the subtree. Powers
+   *  SEO CollectionPage `dateModified` / `lastReviewed`. ISO 8601;
+   *  truncated to `YYYY-MM-DD` at JSON-LD render. */
+  latestModifiedAt: string;
 }
 
 export interface FaqEntry {

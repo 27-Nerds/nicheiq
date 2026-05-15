@@ -1,7 +1,6 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 const TOKEN_COST_KEYS = [
   'token_cost_discovery',
@@ -25,20 +24,19 @@ export const load: PageServerLoad = async ({ parent }) => {
   const { session } = await parent();
 
   const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
     'X-User-ID': session.user.id,
     'X-User-Role': session.user.role || '',
   };
 
   try {
     const [sampleReportRes, registrationCreditsRes, ...responses] = await Promise.all([
-      fetch(`${BACKEND_URL}/api/admin/settings/sample_report_url`, { headers }),
-      fetch(`${BACKEND_URL}/api/admin/settings/registration_credits`, { headers }),
+      fetchBackend(`/api/admin/settings/sample_report_url`, { headers }),
+      fetchBackend(`/api/admin/settings/registration_credits`, { headers }),
       ...TOKEN_COST_KEYS.map((key) =>
-        fetch(`${BACKEND_URL}/api/admin/settings/${key}`, { headers }),
+        fetchBackend(`/api/admin/settings/${key}`, { headers }),
       ),
       ...CTA_KEYS.map((key) =>
-        fetch(`${BACKEND_URL}/api/admin/settings/${key}`, { headers }),
+        fetchBackend(`/api/admin/settings/${key}`, { headers }),
       ),
     ]);
 

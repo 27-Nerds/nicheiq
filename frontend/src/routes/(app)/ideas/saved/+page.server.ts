@@ -1,13 +1,11 @@
 import type { PageServerLoad } from './$types';
-import { env } from '$env/dynamic/private';
+import { fetchBackend } from '$lib/backend';
 import type {
   SavedIdeaItem,
   SavedPainPointItem,
   SavedListResponse,
   SavedCounts,
 } from '$lib/types/saved';
-
-const BACKEND_URL = env.BACKEND_URL || 'http://localhost:3001';
 
 export const load: PageServerLoad = async ({ url, parent, setHeaders }) => {
   // Saved data is per-user — never CDN-cacheable.
@@ -29,10 +27,7 @@ export const load: PageServerLoad = async ({ url, parent, setHeaders }) => {
     };
   }
 
-  const headers = {
-    'X-Internal-Service': env.INTERNAL_SERVICE_SECRET || '',
-    'X-User-ID': userId,
-  };
+  const headers = { 'X-User-ID': userId };
 
   const hasNotes = url.searchParams.get('hasNotes') === '1';
   const ideasQs = new URLSearchParams({ limit: '50' });
@@ -44,7 +39,7 @@ export const load: PageServerLoad = async ({ url, parent, setHeaders }) => {
 
   async function fetchJson<T>(path: string, fallback: T): Promise<T> {
     try {
-      const res = await fetch(`${BACKEND_URL}${path}`, { headers });
+      const res = await fetchBackend(path, { headers });
       if (res.ok) return (await res.json()) as T;
     } catch (err) {
       console.error(`saves fetch failed: ${path}`, err);

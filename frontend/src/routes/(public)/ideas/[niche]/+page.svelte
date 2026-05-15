@@ -9,14 +9,16 @@
     AudienceSection,
     PainPointsByTheme,
     PainPointRankTable,
-    SubNicheCell,
+    SubNicheDirectory,
     IdeaCardV2,
     AllIdeasSection,
     BuildCTA,
     CollectionTeaser,
     CategoryFAQ,
+    NicheSeoSummary,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
+  import { categoryLede } from "$lib/seo/catalogSeo";
 
   let { data } = $props();
 
@@ -53,6 +55,13 @@
   //   4. Engagement / Sources mined — content scale, accent (orange) tone
   // GO/NO-GO verdicts aren't computed at this stage, so the GO tile is
   // intentionally absent — Sub-niches replaces its slot.
+  // Parent-niche hero lede — totals-rich template wrapping the admin
+  // `category.description`. Computed alongside `heroStats` so both
+  // derivations share the same `data.kind === 'category'` gate.
+  const parentLede = $derived.by(() =>
+    data.kind === "category" ? categoryLede(data.payload) : null,
+  );
+
   const heroStats = $derived.by(() => {
     if (data.kind !== "category") return [];
     const p = data.payload;
@@ -157,6 +166,22 @@
   const num3 = $derived(nextNum(num2, hasThemesSection));
   const num4 = $derived(nextNum(num3, hasSubNiches));
   const num5 = $derived(nextNum(num4, hasAudienceSegments));
+
+  // §04 sub-niche directory split — researched (idea+pain > 0) vs atlas (the
+  // rest). Computed here so the section meta and the SubNicheDirectory's
+  // internal split stay derived from the same predicate; route owns the meta
+  // string, component owns the render. Returns zero counts on non-category
+  // routes so the consuming markup is gated by `hasSubNiches`.
+  const subNicheDirectoryCounts = $derived.by(() => {
+    if (data.kind !== "category") return { researched: 0, atlas: 0 };
+    const researched = data.payload.children.filter(
+      (c) => c.ideaCount + c.painPointCount > 0,
+    ).length;
+    return {
+      researched,
+      atlas: data.payload.children.length - researched,
+    };
+  });
 </script>
 
 <SeoHead {...data.meta} />
@@ -168,7 +193,7 @@
   <CategoryHeroV2
     name={data.payload.category.name}
     slug={data.payload.category.slug}
-    description={data.payload.category.description}
+    description={parentLede}
     parentChip={data.payload.parent}
     growthPercent={data.payload.growthPercent}
     stats={heroStats}
@@ -176,18 +201,15 @@
     kind="parent"
   />
 
-  <!-- Section: All ideas (filterable, with sub-niche chips) — lead with the
-       concrete artifact a visitor came to see. -->
+  <!-- Section: All ideas — lead with the concrete artifact a visitor came to
+       see. Top/All scope toggle remains; sub-niche navigation lives in §04. -->
   {#if hasIdeasSection}
     <div id="all-ideas">
       <SectionDivider
         num={num1}
         label={`Ideas in ${data.payload.category.name}`}
       />
-      <AllIdeasSection
-        ideas={data.payload.topIdeas}
-        subNiches={data.payload.children}
-      />
+      <AllIdeasSection ideas={data.payload.topIdeas} />
     </div>
   {/if}
 
@@ -225,22 +247,23 @@
     />
   {/if}
 
-  <!-- Section: Sub-niches -->
+  <!-- Section: Sub-niches — two-tier directory. Researched sub-niches get
+       rich cards; placeholders fall into the dot-separated atlas list. -->
   {#if hasSubNiches}
     <SectionDivider
       num={num4}
       label="Sub-niches"
-      metaText={`${data.payload.children.length} categories`}
+      metaText={subNicheDirectoryCounts.researched > 0 &&
+      subNicheDirectoryCounts.atlas > 0
+        ? `${subNicheDirectoryCounts.researched} researched · ${subNicheDirectoryCounts.atlas} mapped`
+        : subNicheDirectoryCounts.researched > 0
+          ? `${subNicheDirectoryCounts.researched} researched`
+          : `${subNicheDirectoryCounts.atlas} mapped`}
     />
-    <div class="subniche-grid">
-      {#each data.payload.children as sub}
-        <SubNicheCell
-          name={sub.name}
-          href={categoryPath({ slug: sub.slug, parentSlug: data.payload.category.slug })}
-          count={sub.ideaCount}
-        />
-      {/each}
-    </div>
+    <SubNicheDirectory
+      subNiches={data.payload.children}
+      parentSlug={data.payload.category.slug}
+    />
   {/if}
 
   <!-- Featured collection teaser — only when current category appears in any
@@ -278,6 +301,18 @@
     ctaLabel="Run your own research"
     {ctaHref}
   />
+
+  <NicheSeoSummary
+    name={data.payload.category.name}
+    kind="niche"
+    sourceCommunities={data.payload.sourceCommunities}
+    contentItemsMined={data.payload.contentItemsMined}
+    topPainPoints={data.payload.topPainPoints}
+    totalPainPoints={data.payload.totalPainPoints}
+    themes={data.payload.themes}
+    qualitySignals={data.payload.qualitySignals}
+    latestModifiedAt={data.payload.latestModifiedAt}
+  />
 {:else}
   <!-- Programmatic SEO landing-page variant (existing behavior, lighter render). -->
   <CategoryHeroV2
@@ -311,15 +346,6 @@
 {/if}
 
 <style>
-  .subniche-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-    gap: 1px;
-    background: var(--color-border);
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    overflow: hidden;
-  }
   .ideas-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));

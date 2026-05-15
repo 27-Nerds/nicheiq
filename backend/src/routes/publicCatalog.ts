@@ -9,6 +9,7 @@ import {
   getIdeaSitemapEntries,
   getPainPointSitemapEntries,
   getPublicCategoryTree,
+  getTopCatalogPainPoints,
   resolveLegacyCategory,
   resolveLegacyIdea,
   resolveLegacyPainPoint,
@@ -184,6 +185,27 @@ publicCatalogRouter.get(
     } catch (error) {
       console.error('Failed to get catalog totals:', error);
       res.status(500).json({ error: 'Failed to get totals' });
+    }
+  },
+);
+
+// Phase 6 — cross-catalog top pain points for the /ideas SEO landing surface.
+// Returns at most `limit` (default 10, clamped 1-25) of the highest-severity
+// active pain points across every niche, with category + parent for linking
+// back to /ideas/[parentSlug]/[childSlug].
+publicCatalogRouter.get(
+  '/top-pain-points',
+  catalogCrawlLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const raw = Number.parseInt(String(req.query.limit ?? '10'), 10);
+      const limit = Number.isFinite(raw) ? raw : 10;
+      const painPoints = await getTopCatalogPainPoints(limit);
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(painPoints);
+    } catch (error) {
+      console.error('Failed to get top catalog pain points:', error);
+      res.status(500).json({ error: 'Failed to get top pain points' });
     }
   },
 );
