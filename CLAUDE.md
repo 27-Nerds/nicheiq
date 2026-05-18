@@ -79,6 +79,35 @@ After implementing changes in Svelte files, check for Svelte 5 compatibility war
 
 Use an agent to trace how all score/metric values are calculated in the backend, then return a summary mapping each metric name to its calculation logic and source file before I start adding tooltips.
 
+## Tool Preferences: Prefer Serena MCP
+
+When working on code in this repo, prefer Serena MCP tools over generic file reads / grep whenever they apply. Serena's semantic tools are cheaper and more precise than reading whole files or running text searches.
+
+**Before starting any coding task**, call `mcp__plugin_serena_serena__initial_instructions` once to load Serena's manual.
+
+**Use Serena instead of built-ins when:**
+
+- Locating a symbol → `mcp__plugin_serena_serena__find_symbol` (not Grep)
+- Seeing a file's structure → `mcp__plugin_serena_serena__get_symbols_overview` (not full Read)
+- Finding callers/usages → `mcp__plugin_serena_serena__find_referencing_symbols` (not Grep)
+- Finding the definition of something referenced → `mcp__plugin_serena_serena__find_declaration`
+- Finding implementations of an interface/abstract → `mcp__plugin_serena_serena__find_implementations`
+- Editing a single function/class body → `mcp__plugin_serena_serena__replace_symbol_body`
+- Inserting code adjacent to a symbol → `mcp__plugin_serena_serena__insert_before_symbol` / `insert_after_symbol`
+- Renaming a symbol across the codebase → `mcp__plugin_serena_serena__rename_symbol`
+- Diagnostics for a file → `mcp__plugin_serena_serena__get_diagnostics_for_file`
+- Listing a directory → `mcp__plugin_serena_serena__list_dir`
+- Pattern search across code → `mcp__plugin_serena_serena__search_for_pattern`
+
+**Fall back to Read/Edit/Grep/Write only when Serena can't do the job:**
+
+- Non-code files (Markdown, YAML, JSON, config, docs)
+- Files outside the indexed project
+- Regex search across mixed text (logs, free-form prose)
+- Whole-file rewrites where the symbol-level API would be awkward
+
+If you're unsure whether Serena supports something, try the Serena tool first — falling back is cheap; reading a 40k-line file unnecessarily is not.
+
 ## Project Overview
 
 NicheIQ is an AI-powered market research platform that transforms social media discussions into validated SaaS opportunities.

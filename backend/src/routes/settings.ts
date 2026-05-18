@@ -23,6 +23,7 @@ const CTA_KEYS = [
   'cta_final_secondary',
   'cta_sample_button',
   'cta_view_sample_link',
+  'cta_show_testimonials',
 ] as const;
 
 settingsRouter.get('/cta-texts', requireInternalService, async (_req, res: Response) => {

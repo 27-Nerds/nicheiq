@@ -4,6 +4,7 @@
   import { page } from "$app/state";
   import { Mail, Lock, User, AlertCircle } from "lucide-svelte";
   import AuthPageLayout from "$lib/components/ui/AuthPageLayout.svelte";
+  import AuthModeTabs from "$lib/components/ui/AuthModeTabs.svelte";
   import OAuthButtons from "$lib/components/ui/OAuthButtons.svelte";
   import FormField from "$lib/components/ui/FormField.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
@@ -78,6 +79,8 @@
   title="Create your account"
   subtitle="Start discovering SaaS opportunities today"
 >
+  <AuthModeTabs active="register" />
+
   <OAuthButtons onOAuthLogin={handleOAuthLogin} mode="register" {availableProviders} />
 
   <form onsubmit={handleRegister} class="space-y-4">
@@ -131,10 +134,4 @@
     <SubmitButton loading={loading} loadingText="" label="Create Account" class="btn-primary w-full justify-center" />
   </form>
 
-  <p class="mt-6 text-center text-sm text-text-muted">
-    Already have an account?
-    <a href="/login" class="text-accent hover:underline font-medium">
-      Sign in
-    </a>
-  </p>
 </AuthPageLayout>

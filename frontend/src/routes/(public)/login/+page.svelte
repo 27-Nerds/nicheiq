@@ -3,6 +3,7 @@
   import { page } from "$app/state";
   import { Mail, Lock, AlertCircle } from "lucide-svelte";
   import AuthPageLayout from "$lib/components/ui/AuthPageLayout.svelte";
+  import AuthModeTabs from "$lib/components/ui/AuthModeTabs.svelte";
   import OAuthButtons from "$lib/components/ui/OAuthButtons.svelte";
   import FormField from "$lib/components/ui/FormField.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
@@ -56,6 +57,8 @@
   title="Welcome back"
   subtitle="Sign in to your account to continue"
 >
+  <AuthModeTabs active="login" />
+
   <OAuthButtons onOAuthLogin={handleOAuthLogin} mode="login" {availableProviders} />
 
   <form onsubmit={handleCredentialsLogin} class="space-y-4">
@@ -90,10 +93,4 @@
     <SubmitButton loading={loading} loadingText="" label="Sign In" class="btn-primary w-full justify-center" />
   </form>
 
-  <p class="mt-6 text-center text-sm text-text-muted">
-    Don't have an account?
-    <a href="/register" class="text-accent hover:underline font-medium">
-      Sign up
-    </a>
-  </p>
 </AuthPageLayout>
