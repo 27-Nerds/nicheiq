@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { page } from "$app/state";
-  import { invalidateAll } from "$app/navigation";
+  import { goto, invalidateAll } from "$app/navigation";
   import {
     subscribeToProgress,
     isTerminalStatus,
@@ -25,13 +25,13 @@
     Share2,
     BarChart3,
   } from "lucide-svelte";
-  import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import SelectedSolutionsSummary from "$lib/components/SelectedSolutionsSummary.svelte";
   import DeliverableRow from "$lib/components/job/DeliverableRow.svelte";
+  import JobHeroAside from "$lib/components/job/JobHeroAside.svelte";
 
   // Preview / Dashboard components
   import PhaseNav from "$lib/components/nav/PhaseNav.svelte";
@@ -558,6 +558,28 @@
   // Report-ready reveal: trigger once when job transitions to COMPLETED
   const isCompleted = $derived(job?.status === 'COMPLETED');
 
+  // Aside state for the editorial hero. Maps the live job status into one of
+  // the JobHeroAside variants. Defaults to "running" while data is loading.
+  const asideState = $derived<
+    "running" | "queued" | "awaiting" | "regenerating" | "completed" | "failed" | "cancelled"
+  >(
+    !job
+      ? "running"
+      : job.status === "COMPLETED"
+        ? "completed"
+        : job.status === "FAILED"
+          ? "failed"
+          : job.status === "CANCELLED"
+            ? "cancelled"
+            : job.status === "AWAITING_SELECTION"
+              ? "awaiting"
+              : job.status === "REGENERATING" || isRegenQueued
+                ? "regenerating"
+                : job.status === "QUEUED" || job.status === "PENDING"
+                  ? "queued"
+                  : "running",
+  );
+
   const reportAsset = $derived((job?.assets ?? []).find((a) => a.type === "REPORT_JSON"));
   const landingAsset = $derived((job?.assets ?? []).find((a) => a.type === "LANDING_PAGE"));
 
@@ -638,50 +660,69 @@
         </div>
         <h2 class="mt-4 text-xl font-semibold text-text-primary">Error</h2>
         <p class="mt-2 text-text-secondary">{error}</p>
-        <Button onclick={() => (showNewResearchModal.open = true)} label="Start New Research" class="mt-6 btn-primary inline-block" />
+        <Button onclick={() => goto("/new")} label="Start New Research" class="mt-6 btn-primary inline-block" />
       </div>
     {:else if job}
-      <!-- ═══ HEADER ═══ -->
-      <PageHeader
-        icon={Telescope}
-        breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-        breadcrumbCurrent={titleCase(nicheName) || 'Research'}
-        title={titleCase(nicheName) || 'Research Progress'}
-      >
-        {#snippet metadata()}
-          {#if job && nicheName !== job.niche}
-            <p class="mt-1 text-sm text-text-muted truncate" title={job.niche}>
-              {job.niche.length > 100 ? job.niche.substring(0, 100) + '...' : job.niche}
-            </p>
-          {/if}
-          {#if cancelError}
-            <div class="mt-2 text-sm text-error">{cancelError}</div>
-          {/if}
-        {/snippet}
-        {#snippet actions()}
-          <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
-            {#if isCompleted && reportAsset}
-              <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
-            {/if}
-            {#if isSelectionPhase && displaySolutions.length > 0}
-              <button
-                onclick={() => (discoveryShareOpen = true)}
-                class="share-discovery-btn"
-                aria-label="Share discovery"
-              >
-                <Share2 class="w-3.5 h-3.5" />
-                <span>Share</span>
-              </button>
-            {/if}
-            <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
-              {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
-                <Loader2 class="w-3.5 h-3.5 animate-spin" />
+      <!-- ═══ EDITORIAL HERO (1fr | 320px grid) ═══ -->
+      <div class="job-hero-grid">
+        <div class="job-hero-main">
+          <PageHeader
+            icon={Telescope}
+            breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
+            breadcrumbCurrent={titleCase(nicheName) || 'Research'}
+            title={titleCase(nicheName) || 'Research Progress'}
+          >
+            {#snippet metadata()}
+              {#if job && nicheName !== job.niche}
+                <p class="mt-1 text-sm text-text-muted truncate" title={job.niche}>
+                  {job.niche.length > 100 ? job.niche.substring(0, 100) + '...' : job.niche}
+                </p>
               {/if}
-              {getStatusLabel(isRegenQueued ? 'REGENERATING' : job.status)}
-            </Badge>
-          </div>
-        {/snippet}
-      </PageHeader>
+              {#if cancelError}
+                <div class="mt-2 text-sm text-error">{cancelError}</div>
+              {/if}
+            {/snippet}
+            {#snippet actions()}
+              <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                {#if isCompleted && reportAsset}
+                  <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Report" class="btn-primary btn-sm" />
+                {/if}
+                {#if isSelectionPhase && displaySolutions.length > 0}
+                  <button
+                    onclick={() => (discoveryShareOpen = true)}
+                    class="share-discovery-btn"
+                    aria-label="Share discovery"
+                  >
+                    <Share2 class="w-3.5 h-3.5" />
+                    <span>Share</span>
+                  </button>
+                {/if}
+                <Badge variant={getStatusVariant(isRegenQueued ? 'REGENERATING' : job.status)}>
+                  {#if ['RUNNING', 'RUNNING_PHASE2', 'REGENERATING'].includes(job.status) || isRegenQueued}
+                    <Loader2 class="w-3.5 h-3.5 animate-spin" />
+                  {/if}
+                  {getStatusLabel(isRegenQueued ? 'REGENERATING' : job.status)}
+                </Badge>
+              </div>
+            {/snippet}
+          </PageHeader>
+        </div>
+        <aside class="job-hero-aside">
+          <JobHeroAside
+            state={asideState}
+            progressPercent={job.progressPercent}
+            stagesCompleted={job.stagesCompleted ?? 0}
+            totalStages={job.totalStages ?? 0}
+            startedAt={job.startedAt}
+            summary={reportSummary}
+            errorDetails={job.errorDetails}
+            errorMessage={job.errorMessage}
+            stopReason={job.stopReason}
+            stopReasonDetails={job.stopReasonDetails}
+            creditRefunded={job.creditRefunded}
+          />
+        </aside>
+      </div>
 
       <!-- ═══ PROGRESS STEPPER ═══ -->
       <ProgressStepper
@@ -701,7 +742,7 @@
             <div class="flex-1">
               <h3 class="text-sm font-medium text-text-secondary">Research Cancelled</h3>
               <p class="mt-1 text-sm text-text-muted">This research was cancelled. Your credits have been refunded.</p>
-              <button onclick={() => (showNewResearchModal.open = true)} class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
+              <button onclick={() => goto(`/new?fromJob=${job.id}&prefilled=${encodeURIComponent(job.niche)}`)} class="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:text-accent-hover transition-colors">
                 Start new research <ArrowRight class="w-4 h-4" />
               </button>
             </div>
@@ -1181,6 +1222,34 @@
     .job-page-content {
       padding: 1rem;
       width: 100%;
+    }
+  }
+
+  /* ═══ Editorial hero (1fr | 320px) ═══
+     Hero is constrained to .job-page-content's width (56rem). The flex
+     page-shell makes a viewport-based break-out unsafe (it would push the
+     title behind the PhaseNav sidebar on wide viewports), so we keep the
+     grid in-flow. Aside is sticky alongside the body below it. */
+  .job-hero-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .job-hero-main {
+    min-width: 0;
+  }
+  .job-hero-aside {
+    position: sticky;
+    top: 5rem;
+    align-self: start;
+  }
+  @media (max-width: 1023px) {
+    .job-hero-grid {
+      grid-template-columns: 1fr;
+    }
+    .job-hero-aside {
+      position: static;
     }
   }
 

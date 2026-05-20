@@ -62,6 +62,8 @@ export interface SolutionPreview {
 
 export interface ReportSummary {
   opportunity_score: number | null;
+  market_fit_score: number | null;
+  technical_feasibility_score: number | null;
   verdict: string | null;
   risk_level: string | null;
   primary_concern: string | null;

@@ -5,29 +5,26 @@
     Gift,
     ArrowUpRight,
     ArrowDownRight,
-    ArrowRight,
     Clock,
-    Check,
     CheckCircle,
-    Plus,
-    AlertCircle,
     RefreshCw,
-    Loader2,
     History,
     Wrench,
-    CreditCard,
     ShoppingCart,
   } from "lucide-svelte";
-  import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
   import InlineFeedback from "$lib/components/ui/InlineFeedback.svelte";
   import { CORE_STAGES, ADDON_STAGES } from "$lib/config/billable-stages";
   import { DEFAULT_STAGE_COSTS, computeFullResearchCost } from "$lib/types/job";
   import type { StageCosts } from "$lib/types/job";
   import AlertBanner from "$lib/components/ui/AlertBanner.svelte";
-  import PageHeader from "$lib/components/ui/PageHeader.svelte";
-  import FeatureCard from "$lib/components/ui/FeatureCard.svelte";
+  import EditorialHero from "$lib/components/ui/EditorialHero.svelte";
+  import type { KickerSegment } from "$lib/components/ui/EditorialHero.svelte";
+  import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import PricingCard from "$lib/components/ui/PricingCard.svelte";
+  import StatStrip, {
+    type Stat,
+  } from "$lib/components/catalog/seo/StatStrip.svelte";
   import type { TokenPackage, FeatureItem } from "$lib/types/billing";
 
   interface Transaction {
@@ -53,6 +50,38 @@
   const canceled = $derived(data.canceled as boolean);
   const stageCosts = $derived((data.stageCosts as StageCosts) ?? DEFAULT_STAGE_COSTS);
   const fullResearchCost = $derived(computeFullResearchCost(stageCosts));
+
+  const lastPurchaseAt = $derived(
+    billing.recentTransactions.find(
+      (t) => t.type === "PURCHASE" || t.type === "purchase",
+    )?.createdAt ?? null,
+  );
+  const daysSinceLastPurchase = $derived(
+    lastPurchaseAt
+      ? Math.floor(
+          (Date.now() - new Date(lastPurchaseAt).getTime()) / 86_400_000,
+        )
+      : null,
+  );
+  const heroKicker = $derived<KickerSegment[]>([
+    { text: "BILLING", tone: "accent" },
+    { text: String(billing.balance), tone: "num" },
+    { text: "credits", tone: "muted" },
+  ]);
+  const balanceHeroStats = $derived<Stat[]>([
+    {
+      value: billing.balance,
+      label: "Available",
+      tone: billing.balance === 0 ? "amber" : "default",
+    },
+    { value: billing.totalPurchased, label: "Earned", tone: "go" },
+    { value: billing.totalUsed, label: "Used", tone: "amber" },
+    {
+      value: daysSinceLastPurchase ?? "—",
+      label:
+        daysSinceLastPurchase == null ? "No purchases" : "Days since purchase",
+    },
+  ]);
 
   // Promo code state
   let promoCode = $state("");
@@ -218,45 +247,17 @@
       <RefreshCw class="w-4 h-4 {isRefreshing ? 'animate-spin' : ''}" />
     </button>
   {/snippet}
-  <PageHeader
-    icon={CreditCard}
-    breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-    breadcrumbCurrent="Billing"
-    title="Research Credits"
-    subtitle="Manage your credits and view transaction history"
+  <EditorialHero
+    kicker={heroKicker}
+    title="Research credits"
+    lede="Manage your credits and view transaction history"
     actions={refreshButton}
   />
 
-  <!-- Balance Card -->
-  <FeatureCard icon={Coins} class="mb-8">
-    <div>
-      <p
-        class="text-xs font-mono uppercase tracking-wider text-text-muted mb-2"
-      >
-        Available Credits
-      </p>
-      <div class="flex items-baseline gap-2">
-        <span class="text-5xl font-display font-bold text-text-primary tabular-nums"
-          >{billing.balance}</span
-        >
-        <span class="text-lg text-text-muted">credits</span>
-      </div>
-      <div class="flex items-center gap-4 mt-3 text-sm">
-        <span class="text-text-muted">
-          <span class="font-display font-bold text-success tabular-nums"
-            >{billing.totalPurchased}</span
-          >
-          <span class="text-xs uppercase tracking-wide">earned</span>
-        </span>
-        <span class="text-text-muted">
-          <span class="font-display font-bold text-warning tabular-nums"
-            >{billing.totalUsed}</span
-          >
-          <span class="text-xs uppercase tracking-wide">used</span>
-        </span>
-      </div>
-    </div>
-  </FeatureCard>
+  <!-- Balance Hero -->
+  <div class="mb-8">
+    <StatStrip stats={balanceHeroStats} emphasis />
+  </div>
 
   <!-- Success Banner -->
   {#if success}
@@ -296,7 +297,7 @@
   <!-- Buy Credits Section -->
   {#if packages.length > 0}
     <div class="mb-8">
-      <CategoryBar title="Buy Credits" color="accent" margin="mb-4" />
+      <SectionDivider num={1} label="Buy credits" />
 
       {#if checkoutError}
         <InlineFeedback message={checkoutError} variant="error" class="mb-4" />
@@ -373,7 +374,7 @@
   <div class="grid gap-8 md:grid-cols-2">
     <!-- Promo Code Section -->
     <div class="card">
-      <CategoryBar title="Redeem Promo Code" color="secondary" />
+      <SectionDivider num={2} label="Redeem promo code" />
       <p class="text-sm text-text-muted mb-4">
         Enter your code to receive credits
       </p>
@@ -412,7 +413,7 @@
 
     <!-- Recent Transactions -->
     <div class="card">
-      <CategoryBar title="Recent Activity" color="accent" />
+      <SectionDivider num={3} label="Recent activity" />
       <p class="text-sm text-text-muted mb-4">Your latest transactions</p>
 
       {#if billing.recentTransactions.length === 0}
@@ -438,7 +439,7 @@
                     {formatTransactionType(tx.type)}
                   </span>
                   <span
-                    class="text-sm font-semibold tabular-nums {tx.amount > 0
+                    class="text-sm font-semibold font-mono tabular-nums {tx.amount > 0
                       ? 'text-success'
                       : 'text-warning'}"
                   >
@@ -467,46 +468,32 @@
     </div>
   </div>
 
-  <!-- How It Works -->
-  <div class="card bg-bg-elevated/50">
-    <h3 class="text-lg font-semibold text-text-primary mb-4">
-      How Credits Work
-    </h3>
-    <div class="grid gap-4 sm:grid-cols-3">
+  <!-- How Credits Work — closing colophon, mono step numbers (no tint circles) -->
+  <div class="mt-12">
+    <SectionDivider num={4} label="How credits work" />
+    <div class="grid gap-6 sm:grid-cols-3 mt-2">
       <div class="flex items-start gap-3">
-        <div
-          class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0"
-        >
-          1
-        </div>
+        <span class="hcw-num">01</span>
         <div>
-          <p class="font-medium text-text-primary text-sm">Get Credits</p>
+          <p class="font-medium text-text-primary text-sm">Get credits</p>
           <p class="text-xs text-text-muted mt-1">
             Redeem promo codes or purchase credit packages
           </p>
         </div>
       </div>
       <div class="flex items-start gap-3">
-        <div
-          class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0"
-        >
-          2
-        </div>
+        <span class="hcw-num">02</span>
         <div>
-          <p class="font-medium text-text-primary text-sm">Use Credits</p>
+          <p class="font-medium text-text-primary text-sm">Use credits</p>
           <p class="text-xs text-text-muted mt-1">
             Credits are deducted when each research step runs
           </p>
         </div>
       </div>
       <div class="flex items-start gap-3">
-        <div
-          class="w-8 h-8 rounded-full bg-accent/10 border border-accent/20 flex items-center justify-center text-accent font-semibold text-sm shrink-0"
-        >
-          3
-        </div>
+        <span class="hcw-num">03</span>
         <div>
-          <p class="font-medium text-text-primary text-sm">Auto-Refund</p>
+          <p class="font-medium text-text-primary text-sm">Auto-refund</p>
           <p class="text-xs text-text-muted mt-1">
             Failed stages are automatically refunded
           </p>
@@ -515,3 +502,16 @@
     </div>
   </div>
 </div>
+
+<style>
+  .hcw-num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--color-text-muted);
+    padding-top: 1px;
+    flex-shrink: 0;
+  }
+</style>

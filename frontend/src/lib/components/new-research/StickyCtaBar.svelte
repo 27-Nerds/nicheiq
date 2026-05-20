@@ -25,7 +25,7 @@
     transition-transform duration-300 ease-out
     {visible ? 'translate-y-0' : 'translate-y-[calc(100%+1px)] pointer-events-none'}"
 >
-  <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center gap-3">
+  <div class="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
     <div class="flex-1 min-w-0">
       {#if niche.trim()}
         <p class="text-sm text-text-secondary truncate">{truncatedNiche}</p>
@@ -34,7 +34,9 @@
       {/if}
       <div class="flex items-center gap-1.5 mt-0.5">
         <Coins class="w-3 h-3 text-accent" />
-        <span class="text-xs text-text-muted">{creditCost} credits · ~5 min</span>
+        <span class="text-xs font-mono tabular-nums text-text-muted"
+          >{creditCost} credits · ~5 min</span
+        >
       </div>
     </div>
     {#if hasCredits}

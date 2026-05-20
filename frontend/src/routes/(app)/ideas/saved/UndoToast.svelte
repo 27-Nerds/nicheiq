@@ -64,10 +64,12 @@
     align-items: center;
     gap: 10px;
     padding: 10px 14px 10px 12px;
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-border-emphasis);
     border-radius: 8px;
-    background: var(--color-surface, #fff);
-    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+    background: var(--color-bg-elevated, #fff);
+    box-shadow:
+      0 1px 2px rgba(24, 24, 27, 0.04),
+      0 4px 12px rgba(24, 24, 27, 0.06);
     font-size: 13px;
     color: var(--color-text-primary);
     overflow: hidden;
@@ -101,9 +103,11 @@
     background: var(--color-bg-base, #fafafa);
     border-radius: 4px;
     padding: 4px 10px;
-    font-family: inherit;
-    font-size: 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
     font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
     color: var(--color-accent);
     cursor: pointer;
     transition:

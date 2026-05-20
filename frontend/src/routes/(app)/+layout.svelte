@@ -10,9 +10,7 @@
     Shield,
     Library,
   } from "lucide-svelte";
-  import NewResearchModal from "$lib/components/NewResearchModal.svelte";
   import CreditTopUpModal from "$lib/components/CreditTopUpModal.svelte";
-  import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import { openCookiePreferences } from "$lib/utils/cookies";
 
   let { children } = $props();
@@ -38,7 +36,7 @@
   const firstName = $derived(session?.user?.name?.split(" ")[0] || "User");
 </script>
 
-<div class="min-h-screen flex flex-col bg-bg-base">
+<div class="min-h-screen flex flex-col">
   <header class="bg-bg-surface border-b border-border sticky top-0 z-50">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="flex justify-between h-14 items-center">
@@ -64,13 +62,16 @@
           >
             <Coins class="w-4 h-4 text-accent" />
             <span
-              class="text-sm font-semibold {creditBalance === 0
+              class="text-sm font-semibold font-mono tabular-nums {creditBalance ===
+              0
                 ? 'text-warning'
                 : 'text-text-primary'}"
             >
               {creditBalance}
             </span>
-            <span class="text-xs text-text-muted hidden sm:inline">credits</span
+            <span
+              class="text-[10px] font-mono uppercase tracking-[0.08em] text-text-muted hidden sm:inline"
+              >credits</span
             >
           </a>
 
@@ -127,7 +128,8 @@
                   <CreditCard class="w-4 h-4" />
                   Billing
                   <span
-                    class="ml-auto text-xs font-medium {creditBalance === 0
+                    class="ml-auto text-xs font-mono tabular-nums font-medium {creditBalance ===
+                    0
                       ? 'text-warning'
                       : 'text-accent'}"
                   >
@@ -206,5 +208,4 @@
   }}
 />
 
-<NewResearchModal bind:open={showNewResearchModal.open} />
 <CreditTopUpModal />

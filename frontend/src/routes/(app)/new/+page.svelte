@@ -17,11 +17,11 @@
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
   import Button from "$lib/components/ui/Button.svelte";
   import EntryModeCards from "$lib/components/new-research/EntryModeCards.svelte";
-  import { MODE_COLORS } from "$lib/components/new-research/EntryModeCards.svelte";
   import CatalogTrendingGrid from "$lib/components/new-research/CatalogTrendingGrid.svelte";
   import ProcessTimeline from "$lib/components/new-research/ProcessTimeline.svelte";
   import StickyCtaBar from "$lib/components/new-research/StickyCtaBar.svelte";
   import InputQualityMeter from "$lib/components/new-research/InputQualityMeter.svelte";
+  import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import { DEFAULT_STAGE_COSTS } from "$lib/types/job";
   import type { StageCosts } from "$lib/types/job";
   import type { EntryMode } from "$lib/components/new-research/EntryModeCards.svelte";
@@ -74,6 +74,21 @@
   let loading = $state(false);
   let error = $state("");
 
+  // --- Retry-from-job (replaces deprecated NewResearchModal flow) ---
+  const fromJobId = $derived(page.url.searchParams.get("fromJob") ?? "");
+  const prefilledNiche = $derived(
+    page.url.searchParams.get("prefilled") ?? "",
+  );
+  // Apply prefilled niche + force entryMode=idea on initial mount. Untracked
+  // so subsequent niche edits don't re-trigger.
+  $effect(() => {
+    if (prefilledNiche && !userEdited) {
+      niche = prefilledNiche;
+      entryMode = "idea";
+      userEdited = true;
+    }
+  });
+
   // --- Textarea ref ---
   let textareaEl = $state<HTMLTextAreaElement | null>(null);
   let textareaFocused = $state(false);
@@ -119,7 +134,6 @@
         label: "What niche are you exploring?",
         icon: Lightbulb,
         colorClass: "text-accent",
-        glowColors: MODE_COLORS.idea,
         placeholders: [
           "e.g., Shopify store owners struggling with abandoned cart recovery",
           "e.g., Independent contractors who can't track expenses across clients",
@@ -145,7 +159,6 @@
         label: "Who are you building for?",
         icon: Users,
         colorClass: "text-indigo-500",
-        glowColors: MODE_COLORS.audience,
         placeholders: [
           "e.g., Solo content creators with 10k+ followers struggling to monetize",
           "e.g., First-time parents overwhelmed by conflicting baby care advice",
@@ -171,7 +184,6 @@
         label: "What's capturing your attention?",
         icon: TrendingUp,
         colorClass: "text-emerald-500",
-        glowColors: MODE_COLORS.discovery,
         placeholders: [
           "e.g., AI tools, remote work, creator economy, health tech",
           "e.g., Senior care technology, aging in place, caregiver burnout",
@@ -196,16 +208,11 @@
     }[entryMode],
   );
 
-  // --- Glow border active state ---
-  const glowActive = $derived(niche.trim().length > 0);
+  // --- Input filled state (controls focus emphasis) ---
+  const inputFilled = $derived(niche.trim().length > 0);
 
   // --- Mode icon (derived for use in template without @const) ---
   const ModeIcon = $derived(modeConfig.icon);
-
-  // --- Background atmosphere per mode ---
-  const bgRadialClass = $derived(
-    ({ idea: "bg-radial-amber", audience: "bg-radial-indigo", discovery: "bg-radial-emerald" } as const)[entryMode]
-  );
 
   // --- Random example selection ---
   function pickRandom<T>(arr: readonly T[], count: number): T[] {
@@ -359,33 +366,43 @@
   <title>New Research - NicheIQ</title>
 </svelte:head>
 
-<div class="relative min-h-[calc(100dvh-3.5rem)]">
-  <!-- Subtle background depth — shifts color with mode -->
-  <div class="absolute inset-0 {bgRadialClass} opacity-40 transition-all duration-300"></div>
-
-  <div class="relative pb-16" class:pb-28={ctaBarVisible}>
-    <!-- Header -->
-    <div class="text-center pt-10 sm:pt-14 pb-2 px-6">
-      <p class="text-xs text-text-muted mb-4">
-        <a href="/dashboard" class="hover:text-accent transition-colors">Dashboard</a>
-        <span class="mx-1.5 opacity-40">/</span>
-        <span>New Research</span>
+<div class="min-h-[calc(100dvh-3.5rem)]">
+  <div class="pb-16" class:pb-28={ctaBarVisible}>
+    <!-- Editorial hero -->
+    <header class="max-w-3xl mx-auto px-4 sm:px-6 new-hero">
+      <p class="new-kicker">
+        <span class="k-accent">NEW RESEARCH</span>
+        <span class="k-dot">·</span>
+        <span>pick a starting point</span>
       </p>
-      <h1 class="font-display text-2xl sm:text-3xl font-bold tracking-tight text-text-primary mb-2" style="text-wrap: balance">
-        New research
-      </h1>
-      <p class="text-text-muted text-sm max-w-md mx-auto">
-        Tell us what you're exploring. Pick a starting point below.
+      <h1 class="new-h1">What are you exploring?</h1>
+      <p class="new-lede">
+        Tell us what you're exploring and we'll surface real, validated
+        opportunities from live community discussions.
       </p>
-    </div>
+    </header>
 
     <!-- Mode cards -->
     <div class="max-w-3xl mx-auto mb-6 px-4 sm:px-6">
+      <SectionDivider num={1} label="Starting point" />
       <EntryModeCards selected={entryMode} onselect={(mode) => entryMode = mode} />
     </div>
 
     <!-- Focused form area -->
-    <div class="max-w-2xl mx-auto px-4 sm:px-6">
+    <div class="max-w-3xl mx-auto px-4 sm:px-6">
+      {#if fromJobId}
+        <div class="mb-3 flex justify-center">
+          <span
+            class="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-border-emphasis bg-bg-elevated text-[11px] font-mono uppercase tracking-[0.08em] text-text-secondary"
+          >
+            <span
+              class="w-1.5 h-1.5 rounded-full bg-accent"
+              aria-hidden="true"
+            ></span>
+            Retrying from #{fromJobId.slice(0, 7)}
+          </span>
+        </div>
+      {/if}
       <form onsubmit={handleSubmit}>
         <!-- Catalog Grid (discovery mode only) + connector -->
         {#if entryMode === "discovery"}
@@ -400,13 +417,9 @@
           </div>
         {/if}
 
-        <!-- Input card with animated glow border -->
-        <div
-          class="glow-border-wrapper mt-4 {glowActive ? 'ui-shadow-md' : 'ui-shadow-sm'}"
-          class:glow-active={glowActive}
-          style="--glow-color-1: {modeConfig.glowColors.c1}; --glow-color-2: {modeConfig.glowColors.c2}"
-        >
-          <div class="glow-border-inner p-6 sm:p-8">
+        <!-- Input card — hairline surface, catalog ink-black focus -->
+        <div class="input-shell mt-4" class:filled={inputFilled}>
+          <div class="input-shell-inner p-6 sm:p-8">
             <label
               for="niche"
               class="flex items-center gap-2 text-sm font-medium text-text-primary mb-3"
@@ -621,3 +634,65 @@
     </div>
   </div>
 </div>
+
+<style>
+  /* Editorial hero — mirrors CatalogIndexHero, left-aligned. */
+  .new-hero {
+    padding: 40px 0 24px;
+  }
+  .new-kicker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0 0 14px;
+  }
+  .new-kicker .k-accent {
+    color: var(--color-accent);
+  }
+  .new-kicker .k-dot {
+    opacity: 0.5;
+  }
+  .new-h1 {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+  .new-lede {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+    margin: 12px 0 0;
+    max-width: 620px;
+  }
+
+  /* Input card — hairline surface, catalog ink-black focus (no rainbow glow). */
+  .input-shell {
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-bg-elevated);
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease;
+  }
+  .input-shell.filled {
+    border-color: var(--color-border-emphasis);
+  }
+  .input-shell:focus-within {
+    border-color: var(--color-text-primary);
+    box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.04);
+  }
+  .input-shell-inner :global(textarea:focus-visible) {
+    outline: none;
+  }
+</style>

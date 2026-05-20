@@ -28,9 +28,10 @@ usersRouter.get('/:userId/jobs', requireInternalAuth, async (req: AuthenticatedR
       return;
     }
 
-    // Get user's jobs
+    // Get user's jobs (excluding admin catalog-fill jobs, which have no
+    // REPORT_JSON asset and surface a broken "View Report" CTA otherwise)
     const jobs = await prisma.job.findMany({
-      where: { userId },
+      where: { userId, catalogCategoryId: null },
       orderBy: { createdAt: 'desc' },
       take: 50, // Limit for performance
       include: {

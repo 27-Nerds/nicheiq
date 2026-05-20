@@ -2,17 +2,10 @@
   import { invalidateAll } from "$app/navigation";
   import { page } from "$app/state";
   import {
-    Settings,
     Lock,
     Bell,
-    CreditCard,
-    CheckCircle,
-    AlertCircle,
-    Loader2,
-    ChevronRight,
     Eye,
     EyeOff,
-    User,
     Mail,
     Calendar,
   } from "lucide-svelte";
@@ -21,10 +14,10 @@
     updateNotificationPreferences,
     type NotificationPreferences,
   } from "$lib/api";
-  import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
   import InlineFeedback from "$lib/components/ui/InlineFeedback.svelte";
-  import PageHeader from "$lib/components/ui/PageHeader.svelte";
-  import FeatureCard from "$lib/components/ui/FeatureCard.svelte";
+  import EditorialHero from "$lib/components/ui/EditorialHero.svelte";
+  import type { KickerSegment } from "$lib/components/ui/EditorialHero.svelte";
+  import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
   interface UserProfile {
@@ -46,6 +39,13 @@
   );
   const userProfile = $derived(data.userProfile as UserProfile | null);
   const hasPassword = $derived(userProfile?.hasPassword ?? true);
+
+  const heroKicker = $derived<KickerSegment[]>([
+    { text: "ACCOUNT", tone: "accent" },
+    ...(session?.user?.email
+      ? [{ text: session.user.email, tone: "muted" as const }]
+      : []),
+  ]);
 
   // Password form state
   let currentPassword = $state("");
@@ -172,53 +172,52 @@
 </svelte:head>
 
 <div class="max-w-5xl mx-auto">
-  <PageHeader
-    icon={Settings}
-    breadcrumbItems={[{ label: 'Dashboard', href: '/dashboard' }]}
-    breadcrumbCurrent="Settings"
-    title="Account Settings"
-    subtitle="Manage your account, security, and preferences"
+  <EditorialHero
+    kicker={heroKicker}
+    title="Account settings"
+    lede="Manage your account, security, and preferences"
   />
 
-  <!-- Profile Card -->
-  <FeatureCard icon={User} class="mb-8">
-    <div class="flex items-center gap-4">
-      {#if session?.user?.image}
-        <img
-          src={session.user.image}
-          alt={session.user.name || "User"}
-          class="w-16 h-16 rounded-full object-cover ring-4 ring-bg-elevated"
-        />
-      {:else}
-        <div
-          class="w-16 h-16 rounded-full bg-gradient-to-br from-accent to-orange-600 flex items-center justify-center text-white text-xl font-semibold ring-4 ring-bg-elevated"
-        >
-          {getInitials(session?.user?.name)}
-        </div>
-      {/if}
-      <div>
-        <p class="text-xl font-display font-bold text-text-primary">
-          {session?.user?.name || "User"}
-        </p>
-        <p class="text-sm text-text-muted flex items-center gap-1.5 mt-0.5">
-          <Mail class="w-3.5 h-3.5" />
-          {session?.user?.email}
-        </p>
-        {#if userProfile?.createdAt}
-          <p class="text-xs text-text-muted flex items-center gap-1.5 mt-1">
-            <Calendar class="w-3 h-3" />
-            Member since {formatDate(userProfile.createdAt)}
-          </p>
-        {/if}
+  <!-- Profile row (flat, hairline) -->
+  <div class="flex items-center gap-4 mb-12">
+    {#if session?.user?.image}
+      <img
+        src={session.user.image}
+        alt={session.user.name || "User"}
+        class="w-14 h-14 rounded-full object-cover"
+      />
+    {:else}
+      <div
+        class="w-14 h-14 rounded-full bg-bg-elevated border border-border flex items-center justify-center text-text-secondary text-lg font-semibold"
+      >
+        {getInitials(session?.user?.name)}
       </div>
+    {/if}
+    <div>
+      <p class="text-lg font-display font-semibold text-text-primary">
+        {session?.user?.name || "User"}
+      </p>
+      <p class="text-sm text-text-muted flex items-center gap-1.5 mt-0.5">
+        <Mail class="w-3.5 h-3.5" />
+        {session?.user?.email}
+      </p>
+      {#if userProfile?.createdAt}
+        <p
+          class="text-xs text-text-muted font-mono tabular-nums flex items-center gap-1.5 mt-1"
+        >
+          <Calendar class="w-3 h-3" />
+          Member since {formatDate(userProfile.createdAt)}
+        </p>
+      {/if}
     </div>
-  </FeatureCard>
+  </div>
 
-  <!-- Two Column Grid -->
-  <div class="grid gap-8 md:grid-cols-2">
-    <!-- Password Section -->
-    <div class="card">
-      <CategoryBar title={hasPassword ? "Change Password" : "Password"} color="secondary" />
+  <!-- Sections (single column, numbered dividers) -->
+  <div class="space-y-4">
+    <!-- Security Section -->
+    <section>
+      <SectionDivider num={1} label="Security" />
+      <div class="max-w-lg">
       <p class="text-sm text-text-muted mb-4">
         {hasPassword
           ? "Update your account password"
@@ -358,11 +357,13 @@
           </div>
         </div>
       {/if}
-    </div>
+      </div>
+    </section>
 
     <!-- Notification Preferences -->
-    <div class="card">
-      <CategoryBar title="Email Notifications" color="accent" />
+    <section>
+      <SectionDivider num={2} label="Notifications" />
+      <div class="max-w-lg">
       <p class="text-sm text-text-muted mb-4">
         Choose which emails you receive
       </p>
@@ -454,10 +455,9 @@
           label="Save Preferences"
         />
       </div>
-    </div>
+      </div>
+    </section>
   </div>
-
-
 </div>
 
 <style>

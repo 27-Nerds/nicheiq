@@ -4,31 +4,38 @@
   import { beforeNavigate } from "$app/navigation";
   import { browser } from "$app/environment";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
-  import { subscribeToProgress, isTerminalStatus } from "$lib/api";
+  import {
+    subscribeToProgress,
+    isTerminalStatus,
+    getReportSummary,
+  } from "$lib/api";
+  import { INITIAL_VISIBLE_COMPLETED } from "$lib/config/dashboard";
   import {
     Plus,
     XCircle,
     Search,
     ChevronDown,
     ChevronUp,
-    Telescope,
     X,
-    Library,
-    Trophy,
-    FlaskConical,
   } from "lucide-svelte";
-  import { showNewResearchModal } from "$lib/stores/newResearchModal.svelte";
   import JobCard from "$lib/components/ui/JobCard.svelte";
-  import CategoryBar from "$lib/components/ui/CategoryBar.svelte";
-  import StatCard from "$lib/components/ui/StatCard.svelte";
+  import JobsListTable from "$lib/components/job/JobsListTable.svelte";
   import Button from "$lib/components/ui/Button.svelte";
-  import PageHeader from "$lib/components/ui/PageHeader.svelte";
-  import type { Job } from "$lib/types/job";
+  import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
+  import StatStrip, {
+    type Stat,
+  } from "$lib/components/catalog/seo/StatStrip.svelte";
+  import type { Job, ReportSummary } from "$lib/types/job";
 
   let { data } = $props();
 
   const session = $derived(page.data.session);
   const initialJobs = $derived(data.jobs as Job[]);
+  const creditBalance = $derived((page.data.creditBalance as number) ?? 0);
+  const firstName = $derived(session?.user?.name?.split(" ")[0] ?? "there");
+  const monthYear = $derived(
+    new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+  );
 
   // Track SSE subscriptions and live job updates
   // Use regular Map for sseUnsubscribers since it doesn't need to trigger reactive updates
@@ -83,6 +90,17 @@
     jobs.filter((j) => j.status.toUpperCase() === "FAILED").length,
   );
 
+  const heroStats = $derived<Stat[]>([
+    { value: jobs.length, label: "Total Research" },
+    { value: completedCount, label: "Completed", tone: "go" },
+    { value: inProgressCount, label: "In Progress", tone: "amber" },
+    {
+      value: creditBalance,
+      label: "Credits",
+      tone: creditBalance === 0 ? "amber" : "info",
+    },
+  ]);
+
   // Group jobs by category for visual separation
   const activeJobs = $derived(
     jobs.filter((j) => ACTIVE_STATUSES.includes(j.status.toUpperCase())),
@@ -94,9 +112,40 @@
     jobs.filter((j) => j.status.toUpperCase() === "FAILED"),
   );
 
-  // Collapsible state for completed jobs
-  const INITIAL_VISIBLE_COMPLETED = 6;
+  // Collapsible state for completed jobs (constant lives in $lib/config/dashboard
+  // and is shared with the +page.server.ts loader)
   let showAllCompleted = $state(false);
+
+  // Report summaries for completed jobs. Seeded from server loader (first 6).
+  // Lazy-extended client-side on Show More + on SSE→COMPLETED transitions.
+  // untrack() avoids the "captures only initial value of `data`" warning —
+  // the $effect below keeps these in sync with later loader runs.
+  let summaries = $state<Record<string, ReportSummary>>(
+    untrack(
+      () => ({ ...((data.summariesByJobId ?? {}) as Record<string, ReportSummary>) }),
+    ),
+  );
+
+  // Sync local summaries when loader re-runs (e.g. after invalidateAll())
+  $effect(() => {
+    summaries = {
+      ...((data.summariesByJobId ?? {}) as Record<string, ReportSummary>),
+    };
+  });
+
+
+  async function fetchSummariesFor(jobIds: string[]) {
+    const needed = jobIds.filter((id) => !summaries[id]);
+    if (needed.length === 0) return;
+    const results = await Promise.allSettled(
+      needed.map((id) => getReportSummary(id)),
+    );
+    const next = { ...summaries };
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled" && r.value) next[needed[i]] = r.value;
+    });
+    summaries = next;
+  }
 
   // Collapsible state for failed jobs
   let showFailedJobs = $state(true);
@@ -143,6 +192,21 @@
       filteredCompletedJobs.length > 0,
   );
 
+  // Section divider numbering: only numbers sections that actually render,
+  // so the user never sees gaps like "02 · COMPLETED" with no 01 above it.
+  const sectionNums = $derived.by(() => {
+    const nums: Record<"active" | "completed" | "failed", number | null> = {
+      active: null,
+      completed: null,
+      failed: null,
+    };
+    let n = 1;
+    if (filteredActiveJobs.length > 0) nums.active = n++;
+    if (filteredCompletedJobs.length > 0) nums.completed = n++;
+    if (filteredFailedJobs.length > 0) nums.failed = n++;
+    return nums;
+  });
+
   // Dismissable tip banner
   const TIP_DISMISSED_KEY = "nicheiq_tip_dismissed";
   let tipDismissed = $state(
@@ -158,18 +222,6 @@
 
   // Search input ref for keyboard shortcut
   let searchInput = $state<HTMLInputElement | null>(null);
-
-  // Overflow menu state for completed job cards
-  let openMenuId = $state<string | null>(null);
-
-  function toggleMenu(jobId: string, event: MouseEvent) {
-    event.stopPropagation();
-    openMenuId = openMenuId === jobId ? null : jobId;
-  }
-
-  function closeMenu() {
-    openMenuId = null;
-  }
 
   // Total filtered count for search results indicator
   const totalFilteredCount = $derived(
@@ -203,6 +255,22 @@
             job.id,
             (data) => {
               jobUpdates.set(job.id, data as Job);
+
+              // Lazy-fetch report summary for a job that just transitioned to
+              // COMPLETED mid-session so its Trifecta dials appear without a
+              // page reload.
+              if (
+                data.status.toUpperCase() === "COMPLETED" &&
+                !summaries[job.id]
+              ) {
+                getReportSummary(job.id)
+                  .then((s) => {
+                    if (s) summaries = { ...summaries, [job.id]: s };
+                  })
+                  .catch(() => {
+                    // 404 / network — card just renders without dials
+                  });
+              }
 
               // Cleanup subscription if job no longer needs live updates
               if (isTerminalStatus(data.status) || !SSE_STATUSES.includes(data.status)) {
@@ -309,7 +377,7 @@
   <title>Dashboard - NicheIQ</title>
 </svelte:head>
 
-<!-- Keyboard shortcut for search + close menus on outside click -->
+<!-- Keyboard shortcut for search ("/" focus, Escape clears) -->
 <svelte:window
   onkeydown={(e) => {
     if (
@@ -320,63 +388,37 @@
       e.preventDefault();
       searchInput?.focus();
     }
-    if (e.key === "Escape") {
-      if (openMenuId) {
-        closeMenu();
-      } else if (document.activeElement === searchInput) {
-        searchInput?.blur();
-        searchQuery = "";
-      }
-    }
-  }}
-  onclick={(e) => {
-    // Close overflow menu when clicking outside
-    if (openMenuId) {
-      const target = e.target as HTMLElement;
-      if (!target.closest("[data-menu-container]")) {
-        closeMenu();
-      }
+    if (e.key === "Escape" && document.activeElement === searchInput) {
+      searchInput?.blur();
+      searchQuery = "";
     }
   }}
 />
 
 <div class="max-w-5xl mx-auto">
-  <PageHeader
-    title="Welcome back{session?.user?.name ? `, ${session.user.name}` : ''}"
-    subtitle="Manage your market research reports"
-  >
-    {#snippet badge()}
-      {#if inProgressCount > 0}
-        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-warning/10 text-warning border border-warning/20 animate-pulse">
-          <span class="w-1.5 h-1.5 rounded-full bg-warning"></span>
-          {inProgressCount} active
-        </span>
-      {/if}
-    {/snippet}
-    {#snippet actions()}
-      {#if jobs.length > 0 && inProgressCount === 0}
-        <Button href="/new" icon={Plus} label="New Research" class="btn-primary hidden sm:inline-flex" />
-      {/if}
-    {/snippet}
-  </PageHeader>
+  <!-- Editorial hero (mono dateline kicker + display H1) -->
+  <header class="dash-hero">
+    <p class="dash-kicker">
+      <span class="k-accent">YOUR RESEARCH</span>
+      <span class="k-dot">·</span>
+      <span>{monthYear}</span>
+    </p>
+    <h1 class="dash-h1">Welcome back, {firstName}</h1>
+    <p class="dash-lede">Manage your market research reports</p>
+  </header>
 
   <!-- Pro tip banner (show when no active jobs and has completed jobs, unless dismissed) -->
   {#if jobs.length > 0 && inProgressCount === 0 && completedCount > 0 && !tipDismissed}
     <div
-      class="mb-6 p-4 rounded-lg bg-accent/5 border border-accent/10 animate-fade-slide-in"
+      class="mb-6 px-4 py-3 rounded-lg border border-border bg-bg-elevated animate-fade-slide-in"
     >
       <div class="flex items-center justify-between gap-3">
-        <div class="flex items-center gap-3">
-          <div class="p-2 rounded-lg bg-accent/10">
-            <Telescope class="w-4 h-4 text-accent" />
-          </div>
-          <p class="text-sm text-text-secondary">
-            <span class="font-medium text-text-primary"
-              >Ready for more insights?</span
-            >
-            {" "}Start another research to explore new market opportunities.
-          </p>
-        </div>
+        <p class="text-sm text-text-secondary">
+          <span class="font-medium text-text-primary"
+            >Ready for more insights?</span
+          >
+          {" "}Start another research to explore new market opportunities.
+        </p>
         <button
           onclick={dismissTip}
           class="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors shrink-0"
@@ -389,10 +431,8 @@
   {/if}
 
   <!-- Stats Overview -->
-  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-    <StatCard icon={Library} value={jobs.length} label="Total Research" color="accent" />
-    <StatCard icon={Trophy} value={completedCount} label="Completed" color="success" />
-    <StatCard icon={FlaskConical} value={inProgressCount} label="In Progress" color="warning" />
+  <div class="mb-8">
+    <StatStrip stats={heroStats} emphasis />
   </div>
 
   <!-- Search bar (only show when there are jobs) -->
@@ -475,7 +515,11 @@
         <!-- Active Jobs Section -->
         {#if filteredActiveJobs.length > 0}
           <div class="space-y-4">
-            <CategoryBar title="In Progress" color="warning" count={filteredActiveJobs.length} margin="mb-0" />
+            <SectionDivider
+              num={sectionNums.active}
+              label="In Progress"
+              metaText="{filteredActiveJobs.length} active"
+            />
             <div class="grid gap-3">
               {#each filteredActiveJobs as job, i}
                 <JobCard
@@ -491,26 +535,30 @@
 
         <!-- Completed Jobs Section -->
         {#if filteredCompletedJobs.length > 0}
-          {#if filteredActiveJobs.length > 0}
-            <div class="my-6 h-px bg-border"></div>
-          {/if}
           <div class="space-y-4">
-            <CategoryBar title="Completed" color="success" count={filteredCompletedJobs.length} margin="mb-0" />
-            <div class="grid gap-3">
-              {#each filteredVisibleCompleted as job, i}
-                <JobCard
-                  {job}
-                  animationDelay={i * 50}
-                  isMenuOpen={openMenuId === job.id}
-                  onMenuToggle={toggleMenu}
-                />
-              {/each}
-            </div>
+            <SectionDivider
+              num={sectionNums.completed}
+              label="Completed"
+              metaText="{filteredCompletedJobs.length} reports"
+            />
+            <JobsListTable jobs={filteredVisibleCompleted} {summaries} />
 
             <!-- Show more/less button -->
             {#if filteredCompletedJobs.length > INITIAL_VISIBLE_COMPLETED}
               <button
-                onclick={() => (showAllCompleted = !showAllCompleted)}
+                onclick={() => {
+                  const wasCollapsed = !showAllCompleted;
+                  showAllCompleted = !showAllCompleted;
+                  if (wasCollapsed) {
+                    // Fetch summaries for the just-revealed completed jobs,
+                    // honoring the active search filter so we don't fetch
+                    // cards that aren't even rendered.
+                    const newlyRevealedIds = filteredCompletedJobs
+                      .slice(INITIAL_VISIBLE_COMPLETED)
+                      .map((j) => j.id);
+                    void fetchSummariesFor(newlyRevealedIds);
+                  }
+                }}
                 class="w-full py-3 px-4 rounded-lg border border-border bg-bg-surface hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors flex items-center justify-center gap-2 text-sm font-medium"
               >
                 {#if showAllCompleted}
@@ -528,25 +576,29 @@
 
         <!-- Failed Jobs Section -->
         {#if filteredFailedJobs.length > 0}
-          {#if filteredActiveJobs.length > 0 || filteredCompletedJobs.length > 0}
-            <div class="my-6 h-px bg-border"></div>
-          {/if}
           <div class="space-y-4">
-            <CategoryBar title="Failed" color="error" count={filteredFailedJobs.length} margin="mb-0">
-              <button
-                onclick={() => (showFailedJobs = !showFailedJobs)}
-                class="ml-auto p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-                aria-label={showFailedJobs
-                  ? "Collapse failed jobs"
-                  : "Expand failed jobs"}
-              >
-                {#if showFailedJobs}
-                  <ChevronUp class="w-4 h-4" />
-                {:else}
-                  <ChevronDown class="w-4 h-4" />
-                {/if}
-              </button>
-            </CategoryBar>
+            <SectionDivider num={sectionNums.failed} label="Failed">
+              {#snippet right()}
+                <span
+                  class="text-[11px] font-mono text-text-muted tabular-nums"
+                >
+                  {filteredFailedJobs.length} failed
+                </span>
+                <button
+                  onclick={() => (showFailedJobs = !showFailedJobs)}
+                  class="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
+                  aria-label={showFailedJobs
+                    ? "Collapse failed jobs"
+                    : "Expand failed jobs"}
+                >
+                  {#if showFailedJobs}
+                    <ChevronUp class="w-4 h-4" />
+                  {:else}
+                    <ChevronDown class="w-4 h-4" />
+                  {/if}
+                </button>
+              {/snippet}
+            </SectionDivider>
             {#if showFailedJobs}
               <div class="grid gap-3">
                 {#each filteredFailedJobs as job, i}
@@ -565,3 +617,47 @@
     {/if}
   {/if}
 </div>
+
+<style>
+  /* Editorial hero — mono dateline kicker + display H1, mirrors CatalogIndexHero. */
+  .dash-hero {
+    padding: 40px 0 28px;
+    margin-bottom: 28px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .dash-kicker {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+    margin: 0 0 14px;
+  }
+  .dash-kicker .k-accent {
+    color: var(--color-accent);
+  }
+  .dash-kicker .k-dot {
+    opacity: 0.5;
+  }
+  .dash-h1 {
+    font-family: var(--font-display);
+    font-size: clamp(1.75rem, 4vw, 2.25rem);
+    font-weight: 600;
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--color-text-primary);
+    margin: 0;
+  }
+  .dash-lede {
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--color-text-secondary);
+    margin: 12px 0 0;
+    max-width: 620px;
+  }
+</style>

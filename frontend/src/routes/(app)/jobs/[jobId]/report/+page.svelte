@@ -74,6 +74,6 @@
   .share-btn:hover {
     color: var(--color-text-primary);
     border-color: var(--color-accent);
-    background: rgba(229, 90, 40, 0.05);
+    background: var(--color-accent-subtle);
   }
 </style>

@@ -1,19 +1,18 @@
 <script lang="ts">
   import {
     Loader2,
-    ExternalLink,
     RotateCw,
     X,
     AlertCircle,
     CheckCircle,
-    MoreVertical,
-    Download,
   } from "lucide-svelte";
   import type { Snippet } from "svelte";
   import type { Job } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
 
+  // Completed jobs render in JobsListTable (dashboard). JobCard handles only
+  // the active/queued/awaiting/regenerating/failed states.
   interface Props {
     job: Job;
     onCancel?: (job: Job) => void;
@@ -21,8 +20,6 @@
     isCancelling?: boolean;
     isResuming?: boolean;
     animationDelay?: number;
-    isMenuOpen?: boolean;
-    onMenuToggle?: (jobId: string, event: MouseEvent) => void;
   }
 
   let {
@@ -32,8 +29,6 @@
     isCancelling = false,
     isResuming = false,
     animationDelay = 0,
-    isMenuOpen = false,
-    onMenuToggle,
   }: Props = $props();
 
   const TOTAL_STAGES = 17;
@@ -345,12 +340,6 @@
     }
   }
 
-  function handleMenuToggle(event: MouseEvent) {
-    if (onMenuToggle) {
-      onMenuToggle(job.id, event);
-    }
-  }
-
   // Queue position text
   const queuePositionText = $derived(
     job.queuePosition === 1
@@ -381,7 +370,10 @@
 {/snippet}
 
 {#snippet relativeDate(dateStr: string)}
-  <span class="text-xs text-text-muted shrink-0" title={formatDate(dateStr)}>
+  <span
+    class="text-xs font-mono tabular-nums text-text-muted shrink-0"
+    title={formatDate(dateStr)}
+  >
     {formatRelativeDate(dateStr)}
   </span>
 {/snippet}
@@ -406,7 +398,9 @@
   <div class="flex items-center justify-between gap-4">
     <div class="flex items-center gap-2.5 min-w-0 flex-1 w-0">
       <span class="w-2 h-2 rounded-full {dotClass} shrink-0"></span>
-      <h3 class="text-lg font-semibold text-text-primary truncate min-w-0">
+      <h3
+        class="text-[14.5px] font-semibold tracking-tight text-text-primary truncate min-w-0"
+      >
         {formatNicheTitle(job.niche)}
       </h3>
     </div>
@@ -415,9 +409,7 @@
 {/snippet}
 
 <div
-  class="card relative hover:bg-bg-hover hover:border-border-emphasis transition-colors duration-150 border-l-2 {borderClass} cursor-pointer animate-fade-slide-in {isMenuOpen
-    ? 'z-50'
-    : ''}"
+  class="card relative hover:bg-bg-hover hover:border-border-emphasis hover:shadow-[0_1px_2px_rgba(24,24,27,0.04),0_4px_12px_rgba(24,24,27,0.06)] transition-all duration-150 border-l-2 {borderClass} cursor-pointer animate-fade-slide-in"
   style="animation-delay: {animationDelay}ms"
 >
   <!-- Stretched link: covers entire card for native <a> click behavior -->
@@ -435,7 +427,9 @@
       <!-- RUNNING STATE -->
       {#snippet runningBadge()}
         {#if job.startedAt}
-          <span class="text-xs font-medium text-warning shrink-0">
+          <span
+            class="text-[11px] font-mono tabular-nums font-medium text-warning shrink-0"
+          >
             {formatElapsedTime(job.startedAt)}
           </span>
         {/if}
@@ -452,7 +446,10 @@
           ></div>
         </div>
         <span class="text-xs text-text-muted whitespace-nowrap">
-          {getDisplayStageName(job.currentStageName)} ({stageCounts.completed}/{stageCounts.total})
+          {getDisplayStageName(job.currentStageName)}
+          <span class="font-mono tabular-nums"
+            >({stageCounts.completed}/{stageCounts.total})</span
+          >
         </span>
       </div>
 
@@ -464,7 +461,7 @@
       <!-- QUEUED STATE -->
       {#snippet queueBadge()}
         <span
-          class="text-xs px-2 py-0.5 bg-secondary/10 text-secondary rounded-full font-medium shrink-0"
+          class="text-[11px] py-0.5 px-[7px] bg-secondary/10 text-secondary rounded border border-secondary/20 font-semibold shrink-0"
         >
           {queuePositionText}
         </span>
@@ -480,7 +477,7 @@
       <!-- AWAITING SELECTION STATE -->
       {#snippet awaitingBadge()}
         <span
-          class="text-xs px-2 py-0.5 bg-accent/10 text-accent rounded-full font-medium shrink-0"
+          class="text-[11px] py-0.5 px-[7px] bg-accent/10 text-accent rounded border border-accent/20 font-semibold shrink-0"
         >
           Action Required
         </span>
@@ -511,53 +508,6 @@
         Generating new solutions...
       </p>
 
-    {:else if isCompleted}
-      <!-- COMPLETED STATE -->
-      {#snippet completedBadge()}
-        {@render relativeDate(job.completedAt || job.createdAt)}
-      {/snippet}
-      {@render jobCardHeader(completedBadge)}
-      {@render projectTypeBadges()}
-
-      <!-- Footer -->
-      <div class="flex items-center justify-end gap-2 mt-3 pointer-events-auto">
-        <Button href="/jobs/{job.id}/report" label="View Report" class="btn-primary text-sm py-2 px-4" />
-        {#if job.hasLandingPage}
-          <Button href="/api/jobs/{job.id}/landingpage" icon={ExternalLink} iconPosition="end" label="Landing Page" target="_blank" rel="noopener noreferrer" class="btn-secondary text-sm py-2 px-4" />
-        {/if}
-        <!-- Overflow menu for downloads -->
-        <div class="relative" data-menu-container>
-          <button
-            onclick={handleMenuToggle}
-            class="p-2 rounded-md text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors"
-            aria-label="More options"
-          >
-            <MoreVertical class="w-4 h-4" />
-          </button>
-          {#if isMenuOpen}
-            <div
-              class="absolute right-0 top-full mt-1 bg-bg-elevated border border-border rounded-lg shadow-lg py-1 min-w-[160px] z-50"
-            >
-              <a
-                href="/api/jobs/{job.id}/reportjson"
-                download
-                class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-              >
-                <Download class="w-4 h-4" /> Export JSON
-              </a>
-              {#if job.hasLandingPage}
-                <a
-                  href="/api/jobs/{job.id}/landingpage?download=true"
-                  download
-                  class="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-bg-hover hover:text-text-primary transition-colors"
-                >
-                  <Download class="w-4 h-4" /> Export HTML
-                </a>
-              {/if}
-            </div>
-          {/if}
-        </div>
-      </div>
     {:else if isFailed}
       <!-- FAILED STATE -->
       {#snippet failedBadge()}

@@ -1044,48 +1044,6 @@
 }
 
 /* ========================================
-   Animated Glow Border
-   ======================================== */
-
-@property --glow-angle {
-	syntax: '<angle>';
-	initial-value: 0deg;
-	inherits: false;
-}
-
-.glow-border-wrapper {
-	padding: 1.5px;
-	border-radius: 1rem;
-	background: var(--color-border-emphasis);
-	transition: box-shadow 0.5s ease, background 0.5s ease;
-}
-
-.glow-border-wrapper.glow-active {
-	background: conic-gradient(
-		from var(--glow-angle, 0deg),
-		var(--glow-color-1), var(--glow-color-2), var(--glow-color-1)
-	);
-	animation: glow-rotate 8s linear infinite;
-}
-
-.glow-border-wrapper:focus-within:not(.glow-active) {
-	background: color-mix(in srgb, var(--glow-color-1) 40%, var(--color-border-emphasis));
-}
-
-.glow-border-inner {
-	border-radius: calc(1rem - 1.5px);
-	background: var(--color-bg-elevated);
-}
-
-.glow-border-inner textarea:focus-visible {
-	outline: none;
-}
-
-@keyframes glow-rotate {
-	to { --glow-angle: 360deg; }
-}
-
-/* ========================================
    CTA Button Shimmer
    ======================================== */
 
@@ -1134,7 +1092,6 @@
    ======================================== */
 
 @media (prefers-reduced-motion: reduce) {
-	.glow-border-wrapper.glow-active { animation: none; }
 	.btn-shimmer::after { animation: none; }
 	.stagger-in { animation: none; opacity: 1; transform: none; }
 }

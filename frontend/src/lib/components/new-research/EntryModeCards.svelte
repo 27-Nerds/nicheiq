@@ -1,11 +1,5 @@
 <script lang="ts" module>
   export type EntryMode = "idea" | "audience" | "discovery";
-
-  export const MODE_COLORS: Record<EntryMode, { dot: string; c1: string; c2: string }> = {
-    idea: { dot: "bg-accent", c1: "#EA580C", c2: "#FB923C" },
-    audience: { dot: "bg-indigo-500", c1: "#6366F1", c2: "#818CF8" },
-    discovery: { dot: "bg-emerald-500", c1: "#10B981", c2: "#34D399" },
-  };
 </script>
 
 <script lang="ts">
@@ -44,21 +38,33 @@
 </script>
 
 <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-  {#each modes as mode}
+  {#each modes as mode, i}
     {@const isSelected = selected === mode.id}
+    {@const num = String(i + 1).padStart(2, "0")}
     <button
       type="button"
       onclick={() => onselect(mode.id)}
       class="pressable text-left p-4 rounded-lg border transition-all duration-150 ease-out
         focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:outline-none
         {isSelected
-        ? 'border-border-emphasis bg-bg-elevated'
-        : 'border-border bg-bg-elevated opacity-70 hover:opacity-90'}"
+        ? 'border-[color:var(--color-border-accent)] bg-[color:var(--color-accent-subtle)]'
+        : 'border-border bg-bg-elevated hover:border-border-emphasis hover:bg-bg-base'}"
     >
+      <p
+        class="text-[10px] font-mono uppercase tracking-[0.08em] mb-2 {isSelected
+          ? 'text-accent'
+          : 'text-text-muted'}"
+      >
+        {num} · {mode.id}
+      </p>
       <div class="flex items-start gap-3">
-        <mode.icon class="w-5 h-5 shrink-0 mt-0.5 {isSelected ? mode.iconClass : 'text-text-muted'}" />
+        <mode.icon
+          class="w-5 h-5 shrink-0 mt-0.5 {isSelected
+            ? mode.iconClass
+            : 'text-text-muted'}"
+        />
         <div class="min-w-0">
-          <p class="text-sm font-medium text-text-primary">
+          <p class="text-sm font-semibold text-text-primary">
             {mode.title}
           </p>
           <p class="text-xs mt-0.5 text-text-muted">

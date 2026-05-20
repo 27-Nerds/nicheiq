@@ -28,9 +28,9 @@
 </script>
 
 <div
-  class="relative bg-bg-elevated border rounded-xl overflow-hidden flex flex-col transition-colors {pkg.isPopular
+  class="relative bg-bg-elevated border rounded-xl overflow-hidden flex flex-col transition-all {pkg.isPopular
     ? 'border-accent ring-1 ring-accent/20'
-    : 'border-border'} hover:border-border-emphasis hover:shadow-md"
+    : 'border-border'} hover:border-border-emphasis hover:shadow-[0_1px_2px_rgba(24,24,27,0.04),0_4px_12px_rgba(24,24,27,0.06)]"
 >
   <!-- Promo Badge (top-left) -->
   {#if pkg.promoBadge}
@@ -87,7 +87,9 @@
     <!-- Credits line -->
     <div class="flex items-center gap-2 text-sm text-text-muted mt-1">
       <Coins class="w-4 h-4 text-accent" />
-      <span class="font-bold text-text-primary">{pkg.credits}</span>
+      <span class="font-mono tabular-nums font-bold text-text-primary"
+        >{pkg.credits}</span
+      >
       <span>{pkg.credits === 1 ? "credit" : "credits"}</span>
     </div>
 

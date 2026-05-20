@@ -229,6 +229,8 @@ jobsRouter.get('/:jobId/report-summary', requireInternalAuth, validateJobId, asy
 
     const summary = {
       opportunity_score: report.market_analytics?.overall_opportunity_score ?? null,
+      market_fit_score: report.executive_dashboard?.key_metrics?.market_fit_score ?? null,
+      technical_feasibility_score: report.executive_dashboard?.key_metrics?.technical_feasibility_score ?? null,
       verdict: report.executive_dashboard?.go_no_go_verdict?.verdict ?? null,
       risk_level: report.executive_dashboard?.go_no_go_verdict?.risk_level ?? null,
       primary_concern: report.executive_dashboard?.go_no_go_verdict?.primary_concern ?? null,
