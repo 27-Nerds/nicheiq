@@ -28,6 +28,7 @@
   // UI components
   import SectionNav from "$lib/components/ui/SectionNav.svelte";
   import EmptyState from "$lib/components/ui/EmptyState.svelte";
+  import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
 
   interface Props {
     report: Report;
@@ -100,13 +101,9 @@
     {/if}
 
     <!-- AI Disclaimer Banner -->
-    <div
-      class="mb-4 p-4 rounded-lg bg-gradient-to-r from-secondary/5 via-accent/5 to-secondary/5 border border-secondary/10"
-    >
+    <div class="mb-4 p-4 rounded-lg border border-border bg-bg-elevated">
       <div class="flex items-start gap-3">
-        <div class="p-2 rounded-lg bg-secondary/10 shrink-0">
-          <Info class="w-4 h-4 text-secondary" />
-        </div>
+        <Info class="w-4 h-4 text-text-muted shrink-0 mt-0.5" />
         <p class="text-sm text-text-secondary">
           We're always improving report quality, but at the end of the day, AI
           is AI — it does a solid job, though it can occasionally get things
@@ -140,7 +137,7 @@
 
     <!-- PHASE 1: DECISION (Solution details) -->
     <div class="phase-section phase-decision">
-      <div class="phase-label">Decision</div>
+      <SectionDivider num={1} label="Decision" />
 
       {#if report.executive_dashboard}
         <SolutionHero
@@ -155,7 +152,7 @@
 
     <!-- PHASE 2: VALIDATE (Is the opportunity real?) -->
     <div class="phase-section phase-validate">
-      <div class="phase-label">Validate</div>
+      <SectionDivider num={2} label="Validate" />
       {#if report.detailed_pain_points && report.detailed_pain_points.length > 0 && report.pain_point_analytics}
         <PainAnalysis
           painPoints={report.detailed_pain_points}
@@ -194,7 +191,7 @@
 
     <!-- PHASE 3: EXECUTE (How to launch & build) -->
     <div class="phase-section phase-execute">
-      <div class="phase-label">Execute</div>
+      <SectionDivider num={3} label="Execute" />
       {#if report.audience_mapping}
         <AudienceSection data={report.audience_mapping} />
       {/if}
@@ -239,7 +236,7 @@
 
     <!-- PHASE 4: REFERENCE (Appendix) -->
     <div class="phase-section phase-reference">
-      <div class="phase-label">Reference</div>
+      <SectionDivider num={4} label="Reference" />
       {#if report.alternative_solutions && report.alternative_solutions.length > 0}
         <AlternativesSection data={report.alternative_solutions} />
       {/if}
@@ -289,63 +286,31 @@
     background: var(--color-bg-elevated);
   }
 
-  /* Phase Section Styling */
+  /* Phase Section Styling — numbered SectionDivider in normal flow (Phase 5).
+     The divider supplies its own top padding, so phase-section no longer needs
+     the extra top space the old absolute pill required. */
   .phase-section {
-    position: relative;
-    padding: 2rem 0;
     margin-bottom: 1rem;
   }
 
-  .phase-label {
-    position: absolute;
-    top: 0;
-    left: 1rem;
-    transform: translateY(-50%);
-    padding: 0.25rem 0.75rem;
-    font-family: var(--font-mono);
-    font-size: 0.625rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--phase-text, var(--color-text-muted));
-    background: var(--phase-label-bg, var(--color-bg-base));
-    border: 1px solid var(--phase-accent, var(--color-border));
-    border-radius: 2rem;
+  /* Phase wayfinding: keep the phase accent ON THE DIVIDER NUMBER only
+     (color confined to structure). Scoped to the divider's .num span. */
+  .phase-decision :global(.section-divider .num) {
+    color: var(--color-accent);
   }
-
-  /* Phase-specific colors */
-  .phase-decision {
-    --phase-accent: var(--color-accent);
-    --phase-text: var(--color-accent);
-    --phase-label-bg: rgba(229, 90, 40, 0.08);
+  .phase-validate :global(.section-divider .num) {
+    color: var(--color-success-dark);
   }
-
-  .phase-validate {
-    --phase-accent: var(--color-success);
-    --phase-text: var(--color-success-dark);
-    --phase-label-bg: rgba(34, 197, 94, 0.08);
+  .phase-execute :global(.section-divider .num) {
+    color: var(--color-secondary);
   }
-
-  .phase-execute {
-    --phase-accent: var(--color-secondary);
-    --phase-text: var(--color-secondary);
-    --phase-label-bg: rgba(99, 102, 241, 0.08);
-  }
-
-  .phase-reference {
-    --phase-accent: var(--color-text-muted);
-    --phase-text: var(--color-text-muted);
-    --phase-label-bg: rgba(100, 116, 139, 0.08);
+  .phase-reference :global(.section-divider .num) {
+    color: var(--color-text-muted);
   }
 
   @media (max-width: 768px) {
     .phase-section {
-      padding: 1.5rem 0;
-    }
-
-    .phase-label {
-      font-size: 0.5625rem;
-      padding: 0.1875rem 0.5rem;
+      margin-bottom: 0.75rem;
     }
   }
 </style>

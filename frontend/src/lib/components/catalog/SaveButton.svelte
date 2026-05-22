@@ -78,6 +78,14 @@
           body: JSON.stringify({ [bodyKey]: itemId }),
         });
       }
+      // 403 = the user isn't entitled to save this (non-featured) item. Revert
+      // and route to the unlock page instead of failing silently. (The button only
+      // renders on accessible detail pages, so this is defence-in-depth.)
+      if (res.status === 403) {
+        saved = wasSaved;
+        goto("/unlock-catalog");
+        return;
+      }
       if (!res.ok) throw new Error(`Save failed: ${res.status}`);
     } catch {
       // Revert on error. The user sees a brief flash and the original state.

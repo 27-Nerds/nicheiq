@@ -17,6 +17,8 @@ import {
   depublishIdea,
   depublishPainPoint,
   invalidateCategoryLanding,
+  resolveFeaturedIdeaId,
+  resolveFeaturedPainId,
 } from '../services/catalogService.js';
 import {
   generateForCategory,
@@ -894,7 +896,10 @@ adminCatalogRouter.get('/categories/:id/pain-points', async (req: AuthenticatedR
       ...pp,
       isLegacy: !hasMeaningfulResearchContext(researchContext),
     }));
-    res.json({ painPoints });
+    // The effective "featured" pain (admin pin via isFeatured, else top-ranked) so
+    // the admin UI can show the current pick even when nothing is explicitly pinned.
+    const effectiveFeaturedPainPointId = await resolveFeaturedPainId(req.params.id);
+    res.json({ painPoints, effectiveFeaturedPainPointId });
   } catch (error) {
     console.error('Failed to list pain points:', error);
     res.status(500).json({ error: 'Failed to list pain points' });
@@ -907,7 +912,8 @@ adminCatalogRouter.get('/categories/:id/ideas', async (req: AuthenticatedRequest
       where: { categoryId: req.params.id, isActive: true },
       orderBy: { createdAt: 'desc' },
     });
-    res.json({ ideas });
+    const effectiveFeaturedIdeaId = await resolveFeaturedIdeaId(req.params.id);
+    res.json({ ideas, effectiveFeaturedIdeaId });
   } catch (error) {
     console.error('Failed to list ideas:', error);
     res.status(500).json({ error: 'Failed to list ideas' });

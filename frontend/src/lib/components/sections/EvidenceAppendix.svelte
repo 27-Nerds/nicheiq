@@ -545,6 +545,7 @@
     font-size: var(--text-base);
     font-weight: 700;
     color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
   }
 
   .pill-label {
@@ -751,6 +752,7 @@
     gap: 0.375rem;
     font-size: var(--text-sm);
     color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   .thread-stat.highlight {

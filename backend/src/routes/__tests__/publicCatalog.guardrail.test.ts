@@ -51,12 +51,22 @@ vi.mock('../../services/catalogService.js', () => ({
   resolveLegacyCategory: (...args: any[]) => mockResolveLegacyCategory(...args),
   resolveLegacyIdea: (...args: any[]) => mockResolveLegacyIdea(...args),
   resolveLegacyPainPoint: (...args: any[]) => mockResolveLegacyPainPoint(...args),
+  isEntitledUser: () => Promise.resolve(false),
+  getDiscoverPainPoints: () => Promise.resolve([]),
 }));
 
 // Re-mock the rate limiter to a noop (would otherwise wrap our routes).
 vi.mock('../../middleware/rateLimit.js', () => ({
   catalogCrawlLimiter: (_req: any, _res: any, next: any) => next(),
 }));
+
+// Pass-through the per-route auth gate on the detail endpoints so this guardrail
+// test still exercises the handlers (DB-only invariant). The gate itself is
+// covered by publicCatalog.auth.test.ts.
+vi.mock('../../middleware/auth.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, requireInternalAuth: (_req: any, _res: any, next: any) => next() };
+});
 
 // Mock fs reads — any access during a request fails.
 vi.mock('fs', () => ({

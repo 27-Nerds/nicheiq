@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ parent }) => {
   let hasCatalogData = false;
 
   try {
-    const res = await fetchBackend('/api/catalog/discover', { headers });
+    const res = await fetchBackend('/api/public/catalog/discover', { headers });
     if (res.ok) {
       const data = await res.json();
       catalogPainPoints = data.items || [];

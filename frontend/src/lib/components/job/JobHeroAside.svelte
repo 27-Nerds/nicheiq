@@ -23,11 +23,13 @@
 
   interface Props {
     state: AsideState;
-    // running / queued / awaiting / regenerating
+    // running / queued / regenerating
     progressPercent?: number | null;
     stagesCompleted?: number;
     totalStages?: number;
     startedAt?: string | null;
+    // awaiting — number of solution ideas waiting to be reviewed/picked.
+    selectionCount?: number | null;
     // completed
     summary?: ReportSummary | null;
     // failed
@@ -44,6 +46,7 @@
     stagesCompleted = 0,
     totalStages = 0,
     startedAt = null,
+    selectionCount = null,
     summary = null,
     errorDetails = null,
     errorMessage = null,
@@ -128,6 +131,37 @@
     verdict={completedVerdict}
     stats={completedStats}
   />
+{:else if state === "awaiting"}
+  <!-- Paused for the user. Lead with the count of ideas waiting + a clear
+       prompt; no progress % or wall-clock elapsed (both misleading once the
+       pipeline has stopped to wait on a human decision). -->
+  <aside class="panel panel-action">
+    <div class="sp-top">
+      <p class="kicker">Action needed</p>
+      <p class="overall">{selectionCount && selectionCount > 0 ? selectionCount : "—"}</p>
+      <p class="tier">
+        {#if selectionCount && selectionCount > 0}
+          {selectionCount === 1 ? "idea ready to review" : "ideas ready to review"}
+        {:else}
+          Awaiting your selection
+        {/if}
+      </p>
+    </div>
+    <div class="sp-foot">
+      <div class="fi">
+        <div class="n">
+          <span class="num">{stagesCompleted}</span>
+          <span class="num-divider">/</span>
+          <span class="num-total">{totalStages || "—"}</span>
+        </div>
+        <div class="l">Stage</div>
+      </div>
+      <div class="fi">
+        <div class="n cta">Select<span class="cta-arrow" aria-hidden="true">→</span></div>
+        <div class="l">To continue</div>
+      </div>
+    </div>
+  </aside>
 {:else if state === "failed"}
   <aside class="panel panel-error">
     <div class="sp-top">
@@ -169,14 +203,13 @@
     </div>
   </aside>
 {:else}
-  <!-- running / queued / awaiting / regenerating -->
+  <!-- running / queued / regenerating -->
   <aside class="panel">
     <div class="sp-top">
       <p class="kicker">Progress</p>
       <p class="overall">{progressDisplay}</p>
       <p class="tier">
         {#if state === "queued"}Queued
-        {:else if state === "awaiting"}Awaiting selection
         {:else if state === "regenerating"}Regenerating
         {:else}In progress{/if}
       </p>
@@ -209,6 +242,23 @@
   }
   .panel-error {
     border-color: rgba(220, 38, 38, 0.2);
+  }
+  /* Awaiting state — subtle accent edge so the "action needed" panel reads as
+     a prompt rather than a passive status. */
+  .panel-action {
+    border-color: var(--color-accent-muted, rgba(234, 88, 12, 0.35));
+  }
+  /* Footer CTA cell — accent-tinted, smaller than a numeric value since it's a
+     word. Mirrors the .n / .l value+label rhythm of the other footer cells. */
+  .sp-foot .fi .n.cta {
+    font-size: 17px;
+    color: var(--color-accent);
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+  }
+  .cta-arrow {
+    font-weight: 600;
   }
   .sp-top {
     padding: 22px 24px 18px;

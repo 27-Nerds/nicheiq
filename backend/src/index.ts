@@ -18,10 +18,9 @@ import { webhooksRouter } from './routes/webhooks.js';
 import { statsRouter } from './routes/stats.js';
 import { sitemapRouter } from './routes/sitemap.js';
 import { adminCatalogRouter } from './routes/adminCatalog.js';
-import { catalogRouter } from './routes/catalog.js';
 import { publicCatalogRouter } from './routes/publicCatalog.js';
 import { savesRouter } from './routes/saves.js';
-import { requireInternalAdmin, requireInternalAuth, requireInternalService } from './middleware/auth.js';
+import { requireInternalAdmin, requireInternalService } from './middleware/auth.js';
 import { prisma } from './services/db.js';
 import { startHeartbeatMonitor, stopHeartbeatMonitor } from './services/heartbeatService.js';
 import { startSelectionReminderMonitor, stopSelectionReminderMonitor } from './services/selectionReminderService.js';
@@ -74,8 +73,6 @@ app.use('/api/admin/catalog', requireInternalAdmin, adminCatalogRouter);
 // Public-rendering surface: service secret only, no userId required (used by
 // SvelteKit (public) SSR loaders that have no session cookie).
 app.use('/api/public/catalog', requireInternalService, publicCatalogRouter);
-// In-app catalog surface: requires both service secret and X-User-ID.
-app.use('/api/catalog', requireInternalAuth, catalogRouter);
 // Saved-items surface: per-user bookmarks. requireInternalAuth applied
 // inside the router so the no-store cache header runs first.
 app.use('/api/saves', savesRouter);

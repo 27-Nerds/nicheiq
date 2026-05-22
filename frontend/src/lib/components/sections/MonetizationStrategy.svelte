@@ -791,11 +791,11 @@
       >
         <div class="flex items-start gap-4">
           {#if trafficData.saas_alternative_viable}
-            <div class="p-3 rounded-lg bg-success/10">
+            <div class="p-3 rounded-lg border border-border shrink-0">
               <CheckCircle class="w-6 h-6 text-success" />
             </div>
           {:else}
-            <div class="p-3 rounded-lg bg-warning/10">
+            <div class="p-3 rounded-lg border border-border shrink-0">
               <AlertCircle class="w-6 h-6 text-warning" />
             </div>
           {/if}

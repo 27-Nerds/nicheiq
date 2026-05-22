@@ -276,6 +276,10 @@ export function buildCategoryJsonLd(
   payload: CategoryLandingPayload,
   canonical: string,
   description: string,
+  // When false, the idea/pain-point `ItemList` blocks are omitted. Teaser
+  // (login-gated detail) pages pass `false` so structured data never advertises
+  // URLs that are noindex + excluded from the sitemap + Disallow-ed in robots.
+  includeItemLists = true,
 ): JsonLd[] {
   const stops = categoryStops(payload);
   const ideaItems = payload.topIdeas.map((i) => ({
@@ -308,7 +312,7 @@ export function buildCategoryJsonLd(
   // already renders them as separate sections (`AllIdeasSection` +
   // `PainPointRankTable`). Splitting matches the visible structure and gives
   // crawlers a precise signal per type.
-  if (ideaItems.length > 0) {
+  if (includeItemLists && ideaItems.length > 0) {
     blocks.push(
       itemList(ideaItems, {
         name: `Ideas in ${payload.category.name}`,
@@ -316,7 +320,7 @@ export function buildCategoryJsonLd(
       }),
     );
   }
-  if (painItems.length > 0) {
+  if (includeItemLists && painItems.length > 0) {
     blocks.push(
       itemList(painItems, {
         name: `Pain points in ${payload.category.name}`,

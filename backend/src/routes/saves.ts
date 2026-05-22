@@ -2,8 +2,77 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../services/db.js';
 import { requireInternalAuth, AuthenticatedRequest } from '../middleware/auth.js';
+import {
+  isEntitledUser,
+  resolveFeaturedIdeaId,
+  resolveFeaturedPainId,
+} from '../services/catalogService.js';
 
 export const savesRouter = Router();
+
+/**
+ * Full-catalog entitlement. Authoritative DB lookup (ADMIN role or fullCatalogAccess) —
+ * NOT the `X-User-Role` header, which the saves proxies don't forward.
+ */
+async function isEntitled(user: AuthenticatedRequest['user']): Promise<boolean> {
+  return isEntitledUser(user?.id);
+}
+
+type AccessResult = 'ok' | 'notfound' | 'forbidden';
+
+/**
+ * Whether a user may access (hence save/patch) a catalog idea. You can only
+ * bookmark what you can view: entitled users → any active+slugged idea; everyone
+ * else → only the featured idea for the item's category. Inactive or slug-less rows
+ * are `notfound` (not publicly published). Mirrors the detail-endpoint gate.
+ */
+async function canAccessIdea(user: AuthenticatedRequest['user'], ideaId: string): Promise<AccessResult> {
+  const idea = await prisma.catalogIdea.findUnique({
+    where: { id: ideaId },
+    select: { id: true, categoryId: true, isActive: true, slug: true },
+  });
+  if (!idea || !idea.isActive || !idea.slug) return 'notfound';
+  if (await isEntitled(user)) return 'ok';
+  return idea.id === (await resolveFeaturedIdeaId(idea.categoryId)) ? 'ok' : 'forbidden';
+}
+
+async function canAccessPain(user: AuthenticatedRequest['user'], painPointId: string): Promise<AccessResult> {
+  const pp = await prisma.catalogPainPoint.findUnique({
+    where: { id: painPointId },
+    select: { id: true, categoryId: true, isActive: true, slug: true },
+  });
+  if (!pp || !pp.isActive || !pp.slug) return 'notfound';
+  if (await isEntitled(user)) return 'ok';
+  return pp.id === (await resolveFeaturedPainId(pp.categoryId)) ? 'ok' : 'forbidden';
+}
+
+/**
+ * For a non-entitled user, replace each non-featured saved row with a LOCKED
+ * placeholder — the item preview and the user's note are stripped (no content
+ * reaches the client), leaving just the save-row identity + `locked: true`.
+ * Featured rows pass through unchanged. Resolves featured once per category (batched).
+ */
+async function applyIdeaLocks<T extends { idea: { id: string; category: { id: string } } }>(rows: T[]) {
+  const catIds = [...new Set(rows.map((r) => r.idea.category.id))];
+  const featured = new Map<string, string | null>();
+  await Promise.all(catIds.map(async (c) => void featured.set(c, await resolveFeaturedIdeaId(c))));
+  return rows.map((r) =>
+    r.idea.id === featured.get(r.idea.category.id)
+      ? r
+      : { ...r, locked: true as const, idea: null, notes: null },
+  );
+}
+
+async function applyPainLocks<T extends { painPoint: { id: string; category: { id: string } } }>(rows: T[]) {
+  const catIds = [...new Set(rows.map((r) => r.painPoint.category.id))];
+  const featured = new Map<string, string | null>();
+  await Promise.all(catIds.map(async (c) => void featured.set(c, await resolveFeaturedPainId(c))));
+  return rows.map((r) =>
+    r.painPoint.id === featured.get(r.painPoint.category.id)
+      ? r
+      : { ...r, locked: true as const, painPoint: null, notes: null },
+  );
+}
 
 // All save endpoints carry per-user data — never CDN-cacheable.
 savesRouter.use((_req, res, next) => {
@@ -112,14 +181,16 @@ savesRouter.post('/ideas', async (req: AuthenticatedRequest, res: Response) => {
   const userId = req.user!.id;
   const { ideaId, notes } = parsed.data;
 
-  // Confirm the idea exists before creating an orphan-prone row. The FK would
-  // catch this too, but a friendlier 404 is worth the extra query.
-  const idea = await prisma.catalogIdea.findUnique({
-    where: { id: ideaId },
-    select: { id: true },
-  });
-  if (!idea) {
+  // You can only bookmark what you can access: featured items are open to all,
+  // everything else needs entitlement. Mirrors the detail-page gate. (Also covers
+  // the existence/published check — notfound for missing/inactive/slug-less rows.)
+  const access = await canAccessIdea(req.user, ideaId);
+  if (access === 'notfound') {
     res.status(404).json({ error: 'Idea not found' });
+    return;
+  }
+  if (access === 'forbidden') {
+    res.status(403).json({ error: 'Forbidden' });
     return;
   }
 
@@ -159,16 +230,23 @@ savesRouter.patch('/ideas/:ideaId', async (req: AuthenticatedRequest, res: Respo
     res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
     return;
   }
-  const updated = await prisma.savedIdea.updateMany({
-    where: { userId, ideaId },
-    data: { notes: parsed.data.notes },
+  // Option B precedence: ownership first (404 if it isn't the user's save), then
+  // access (403 if the user has since lost access to a non-featured item).
+  const existing = await prisma.savedIdea.findUnique({
+    where: { userId_ideaId: { userId, ideaId } },
+    select: { id: true },
   });
-  if (updated.count === 0) {
+  if (!existing) {
     res.status(404).json({ error: 'Saved idea not found' });
     return;
   }
-  const row = await prisma.savedIdea.findUnique({
+  if ((await canAccessIdea(req.user, ideaId)) === 'forbidden') {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const row = await prisma.savedIdea.update({
     where: { userId_ideaId: { userId, ideaId } },
+    data: { notes: parsed.data.notes },
   });
   res.status(200).json(row);
 });
@@ -195,11 +273,13 @@ savesRouter.get('/ideas', async (req: AuthenticatedRequest, res: Response) => {
   });
 
   const hasMore = rows.length > limit;
-  const items = hasMore ? rows.slice(0, limit) : rows;
-  res.status(200).json({
-    items,
-    nextCursor: hasMore ? items[items.length - 1].id : null,
-  });
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
+  // Non-entitled users get non-featured rows replaced by locked placeholders
+  // (content + notes stripped) rather than dropped — so every row is returned and
+  // pagination stays dense.
+  const items = (await isEntitled(req.user)) ? pageRows : await applyIdeaLocks(pageRows);
+  res.status(200).json({ items, nextCursor });
 });
 
 savesRouter.get('/ideas/status', async (req: AuthenticatedRequest, res: Response) => {
@@ -233,12 +313,13 @@ savesRouter.post('/pain-points', async (req: AuthenticatedRequest, res: Response
   const userId = req.user!.id;
   const { painPointId, notes } = parsed.data;
 
-  const exists = await prisma.catalogPainPoint.findUnique({
-    where: { id: painPointId },
-    select: { id: true },
-  });
-  if (!exists) {
+  const access = await canAccessPain(req.user, painPointId);
+  if (access === 'notfound') {
     res.status(404).json({ error: 'Pain point not found' });
+    return;
+  }
+  if (access === 'forbidden') {
+    res.status(403).json({ error: 'Forbidden' });
     return;
   }
 
@@ -273,16 +354,22 @@ savesRouter.patch('/pain-points/:painPointId', async (req: AuthenticatedRequest,
     res.status(400).json({ error: 'Invalid body', details: parsed.error.flatten() });
     return;
   }
-  const updated = await prisma.savedPainPoint.updateMany({
-    where: { userId, painPointId },
-    data: { notes: parsed.data.notes },
+  // Option B precedence: ownership first (404), then access (403).
+  const existing = await prisma.savedPainPoint.findUnique({
+    where: { userId_painPointId: { userId, painPointId } },
+    select: { id: true },
   });
-  if (updated.count === 0) {
+  if (!existing) {
     res.status(404).json({ error: 'Saved pain point not found' });
     return;
   }
-  const row = await prisma.savedPainPoint.findUnique({
+  if ((await canAccessPain(req.user, painPointId)) === 'forbidden') {
+    res.status(403).json({ error: 'Forbidden' });
+    return;
+  }
+  const row = await prisma.savedPainPoint.update({
     where: { userId_painPointId: { userId, painPointId } },
+    data: { notes: parsed.data.notes },
   });
   res.status(200).json(row);
 });
@@ -309,11 +396,10 @@ savesRouter.get('/pain-points', async (req: AuthenticatedRequest, res: Response)
   });
 
   const hasMore = rows.length > limit;
-  const items = hasMore ? rows.slice(0, limit) : rows;
-  res.status(200).json({
-    items,
-    nextCursor: hasMore ? items[items.length - 1].id : null,
-  });
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const nextCursor = hasMore ? pageRows[pageRows.length - 1].id : null;
+  const items = (await isEntitled(req.user)) ? pageRows : await applyPainLocks(pageRows);
+  res.status(200).json({ items, nextCursor });
 });
 
 savesRouter.get('/pain-points/status', async (req: AuthenticatedRequest, res: Response) => {

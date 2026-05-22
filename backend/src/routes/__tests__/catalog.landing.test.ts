@@ -33,12 +33,6 @@ vi.mock('../../services/catalogService.js', async (importOriginal) => {
     resolveLegacyIdea: (...args: any[]) => mockResolveLegacyIdea(...args),
     resolveLegacyPainPoint: (...args: any[]) => mockResolveLegacyPainPoint(...args),
     listCategories: vi.fn(),
-    listPublishedIdeas: vi.fn(),
-    listPublishedPainPoints: vi.fn(),
-    getPublishedIdea: vi.fn(),
-    getPublishedPainPoint: vi.fn(),
-    getCatalogStats: vi.fn(),
-    searchCatalog: vi.fn(),
     getDiscoverPainPoints: vi.fn(),
   };
 });
@@ -52,6 +46,14 @@ vi.mock('../../middleware/rateLimit.js', () => ({
   passwordResetLimiter: (_req: any, _res: any, next: any) => next(),
   jobCreationLimiter: (_req: any, _res: any, next: any) => next(),
 }));
+
+// Pass-through the per-route auth gate added to idea-by-slug / pain-point-by-slug.
+// This suite mounts the router without the mount-level auth and tests handler
+// behavior; the gate itself is covered by publicCatalog.auth.test.ts.
+vi.mock('../../middleware/auth.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return { ...actual, requireInternalAuth: (_req: any, _res: any, next: any) => next() };
+});
 
 let app: Express;
 

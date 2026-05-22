@@ -102,13 +102,9 @@
   // Use the backend aggregate verdict-GO count when available (accurate across
   // all ideas, not just the visible preview slice). Fall back to counting the
   // visible top-N for older payloads without the field.
-  const goCount = $derived(
-    data.payload.verdictGoCount ??
-      data.payload.topIdeas.filter((i) => {
-        const v = (i.source_verdict ?? "").trim().toUpperCase();
-        return v === "GO";
-      }).length,
-  );
+  // GO-count is computed server-side BEFORE the topIdeas list is trimmed for
+  // the teaser (see +page.server.ts), so it reflects the full set.
+  const goCount = $derived(data.goCount);
 
   // Phase 2: themes render as a single unified section. PainPointsByTheme
   // sorts by mentionCount desc internally and emphasizes the first card
@@ -188,7 +184,11 @@
       num={num1}
       label={`Ideas in ${data.payload.category.name}`}
     />
-    <AllIdeasSection ideas={data.payload.topIdeas} showRank />
+    <AllIdeasSection
+      ideas={data.payload.topIdeas}
+      showRank
+      lockedCount={data.lockedIdeaCount}
+    />
   </div>
 {/if}
 
@@ -199,11 +199,12 @@
     <SectionDivider
       num={num2}
       label="Ranked pain points"
-      metaText={`${data.payload.topPainPoints.length} ranked · mention volume × severity`}
+      metaText={`${data.payload.totalPainPoints} ranked · mention volume × severity`}
     />
     <PainPointRankTable
       painPoints={data.payload.topPainPoints}
       themes={allThemes}
+      lockedCount={data.lockedPainCount}
     />
   </div>
 {/if}

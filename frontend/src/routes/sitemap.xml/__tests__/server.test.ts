@@ -77,8 +77,9 @@ describe('sitemap.xml launch gate', () => {
     expect(xml).toContain('<loc>https://nicheiq.dev/ideas/b2b-saas</loc>');
     expect(xml).toContain('<loc>https://nicheiq.dev/ideas/saas</loc>');
     expect(xml).toContain('<loc>https://nicheiq.dev/ideas/saas/b2b-tools</loc>');
-    expect(xml).toContain('<loc>https://nicheiq.dev/idea/idea-one-saas</loc>');
-    expect(xml).toContain('<loc>https://nicheiq.dev/pain-point/pain-one-saas</loc>');
+    // Detail pages are login-gated and intentionally excluded from the sitemap.
+    expect(xml).not.toContain('<loc>https://nicheiq.dev/idea/idea-one-saas</loc>');
+    expect(xml).not.toContain('<loc>https://nicheiq.dev/pain-point/pain-one-saas</loc>');
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toContain('/api/public/catalog/sitemap');
   });

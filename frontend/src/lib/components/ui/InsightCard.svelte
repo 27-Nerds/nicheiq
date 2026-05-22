@@ -109,13 +109,9 @@
     border-top-color: var(--color-border);
   }
 
-  /* Success variant */
+  /* Success variant — flat surface, semantic border (Phase 5) */
   .insight-card--success {
-    background: linear-gradient(
-      135deg,
-      rgba(34, 197, 94, 0.05) 0%,
-      transparent 50%
-    );
+    background: var(--color-bg-elevated);
     border-color: rgba(34, 197, 94, 0.15);
   }
 
@@ -131,13 +127,9 @@
     border-color: rgba(34, 197, 94, 0.3);
   }
 
-  /* Warning variant */
+  /* Warning variant — flat surface, semantic border (Phase 5) */
   .insight-card--warning {
-    background: linear-gradient(
-      135deg,
-      rgba(234, 179, 8, 0.05) 0%,
-      transparent 50%
-    );
+    background: var(--color-bg-elevated);
     border-color: rgba(234, 179, 8, 0.15);
   }
 
@@ -153,13 +145,9 @@
     border-color: rgba(234, 179, 8, 0.3);
   }
 
-  /* Error variant */
+  /* Error variant — flat surface, semantic border (Phase 5) */
   .insight-card--error {
-    background: linear-gradient(
-      135deg,
-      rgba(239, 68, 68, 0.05) 0%,
-      transparent 50%
-    );
+    background: var(--color-bg-elevated);
     border-color: rgba(239, 68, 68, 0.15);
   }
 
@@ -175,13 +163,9 @@
     border-color: rgba(239, 68, 68, 0.3);
   }
 
-  /* Accent variant */
+  /* Accent variant — flat surface, semantic border (Phase 5) */
   .insight-card--accent {
-    background: linear-gradient(
-      135deg,
-      var(--color-accent-subtle) 0%,
-      transparent 50%
-    );
+    background: var(--color-bg-elevated);
     border-color: var(--color-accent-glow);
   }
 
@@ -197,13 +181,9 @@
     border-color: var(--color-border-accent);
   }
 
-  /* Info variant (purple) */
+  /* Info variant (purple) — flat surface, semantic border (Phase 5) */
   .insight-card--info {
-    background: linear-gradient(
-      135deg,
-      rgba(99, 102, 241, 0.05) 0%,
-      transparent 50%
-    );
+    background: var(--color-bg-elevated);
     border-color: rgba(99, 102, 241, 0.15);
   }
 

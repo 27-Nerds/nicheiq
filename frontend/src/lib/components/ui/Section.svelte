@@ -170,11 +170,9 @@
   {:else if headerSize === "lg"}
     <!-- Large static header (SectionHeader style) -->
     <div class="section-header-row header-lg">
-      <div class="header-icon-box">
-        {#if Icon}
-          <Icon class="section-icon-lg" />
-        {/if}
-      </div>
+      {#if Icon}
+        <Icon class="section-icon-lg" />
+      {/if}
       <div class="header-text">
         <h2 class="section-header-title-lg">{title}</h2>
         {#if subtitle}
@@ -224,7 +222,7 @@
 	   Base Section Container
 	   ============================================ */
   .section-container {
-    border-radius: 0.75rem;
+    border-radius: 0.5rem;
     overflow: hidden;
   }
 
@@ -235,47 +233,26 @@
   /* ============================================
 	   Variant Styles (Simplified: 4 variants)
 	   ============================================ */
+  /* Variants keep only the semantic border + icon color — decorative gradient
+     fills removed for the editorial flat surface (Phase 5). */
   .section-default {
     --section-border-color: var(--color-border);
     --section-icon-color: var(--color-accent);
-    --section-bg: transparent;
   }
 
   .section-success {
     --section-border-color: rgba(34, 197, 94, 0.3);
     --section-icon-color: var(--color-success);
-    --section-bg: linear-gradient(
-      135deg,
-      rgba(34, 197, 94, 0.05) 0%,
-      transparent 40%
-    );
   }
 
   .section-warning {
     --section-border-color: rgba(239, 68, 68, 0.3);
     --section-icon-color: var(--color-error);
-    --section-bg: linear-gradient(
-      135deg,
-      rgba(239, 68, 68, 0.05) 0%,
-      transparent 40%
-    );
   }
 
   .section-accent {
     --section-border-color: var(--color-border-accent);
     --section-icon-color: var(--color-accent);
-    --section-bg: linear-gradient(
-      135deg,
-      var(--color-accent-subtle) 0%,
-      transparent 40%
-    );
-  }
-
-  /* Apply variant background */
-  .section-success,
-  .section-warning,
-  .section-accent {
-    background: var(--section-bg);
   }
 
   /* ============================================
@@ -435,23 +412,12 @@
     padding: 1rem 1.25rem 0;
   }
 
-  /* Large header (lg static) — scoped to header row only */
+  /* Large header (lg static) — scoped to header row only.
+     Editorial flat: inline icon (no tinted box), aligned to the title. */
   .section-header-row.header-lg {
-    gap: 1rem;
+    gap: 0.75rem;
     padding: 1.25rem 1.25rem 0;
-    align-items: flex-start;
-  }
-
-  .header-icon-box {
-    display: flex;
     align-items: center;
-    justify-content: center;
-    width: 2.75rem;
-    height: 2.75rem;
-    background: var(--color-accent-subtle);
-    border: 1px solid var(--color-border-accent);
-    border-radius: 0.75rem;
-    flex-shrink: 0;
   }
 
   .header-text {
@@ -497,9 +463,10 @@
   }
 
   :global(.section-icon-lg) {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
     color: var(--color-accent);
+    flex-shrink: 0;
   }
 
   /* ============================================

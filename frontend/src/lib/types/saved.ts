@@ -63,25 +63,51 @@ export interface SavedPainPointCardData {
   };
 }
 
-export interface SavedIdeaItem {
+interface SavedIdeaRowBase {
   id: string;
   userId: string;
   ideaId: string;
-  notes: string | null;
   createdAt: string;
   updatedAt: string;
-  idea: SavedIdeaCardData;
 }
 
-export interface SavedPainPointItem {
+/**
+ * A saved idea is EITHER accessible (full card data) OR locked — when a
+ * non-entitled user has a saved row for a non-featured idea, the backend strips
+ * the item preview and the note (`idea:null, notes:null, locked:true`) so no
+ * content reaches the client. Discriminated on `locked` so TS narrows safely.
+ */
+export type SavedIdeaItemUnlocked = SavedIdeaRowBase & {
+  locked?: false;
+  notes: string | null;
+  idea: SavedIdeaCardData;
+};
+export type SavedIdeaItemLocked = SavedIdeaRowBase & {
+  locked: true;
+  notes: null;
+  idea: null;
+};
+export type SavedIdeaItem = SavedIdeaItemUnlocked | SavedIdeaItemLocked;
+
+interface SavedPainRowBase {
   id: string;
   userId: string;
   painPointId: string;
-  notes: string | null;
   createdAt: string;
   updatedAt: string;
-  painPoint: SavedPainPointCardData;
 }
+
+export type SavedPainPointItemUnlocked = SavedPainRowBase & {
+  locked?: false;
+  notes: string | null;
+  painPoint: SavedPainPointCardData;
+};
+export type SavedPainPointItemLocked = SavedPainRowBase & {
+  locked: true;
+  notes: null;
+  painPoint: null;
+};
+export type SavedPainPointItem = SavedPainPointItemUnlocked | SavedPainPointItemLocked;
 
 export interface SavedListResponse<T> {
   items: T[];

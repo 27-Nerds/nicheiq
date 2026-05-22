@@ -10,15 +10,23 @@ import {
   getPainPointSitemapEntries,
   getPublicCategoryTree,
   getTopCatalogPainPoints,
+  getDiscoverPainPoints,
   resolveLegacyCategory,
   resolveLegacyIdea,
   resolveLegacyPainPoint,
+  isEntitledUser,
 } from '../services/catalogService.js';
 import {
   listCollectionSummaries,
   getCollectionDetail,
 } from '../services/catalogCollectionService.js';
 import { catalogCrawlLimiter } from '../middleware/rateLimit.js';
+import { requireInternalAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+
+/** Full-catalog entitlement — authoritative DB lookup (ADMIN role or fullCatalogAccess). */
+async function isEntitled(user: AuthenticatedRequest['user']): Promise<boolean> {
+  return isEntitledUser(user?.id);
+}
 
 /**
  * Public-rendering catalog router.
@@ -26,6 +34,11 @@ import { catalogCrawlLimiter } from '../middleware/rateLimit.js';
  * Mounted at `/api/public/catalog/*` under `requireInternalService` (service
  * secret only — no `X-User-ID` required). Used by SvelteKit `(public)` SSR
  * loaders that have no session cookie.
+ *
+ * EXCEPTION: `/idea-by-slug/:slug` and `/pain-point-by-slug/:slug` additionally
+ * apply `requireInternalAuth` per-route, so they require a logged-in user
+ * (`X-User-ID`). Their detail pages are login-gated; do NOT remove that
+ * per-route middleware to "match" the rest of the router — the gate is intended.
  *
  * Counterpart to `catalog.ts` which is mounted under `requireInternalAuth`
  * for in-app callers that already carry a session.
@@ -95,16 +108,23 @@ publicCatalogRouter.get(
 publicCatalogRouter.get(
   '/idea-by-slug/:slug',
   catalogCrawlLimiter,
-  async (req: Request, res: Response) => {
+  requireInternalAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
       const slugParse = SlugParam.safeParse(req.params.slug);
       if (!slugParse.success) {
         res.status(400).json({ error: 'Invalid slug' });
         return;
       }
-      const idea = await getIdeaBySlug(slugParse.data);
+      const entitled = await isEntitled(req.user);
+      const idea = await getIdeaBySlug(slugParse.data, { entitled });
       if (!idea) {
         res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      // Non-featured detail for a non-entitled user → locked (no item data in body).
+      if ('locked' in idea) {
+        res.status(403).json({ error: 'locked' });
         return;
       }
       res.json(idea);
@@ -118,16 +138,22 @@ publicCatalogRouter.get(
 publicCatalogRouter.get(
   '/pain-point-by-slug/:slug',
   catalogCrawlLimiter,
-  async (req: Request, res: Response) => {
+  requireInternalAuth,
+  async (req: AuthenticatedRequest, res: Response) => {
     try {
       const slugParse = SlugParam.safeParse(req.params.slug);
       if (!slugParse.success) {
         res.status(400).json({ error: 'Invalid slug' });
         return;
       }
-      const pp = await getPainPointBySlug(slugParse.data);
+      const entitled = await isEntitled(req.user);
+      const pp = await getPainPointBySlug(slugParse.data, { entitled });
       if (!pp) {
         res.status(404).json({ error: 'Not found' });
+        return;
+      }
+      if ('locked' in pp) {
+        res.status(403).json({ error: 'locked' });
         return;
       }
       res.json(pp);
@@ -206,6 +232,25 @@ publicCatalogRouter.get(
     } catch (error) {
       console.error('Failed to get top catalog pain points:', error);
       res.status(500).json({ error: 'Failed to get top pain points' });
+    }
+  },
+);
+
+// "Discover" teaser — a few random active pain points shown on /new as research
+// inspiration. Public funnel surface (like /top-pain-points); intentionally NOT
+// gated. Moved here from the now-deleted /api/catalog router so all catalog
+// endpoints live under /api/public/catalog/*.
+publicCatalogRouter.get(
+  '/discover',
+  catalogCrawlLimiter,
+  async (_req: Request, res: Response) => {
+    try {
+      const items = await getDiscoverPainPoints(4);
+      res.setHeader('Cache-Control', 'no-cache');
+      res.json({ items });
+    } catch (error) {
+      console.error('Failed to get discover items:', error);
+      res.status(500).json({ error: 'Failed to get discover items' });
     }
   },
 );

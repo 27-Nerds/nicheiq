@@ -152,25 +152,10 @@ export const GET: RequestHandler = async ({ url }) => {
           });
         }
 
-        for (const idea of data.ideas ?? []) {
-          if (!idea.slug) continue;
-          urls += entryXml(origin, {
-            path: `/idea/${escapeXml(idea.slug)}`,
-            lastmod: formatDate(idea.updatedAt),
-            changefreq: 'monthly',
-            priority: '0.5',
-          });
-        }
-
-        for (const pp of data.painPoints ?? []) {
-          if (!pp.slug) continue;
-          urls += entryXml(origin, {
-            path: `/pain-point/${escapeXml(pp.slug)}`,
-            lastmod: formatDate(pp.updatedAt),
-            changefreq: 'monthly',
-            priority: '0.5',
-          });
-        }
+        // Idea (`/idea/*`) and pain-point (`/pain-point/*`) detail pages are
+        // login-gated (noindex + 302 to /login for anonymous), so they are
+        // intentionally omitted from the sitemap. Only category/sub-category
+        // landing pages are emitted as the indexable catalog surface.
       } else {
         console.error(`Sitemap: catalog backend returned ${catalogRes.status}`);
       }

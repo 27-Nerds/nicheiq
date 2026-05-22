@@ -235,6 +235,35 @@ adminRouter.patch('/users/:userId/role', async (req: AuthenticatedRequest, res: 
 });
 
 // ============================================
+// Grant / revoke full catalog access (manual bridge until subscription billing)
+// ============================================
+
+const UpdateUserAccessSchema = z.object({ fullCatalogAccess: z.boolean() });
+
+adminRouter.patch('/users/:userId/access', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const input = UpdateUserAccessSchema.parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: req.params.userId },
+      data: { fullCatalogAccess: input.fullCatalogAccess },
+      select: { id: true, email: true, fullCatalogAccess: true },
+    });
+    res.json(user);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({ error: 'Validation error', details: error.errors });
+      return;
+    }
+    if ((error as { code?: string })?.code === 'P2025') {
+      res.status(404).json({ error: 'User not found' });
+      return;
+    }
+    console.error('Failed to update user catalog access:', error);
+    res.status(500).json({ error: 'Failed to update user access' });
+  }
+});
+
+// ============================================
 // Add Credits to User
 // ============================================
 

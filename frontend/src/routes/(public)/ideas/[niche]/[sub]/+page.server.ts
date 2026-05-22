@@ -49,12 +49,27 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
     noindex: categoryNoindex({ payload, searchParams: url.searchParams, launchGateOn: LAUNCH_GATE_ON }),
   });
 
-  const jsonld = buildCategoryJsonLd(payload, canonical, description);
+  // GO-count comes from the backend aggregate (counted across the full subtree,
+  // independent of the featured-only visible set the backend now returns).
+  const goCount = payload.verdictGoCount ?? 0;
+
+  // Public teaser: the backend already returns the featured-only visible set
+  // (1 for a leaf sub-niche), so non-featured items never reach the browser.
+  // Locked counts = total − what the backend sent.
+  const lockedIdeaCount = Math.max(0, payload.totalIdeas - payload.topIdeas.length);
+  const lockedPainCount = Math.max(0, payload.totalPainPoints - payload.topPainPoints.length);
+
+  // includeItemLists: false → JSON-LD must not enumerate the login-gated
+  // idea/pain detail URLs (noindex + out of sitemap + robots Disallow).
+  const jsonld = buildCategoryJsonLd(payload, canonical, description, false);
 
   return {
     meta,
     jsonld,
     payload,
+    goCount,
+    lockedIdeaCount,
+    lockedPainCount,
     longDescription:
       payload.category.longDescription ??
       categoryLongDescriptionFallback(

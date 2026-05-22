@@ -33,7 +33,7 @@
 		{session}
 		hasSampleReport={data.hasSampleReport}
 		ctaTexts={data.ctaTexts}
-		reportsDelivered={data.reportsDelivered}
+		activeFounders={data.activeFounders}
 	/>
 	<ProductDemoBlock />
 	<ProblemBlock />
@@ -44,8 +44,8 @@
 	<AboutBlock />
 	<AchievementsBlock
 		reportsDelivered={data.reportsDelivered}
-		threadsAnalyzed={data.threadsAnalyzed}
-		nichesResearched={data.nichesResearched}
+		commentsAnalyzed={data.commentsAnalyzed}
+		subNiches={data.subNiches}
 	/>
 	<TestimonialsBlock ctaTexts={data.ctaTexts} />
 	<Pricing {session} ctaTexts={data.ctaTexts} packages={data.packages ?? []} />

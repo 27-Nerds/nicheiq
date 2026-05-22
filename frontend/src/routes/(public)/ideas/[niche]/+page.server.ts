@@ -107,7 +107,16 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
       noindex: categoryNoindex({ payload, searchParams: url.searchParams, launchGateOn: LAUNCH_GATE_ON }),
     });
 
-    const jsonld = buildCategoryJsonLd(payload, canonical, description);
+    // Public teaser: the backend already returns the featured-only visible set
+    // (leaf → 1; parent → one featured per sub-niche), so non-featured items never
+    // reach the browser. Locked counts = total − what the backend sent.
+    const lockedIdeaCount = Math.max(0, payload.totalIdeas - payload.topIdeas.length);
+    const lockedPainCount = Math.max(0, payload.totalPainPoints - payload.topPainPoints.length);
+
+    // includeItemLists: false → JSON-LD must not enumerate the login-gated
+    // idea/pain detail URLs (they are noindex + out of the sitemap + robots
+    // Disallow-ed; advertising them in structured data would be incoherent).
+    const jsonld = buildCategoryJsonLd(payload, canonical, description, false);
 
     const featuredCollection = pickFeaturedCollection(
       collections,
@@ -120,6 +129,8 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
       jsonld,
       payload,
       featuredCollection,
+      lockedIdeaCount,
+      lockedPainCount,
       longDescription:
         payload.category.longDescription ??
         categoryLongDescriptionFallback(

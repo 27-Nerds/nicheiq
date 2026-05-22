@@ -18,13 +18,6 @@
 
   interface Props {
     idea: IdeaPreview;
-    /** Right-rail mini stats. Tile renders larger when `primary: true`.
-     *  Null/empty values are filtered by IdeaHeroAside. */
-    stats: Array<{
-      value: string | number | null;
-      label: string;
-      primary?: boolean;
-    }>;
     /** Hero primary CTA href — same target as the bottom-of-page BuildCTA. */
     ctaHref?: string | null;
     /** Sourced-from line content (e.g. "Sourced from 432 discussions"). */
@@ -40,7 +33,6 @@
 
   let {
     idea,
-    stats,
     ctaHref = null,
     sourceCount = null,
     updatedAt = null,
@@ -157,7 +149,7 @@
       <p class="source-line">Sourced from {sourceCount.toLocaleString()} discussions</p>
     {/if}
   </div>
-  <IdeaHeroAside {scores} {stats} {verdict} />
+  <IdeaHeroAside {scores} {verdict} />
 </header>
 
 <style>

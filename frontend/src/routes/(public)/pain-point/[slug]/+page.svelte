@@ -13,6 +13,8 @@
     SourceCommunityChips,
     BuildCTA,
     CategoryFAQ,
+    CatalogLockedSection,
+    LockedListSkeleton,
   } from "$lib/components/catalog/seo";
   import { categoryPath } from "$lib/utils/urls";
   import { scaleSeverity } from "$lib/types/publicCatalog.js";
@@ -159,6 +161,13 @@
     Array.isArray(data.painPoint.relatedIdeas) && data.painPoint.relatedIdeas.length > 0,
   );
 
+  // Gated-item counts (non-entitled users). > 0 → render a teaser even with no
+  // visible rows.
+  const siblingPainsLocked = $derived(data.painPoint.siblingPainsLockedCount ?? 0);
+  const relatedIdeasLocked = $derived(data.painPoint.relatedIdeasLockedCount ?? 0);
+  const showSiblingPains = $derived(hasSiblingPains || siblingPainsLocked > 0);
+  const showRelatedIdeas = $derived(hasRelatedIdeas || relatedIdeasLocked > 0);
+
   // Parent theme: match pp.themeId against data.painPoint.themes[].id. The
   // matched Theme carries `description` (mapped from Pydantic `definition`),
   // `title`, and `id` — we use all three (link target, hero hint, section 04
@@ -196,8 +205,8 @@
   const num1 = $derived(nextNum(0, hasEvidence));
   const num2 = $derived(nextNum(num1, hasAudience));
   const num3 = $derived(nextNum(num2, hasSolutionApproach));
-  const num4 = $derived(nextNum(num3, hasSiblingPains));
-  const num5 = $derived(nextNum(num4, hasRelatedIdeas));
+  const num4 = $derived(nextNum(num3, showSiblingPains));
+  const num5 = $derived(nextNum(num4, showRelatedIdeas));
 </script>
 
 <SeoHead {...data.meta} />
@@ -264,10 +273,10 @@
   </div>
 {/if}
 
-{#if hasSiblingPains}
+{#if showSiblingPains}
   {@const siblings = data.painPoint.siblingPains}
   {#snippet sibCount()}
-    <span>{siblings.length} related</span>
+    <span>{siblings.length + siblingPainsLocked} related</span>
   {/snippet}
   <SectionDivider num={num4} label="Related pains in this theme" right={sibCount} />
   {#if hasThemeDeck && parentTheme}
@@ -281,24 +290,45 @@
       <p class="theme-deck-prose">{parentTheme.description}</p>
     </aside>
   {/if}
-  <div class="sibling-list">
-    {#each siblings as sp}
-      <RelatedPainCard pain={sp} />
-    {/each}
-  </div>
+  {#if siblings.length > 0}
+    <div class="sibling-list">
+      {#each siblings as sp}
+        <RelatedPainCard pain={sp} />
+      {/each}
+    </div>
+  {/if}
+  {#if siblingPainsLocked > 0}
+    <CatalogLockedSection
+      title="More pain points in this theme"
+      summary={`Subscribe to unlock ${siblingPainsLocked} more validated pain point${siblingPainsLocked === 1 ? '' : 's'} in this theme.`}
+      ctaHref="/unlock-catalog"
+      ctaLabel={`Unlock ${siblingPainsLocked} more pain point${siblingPainsLocked === 1 ? '' : 's'}`}
+    />
+  {/if}
 {/if}
 
-{#if hasRelatedIdeas}
+{#if showRelatedIdeas}
   {@const related = data.painPoint.relatedIdeas}
   {#snippet relCount()}
-    <span>{related.length} idea{related.length === 1 ? "" : "s"}</span>
+    <span>{related.length + relatedIdeasLocked} idea{related.length + relatedIdeasLocked === 1 ? "" : "s"}</span>
   {/snippet}
   <SectionDivider num={num5} label="Ideas built for this pain" right={relCount} />
   <div class="idea-grid">
     {#each related as i}
       <IdeaCardV2 idea={i} />
     {/each}
+    {#if relatedIdeasLocked > 0}
+      <LockedListSkeleton variant="idea" count={relatedIdeasLocked} />
+    {/if}
   </div>
+  {#if relatedIdeasLocked > 0}
+    <CatalogLockedSection
+      title="More ideas built for this pain"
+      summary={`Subscribe to unlock ${relatedIdeasLocked} more idea${relatedIdeasLocked === 1 ? '' : 's'} that address this pain point.`}
+      ctaHref="/unlock-catalog"
+      ctaLabel={`Unlock ${relatedIdeasLocked} more idea${relatedIdeasLocked === 1 ? '' : 's'}`}
+    />
+  {/if}
 {/if}
 
 <!-- FAQ — supplementary block before the CTA, paired with FAQPage JSON-LD

@@ -137,7 +137,7 @@
       <!-- Featured: Dev Time (large card) -->
       {#if solution.estimated_development_time}
         <div class="bento-card bento-featured bento-accent">
-          <div class="bento-icon-large bg-accent/10 border border-accent/30">
+          <div class="bento-icon-large border border-border">
             <Clock class="w-6 h-6 text-accent" />
           </div>
           <div class="dev-time-value text-accent">

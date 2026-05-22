@@ -191,6 +191,8 @@ export interface CatalogTotals {
   totalCategories: number;
   totalSubcategories: number;
   contentItemsMined: number;
+  /** Sum of Reddit comments analyzed across contexts ("Comments analyzed" tile). */
+  commentsAnalyzed: number;
   /** ISO timestamp of the most recent active idea or pain-point update.
    *  Drives the hero kicker dateline on /ideas. */
   lastUpdated: string | null;

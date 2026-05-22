@@ -7,6 +7,8 @@
   import FilterChip from "./FilterChip.svelte";
   import TriLegend from "./TriLegend.svelte";
   import IdeasListTable from "./IdeasListTable.svelte";
+  import LockedListSkeleton from "./LockedListSkeleton.svelte";
+  import CatalogLockedSection from "./CatalogLockedSection.svelte";
 
   // "Browse all ideas" coordinator — filter chips, sort + view toggle, then
   // either grid (<IdeaCardV2>) or list (<IdeasListTable>) view.
@@ -39,6 +41,14 @@
      *  shows the full set. Sub-niche pages skip the chip row entirely (no
      *  subNiches passed) so they default to "all" effectively. */
     defaultFilter?: "top" | "all";
+    /** When > 0, render the public teaser: the visible idea(s) + N blurred,
+     *  content-free skeleton cards + an unlock CTA. Filter/sort/view controls
+     *  are hidden (meaningless with one item). The locked items' data is never
+     *  passed in — the loader trims it server-side. */
+    lockedCount?: number;
+    /** Uniform unlock destination (a per-request redirect endpoint) — must not
+     *  be session-derived so the public-cached page stays identical for all. */
+    unlockHref?: string;
   }
 
   const TOP_LIMIT = 5;
@@ -49,7 +59,12 @@
     defaultView = "grid",
     showRank = false,
     defaultFilter = "top",
+    lockedCount = 0,
+    unlockHref = "/unlock-catalog",
   }: Props = $props();
+
+  const locked = $derived(lockedCount > 0);
+  const lockedTotal = $derived(ideas.length + lockedCount);
 
   // Local interactive state (per scope decision: client-only, no URL sync v1).
   let view = $state<View>(untrack(() => defaultView));
@@ -91,7 +106,7 @@
   const showAxisKickers = $derived(hasScopeToggle && subNiches.length > 0);
 </script>
 
-{#if hasScopeToggle || subNiches.length > 0}
+{#if !locked && (hasScopeToggle || subNiches.length > 0)}
   <div class="filter-bar">
     {#if hasScopeToggle}
       <div class="filter-axis">
@@ -140,46 +155,61 @@
   </div>
 {/if}
 
-<div class="toolbar">
-  <div class="left">
-    <span class="count">
-      Showing <strong>{sorted.length}</strong>
-      {sorted.length === 1 ? "idea" : "ideas"}
-    </span>
-    <TriLegend />
-  </div>
-  <div class="right">
-    <label class="sort-label">
-      <span class="sort-text">Sort by</span>
-      <select bind:value={sort}>
-        <option value="opportunity">Opportunity score</option>
-        <option value="demand">Demand score</option>
-        <option value="feasibility">Feasibility score</option>
-        <option value="newest">Newest</option>
-      </select>
-    </label>
-    <div class="view-toggle">
-      <button
-        type="button"
-        class:active={view === "grid"}
-        onclick={() => (view = "grid")}
-        aria-label="Grid view"
-      >
-        <Grid size={13} />
-      </button>
-      <button
-        type="button"
-        class:active={view === "list"}
-        onclick={() => (view = "list")}
-        aria-label="List view"
-      >
-        <List size={13} />
-      </button>
+{#if !locked}
+  <div class="toolbar">
+    <div class="left">
+      <span class="count">
+        Showing <strong>{sorted.length}</strong>
+        {sorted.length === 1 ? "idea" : "ideas"}
+      </span>
+      <TriLegend />
+    </div>
+    <div class="right">
+      <label class="sort-label">
+        <span class="sort-text">Sort by</span>
+        <select bind:value={sort}>
+          <option value="opportunity">Opportunity score</option>
+          <option value="demand">Demand score</option>
+          <option value="feasibility">Feasibility score</option>
+          <option value="newest">Newest</option>
+        </select>
+      </label>
+      <div class="view-toggle">
+        <button
+          type="button"
+          class:active={view === "grid"}
+          onclick={() => (view = "grid")}
+          aria-label="Grid view"
+        >
+          <Grid size={13} />
+        </button>
+        <button
+          type="button"
+          class:active={view === "list"}
+          onclick={() => (view = "list")}
+          aria-label="List view"
+        >
+          <List size={13} />
+        </button>
+      </div>
     </div>
   </div>
-</div>
+{/if}
 
-{#if view === "grid"}
+{#if locked}
+  <div class="ideas-grid">
+    {#each ideas as idea}
+      <IdeaCardV2 {idea} subLabel={idea.category?.name ?? null} />
+    {/each}
+    <LockedListSkeleton variant="idea" count={lockedCount} />
+  </div>
+  <CatalogLockedSection
+    title="The full idea list is members-only"
+    summary={`We've validated ${lockedTotal} ideas in this niche. Subscribe to browse every one — with its scores, audience, and competitive landscape.`}
+    ctaHref={unlockHref}
+    ctaLabel={`Unlock all ${lockedTotal} ideas`}
+  />
+{:else if view === "grid"}
   <div class="ideas-grid">
     {#each sorted as idea}
       <IdeaCardV2 {idea} subLabel={idea.category?.name ?? null} />

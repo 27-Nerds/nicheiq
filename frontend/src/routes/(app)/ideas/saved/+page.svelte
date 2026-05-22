@@ -12,6 +12,7 @@
   import SectionDivider from "$lib/components/catalog/seo/SectionDivider.svelte";
   import { CategoryBreadcrumbs } from "$lib/components/catalog/seo";
   import SavedIdeaCard from "./SavedIdeaCard.svelte";
+  import LockedSavedCard from "./LockedSavedCard.svelte";
   import SavedPainTable from "./SavedPainTable.svelte";
   import DocketEmpty from "./DocketEmpty.svelte";
   import UndoToast from "./UndoToast.svelte";
@@ -151,8 +152,8 @@
     try {
       const path =
         u.kind === "idea"
-          ? `/api/saves/ideas/${u.item.idea.id}`
-          : `/api/saves/pain-points/${u.item.painPoint.id}`;
+          ? `/api/saves/ideas/${u.item.ideaId}`
+          : `/api/saves/pain-points/${u.item.painPointId}`;
       const res = await fetch(path, {
         method: "DELETE",
         credentials: "same-origin",
@@ -166,10 +167,10 @@
   }
 
   async function patchIdeaNotes(item: SavedIdeaItem, notes: string | null) {
-    // Optimistic local update.
-    ideas = ideas.map((i) => (i.id === item.id ? { ...i, notes } : i));
+    // Optimistic local update (only accessible rows carry editable notes).
+    ideas = ideas.map((i) => (i.id === item.id && !i.locked ? { ...i, notes } : i));
     try {
-      const res = await fetch(`/api/saves/ideas/${item.idea.id}`, {
+      const res = await fetch(`/api/saves/ideas/${item.ideaId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -184,10 +185,10 @@
 
   async function patchPainNotes(item: SavedPainPointItem, notes: string | null) {
     painPoints = painPoints.map((p) =>
-      p.id === item.id ? { ...p, notes } : p,
+      p.id === item.id && !p.locked ? { ...p, notes } : p,
     );
     try {
-      const res = await fetch(`/api/saves/pain-points/${item.painPoint.id}`, {
+      const res = await fetch(`/api/saves/pain-points/${item.painPointId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
@@ -253,11 +254,19 @@
       <ul class="cards-grid">
         {#each ideas as item, i (item.id)}
           <li style="--i: {Math.min(i, 5)}">
-            <SavedIdeaCard
-              {item}
-              onUnsave={unsaveIdea}
-              onNotesChange={patchIdeaNotes}
-            />
+            {#if item.locked}
+              <LockedSavedCard
+                kind="idea"
+                createdAt={item.createdAt}
+                onRemove={() => unsaveIdea(item)}
+              />
+            {:else}
+              <SavedIdeaCard
+                {item}
+                onUnsave={unsaveIdea}
+                onNotesChange={patchIdeaNotes}
+              />
+            {/if}
           </li>
         {/each}
       </ul>
@@ -301,8 +310,8 @@
 {#if pendingUndo}
   <UndoToast
     message={pendingUndo.kind === "idea"
-      ? `Removed "${pendingUndo.item.idea.headline ?? pendingUndo.item.idea.solutionName}"`
-      : `Removed "${pendingUndo.item.painPoint.title}"`}
+      ? `Removed "${pendingUndo.item.idea?.headline ?? pendingUndo.item.idea?.solutionName ?? "idea"}"`
+      : `Removed "${pendingUndo.item.painPoint?.title ?? "pain point"}"`}
     onUndo={undoLast}
     onTimeout={commitUnsave}
   />

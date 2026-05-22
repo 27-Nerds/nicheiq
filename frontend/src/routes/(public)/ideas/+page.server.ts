@@ -30,6 +30,7 @@ async function fetchTotals(): Promise<CatalogTotals> {
     totalCategories: 0,
     totalSubcategories: 0,
     contentItemsMined: 0,
+    commentsAnalyzed: 0,
     lastUpdated: null,
   };
 }
@@ -163,13 +164,19 @@ export const load: PageServerLoad = async ({ url, setHeaders, parent }) => {
       : []),
   ];
 
+  // The hub only uses a collection's `categorySlugs` (+ name) to filter the
+  // accordion — it never renders the collection's items. Strip `items` so the
+  // (admin-curated) collection's idea/pain previews — which may include
+  // non-featured items — don't leak into the public `__data.json`.
+  const activeCollectionSafe = activeCollection ? { ...activeCollection, items: [] } : null;
+
   return {
     meta,
     jsonld,
     categoriesTree,
     totals,
     collections,
-    activeCollection,
+    activeCollection: activeCollectionSafe,
     collectionSlug,
     topPainPoints,
     editionLabel: edition,

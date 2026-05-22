@@ -26,6 +26,7 @@
     BarChart3,
   } from "lucide-svelte";
   import { creditTopUp } from "$lib/stores/creditTopUp.svelte";
+  import { mapVerdict } from "$lib/types/publicCatalog";
   import type { Job, StageProgress, SolutionPreview, ReportSummary } from "$lib/types/job";
   import Button from "$lib/components/ui/Button.svelte";
   import SubmitButton from "$lib/components/ui/SubmitButton.svelte";
@@ -714,6 +715,7 @@
             stagesCompleted={job.stagesCompleted ?? 0}
             totalStages={job.totalStages ?? 0}
             startedAt={job.startedAt}
+            selectionCount={displaySolutions.length}
             summary={reportSummary}
             errorDetails={job.errorDetails}
             errorMessage={job.errorMessage}
@@ -1045,9 +1047,13 @@
           {/if}
         {:else if reportSummary}
           <!-- ═══ COMPLETED: Report summary cards ═══ -->
+          {@const verdictNorm = mapVerdict(reportSummary.verdict)}
           <div class="report-summary-card">
             <div class="report-summary-header">
-              <h2 class="report-summary-title">Your Report is Ready</h2>
+              <div>
+                <p class="report-summary-eyebrow">Report ready</p>
+                <h2 class="report-summary-title">Your research is complete</h2>
+              </div>
               <Button href="/jobs/{job.id}/report" icon={REPORT_ICON} label="View Full Report" class="btn-primary btn-sm" />
             </div>
             <div class="report-summary-metrics">
@@ -1057,9 +1063,9 @@
                   <span class="report-metric-label">Score</span>
                 </div>
               {/if}
-              {#if reportSummary.verdict}
+              {#if verdictNorm}
                 <div class="report-metric">
-                  <span class="report-metric-value report-metric-value--{reportSummary.verdict.toLowerCase() === 'go' ? 'success' : 'warning'}">{reportSummary.verdict}</span>
+                  <span class="report-metric-value report-metric-value--{verdictNorm === 'GO' ? 'success' : verdictNorm === 'NO-GO' ? 'error' : 'warning'}">{verdictNorm}</span>
                   <span class="report-metric-label">Verdict</span>
                 </div>
               {/if}
@@ -1377,6 +1383,16 @@
     gap: 1rem;
   }
 
+  .report-summary-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    margin: 0 0 0.25rem;
+  }
+
   .report-summary-title {
     font-family: var(--font-display);
     font-size: 1.25rem;
@@ -1414,7 +1430,12 @@
     color: var(--color-warning);
   }
 
+  .report-metric-value--error {
+    color: var(--color-error);
+  }
+
   .report-metric-label {
+    font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-weight: 500;
     color: var(--color-text-muted);

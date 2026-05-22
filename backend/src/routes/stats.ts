@@ -10,6 +10,6 @@ statsRouter.get('/public', requireInternalService, async (_req, res: Response) =
     res.json(stats);
   } catch (error) {
     console.error('Public stats endpoint error:', error);
-    res.status(500).json({ completedJobs: 47 });
+    res.status(500).json({ completedJobs: 47, activeFounders: null });
   }
 });

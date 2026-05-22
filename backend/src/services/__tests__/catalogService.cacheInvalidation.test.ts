@@ -69,10 +69,10 @@ describe('catalogService cache invalidation', () => {
     expect(deletedKeys()).toEqual(
       expect.arrayContaining([
         'catalog:tree:v1',
-        'catalog:landing:v1:old-parent:old-child',
-        'catalog:landing:v1:old-parent',
-        'catalog:landing:v1:new-parent:new-child',
-        'catalog:landing:v1:new-parent',
+        'catalog:landing:v6:old-parent:old-child',
+        'catalog:landing:v6:old-parent',
+        'catalog:landing:v6:new-parent:new-child',
+        'catalog:landing:v6:new-parent',
         'redirect:legacy:v1:category:old-child',
         'redirect:legacy:v1:category:old-parent-old-child',
         'redirect:legacy:v1:category:new-child',
@@ -96,7 +96,7 @@ describe('catalogService cache invalidation', () => {
     expect(deletedKeys()).toEqual(
       expect.arrayContaining([
         'catalog:tree:v1',
-        'catalog:landing:v1:parent',
+        'catalog:landing:v6:parent',
       ]),
     );
   });
@@ -116,8 +116,8 @@ describe('catalogService cache invalidation', () => {
     expect(deletedKeys()).toEqual(
       expect.arrayContaining([
         'catalog:tree:v1',
-        'catalog:landing:v1:parent:child',
-        'catalog:landing:v1:parent',
+        'catalog:landing:v6:parent:child',
+        'catalog:landing:v6:parent',
       ]),
     );
   });

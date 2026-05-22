@@ -7,6 +7,7 @@ export { default as CategoryBreadcrumbs } from './CategoryBreadcrumbs.svelte';
 export { default as CatalogReportShell } from './CatalogReportShell.svelte';
 export { default as EmptyResearchState } from './EmptyResearchState.svelte';
 export { default as CatalogLockedSection } from './CatalogLockedSection.svelte';
+export { default as LockedListSkeleton } from './LockedListSkeleton.svelte';
 export type { BreadcrumbStop } from './CategoryBreadcrumbs.svelte';
 // Tier 1 visual primitives.
 export { default as TriDial } from './TriDial.svelte';

@@ -7,11 +7,12 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
   setHeaders({ 'cache-control': 'public, max-age=60' });
 
   let reportsDelivered: number | null = null;
+  let activeFounders: number | null = null;
   let hasSampleReport = false;
   let packages: TokenPackage[] = [];
   let topPainPoints: CatalogTopPainPoint[] = [];
-  let threadsAnalyzed: number | null = null;
-  let nichesResearched: number | null = null;
+  let commentsAnalyzed: number | null = null;
+  let subNiches: number | null = null;
 
   try {
     const [statsRes, settingsRes, packagesRes, topPainPointsRes, totalsRes] = await Promise.all([
@@ -37,6 +38,7 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
     if (statsRes.ok) {
       const stats = await statsRes.json();
       reportsDelivered = stats.completedJobs;
+      activeFounders = stats.activeFounders ?? null;
     }
 
     if (settingsRes.ok) {
@@ -56,8 +58,8 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 
     if (totalsRes?.ok) {
       const totals: CatalogTotals = await totalsRes.json();
-      threadsAnalyzed = totals.contentItemsMined ?? null;
-      nichesResearched = totals.totalIdeas ?? null;
+      commentsAnalyzed = totals.commentsAnalyzed ?? null;
+      subNiches = totals.totalSubcategories ?? null;
     }
   } catch (error) {
     console.error('Failed to fetch landing page data:', error);
@@ -65,10 +67,11 @@ export const load: PageServerLoad = async ({ setHeaders }) => {
 
   return {
     reportsDelivered,
+    activeFounders,
     hasSampleReport,
     packages,
     topPainPoints,
-    threadsAnalyzed,
-    nichesResearched,
+    commentsAnalyzed,
+    subNiches,
   };
 };

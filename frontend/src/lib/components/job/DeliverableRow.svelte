@@ -319,6 +319,7 @@
   }
   .dr-confirm-text {
     color: var(--color-text-secondary);
+    font-variant-numeric: tabular-nums;
   }
 
   @keyframes dr-confirm-enter {
@@ -332,6 +333,7 @@
     align-items: center;
     gap: 0.125rem;
     font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
     opacity: 0.8;
   }
 

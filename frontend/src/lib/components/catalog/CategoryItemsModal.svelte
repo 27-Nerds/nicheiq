@@ -7,6 +7,7 @@
     X,
     Trash2,
     ChevronDown,
+    Star,
   } from "lucide-svelte";
 
   interface PainPointItem {
@@ -14,6 +15,7 @@
     title: string;
     severityScore: number;
     willingnessToPayScore: number;
+    isFeatured: boolean;
   }
 
   interface IdeaItem {
@@ -21,6 +23,7 @@
     solutionName: string;
     marketFitScore: number | null;
     noveltyScore: number | null;
+    isFeatured: boolean;
   }
 
   interface Props {
@@ -41,6 +44,10 @@
 
   let painPoints = $state<PainPointItem[]>([]);
   let ideas = $state<IdeaItem[]>([]);
+  // The current "featured" (free) item per type — admin pin if any, else the
+  // resolver's top-ranked pick. Returned by the backend so we don't re-derive it.
+  let effectiveFeaturedIdeaId = $state<string | null>(null);
+  let effectiveFeaturedPainPointId = $state<string | null>(null);
   let loading = $state(false);
   let selectedPainPoints = $state(new SvelteSet<string>());
   let selectedIdeas = $state(new SvelteSet<string>());
@@ -97,15 +104,36 @@
       if (ppRes.ok) {
         const data = await ppRes.json();
         painPoints = data.painPoints ?? [];
+        effectiveFeaturedPainPointId = data.effectiveFeaturedPainPointId ?? null;
       }
       if (ideasRes.ok) {
         const data = await ideasRes.json();
         ideas = data.ideas ?? [];
+        effectiveFeaturedIdeaId = data.effectiveFeaturedIdeaId ?? null;
       }
     } catch (err) {
       console.error("Failed to fetch category items:", err);
     } finally {
       loading = false;
+    }
+  }
+
+  // Pin (or unpin) the featured idea/pain for this category. The backend enforces
+  // the single-featured invariant (unsets other pins in the category); we refetch
+  // so the "Featured" highlight + effective pick reflect the new state.
+  async function setFeatured(type: "idea" | "pain-point", id: string, value: boolean) {
+    const path =
+      type === "idea"
+        ? `/api/admin/catalog/ideas/${id}`
+        : `/api/admin/catalog/pain-points/${id}`;
+    const res = await fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ isFeatured: value }),
+    });
+    if (res.ok) {
+      await fetchItems();
+      onMutated();
     }
   }
 
@@ -323,8 +351,22 @@
                         class="rounded border-border flex-shrink-0"
                       />
                       <span class="text-sm text-text-primary flex-1 truncate">{pp.title}</span>
+                      {#if pp.id === effectiveFeaturedPainPointId}
+                        <Badge variant="success" size="sm">Featured{pp.isFeatured ? "" : " (auto)"}</Badge>
+                      {/if}
                       <Badge variant="default" size="sm">Sev {formatScore(pp.severityScore)}</Badge>
                       <Badge variant="warning" size="sm">WTP {formatScore(pp.willingnessToPayScore)}</Badge>
+                      <button
+                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {pp.id === effectiveFeaturedPainPointId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
+                        title={pp.id === effectiveFeaturedPainPointId
+                          ? pp.isFeatured
+                            ? "Featured (pinned) — click to unpin"
+                            : "Featured (auto) — click to pin"
+                          : "Set as featured"}
+                        onclick={() => setFeatured("pain-point", pp.id, !pp.isFeatured)}
+                      >
+                        <Star class="w-3.5 h-3.5" fill={pp.id === effectiveFeaturedPainPointId ? "currentColor" : "none"} />
+                      </button>
                       <button
                         class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                         title="Depublish"
@@ -368,8 +410,22 @@
                         class="rounded border-border flex-shrink-0"
                       />
                       <span class="text-sm text-text-primary flex-1 truncate">{idea.solutionName}</span>
+                      {#if idea.id === effectiveFeaturedIdeaId}
+                        <Badge variant="success" size="sm">Featured{idea.isFeatured ? "" : " (auto)"}</Badge>
+                      {/if}
                       <Badge variant="success" size="sm">Fit {formatScore(idea.marketFitScore)}</Badge>
                       <Badge variant="info" size="sm">Nov {formatScore(idea.noveltyScore)}</Badge>
+                      <button
+                        class="p-1 rounded hover:bg-accent/10 transition-opacity flex-shrink-0 {idea.id === effectiveFeaturedIdeaId ? 'text-accent' : 'text-text-muted opacity-0 group-hover:opacity-100'}"
+                        title={idea.id === effectiveFeaturedIdeaId
+                          ? idea.isFeatured
+                            ? "Featured (pinned) — click to unpin"
+                            : "Featured (auto) — click to pin"
+                          : "Set as featured"}
+                        onclick={() => setFeatured("idea", idea.id, !idea.isFeatured)}
+                      >
+                        <Star class="w-3.5 h-3.5" fill={idea.id === effectiveFeaturedIdeaId ? "currentColor" : "none"} />
+                      </button>
                       <button
                         class="p-1 rounded hover:bg-error/10 text-text-muted hover:text-error opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                         title="Depublish"

@@ -1,34 +1,39 @@
 import type { PageServerLoad } from './$types';
-import { error } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 import { fetchBackend } from '$lib/backend';
 import {
   buildIdeaDetailJsonLd,
-  detailNoindex,
   ideaDetailCanonical,
 } from '$lib/seo/catalogSeo';
 import { buildMeta } from '$lib/seo/meta';
-import { LAUNCH_GATE_ON } from '$lib/seo/launchGate';
 import type { IdeaDetailResponse } from '$lib/types/catalog-landing';
 
-export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
-  setHeaders({
-    // Aligned with [niche] and [niche]/[sub] catalog routes (s-maxage=900) so a
-    // user can't see a stale category page next to a fresh idea detail page (or
-    // vice versa) for the same job. stale-while-revalidate keeps perceived
-    // latency low while the cache refreshes in the background.
-    'Cache-Control': 'public, max-age=300, s-maxage=900, stale-while-revalidate=86400',
-  });
+export const load: PageServerLoad = async ({ params, url, setHeaders, locals }) => {
+  // Login gate: idea detail pages are available only to authenticated users.
+  // Runs before setHeaders so the 302 doesn't carry a cache header.
+  const session = await locals.auth?.();
+  if (!session?.user) {
+    throw redirect(302, `/login?returnTo=${encodeURIComponent(url.pathname)}`);
+  }
+
+  // Auth-gated content must not be stored by a shared/CDN cache.
+  setHeaders({ 'Cache-Control': 'private, no-store' });
 
   let res: Response;
   try {
     res = await fetchBackend(
       `/api/public/catalog/idea-by-slug/${encodeURIComponent(params.slug)}`,
+      // Forward the role so the backend can apply the entitlement gate (ADMIN /
+      // fullCatalogAccess → full catalog; otherwise only the featured item).
+      { headers: { 'X-User-ID': session.user.id, 'X-User-Role': session.user.role ?? 'USER' } },
     );
   } catch (err) {
     console.error('idea fetch failed', err);
     throw error(500, 'Failed to load');
   }
 
+  // 403 = a non-featured idea the user isn't entitled to → send them to subscribe.
+  if (res.status === 403) throw redirect(302, '/unlock-catalog');
   if (res.status === 404) throw error(404, 'Not found');
   if (!res.ok) throw error(500, 'Failed to load');
 
@@ -51,7 +56,7 @@ export const load: PageServerLoad = async ({ params, url, setHeaders }) => {
     description: description || `Validated startup idea in ${idea.category.name}.`,
     canonical,
     type: 'article',
-    noindex: detailNoindex({ searchParams: url.searchParams, launchGateOn: LAUNCH_GATE_ON }),
+    noindex: true,
   });
 
   const jsonld = buildIdeaDetailJsonLd(idea, canonical);

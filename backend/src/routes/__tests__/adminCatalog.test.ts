@@ -62,6 +62,8 @@ vi.mock('../../services/catalogService.js', () => ({
   depublishIdea: vi.fn(),
   depublishPainPoint: vi.fn(),
   invalidateCategoryLanding: vi.fn(),
+  resolveFeaturedIdeaId: vi.fn().mockResolvedValue(null),
+  resolveFeaturedPainId: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('../../services/faqGeneratorService.js', () => ({
   generateForCategory: vi.fn(),

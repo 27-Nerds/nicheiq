@@ -921,6 +921,7 @@
   .volume-value {
     font-weight: 600;
     color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
   }
 
   .volume-unit {
@@ -941,6 +942,7 @@
 
   .difficulty-badge {
     font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 0.6875rem;
     font-weight: 600;
     padding: 0.125rem 0.375rem;

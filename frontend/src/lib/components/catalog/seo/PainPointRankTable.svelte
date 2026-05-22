@@ -4,6 +4,8 @@
   import { scaleSeverity } from "$lib/types/publicCatalog.js";
   import SeverityBar from "./SeverityBar.svelte";
   import CatalogTable from "./CatalogTable.svelte";
+  import LockedListSkeleton from "./LockedListSkeleton.svelte";
+  import CatalogLockedSection from "./CatalogLockedSection.svelte";
   import { painPointPath } from "$lib/utils/urls";
 
   // Reusable ranked-pain-points table used on category and sub-category
@@ -28,9 +30,25 @@
      *  IDs and an em-dash for null IDs. Sub-niche page passes this; the
      *  category-page caller leaves it undefined. */
     themes?: Theme[];
+    /** When > 0, render the public teaser: the visible row(s) + N blurred,
+     *  content-free skeleton rows + an unlock CTA. The locked rows' data is
+     *  never passed in — the loader trims it server-side. */
+    lockedCount?: number;
+    /** Uniform unlock destination (a per-request redirect endpoint) — must not
+     *  be session-derived so the public-cached page stays identical for all. */
+    unlockHref?: string;
   }
 
-  let { painPoints, showRank = true, hrefs = true, themes }: Props = $props();
+  let {
+    painPoints,
+    showRank = true,
+    hrefs = true,
+    themes,
+    lockedCount = 0,
+    unlockHref = "/unlock-catalog",
+  }: Props = $props();
+
+  const lockedTotal = $derived(painPoints.length + lockedCount);
 
   const themeTitleById = $derived.by(() => {
     const map = new Map<string, string>();
@@ -97,7 +115,21 @@
         </span>
       </div>
     {/each}
+    {#if lockedCount > 0}
+      <LockedListSkeleton variant="pain" count={lockedCount} />
+    {/if}
   </CatalogTable>
+{/if}
+
+{#if lockedCount > 0}
+  <div class="ppr-unlock">
+    <CatalogLockedSection
+      title="The full pain-point ranking is members-only"
+      summary={`We ranked ${lockedTotal} validated pain points in this niche by mention volume and severity. Subscribe to see the complete ranking.`}
+      ctaHref={unlockHref}
+      ctaLabel={`Unlock all ${lockedTotal} pain points`}
+    />
+  </div>
 {/if}
 
 <style>
@@ -210,6 +242,10 @@
     display: flex;
     align-items: center;
     justify-content: flex-end;
+  }
+
+  .ppr-unlock {
+    margin-top: 20px;
   }
 
   /* Mobile (≤900px): keep rank + title + severity; hide theme + mentions.

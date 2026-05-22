@@ -246,7 +246,7 @@
             {#if solution.top_competitors && solution.top_competitors.length > 0}
               <div class="card-surface">
                 <div class="flex items-center gap-2 mb-2">
-                  <Users class="w-4 h-4 text-warning" />
+                  <Users class="w-4 h-4 text-text-muted" />
                   <span class="text-sm font-medium text-text-primary"
                     >Top Competitors</span
                   >
@@ -254,7 +254,7 @@
                 <div class="flex flex-wrap gap-1">
                   {#each solution.top_competitors as competitor}
                     <span
-                      class="text-xs px-2 py-0.5 rounded bg-warning/10 border border-warning/30 text-warning"
+                      class="text-xs px-2 py-0.5 rounded border border-border text-text-secondary"
                       >{competitor}</span
                     >
                   {/each}
@@ -346,9 +346,7 @@
 
           <!-- Pivot Trigger -->
           {#if solution.pivot_trigger}
-            <div
-              class="mt-4 p-3 rounded bg-warning/10 border border-warning/30"
-            >
+            <div class="mt-4 p-3 rounded border border-border">
               <div class="text-xs text-warning font-medium mb-1">
                 When to Pivot to This Solution
               </div>

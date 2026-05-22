@@ -15,6 +15,8 @@
     BuildCTA,
     Chip,
     CategoryFAQ,
+    CatalogLockedSection,
+    LockedListSkeleton,
   } from "$lib/components/catalog/seo";
   import type { PainPointPreview } from "$lib/types/catalog-landing";
   import { categoryPath } from "$lib/utils/urls";
@@ -58,12 +60,6 @@
     }
     return null;
   });
-
-  // Niche-ideas tile = sibling ideas in the same leaf-category + this idea.
-  // Mock label is "Sub-ideas" but our data has no idea-decomposition hierarchy
-  // — these are ideas in the same niche, surfaced as `siblingIdeas` on the
-  // detail payload (also used by the "Other ideas in [niche]" section below).
-  const nicheIdeasCount = $derived((data.idea.siblingIdeas?.length ?? 0) + 1);
 
   // Source-of-truth row set for the "Pain points addressed" section: walk
   // idea.addressedPainTitles (canonicalized at publish time), enriching each
@@ -144,17 +140,6 @@
     // not severity desc — see plan note on order semantics).
     return out;
   });
-
-  // Mock spec (ideas-v2/page-idea.jsx:97-100): niche-score panel footer shows
-  // exactly 2 stats. TAM and source count render elsewhere (source count as
-  // the inline `Sourced from N discussions` line under the hero CTA). The
-  // first tile reflects pains *this idea addresses*, not niche-wide.
-  const heroStats = $derived<
-    Array<{ value: string | number | null; label: string }>
-  >([
-    { value: addressedPainsTable.length, label: "Pains addressed" },
-    { value: nicheIdeasCount, label: "Niche ideas" },
-  ]);
 
   const hasPains = $derived(addressedPainsTable.length > 0);
 
@@ -238,18 +223,25 @@
     Array.isArray(data.idea.siblingIdeas) && data.idea.siblingIdeas.length > 0,
   );
 
+  // Gated-item counts (non-entitled users). > 0 means there's more behind the
+  // subscription wall, so the section renders a teaser even with no visible rows.
+  const addressedLocked = $derived(data.idea.addressedLockedCount ?? 0);
+  const siblingsLocked = $derived(data.idea.siblingIdeasLockedCount ?? 0);
+  const showPains = $derived(hasPains || addressedLocked > 0);
+  const showSiblings = $derived(hasSiblingIdeas || siblingsLocked > 0);
+
   function nextNum(prev: number, show: boolean): number {
     return show ? prev + 1 : prev;
   }
   // Section order: pain points addressed (with source strip) → build sketch
   // → audience (segments + signals) → competitors → search opportunity →
   // sibling ideas. Source signal is no longer a numbered section.
-  const num1 = $derived(nextNum(0, hasPains));
+  const num1 = $derived(nextNum(0, showPains));
   const num2 = $derived(nextNum(num1, hasBuildSketch));
   const num3 = $derived(nextNum(num2, hasAudience || hasAudienceSignals));
   const num4 = $derived(nextNum(num3, hasCompetitors));
   const num5 = $derived(nextNum(num4, hasSection5));
-  const num6 = $derived(nextNum(num5, hasSiblingIdeas));
+  const num6 = $derived(nextNum(num5, showSiblings));
 </script>
 
 <SeoHead {...data.meta} />
@@ -259,15 +251,14 @@
 
 <IdeaHeroV2
   {idea}
-  stats={heroStats}
   {ctaHref}
   sourceCount={data.idea.contentItemsMined}
   updatedAt={idea.updated_at ?? idea.created_at}
 />
 
-{#if hasPains}
+{#if showPains}
   {#snippet painCount()}
-    <span>{addressedPainsTable.length} ranked</span>
+    <span>{addressedPainsTable.length + addressedLocked} addressed</span>
   {/snippet}
   <SectionDivider num={num1} label="Pain points addressed" right={painCount} />
   {#if hasSourceStrip}
@@ -276,7 +267,7 @@
       <SourceCommunityChips sources={data.idea.subredditSources ?? []} />
     </div>
   {/if}
-  <PainPointRankTable painPoints={addressedPainsTable} />
+  <PainPointRankTable painPoints={addressedPainsTable} lockedCount={addressedLocked} />
 {/if}
 
 {#if hasBuildSketch}
@@ -335,17 +326,28 @@
   {/if}
 {/if}
 
-{#if hasSiblingIdeas}
+{#if showSiblings}
   {@const siblings = data.idea.siblingIdeas ?? []}
   {#snippet sibCount()}
-    <span>{siblings.length} more</span>
+    <span>{siblings.length + siblingsLocked} more</span>
   {/snippet}
   <SectionDivider num={num6} label={`Other ideas in ${idea.category?.name ?? 'this niche'}`} right={sibCount} />
   <div class="idea-grid">
     {#each siblings as si}
       <IdeaCardV2 idea={si} />
     {/each}
+    {#if siblingsLocked > 0}
+      <LockedListSkeleton variant="idea" count={siblingsLocked} />
+    {/if}
   </div>
+  {#if siblingsLocked > 0}
+    <CatalogLockedSection
+      title={`More ideas in ${idea.category?.name ?? 'this niche'}`}
+      summary={`Subscribe to unlock ${siblingsLocked} more validated idea${siblingsLocked === 1 ? '' : 's'} in this niche — each with scores, audience, and competitors.`}
+      ctaHref="/unlock-catalog"
+      ctaLabel={`Unlock ${siblingsLocked} more idea${siblingsLocked === 1 ? '' : 's'}`}
+    />
+  {/if}
 {/if}
 
 <!-- FAQ — visible accordion paired with FAQPage JSON-LD (gated identically on

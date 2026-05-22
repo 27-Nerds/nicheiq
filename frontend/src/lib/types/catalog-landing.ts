@@ -279,6 +279,12 @@ export type IdeaDetailResponse = IdeaPreview & CatalogDetailExtras & {
    *  alternative-solution ideas (Pydantic AlternativeSolution lacks the field)
    *  and pre-canonicalization legacy rows. */
   addressedPainTitles: string[];
+  /** For non-entitled users on the featured idea: how many OTHER ideas in this
+   *  niche are gated (drives the "Subscribe to unlock N more" teaser). 0 for
+   *  entitled users (who get the full siblingIdeas list). */
+  siblingIdeasLockedCount?: number;
+  /** How many addressed pains are gated for non-entitled users. 0 when entitled. */
+  addressedLockedCount?: number;
 };
 
 export type PainPointDetailResponse = PainPointPreview & CatalogDetailExtras & {
@@ -286,6 +292,10 @@ export type PainPointDetailResponse = PainPointPreview & CatalogDetailExtras & {
   siblingPains: SiblingPainSummary[];
   /** Catalog ideas whose addressedPainTitles contains this pain's title. */
   relatedIdeas: IdeaPreview[];
+  /** Gated sibling-pain count for non-entitled users. 0 when entitled. */
+  siblingPainsLockedCount?: number;
+  /** Gated related-idea count for non-entitled users. 0 when entitled. */
+  relatedIdeasLockedCount?: number;
   // Phase 14
   /** Per-quote Reddit attribution; null on legacy contexts before Phase 14. */
   quoteSources: QuoteSource[] | null;

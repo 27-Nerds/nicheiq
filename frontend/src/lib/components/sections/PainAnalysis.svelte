@@ -742,6 +742,7 @@
     font-weight: 700;
     color: var(--color-error);
     line-height: 1;
+    font-variant-numeric: tabular-nums;
   }
 
   .pain-severity-label {
@@ -779,6 +780,7 @@
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     color: var(--color-text-muted);
+    font-variant-numeric: tabular-nums;
   }
 
   .flow-connector-wrapper {
@@ -973,6 +975,7 @@
     font-size: var(--text-base);
     font-weight: 600;
     color: var(--color-success);
+    font-variant-numeric: tabular-nums;
   }
 
   .journey-stats {
@@ -997,6 +1000,7 @@
     font-size: var(--text-2xl);
     font-weight: 700;
     color: var(--color-accent);
+    font-variant-numeric: tabular-nums;
   }
 
   .stat-label {

@@ -6,14 +6,14 @@
 		session?: { user?: { name?: string | null; email?: string | null } } | null;
 		hasSampleReport?: boolean;
 		ctaTexts?: Record<string, CtaConfig | null>;
-		reportsDelivered?: number | null;
+		activeFounders?: number | null;
 	}
 
 	let {
 		session = null,
 		hasSampleReport = false,
 		ctaTexts,
-		reportsDelivered = null,
+		activeFounders = null,
 	}: Props = $props();
 
 	// Live source badges only — matches what the pipeline currently fans out to.
@@ -97,8 +97,10 @@
 		document.getElementById(url.slice(1))?.scrollIntoView({ behavior: 'smooth' });
 	}
 
+	// Distinct founders who have completed at least one report. null when the
+	// real count is unavailable (or zero) — we hide the line rather than guess.
 	const foundersCount = $derived(
-		typeof reportsDelivered === 'number' && reportsDelivered > 0 ? reportsDelivered : 159,
+		typeof activeFounders === 'number' && activeFounders > 0 ? activeFounders : null,
 	);
 </script>
 
@@ -152,23 +154,25 @@
 			{/if}
 		</div>
 
-		<!-- Social proof -->
-		<div class="social-proof">
-			<div class="avatars" aria-hidden="true">
-				{#each avatars as a}
-					{#if a.photo}
-						<img src={a.photo} alt="" class="avatar" />
-					{:else}
-						<div class="avatar avatar-initials" style={`background:${a.bg ?? '#71717a'};`}>
-							{a.initials}
-						</div>
-					{/if}
-				{/each}
+		<!-- Social proof (hidden when the real founder count is unavailable) -->
+		{#if foundersCount}
+			<div class="social-proof">
+				<div class="avatars" aria-hidden="true">
+					{#each avatars as a}
+						{#if a.photo}
+							<img src={a.photo} alt="" class="avatar" />
+						{:else}
+							<div class="avatar avatar-initials" style={`background:${a.bg ?? '#71717a'};`}>
+								{a.initials}
+							</div>
+						{/if}
+					{/each}
+				</div>
+				<span class="social-proof-text">
+					Join {foundersCount}+ founders already exploring their niche
+				</span>
 			</div>
-			<span class="social-proof-text">
-				Join {foundersCount}+ founders already exploring their niche
-			</span>
-		</div>
+		{/if}
 
 		<!-- View sample report (gated on backend flag) -->
 		{#if hasSampleReport && ctaTexts?.cta_view_sample_link?.visible !== false}

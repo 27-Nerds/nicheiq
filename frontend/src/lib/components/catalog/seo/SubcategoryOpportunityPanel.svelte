@@ -73,7 +73,7 @@
 
     {#if topIdea && topIdeaScores}
       <a class="op-idea" href={ideaPath(topIdea.slug)}>
-        <span class="op-idea-label">Highest-opportunity idea</span>
+        <span class="op-idea-label">Featured idea</span>
         <div class="op-idea-name">{solutionDisplayTitle(topIdea)}</div>
         <div class="op-idea-foot">
           <Trifecta scores={topIdeaScores} size="md" />

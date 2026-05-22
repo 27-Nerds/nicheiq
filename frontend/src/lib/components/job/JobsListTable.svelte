@@ -29,11 +29,22 @@
 
   // Self-contained overflow-menu state (download exports). Scoped to the table
   // so it doesn't entangle with the dashboard's search keyboard handler.
+  // The menu renders position:fixed (anchored to the kebab via getBoundingClientRect)
+  // so it escapes CatalogTable's `overflow: hidden` clip — an absolute dropdown
+  // would otherwise be cropped at the table's bottom edge.
   let openMenuId = $state<string | null>(null);
+  let menuPos = $state<{ top: number; right: number }>({ top: 0, right: 0 });
+
   function toggleMenu(jobId: string, e: MouseEvent) {
     e.stopPropagation();
     e.preventDefault();
-    openMenuId = openMenuId === jobId ? null : jobId;
+    if (openMenuId === jobId) {
+      openMenuId = null;
+      return;
+    }
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    menuPos = { top: rect.bottom + 4, right: window.innerWidth - rect.right };
+    openMenuId = jobId;
   }
 
   function rowTitle(job: Job): string {
@@ -62,6 +73,8 @@
       openMenuId = null;
     }
   }}
+  onscroll={() => (openMenuId = null)}
+  onresize={() => (openMenuId = null)}
 />
 
 <CatalogTable>
@@ -121,7 +134,11 @@
           <MoreVertical size={16} />
         </button>
         {#if openMenuId === job.id}
-          <div class="menu" role="menu">
+          <div
+            class="menu"
+            role="menu"
+            style="top: {menuPos.top}px; right: {menuPos.right}px;"
+          >
             <a href="/api/jobs/{job.id}/reportjson" download role="menuitem">
               <Download size={14} /> Export JSON
             </a>
@@ -207,7 +224,10 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* Interactive cell sits above the stretched link overlay. */
+  /* Actions cell stays z-10 so the dropdown menu layers above other rows, but
+     it's pointer-events:none so clicks on the empty space + the decorative
+     arrow fall THROUGH to the row's stretched link (z-0). Only the kebab +
+     menu re-enable pointer events. */
   .cell-actions {
     position: relative;
     z-index: 10;
@@ -215,6 +235,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 6px;
+    pointer-events: none;
   }
   .kebab {
     display: inline-flex;
@@ -225,6 +246,7 @@
     border-radius: 6px;
     color: var(--color-text-muted);
     opacity: 0;
+    pointer-events: auto;
     transition:
       opacity 0.12s,
       background 0.12s,
@@ -240,10 +262,10 @@
     background: var(--color-bg-hover);
     color: var(--color-text-primary);
   }
+  /* Fixed positioning (coords set inline from the kebab's rect) so the menu
+     escapes CatalogTable's `overflow: hidden` and is never cropped. */
   .menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 4px);
+    position: fixed;
     min-width: 160px;
     background: var(--color-bg-elevated);
     border: 1px solid var(--color-border);
@@ -253,6 +275,7 @@
       0 4px 12px rgba(24, 24, 27, 0.06);
     padding: 4px;
     z-index: 50;
+    pointer-events: auto;
   }
   .menu a {
     display: flex;

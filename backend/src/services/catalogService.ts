@@ -860,6 +860,17 @@ export async function updateCatalogIdea(id: string, data: {
       data,
     });
 
+    // Single-featured invariant: if this row is now featured, demote any OTHER
+    // featured idea in its (possibly new) category. Keying off the final state
+    // (idea.isFeatured) rather than data.isFeatured also covers moving an already
+    // featured item into a category that already has one.
+    if (idea.isFeatured) {
+      await tx.catalogIdea.updateMany({
+        where: { categoryId: idea.categoryId, id: { not: idea.id }, isFeatured: true },
+        data: { isFeatured: false },
+      });
+    }
+
     // Sync cache when isActive or categoryId changes
     const cacheUpdate: Record<string, unknown> = {};
     if (data.isActive !== undefined) cacheUpdate.isPublished = data.isActive;
@@ -905,6 +916,15 @@ export async function updateCatalogPainPoint(id: string, data: {
       where: { id },
       data,
     });
+
+    // Single-featured invariant (see updateCatalogIdea) — demote other featured
+    // pains in the final category when this one becomes featured.
+    if (pp.isFeatured) {
+      await tx.catalogPainPoint.updateMany({
+        where: { categoryId: pp.categoryId, id: { not: pp.id }, isFeatured: true },
+        data: { isFeatured: false },
+      });
+    }
 
     const cacheUpdate: Record<string, unknown> = {};
     if (data.isActive !== undefined) cacheUpdate.isPublished = data.isActive;
@@ -1144,232 +1164,6 @@ function toIdeaPreview(idea: Record<string, any>) {
   };
 }
 
-// ============================================
-// User-facing queries
-// ============================================
-
-// Sort mappings (prevent orderBy injection)
-const ideaSortMap: Record<string, Record<string, string>> = {
-  newest: { createdAt: 'desc' },
-  highest_market_fit: { marketFitScore: 'desc' },
-  highest_novelty: { noveltyScore: 'desc' },
-};
-
-const painPointSortMap: Record<string, Record<string, string>> = {
-  newest: { createdAt: 'desc' },
-  highest_severity: { severityScore: 'desc' },
-  highest_wtp: { willingnessToPayScore: 'desc' },
-  most_mentions: { mentionCount: 'desc' },
-};
-
-export async function listPublishedIdeas(params: {
-  categorySlug?: string;
-  page: number;
-  limit: number;
-  sortBy: string;
-}) {
-  const where: Record<string, unknown> = { isActive: true };
-
-  if (params.categorySlug) {
-    // Slug lookups must tolerate both the new local form (post-Phase-2.5) and
-    // the legacy globally-unique form (preserved in `legacySlug`) so existing
-    // /api/catalog/ideas?category=saas-b2b-tools links continue to work.
-    const category = await prisma.catalogCategory.findFirst({
-      where: {
-        OR: [{ slug: params.categorySlug }, { legacySlug: params.categorySlug }],
-      },
-      include: { children: { select: { id: true } } },
-    });
-    if (category) {
-      const categoryIds = [category.id, ...category.children.map((c) => c.id)];
-      where.categoryId = { in: categoryIds };
-    }
-  }
-
-  const orderBy = ideaSortMap[params.sortBy] || ideaSortMap.newest;
-
-  const [items, total] = await Promise.all([
-    prisma.catalogIdea.findMany({
-      where,
-      include: { category: { select: { id: true, name: true, slug: true } } },
-      orderBy,
-      skip: (params.page - 1) * params.limit,
-      take: params.limit,
-    }),
-    prisma.catalogIdea.count({ where }),
-  ]);
-
-  // Strip sensitive fields and transform to snake_case
-  const sanitized = items.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => toIdeaPreview(rest));
-
-  return {
-    items: sanitized,
-    total,
-    page: params.page,
-    totalPages: Math.ceil(total / params.limit),
-  };
-}
-
-export async function listPublishedPainPoints(params: {
-  categorySlug?: string;
-  page: number;
-  limit: number;
-  sortBy: string;
-}) {
-  const where: Record<string, unknown> = { isActive: true };
-
-  if (params.categorySlug) {
-    const category = await prisma.catalogCategory.findFirst({
-      where: {
-        OR: [{ slug: params.categorySlug }, { legacySlug: params.categorySlug }],
-      },
-      include: { children: { select: { id: true } } },
-    });
-    if (category) {
-      const categoryIds = [category.id, ...category.children.map((c) => c.id)];
-      where.categoryId = { in: categoryIds };
-    }
-  }
-
-  const orderBy = painPointSortMap[params.sortBy] || painPointSortMap.newest;
-
-  const [items, total] = await Promise.all([
-    prisma.catalogPainPoint.findMany({
-      where,
-      include: { category: { select: { id: true, name: true, slug: true } } },
-      orderBy,
-      skip: (params.page - 1) * params.limit,
-      take: params.limit,
-    }),
-    prisma.catalogPainPoint.count({ where }),
-  ]);
-
-  const sanitized = items.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => rest);
-
-  return {
-    items: sanitized,
-    total,
-    page: params.page,
-    totalPages: Math.ceil(total / params.limit),
-  };
-}
-
-export async function getPublishedIdea(id: string) {
-  const idea = await prisma.catalogIdea.findFirst({
-    where: { id, isActive: true },
-    include: { category: { select: { id: true, name: true, slug: true } } },
-  });
-  if (!idea) return null;
-  const { sourceJobId: _s, publishedById: _p, ...rest } = idea;
-  return toIdeaPreview(rest);
-}
-
-export async function getPublishedPainPoint(id: string) {
-  const pp = await prisma.catalogPainPoint.findFirst({
-    where: { id, isActive: true },
-    include: { category: { select: { id: true, name: true, slug: true } } },
-  });
-  if (!pp) return null;
-  const { sourceJobId: _s, publishedById: _p, ...rest } = pp;
-  return rest;
-}
-
-export async function getCatalogStats() {
-  const [ideas, painPoints, categories] = await Promise.all([
-    prisma.catalogIdea.count({ where: { isActive: true } }),
-    prisma.catalogPainPoint.count({ where: { isActive: true } }),
-    prisma.catalogCategory.count({ where: { isActive: true } }),
-  ]);
-
-  return { ideas, painPoints, categories };
-}
-
-// ============================================
-// Federated search
-// ============================================
-
-export async function searchCatalog(query: string, limit = 5) {
-  const [categories, ideas, painPoints] = await Promise.all([
-    prisma.catalogCategory.findMany({
-      where: {
-        isActive: true,
-        name: { contains: query, mode: 'insensitive' },
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        parentId: true,
-        // Parent slug needed by frontend to build nested URLs (/ideas/{parent}/{child})
-        parent: { select: { slug: true } },
-        _count: { select: { ideas: { where: { isActive: true } }, painPoints: { where: { isActive: true } }, children: true } },
-      },
-      take: limit,
-      orderBy: { name: 'asc' },
-    }),
-    prisma.catalogIdea.findMany({
-      where: {
-        isActive: true,
-        solutionName: { contains: query, mode: 'insensitive' },
-      },
-      select: {
-        id: true,
-        slug: true,
-        solutionName: true,
-        description: true,
-        marketFitScore: true,
-        category: { select: { name: true, slug: true, parent: { select: { slug: true } } } },
-      },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-    }),
-    prisma.catalogPainPoint.findMany({
-      where: {
-        isActive: true,
-        title: { contains: query, mode: 'insensitive' },
-      },
-      select: {
-        id: true,
-        slug: true,
-        title: true,
-        description: true,
-        severityScore: true,
-        category: { select: { name: true, slug: true, parent: { select: { slug: true } } } },
-      },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
-    }),
-  ]);
-
-  return {
-    categories: categories.map(c => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      parentSlug: c.parent?.slug ?? null,
-      isParent: !c.parentId,
-      ideaCount: c._count.ideas,
-      painPointCount: c._count.painPoints,
-      childCount: c._count.children,
-    })),
-    ideas: ideas.map(i => ({
-      id: i.id,
-      slug: i.slug,
-      solution_name: i.solutionName,
-      description: i.description,
-      market_fit_score: i.marketFitScore,
-      category: i.category,
-    })),
-    painPoints: painPoints.map(pp => ({
-      id: pp.id,
-      slug: pp.slug,
-      title: pp.title,
-      description: pp.description,
-      severity_score: pp.severityScore,
-      category: pp.category,
-    })),
-  };
-}
 
 // ============================================
 // Discover — random pain points for /new page
@@ -1970,11 +1764,6 @@ function flattenQualitySignals(
 }
 
 const TOP_PREVIEW_LIMIT = 6;
-// Ideas list is a canonical "all ideas" home on category + sub-niche pages
-// (Phase 2 of the IA cleanup). The 6-cap is too aggressive — return the full
-// set up to a safety bound. If a single category ever exceeds this, add a
-// paginated endpoint instead.
-const IDEAS_LANDING_LIMIT = 500;
 
 interface AudienceAggregationChild {
   id: string;
@@ -2286,18 +2075,13 @@ async function buildCategoryLandingPayload(
     ideaMaxAgg,
     painMaxAgg,
   ] = await Promise.all([
-    prisma.catalogIdea.findMany({
-      where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
-      include: { category: { select: { id: true, name: true, slug: true } } },
-      orderBy: [{ marketFitScore: 'desc' }, { createdAt: 'desc' }],
-      take: IDEAS_LANDING_LIMIT,
-    }),
-    prisma.catalogPainPoint.findMany({
-      where: { isActive: true, slug: { not: null }, categoryId: { in: aggregateIds } },
-      include: { category: { select: { id: true, name: true, slug: true } } },
-      orderBy: [{ severityScore: 'desc' }, { createdAt: 'desc' }],
-      take: TOP_PREVIEW_LIMIT,
-    }),
+    // Featured-only visible set: exactly one idea (and one pain) per category in
+    // the subtree — leaf → its own featured; parent → one per child (+ self if it
+    // has direct items). Non-featured items NEVER enter the public payload (the
+    // server-side gate). `aggregateIds` = [self, ...activeChildIds]; categories
+    // with no items resolve to null and are filtered out below.
+    Promise.all(aggregateIds.map((id) => featuredIdeaForCategory(id))),
+    Promise.all(aggregateIds.map((id) => featuredPainForCategory(id))),
     prisma.catalogIdea.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
     prisma.catalogPainPoint.count({ where: { isActive: true, categoryId: { in: aggregateIds } } }),
     // Phase 15.5 — backend-aggregate count of GO-verdict ideas, not just visible
@@ -2343,8 +2127,12 @@ async function buildCategoryLandingPayload(
   );
   const latestModifiedAt = new Date(latestModifiedMs).toISOString();
 
-  const topIdeas = topIdeasRaw.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => toIdeaPreview(rest));
-  const topPainPoints = topPainPointsRaw.map(({ sourceJobId: _s, publishedById: _p, ...rest }) => rest);
+  const topIdeas = topIdeasRaw
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .map(({ sourceJobId: _s, publishedById: _p, ...rest }) => toIdeaPreview(rest));
+  const topPainPoints = topPainPointsRaw
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .map(({ sourceJobId: _s, publishedById: _p, ...rest }) => rest);
 
   // Phase 5: Attach the most-recent published item's research context so the
   // category landing renders the same Audience/Market/Trend sections as
@@ -2635,6 +2423,81 @@ export async function getCategoryLanding(args: {
 }
 
 // ============================================
+// Featured-item resolution (the one free idea + pain per category)
+// ============================================
+
+// Shared ordering: an admin pin (isFeatured) wins, else top-ranked. The trailing
+// `id` is a DETERMINISTIC tiebreaker so the landing list and the detail-page
+// "is this the featured one?" check always agree. marketFitScore is nullable, so
+// `nulls: 'last'` keeps null-score ideas from sorting ahead of scored ones.
+const FEATURED_IDEA_ORDER: Prisma.CatalogIdeaOrderByWithRelationInput[] = [
+  { isFeatured: 'desc' },
+  { marketFitScore: { sort: 'desc', nulls: 'last' } },
+  { createdAt: 'desc' },
+  { id: 'asc' },
+];
+const FEATURED_PAIN_ORDER: Prisma.CatalogPainPointOrderByWithRelationInput[] = [
+  { isFeatured: 'desc' },
+  { severityScore: 'desc' }, // severityScore is non-null in the schema
+  { createdAt: 'desc' },
+  { id: 'asc' },
+];
+
+/** Id of the featured (free) idea for a category — admin pin or top-ranked. */
+export async function resolveFeaturedIdeaId(categoryId: string): Promise<string | null> {
+  const r = await prisma.catalogIdea.findFirst({
+    where: { categoryId, isActive: true, slug: { not: null } },
+    orderBy: FEATURED_IDEA_ORDER,
+    select: { id: true },
+  });
+  return r?.id ?? null;
+}
+
+/** Id of the featured (free) pain point for a category. */
+export async function resolveFeaturedPainId(categoryId: string): Promise<string | null> {
+  const r = await prisma.catalogPainPoint.findFirst({
+    where: { categoryId, isActive: true, slug: { not: null } },
+    orderBy: FEATURED_PAIN_ORDER,
+    select: { id: true },
+  });
+  return r?.id ?? null;
+}
+
+/** Full featured-idea row for the landing payload (same ordering as the id resolver). */
+async function featuredIdeaForCategory(categoryId: string) {
+  return prisma.catalogIdea.findFirst({
+    where: { categoryId, isActive: true, slug: { not: null } },
+    orderBy: FEATURED_IDEA_ORDER,
+    include: { category: { select: { id: true, name: true, slug: true } } },
+  });
+}
+
+/** Full featured-pain row for the landing payload. */
+async function featuredPainForCategory(categoryId: string) {
+  return prisma.catalogPainPoint.findFirst({
+    where: { categoryId, isActive: true, slug: { not: null } },
+    orderBy: FEATURED_PAIN_ORDER,
+    include: { category: { select: { id: true, name: true, slug: true } } },
+  });
+}
+
+/**
+ * Whether a user may view the full catalog — i.e. non-featured ideas/pain points
+ * and their detail pages. Authoritative DB lookup of BOTH `role === 'ADMIN'` and the
+ * manual `fullCatalogAccess` grant (real subscription billing is a later follow-up),
+ * so it does NOT depend on a forwarded `X-User-Role` header — the saves proxies don't
+ * forward it. Fresh read so grants/revocations take effect immediately.
+ */
+export async function isEntitledUser(userId: string | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true, fullCatalogAccess: true },
+  });
+  return u?.role === 'ADMIN' || u?.fullCatalogAccess === true;
+}
+
+// ============================================
 // Phase 2 — Detail-page cross-link helpers
 // ============================================
 
@@ -2657,7 +2520,7 @@ async function getSiblingPainPoints(
       isActive: true,
       slug: { not: null },           // schema:626 — slug is String?
     },
-    orderBy: [{ severityScore: 'desc' }, { mentionCount: 'desc' }],
+    orderBy: [{ isFeatured: 'desc' }, { severityScore: 'desc' }, { mentionCount: 'desc' }],
     take: limit,
     select: {
       slug: true,
@@ -2904,7 +2767,16 @@ function flattenTopRedditThreads(
   return out.length > 0 ? out : null;
 }
 
-export async function getIdeaBySlug(slug: string) {
+/**
+ * Detail payload for a single idea. `entitled` (ADMIN or fullCatalogAccess) sees
+ * the full cross-link lists; a non-entitled user can only reach the ONE featured
+ * idea per sub-niche — for any other slug we return `{ locked: true }` (route → 403),
+ * and on the featured page we hide non-featured cross-links (siblings → none;
+ * addressed pains → only the featured pain) and report locked counts for the
+ * "Subscribe to unlock N more" teasers. The locked items never reach the client.
+ */
+export async function getIdeaBySlug(slug: string, opts: { entitled?: boolean } = {}) {
+  const entitled = opts.entitled ?? false;
   const idea = await prisma.catalogIdea.findFirst({
     where: { slug, isActive: true },
     include: {
@@ -2920,19 +2792,50 @@ export async function getIdeaBySlug(slug: string) {
     },
   });
   if (!idea) return null;
+
+  const featuredIdeaId = await resolveFeaturedIdeaId(idea.categoryId);
+  if (!entitled && idea.id !== featuredIdeaId) {
+    return { locked: true as const };
+  }
+
   const { sourceJobId: _s, publishedById: _p, researchContext, ...rest } = idea;
   const preview = toIdeaPreview(rest);
   // Phase 5.4 — surface flattened summaries alongside the full researchContext.
-  // Detail pages get BOTH (the heavy nested object AND the flat summaries) so
-  // components can read either depending on what they need.
   const ctx = researchContext;
 
-  // Phase 2 of detail-page IA rework — cross-link joins.
-  // Run in parallel with a single Promise.all to keep request latency flat.
-  const [siblingIdeas, addressedPains] = await Promise.all([
-    getSiblingIdeas(idea.categoryId, idea.id),
-    resolvePainPointSlugs(idea.addressedPainTitles, idea.categoryId),
-  ]);
+  // Cross-link sections. Entitled users get full lists; non-entitled users (on
+  // the one featured page they can reach) get featured-tier cross-links + counts.
+  let siblingIdeas: Awaited<ReturnType<typeof getSiblingIdeas>> = [];
+  let addressedPains: AddressedPainLookup = {};
+  let addressedPainTitles: string[] = [];
+  let siblingIdeasLockedCount = 0;
+  let addressedLockedCount = 0;
+
+  if (entitled) {
+    const [si, ap] = await Promise.all([
+      getSiblingIdeas(idea.categoryId, idea.id),
+      resolvePainPointSlugs(idea.addressedPainTitles, idea.categoryId),
+    ]);
+    siblingIdeas = si;
+    addressedPains = ap;
+    addressedPainTitles = idea.addressedPainTitles ?? [];
+  } else {
+    // No other ideas surfaced — they're gated. Report how many for the CTA.
+    siblingIdeasLockedCount = await prisma.catalogIdea.count({
+      where: { categoryId: idea.categoryId, isActive: true, slug: { not: null }, id: { not: idea.id } },
+    });
+    // Keep only the featured pain among the pains this idea addresses (if any).
+    // MUST filter addressedPainTitles too — the frontend renders its pain table
+    // from that array, so leaving non-featured titles would leak them as text.
+    const allAddressed = await resolvePainPointSlugs(idea.addressedPainTitles ?? [], idea.categoryId);
+    const featuredPain = await featuredPainForCategory(idea.categoryId);
+    const featuredTitle = featuredPain?.title ?? null;
+    if (featuredTitle && allAddressed[featuredTitle]) {
+      addressedPains = { [featuredTitle]: allAddressed[featuredTitle] };
+      addressedPainTitles = [featuredTitle];
+    }
+    addressedLockedCount = Math.max(0, Object.keys(allAddressed).length - addressedPainTitles.length);
+  }
 
   return {
     ...preview,
@@ -2952,21 +2855,24 @@ export async function getIdeaBySlug(slug: string) {
     topPainCategories: Array.isArray(ctx?.topPainCategories)
       ? (ctx?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
       : null,
-    // Phase 2 — detail-page IA cross-links.
+    // Phase 2 — detail-page IA cross-links (gated above for non-entitled).
     siblingIdeas,
     addressedPains,
-    // Source-of-truth list for "Pain points addressed" rendering on
-    // /idea/[slug]. Now canonicalized at publish time (publishIdea +
-    // catalog-ideas-ready) so every entry is guaranteed to exact-match a
-    // pain-point title from the same job's research context. Frontend filters
-    // its display list against this. Note: toIdeaPreview() deliberately omits
-    // this field from the preview whitelist (sibling/related cards don't
-    // display it); the detail-page payload re-adds it explicitly.
-    addressedPainTitles: idea.addressedPainTitles ?? [],
+    addressedPainTitles,
+    siblingIdeasLockedCount,
+    addressedLockedCount,
   };
 }
 
-export async function getPainPointBySlug(slug: string) {
+/**
+ * Detail payload for a single pain point. Mirrors `getIdeaBySlug`'s gating: a
+ * non-entitled user reaches only the ONE featured pain per sub-niche (else
+ * `{ locked: true }` → 403). On the featured page, related ideas are limited to the
+ * featured idea (if it addresses this pain) and sibling pains are hidden, with
+ * locked counts for the teasers.
+ */
+export async function getPainPointBySlug(slug: string, opts: { entitled?: boolean } = {}) {
+  const entitled = opts.entitled ?? false;
   const pp = await prisma.catalogPainPoint.findFirst({
     where: { slug, isActive: true },
     include: {
@@ -2982,20 +2888,65 @@ export async function getPainPointBySlug(slug: string) {
     },
   });
   if (!pp) return null;
+
+  const featuredPainId = await resolveFeaturedPainId(pp.categoryId);
+  if (!entitled && pp.id !== featuredPainId) {
+    return { locked: true as const };
+  }
+
   const { sourceJobId: _s, publishedById: _p, researchContext, ...rest } = pp;
-  // Phase 5.4 — same flattened summaries as the idea detail endpoint. Pain-point
-  // preview shape is camelCase already (legacy convention) so summaries fit
-  // alongside without case mixing.
+  // Phase 5.4 — same flattened summaries as the idea detail endpoint.
   const ctx = researchContext;
 
-  // Phase 2 of detail-page IA rework — cross-link joins.
-  // Phase 14 adds rankInfo, source-grounded quote attribution, and top
-  // Reddit threads. All run in parallel so request latency stays flat.
-  const [siblingPains, relatedIdeas, rankInfo] = await Promise.all([
-    getSiblingPainPoints(pp.themeId, pp.id, pp.categoryId),
-    getIdeasAddressingPain(pp.title, pp.categoryId),
-    getPainPointRank(pp.id, pp.categoryId),
-  ]);
+  let siblingPains: Awaited<ReturnType<typeof getSiblingPainPoints>> = [];
+  let relatedIdeas: Awaited<ReturnType<typeof getIdeasAddressingPain>> = [];
+  let siblingPainsLockedCount = 0;
+  let relatedIdeasLockedCount = 0;
+
+  // rankInfo is this pain's OWN comparative rank (not a list of other items) —
+  // always computed regardless of entitlement.
+  const rankInfo = await getPainPointRank(pp.id, pp.categoryId);
+
+  if (entitled) {
+    const [sp, ri] = await Promise.all([
+      getSiblingPainPoints(pp.themeId, pp.id, pp.categoryId),
+      getIdeasAddressingPain(pp.title, pp.categoryId),
+    ]);
+    siblingPains = sp;
+    relatedIdeas = ri;
+  } else {
+    // Sibling pains in this theme are gated — count for the CTA.
+    siblingPainsLockedCount = pp.themeId
+      ? await prisma.catalogPainPoint.count({
+          where: {
+            themeId: pp.themeId,
+            categoryId: pp.categoryId,
+            isActive: true,
+            slug: { not: null },
+            id: { not: pp.id },
+          },
+        })
+      : 0;
+    // Related ideas: surface ONLY the featured idea, and only if it addresses
+    // this pain; everything else is gated. Count the rest for the CTA.
+    const totalRelated = await prisma.catalogIdea.count({
+      where: {
+        isActive: true,
+        categoryId: pp.categoryId,
+        slug: { not: null },
+        addressedPainTitles: { has: pp.title },
+      },
+    });
+    const featuredIdeaRow = await featuredIdeaForCategory(pp.categoryId);
+    const featuredAddresses = (featuredIdeaRow?.addressedPainTitles ?? []).includes(pp.title);
+    if (featuredIdeaRow && featuredAddresses) {
+      const { sourceJobId: _fs, publishedById: _fp, ...frest } = featuredIdeaRow;
+      relatedIdeas = [toIdeaPreview(frest)];
+      relatedIdeasLockedCount = Math.max(0, totalRelated - 1);
+    } else {
+      relatedIdeasLockedCount = totalRelated;
+    }
+  }
 
   const quoteSources = resolveQuoteSourcesForPain(ctx?.painPointQuoteSources, pp.title);
   const topRedditThreadsAll = flattenTopRedditThreads(ctx);
@@ -3020,9 +2971,11 @@ export async function getPainPointBySlug(slug: string) {
     topPainCategories: Array.isArray(ctx?.topPainCategories)
       ? (ctx?.topPainCategories as unknown[]).filter((s): s is string => typeof s === 'string')
       : null,
-    // Phase 2 — detail-page IA cross-links.
+    // Phase 2 — detail-page IA cross-links (gated above for non-entitled).
     siblingPains,
     relatedIdeas,
+    siblingPainsLockedCount,
+    relatedIdeasLockedCount,
     // Phase 14 — source-grounded evidence + comparative ranking.
     quoteSources,
     rankInfo,
@@ -3132,7 +3085,7 @@ export async function invalidatePublicCategoryTree(): Promise<void> {
 // Phase 5.4 — Catalog totals (index-page hero stat strip)
 // =====================================================================
 
-const TOTALS_CACHE_KEY = 'catalog:totals:v2';
+const TOTALS_CACHE_KEY = 'catalog:totals:v3';
 const TOTALS_CACHE_TTL = 300;  // 5 min — same cadence as tree cache
 
 interface CatalogTotals {
@@ -3142,6 +3095,8 @@ interface CatalogTotals {
   // Per scope rule, this is content items (posts/threads) NOT communities.
   // Communities are per-niche on landing payloads, not aggregable globally.
   contentItemsMined: number;
+  // Sum of redditCommentsAnalyzed across all contexts ("Comments analyzed" tile).
+  commentsAnalyzed: number;
   // ISO timestamp of the most recent active idea or pain-point update — drives
   // the hero kicker dateline on /ideas. null when the catalog is empty.
   lastUpdated: string | null;
@@ -3183,6 +3138,7 @@ export async function getCatalogTotals(): Promise<CatalogTotals> {
     prisma.catalogResearchContext.aggregate({
       _sum: {
         redditPostsAnalyzed: true,
+        redditCommentsAnalyzed: true,
         twitterThreadsAnalyzed: true,
         genericPostsAnalyzed: true,
       },
@@ -3202,6 +3158,8 @@ export async function getCatalogTotals(): Promise<CatalogTotals> {
     (sumAgg._sum.twitterThreadsAnalyzed ?? 0) +
     (sumAgg._sum.genericPostsAnalyzed ?? 0);
 
+  const commentsAnalyzed = sumAgg._sum.redditCommentsAnalyzed ?? 0;
+
   // Take the larger of the two timestamps so the hero dateline reflects
   // *any* catalog content update, not just idea updates.
   const ideaTs = ideaMaxAgg._max.updatedAt;
@@ -3214,6 +3172,7 @@ export async function getCatalogTotals(): Promise<CatalogTotals> {
     totalCategories,
     totalSubcategories,
     contentItemsMined,
+    commentsAnalyzed,
     lastUpdated: lastUpdatedDate ? lastUpdatedDate.toISOString() : null,
   };
 

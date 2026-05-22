@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { SavedIdeaItem } from "$lib/types/saved";
+  import type { SavedIdeaItem, SavedIdeaItemUnlocked } from "$lib/types/saved";
   import type { IdeaPreview } from "$lib/types/catalog-landing.js";
   import IdeaCardV2 from "$lib/components/catalog/seo/IdeaCardV2.svelte";
   import Pencil from "lucide-svelte/icons/pencil";
@@ -7,8 +7,10 @@
   import NoteEditor from "./NoteEditor.svelte";
   import { formatDistanceToNow } from "./formatRelative";
 
+  // Only renders ACCESSIBLE saved ideas — the parent routes locked items to
+  // <LockedSavedCard>, so `item.idea` is always present here.
   interface Props {
-    item: SavedIdeaItem;
+    item: SavedIdeaItemUnlocked;
     onUnsave: (item: SavedIdeaItem) => void;
     onNotesChange: (item: SavedIdeaItem, notes: string | null) => void;
   }

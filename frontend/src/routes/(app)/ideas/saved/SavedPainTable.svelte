@@ -43,9 +43,37 @@
     <span role="columnheader" class="ar" aria-label="Actions"></span>
   </div>
   {#each items as item, i (item.id)}
-    {@const tier = severityTier(item.painPoint.severityScore)}
-    {@const sevPct = severityPercent(item.painPoint.severityScore)}
-    <div class="pt-row t-{tier}" role="row" style="--i: {Math.min(i, 5)}">
+    {#if item.locked}
+      <!-- Locked row — non-featured pain the user lost access to. Backend strips
+           all content + the note; only the lock state + unlock CTA + unsave remain. -->
+      <div class="pt-row pt-locked" role="row" style="--i: {Math.min(i, 5)}">
+        <span class="rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
+        <span class="ttl ttl-locked" role="cell">
+          <span class="ttl-text">🔒 Locked pain point</span>
+          <span class="ttl-niche">Subscribe to view</span>
+        </span>
+        <span class="men" role="cell">—</span>
+        <span class="sev" role="cell"><span class="num">—</span></span>
+        <span class="when" role="cell">Saved {formatDistanceToNow(item.createdAt)} ago</span>
+        <span class="note-cell" role="cell">
+          <a class="unlock-link" href="/unlock-catalog">Unlock</a>
+        </span>
+        <button
+          type="button"
+          class="pt-remove"
+          role="cell"
+          onclick={() => onUnsave(item)}
+          aria-label="Remove locked pain point from saved"
+          title="Remove from saved"
+        >
+          <X size={11} aria-hidden="true" />
+          <span>Remove</span>
+        </button>
+      </div>
+    {:else}
+      {@const tier = severityTier(item.painPoint.severityScore)}
+      {@const sevPct = severityPercent(item.painPoint.severityScore)}
+      <div class="pt-row t-{tier}" role="row" style="--i: {Math.min(i, 5)}">
       <span class="rank" role="cell">{String(i + 1).padStart(2, "0")}</span>
       <a
         class="ttl"
@@ -120,7 +148,8 @@
         <X size={11} aria-hidden="true" />
         <span>Remove</span>
       </button>
-    </div>
+      </div>
+    {/if}
   {/each}
 </div>
 
@@ -320,6 +349,30 @@
     border-color: var(--color-accent);
     background: var(--color-bg-elevated, #fff);
   }
+  /* Locked row — muted title, no severity rail, an inline "Unlock" link. */
+  .ttl-locked {
+    cursor: default;
+  }
+  .pt-locked .ttl-text {
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+  .unlock-link {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-accent);
+    text-decoration: none;
+  }
+  .unlock-link:hover {
+    text-decoration: underline;
+  }
+  .unlock-link:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
   .note-cell {
     overflow: hidden;
   }

@@ -74,6 +74,11 @@ model User {
   // Role
   role UserRole @default(USER)
 
+  // Full catalog access grant (manual, until subscription billing exists). When
+  // true (or role=ADMIN), the user can view non-featured catalog ideas/pain points
+  // and their detail pages; otherwise they only see the featured item per sub-niche.
+  fullCatalogAccess Boolean @default(false)
+
   // Timestamps
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

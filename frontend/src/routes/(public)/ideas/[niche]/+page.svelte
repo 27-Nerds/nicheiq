@@ -209,7 +209,7 @@
         num={num1}
         label={`Ideas in ${data.payload.category.name}`}
       />
-      <AllIdeasSection ideas={data.payload.topIdeas} />
+      <AllIdeasSection ideas={data.payload.topIdeas} lockedCount={data.lockedIdeaCount} />
     </div>
   {/if}
 
@@ -222,7 +222,10 @@
         label="Top pain points"
         metaText="ranked by mention volume × severity"
       />
-      <PainPointRankTable painPoints={data.payload.topPainPoints} />
+      <PainPointRankTable
+        painPoints={data.payload.topPainPoints}
+        lockedCount={data.lockedPainCount}
+      />
     </div>
   {/if}
 

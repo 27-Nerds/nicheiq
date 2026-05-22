@@ -3,11 +3,11 @@
 
 	interface Props {
 		reportsDelivered?: number | null;
-		threadsAnalyzed?: number | null;
-		nichesResearched?: number | null;
+		commentsAnalyzed?: number | null;
+		subNiches?: number | null;
 	}
 
-	let { reportsDelivered = null, threadsAnalyzed = null, nichesResearched = null }: Props = $props();
+	let { reportsDelivered = null, commentsAnalyzed = null, subNiches = null }: Props = $props();
 
 	type Stat = { value: number; suffix: string; title: string };
 
@@ -16,11 +16,11 @@
 		if (typeof reportsDelivered === 'number' && reportsDelivered > 0) {
 			out.push({ value: reportsDelivered, suffix: '+', title: 'Reports run' });
 		}
-		if (typeof threadsAnalyzed === 'number' && threadsAnalyzed > 0) {
-			out.push({ value: threadsAnalyzed, suffix: '', title: 'Threads analyzed' });
+		if (typeof commentsAnalyzed === 'number' && commentsAnalyzed > 0) {
+			out.push({ value: commentsAnalyzed, suffix: '', title: 'Comments analyzed' });
 		}
-		if (typeof nichesResearched === 'number' && nichesResearched > 0) {
-			out.push({ value: nichesResearched, suffix: '', title: 'Niches researched' });
+		if (typeof subNiches === 'number' && subNiches > 0) {
+			out.push({ value: subNiches, suffix: '', title: 'Sub-niches' });
 		}
 		return out;
 	});
