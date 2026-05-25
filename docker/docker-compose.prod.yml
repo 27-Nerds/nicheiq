@@ -294,6 +294,10 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       PUBLIC_GA_MEASUREMENT_ID: ${PUBLIC_GA_MEASUREMENT_ID:-}
+      # SEO launch gate (runtime). 'true' (default) keeps the idea catalog noindex + out of the
+      # sitemap; set SEO_LAUNCH_GATE=false in the prod .env to open it to search indexing, then
+      # `docker compose up -d frontend` (no rebuild needed).
+      SEO_LAUNCH_GATE: ${SEO_LAUNCH_GATE:-true}
     networks:
       - nicheiq-network
     depends_on:
